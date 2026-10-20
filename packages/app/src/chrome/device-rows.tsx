@@ -1,7 +1,3 @@
-/**
- * The devices that can reach this machine, under a count, each with one way
- * to cut it off: the Nyte account's linked devices and a tunnel's paired ones.
- */
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -23,7 +19,6 @@ const styles = create({
   },
 });
 
-/** A device as its row reads it. */
 interface DeviceEntry {
   readonly id: string;
   readonly name: string;
@@ -39,9 +34,7 @@ export function DeviceRows({
 }: {
   readonly label: string;
   readonly devices: readonly DeviceEntry[];
-  /** The button's verb: "Revoke…" asks first, "Remove" acts at once. */
   readonly action: string;
-  /** The device whose removal is in flight. */
   readonly pending: string | undefined;
   readonly onAction: (deviceId: string) => void;
 }): ReactElement | null {

@@ -12,7 +12,6 @@ import { SessionModelChip } from "./composer-model-chip.tsx";
 import { compactSession } from "./composer-send.ts";
 import { useTranscriptScope } from "./transcript.tsx";
 
-/** The control that takes a failed turn's recovery step in its chat; nothing outside a chat's transcript. */
 export function RecoveryAction({ recovery }: { readonly recovery: Recovery }): ReactElement | null {
   const sessionId = useTranscriptScope()?.sessionId;
 

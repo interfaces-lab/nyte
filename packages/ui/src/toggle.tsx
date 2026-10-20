@@ -25,7 +25,6 @@ export function Toggle<Value extends string>({
 }: Omit<StyledProps<TogglePrimitive.Props<Value>>, "xstyle" | "children" | "aria-label"> &
   ButtonSizing &
   ButtonAppearance & {
-    /** `glyph` drops the pressed fill, for a glyph that already draws its state. */
     readonly indicator?: "fill" | "glyph";
   }): ReactElement {
   return (

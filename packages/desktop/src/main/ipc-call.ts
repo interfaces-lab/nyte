@@ -10,14 +10,12 @@ import { ExpectedHostError, ipcResult } from "./errors.ts";
 import type { HostWindow } from "./host-window.ts";
 import { decodeCallInput, decodeCallRequest } from "./ipc-inputs.ts";
 
-/** Answers one decoded operation for a window. */
 export type CallRoute = <P extends CallPath>(
   window: HostWindow,
   path: P,
   input: CallInput<P>,
 ) => Promise<CallOutput<P>>;
 
-/** Runs `path` from `table`; a path this process does not answer is refused as unknown. */
 export async function callTable<P extends CallPath>(
   table: CallTable,
   window: HostWindow,
@@ -32,7 +30,6 @@ export async function callTable<P extends CallPath>(
   return handler(window, input);
 }
 
-/** Decodes a renderer request and answers it through `route`. Main-frame authorization happens before this boundary. */
 export function callIpc<R extends CallRequest>(
   route: CallRoute,
   window: HostWindow,

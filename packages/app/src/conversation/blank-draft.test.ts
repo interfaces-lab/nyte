@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test, vi } from "vitest";
+import { onTestFinished, test, vi } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import { PaneController } from "../layout/pane-controller.ts";
 import { activeSelection } from "../layout/pane-layout.ts";
@@ -188,10 +188,17 @@ function memoryStorage() {
     setItem: (key: string, value: string) => {
       values.set(key, value);
     },
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
   };
 }
 
-test("reload restores parked drafts and follow-up text", () => {
+test("reload restores parked drafts and follow-up text after a typing pause", () => {
+  vi.useFakeTimers();
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
   const storage = memoryStorage();
   const first = new PaneController({ storage, storageKey: "panes-reload" });
   const opened = first.viewState.readBlank("primary");
@@ -209,6 +216,7 @@ test("reload restores parked drafts and follow-up text", () => {
       focused: true,
     },
   }));
+  vi.advanceTimersByTime(200);
 
   const reloaded = new PaneController({ storage, storageKey: "panes-reload" });
   assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "Second idea");

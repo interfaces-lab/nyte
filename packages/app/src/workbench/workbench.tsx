@@ -50,18 +50,15 @@ import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 
-/**
- * Views visited since launch stay mounted so a dev server terminal or a
- * browser page in another folder survives switching away and back, and a
- * trip through Settings that unmounts the stage.
- */
-let visitedViews: readonly WorkbenchViewKey[] = Object.freeze([]);
+const MOUNTED_VIEWS = 3;
+
+let recentViews: readonly WorkbenchViewKey[] = [];
 
 const visitedListeners = new Set<() => void>();
 
 function visitWorkbenchView(key: WorkbenchViewKey): void {
-  if (visitedViews.includes(key)) return;
-  visitedViews = Object.freeze([...visitedViews, key]);
+  if (recentViews.at(-1) === key) return;
+  recentViews = [...recentViews.filter((recent) => recent !== key), key].slice(-MOUNTED_VIEWS);
 
   for (const listener of visitedListeners) listener();
 }
@@ -147,11 +144,6 @@ function openWorkbenchTab({
   if (kind === "terminal") void terminalActions.create({ id, workspacePath });
 }
 
-/**
- * Once the first frame is up, loads the terminal's wasm and then the panels'
- * chunk, each when the renderer idles, so a first panel opens without them.
- * Safari has no idle callbacks and loads them on first open instead.
- */
 function prefetchWorkbench(): () => void {
   if (!("requestIdleCallback" in window)) return () => undefined;
 
@@ -746,12 +738,12 @@ export function Workbench({ workspacePath, sessionId }: WorkbenchProps): ReactEl
 
   const visited = useSyncExternalStore(
     subscribeVisited,
-    () => visitedViews,
-    () => visitedViews,
+    () => recentViews,
+    () => recentViews,
   );
 
   useLayoutEffect(() => visitWorkbenchView(viewKey), [viewKey]);
-  const views = visited.includes(viewKey) ? visited : [...visited, viewKey];
+  const views = (visited.includes(viewKey) ? visited : [...visited, viewKey]).toSorted();
 
   useLayoutEffect(() => {
     const stage = rootRef.current?.parentElement;

@@ -1,4 +1,3 @@
-/** Remote access over the user's own Cloudflare tunnel: set it up, start it, and pair devices. */
 import { create, props } from "@stylexjs/stylex";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -68,10 +67,6 @@ function tunnelFailure(connection: TunnelConnection, port: number): string | und
   }
 }
 
-/**
- * The tunnel the user created in Cloudflare. The token lives in this form's
- * own state and goes with it; it is sent once, never through the query cache.
- */
 function TunnelForm({
   initial,
   onDone,
@@ -179,7 +174,6 @@ function TunnelForm({
   );
 }
 
-/** A tunnel's paired devices; Remove acts at once. */
 function TunnelDevices({
   tunnel,
   revoke,
@@ -202,19 +196,12 @@ function TunnelDevices({
   );
 }
 
-/** A code on screen, and whether the device list has shown its device yet. */
 interface ShownPairing {
   readonly pairing: RemotePairing;
   readonly name: string;
   readonly listed: boolean;
 }
 
-/**
- * The tunnel while it serves: its devices, and a way to add one once it is
- * connected. The list may not have caught up with a code just made, so its
- * absence counts only after the device has appeared; claimed or gone, the
- * token is dropped.
- */
 export function TunnelServingPanel({ tunnel }: { tunnel: ConfiguredTunnel }): ReactElement {
   const client = useQueryClient();
   const revoke = useRevokeDevice();
@@ -264,7 +251,6 @@ export function TunnelServingPanel({ tunnel }: { tunnel: ConfiguredTunnel }): Re
   );
 }
 
-/** The tunnel while remote access is off: set it up, change it, start it, or remove devices. */
 export function TunnelRow({
   tunnel,
   starting,

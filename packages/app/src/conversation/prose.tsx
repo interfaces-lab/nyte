@@ -13,11 +13,10 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
-import { CachedMarkdown, Streamdown } from "@lobehub/streamdown";
+import { Streamdown, StreamdownBlockOpen } from "@lobehub/streamdown";
 import { defaultUrlTransform } from "react-markdown";
 import type { Components, ExtraProps, UrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import remend from "remend";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./external-link.ts";
 import { useQuery } from "@tanstack/react-query";
@@ -247,7 +246,7 @@ function MarkdownPre({
   node: _node,
   ...elementProps
 }: ComponentProps<"pre"> & ExtraProps): ReactElement {
-  const streaming = use(ProseStreaming);
+  const open = use(ProseStreaming) && use(StreamdownBlockOpen);
   const child = Children.toArray(children)[0];
 
   if (Children.count(children) === 1 && isValidElement<ComponentProps<"code">>(child)) {
@@ -260,10 +259,10 @@ function MarkdownPre({
         .find((name) => name.startsWith("language-"))
         ?.slice("language-".length) ?? "";
 
-    if (!streaming && language.toLocaleLowerCase() === "mermaid")
+    if (!open && language.toLocaleLowerCase() === "mermaid")
       return <MermaidDiagram source={code} />;
 
-    return <CodeBlock code={code} lang={language} />;
+    return <CodeBlock code={code} lang={language} streaming={open} />;
   }
 
   return (
@@ -345,8 +344,6 @@ function subscribeReducedMotion(onChange: () => void): () => void {
   return () => reducedMotionQuery.removeEventListener("change", onChange);
 }
 
-const CROSS_BLOCK = /^ {0,3}\[[^\]\n]+\]:/mu;
-
 export const Prose = memo(function Prose({
   markdown,
   streaming = false,
@@ -362,29 +359,18 @@ export const Prose = memo(function Prose({
 
   const [streamedHere] = useState(streaming);
 
-  const blockwise = !reducedMotion && (streaming || (streamedHere && !CROSS_BLOCK.test(markdown)));
-
   return (
     <ProseStreaming value={streaming}>
       <div {...props(proseStyles.root)}>
-        {blockwise ? (
-          <Streamdown
-            content={markdown}
-            components={markdownComponents}
-            remarkPlugins={remarkPlugins}
-            urlTransform={urlTransform}
-            skipHtml
-          />
-        ) : (
-          <CachedMarkdown
-            components={markdownComponents}
-            remarkPlugins={remarkPlugins}
-            urlTransform={urlTransform}
-            skipHtml
-          >
-            {streaming ? remend(markdown) : markdown}
-          </CachedMarkdown>
-        )}
+        <Streamdown
+          content={markdown}
+          animated={streamedHere && !reducedMotion}
+          granularity="word"
+          components={markdownComponents}
+          remarkPlugins={remarkPlugins}
+          urlTransform={urlTransform}
+          skipHtml
+        />
       </div>
     </ProseStreaming>
   );

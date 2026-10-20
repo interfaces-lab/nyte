@@ -1,8 +1,3 @@
-/**
- * A link's life: linking, cancelling, unlinking, the relay being revoked or
- * taken over, waking, restarts, and the build configuration. See
- * `fixtures/connect-machine.ts`.
- */
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";

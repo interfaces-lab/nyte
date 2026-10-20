@@ -1,8 +1,3 @@
-/**
- * Fenced code paints as escaped plain text immediately, then upgrades to the
- * highlighting the diffs use: grammars and syntax work stay in their Pierre
- * worker pool, off the UI thread.
- */
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useQuery } from "@tanstack/react-query";
@@ -85,10 +80,6 @@ function rememberHighlight(value: HighlightedCode): void {
   }
 }
 
-/**
- * The result also fills the module cache, so a remounted row paints from
- * `cachedHighlight` instead of asking the pool again.
- */
 async function requestHighlight(code: string, language: string): Promise<HighlightResult> {
   const html = await loadDeferred("code").then(
     (runtime) => runtime.highlightCode(code, language, highlightKey(code, language)),
@@ -104,12 +95,15 @@ async function requestHighlight(code: string, language: string): Promise<Highlig
   return { kind: "highlighted", value };
 }
 
-export function CodeBlock({ code, lang }: { code: string; lang: string }): ReactElement {
-  const language = lang.trim().toLowerCase().split(/\s+/u)[0] ?? "";
-  const figure = useRef<HTMLElement>(null);
-  const [nearViewport, setNearViewport] = useState(false);
-  const [copiedCode, setCopiedCode] = useState<string>();
-  const copied = copiedCode === code;
+function HighlightedCode({
+  code,
+  language,
+  nearViewport,
+}: {
+  code: string;
+  language: string;
+  nearViewport: boolean;
+}): ReactElement {
   const cached = cachedHighlight(code, language);
 
   const { data } = useQuery({
@@ -121,6 +115,28 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
   });
 
   const html = data?.kind === "highlighted" ? data.value.html : cached?.html;
+
+  return html === undefined ? (
+    <code>{code}</code>
+  ) : (
+    <code dangerouslySetInnerHTML={{ __html: html }} />
+  );
+}
+
+export function CodeBlock({
+  code,
+  lang,
+  streaming = false,
+}: {
+  code: string;
+  lang: string;
+  streaming?: boolean;
+}): ReactElement {
+  const language = lang.trim().toLowerCase().split(/\s+/u)[0] ?? "";
+  const figure = useRef<HTMLElement>(null);
+  const [nearViewport, setNearViewport] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<string>();
+  const copied = copiedCode === code;
 
   useMountEffect(() => {
     const element = figure.current;
@@ -169,10 +185,10 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
       </span>
       <div data-nyte-scrollport {...props(codeBlockStyles.scroll)}>
         <pre data-nyte-code {...props(text.code, codeBlockStyles.pre)}>
-          {html === undefined ? (
+          {streaming ? (
             <code>{code}</code>
           ) : (
-            <code dangerouslySetInnerHTML={{ __html: html }} />
+            <HighlightedCode code={code} language={language} nearViewport={nearViewport} />
           )}
         </pre>
       </div>

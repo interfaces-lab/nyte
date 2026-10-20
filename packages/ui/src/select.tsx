@@ -140,7 +140,6 @@ export function SelectContent({
     SelectPrimitive.Positioner.Props,
     "side" | "align" | "sideOffset" | "alignOffset" | "alignItemWithTrigger" | "collisionAvoidance"
   > & {
-    /** Scopes the popup to a hue. */
     readonly tint?: Tint;
   }): ReactElement {
   return (

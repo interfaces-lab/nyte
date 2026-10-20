@@ -3,7 +3,7 @@ import { layer, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation, pane } from "../theme/schema.stylex.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-export const threadStyles = create({
+export const sessionScreenStyles = create({
   stage: {
     position: "relative",
     display: "flex",
@@ -48,6 +48,7 @@ export const threadStyles = create({
   }),
   paneTrailing: { flex: 1 },
   screen: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
+  paneScreen: { position: "absolute", inset: 0 },
   embeddedScreen: {
     width: "100%",
     minWidth: 0,
@@ -96,7 +97,6 @@ export const threadStyles = create({
     fontSize: type.fontBase,
   },
   error: { paddingInlineStart: space.s1, color: role.contentSecondary, fontSize: type.fontBase },
-  /** A line under a new chat's composer that carries an action at its end. */
   startRow: {
     display: "flex",
     alignItems: "center",

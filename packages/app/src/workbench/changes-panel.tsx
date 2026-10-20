@@ -35,7 +35,7 @@ import {
   workspaceGit,
 } from "../queries.ts";
 import { conversationTurns } from "../view-helpers.ts";
-import type { ConversationTurn } from "../view-helpers.ts";
+import type { TurnMessages } from "../view-helpers.ts";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
@@ -44,7 +44,7 @@ import {
   changesScopeLabel,
   changesScopeValue,
   scopeFiles,
-  threadScopeOption,
+  sessionScopeOption,
   turnChangeOptions,
   turnScopeOption,
   vcsRequestForScope,
@@ -80,7 +80,7 @@ interface RecordedChangeRow {
 
 type ChangeRow = VcsChangeRow | RecordedChangeRow;
 
-const EMPTY_TURNS: readonly ConversationTurn[] = [];
+const EMPTY_TURNS: readonly TurnMessages[] = [];
 
 const EMPTY_ROWS: readonly VcsChangeRow[] = [];
 
@@ -203,17 +203,11 @@ function emptyScopeText(scope: WorkbenchChangesScope): string {
   }
 }
 
-/** The file a confirmation is about, and whether reverting it means the trash. */
 interface RevertTarget {
   readonly path: string;
   readonly untracked: boolean;
 }
 
-/**
- * A tracked file goes back to its committed state, which nothing can undo. An
- * untracked file has no committed state to return to, so it is trashed instead
- * and the copy says so rather than claiming the change is unrecoverable.
- */
 function revertConfirmation(target: RevertTarget) {
   if (target.untracked) {
     return {
@@ -232,10 +226,6 @@ function revertConfirmation(target: RevertTarget) {
   };
 }
 
-/**
- * The rail owns the only search surface, so the toolbar's filter command goes
- * through the field the rail renders rather than a second copy of its state.
- */
 function focusFileFilter(field: HTMLInputElement | null): void {
   if (field === null) return;
   field.focus();
@@ -255,44 +245,18 @@ interface ChangesPanelProps {
   readonly onSelectPath: (path: string | undefined) => void;
   readonly onRevealPath: (path: string) => void;
   readonly onScrollTop: (scrollTop: number) => void;
-  /**
-   * Discards a file's working-tree changes. The panel confirms and reverts on
-   * its own when this is unset; a host that supplies it owns the confirmation.
-   */
   readonly onRevertPath?: (path: string) => void;
-  /** Opens a pull request or check page; the system browser when absent. */
   readonly onOpenLink?: (url: string) => void;
 }
 
 interface ChangesPanelViewProps extends ChangesPanelProps {
-  readonly turns: readonly ConversationTurn[];
+  readonly turns: readonly TurnMessages[];
   readonly turnsError: Error | null;
   readonly liveRun: RunId | undefined;
   readonly workspace: WorkspaceId | undefined;
-  /** The chat's changes since its first run, absent outside a chat. */
-  readonly threadChanges: SessionView["changes"] | undefined;
+  readonly sessionChanges: SessionView["changes"] | undefined;
 }
 
-/**
- * The Changes tab for one scope.
- *
- * - Closing the revert confirmation returns focus to the affordance that opened it.
- * - Collapse state belongs to the panel so the toolbar can command it, but it
- *   describes one scope's files: switching scope starts over rather than
- *   collapsing same-named files in the scope that replaced them.
- * - A stored turn the transcript no longer holds collapses to the working tree.
- * - View options follow the repository; a turn shares the layout chosen for the
- *   tree it belongs to. Review marks do not: the same path carries a different
- *   patch in each scope, and a mark from one must not read as stale in another.
- * - A turn's own files are loaded, so its emptiness is a fact that a stale
- *   background failure cannot change.
- * - Only a working tree has both sides of a file to widen a gap with, and a
- *   state to revert to. A turn's patch and a commit's are records of an edit,
- *   and the files have moved on. Pierre re-renders every visible file when
- *   expandability changes, so it does not follow the revision.
- * - A reverted file no longer has the patch its review mark was filed under,
- *   so the mark clears.
- */
 function ChangesPanelView({
   visible = true,
   scope,
@@ -312,15 +276,16 @@ function ChangesPanelView({
   turnsError,
   liveRun,
   workspace,
-  threadChanges,
+  sessionChanges,
 }: ChangesPanelViewProps): ReactElement {
   const uiFontSize = useSetting(preferences.uiFontSize);
   const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
 
-  const threadOption = useMemo(
-    () => (threadChanges === undefined ? undefined : threadScopeOption(threadChanges)),
-    [threadChanges],
+  const sessionOption = useMemo(
+    () => (sessionChanges === undefined ? undefined : sessionScopeOption(sessionChanges)),
+    [sessionChanges],
   );
+
   const snapshot = useVcsSnapshot(visible);
   const filterInput = useRef<HTMLInputElement>(null);
   const revertReturnRef = useRef<HTMLButtonElement | null>(null);
@@ -879,7 +844,7 @@ function ChangesPanelView({
         scope={activeScope}
         scopeLabel={changesScopeLabel(activeScope, [
           ...workingTreeScopeOptions(snapshot.data),
-          ...(threadOption === undefined ? [] : [threadOption]),
+          ...(sessionOption === undefined ? [] : [sessionOption]),
           ...turnOptions.map(turnScopeOption),
         ])}
         scopeStats={scopeStats}
@@ -887,7 +852,7 @@ function ChangesPanelView({
         snapshot={snapshot.data}
         repository={repository}
         branch={branchReadout(snapshot.data)}
-        threadOption={threadOption}
+        sessionOption={sessionOption}
         turnOptions={turnOptions}
         viewOptions={options}
         fileTreeVisible={fileTreeVisible}
@@ -981,10 +946,7 @@ function SessionChangesPanel(
   const view = useSessionView(props.sessionId);
   const session = useSession(props.sessionId);
 
-  const turns = useMemo(
-    () => (view === undefined ? EMPTY_TURNS : conversationTurns(view).turns),
-    [view],
-  );
+  const turns = useMemo(() => (view === undefined ? EMPTY_TURNS : conversationTurns(view)), [view]);
 
   const execution = view?.execution;
 
@@ -995,7 +957,7 @@ function SessionChangesPanel(
       turnsError={null}
       liveRun={execution === undefined || execution.kind === "idle" ? undefined : execution.run.id}
       workspace={session.data?.workspace ?? undefined}
-      threadChanges={view?.changes}
+      sessionChanges={view?.changes}
     />
   );
 }
@@ -1008,7 +970,7 @@ export function ChangesPanel(props: ChangesPanelProps): ReactElement {
       turnsError={null}
       liveRun={undefined}
       workspace={undefined}
-      threadChanges={undefined}
+      sessionChanges={undefined}
     />
   ) : (
     <SessionChangesPanel {...props} sessionId={props.sessionId} />

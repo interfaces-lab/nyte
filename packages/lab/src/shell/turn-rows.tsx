@@ -5,7 +5,7 @@ import type { TurnItemRow } from "@nyte-ai/app/conversation/transcript-rows.ts";
 import { TurnItemView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import type { ToolCallDensity } from "@nyte-ai/app/preferences/index.ts";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
-import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import type { TurnMessages } from "@nyte-ai/app/view-helpers.ts";
 
 export function TurnRows({
   turn,
@@ -13,7 +13,7 @@ export function TurnRows({
   density,
   cwd,
 }: {
-  readonly turn: ConversationTurn;
+  readonly turn: TurnMessages;
   readonly running: boolean;
   readonly density: ToolCallDensity;
   readonly cwd: string | undefined;
@@ -23,10 +23,9 @@ export function TurnRows({
     failed: false,
     turns: [turn],
     changes: [],
-    landing: [],
+    prompts: [],
     held: false,
     retrying: undefined,
-    working: running,
     running,
   }).flatMap((row): readonly TurnItemRow[] => {
     switch (row.kind) {
@@ -47,7 +46,7 @@ export function TurnRows({
     <div {...props(styles.turn)}>
       {rows.map((row) => (
         <TurnItemView
-          key={row.messageId}
+          key={row.key}
           row={row}
           running={row.kind === "step" && row.trailing && running}
           density={density}

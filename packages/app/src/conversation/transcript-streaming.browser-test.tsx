@@ -14,13 +14,15 @@ import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
-import { ThreadScreen } from "../screens/thread.tsx";
+import { SessionScreen } from "../screens/session-screen.tsx";
+import { SessionConversation } from "../screens/session-conversation.tsx";
 import { createAppRouter } from "../router.tsx";
 import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow, settledTool } from "../../test/view-fixtures.ts";
 import { lastCommit, renderCount, resetRenders } from "./transcript-render-counter.ts";
 import { TurnItemView } from "./turn-view.tsx";
+import { Timeline } from "./timeline.tsx";
 
 const ID = asId<"session">("transcript-streaming");
 
@@ -186,7 +188,7 @@ export async function run(): Promise<string> {
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
             <PaneControllerProvider controller={panes}>
               <SessionDndProvider>
-                <ThreadScreen />
+                <SessionScreen />
               </SessionDndProvider>
             </PaneControllerProvider>
           </TooltipProvider>
@@ -203,6 +205,8 @@ export async function run(): Promise<string> {
 
     for (let index = 0; index < 10; index += 1) await painted();
     resetRenders(TurnItemView);
+    resetRenders(SessionConversation);
+    resetRenders(Timeline);
     let rendering = 0;
 
     for (let index = 0; index < DELTAS; index += 1) {
@@ -213,7 +217,7 @@ export async function run(): Promise<string> {
       rendering += lastCommit() - pushed;
     }
 
-    const mounted = container.querySelectorAll("[data-message-id]").length;
+    const mounted = container.querySelectorAll("[data-row-key]").length;
     const counts = renderCount(TurnItemView);
 
     return JSON.stringify({
@@ -222,6 +226,8 @@ export async function run(): Promise<string> {
       rowUpdates: counts.updates,
       rowMounts: counts.mounts,
       updatesPerDelta: counts.updates / DELTAS,
+      sessionRenders: renderCount(SessionConversation).updates,
+      timelineRenders: renderCount(Timeline).updates,
       commitMsPerDelta: rendering / DELTAS,
     });
   } finally {

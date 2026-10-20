@@ -1,11 +1,8 @@
-/**
- * Permanent window chrome. The sidebar toggle stays on the rail side; chat
- * actions and the stage-level workbench entry stay at the trailing edge.
- */
+import { useSettingsOpen } from "./use-settings-open.ts";
 import { titlebarStyles } from "./titlebar.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
-import { createLink, useMatch } from "@tanstack/react-router";
+import { createLink } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
@@ -43,11 +40,6 @@ import { useWindowTabItems, useWindowTabsState } from "../tabs/use-window-tabs.t
 import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
-/**
- * Where the open chat runs, ahead of its title: the machine when it is not
- * this one, then the folder, then the branch of a chat in a worktree. A Home
- * chat on this machine names nothing.
- */
 function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement | null {
   const session = useSession(sessionId);
   const workspaces = useWorkspaces();
@@ -119,7 +111,6 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   );
 }
 
-/** Its own component, so the session directory re-renders the strip and not the titlebar. */
 function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }): ReactElement {
   return (
     <WindowTabStrip
@@ -154,8 +145,9 @@ export function Titlebar(): ReactElement {
 
   const terminalWorkspacePath = workspacePath ?? null;
   const scope = workbenchScope(workspacePath);
-  const settingsMatch = useMatch({ from: "/settings/$section", shouldThrow: false });
-  const settingsOpen = settingsMatch !== undefined;
+
+  const settingsOpen = useSettingsOpen();
+
   const workspaceVisible = !settingsOpen && page === undefined;
   const workbenchOpen = workspaceVisible && view.expanded;
   const maximized = view.layout.kind === "maximized";

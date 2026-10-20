@@ -6,11 +6,6 @@ function readHeading(line: string): string | undefined {
   return (match?.[1] ?? match?.[2])?.trim();
 }
 
-/**
- * Reasoning summaries open with a bold heading. The last heading titles the
- * row; a lone heading leaves the body, and a heading with no body folds the
- * row to its title.
- */
 export function reasoningHeading(text: string) {
   let title: string | undefined;
   let headings = 0;

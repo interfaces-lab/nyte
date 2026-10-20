@@ -1,10 +1,3 @@
-/**
- * The one way the interface loads code after startup without `import()`. A
- * deferred entry (listed in `deferred-entries.ts`) builds as its own chunk and
- * publishes its runtime when it evaluates. `loadDeferred` injects the chunk's
- * module script once and resolves with what it published; the chunk imports
- * the startup modules it shares, so both sides see one instance of each.
- */
 import { Suspense, use } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { DeferredRuntimes } from "./deferred-entries.ts";
@@ -18,10 +11,8 @@ const loading = new Map<DeferredName, Promise<void>>();
 
 const attempts = new Map<DeferredName, number>();
 
-/** How long a chunk may take to load before the attempt counts as failed. */
 const LOAD_TIMEOUT_MS = 15_000;
 
-/** Called once by a deferred entry's module, as it evaluates. */
 export function publishDeferred<Name extends DeferredName>(
   name: Name,
   runtime: DeferredRuntimes[Name],
@@ -29,14 +20,12 @@ export function publishDeferred<Name extends DeferredName>(
   published[name] = runtime;
 }
 
-/** The entry's runtime if its chunk has already loaded. */
 export function readDeferred<Name extends DeferredName>(
   name: Name,
 ): DeferredRuntimes[Name] | undefined {
   return published[name];
 }
 
-/** Loads the entry's chunk once, and again after a failed attempt. */
 export function loadDeferred<Name extends DeferredName>(
   name: Name,
 ): Promise<DeferredRuntimes[Name]> {
@@ -47,14 +36,12 @@ export function loadDeferred<Name extends DeferredName>(
   return loadEntry(name).then(() => requirePublished(name));
 }
 
-/** The entry's runtime, suspending the component until its chunk has loaded. */
 function useDeferred<Name extends DeferredName>(name: Name): DeferredRuntimes[Name] {
   if (published[name] === undefined) use(loadEntry(name));
 
   return requirePublished(name);
 }
 
-/** Renders `children` with the entry's runtime, and `fallback` while its chunk loads. */
 export function Deferred<Name extends DeferredName>({
   entry,
   fallback = null,
@@ -89,7 +76,6 @@ function requirePublished<Name extends DeferredName>(name: Name): DeferredRuntim
   return runtime;
 }
 
-/** One load per entry, shared by every caller so `use` sees a stable promise. */
 function loadEntry(name: DeferredName): Promise<void> {
   const started = loading.get(name);
 
@@ -102,10 +88,6 @@ function loadEntry(name: DeferredName): Promise<void> {
   return pending;
 }
 
-/**
- * A failed load forgets itself so the next call retries, under a fresh URL:
- * the module map remembers a failed fetch.
- */
 function injectEntry(name: DeferredName): Promise<void> {
   const href = deferredUrls[name];
 

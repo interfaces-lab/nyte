@@ -1,9 +1,6 @@
-/**
- * The preload exposes `window.nyte` before any renderer script runs. This is
- * the first import of the entry, so the interface has its bridge before
- * `theme/boot.ts` or any screen reads it.
- */
 import { installBridge } from "@nyte-ai/app/nyte.ts";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { messagePortEnd, portFetch } from "../../shared/host-port.ts";
 import type { PortEnd } from "../../shared/host-port.ts";
 import { HOST_PORT_CHANNEL } from "../../shared/ipc.ts";
@@ -15,20 +12,20 @@ declare global {
   }
 }
 
-/** A port main answers the nonce with; the preload hands it over as a window message, since ports can't cross the context bridge. */
+const HostPortAnswer = Type.Object({
+  channel: Type.Literal(HOST_PORT_CHANNEL),
+  nonce: Type.String(),
+});
+
 function openHostPort(): Promise<PortEnd> {
   const nonce = crypto.randomUUID();
   const answered = Promise.withResolvers<PortEnd>();
 
   const receive = (event: MessageEvent): void => {
-    const { data } = event;
-
     if (
       event.source !== window ||
-      typeof data !== "object" ||
-      data === null ||
-      !("channel" in data && data.channel === HOST_PORT_CHANNEL) ||
-      !("nonce" in data && data.nonce === nonce)
+      !Value.Check(HostPortAnswer, event.data) ||
+      event.data.nonce !== nonce
     )
       return;
     window.removeEventListener("message", receive);

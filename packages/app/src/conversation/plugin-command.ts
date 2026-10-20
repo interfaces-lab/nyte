@@ -5,7 +5,6 @@ export interface ParsedPluginCommand {
   readonly argument: string;
 }
 
-/** Parse a whole composer draft only when it names a command active in this session. */
 export function parsePluginCommand(
   draft: string,
   commands: readonly CommandInfo[],

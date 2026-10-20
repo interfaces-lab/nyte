@@ -14,7 +14,6 @@ function activeTabId(): string {
   return windowTabs.getSnapshot().activeTabId;
 }
 
-/** Provide the active window tab's panes; a test passes a controller of its own. */
 export function PaneControllerProvider({
   controller,
   children,
@@ -28,12 +27,10 @@ export function PaneControllerProvider({
   return <PaneControllerContext.Provider value={value}>{children}</PaneControllerContext.Provider>;
 }
 
-/** Take a deleted or archived chat out of the active tab's panes; the undo puts it back. */
 export function hideFromPanes(sessionId: SessionId): () => boolean {
   return windowTabs.controller().removeSessionWithUndo(sessionId);
 }
 
-/** Split the focused pane where the window has room; false when it does not. */
 export function splitPanes(controller: PaneController, direction: SplitDirection): boolean {
   if (!canSplitPane(controller.getSnapshot().layout, windowWidth())) return false;
   controller.split(direction);
@@ -41,7 +38,6 @@ export function splitPanes(controller: PaneController, direction: SplitDirection
   return true;
 }
 
-/** Move focus to the other pane of a split; false when there is one pane. */
 export function focusNextPane(controller: PaneController): boolean {
   const layout = controller.getSnapshot().layout;
 

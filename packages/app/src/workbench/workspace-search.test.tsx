@@ -1,4 +1,3 @@
-/** The Electron preload is absent in Node. React, styles and query observers run unchanged. */
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, test, vi } from "vitest";

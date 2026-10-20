@@ -215,12 +215,6 @@ export type WorkbenchTabUpdate =
       readonly patch: BrowserPatch;
     };
 
-/**
- * The code every panel but the browser renders with. A panel mounted before
- * it loads suspends, and React holds the revealed panel back for 300 ms, so
- * such a tab joins its view only once `load` settles. A failed load opens the
- * tab anyway, and its panel retries.
- */
 export interface WorkbenchPanels {
   readonly ready: () => boolean;
   readonly load: () => Promise<void>;
@@ -236,7 +230,6 @@ export interface WorkbenchController {
   readonly getSnapshot: () => WorkbenchSnapshot;
   readonly getView: (key: WorkbenchViewKey) => WorkbenchViewState;
   readonly actions: {
-    /** Answers the tab's id at once; a tab whose panel is still loading joins its view once it settles. */
     readonly openTab: (input: {
       readonly view: WorkbenchViewKey;
       readonly tab: WorkbenchTabInput;
@@ -256,7 +249,6 @@ export interface WorkbenchController {
       readonly index: number;
     }) => void;
     readonly updateTab: (input: WorkbenchTabUpdate) => void;
-    /** Records where a changes tab is scrolled; the rest of the tab is untouched, so a late report is harmless. */
     readonly scrollTab: (input: {
       readonly view: WorkbenchViewKey;
       readonly id: WorkbenchTabId;
@@ -322,7 +314,6 @@ const persistedBrowserTab = Type.Object(
 
 const persistedFilesTab = Type.Object({ id: nonEmpty, kind: Type.Literal("files") }, strict);
 
-/** A user's shell tab; the terminal store keeps its job and output under the same id. */
 const persistedTerminalTab = Type.Object(
   {
     id: nonEmpty,
@@ -639,10 +630,6 @@ function sameTabUpdate(tab: WorkbenchTab, input: WorkbenchTabUpdate): boolean {
   }
 }
 
-/**
- * Returns a workbench controller that restores the persisted snapshot on its first read, so creating one reads neither storage nor the client's capabilities.
- * Without `panels`, every tab opens at once; with them, a tab opened before they load waits under the id `openTab` answered with.
- */
 export function createWorkbenchController(
   capabilities: () => ClientCapabilities,
   persistence?: WorkbenchPersistence,

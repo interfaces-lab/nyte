@@ -74,10 +74,6 @@ export type ComposerSendPlan =
   | { readonly kind: "command"; readonly command: ParsedPluginCommand; readonly delivery: Delivery }
   | { readonly kind: "message"; readonly content: ComposerContent; readonly delivery: Delivery };
 
-/**
- * What one submit does. A draft that is only a plugin command's line runs the
- * command; anything else is a message for the delivery Enter chose.
- */
 export function composerSendPlan(input: {
   readonly submission: ComposerSubmission;
   readonly attachments: readonly { readonly content: ImageContent }[];
@@ -103,7 +99,6 @@ export function composerSendPlan(input: {
   };
 }
 
-/** Uploads a message's images and sends it as the client plugins admit it, in place of `replacing` when it edits a queued one. */
 export async function sendComposerMessage(
   session: Session,
   plan: Extract<ComposerSendPlan, { kind: "message" }>,
@@ -129,14 +124,12 @@ export async function sendComposerMessage(
   });
 }
 
-/** A new chat as its first submit starts it: the draft's id names the chat, so a retry is the same start. */
 interface ComposerChat {
   readonly id: SessionId;
   readonly workspace?: WorkspaceId;
   readonly configuration?: ConfigurationPatch;
 }
 
-/** Uploads a new chat's first message and starts the chat with it as the client plugins admit it. */
 export async function startComposerChat(
   connection: Connection,
   chat: ComposerChat,
@@ -154,14 +147,10 @@ export async function startComposerChat(
 
 const NO_COMMANDS: readonly CommandInfo[] = [];
 
-/** What became of one submit. */
 type DeliveryOutcome =
   | { readonly kind: "empty" }
-  /** Not sent: the draft stays as typed, and `message` says why. */
   | { readonly kind: "kept"; readonly message: string }
-  /** Sent; `note` is what a command answered, if it answered anything. */
   | { readonly kind: "sent"; readonly note: string | undefined }
-  /** It left, and the host refused it: the draft comes back with `message`. */
   | { readonly kind: "refused"; readonly message: string };
 
 interface ComposerDelivery {
@@ -169,22 +158,10 @@ interface ComposerDelivery {
   readonly submission: ComposerSubmission;
   readonly attachments: readonly { readonly content: ImageContent }[];
   readonly delivery: Delivery;
-  /** The queued message this submit replaces; a replacement never runs a command. */
   readonly replacing: UserMessage | undefined;
-  /**
-   * Runs once the submit is known to leave and the host connection is open,
-   * before the host answers. The composer clears its draft there: the outbox
-   * row already shows the message, and the next thought never waits. Until
-   * then the draft stays in the composer, sending.
-   */
   readonly onLeave: () => void;
 }
 
-/**
- * The chat's commands, `/compact` included, or undefined when its view could
- * not load. A draft that opens with a slash waits for the chat's first view
- * rather than guessing it is plain text; anything else needs no catalog.
- */
 async function draftCommands(
   sessionId: SessionId,
   text: string,
@@ -196,11 +173,6 @@ async function draftCommands(
   return view === undefined ? undefined : [...view.catalog.commands, COMPACT_COMMAND];
 }
 
-/**
- * Sends one submit: a plugin command's line runs the command, anything else
- * is a message, and a known command's line never reaches the model just
- * because it cannot run here.
- */
 export async function deliverSubmission(input: ComposerDelivery): Promise<DeliveryOutcome> {
   const { sessionId, submission, replacing } = input;
   const commands = await draftCommands(sessionId, submission.text);
@@ -252,7 +224,6 @@ export async function deliverSubmission(input: ComposerDelivery): Promise<Delive
   }
 }
 
-/** Compacts the chat as `/compact` does; non-empty `instructions` steer the summary. */
 export async function compactSession(
   session: Session,
   instructions: string,

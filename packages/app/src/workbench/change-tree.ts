@@ -6,13 +6,8 @@ export function filesChangedLabel(count: number): string {
   return count === 1 ? "1 File Changed" : `${String(count)} Files Changed`;
 }
 
-/** The working-tree change kinds the rail renders. */
 export type ChangeStatus = FileStatus;
 
-/**
- * Viewed state lives in the panel's store, so the caller passes the lookup in
- * and this module stays a pure function of its inputs.
- */
 type ChangeViewedFilter =
   | { readonly mode: "all" }
   | {
@@ -22,14 +17,11 @@ type ChangeViewedFilter =
 
 interface ChangeFilterEntry {
   readonly path: string;
-  /** Absent for rows with no working-tree status, such as per-turn changes. */
   readonly status?: ChangeStatus;
 }
 
 interface ChangeFilter {
-  /** Blank or whitespace-only keeps every path. */
   readonly query?: string;
-  /** Empty or absent keeps every status; entries without a status drop when set. */
   readonly statuses?: readonly ChangeStatus[];
   readonly viewed?: ChangeViewedFilter;
 }
@@ -48,7 +40,6 @@ function matchesChangePathQuery(path: string, query: string): boolean {
   return matched === characters.length;
 }
 
-/** Narrows a change list to the paths a search query and filter menu keep, in input order. */
 export function filterChangePaths(
   entries: readonly ChangeFilterEntry[],
   filter: ChangeFilter,
@@ -77,7 +68,6 @@ export function filterChangePaths(
     .toArray();
 }
 
-/** Master-checkbox state over a list of paths. An empty list reports `"none"`. */
 type ChangeSelectionSummary = "none" | "some" | "all";
 
 export function changeSelectionSummary(

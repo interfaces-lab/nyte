@@ -18,11 +18,6 @@ type Style<State> = CSSProperties | ((state: State) => CSSProperties | undefined
 
 export type StaticStyleProps = { readonly className?: string; readonly style?: CSSProperties };
 
-/**
- * A wrapper's props: the part's own `className` and `style`, which Base UI parts
- * also accept as functions of their state, plus StyleX styles in `xstyle`,
- * narrowed to the part's restyle contract.
- */
 export type StyledProps<Props, Style extends XStyle = XStyle> = Omit<
   Props,
   "className" | "style" | "xstyle"
@@ -32,7 +27,6 @@ export type StyledProps<Props, Style extends XStyle = XStyle> = Omit<
   xstyle?: Style;
 };
 
-/** `className` and `style` for a part whose state is `State`. */
 export type StateStyledProps<State> = {
   readonly className?: ClassName<State>;
   readonly style?: Style<State>;
@@ -42,10 +36,6 @@ function resolve<State, Value>(value: Value | ((state: State) => Value), state: 
   return value instanceof Function ? value(state) : value;
 }
 
-/**
- * Lays the part's own `className` and `style` over compiled StyleX styles. Given a
- * function anywhere, it returns functions of the part's state, as Base UI expects.
- */
 export function mergeStyleProps(
   base: Compiled,
   className?: string,

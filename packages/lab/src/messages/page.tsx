@@ -94,9 +94,9 @@ function RowView({
         />
       );
     case "changes":
-      return <ChangesCard files={row.files} onOpenChanges={openChanges} />;
+      return working ? null : <ChangesCard files={row.files} onOpenChanges={openChanges} />;
 
-    case "landing":
+    case "prompt":
       return (
         <div
           title={row.pending ? "Lands at the next response" : undefined}
@@ -136,7 +136,7 @@ function SceneView({
     <div {...props(styles.transcript)}>
       {staged.rows.map((row, index) => (
         <div
-          key={row.messageId}
+          key={row.key}
           {...props(styles.row, !row.leads && styles.rowWithin, index === 0 && styles.rowFirst)}
         >
           <RowView row={row} staged={staged} density={density} />

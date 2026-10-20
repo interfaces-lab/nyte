@@ -3,10 +3,6 @@ import { button, layer, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar, workbench } from "../theme/schema.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
-/**
- * One row of three slots, each sized by the token its stage column already
- * uses, so the chrome lines up with the columns beneath it by construction.
- */
 export const titlebarStyles = create({
   bar: {
     position: "relative",
@@ -18,7 +14,6 @@ export const titlebarStyles = create({
     flexShrink: 0,
     WebkitAppRegion: "drag",
   },
-  /** The traffic-light lane is 0 off macOS and in fullscreen, so the row's own 10px wins there. */
   sidebarSlot: {
     display: "flex",
     alignItems: "center",
@@ -40,7 +35,6 @@ export const titlebarStyles = create({
     backgroundColor: role.bgBase,
   },
   contentAreaTabbed: { backgroundColor: "transparent" },
-  /** Tabs or title and the chat actions; it yields first when the workbench overlays the center. */
   center: {
     display: "flex",
     alignItems: "center",
@@ -49,7 +43,6 @@ export const titlebarStyles = create({
     height: "100%",
     overflow: "clip",
   },
-  /** Without the workbench slot, the chat actions keep the slot's trailing inset so the glyph sits where the panel toggle would. */
   centerTrailing: { paddingInlineEnd: space.s2_5 },
   workbenchSlot: {
     display: "flex",
@@ -68,7 +61,6 @@ export const titlebarStyles = create({
     borderInlineStartColor: role.borderSecondaryTranslucent,
     boxShadow: `inset 0 -1px ${role.borderSecondaryTranslucent}`,
   },
-  /** Window tabs: the panel sits inside the inset card, so the slot runs from its edge to the window's. */
   workbenchSlotOpenTabbed: {
     width: `calc(${workbench.activeWidth} + ${shell.cardInset})`,
     borderInlineStartWidth: 0,
@@ -113,7 +105,6 @@ export const titlebarStyles = create({
     flexShrink: 0,
     WebkitAppRegion: "no-drag",
   },
-  /** A step of the chat's location: the title's type, one tone quieter. */
   sessionCrumb: {
     display: "inline-flex",
     alignItems: "center",

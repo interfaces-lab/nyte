@@ -1,14 +1,3 @@
-/**
- * The Cloudflare plugin's settings: the tunnel the user created and the
- * devices paired over it, in `~/.nyte/cloudflare-tunnel.json`, mode 0600
- * beside the other credential stores. Device tokens are kept only as SHA-256
- * digests.
- *
- * Every change lands on disk before it is visible, through a temporary file
- * renamed into place. A file that cannot be read, does not parse, or cannot be
- * written makes the store `failed` for the life of the process: nothing is
- * accepted and nothing is overwritten until the user fixes it and restarts.
- */
 import { open, readFile, rm } from "node:fs/promises";
 import { serial } from "@nyte-ai/schema/serial";
 import { dirname } from "node:path";
@@ -17,7 +6,6 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 
-/** Paired and pending devices together. */
 export const DEVICE_LIMIT = 20;
 
 export const DEVICE_NAME_LIMIT = 64;
@@ -26,7 +14,6 @@ const deviceType = Type.Object(
   {
     id: Type.String({ minLength: 1, maxLength: 64 }),
     name: Type.String({ minLength: 1, maxLength: DEVICE_NAME_LIMIT }),
-    /** base64url SHA-256 of the device token. */
     digest: Type.String({ pattern: "^[A-Za-z0-9_-]{43}$" }),
     createdAt: Type.Integer({ minimum: 0 }),
     state: Type.Union([
@@ -63,7 +50,6 @@ type TunnelRead =
   | { readonly kind: "ready"; readonly file: TunnelFile | undefined }
   | { readonly kind: "failed" };
 
-/** Thrown by `update` once the store has failed; the plugin answers it with a fixed message. */
 export class TunnelStoreFailed extends Error {
   constructor() {
     super("The Cloudflare tunnel settings could not be read or written");
@@ -96,11 +82,6 @@ export class CloudflareTunnelStore {
     return this.current;
   }
 
-  /**
-   * Apply `change` to the settings as they stand after every earlier change,
-   * then persist. `undefined` removes the file. Changes run one at a time, so a
-   * later change always sees an earlier one's result.
-   */
   update<T>(
     change: (file: TunnelFile | undefined) => {
       readonly file: TunnelFile | undefined;
@@ -146,11 +127,6 @@ export class CloudflareTunnelStore {
     }
   }
 
-  /**
-   * The file's bytes reach the disk before the rename, and the rename before
-   * this resolves, so a crash leaves the old settings or the new ones, never a
-   * paired device silently gone.
-   */
   private async persist(file: TunnelFile | undefined): Promise<void> {
     if (file === undefined) {
       await rm(this.path, { force: true });

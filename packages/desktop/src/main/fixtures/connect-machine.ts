@@ -1,13 +1,3 @@
-/**
- * Account remote access end to end on this machine: the real host, its real
- * loopback listener and relay connection, a `ws` stand-in for the broker's
- * relay, and an in-process broker that verifies every proof and signs every
- * lease and enrollment with real Ed25519 keys. Phones reach the desktop only
- * through that relay, as they do in production. Only the sign-in dialog and the
- * broker's network are replaced; nothing bypasses a signature or the server's
- * own auth. The `host-connect-*.test.ts` files share it, each running `cleanUp`
- * after every test.
- */
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
@@ -60,7 +50,6 @@ export const ORIGIN = "https://connect.nyte.test";
 
 export const OWNER = { id: "user_fixture", label: "ada@example.test" } as const;
 
-/** Session-JWT shaped; only the broker would verify it. */
 export function sessionJwt(sub: string): string {
   const part = (value: Record<string, string>) =>
     Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -77,7 +66,6 @@ export const CONFIG: ConnectConfig = {
 
 const cleanups: (() => Promise<void> | void)[] = [];
 
-/** Undo what each test set up, newest first; every test file runs it after each test. */
 export async function cleanUp(): Promise<void> {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.unstubAllEnvs();
@@ -136,32 +124,22 @@ function refusal(status: number, code: ErrorCode): Response {
 class Broker {
   readonly signing: PrivateJwk;
   readonly keys: BrokerKeys;
-  /** Where the broker reaches desktops; set once the fixture starts it. */
   relay: RelayServer | undefined;
-  /** The latest environment linked; earlier ones stay in `envs`. */
   env: BrokerEnvironment | undefined;
   readonly envs = new Map<string, BrokerEnvironment>();
   readonly active = new Set<string>();
   generation = 1;
   policy = 1;
   leaseMode: LeaseMode = "ok";
-  /** Seconds a signed lease is already old, so it expires that much sooner. */
   leaseAge = 0;
   craft: LeaseCraft | undefined;
-  /** Every call fails as if the network were down. */
   offline = false;
-  /** Only removing an environment fails as if the network were down. */
   removalOffline = false;
-  /** Session JWTs the broker accepts. */
   readonly sessions = new Set([SESSION_JWT]);
-  /** Machine-key thumbprints the broker has tombstoned. */
   readonly revokedKeys = new Set<string>();
-  /** Holds a link's answer after the environment is committed, so an answer lost to a cancel leaves the environment behind. */
   linkGate: Promise<void> | undefined;
-  /** Holds the next lease answer, already snapshotted, until it resolves. */
   holdNextLease: Promise<void> | undefined;
   readonly calls: string[] = [];
-  /** `Authorization` headers the broker saw, by path. */
   readonly bearers: string[] = [];
   readonly leases: string[] = [];
   private readonly proofs = new Set<string>();
@@ -179,7 +157,6 @@ class Broker {
     return this.calls.filter((entry) => entry === call).length;
   }
 
-  /** The relay's check of a desktop's first frame: a fresh proof for this environment's relay path. */
   readonly relayAuth = async (input: {
     readonly environmentId: string;
     readonly proof: string;
@@ -208,7 +185,6 @@ class Broker {
     return env.removed ? RELAY_CLOSE.revoked : undefined;
   };
 
-  /** The broker's network. Like a real fetch, an abort rejects at once; the broker may still finish its side. */
   readonly fetch = async (input: string, init: RequestInit): Promise<Response> => {
     const call = new Request(input, init);
     const url = new URL(call.url);
@@ -382,7 +358,6 @@ class Broker {
     return refusal(404, "not_found");
   }
 
-  /** What the broker would sign for a phone that sent `token`'s digest. */
   async grant(input: {
     readonly token: string;
     readonly clientId?: string;
@@ -418,7 +393,6 @@ class Broker {
     return { deviceId, authorization };
   }
 
-  /** The broker's own relayed call to the desktop's enroll route. */
   async enrollRoute(input: {
     readonly method?: RelayMethod;
     readonly contentType?: string;
@@ -436,7 +410,6 @@ class Broker {
     return { status: response.status, body: await response.text() };
   }
 
-  /** Send a grant through the relay; on a valid receipt, activate the device unless told not to. */
   async enroll(
     authorization: string,
     deviceId: string,
@@ -469,7 +442,6 @@ class Broker {
     return answer;
   }
 
-  /** A phone enrolled and activated, with its own bearer token. */
   async phone(clientId?: string): Promise<{ readonly token: string; readonly deviceId: string }> {
     const token = randomBytes(32).toString("base64url");
     const { deviceId, authorization } = await this.grant({ token, clientId });
@@ -572,7 +544,6 @@ export async function linked(host: DesktopHost): Promise<Linked> {
   return current;
 }
 
-/** Link, turn on, and wait for a connected relay and a current lease. */
 export async function serve(desktop: Desktop): Promise<Linked> {
   const afterLink = await desktop.host.call(1, "host.connect.link", undefined);
   assert.equal(afterLink.kind, "linked");
@@ -587,14 +558,12 @@ export async function serve(desktop: Desktop): Promise<Linked> {
   });
 }
 
-/** Where phones reach the linked environment. */
 export function address(setup: Fixture): string {
   assert.ok(setup.broker.env);
 
   return relayAddress(ORIGIN, setup.broker.env.id);
 }
 
-/** A phone request through the relay. */
 export function phoneFetch(
   setup: Fixture,
   path: string,
@@ -649,7 +618,6 @@ export async function watch(
   return { ended };
 }
 
-/** A phone dropping its own credential. */
 export async function forget(setup: Fixture, bearer: string | undefined): Promise<number> {
   const response = await phoneFetch(setup, DESKTOP_ROUTES.device, {
     method: "DELETE",
@@ -659,7 +627,6 @@ export async function forget(setup: Fixture, bearer: string | undefined): Promis
   return response.status;
 }
 
-/** No desktop holds the relay, and none comes back for a while. */
 export async function relayGone(setup: Fixture): Promise<void> {
   await vi.waitFor(() => assert.equal(setup.relay.connected(), undefined));
   const auths = setup.relay.auths;

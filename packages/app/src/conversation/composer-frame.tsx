@@ -27,41 +27,27 @@ import { composerStyles } from "./composer.stylex.ts";
 
 const DROP_PLACEHOLDER = "Drop here to attach…";
 
-/** Measured on the composer frame, which sits inside the conversation gutters, not the pane. */
 const COMPACT_FRAME_WIDTH = 320;
 
 type ComposerSurface = "new-chat" | "follow-up";
 
 type ComposerGeometry = "new-chat" | "follow-up-compact" | "follow-up-expanded";
 
-/** What the frame is editing instead of composing anew. */
 type ComposerEditing =
   | {
       readonly kind: "queued";
-      /** The queued item's delivery: Enter keeps it, the modifier swaps it for the other role. */
       readonly delivery: Delivery;
       readonly onCancel: () => void;
     }
   | {
-      /**
-       * A sent message: sending branches the conversation from that point. It
-       * edits in the bubble's own geometry, text above the controls, never a
-       * compact row.
-       */
       readonly kind: "message";
       readonly onCancel: () => void;
     };
 
 interface ComposerFrameProps {
-  /** Placement is caller intent; the follow-up surface derives its own geometry. */
   readonly surface: ComposerSurface;
-  /** The draft to show. The frame reports every edit back; the parent owns the value. */
   document: ComposerDocumentState;
   onDocumentChange: (document: ComposerDocumentState) => void;
-  /**
-   * The parent clears the exact live document passed here and restores it if
-   * the send is refused. It may answer synchronously or with a promise.
-   */
   onSubmit: (
     submission: ComposerSubmission,
     delivery: Delivery,
@@ -69,27 +55,17 @@ interface ComposerFrameProps {
   ) => boolean | Promise<boolean>;
   placeholder: string;
   disabled?: boolean;
-  /** A run is live: Esc and the stop button both request an abort; the draft stays. */
   busy?: boolean;
-  /** The abort is asked and not yet settled; Stop draws but takes no second request. */
   stopping?: boolean;
   onAbort?: () => void;
-  /** An open composer tray handles Escape before the abort shortcut. */
   onDismissTray?: () => boolean;
   floating?: boolean;
-  /**
-   * Enter on a truly empty composer, which adds the first queued follow-up to
-   * the next response; return true when it was handled.
-   */
   onEmptySubmit?: () => boolean;
-  /** The model chip slot, left side of the controls row. */
   model?: ReactNode;
   inputRef?: (element: ComposerEditorHandle | null) => void;
   onFocusChange?: (focused: boolean) => void;
   suggestionCatalog: ComposerSuggestionCatalog;
-  /** Suggests the text after a command whose `completes` is set. */
   completeCommand?: (name: string, prefix: string) => Promise<readonly CommandCompletion[]>;
-  /** Workspace entries behind `@`. Callers without an open workspace pass an empty ready list. */
   mentionFiles: ComposerMentionFiles;
   hasConversationContext?: boolean;
   attachments?: readonly ComposerImageAttachment[];
@@ -99,21 +75,9 @@ interface ComposerFrameProps {
   onAttachmentRemove?: (id: string) => void;
   editing?: ComposerEditing;
   runningMessagePreference?: RunningMessagePreference;
-  /** Enter answers a waiting question rather than sending a message. */
   answering?: boolean;
 }
 
-/**
- * The frame both composers share: autosizing inline editor and shared
- * controls. The new-chat field stacks above its controls while the follow-up
- * field is one compact row; attachments stay inside the frame, above the
- * editor. Follow-up text scrolls on one line so the composer stays compact:
- * an explicit line break expands the card, and width alone never makes the
- * controls overflow. A file drag draws a guard over the frame; a mention drag
- * does not, because it lands on the text under the pointer. Submitting chains
- * on the parent's answer rather than using `try`/`finally`, which would cost
- * this component its compiler memoization.
- */
 export function ComposerFrame({
   surface,
   document,
@@ -361,7 +325,7 @@ export function ComposerFrame({
     <form
       data-composer-frame
       ref={frameRef}
-      aria-label="Message composer"
+      aria-label="Message"
       onFocus={() => setFocused(true)}
       onBlur={(event) => setFocused(event.currentTarget.contains(event.relatedTarget))}
       onKeyDown={(event) => {

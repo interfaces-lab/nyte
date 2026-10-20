@@ -68,11 +68,6 @@ function count(n: number, noun: string, plural = `${noun}s`): string {
   return `${String(n)} ${n === 1 ? noun : plural}`;
 }
 
-/**
- * One changed or read file is named; more are counted. Only a call that
- * succeeded did its thing, so a step that lost a call claims no verb: each
- * tally says what became of it.
- */
 function settledSummary(messages: readonly StepMessage[], durationMs: number) {
   const changed = new Set<string>();
   const read = new Set<string>();

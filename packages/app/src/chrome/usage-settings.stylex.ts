@@ -162,7 +162,6 @@ export const usageStyles = create({
     color: role.contentTertiary,
   },
 
-  /** A read that failed or found nothing, said once, where its numbers would be. */
   empty: {
     display: "flex",
     flexDirection: "column",
@@ -197,7 +196,6 @@ export const usageStyles = create({
   },
   noticeIcon: {
     flexShrink: 0,
-    // 14px glyph on 16px type: one pixel down sits on the first line's cap.
     marginBlockStart: space.px,
     color: role.contentTertiary,
   },
@@ -210,10 +208,6 @@ const bonePulse = keyframes({
   "50%": { opacity: 1 },
 });
 
-/**
- * The page before its report lands. The frame is drawn for real and only the
- * marks that carry numbers are bones, so nothing jumps when they arrive.
- */
 export const skeletonStyles = create({
   bone: {
     display: "inline-block",

@@ -1,9 +1,3 @@
-/**
- * A new chat's first send made before the host connects. The draft owns the
- * send: remounting the screen or parking the draft keeps it, the host's
- * arrival starts each held draft once, the chat opens only in the pane that
- * shows its draft, and a refusal stays on the draft across a remount.
- */
 import "../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -20,7 +14,7 @@ import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
 import { createAppRouter } from "../router.tsx";
-import { ThreadScreen } from "./thread.tsx";
+import { SessionScreen } from "./session-screen.tsx";
 import "../theme/tokens.stylex.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
@@ -82,7 +76,7 @@ function mount(container: HTMLElement): Root {
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
             <PaneControllerProvider controller={panes}>
               <SessionDndProvider>
-                <ThreadScreen />
+                <SessionScreen />
               </SessionDndProvider>
             </PaneControllerProvider>
           </TooltipProvider>

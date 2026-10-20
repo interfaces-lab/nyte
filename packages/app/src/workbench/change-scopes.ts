@@ -2,7 +2,7 @@ import type { GitScope, GitStatus, RunId, SessionView } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import { worktreeFiles } from "../view-helpers.ts";
-import type { ConversationTurn, WorktreeFile } from "../view-helpers.ts";
+import type { TurnMessages, WorktreeFile } from "../view-helpers.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
 interface CommitInfo {
@@ -30,7 +30,6 @@ export type ChangeScopeRead =
 export interface ChangesScopeOption {
   readonly scope: WorkbenchChangesScope;
   readonly label: string;
-  /** Second line: a commit's short oid and author, or a branch's upstream. */
   readonly detail: string | undefined;
   readonly read: ChangeScopeRead;
 }
@@ -43,7 +42,7 @@ export interface TurnChangeOption {
   readonly files: readonly string[];
 }
 
-export function turnChangeOptions(turns: readonly ConversationTurn[]): readonly TurnChangeOption[] {
+export function turnChangeOptions(turns: readonly TurnMessages[]): readonly TurnChangeOption[] {
   return turns
     .map((turn, index): TurnChangeOption => {
       const files = new Set<string>();
@@ -68,7 +67,6 @@ export function turnHasChanges(option: TurnChangeOption): boolean {
   return option.files.length > 0;
 }
 
-/** Empty turns stay hidden until asked for, except the one already on screen. */
 export function visibleTurnOptions(
   options: readonly TurnChangeOption[],
   showAll: boolean,
@@ -179,10 +177,6 @@ export function workingTreeScopeOptions(
   ];
 }
 
-/**
- * History entries, newest first. A commit's counts need its own diff read, so
- * `statsByOid` carries only the commits already read.
- */
 export function commitScopeOptions(
   commits: readonly CommitInfo[],
   readByOid: ReadonlyMap<string, ChangeScopeRead> = new Map(),
@@ -195,13 +189,12 @@ export function commitScopeOptions(
   }));
 }
 
-const THREAD_LABEL = "This Chat";
+const SESSION_LABEL = "This Chat";
 
-/** The chat's changes since its first run, counted from the session view's file list. */
-export function threadScopeOption(changes: SessionView["changes"]): ChangesScopeOption {
+export function sessionScopeOption(changes: SessionView["changes"]): ChangesScopeOption {
   return {
     scope: { kind: "thread" },
-    label: THREAD_LABEL,
+    label: SESSION_LABEL,
     detail: undefined,
     read: {
       kind: "ready",
@@ -241,7 +234,7 @@ export function changesScopeLabel(
     case "unstaged":
       return "Unstaged";
     case "thread":
-      return THREAD_LABEL;
+      return SESSION_LABEL;
     case "turn":
       return "Turn";
     case "commit":

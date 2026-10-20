@@ -1,9 +1,3 @@
-/**
- * The relay transport against a real `ws` relay and a real loopback HTTP
- * server: every byte crosses the global `WebSocket`, the contract's framing
- * and credit rules as the fixture enforces them, and `node:http` to the
- * listener's port.
- */
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
@@ -40,7 +34,6 @@ afterEach(async () => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Deterministic bytes, so a body can be checked without keeping a copy. */
 function pattern(offset: number, length: number): Buffer {
   return Buffer.from(Array.from({ length }, (_, index) => (offset + index) % 251));
 }

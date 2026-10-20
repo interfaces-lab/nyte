@@ -1,14 +1,3 @@
-/**
- * The browser runtime for one surface: snapshot refs and page scripts, CDP
- * input dispatch, and the actions the agent performs against a `WebContents`.
- *
- * Refs carry the snapshot generation so a stale ref fails loudly. The isolated
- * world shares the DOM but not the page's JS context, and is wiped by a
- * cross-document navigation — each injection is idempotent.
- *
- * All input goes through CDP, not sendInputEvent: CDP mouseWheel scrolls,
- * sendInputEvent mouseWheel does not.
- */
 import type { WebContents } from "electron";
 import type {
   BrowserActionFailure,
@@ -30,7 +19,6 @@ const REF_PREFIX = "s";
 
 const SEP = "e";
 
-/** Refs reach generated page code, so only this exact shape is ever accepted. */
 const REF_PATTERN = /^s(\d{1,9})e(\d{1,9})$/;
 
 function encodeRef(generation: number, index: number): string {
@@ -270,7 +258,6 @@ type PageResult = Static<typeof PageResultSchema>;
 
 type SnapshotResult = Extract<PageResult, { cmd: "snapshot" }>;
 
-/** Page scripts answer in JSON text; anything else means the document went away mid-call. */
 const PageJsonSchema = Type.String();
 
 async function runPageScript(contents: WebContents, code: string): Promise<PageResult | undefined> {
@@ -299,7 +286,6 @@ interface CdpKeyDescriptor {
   readonly text?: string;
 }
 
-/** Only the named keys an agent presses. Text entry uses CDP Input.insertText. */
 const KEY_MAP: ReadonlyMap<string, CdpKeyDescriptor> = new Map([
   ["Enter", { key: "Enter", code: "Enter", keyCode: 13, text: "\r" }],
   ["Tab", { key: "Tab", code: "Tab", keyCode: 9 }],
@@ -424,7 +410,6 @@ export function attachConsoleCapture(contents: WebContents, runtime: SurfaceRunt
   });
 }
 
-/** Attach the debugger unless DevTools or another client holds it; `isAttached` then decides whether commands can be sent. */
 function ensureDebugger(contents: WebContents, runtime: SurfaceRuntime): void {
   if (runtime.debuggerAttached) return;
 
@@ -621,7 +606,6 @@ export async function performClick(
   return { kind: "ok", state: await takeSnapshot(contents, runtime) };
 }
 
-/** Type into `ref`: focus it, then click its centre, because insertText goes to whatever the page has focused and only a click moves focus reliably. */
 export async function performType(
   contents: WebContents,
   runtime: SurfaceRuntime,
@@ -797,7 +781,6 @@ export async function performWait(
 
 const LOAD_LIMIT_MS = 30_000;
 
-/** Every exit clears the timer and listeners; a view destroyed mid-load fires only `destroyed`. */
 function waitForLoad(contents: WebContents, signal?: AbortSignal): Promise<void> {
   if (contents.isDestroyed() || !contents.isLoading() || signal?.aborted === true) {
     return Promise.resolve();

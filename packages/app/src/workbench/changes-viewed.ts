@@ -4,10 +4,8 @@ import { Value } from "typebox/value";
 
 const STORAGE_KEY = "nyte.desktop.changes-viewed.v1";
 
-/** A repository keeps review marks for a large change set, not for its whole history. */
 const MAX_FILES_PER_REPOSITORY = 500;
 
-/** Marks for a repository nobody opened in a month describe a review that ended. */
 const REPOSITORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 const viewedMarkSchema = Type.Object(
@@ -30,7 +28,6 @@ export type ViewedState = "unviewed" | "viewed" | "changed" | "unknown";
 
 type ViewedSummary = "none" | "some" | "all";
 
-/** A path with the digest of the patch shown for it right now. */
 interface ViewedFile {
   readonly path: string;
   readonly digest: string;
@@ -59,10 +56,6 @@ function decodeChangesViewed(serialized: string | null): ChangesViewed {
   }
 }
 
-/**
- * A stable, synchronous digest of patch text. Review marks only need to detect that a
- * patch differs from the reviewed one, so a 64-bit FNV-1a pair beats an async hash.
- */
 export function patchDigest(patch: string): string {
   let low = 0x811c9dc5;
   let high = 0x01000193;
@@ -84,11 +77,6 @@ function markState(mark: ViewedMark | undefined, digest: string): ViewedState {
   return mark.digest === digest ? "viewed" : "changed";
 }
 
-/**
- * Per-file review marks, keyed by repository and path. The snapshot revision changes on
- * any edit in the workspace, so it must never appear in a key: marks would vanish on an
- * unrelated save.
- */
 class ChangesViewedStore {
   readonly #storage: ViewedStorage | undefined;
   readonly #now: () => number;
@@ -97,7 +85,6 @@ class ChangesViewedStore {
   readonly #listeners = new Set<() => void>();
   #viewed: ChangesViewed = EMPTY_CHANGES_VIEWED;
 
-  /** Corrupt or unavailable storage must not prevent reviewing changes in this window. */
   constructor(options: ChangesViewedOptions = {}) {
     this.#storage = options.storage;
     this.#now = options.now ?? Date.now;
@@ -117,7 +104,6 @@ class ChangesViewedStore {
     return () => this.#listeners.delete(listener);
   };
 
-  /** A file counts as viewed only while its patch still matches the reviewed digest. */
   fileState(root: string, file: ViewedFile): ViewedState {
     return markState(this.#viewed[root]?.files[file.path], file.digest);
   }
@@ -155,7 +141,6 @@ class ChangesViewedStore {
     this.#commit(root, files);
   }
 
-  /** Tri-state for a master checkbox: a stale mark does not count as reviewed. */
   summary(root: string, files: readonly ViewedFile[]): ViewedSummary {
     if (files.length === 0) return "none";
     const viewed = files.filter((file) => this.fileState(root, file) === "viewed").length;
@@ -165,7 +150,6 @@ class ChangesViewedStore {
     return viewed === files.length ? "all" : "some";
   }
 
-  /** The marks hold for this window even when persistence is unavailable. */
   #commit(root: string, files: Record<string, ViewedMark>): void {
     const bounded = this.#evictOldest(files);
 

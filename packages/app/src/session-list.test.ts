@@ -1,13 +1,13 @@
 import { asId } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
 import { sessionRow } from "../test/view-fixtures.ts";
-import { groupDirectory, localSessions } from "./session-directory.ts";
+import { groupByWorkspace, localSessions } from "./session-list.ts";
 
 it("keeps each workspace's sessions when two registrations have the same path", () => {
   const original = asId<"workspace">("original");
   const replacement = asId<"workspace">("replacement");
 
-  const directories = groupDirectory(
+  const groups = groupByWorkspace(
     [
       sessionRow("old-chat", { workspace: original }),
       sessionRow("new-chat", { workspace: replacement }),
@@ -18,19 +18,18 @@ it("keeps each workspace's sessions when two registrations have the same path", 
     ],
   );
 
-  expect(localSessions(directories, original)?.map((session) => session.id)).toEqual(["old-chat"]);
-  expect(localSessions(directories, replacement)?.map((session) => session.id)).toEqual([
+  expect(localSessions(groups, original)?.map((session) => session.id)).toEqual(["old-chat"]);
+  expect(localSessions(groups, replacement)?.map((session) => session.id)).toEqual(["new-chat"]);
+  expect(groups.flatMap((group) => group.sessions.map((session) => session.id))).toEqual([
+    "old-chat",
     "new-chat",
   ]);
-  expect(
-    directories.flatMap((directory) => directory.sessions.map((session) => session.id)),
-  ).toEqual(["old-chat", "new-chat"]);
 });
 
 it("collects every unbacked workspace in Home without taking a folder's sessions", () => {
   const folder = asId<"workspace">("folder");
 
-  const directories = groupDirectory(
+  const groups = groupByWorkspace(
     [
       sessionRow("first-home-chat", { workspace: asId("first-home") }),
       sessionRow("folder-chat", { workspace: folder }),
@@ -39,18 +38,18 @@ it("collects every unbacked workspace in Home without taking a folder's sessions
     [{ id: folder, path: "/work/project" }],
   );
 
-  expect(localSessions(directories, null)?.map((session) => session.id)).toEqual([
+  expect(localSessions(groups, null)?.map((session) => session.id)).toEqual([
     "first-home-chat",
     "second-home-chat",
   ]);
-  expect(localSessions(directories, folder)?.map((session) => session.id)).toEqual(["folder-chat"]);
+  expect(localSessions(groups, folder)?.map((session) => session.id)).toEqual(["folder-chat"]);
 });
 
 it("lists a chat in a worktree under the folder the worktree was made from", () => {
   const folder = asId<"workspace">("folder");
   const worktree = asId<"workspace">("worktree");
 
-  const directories = groupDirectory(
+  const groups = groupByWorkspace(
     [
       sessionRow("folder-chat", { workspace: folder }),
       sessionRow("worktree-chat", { workspace: worktree }),
@@ -65,9 +64,9 @@ it("lists a chat in a worktree under the folder the worktree was made from", () 
     ],
   );
 
-  expect(localSessions(directories, folder)?.map((session) => session.id)).toEqual([
+  expect(localSessions(groups, folder)?.map((session) => session.id)).toEqual([
     "folder-chat",
     "worktree-chat",
   ]);
-  expect(localSessions(directories, worktree)).toBeUndefined();
+  expect(localSessions(groups, worktree)).toBeUndefined();
 });

@@ -1,9 +1,3 @@
-/**
- * What the composer does with a file, whichever way it arrived: drop, paste,
- * or picker. Images a provider accepts ride inline as base64 image parts.
- * Every other file is referenced by path with the chip an `@` mention makes:
- * the file is already on disk, so the agent reads it from there.
- */
 import type { ImageContent } from "@nyte-ai/schema/model";
 import { nyte } from "../nyte.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
@@ -16,10 +10,6 @@ export interface ComposerImageAttachment {
   readonly content: ImageContent;
 }
 
-/**
- * BMP is accepted because the agent converts it to PNG before it reaches a
- * provider; Chromium renders it in the attachment preview meanwhile.
- */
 const INLINE_IMAGE_TYPE_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
   ["bmp", "image/bmp"],
   ["gif", "image/gif"],
@@ -36,7 +26,6 @@ type ComposerFileIntake =
   | { readonly kind: "reference"; readonly reference: MessageReference }
   | { readonly kind: "unreachable"; readonly name: string };
 
-/** A definite type decides; only an empty or generic one falls back to the extension. */
 function inlineImageType(file: File): string | undefined {
   const type = file.type.toLowerCase();
 
@@ -120,12 +109,6 @@ function readImageAttachment(args: {
   });
 }
 
-/**
- * The one entry for files handed to a composer. Path references go straight
- * into the editor as chips; images resolve to attachments for the caller's
- * state. A file that is neither an image nor on disk (dragged out of a web
- * page, synthesized by the clipboard) has nothing to reference and is reported.
- */
 export async function attachComposerFiles(args: {
   readonly files: readonly File[];
   readonly editor: ComposerEditorHandle | null;

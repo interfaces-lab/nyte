@@ -109,7 +109,6 @@ function render(state: GitHubAccountState, connect: ConnectView | undefined): st
   );
 }
 
-/** Each group's markup by its label. */
 function groups(markup: string): Map<string, string> {
   return new Map(
     markup

@@ -1,10 +1,3 @@
-/**
- * Settings › Profile: who you are to Nyte, in three groups that each read one
- * source. The Nyte account is an email address; GitHub is the CLI login with
- * the selected workspace's repository and pull request; this Mac is its name
- * and whether the account reaches it. Signing in or out of one never changes
- * what another shows.
- */
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
@@ -133,7 +126,6 @@ function Group({ label, children }: { readonly label: string; readonly children:
   );
 }
 
-/** The Nyte account signed in on this Mac: an address, or the way to sign in. */
 function AccountGroup({ connect }: { readonly connect: ConnectBridge }): ReactElement | null {
   const state = useConnectView(connect, true);
   const signIn = useConnectAction(() => connect.openAccount(), "Couldn’t sign in");
@@ -493,7 +485,6 @@ function PullRequestRow({
   }
 }
 
-/** The machine's GitHub CLI login and what it reaches in the selected folder; nothing where the host serves no GitHub. */
 function GitHubGroup(): ReactElement | null {
   const account = useGitHubAccount();
   const folder = useGitHubState(useGitHub());
@@ -520,11 +511,6 @@ function GitHubGroup(): ReactElement | null {
   );
 }
 
-/**
- * This Mac and whether the Nyte account reaches it. The link outlives a
- * sign-out, so this row never reads the session; the tray stays mounted until
- * it closes, even once the Mac is linked.
- */
 function MacGroup({
   connect,
   onOpenEnvironments,

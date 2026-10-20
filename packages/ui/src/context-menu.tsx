@@ -25,7 +25,6 @@ export const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup;
 
 export const ContextMenuSub = ContextMenuPrimitive.SubmenuRoot;
 
-/** Opens at the pointer, or at `anchor`. */
 export function ContextMenuContent({
   side,
   align,
@@ -50,7 +49,6 @@ export function ContextMenuContent({
     | "collisionAvoidance"
     | "collisionPadding"
   > & {
-    /** Scopes the popup to a hue. */
     readonly tint?: Tint;
   }): ReactElement {
   return (
@@ -264,7 +262,6 @@ export function ContextMenuCheckboxItem({
   );
 }
 
-/** A row that opens its submenu on hover, click, and Arrow Right. */
 export function ContextMenuSubTrigger({
   value,
   layout,
@@ -277,7 +274,6 @@ export function ContextMenuSubTrigger({
   ...rest
 }: StyledProps<ContextMenuPrimitive.SubmenuTrigger.Props, Restyle<"ContextMenuSubTrigger">> &
   Omit<MenuItemBodyProps, "meta"> & {
-    /** The current choice, shown before the chevron. */
     readonly value?: ReactNode;
   }): ReactElement {
   return (
@@ -314,7 +310,6 @@ export function ContextMenuSeparator({
   style,
   ...rest
 }: StyledProps<ContextMenuPrimitive.Separator.Props, Restyle<"ContextMenuSeparator">> & {
-  /** Stops short of the popup's edges instead of running through its padding. */
   readonly inset?: boolean;
 }): ReactElement {
   return (

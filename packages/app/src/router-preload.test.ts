@@ -4,7 +4,7 @@ import { SdkError } from "@nyte-ai/sdk";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { test } from "vitest";
-import { readRouteSession, routeChatExists } from "./route-session.ts";
+import { readRouteSession, routeSessionExists } from "./route-session.ts";
 import { keys } from "./query-keys.ts";
 
 function session(id: SessionId): SessionInfo {
@@ -89,7 +89,7 @@ test("a chat the directory lists exists without a host read", async () => {
 
   try {
     assert.equal(
-      await routeChatExists({
+      await routeSessionExists({
         client,
         sessionId: id,
         listed: async () => [session(id)],
@@ -110,7 +110,7 @@ test("a chat the directory does not list is read from the host, and a missing on
 
   try {
     assert.equal(
-      await routeChatExists({
+      await routeSessionExists({
         client,
         sessionId: older,
         listed,
@@ -119,7 +119,7 @@ test("a chat the directory does not list is read from the host, and a missing on
       true,
     );
     assert.equal(
-      await routeChatExists({
+      await routeSessionExists({
         client,
         sessionId: missing,
         listed,

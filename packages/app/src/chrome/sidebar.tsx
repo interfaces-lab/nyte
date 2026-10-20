@@ -1,19 +1,4 @@
-/**
- * The rail: new chat, search, customize, environments, and settings on top,
- * then a persistent workspace collection. Every folder expands independently
- * over its cached sessions, and the collection header owns folder opening.
- * The Cloud folder appears while the connected server can't be reached.
- * Settings opens a second layer of the same rail, with a Back row where the
- * primary actions were. Everything you switch between lives in this one
- * column.
- *
- * Every row shares one geometry: a leading icon slot, the label, and one
- * trailing column for shortcuts, timestamps, and hover actions. Labels
- * therefore start and end on the same edges from the top of the rail to the
- * footer.
- *
- * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
- */
+import { useSettingsOpen } from "./use-settings-open.ts";
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -24,7 +9,7 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { props } from "@stylexjs/stylex";
-import { Link, useMatch, useRouter } from "@tanstack/react-router";
+import { Link, useRouter } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -45,11 +30,11 @@ import {
   useServerState,
   useSessionActions,
   useWorkingSessionIds,
-  useWorkspaceSessionDirectory,
+  useWorkspaceSessions,
   useWorkspaces,
   type RailWorkspace,
 } from "../queries.ts";
-import { localSessions } from "../session-directory.ts";
+import { localSessions } from "../session-list.ts";
 import { closeSettings, type SettingsSection } from "../settings/index.ts";
 import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -69,7 +54,7 @@ import {
   type ListContext,
   type ListedSession,
 } from "./sidebar-lists.tsx";
-import { NeighbourPreload, type RailRows, type SessionPlace } from "./sidebar-rows.tsx";
+import { NeighbourWarm, type RailRows, type SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
   clearSessionFilters,
@@ -83,7 +68,6 @@ import {
 } from "./sidebar-view.ts";
 import { activateWorkspace } from "./use-show-session.ts";
 
-/** One confirmation surface at a time: a chat deletion or a workspace-wide archive. */
 type SidebarConfirmation =
   | { readonly kind: "closed" }
   | { readonly kind: "delete-session"; readonly sessionId: SessionId }
@@ -93,11 +77,6 @@ type SidebarConfirmation =
       readonly sessionIds: readonly SessionId[];
     };
 
-/**
- * Show a chat: make its folder current, then open it here, in a tab, or beside
- * the focused pane. A background tab leaves the current folder alone until it
- * is shown.
- */
 async function showSession(sessionId: SessionId, target: OpenTarget | "beside"): Promise<void> {
   if (target !== "background" && !(await activateWorkspace(sessionFolderPath(sessionId) ?? null)))
     return;
@@ -112,7 +91,6 @@ async function showSession(sessionId: SessionId, target: OpenTarget | "beside"):
   controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
 }
 
-/** The chats listed just above and below `sessionId`, in the rail's order. */
 function listedNeighbours(
   ordered: readonly SessionInfo[],
   sessionId: SessionId,
@@ -131,7 +109,6 @@ function showDraft(draftId: string): void {
   windowTabs.controller().selectDraft(draftId);
 }
 
-/** New Chat is current on a blank pane whose draft is not listed below, while nothing covers it. */
 function NewChatRow({
   showDrafts,
   paletteOpen,
@@ -165,12 +142,6 @@ function NewChatRow({
   );
 }
 
-/**
- * Folders form one fixed, name-ordered column: a click expands a row in place
- * instead of moving the opened workspace to the top. Confirmations open from a
- * context menu, which has no persistent trigger to return focus to, so the
- * dialog falls back to the previously focused element.
- */
 export function Sidebar(): ReactElement {
   const sessionListId = useId();
   const workspaceCollectionID = useId();
@@ -178,7 +149,7 @@ export function Sidebar(): ReactElement {
   const host = useHostState();
   const open = host.data.workspace;
   const workspaces = useWorkspaces();
-  const sessionDirectory = useWorkspaceSessionDirectory();
+  const workspaceSessions = useWorkspaceSessions();
   const server = useServerState(false);
   const sessionActions = useSessionActions();
   const renameSession = useRenameSession();
@@ -190,7 +161,9 @@ export function Sidebar(): ReactElement {
   const homeVisible = useSetting(preferences.homeVisible);
   const sidebarVisible = useSetting(preferences.sidebarVisible);
   const router = useRouter();
-  const settingsOpen = useMatch({ from: "/settings/$section", shouldThrow: false }) !== undefined;
+
+  const settingsOpen = useSettingsOpen();
+
   const githubState = useGitHubState(useGitHub());
   const githubAccount = useGitHubAccountState().data;
   const openFolder = folderPicker();
@@ -220,15 +193,15 @@ export function Sidebar(): ReactElement {
   const paneSession =
     paneSessionId === undefined
       ? undefined
-      : sessionDirectory.data
-          ?.flatMap((directory) => directory.sessions)
+      : workspaceSessions.data
+          ?.flatMap((workspaceGroup) => workspaceGroup.sessions)
           .find((session) => session.id === paneSessionId);
 
-  if (selection.kind === "blank" && listedWhenBlank === undefined && sessionDirectory.data)
+  if (selection.kind === "blank" && listedWhenBlank === undefined && workspaceSessions.data)
     setListedWhenBlank(
       new Set(
-        sessionDirectory.data.flatMap((directory) =>
-          directory.sessions.map((session) => session.id),
+        workspaceSessions.data.flatMap((workspaceGroup) =>
+          workspaceGroup.sessions.map((session) => session.id),
         ),
       ),
     );
@@ -309,26 +282,26 @@ export function Sidebar(): ReactElement {
 
   const order = sessionOrder(view.sort, workingSessions);
 
-  const listed: readonly ListedSession[] | undefined = sessionDirectory.data
-    ?.flatMap((directory) => {
-      if (directory.workspacePath === null && !homeVisible) return [];
+  const listed: readonly ListedSession[] | undefined = workspaceSessions.data
+    ?.flatMap((workspaceGroup) => {
+      if (workspaceGroup.workspacePath === null && !homeVisible) return [];
 
       const place: SessionPlace = {
-        workspace: directory.workspacePath === null ? null : directory.workspace,
-        path: directory.workspacePath,
+        workspace: workspaceGroup.workspacePath === null ? null : workspaceGroup.workspace,
+        path: workspaceGroup.workspacePath,
       };
 
-      return sessionsForView(directory.sessions, view, "local", undefined, workingSessions)
+      return sessionsForView(workspaceGroup.sessions, view, "local", undefined, workingSessions)
         .flatMap((group) => group.sessions)
         .map((session) => ({ place, session }));
     })
     .toSorted((left, right) => order(left.session, right.session));
 
-  const activeDirectory =
+  const activeWorkspace =
     paneSession === undefined
       ? undefined
-      : sessionDirectory.data?.find((directory) =>
-          directory.sessions.some((session) => session.id === paneSession.id),
+      : workspaceSessions.data?.find((workspaceGroup) =>
+          workspaceGroup.sessions.some((session) => session.id === paneSession.id),
         );
 
   const neighbours =
@@ -338,10 +311,10 @@ export function Sidebar(): ReactElement {
           flat
             ? (listed ?? []).map(({ session }) => session)
             : sessionsForView(
-                (activeDirectory &&
+                (activeWorkspace &&
                   localSessions(
-                    sessionDirectory.data ?? [],
-                    activeDirectory.workspacePath === null ? null : activeDirectory.workspace,
+                    workspaceSessions.data ?? [],
+                    activeWorkspace.workspacePath === null ? null : activeWorkspace.workspace,
                   )) ??
                   [],
                 view,
@@ -367,9 +340,9 @@ export function Sidebar(): ReactElement {
         : { workspace: entry.id, path: entry.path };
 
     const sessions =
-      sessionDirectory.data === undefined
+      workspaceSessions.data === undefined
         ? undefined
-        : localSessions(sessionDirectory.data, place.workspace);
+        : localSessions(workspaceSessions.data, place.workspace);
 
     const name = entry.kind === "home" ? "Home" : entry.name;
     const expanded = !collapsedWorkspaces.has(place.workspace);
@@ -420,7 +393,7 @@ export function Sidebar(): ReactElement {
     <aside {...props(styles.rail)}>
       <SidebarContent>
         {activeSessionId !== undefined && (
-          <NeighbourPreload
+          <NeighbourWarm
             key={[activeSessionId, ...neighbours].join(" ")}
             active={activeSessionId}
             neighbours={neighbours}
@@ -531,7 +504,7 @@ export function Sidebar(): ReactElement {
                   value={view}
                   homeVisible={homeVisible}
                   onHomeVisibleChange={preferences.homeVisible.set}
-                  filterDisabled={sessionDirectory.data === undefined}
+                  filterDisabled={workspaceSessions.data === undefined}
                   onChange={setSessionView}
                   onOpenFolder={openFolder}
                   onCollapseAll={() =>

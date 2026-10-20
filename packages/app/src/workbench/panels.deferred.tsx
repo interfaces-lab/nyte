@@ -9,7 +9,6 @@ import {
   focusTerminal,
 } from "./terminal-runtime.ts";
 
-/** The workbench's Files, Changes and terminal surfaces, with the terminal commands that reach a mounted terminal. */
 export const workbenchRuntime = {
   FilesPanel,
   ChangesPanel,

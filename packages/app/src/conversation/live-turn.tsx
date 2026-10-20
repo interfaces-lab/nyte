@@ -5,7 +5,6 @@ import { motion } from "@nyte-ai/ui/styles/vars.stylex";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { StepGroupView } from "./step-group.tsx";
 
-/** Dimmed while core still holds the message behind a live run; full weight once it lands. */
 const PENDING_OPACITY = 0.6;
 
 const pendingIn = keyframes({
@@ -21,10 +20,6 @@ export const liveTurnStyles = create({
     width: "100%",
     minWidth: 0,
   },
-  /**
-   * A message waiting on a live run, drawn where its turn will be: muted so
-   * it reads as sent without pretending the run already answered it.
-   */
   pending: {
     opacity: PENDING_OPACITY,
     animationName: {

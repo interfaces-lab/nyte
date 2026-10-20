@@ -1,8 +1,3 @@
-/**
- * The desktop routes a device meets: enrolling, the loopback listener, a phone
- * releasing itself, a local revoke, and a store that cannot be written. See
- * `fixtures/connect-machine.ts`.
- */
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { chmod } from "node:fs/promises";

@@ -55,14 +55,12 @@ const BAR_THEME = {
 
 const AXIS_HEIGHT = 20;
 
-/** One stacked layer: its name in the readout and the hue it paints in. */
 export interface ChartSeries {
   readonly key: string;
   readonly label: string;
   readonly tint: Tint;
 }
 
-/** One bar: what to call it and a value per series, in series order. */
 export interface ChartBucket {
   readonly key: string;
   readonly label: string;
@@ -70,16 +68,11 @@ export interface ChartBucket {
 }
 
 export interface BarChartProps {
-  /** The chart's accessible name. */
   readonly label: string;
-  /** Painted bottom to top. */
   readonly series: readonly ChartSeries[];
   readonly buckets: readonly ChartBucket[];
-  /** How a value reads in the readout. */
   readonly format: (value: number) => string;
-  /** Height of the bars, without the labels under them. @default 88 */
   readonly height?: number;
-  /** Bucket labels under the bars, spread from the first bucket to the last. @default 5 */
   readonly ticks?: number;
   readonly className?: string;
   readonly style?: CSSProperties;
@@ -110,7 +103,6 @@ const BarChartContext = createContext<BarChartContextValue>({
 
 type Datum = Record<string, string | number>;
 
-/** One bar inside its series' tint scope. `fill` on the datum wins over nivo's resolved colour, so the scope applies. */
 function Segment(item: BarItemProps<Datum>): ReactElement {
   const { series } = useContext(BarChartContext);
   const layer = series[Number(String(item.bar.data.id).slice(1))];
@@ -176,10 +168,6 @@ function Tick({ value, x, y, textY }: AxisTickProps<string | number>): ReactElem
   );
 }
 
-/**
- * Bars stacked by series. Pointing at a segment opens a readout of its whole
- * bucket, so the stack reads without a legend.
- */
 export function BarChart({
   label,
   series,
@@ -244,20 +232,15 @@ export function BarChart({
 
 export interface SparklineProps {
   readonly values: readonly number[];
-  /** Strokes in this hue instead of the secondary content colour. */
   readonly tint?: Tint;
-  /** Names the line for assistive technology; without one the line is decorative. */
   readonly label?: string;
-  /** @default 72 */
   readonly width?: number;
-  /** @default 20 */
   readonly height?: number;
   readonly className?: string;
   readonly style?: CSSProperties;
   readonly xstyle?: Restyle<"Sparkline">;
 }
 
-/** A row's trend, scaled to its own peak so a small row still shows its shape. */
 export function Sparkline({
   values,
   tint,

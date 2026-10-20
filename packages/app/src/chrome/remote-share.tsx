@@ -1,4 +1,3 @@
-/** What a client needs to connect, shown so it can be scanned or copied whole. */
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
@@ -14,7 +13,6 @@ export const shareStyles = create({
   switcher: { alignSelf: "flex-start" },
   scan: { display: "flex", alignItems: "center", gap: space.s3 },
   scanText: { display: "flex", flexDirection: "column", gap: space.s1, minWidth: 0 },
-  /** One grid for both fields, so the value boxes share a left edge and width. */
   fields: {
     display: "grid",
     gridTemplateColumns: "auto minmax(0, 1fr) auto",
@@ -26,7 +24,6 @@ export const shareStyles = create({
     color: role.contentSecondary,
   },
   fieldActions: { display: "inline-flex", gap: space.s2 },
-  /** Selected whole, so a click cannot grab half of a token or address. */
   value: {
     boxSizing: "border-box",
     minWidth: 0,

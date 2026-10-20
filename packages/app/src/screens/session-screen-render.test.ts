@@ -4,7 +4,7 @@ import { testRenderer } from "../../test/renderer.ts";
 test("the transcript follows, holds anchors, and keeps its rows", { timeout: 90_000 }, async () => {
   expect(
     await testRenderer(
-      new URL("./thread-render.browser-test.tsx", import.meta.url),
+      new URL("./session-screen-render.browser-test.tsx", import.meta.url),
       `window.nyte = { clientSurface: "desktop", platform: "linux", host: { setThemePreference() {} } };`,
     ),
   ).toBe("passed");

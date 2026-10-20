@@ -1,9 +1,3 @@
-/**
- * The connector against stand-in `cloudflared` scripts. Each stand-in records
- * how it was started, then plays a scripted series of JSON log records, each
- * step waiting for the test to create a named file, so no assertion races a
- * timer. Nothing here reaches Cloudflare.
- */
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -70,10 +64,8 @@ const ROUTED = routes([
 
 const REGISTERED = line({ message: "Registered tunnel connection", connIndex: 0 });
 
-/** A line past the buffer limit, dropped whole; the next record still counts. */
 const OVERLONG: Step = { kind: "emit", line: "x".repeat(200_000) };
 
-/** A stand-in that logs its start to `starts`, plays `steps`, then idles until signalled. */
 async function standIn(
   options: { readonly steps: readonly Step[]; readonly ignoreTerm?: boolean } = { steps: [] },
 ): Promise<{ readonly root: string; readonly executable: string; readonly directory: string }> {
@@ -131,7 +123,6 @@ async function starts(root: string): Promise<readonly Start[]> {
     .map((entry): Start => JSON.parse(entry));
 }
 
-/** Absent, or a zombie waiting to be reaped: either way it runs no more code. */
 function running(pid: number): boolean {
   try {
     const state = execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });

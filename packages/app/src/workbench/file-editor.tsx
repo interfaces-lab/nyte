@@ -45,7 +45,6 @@ import type { FileTab } from "./file-store.ts";
 
 type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
 
-/** Disk events for one open file, so an edit made elsewhere reaches its editor. */
 const diskEvents = watchFamily((_connection, path: string): AsyncIterable<readonly FileEvent[]> =>
   (async function* () {
     yield* (await workspaceFiles()).watch({ paths: [path] });
@@ -66,7 +65,6 @@ interface FileEditorProps {
   readonly autoSave: boolean;
 }
 
-// The shadow host owns these properties, so inherited overrides cannot replace them.
 const EDITOR_CSS = `
 ${PIERRE_TOKEN_CSS}
 :host {
@@ -82,10 +80,6 @@ ${PIERRE_TOKEN_CSS}
 }
 `;
 
-/**
- * CodeView merges these behind its own per-surface options, so the factory only
- * has to construct the editor. A module constant keeps the context value stable.
- */
 function createEditor<EType extends EditorType>(
   editorType: EType,
   options: EditorOptions<EType, undefined, undefined>,
@@ -105,7 +99,6 @@ const styles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
-  // Keep each tab's viewport measurable so virtualized editors retain their scroll position.
   hidden: { visibility: "hidden", pointerEvents: "none" },
   code: {
     "--diffs-min-number-column-width": "initial",
@@ -146,11 +139,6 @@ const styles = create({
   },
 });
 
-/**
- * Format/reload are ordinary undoable edits; they do not recreate the editor or
- * its history. CodeView exposes the Editor before its first document has
- * attached, and positions cannot address the middle of a CRLF pair.
- */
 function replaceContents(
   editor: Pick<Editor, "getFile" | "getText" | "applyEdits">,
   contents: string,
@@ -191,7 +179,6 @@ function replaceContents(
   ]);
 }
 
-/** While its tab is active, keeps the editor's copy of a file current with the disk. */
 function DiskSync({ path }: { readonly path: string }): null {
   const queryClient = useQueryClient();
 
@@ -231,12 +218,6 @@ export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
   );
 }
 
-/**
- * The autosave timer is armed inside the buffer subscription, which is bound
- * once per buffer; it reads the current save and the preference at fire time,
- * so turning Auto Save off also drops a pending save. Formatting lands as an
- * ordinary edit, so it stays on the undo stack.
- */
 function TextFileEditor({
   ref,
   viewKey,

@@ -51,7 +51,6 @@ function find(selector: string): Element {
   return element;
 }
 
-/** The label's and the title's text edges, and the chevron's centre against the label's line box. */
 function measure() {
   const label = find("[data-slot='tray'] [data-slot='questionnaire-description']");
   const title = find("[data-slot='tray'] [data-slot='questionnaire-title']");

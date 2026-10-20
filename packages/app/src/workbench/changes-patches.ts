@@ -55,12 +55,6 @@ const EMPTY: PatchEntry = { kind: "empty" };
 
 const FAILED: PatchEntry = { kind: "failed" };
 
-/**
- * A host patch as the stack renders it: the host's unified text, parsed once
- * by the renderer. The host's digest names
- * the patch within its source's lineage (scope and whitespace mode): an
- * unchanged digest keeps the earlier entry, and the pair keys the highlighter.
- */
 function entryFrom(diff: HostPatch, earlier: PatchEntry | undefined, lineage: string): PatchEntry {
   switch (diff.kind) {
     case "too-large":

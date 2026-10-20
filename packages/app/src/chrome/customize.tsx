@@ -23,10 +23,6 @@ interface Presentation {
   readonly icon: IconName;
 }
 
-/**
- * Built-ins with something to show. The others are plumbing every chat needs,
- * so they stay out of sight unless they fail to load.
- */
 const BUILTINS = new Map<string, Presentation>([
   [
     "web-search",
@@ -132,7 +128,6 @@ function Section({
   );
 }
 
-/** A plugin earns a page only when the page would have something on it. */
 function hasPage(plugin: PluginView, inventory: CustomizeInventory): boolean {
   const owns = (owner: string): boolean => owner === plugin.info.id;
 

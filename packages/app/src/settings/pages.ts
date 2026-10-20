@@ -1,9 +1,3 @@
-/**
- * The Settings pages, in nav order: the one table. Navigation, route
- * validation, titles, nav groups, and which pages a host shows all derive
- * from it. Rows inside a page decide for themselves whether this host can
- * back them; a page is listed when its first row could be.
- */
 import type { ComponentType } from "react";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { ProvidersSettings } from "../chrome/models-settings.tsx";
@@ -22,10 +16,8 @@ import type { Capability } from "./capability.ts";
 export interface PageInfo {
   readonly icon: IconName;
   readonly title: string;
-  /** Consecutive pages of one group sit together in the nav; space separates groups. */
   readonly group: "you" | "app" | "tools" | "providers";
   readonly needs: readonly Capability[];
-  /** What the page holds beyond its title, as lowercase substrings, for the nav search. */
   readonly keywords: readonly string[];
   readonly Page: ComponentType;
   readonly Actions?: ComponentType;
@@ -180,7 +172,6 @@ function namesSettingsPage(value: string): value is SettingsSection {
   return Object.hasOwn(SETTINGS_PAGES, value);
 }
 
-/** Visible pages in table order, split where the group changes. */
 export function settingsSectionGroups(
   context = settingsContext(),
 ): readonly (readonly SettingsSection[])[] {
@@ -203,7 +194,6 @@ export function settingsSectionGroups(
   return groups;
 }
 
-/** The route's param check: a page this host shows. */
 export function showsSettingsSection(value: string): value is SettingsSection {
   return namesSettingsPage(value) && available(SETTINGS_PAGES[value].needs);
 }

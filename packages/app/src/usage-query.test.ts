@@ -16,7 +16,6 @@ installBridge({ ...web, host: { ...web.host, usage: readUsage } });
 
 const TODAY = "2026-09-02";
 
-/** The read is unbounded; only the day it was taken on is part of the key. */
 const WINDOW: UsageWindow = { sinceDay: null, untilDay: TODAY };
 
 function report(overrides: Partial<UsageSnapshot> = {}): UsageSnapshot {
@@ -86,7 +85,6 @@ afterEach(() => {
   readUsage.mockReset();
 });
 
-/** A report old enough that the page would already be offering to re-read it. */
 const stale = { updatedAt: Date.now() - USAGE_STALE_AFTER_MS * 10 };
 
 test("reopening shows a fresh cached report without re-reading", () => {

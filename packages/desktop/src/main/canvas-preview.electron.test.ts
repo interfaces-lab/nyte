@@ -42,10 +42,6 @@ const Results = Type.Object({
   }),
 });
 
-/**
- * Bundles `entry` into `directory` as CommonJS. Each entry is built apart: the sandboxed driver
- * preload can require no chunk it would share with the main fixture.
- */
 async function bundle(entry: string, directory: string, fileName: string): Promise<void> {
   await build({
     configFile: false,
@@ -87,11 +83,13 @@ test.skipIf(!built)(
       );
       const require = createRequire(import.meta.url);
       const electronDirectory = dirname(require.resolve("electron/package.json"));
+
       const executable = join(
         electronDirectory,
         "dist",
         (await readFile(join(electronDirectory, "path.txt"), "utf8")).trim(),
       );
+
       const { stderr } = await execute(
         executable,
         [directory, directory, shellRoot, galaxy, probe],
@@ -119,6 +117,7 @@ test.skipIf(!built)(
       expect(results.hung.ms).toBeLessThan(10_000);
       expect(results.after.errors).toEqual([]);
       expect(results.after.heights.chat).toBeGreaterThan(0);
+
       const sealed = {
         secure: true,
         stored: "SecurityError",

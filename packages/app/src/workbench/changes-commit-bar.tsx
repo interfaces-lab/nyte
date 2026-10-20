@@ -1,15 +1,3 @@
-/**
- * The Changes tab's commit surface: a message field and one primary action
- * with the rest of the Git actions behind its menu.
- *
- * Every action here is a host mutation, so each one is gated on workspace
- * trust and each outcome is reported in plain words instead of being retried
- * silently. Nothing is ever forced: a rejected push asks for a pull, an
- * untracked branch offers to publish itself, and a missing `gh` says so.
- *
- * The surface belongs to the working tree. A turn's changes and a commit's are
- * records of an edit, so the bar is not rendered for those scopes at all.
- */
 import { create, props } from "@stylexjs/stylex";
 import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -46,7 +34,6 @@ import type { BranchReadout } from "./change-scopes.ts";
 import { ChangesPullRequest } from "./changes-pull-request.tsx";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
-/** Every action the split button can run, in the order the menu lists them. */
 export const COMMIT_ACTIONS = [
   "branch-commit",
   "branch-commit-push",
@@ -60,12 +47,10 @@ export const COMMIT_ACTIONS = [
 
 type CommitAction = (typeof COMMIT_ACTIONS)[number];
 
-/** The default action before the user chooses one from the menu. */
 const DEFAULT_COMMIT_ACTION: CommitAction = "commit-push";
 
 const STORAGE_KEY = "nyte.desktop.changes-commit-action.v1";
 
-/** Which steps one action runs, in order. A pull request always pushes its branch first. */
 interface CommitActionPlan {
   readonly branch: boolean;
   readonly commit: boolean;
@@ -96,14 +81,12 @@ function commitActionPlan(action: CommitAction): CommitActionPlan {
   }
 }
 
-/** The actions this host offers; pull requests need GitHub. */
 export function commitActions(pullRequests: boolean): readonly CommitAction[] {
   return pullRequests
     ? COMMIT_ACTIONS
     : COMMIT_ACTIONS.filter((action) => !commitActionPlan(action).pullRequest);
 }
 
-/** Menu groups: actions that branch first, then commits, then pushes and pull requests. */
 function commitActionGroup(action: CommitAction): "branch" | "commit" | "push" {
   const plan = commitActionPlan(action);
 
@@ -133,24 +116,19 @@ function commitActionLabel(action: CommitAction): string {
   }
 }
 
-/** The scopes that read the working tree, which is the only place a commit applies. */
 export function readsWorkingTree(scope: WorkbenchChangesScope): boolean {
   return scope.kind === "uncommitted" || scope.kind === "staged" || scope.kind === "unstaged";
 }
 
 interface CommitBarState {
   readonly scope: WorkbenchChangesScope;
-  /** Files in the scope on screen; nothing to commit while this is zero. */
   readonly fileCount: number;
   readonly message: string;
   readonly branch: BranchReadout | undefined;
-  /** The machine's GitHub CLI login; undefined until it answers, null where the host serves none. */
   readonly account: GitHubAccountState | null | undefined;
-  /** The folder on GitHub as the host last read it; undefined until it answers. */
   readonly github: GitHubState | undefined;
 }
 
-/** Why GitHub cannot open a pull request yet, read from the login and the folder before anything runs. */
 function pullRequestBlocker(
   account: GitHubAccountState | null | undefined,
   github: GitHubState | undefined,
@@ -172,11 +150,6 @@ function pullRequestBlocker(
   }
 }
 
-/**
- * Why an action cannot run, when the bar does not already show it. An action that
- * creates a branch first leaves a detached or unborn HEAD behind, so those
- * checks apply only to the actions that push or open a pull request as they stand.
- */
 function commitActionDisabledReason(
   action: CommitAction,
   state: CommitBarState,
@@ -208,14 +181,11 @@ function commitActionDisabled(action: CommitAction, state: CommitBarState): bool
   );
 }
 
-/** What a step left behind, as the bar reports it. */
 interface CommitBarResult {
   readonly tone: "success" | "error";
   readonly text: string;
-  /** Git's or `gh`'s own words, kept so nothing is lost to paraphrase. */
   readonly detail?: string;
   readonly url?: string;
-  /** The branch tracks nothing, so the bar offers to publish it. */
   readonly offerPublish?: boolean;
 }
 
@@ -297,7 +267,6 @@ function pullRequestResultMessage(result: GitHubPullRequestOutcome): CommitBarRe
   }
 }
 
-/** A trust refusal crosses IPC as a `forbidden` failure, not as an outcome. */
 const trustRefusal = Type.Object({ cause: Type.Object({ code: Type.Literal("forbidden") }) });
 
 function actionFailureMessage(cause: unknown): CommitBarResult {
@@ -310,15 +279,10 @@ function actionFailureMessage(cause: unknown): CommitBarResult {
   return { tone: "error", text: "The action didn’t go through.", detail: errorMessage(cause) };
 }
 
-/**
- * What a commit covers. The staged scope commits the index as it stands;
- * every other working-tree scope commits each tracked change with it.
- */
 function commitTargetFor(scope: WorkbenchChangesScope): "staged" | "all" {
   return scope.kind === "staged" ? "staged" : "all";
 }
 
-/** The message's first line titles the pull request and the rest is its body; without a message `gh` fills both from the commits. */
 function pullRequestInput(message: string): GitHubPullRequestInput {
   const [first = "", ...rest] = message.split("\n");
   const title = first.trim();
@@ -340,7 +304,6 @@ function readStoredAction(actions: readonly CommitAction[]): CommitAction {
   }
 }
 
-/** Remembering the last action is a convenience, never a reason to fail one. */
 function storeAction(action: CommitAction): void {
   try {
     if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, action);
@@ -379,19 +342,16 @@ interface ChangesCommitBarProps {
   readonly branch: BranchReadout | undefined;
   readonly revision: string;
   readonly fileCount: number;
-  /** Opens a pull request or check page; the system browser when absent. */
   readonly onOpenLink?: (url: string) => void;
 }
 
 interface RunOptions {
   readonly branchName?: string;
   readonly setUpstream?: boolean;
-  /** A retry continues an action whose earlier steps already ran. */
   readonly skipBranch?: boolean;
   readonly skipCommit?: boolean;
 }
 
-/** The branch prompt stays until the branch exists, so a taken or invalid name can be corrected without retyping either field. */
 export function ChangesCommitBar({
   scope,
   branch,
@@ -425,6 +385,7 @@ export function ChangesCommitBar({
     account,
     github: githubState.data,
   };
+
   const pullRequest =
     githubState.data?.pullRequest.kind === "ready"
       ? githubState.data.pullRequest.pullRequest
@@ -567,6 +528,7 @@ export function ChangesCommitBar({
   const blocked = commitActionPlan(action).pullRequest
     ? pullRequestBlocker(account, githubState.data)
     : undefined;
+
   const successText = result?.tone === "success" ? result.text.trim() : "";
   const showResult = result !== undefined && (result.tone === "error" || successText !== "");
 

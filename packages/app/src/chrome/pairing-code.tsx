@@ -1,9 +1,3 @@
-/**
- * The pairing code the iOS app scans. The matrix is drawn as one SVG path so it
- * stays crisp at any size, and stays black on white in every theme so scanners
- * read it. The payload is the same `nyte://connect` string a person can
- * paste, so scanning and pasting cannot drift apart.
- */
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import qrcode from "qrcode-generator";
@@ -27,7 +21,6 @@ export function pairingPayload(input: { address: string; token: string }): strin
   return `nyte://connect?${query.toString()}`;
 }
 
-/** Every dark module as one path, drawn in a single fill. */
 function modulePath(code: ReturnType<typeof qrcode>): string {
   const count = code.getModuleCount();
   let path = "";
@@ -41,7 +34,6 @@ function modulePath(code: ReturnType<typeof qrcode>): string {
   return path;
 }
 
-/** Type 0 picks the smallest version that fits; M corrects ~15% of the area, which is what a screen-to-camera scan needs. */
 export function PairingCode({ value, size }: { value: string; size: number }): ReactElement {
   const { path, count } = useMemo(() => {
     const code = qrcode(0, "M");

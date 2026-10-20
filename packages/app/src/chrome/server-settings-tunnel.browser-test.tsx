@@ -48,11 +48,6 @@ function pending(id: string): RemoteDevice {
   };
 }
 
-/**
- * A pairing code stays while the device list has not caught up with its
- * device, and leaves once that device is claimed, removed elsewhere after it
- * was listed, or never listed but out of time.
- */
 export async function run() {
   let devices: readonly RemoteDevice[] = [];
   let connection: TunnelConnection = { kind: "connecting" };

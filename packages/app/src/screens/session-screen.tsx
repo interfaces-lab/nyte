@@ -1,4 +1,4 @@
-import { threadStyles } from "./thread.stylex.ts";
+import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { PaneHost } from "./pane-host.tsx";
 import { SplitSash } from "./split-sash.tsx";
 import { props } from "@stylexjs/stylex";
@@ -84,21 +84,17 @@ function DropPreview({
   readonly target: SessionDropTarget;
 }): ReactElement {
   return (
-    <div aria-hidden="true" {...props(threadStyles.dropPreviewLayer)}>
+    <div aria-hidden="true" {...props(sessionScreenStyles.dropPreviewLayer)}>
       <div
         data-nyte-drop-preview=""
-        {...props(intent.primary, threadStyles.dropPreview)}
+        {...props(intent.primary, sessionScreenStyles.dropPreview)}
         style={dropPreviewRect(layout, target)}
       />
     </div>
   );
 }
 
-/**
- * One workspace-lifetime stage for blank and session places. The active tab's
- * panes decide what it shows; the route follows them.
- */
-export function ThreadScreen(): ReactElement {
+export function SessionScreen(): ReactElement {
   const { layout } = usePaneControllerSnapshot();
   const host = useHostState();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -126,7 +122,7 @@ export function ThreadScreen(): ReactElement {
       : null;
 
   return (
-    <div {...props(threadStyles.stage)}>
+    <div {...props(sessionScreenStyles.stage)}>
       <FileTypeIconSprite />
       <div
         ref={containerRef}
@@ -134,9 +130,11 @@ export function ThreadScreen(): ReactElement {
         role={maximized ? "tabpanel" : undefined}
         aria-labelledby={maximized ? `${viewKey}-tab-${WORKBENCH_CHAT_TAB}` : undefined}
         {...props(
-          threadStyles.panes,
+          sessionScreenStyles.panes,
           layout.kind === "split" &&
-            (layout.direction === "right" ? threadStyles.splitRight : threadStyles.splitDown),
+            (layout.direction === "right"
+              ? sessionScreenStyles.splitRight
+              : sessionScreenStyles.splitDown),
         )}
       >
         <PaneHost
@@ -173,7 +171,7 @@ export function ThreadScreen(): ReactElement {
         workspacePath={workspacePath}
         sessionId={activeSelection.kind === "session" ? activeSelection.sessionId : undefined}
       />
-      <div ref={setFloatingMount} {...props(threadStyles.floatingMount)} />
+      <div ref={setFloatingMount} {...props(sessionScreenStyles.floatingMount)} />
     </div>
   );
 }

@@ -1,10 +1,3 @@
-/**
- * The workspace menu over a store like a long-lived desktop's: one folder
- * registered under several ids, folders that are gone, a session worktree,
- * two folders with the same name. It lists each folder once, most recently
- * used first, and Open Folder… stays in view however little room the menu
- * gets.
- */
 import "../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";

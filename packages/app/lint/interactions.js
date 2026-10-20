@@ -46,7 +46,7 @@ const nonControls = new Set(["div", "span", "li", "img", "section", "p"]);
 const dragHandles = new Map([
   ["packages/ui/src/slider.tsx", new Set(["control"])],
   ["packages/app/src/chrome/sidebar-pane.tsx", new Set(["handle"])],
-  ["packages/app/src/screens/thread.stylex.ts", new Set(["sash"])],
+  ["packages/app/src/screens/session-screen.stylex.ts", new Set(["sash"])],
   ["packages/app/src/workbench/workbench.stylex.ts", new Set(["sash"])],
 ]);
 

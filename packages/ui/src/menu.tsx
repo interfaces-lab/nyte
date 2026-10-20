@@ -1,12 +1,3 @@
-/**
- * Menus over Base UI's Menu and ContextMenu: positioning, focus, typeahead,
- * dismissal, and roving tab index are the library's job. This file decides
- * geometry and colour once, so every menu opens the same surface.
- *
- * Every row's grid reserves the leading icon column and the trailing meta
- * column whether or not it fills them, so labels start and end on the same
- * edges in every menu.
- */
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
@@ -211,10 +202,6 @@ const itemVariants = create({
   },
 });
 
-/**
- * `danger` paints the row in the danger hue. `quiet` reads secondary and
- * brightens under the pointer, for a menu whose hover highlight is off.
- */
 export type MenuItemVariant = keyof typeof itemVariants;
 
 const itemLayouts = create({
@@ -240,7 +227,6 @@ const itemLayouts = create({
 export interface MenuItemBodyProps {
   readonly icon?: IconName;
   readonly leading?: ReactNode;
-  /** Right column: a shortcut, a count, a provider name. */
   readonly meta?: ReactNode;
   readonly layout?: keyof typeof itemLayouts;
 }
@@ -321,11 +307,8 @@ export function MenuContent({
     | "collisionAvoidance"
     | "collisionPadding"
   > & {
-    /** Scopes the popup to a hue. */
     readonly tint?: Tint;
-    /** Sizes the popup to its anchor, the trigger unless `anchor` names another element. */
     readonly matchAnchorWidth?: boolean;
-    /** Rows under a separator that stay in view while the rows above scroll; the place for an action after a list that grows. */
     readonly footer?: ReactNode;
   }): ReactElement {
   return (
@@ -554,7 +537,6 @@ export function MenuCheckboxItem({
   );
 }
 
-/** A checkbox item drawn as a switch; it stays open so the change is visible. */
 export function MenuSwitchItem({
   layout,
   icon,
@@ -589,7 +571,6 @@ export function MenuSwitchItem({
   );
 }
 
-/** A row that opens its submenu on hover, click, and Arrow Right. */
 export function MenuSubTrigger({
   value,
   layout,
@@ -602,7 +583,6 @@ export function MenuSubTrigger({
   ...rest
 }: StyledProps<MenuPrimitive.SubmenuTrigger.Props, Restyle<"MenuSubTrigger">> &
   Omit<MenuItemBodyProps, "meta"> & {
-    /** The current choice, shown before the chevron. */
     readonly value?: ReactNode;
   }): ReactElement {
   return (
@@ -639,7 +619,6 @@ export function MenuSeparator({
   style,
   ...rest
 }: StyledProps<MenuPrimitive.Separator.Props, Restyle<"MenuSeparator">> & {
-  /** Stops short of the popup's edges instead of running through its padding. */
   readonly inset?: boolean;
 }): ReactElement {
   return (

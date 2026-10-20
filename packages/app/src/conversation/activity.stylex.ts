@@ -1,4 +1,3 @@
-/** What is running: the shimmering verb on a working row, and the status markers between turns. */
 import { create, keyframes } from "@stylexjs/stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";

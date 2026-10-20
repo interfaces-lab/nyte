@@ -143,6 +143,6 @@ test("the settings journey", async ({ desktop }) => {
     await search.fill("");
     await expect(links).toHaveCount(count);
     await leaveSettings(page);
-    await expect(page.getByRole("form", { name: "Message composer" })).toBeVisible();
+    await expect(page.getByRole("form", { name: "Message", exact: true })).toBeVisible();
   });
 });

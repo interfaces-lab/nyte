@@ -4,7 +4,7 @@
  * tried without a model call. The turn is built whole when the message is
  * sent; playing it reveals one part at a time.
  */
-import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import type { TurnMessages } from "@nyte-ai/app/view-helpers.ts";
 import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import { lineDiff } from "@nyte-ai/core";
 import { asId, writePatch } from "@nyte-ai/schema";
@@ -14,7 +14,7 @@ import type { Json, Message, PatchEntry, ToolClass, TurnInfo } from "@nyte-ai/sd
 export type Recipient = "reviewer" | "nyte";
 
 export interface DemoExchange {
-  readonly turn: ConversationTurn;
+  readonly turn: TurnMessages;
   readonly shown: number;
 }
 
@@ -27,7 +27,7 @@ function cut(
   { turn, shown }: DemoExchange,
   state: TurnInfo["state"],
   last: "running" | "stopped",
-): ConversationTurn {
+): TurnMessages {
   const messages = turn.messages.slice(0, shown).map((message, index): Message => {
     if (index !== shown - 1 || !showsTool(message)) return message;
     const { call, name, args } = message.state;
@@ -49,7 +49,7 @@ function cut(
 }
 
 /** What has played so far; the newest call runs until the next part lands. */
-export function shownTurn(exchange: DemoExchange): ConversationTurn {
+export function shownTurn(exchange: DemoExchange): TurnMessages {
   return playing(exchange)
     ? cut(exchange, { kind: "working", activity: null }, "running")
     : exchange.turn;

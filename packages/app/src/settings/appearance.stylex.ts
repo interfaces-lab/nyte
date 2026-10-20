@@ -1,4 +1,3 @@
-/** Controls unique to Settings › Appearance. */
 import { glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { diffView, settings } from "../theme/schema.stylex.ts";

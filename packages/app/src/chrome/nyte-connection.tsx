@@ -1,9 +1,3 @@
-/**
- * The Nyte account's row in Environments › Remote access. Unlinked, it offers
- * the link tray; linked, its status menu turns access on or off and unlinks,
- * and the devices the account enrolled follow in their own card. Who is signed in
- * on this Mac is Profile's business, not this row's.
- */
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";

@@ -5,7 +5,6 @@ import { Value } from "typebox/value";
 import { DEFAULT_DESKTOP_SETTINGS, DESKTOP_SETTING_SCHEMAS } from "./desktop-settings.ts";
 import type { DesktopSettings } from "./desktop-settings.ts";
 
-/** Declares the desktop's settings to the host, so every client sees and edits them. */
 export const desktopSettingsPlugin = {
   id: "desktop",
   contribute: {
@@ -49,7 +48,6 @@ export const desktopSettingsPlugin = {
   },
 } satisfies Plugin;
 
-/** Reads the desktop settings from a host view; a missing or malformed value reads as its default. */
 export function desktopSettings(view: Pick<HostView, "settings">): DesktopSettings {
   const value = (key: keyof DesktopSettings) =>
     view.settings.find((setting) => setting.id === `desktop.${key}`)?.value;

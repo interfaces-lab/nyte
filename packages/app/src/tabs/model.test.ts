@@ -21,7 +21,6 @@ const chat = (id: string): PaneSelection => ({ kind: "session", sessionId: asId<
 
 const customize: Place = { kind: "customize", section: undefined, sessionId: undefined };
 
-/** What a pane controller proposes for `action` on the active tab's panes. */
 function pane(state: WindowState, action: PaneLayoutAction): WindowAction {
   const view = activeTab(state).views[activeTab(state).index];
 

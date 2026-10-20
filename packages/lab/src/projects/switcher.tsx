@@ -1,7 +1,6 @@
 /**
- * The project switcher. Cursor has none of its own: projects sit behind a
- * filter tab in its ⌘K palette. Here the palette is only projects, opens from
- * the project's own name, and orders what needs you first.
+ * The project switcher: a palette of only projects, opened from the project's
+ * own name, ordering what needs you first.
  */
 import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";

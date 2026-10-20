@@ -132,10 +132,8 @@ export function sameComposerDocument(
 }
 
 export interface ComposerSubmission {
-  /** The draft text, each chip as its token: what a command line is read from. */
   readonly text: string;
   readonly references: readonly MessageReference[];
-  /** What the message sends, trimmed: text runs, and each chip as its part. */
   readonly parts: readonly ContentPart[];
 }
 
@@ -155,7 +153,6 @@ export function composerReferences(doc: ProseMirrorNode): readonly MessageRefere
   return references;
 }
 
-/** A typed lookalike is text and stays text. */
 export function composerSubmission(doc: ProseMirrorNode): ComposerSubmission {
   return {
     text: doc.textBetween(0, doc.content.size, "\n\n", draftLeafText),

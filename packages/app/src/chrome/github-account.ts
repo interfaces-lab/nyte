@@ -14,14 +14,12 @@ import { startupReadsReleased } from "../startup.ts";
 
 const SIGNING_IN_POLL_MS = 2_000;
 
-/** Checks on a pull request finish on GitHub, which nothing here hears, so pending ones poll. */
 const CHECKS_POLL_MS = 15_000;
 
 const AUTH_KEY = ["github-auth"];
 
 const ACCOUNT_KEY = [...keys.github, "account"];
 
-/** What signing out removes, said where the user decides. */
 export function signOutDescription(login: string): string {
   return nyte.clientSurface === "web"
     ? `This removes the CLI login for @${login} on the machine running the server. Terminal commands and other apps using this login there will also be signed out.`
@@ -35,11 +33,6 @@ function usePendingAuth() {
   });
 }
 
-/**
- * GitHub on the host for the selected folder; absent with no folder selected,
- * until the host answers, and where it serves no GitHub. The api is bound to
- * this connection, so it lives under the keys a host change clears.
- */
 export function useGitHub(): GitHubApi | undefined {
   const workspace = useHostState().data.workspace?.id;
 
@@ -59,7 +52,6 @@ export function useGitHub(): GitHubApi | undefined {
   return capability.data ?? undefined;
 }
 
-/** The selected workspace's repository and branch pull request. Running checks finish on GitHub, which nothing here hears, so they poll. */
 export function useGitHubState(github: GitHubApi | undefined) {
   const host = useHostState();
 
@@ -86,7 +78,6 @@ export function useGitHubState(github: GitHubApi | undefined) {
   });
 }
 
-/** The machine's GitHub CLI login, or null where the host serves none. A sign-in ends when the code is entered on GitHub, which nothing here hears, so a pending one polls. */
 export function useGitHubAccountState() {
   const pending = usePendingAuth();
 
@@ -109,7 +100,6 @@ export function useGitHubAccountState() {
   });
 }
 
-/** The machine's GitHub CLI login with signing in and out; one for every folder, so it reads no workspace. */
 export function useGitHubAccount() {
   const client = useQueryClient();
 

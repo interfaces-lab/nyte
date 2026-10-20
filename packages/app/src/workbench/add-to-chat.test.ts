@@ -16,7 +16,6 @@ test("a terminal selection goes to the chat with the command it followed", async
   ).toBe("passed");
 }, 60_000);
 
-/** The renderer reads `window.nyte` at import time, so the page bridge is stubbed first. */
 const browserBridge = `
 window.__nytePicks = 0;
 const state = {

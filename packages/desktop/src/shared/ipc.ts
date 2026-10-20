@@ -17,18 +17,14 @@ export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
 export const WINDOW_PAINTED_CHANNEL = "nyte:window-painted";
 
-/** The window sends a nonce; main answers on the same channel with that nonce and a MessagePort to the host, or no port when the host is stopped. */
 export const HOST_PORT_CHANNEL = "nyte:host-port";
 
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
-/** This computer's name, which main reads when it creates a window so the first frame never asks. */
 export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
 
-/** Present when no other window of this launch was open: the window adopts the strip the last one saved. */
 export const FIRST_WINDOW_ARGUMENT = "--nyte-first-window";
 
-/** Operations main answers itself: native dialogs and menus, fonts, updates and the browser panel. */
 export const MAIN_OPERATION_PATHS = [
   "host.fonts",
   "host.pickWorkspace",
@@ -53,7 +49,6 @@ export const MAIN_OPERATION_PATHS = [
   "host.browser.forgetHistory",
 ] as const;
 
-/** Operations the host process answers: the Nyte host, its listeners and remote access. */
 const HOST_PROCESS_PATHS = [
   "host.endpoint",
   "host.state",
@@ -97,11 +92,9 @@ export type DesktopBridge = {
   readonly platform: NyteBridge["platform"];
   readonly machineName: NyteBridge["machineName"];
   readonly firstWindow: boolean;
-  /** The interface drew its first frame, so main can show the window without a blank flash. */
   windowPainted(): void;
   readonly canvasShell?: NyteBridge["canvasShell"];
   readonly host: {
-    /** Asks main for a port to the host; it arrives as a window `message` with `{ channel: HOST_PORT_CHANNEL, nonce }`. */
     openPort(nonce: string): void;
   } & Pick<
     HostBridge,
@@ -144,7 +137,6 @@ type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
     ? T[P]
     : never;
 
-/** The authoritative path-to-method relationship carried by Electron IPC. */
 type CallMethodByPath = {
   readonly [P in CallPath]: BridgeMethod<DesktopBridge, P>;
 };
@@ -166,11 +158,9 @@ export type CallReplyFor<P extends CallPath> =
 
 export type CallReply = { readonly [P in CallPath]: CallReplyFor<P> }[CallPath];
 
-/** Answers one operation for a window, its input already decoded. */
 export type CallHandler<P extends CallPath> = (
   window: number,
   input: CallInput<P>,
 ) => Promise<CallOutput<P>>;
 
-/** The operations one process answers; a path it does not answer is absent. */
 export type CallTable = { readonly [P in CallPath]?: CallHandler<P> };

@@ -88,7 +88,7 @@ const tabs = create({
       ":active": { default: "0.96", "@media (prefers-reduced-motion: reduce)": "1" },
     },
     transitionProperty: "background-color, color, scale",
-    transitionDuration: motion.durationFast,
+    transitionDuration: { default: motion.durationFast, ":active": "0s" },
     transitionTimingFunction: motion.easeOut,
   },
   underline: {
@@ -184,10 +184,6 @@ function TabsRoot({
   style,
   ...rest
 }: StyledProps<TabsPrimitive.Root.Props> & {
-  /**
-   * `segmented` fills its track, `underline` nests inside another strip, `pill`
-   * filters a list, and `plain` switches a surface's content.
-   */
   readonly variant?: keyof typeof tabs;
 }): ReactElement {
   return (
@@ -217,7 +213,6 @@ function TabsList({
 type TabsTabProps =
   | (StyledProps<TabsPrimitive.Tab.Props, Restyle<"Tabs.Tab">> & { readonly variant?: never })
   | (StyledProps<TabsPrimitive.Tab.Props, Restyle<"Tabs.Tab[variant=bare]">> & {
-      /** Paints nothing, for a tab strip that draws its own tabs. */
       readonly variant: "bare";
     });
 
@@ -250,7 +245,6 @@ function TabsPanel({
   return <TabsPrimitive.Panel {...rest} {...mergeStyleProps(props(xstyle), className, style)} />;
 }
 
-/** A layer that follows the active tab. The caller paints it. */
 function TabsIndicator({
   xstyle,
   className,

@@ -30,7 +30,6 @@ const REMOTE_ACCESS = "Remote access is turned on from the desktop app.";
 
 const refuse = (message: string) => (): Promise<never> => Promise.reject(new Error(message));
 
-/** `NodeJS.Platform` names the browser's OS, which is what shortcuts and chrome follow. */
 function browserPlatform(): NodeJS.Platform {
   const name = `${navigator.platform} ${navigator.userAgent}`;
 

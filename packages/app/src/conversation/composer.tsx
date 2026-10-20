@@ -50,7 +50,6 @@ const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 interface ComposerFeedback {
   readonly kind: "status" | "command" | "error";
   readonly message: string;
-  /** Puts a draft the send refused back in front of whatever was typed since. */
   readonly restore?: () => void;
 }
 
@@ -69,20 +68,6 @@ function draftWith(document: ComposerDocumentState, words: string): ComposerDocu
   return { text: joined, selectionStart: joined.length, selectionEnd: joined.length };
 }
 
-/**
- * The follow-up composer of a chat. Admission is open (invariant 5): sending
- * while a run is live is not an error. Enter uses the selected queue or steer
- * delivery and Cmd/Ctrl+Enter the other; the queue card above it holds the
- * still-pending follow-ups, and Enter on an empty composer steers with the
- * first one the run can take. While that one is mid-action, Enter waits
- * rather than reaching past it and reordering the queue. Esc requests a
- * durable abort.
- *
- * The composer takes input before the chat's first view arrives; a send that
- * needs the view waits for it. Sends settle later than the render that
- * started them, so they read the draft as it is then. A refused send puts its
- * draft back, unless something newer is there; then the notice offers it.
- */
 export function Composer({
   sessionId,
   execution,
@@ -99,11 +84,6 @@ export function Composer({
   execution: Execution | undefined;
   pending: readonly UserMessage[];
   unsent: readonly UserMessage[];
-  /**
-   * The draft to start from. The composer owns the draft while mounted and
-   * reports each change; a keystroke must not re-render the transcript behind
-   * it, so the parent persists without redrawing. Remount (key) to reseed.
-   */
   initialViewState?: ComposerViewState;
   onViewStateChange?: (state: ComposerViewState) => void;
   inputRef?: (element: ComposerEditorHandle | null) => void;
@@ -456,8 +436,7 @@ export function Composer({
       {...props(composerStyles.dock, floating && composerStyles.dockFloating)}
     >
       <div
-        role="region"
-        aria-label="Conversation input"
+        data-composer-region
         {...props(composerStyles.region, floating && composerStyles.regionFloating)}
       >
         <div {...props(composerStyles.inputStack)}>

@@ -1,14 +1,3 @@
-/**
- * What a composer chip stands for, and the one text spelling each kind has.
- *
- * A draft is plain text: every chip owns an exact token in it (`@file://…`,
- * `[$skill](path)`, `@current-conversation`, `@clipboard/<n>:…`,
- * `@excerpt/<n>:…`), so a draft string restores its chips without a second
- * document. A sent message carries file, skill and excerpt chips as
- * `reference`, `skill` and `excerpt` parts, a clipboard chip as its body, and
- * drops the conversation mention; a sent message's parts read back as the
- * same tokens.
- */
 import type { FileEntryView, UserContent } from "@nyte-ai/sdk";
 import { ExcerptSourceType } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -85,10 +74,8 @@ const CONVERSATION_MENTION_TEXT = "@current-conversation";
 
 const CLIPBOARD_PASTE_MAX_INLINE_CHARS = 10_000;
 
-/** `@clipboard/` or `@excerpt/`, then the payload's length, a colon and the payload as JSON. */
 const LENGTH_TOKEN_HEADER = /@(clipboard|excerpt)\/([0-9]+):/gu;
 
-/** `[$name](path)`: the persisted skill link the transcript already hides. */
 const SKILL_LINK_PATTERN = /\[\$(?<name>[^\]\r\n]+)\]\((?<path>[^)\r\n]*)\)/gu;
 
 const FILE_URL_PATTERN = /@file:\/\/[^\s<>"]+/gu;
@@ -97,7 +84,6 @@ const DRAFT_TOKEN_PATTERN = new RegExp(
   [
     FILE_URL_PATTERN.source,
     SKILL_LINK_PATTERN.source,
-    // The conversation mention is a whole word, like the menu writes it.
     `(?<=^|\\s)${CONVERSATION_MENTION_TEXT}(?=\\s|$)`,
   ].join("|"),
   "gu",
@@ -107,7 +93,6 @@ const clipboardBody = Type.String({ minLength: 1 });
 
 const excerptPayload = Type.Object({ source: ExcerptSourceType, text: Type.String() });
 
-/** Length-prefixed JSON so a body with newlines stays one TextNode. */
 function encodeLengthToken(
   kind: "clipboard" | "excerpt",
   payload: string | Omit<ExcerptReference, "kind">,
@@ -134,7 +119,6 @@ function parseLengthToken(kind: string, json: string): MessageReference | undefi
     : undefined;
 }
 
-/** The first well-formed token at or after `from`: a `@<kind>/<length>:` header, then `length` characters of JSON. */
 function nextLengthToken(
   text: string,
   from: number,
@@ -165,7 +149,6 @@ export function clipboardReferenceFromPaste(text: string): ClipboardReference | 
   return { kind: "clipboard", body: normalized };
 }
 
-/** The token a reference occupies in a draft. */
 export function referenceText(reference: MessageReference): string {
   switch (reference.kind) {
     case "file":
@@ -200,7 +183,6 @@ function lineCount(text: string): string {
   return `${String(lines)} ${lines === 1 ? "line" : "lines"}`;
 }
 
-/** The last step of a selector, `button.primary` of `main > button.primary`. */
 function selectorTail(selector: string): string {
   return selector.split(/\s*>\s*|\s+/u).at(-1) ?? selector;
 }
@@ -262,7 +244,6 @@ export function referenceLabel(reference: MessageReference): string {
   }
 }
 
-/** The full reference behind a compact label; none when the label already is the whole of it. */
 export function referenceTitle(reference: MessageReference): string | undefined {
   switch (reference.kind) {
     case "file":
@@ -283,10 +264,8 @@ export function referenceTitle(reference: MessageReference): string | undefined 
   }
 }
 
-/** One part of a sent message. */
 export type ContentPart = Exclude<UserContent, string>[number];
 
-/** What a chip sends: a file mention, a skill, an excerpt, the text it stands for, or nothing. */
 export function referencePart(reference: MessageReference): ContentPart | null {
   switch (reference.kind) {
     case "file":
@@ -307,7 +286,6 @@ export function referencePart(reference: MessageReference): ContentPart | null {
   }
 }
 
-/** A sent message as draft text: its text, and each mention and skill as its chip's token. */
 export function contentDraftText(content: UserContent): string {
   if (typeof content === "string") return content;
 
@@ -368,7 +346,6 @@ export function mentionsFolder(file: MentionFile): boolean {
   return file.label.endsWith("/");
 }
 
-/** A canonical `file:` URL describes its file well enough to draw without a workspace catalog. */
 export function fileFromUrl(url: string): MentionFile | undefined {
   let parsed: URL;
 
@@ -399,9 +376,7 @@ export function fileFromUrl(url: string): MentionFile | undefined {
 }
 
 interface DraftParseOptions {
-  /** Catalog entries by URL; a known file keeps its workspace label and relative path. */
   readonly files?: ReadonlyMap<string, MentionFile>;
-  /** A token still being typed at the end of the text keeps its letters until a delimiter arrives. */
   readonly complete?: boolean;
 }
 
@@ -428,7 +403,6 @@ function draftReference(
   return undefined;
 }
 
-/** Split draft text into plain runs and the chips its tokens stand for. A skill link closes itself; the other tokens only end at a delimiter. */
 export function messageParts(text: string, options: DraftParseOptions): readonly MessagePart[] {
   const parts: MessagePart[] = [];
   let cursor = 0;
@@ -495,7 +469,6 @@ export function messageParts(text: string, options: DraftParseOptions): readonly
   return parts;
 }
 
-/** Sidebar drafts use the first visible line, including selected skills and file labels. */
 export function draftPreviewText(text: string): string {
   const visible = messageParts(text, { files: new Map(), complete: true })
     .map((part) => (part.kind === "text" ? part.text : referenceLabel(part.reference)))
@@ -507,15 +480,9 @@ export function draftPreviewText(text: string): string {
 
 interface WorkspaceFileIndex {
   readonly byPath: ReadonlyMap<string, MentionFile>;
-  /** Basenames naming exactly one file; an ambiguous one would link to the wrong file. */
   readonly byLabel: ReadonlyMap<string, MentionFile>;
 }
 
-/**
- * One index per file list. Every code span in a transcript resolves against
- * the same one instead of scanning thousands of paths per span, and the list
- * arrives from a query whose identity changes only when the files do.
- */
 let indexed:
   | { readonly files: readonly MentionFile[]; readonly index: WorkspaceFileIndex }
   | undefined;
@@ -540,13 +507,6 @@ function workspaceFileIndex(files: readonly MentionFile[]): WorkspaceFileIndex {
   return index;
 }
 
-/**
- * Inline code that names a real workspace file or folder becomes a link;
- * everything else stays literal. A glob, a shell line, or a path that does not
- * exist is not a file, so the reader never gets a link that goes nowhere.
- * Matching the basename lets prose say `thread.tsx` when only one file answers
- * to it, and a `:12`, `:12-30`, or `#L12-L30` suffix names lines in it.
- */
 export function inlineCodeReference(
   text: string,
   files: readonly MentionFile[],

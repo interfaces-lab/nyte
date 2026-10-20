@@ -1,11 +1,9 @@
-/** Settings navigation in the persistent sidebar and route-owned page content. */
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { settings, sidebar } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const settingsStyles = create({
-  /** A card whose rows all decided this host can't back them has nothing to say. */
   section: {
     display: { default: "flex", ":not(:has([data-settings-row]))": "none" },
   },
@@ -25,7 +23,6 @@ export const settingsStyles = create({
     width: "100%",
     paddingBlock: space.s2,
   },
-  /** A read-only value beside a row's action, like a count. */
   rowValue: {
     marginInlineEnd: space.s3,
     color: role.contentSecondary,
@@ -50,10 +47,6 @@ export const settingsStyles = create({
     paddingBlock: `${space.s1_5} ${space.s3}`,
   },
   back: { marginBlockEnd: sidebar.sectionGap },
-  /**
-   * The field is one row tall on the rail's grid, and its glyph and placeholder
-   * sit on the icon and label edges the rows below it use.
-   */
   search: {
     gap: sidebar.rowGap,
     marginBlockEnd: space.s4,
@@ -67,10 +60,6 @@ export const settingsStyles = create({
     width: sidebar.iconSlot,
     flexShrink: 0,
   },
-  /**
-   * Headerless groups read their breaks from the gap, so it has to beat the
-   * gap between two rows of one group.
-   */
   navGroups: {
     display: "flex",
     flexDirection: "column",
@@ -79,7 +68,6 @@ export const settingsStyles = create({
     overflowY: "auto",
   },
   navList: { display: "flex", flexDirection: "column", gap: sidebar.listGap },
-  /** The arrow keys' cursor while searching; the open section keeps its fill. */
   navItemHighlighted: { "--_row-fill": role.bgHover, color: role.contentPrimary },
   emptyNavigation: {
     padding: `${space.s1_5} ${space.s1}`,

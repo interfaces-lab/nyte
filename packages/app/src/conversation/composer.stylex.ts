@@ -1,4 +1,3 @@
-/** The composer: its frame, editor, chips, suggestions, queue, and the message editor that takes a bubble's place. */
 import { create, keyframes } from "@stylexjs/stylex";
 import {
   button,
@@ -23,7 +22,6 @@ const caretBlink = keyframes({
   "50%, 100%": { opacity: 0 },
 });
 
-/** The ring around a code surface; prose, the composer, and diffs each draw this one. */
 const CODE_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`;
 
 const COMPOSER_RING_DROP = `0 0 0 2px ${role.borderInteractivePrimary}`;
@@ -34,10 +32,6 @@ const COMPOSER_PILL_HALF_HEIGHT = 20;
 
 const PILLS_ROW_OFFSET = 8;
 
-/**
- * The prompt bubble's padding, as `turn.stylex.ts` draws it: a message edit
- * keeps its text and images where the bubble had them.
- */
 const USER_PROMPT_PADDING_BLOCK = 8;
 
 const USER_PROMPT_PADDING_INLINE = 10;
@@ -455,7 +449,6 @@ export const composerStyles = create({
     height: "1em",
     marginInlineEnd: space.s1,
   },
-  /** Like a workbench tab: the remove button appears over the faded end of the label. */
   mentionChipRemovable: {
     "--_chip-remove-opacity": {
       default: "0",
@@ -489,7 +482,6 @@ export const composerStyles = create({
     transitionDuration: motion.durationFast,
     transitionTimingFunction: motion.easeOut,
   },
-  /** A pasted snippet, scrolling past its bounds. */
   clipboardPreview: {
     display: "block",
     maxWidth: clipboardPreview.maxWidth,
@@ -524,7 +516,6 @@ export const composerStyles = create({
   controlsInset: { paddingInline: space.s2, paddingBlockEnd: space.s2 },
   controlsCompact: { display: "contents" },
   addButtonCompact: { gridColumn: 1, gridRow: 1 },
-  /** Composer actions keep the frame's pill corners. */
   pillButton: { borderRadius: radius.pill },
   addMenu: { width: 260, maxWidth: "calc(100vw - 24px)" },
   modelSlot: {
@@ -549,11 +540,6 @@ export const composerStyles = create({
     width: "var(--anchor-width)",
     maxHeight: "min(280px, var(--available-height))",
     padding: 0,
-    /**
-     * The frame clips and carries the inset hairline; the list inside scrolls.
-     * An absolutely positioned hairline on a scroll container would travel
-     * with the content.
-     */
     overflow: "clip",
     opacity: 1,
     scale: 1,
@@ -623,7 +609,6 @@ export const composerStyles = create({
   suggestionMatch: { color: role.contentSecondary, fontWeight: "inherit" },
   suggestionGroupStart: {
     marginBlockStart: pane.dividerGap,
-    // A section divider sits in the gap, independent of the row highlight.
     "::before": {
       content: '""',
       position: "absolute",
@@ -682,10 +667,6 @@ export const composerStyles = create({
     overflowWrap: "anywhere",
     textWrap: "pretty",
   },
-  /**
-   * One row per folder on the way to the mention, each stepped in from the one
-   * above it, so the path reads as the walk down to what was mentioned.
-   */
   suggestionPreviewPath: {
     display: "flex",
     flexDirection: "column",
@@ -700,10 +681,6 @@ export const composerStyles = create({
     minWidth: 0,
     color: role.contentSecondary,
   },
-  /**
-   * The same box Pierre's file-type glyph occupies, so folder and file rows
-   * hang their labels on one line.
-   */
   suggestionPreviewPathIcon: {
     display: "inline-flex",
     alignItems: "center",

@@ -25,13 +25,13 @@ import { Titlebar } from "./chrome/titlebar.tsx";
 import { PaneControllerProvider } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
 import { keys, queryClient, readSession, useHostRelease } from "./queries.ts";
-import { routeChatExists } from "./route-session.ts";
-import { directoryWatch } from "./sdk.tsx";
+import { routeSessionExists } from "./route-session.ts";
+import { sessionsWatch } from "./sdk.tsx";
 import { startupConnection } from "./startup.ts";
 import { preferences, useSetting } from "./preferences/index.ts";
 import { loadHostSettings } from "./preferences/host.ts";
 import type { ShellSearch } from "./shell/search.ts";
-import { ThreadScreen } from "./screens/thread.tsx";
+import { SessionScreen } from "./screens/session-screen.tsx";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell } from "./theme/schema.stylex.ts";
@@ -244,7 +244,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
 function WorkspaceRouteStage(): ReactElement {
   const page = useStagePage();
 
-  if (page === undefined) return <ThreadScreen />;
+  if (page === undefined) return <SessionScreen />;
 
   switch (page.kind) {
     case "customize":
@@ -297,7 +297,7 @@ const indexRoute = createRoute({
     if (preferences.startupDestination.get() === "new-chat") return;
 
     const directory =
-      directoryWatch("roots").value ??
+      sessionsWatch("roots").value ??
       queryClient.getQueryData<readonly SessionInfo[]>(keys.firstFrameRoots);
 
     if (directory === undefined) {
@@ -306,11 +306,11 @@ const indexRoute = createRoute({
       return;
     }
 
-    const sessionId = lastChat(directory);
+    const sessionId = lastSession(directory);
 
     if (sessionId !== undefined) {
       throw redirect({
-        to: threadRoute.to,
+        to: sessionRoute.to,
         params: { sessionId },
         replace: true,
       });
@@ -318,12 +318,12 @@ const indexRoute = createRoute({
   },
 });
 
-function lastChat(directory: readonly SessionInfo[]): SessionId | undefined {
+function lastSession(directory: readonly SessionInfo[]): SessionId | undefined {
   return directory.find((session) => session.parent === null && !session.archived)?.id;
 }
 
 function openLastChatOnArrival(router: AppRouter): void {
-  const directory = directoryWatch("roots");
+  const directory = sessionsWatch("roots");
   const controller = new AbortController();
   const options = { capture: true, signal: controller.signal } as const;
   const stop = (): void => controller.abort();
@@ -335,10 +335,10 @@ function openLastChatOnArrival(router: AppRouter): void {
 
     if (value === undefined && error === undefined) return;
     stop();
-    const sessionId = value === undefined ? undefined : lastChat(value);
+    const sessionId = value === undefined ? undefined : lastSession(value);
 
     if (sessionId === undefined || router.state.location.pathname !== "/") return;
-    void router.navigate({ to: threadRoute.to, params: { sessionId }, replace: true });
+    void router.navigate({ to: sessionRoute.to, params: { sessionId }, replace: true });
   });
 
   controller.signal.addEventListener("abort", leave, { once: true });
@@ -370,7 +370,7 @@ function RouteNotFound(): ReactElement {
   );
 }
 
-const threadRoute = createRoute({
+const sessionRoute = createRoute({
   getParentRoute: () => workspaceRoute,
   path: "/session/$sessionId",
   params: {
@@ -380,11 +380,11 @@ const threadRoute = createRoute({
   errorComponent: RouteError,
 });
 
-function leaveMissingChat(router: AppRouter): void {
+function leaveMissingSession(router: AppRouter): void {
   const sessionId = currentRouteSession(router);
 
   if (sessionId === undefined) return;
-  void routeChatExists({
+  void routeSessionExists({
     client: queryClient,
     sessionId,
     listed: readDirectory,
@@ -399,7 +399,7 @@ function leaveMissingChat(router: AppRouter): void {
 }
 
 async function readDirectory(): Promise<readonly SessionInfo[]> {
-  const directory = directoryWatch("roots");
+  const directory = sessionsWatch("roots");
   const answered = Promise.withResolvers<void>();
 
   const leave = directory.subscribe(() => {
@@ -433,7 +433,7 @@ const settingsRoute = createRoute({
   component: SettingsSurface,
 });
 
-const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, threadRoute]);
+const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, sessionRoute]);
 
 const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 
@@ -464,7 +464,7 @@ export function createAppRouter({ history }: { history: RouterHistory }) {
   router.subscribe("onResolved", () => {
     if (!router.state.matches.some((match) => match.routeId === settingsRoute.id))
       rememberWorkspaceHref(router.state.location.href);
-    leaveMissingChat(router);
+    leaveMissingSession(router);
   });
 
   return router;
@@ -474,7 +474,7 @@ export type AppRouter = ReturnType<typeof createAppRouter>;
 
 function currentRouteSession(router: AppRouter): SessionId | undefined {
   for (const match of router.state.matches) {
-    if (match.routeId === threadRoute.id) return match.params.sessionId;
+    if (match.routeId === sessionRoute.id) return match.params.sessionId;
   }
 
   return undefined;

@@ -1,8 +1,3 @@
-/**
- * The rail's lists: one flat list of every chat (by recency or as an inbox),
- * or one list per folder. Each list pages its finished chats and draws the
- * open folder's drafts first.
- */
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Button } from "@nyte-ai/ui/button";
@@ -33,30 +28,24 @@ import {
   type ShelfHold,
 } from "./sidebar-view.ts";
 
-/** A chat in the flat list, with the folder it is listed under. */
 export interface ListedSession {
   readonly place: SessionPlace;
   readonly session: SessionInfo;
 }
 
-/** How far each list is revealed past its first page, by list key. */
 export interface ListReveal {
   readonly revealed: (key: string) => number;
-  /** Reveal the next page and move focus to its first row. */
   readonly reveal: (key: string, listId: string, visibleCount: number) => void;
 }
 
-/** What every list shares: the view, the rows' contract, and how lists page. */
 export interface ListContext {
   readonly view: SessionViewSettings;
-  /** The view's filters let drafts through. */
   readonly showDrafts: boolean;
   readonly rail: RailRows;
   readonly reveal: ListReveal;
   readonly onClearFilters: () => void;
 }
 
-/** The open folder's drafts, and the one on screen if a blank pane shows it. */
 interface OpenDrafts {
   readonly drafts: readonly ChatDraft[];
   readonly activeDraftId: string | undefined;
@@ -66,7 +55,6 @@ const COLLAPSED_SESSION_LIMIT = 5;
 
 const SESSION_PAGE_SIZE = 8;
 
-/** A page that would leave a single row behind shows it instead. */
 function sessionPage(total: number, base: number, revealed: number) {
   const fit = (count: number): number => (total - count <= 1 ? total : count);
   const visible = fit(base + revealed);
@@ -93,10 +81,6 @@ export function useListReveal(): ListReveal {
   };
 }
 
-/**
- * Only what draws drafts subscribes, so a draft saving after a typing pause
- * re-renders that alone.
- */
 export function useDrafts(): OpenDrafts {
   const store = usePaneViewStateStore();
   const drafts = useSyncExternalStore(store.subscribe, store.listedDrafts, store.listedDrafts);
@@ -112,7 +96,6 @@ export function useDrafts(): OpenDrafts {
   };
 }
 
-/** The leading groups that fit in `limit` rows, the last one cut to fit. */
 function groupsWithin(
   groups: readonly SessionViewGroup[],
   limit: number,
@@ -225,12 +208,6 @@ function ListedRows({
   );
 }
 
-/**
- * Every chat across folders in one list, ranked by what each needs. As an
- * inbox, what is new stays on top and the rest fold onto shelves; otherwise
- * anything running or waiting always shows and finished chats fold after a
- * few.
- */
 export function ChatsList({
   listId,
   listed,
@@ -239,7 +216,6 @@ export function ChatsList({
   context,
 }: {
   readonly listId: string;
-  /** Undefined until the directory loads. */
   readonly listed: readonly ListedSession[] | undefined;
   readonly hold: ShelfHold | undefined;
   readonly layoutEnabled: boolean;
@@ -357,7 +333,6 @@ export function ChatsList({
   );
 }
 
-/** One folder's chats, grouped as the view says; the open folder's drafts lead. */
 export function FolderList({
   listId,
   place,
@@ -368,9 +343,7 @@ export function FolderList({
 }: {
   readonly listId: string;
   readonly place: SessionPlace;
-  /** Undefined until the directory loads. */
   readonly sessions: readonly SessionInfo[] | undefined;
-  /** The host's current folder, whose drafts this list draws. */
   readonly open: boolean;
   readonly layoutEnabled: boolean;
   readonly context: ListContext;
@@ -431,10 +404,6 @@ export function FolderList({
   );
 }
 
-/**
- * Every folder expands independently over its cached directory. Expansion
- * does not select a workspace or make an IPC request.
- */
 export function WorkspaceRow({
   name,
   path,
@@ -456,7 +425,6 @@ export function WorkspaceRow({
   readonly expanded: boolean;
   readonly onExpandedChange: (expanded: boolean) => void;
   readonly onNewChat: (() => void) | undefined;
-  /** Absent when this workspace's chats are not loaded, so the item does not render. */
   readonly onArchiveAll: (() => void) | undefined;
   readonly onRemove: () => void;
   readonly children: ReactNode;

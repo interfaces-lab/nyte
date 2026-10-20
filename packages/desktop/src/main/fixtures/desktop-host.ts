@@ -17,7 +17,6 @@ export interface TestDesktop {
   readonly home: string;
   readonly fake: FakeModels;
   readonly events: HostEvent[];
-  /** Connects as a window does, over a MessagePort the host serves; `credentials` replaces the endpoint's token. */
   connect(credentials?: CredentialSource): Promise<Connection>;
   close(): Promise<void>;
 }
@@ -26,8 +25,10 @@ export async function testDesktop(
   overrides: Partial<DesktopHostDependencies> & { readonly agent?: BrowserAgent } = {},
 ): Promise<TestDesktop> {
   const { agent, ...dependencies } = overrides;
+
   const home =
     dependencies.home ?? (await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-"))));
+
   const fake = fakeModels();
   const events: HostEvent[] = [];
 
@@ -57,7 +58,7 @@ export async function testDesktop(
 
       return sdk.connect({
         ...endpoint,
-        ...(credentials === undefined ? {} : { credentials }),
+        credentials: credentials ?? endpoint.credentials,
         fetch: portFetch(async () => {
           const { port1, port2 } = new MessageChannel();
           ports.push(port1, port2);

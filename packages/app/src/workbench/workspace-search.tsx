@@ -108,7 +108,6 @@ const styles = create({
     flexShrink: 0,
   },
   toolbar: { display: "flex", alignItems: "center", gap: space.s2, minWidth: 0 },
-  /** The match options sit inside the field and show once it is in use. */
   searchField: {
     "--_search-options-opacity": {
       default: "0",
@@ -212,7 +211,6 @@ const styles = create({
     fontFamily: type.fontSans,
     fontSize: "inherit",
   },
-  // Keep the match visible even when the host returns 80 columns of leading context.
   prefix: { maxWidth: "35%", overflow: "hidden", textOverflow: "ellipsis" },
   suffix: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
   match: {
@@ -266,6 +264,7 @@ export function WorkspaceSearch({
   const search = useWorkspaceSearch(
     !active || query === "" || waiting ? undefined : debouncedInput,
   );
+
   const root = useHostState().data.workspace?.path ?? "";
 
   const state: SearchState =

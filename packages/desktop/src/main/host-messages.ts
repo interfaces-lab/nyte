@@ -17,7 +17,6 @@ export interface HostProcessOptions {
   readonly version: string;
   readonly account: AccountState | null;
   readonly openDelayMs: number | undefined;
-  /** The token windows already hold, kept so a restarted host accepts them. */
   readonly token?: string;
 }
 
@@ -47,7 +46,6 @@ export type MainMessage =
   | { readonly kind: "release"; readonly window: HostWindow }
   | { readonly kind: "resume" }
   | { readonly kind: "account"; readonly state: AccountState }
-  /** Carries a window's MessagePort for the host to serve. */
   | { readonly kind: "port" }
   | { readonly kind: "close" };
 

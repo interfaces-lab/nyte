@@ -1,9 +1,3 @@
-/**
- * Remote access through the built-in Cloudflare plugin, end to end on this
- * machine: the real plugin, the real listener on its fixed loopback port, and
- * a stand-in `cloudflared` that reports one connection and the dashboard's
- * routes. Status codes are read from the server, not assumed.
- */
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -34,7 +28,6 @@ const HOSTNAME = "nyte.example.test";
 
 const ORIGIN = `https://${HOSTNAME}`;
 
-/** Written by the stand-in to stderr; it must never reach state, events, or errors. */
 const LEAK = "cloudflared-output-that-must-stay-in-main";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -54,7 +47,6 @@ function encodeToken(body: TunnelTokenFields): string {
   return Buffer.from(JSON.stringify(body)).toString("base64");
 }
 
-/** A dashboard-shaped token: standard base64 of `{a, s, t}` with `s` itself base64. */
 function tunnelToken(account = "account-fixture"): string {
   return encodeToken({ a: account, s: randomBytes(32).toString("base64"), t: randomUUID() });
 }
@@ -98,11 +90,6 @@ interface Fixture {
   readonly cloudflared: string;
 }
 
-/**
- * The stand-in reports a connection and routes for `port`, unless `gate`
- * names a file it waits for first. On SIGTERM it records whether the
- * listener's port still accepted a connection, then exits.
- */
 async function fixture(options: { readonly gate?: string } = {}): Promise<Fixture> {
   const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-tunnel-")));
   cleanups.push(async () => {
@@ -189,7 +176,6 @@ async function configure(
   return token;
 }
 
-/** Start over the tunnel and wait until the stand-in's routes are verified. */
 async function serve(host: DesktopHost): Promise<void> {
   const started = await host.call(1, "host.remote.start", { reach: "cloudflare" });
   assert.equal(started.kind, "serving");

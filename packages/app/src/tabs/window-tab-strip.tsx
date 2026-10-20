@@ -21,12 +21,9 @@ export type WindowTabSplit = "right" | "down";
 
 export interface WindowTabItem {
   readonly id: string;
-  /** The focused place's title. */
   readonly title: string;
-  /** Hover text: the title, or both pane titles of a split. */
   readonly tooltip: string;
   readonly glyph: ReactNode;
-  /** A chat in this background tab finished since it was last seen. */
   readonly unread: boolean;
   readonly split: WindowTabSplit | undefined;
 }
@@ -34,7 +31,6 @@ export interface WindowTabItem {
 export interface WindowTabStripProps {
   readonly tabs: readonly WindowTabItem[];
   readonly activeTabId: string;
-  /** ⌘ keycaps on macOS, Ctrl elsewhere. */
   readonly mac: boolean;
   readonly onActivate: (tabId: string) => void;
   readonly onClose: (tabId: string) => void;
@@ -53,7 +49,6 @@ interface HeldKeys {
 
 const RELEASED: HeldKeys = { meta: false, ctrl: false, digit: undefined };
 
-/** The modifier lights while held and the digit while pressed, so the tooltip answers the hand. */
 function useHeldKeys(): HeldKeys {
   const [held, setHeld] = useState<HeldKeys>(RELEASED);
 
@@ -82,7 +77,6 @@ function useHeldKeys(): HeldKeys {
   return held;
 }
 
-/** Middle-click closes, and the browser's autoscroll must not start first. */
 function TabItem({
   tab,
   position,

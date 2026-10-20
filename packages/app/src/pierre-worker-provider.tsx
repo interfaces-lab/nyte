@@ -13,23 +13,8 @@ import { useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { bundledLanguages } from "shiki";
 
-/**
- * At most half the cores, within reason: highlighting shares the machine with
- * the agent. Slots start their workers only under load; see `OnDemandWorker`.
- */
 const POOL_SIZE = Math.max(2, Math.min(6, Math.floor((navigator.hardwareConcurrency || 4) / 2)));
 
-/**
- * One pool slot, whose worker starts with the slot's first render request.
- * Pierre's pool creates every slot up front and waits for each to initialize,
- * so a slot without a worker answers setup requests itself and replays them,
- * in order, to each worker it starts; the worker's successful answers to
- * those are dropped. A replayed request that fails means the worker cannot
- * render: the render in flight fails with that error, and the next render
- * starts a new worker. The pool hands a task to its first idle slot, so a
- * second worker starts only while the first is busy: one diff costs one
- * worker, and a review of many grows the pool up to `POOL_SIZE`.
- */
 class OnDemandWorker extends EventTarget implements Worker {
   onmessage: ((this: Worker, event: MessageEvent<WorkerResponse>) => void) | null = null;
 
@@ -126,26 +111,16 @@ class OnDemandWorker extends EventTarget implements Worker {
   }
 }
 
-/**
- * How long a pool outlives its last surface. A transcript scrolling past its
- * diffs, or a tab switch, must not spawn workers and reload grammars again.
- */
 const POOL_IDLE_MS = 30_000;
 
-/**
- * The cache keeps 240 highlights per file and per diff: enough that a review's
- * every file stays warm while it scrolls in and out of the viewport.
- */
 const poolOptions = {
   workerFactory: () => new OnDemandWorker(),
   poolSize: POOL_SIZE,
   totalASTLRUCacheSize: 240,
 } satisfies WorkerPoolOptions;
 
-/** Workers highlight with this pair; the editor's own tokenizer must match it. */
 export const PIERRE_THEME = { light: "github-light", dark: "github-dark" } as const;
 
-/** A selected tree row carries a hairline, so it reads apart from the hovered one. */
 export const PIERRE_TREE_CSS = `
 :host {
   --trees-action-lane-width-override: 24px;
@@ -165,11 +140,6 @@ export const PIERRE_TREE_CSS = `
 }
 `;
 
-/**
- * Pierre reads token weight, style, and decoration through light-dark(), which
- * accepts only colors, so Chromium drops bold and italic. The paired GitHub
- * themes agree on these, so the light values serve both schemes.
- */
 export const PIERRE_TOKEN_CSS = `
 [data-line] span,
 [data-edit-prediction-suffix] span {
@@ -192,7 +162,6 @@ interface SharedPool {
 
 let shared: SharedPool | undefined;
 
-/** A pool with no surface is on its idle clock from the moment it exists. */
 function sharedPool(): WorkerPoolManager {
   if (shared === undefined) {
     const entry: SharedPool = {
@@ -215,7 +184,6 @@ function releaseIdle(entry: SharedPool): void {
   if (shared === entry) shared = undefined;
 }
 
-/** A mounted surface holds the pool; the last one to leave starts the idle clock. */
 function retain(): () => void {
   const entry = shared;
 
@@ -246,7 +214,6 @@ function escapeHtml(text: string): string {
   return text.replaceAll(/[&<>"]/gu, (character) => HTML_ESCAPES.get(character) ?? character);
 }
 
-/** A line's tokens as HTML: each token a span carrying its `--diffs-token-*` colours. */
 function tokenHtml(node: HighlightNode): string {
   if (node.type === "text") return escapeHtml(node.value);
 
@@ -263,14 +230,6 @@ function tokenHtml(node: HighlightNode): string {
     : `<span style="${escapeHtml(String(style))}">${children}</span>`;
 }
 
-/**
- * A fenced code block's lines as HTML, highlighted by the pool the diffs and
- * the editor use: one tokenizer, one theme pair and one set of grammars for
- * every highlight in the window. Each line is a `div` in Pierre's output; here
- * lines are joined with newlines for a `pre`, and every text node is escaped.
- * Undefined when shiki has no grammar for the fence's language or the pool
- * fails, and the block stays plain.
- */
 export async function highlightCode(
   code: string,
   language: string,
@@ -300,15 +259,6 @@ export async function highlightCode(
   }
 }
 
-/**
- * Wrap each Pierre surface. Every surface shares one pool, created by the
- * first and kept for a while after the last leaves, so scrolling a transcript
- * past its diffs or switching tabs never restarts the workers. Nothing runs
- * once the grace period passes with no diff or editor on screen.
- *
- * The subscription is the ownership: React subscribes on commit and
- * unsubscribes on unmount, and the pool never changes while a surface holds it.
- */
 export function PierreWorkerProvider({ children }: { readonly children: ReactNode }): ReactElement {
   const pool = useSyncExternalStore(retain, sharedPool, sharedPool);
 

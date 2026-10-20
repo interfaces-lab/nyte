@@ -1,6 +1,5 @@
 import type { UpdateState } from "./bridge.ts";
 
-/** The one label for Check for Updates, in the Electron menu and the sidebar alike. */
 export function updateLabel(state: UpdateState): string {
   switch (state.kind) {
     case "idle":

@@ -12,7 +12,6 @@ import { trayStyles } from "../../theme/tray.stylex.ts";
 import { occludes } from "../../workbench/browser-occlusion.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-/** Parts every composer tray draws: its pill, rows, header actions, and notices. */
 export const trayParts = create({
   root: {
     position: "relative",
@@ -43,10 +42,6 @@ export const trayParts = create({
   error: { color: role.contentSecondary },
 });
 
-/**
- * Anchors a tray above the composer and measures how tall it may grow before
- * it would cover the transcript's first line.
- */
 export function useTrayRoot(viewport: HTMLElement | null) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [availableHeight, setAvailableHeight] = useState(260);
@@ -144,11 +139,6 @@ function TrayContent({
   );
 }
 
-/**
- * The surface every composer tray opens into. Escape closes it, and a tray
- * given a `focusKey` takes focus whenever that key changes; one without keeps
- * focus where the user left it.
- */
 export function Tray({
   open,
   id,

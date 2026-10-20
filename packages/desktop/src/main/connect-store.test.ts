@@ -1,8 +1,3 @@
-/**
- * The account store against a real temporary directory: every write is what
- * the next read and the next process see, and a write that fails leaves the
- * store failed rather than half-written.
- */
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

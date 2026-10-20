@@ -8,12 +8,10 @@ function bridge(): NyteBridge {
   return installed;
 }
 
-/** Called once by the host's entry before anything reads `nyte`. */
 export function installBridge(value: NyteBridge): void {
   installed = value;
 }
 
-/** Every read goes through the installed bridge, so importing this module binds nothing. */
 export const nyte: NyteBridge = {
   get clientSurface() {
     return bridge().clientSurface;

@@ -1,9 +1,3 @@
-/**
- * The window's commands: what a shortcut, the menu bar and the palette run,
- * the same way wherever they come from. A command for the panes first
- * uncovers them from Settings or a page; one that can't apply now answers
- * false, so its key stays with whatever else wants it.
- */
 import type { RegisteredRouter } from "@tanstack/react-router";
 import type { AppMenuAction, HostState } from "../bridge.ts";
 import { shellActions } from "../chrome/shell-state.ts";
@@ -44,7 +38,6 @@ const COMMANDS = [
   "focus-pane",
 ] as const satisfies readonly AppMenuAction[];
 
-/** The window command a client action names, if it is one. */
 export function windowCommand(id: string): AppMenuAction | undefined {
   return COMMANDS.find((command) => command === id);
 }
@@ -53,7 +46,6 @@ function settingsOpen(router: RegisteredRouter): boolean {
   return router.state.matches.some((match) => match.routeId === "/settings/$section");
 }
 
-/** Leave Settings and any page, so the panes and workbench show. */
 function uncoverPanes(router: RegisteredRouter): void {
   if (settingsOpen(router)) closeSettings(router);
   shellActions.showWorkspace();
@@ -78,7 +70,6 @@ function openTerminal(): void {
   void terminalActions.create({ id, workspacePath: workspacePath ?? null });
 }
 
-/** Hide the terminal on screen, else show the first one, else open one. */
 function toggleTerminal(): void {
   const { workspacePath, viewKey, view } = workbenchView();
 

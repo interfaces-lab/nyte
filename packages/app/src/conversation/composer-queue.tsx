@@ -12,25 +12,18 @@ import { UserMessageText, messageImages } from "./message-content.tsx";
 import { contentDraftText } from "./message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 
-/** What one queued row is doing right now; absent means idle. */
 export type PendingRowAction =
   | { readonly kind: "cancelling" }
   | { readonly kind: "sending" }
   | { readonly kind: "failed"; readonly message: string };
 
 interface ComposerQueueProps {
-  /** Follow-ups the host holds for the live run. */
   readonly pending: readonly UserMessage[];
-  /** Sends the host has not taken yet. */
   readonly unsent: readonly UserMessage[];
   readonly rowActions: ReadonlyMap<string, PendingRowAction>;
-  /** The queued message the composer is editing. */
   readonly editingId: string | undefined;
-  /** A row can go into the composer for editing now. */
   readonly canEdit: boolean;
-  /** Why editing is blocked, when the composer can say. */
   readonly editBlocked: string | undefined;
-  /** Enter on the empty composer steers with the first queued follow-up. */
   readonly enterSteers: boolean;
   readonly mac: boolean;
   readonly onEdit: (message: UserMessage) => void;
@@ -38,9 +31,7 @@ interface ComposerQueueProps {
   readonly onCancel: (message: UserMessage) => void;
   readonly onRemoveUnsent: (message: UserMessage) => void;
   readonly onSendUnsentNow: (message: UserMessage) => void;
-  /** A row refused an edit; the composer says why. */
   readonly onEditBlocked: (reason: string) => void;
-  /** Focus goes back to the editor. */
   readonly onReturn: () => void;
 }
 
@@ -65,12 +56,6 @@ function QueuedMessageContent({ content }: { readonly content: UserContent }): R
   );
 }
 
-/**
- * The queued follow-ups above the composer, one keyboard stop: arrows move
- * between rows, Enter sends one now, Space or Right Arrow edits it, the
- * platform delete chord removes it and Escape returns to the editor. A row
- * action that holds focus hands it to the editor before its button goes away.
- */
 export function ComposerQueue({
   pending,
   unsent,

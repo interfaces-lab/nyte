@@ -1,39 +1,24 @@
-/**
- * The one client preference store. A preference owns a slot in localStorage
- * and keeps its decoded value in memory, so reads are synchronous and work
- * before first paint. Another window's write arrives through the `storage`
- * event; a write here touches only this preference's slot.
- */
 import { useSyncExternalStore } from "react";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-/** A localStorage key, or one field of the JSON object stored at that key. */
 interface PreferenceSlot {
   readonly key: string;
   readonly field?: string;
 }
 
-/**
- * What a component reads and a Settings row changes. Client preferences
- * implement it here; host settings implement it in `host.ts`.
- */
 export interface Setting<T> {
-  /** Undefined only for a host setting that has not loaded. */
   readonly get: () => T | undefined;
   readonly set: (value: T) => void;
   readonly subscribe: (listener: () => void) => () => void;
-  /** False where this host can't back the value: host settings on the web app. */
   readonly available: () => boolean;
 }
 
-/** A client preference always has a value: what was stored, or its default. */
 export interface Preference<T> extends Setting<T> {
   readonly get: () => T;
 }
 
-/** The setting's value, re-rendering only when that one setting changes. */
 export function useSetting<T>(setting: Preference<T>): T;
 export function useSetting<T>(setting: Setting<T>): T | undefined;
 export function useSetting<T>(setting: Setting<T>): T | undefined {
@@ -45,7 +30,6 @@ interface Reloadable {
   reload(): void;
 }
 
-/** Every defined preference, by the localStorage key it reads, for `storage` events. */
 const reloadable: Reloadable[] = [];
 
 const StoredRecord = Type.Record(Type.String(), Type.Unknown());
@@ -58,7 +42,6 @@ function storage(): Storage | undefined {
   }
 }
 
-/** JSON, except that builds before this store wrote enum values bare (`steer`, `last-session`). */
 function storedValue(raw: string): unknown {
   try {
     return JSON.parse(raw);
@@ -74,7 +57,6 @@ function recordAt(raw: string | null): Readonly<Record<string, unknown>> {
   return Value.Check(StoredRecord, parsed) ? parsed : {};
 }
 
-/** Missing, unparseable, or invalid reads as the default, for this preference alone. */
 function read<S extends TSchema>(slot: PreferenceSlot, schema: S, fallback: Static<S>): Static<S> {
   const raw = storage()?.getItem(slot.key) ?? null;
 
@@ -84,11 +66,6 @@ function read<S extends TSchema>(slot: PreferenceSlot, schema: S, fallback: Stat
   return Value.Check(schema, stored) ? stored : fallback;
 }
 
-/**
- * Writes this slot only. A field is merged into the record as storage holds it
- * now, not as this window last read it, so a sibling another window just wrote
- * survives. Persistence is best-effort: the in-memory value stands.
- */
 function write(slot: PreferenceSlot, value: unknown): void {
   const store = storage();
 

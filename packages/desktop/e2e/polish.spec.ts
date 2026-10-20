@@ -453,7 +453,7 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
         desktop,
         "composer",
         "streaming",
-        page.getByRole("form", { name: "Message composer" }),
+        page.getByRole("form", { name: "Message", exact: true }),
       );
       await page.emulateMedia({ reducedMotion: "reduce" });
       run.notes["moving animations under reduced motion"] = await movingAnimations(page);
@@ -496,7 +496,7 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
         desktop,
         "composer",
         "offline",
-        page.getByRole("form", { name: "Message composer" }),
+        page.getByRole("form", { name: "Message", exact: true }),
       );
       model.offline = false;
     },
@@ -618,7 +618,7 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
         desktop,
         "composer",
         "narrow",
-        page.getByRole("form", { name: "Message composer" }),
+        page.getByRole("form", { name: "Message", exact: true }),
       );
 
       if (JUDGED) expect(run.notes["narrow: horizontal overflow (px)"]).toBe(0);

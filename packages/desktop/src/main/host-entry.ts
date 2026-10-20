@@ -140,47 +140,48 @@ function open(options: HostProcessOptions): void {
   port.on(
     "message",
     ({ data, ports }: { readonly data: MainMessage; readonly ports: MessagePortMain[] }) => {
-    switch (data.kind) {
-      case "ask":
-      case "abort":
-      case "settle":
-        rpc.receive(data);
+      switch (data.kind) {
+        case "ask":
+        case "abort":
+        case "settle":
+          rpc.receive(data);
 
-        return;
-      case "release":
-        host.releaseWindow(data.window);
+          return;
+        case "release":
+          host.releaseWindow(data.window);
 
-        return;
-      case "resume":
-        host.resume();
+          return;
+        case "resume":
+          host.resume();
 
-        return;
-      case "account":
-        account?.changed(data.state);
-        host.accountChanged();
+          return;
+        case "account":
+          account?.changed(data.state);
+          host.accountChanged();
 
-        return;
-      case "close":
-        void host.close().finally(() => {
-          post({ kind: "closed" });
-          process.exit(0);
-        });
+          return;
+        case "close":
+          void host.close().finally(() => {
+            post({ kind: "closed" });
+            process.exit(0);
+          });
 
-        return;
-      case "port":
-        for (const received of ports)
-          servePort(mainPortEnd(received), (request) => host.fetch(request));
+          return;
+        case "port":
+          for (const received of ports)
+            servePort(mainPortEnd(received), (request) => host.fetch(request));
 
-        return;
-      case "open":
-        return;
-      default: {
-        const _exhaustive: never = data;
+          return;
+        case "open":
+          return;
+        default: {
+          const _exhaustive: never = data;
 
-        return _exhaustive;
+          return _exhaustive;
+        }
       }
-    }
-  });
+    },
+  );
 }
 
 function mainPortEnd(port: MessagePortMain): PortEnd {

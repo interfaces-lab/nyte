@@ -34,13 +34,8 @@ import {
   type UsageRow,
 } from "./usage-view.ts";
 
-/** Rows past this are counted in one line: a ranked list is read from the top. */
 const MAX_ROWS = 6;
 
-/**
- * A window past these steps changes colour: warm says plan the rest of the
- * window, hot says the next request may not go through.
- */
 const LIMIT_WARM_PERCENT = 70;
 
 const LIMIT_HOT_PERCENT = 90;
@@ -455,7 +450,6 @@ function BreakdownTable({
   );
 }
 
-/** The heading and the query keep the day the panel opened on, even past midnight. */
 export function UsageSettings(): ReactElement {
   const [openedAt] = useState(() => Date.now());
   const [range, setRange] = useUsageRange();

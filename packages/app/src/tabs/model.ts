@@ -1,11 +1,3 @@
-/**
- * A window holds tabs. A tab shows either one page (Customize, Environments)
- * or panes: one, or a split of two, each holding a new chat or a chat.
- *
- * History is per tab. A pane keeps its own entries; the tab keeps the views
- * it moved between. Back walks the focused pane first, then the tab, so an
- * unsplit tab reads as one list and a page returns to the split it covered.
- */
 import type { SessionId } from "@nyte-ai/sdk";
 import {
   activePane,
@@ -22,7 +14,6 @@ export type Page =
   | {
       readonly kind: "customize";
       readonly section: string | undefined;
-      /** The chat whose plugins it shows, if one was focused when it opened. */
       readonly sessionId: SessionId | undefined;
     }
   | { readonly kind: "environments"; readonly section: string | undefined };
@@ -63,10 +54,8 @@ export type OpenTarget = "here" | "background" | "foreground";
 
 export type WindowAction =
   | { readonly kind: "open"; readonly place: Place; readonly target: OpenTarget }
-  /** A pane controller's proposal: `layout` is what `action` makes of the current panes. */
   | { readonly kind: "layout"; readonly action: PaneLayoutAction; readonly layout: PaneLayout }
   | { readonly kind: "page-section"; readonly section: string }
-  /** Uncover the panes a page replaced, as a step Back can undo. */
   | { readonly kind: "leave-page" }
   | { readonly kind: "new-tab" }
   | { readonly kind: "close-tab"; readonly tabId: string }
@@ -112,14 +101,12 @@ export function activeTab(state: WindowState): Tab {
   return tab;
 }
 
-/** What the tab shows where focus is: its page, or its focused pane's place. */
 export function tabPlace(tab: Tab): Place {
   const view = currentView(tab);
 
   return view.kind === "page" ? view.page : activeSelection(view.layout);
 }
 
-/** The panes a tab last showed; a page covering them keeps them for Back. */
 export function tabLayout(tab: Tab): PaneLayout {
   for (let index = tab.index; index >= 0; index -= 1) {
     const view = tab.views[index];
@@ -130,7 +117,6 @@ export function tabLayout(tab: Tab): PaneLayout {
   return BLANK_LAYOUT;
 }
 
-/** Every place on screen in the tab, focused pane first. */
 export function tabPlaces(tab: Tab): readonly Place[] {
   const view = currentView(tab);
 
@@ -169,12 +155,10 @@ function withTab(state: WindowState, tab: Tab): WindowState {
   };
 }
 
-/** Replace the view on screen. Layout changes are not navigation, so nothing stacks. */
 function withView(tab: Tab, view: View): Tab {
   return { ...tab, views: tab.views.with(tab.index, view) };
 }
 
-/** Navigating drops the views ahead, like a browser's forward list. */
 function pushView(tab: Tab, view: View): Tab {
   return { ...tab, views: [...tab.views.slice(0, tab.index + 1), view], index: tab.index + 1 };
 }
@@ -197,11 +181,6 @@ function withSelection(layout: PaneLayout, paneId: PaneId, selection: PaneSelect
     : { ...layout, secondary: selection };
 }
 
-/**
- * Record a layout change in the panes' histories. Selecting something new
- * stacks the old entry; a new chat turning into the chat it started, and every
- * structural change, replace in place.
- */
 function recordLayout(tab: Tab, view: PanesView, next: PaneLayout, action: PaneLayoutAction): Tab {
   const navigation = action.kind === "select" || action.kind === "select-in-pane";
   let moved = false;
@@ -267,7 +246,6 @@ function openInTab(
   return insertTab(state, newTab(createId(), place), at, activate);
 }
 
-/** An untouched new chat has nothing to bring back, so reopening skips it. */
 function worthReopening(tab: Tab): boolean {
   const view = currentView(tab);
 
@@ -372,7 +350,6 @@ function reduceLayout(
   return withTab(state, recordLayout(tab, view, layout, action));
 }
 
-/** `activate-index` counts from the first tab: the ninth shortcut means the ninth tab, not the last. */
 export function reduce(
   state: WindowState,
   action: WindowAction,

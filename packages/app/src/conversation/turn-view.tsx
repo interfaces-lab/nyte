@@ -11,12 +11,7 @@ import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ReactElement, ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
-import {
-  failureNotice,
-  showsText,
-  showsThinking,
-  showsTool,
-} from "@nyte-ai/plugin/client/presentation";
+import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { TextMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
@@ -452,7 +447,6 @@ export function ChangesCard({
   onOpenChanges,
 }: {
   readonly files: SessionView["changes"];
-  /** Opens the chat's changes, at `path` when given. */
   readonly onOpenChanges: (path: string | null) => void;
 }): ReactElement {
   const [expanded, setExpanded] = useState(false);
@@ -590,11 +584,6 @@ function TurnPartView({
       />
     );
   }
-
-  if (showsText(message))
-    return message.state.markdown.trim() === "" ? null : (
-      <Prose markdown={message.state.markdown} />
-    );
 
   if (showsThinking(message))
     return (

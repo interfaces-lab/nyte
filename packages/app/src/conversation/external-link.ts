@@ -6,7 +6,6 @@ import { errorMessage } from "../errors.ts";
 import { preferences } from "../preferences/index.ts";
 import type { ReferenceOpener } from "./reference-opener.tsx";
 
-/** Ask about a link whose host isn't trusted, then open, copy, or trust it as answered. */
 async function confirmAndOpen(url: URL): Promise<void> {
   const trusted = preferences.trustedLinkHosts.get();
 
@@ -23,7 +22,6 @@ async function confirmAndOpen(url: URL): Promise<void> {
   openExternal(url.href);
 }
 
-/** Opens a link in the system browser, asking first unless its host was trusted. */
 function openExternalLink(href: string): void {
   const url = URL.parse(href);
 
@@ -37,7 +35,6 @@ function openExternalLink(href: string): void {
   );
 }
 
-/** Opens a link from conversation content where the user chose: the workbench browser, or the system browser. */
 export function openConversationLink(href: string, opener: ReferenceOpener | undefined): void {
   const url = URL.parse(href);
 

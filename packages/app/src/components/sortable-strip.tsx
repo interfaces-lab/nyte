@@ -1,10 +1,3 @@
-/**
- * Drag-to-reorder for a horizontal strip, with opencode's rules: an item moves
- * after 4px (8 on touch), only sideways and only inside its list; pressing a
- * control inside an item never starts a drag; picking an item up selects it;
- * the drop lands without an animation; Escape cancels; and the list scrolls
- * near its edges. Fixed items neither move nor take a dragged item.
- */
 import { DndContext, PointerSensor, useDraggable, useSensor, useSensors } from "@dnd-kit/core";
 import type { Announcements, PointerSensorOptions, PointerSensorProps } from "@dnd-kit/core";
 import { create, props } from "@stylexjs/stylex";
@@ -23,12 +16,10 @@ const styles = create({
     },
     transitionTimingFunction: motion.easeOut,
   },
-  /** The item under the pointer follows it exactly; only its neighbours ease aside. */
   dragging: { position: "relative", zIndex: 1, transitionDuration: "0s" },
   shift: (x: number) => ({ transform: `translateX(${x}px)` }),
 });
 
-/** A control inside an item keeps its own press; the tab itself may be a button. */
 const CONTROL = 'a[href], button, input, select, textarea, [role="button"]';
 
 function grabbable(event: PointerEvent): boolean {
@@ -69,7 +60,6 @@ const silent: Announcements = {
   onDragCancel: () => undefined,
 };
 
-/** Positions are in the list's scrolled content, so a scroll mid-drag cannot shift the maths. */
 interface Drag {
   readonly id: string;
   readonly order: readonly string[];
@@ -78,7 +68,6 @@ interface Drag {
   readonly gap: number;
   readonly grabAt: number;
   readonly offset: number;
-  /** The index the item started at. */
   readonly from: number;
   readonly target: number;
 }
@@ -129,7 +118,6 @@ function startDrag(
   };
 }
 
-/** A neighbour gives way once the leading edge of the dragged item passes its centre. */
 function moveDrag(drag: Drag, list: HTMLElement, clientX: number): Drag {
   const left = drag.lefts.get(drag.id) ?? 0;
   const width = drag.widths.get(drag.id) ?? 0;
@@ -157,7 +145,6 @@ function moveDrag(drag: Drag, list: HTMLElement, clientX: number): Drag {
   return { ...drag, offset: placed - left, target };
 }
 
-/** How far an item slides to make room while another passes it. */
 function slideDistance(drag: Drag, id: string): number {
   if (id === drag.id) return drag.offset;
 
@@ -179,7 +166,6 @@ interface SortableState {
 
 const SortableContext = createContext<SortableState | undefined>(undefined);
 
-/** The pointer and the list's scroll both move the dragged item, so either recomputes it. */
 export function SortableList({
   ids,
   listRef,
@@ -188,10 +174,8 @@ export function SortableList({
   children,
 }: {
   readonly ids: readonly string[];
-  /** The scrolling list the items live in. */
   readonly listRef: RefObject<HTMLElement | null>;
   readonly onPick: (id: string) => void;
-  /** The full new order, and the item that moved. */
   readonly onReorder: (order: readonly string[], id: string) => void;
   readonly children: ReactNode;
 }): ReactElement {
@@ -282,7 +266,6 @@ export function SortableList({
   );
 }
 
-/** One item of a `SortableList`: the element that moves, and that a press picks up. */
 export function SortableItem({
   id,
   xstyle,

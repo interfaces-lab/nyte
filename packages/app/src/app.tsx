@@ -28,11 +28,6 @@ function focusedSession(): SessionId | undefined {
   return selection.kind === "session" ? selection.sessionId : undefined;
 }
 
-/**
- * Host events reshape the world; queries re-read it. A folder opening or
- * closing only refreshes caches, then asks the active route to decide again
- * against the newest host state.
- */
 function useHostEvents(router: AppRouter): void {
   useMountEffect(() => {
     const unsubscribe = nyte.host.onEvent((event) => {
@@ -103,7 +98,6 @@ function useClientPlugins(): void {
   useMountEffect(() => watchClientPlugins(focusedSession, windowTabs.subscribe));
 }
 
-/** Re-attaches the window's saved shells as it loads, shown or not, so the host keeps them. */
 function useSavedShells(): void {
   useMountEffect(() => {
     reattachShells(

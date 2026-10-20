@@ -22,7 +22,7 @@ async function watchForConnectForm(page: Page): Promise<void> {
 }
 
 async function expectShellWithoutConnectForm(page: Page): Promise<void> {
-  await expect(page.getByRole("form", { name: "Message composer" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Message", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Connect to a Desktop" })).toHaveCount(0);
   await expect(page.locator("html")).not.toHaveAttribute("data-saw-connect-form");
 }

@@ -1,21 +1,12 @@
-/**
- * The public build configuration for account remote access. Every value is
- * public by design and reaches main through `MAIN_VITE_*` at build time. A
- * build missing any of them, or carrying one that is not a canonical HTTPS
- * origin or hostname, has no account remote access at all: nothing asks for a
- * session token or a broker answer on its behalf.
- */
 import { namesBrokerOrigin } from "@nyte-ai/connect";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { checkedFrontendApiHost } from "../account/policy.ts";
 
 export interface ConnectConfig {
-  /** `CONNECT_ORIGIN`, a canonical `https://` origin: the broker and its relay. */
   readonly origin: string;
   readonly clerk: {
     readonly publishableKey: string;
-    /** The Frontend API host without scheme or port, such as `clerk.example.com`. */
     readonly frontendApiHost: string;
   };
 }

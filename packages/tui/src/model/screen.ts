@@ -7,7 +7,7 @@ import { readProgramStatus } from "../lib/program-status.ts";
 import type { ProgramStatus } from "../lib/program-status.ts";
 import { unfinishedTask } from "../lib/tasks.ts";
 import type { Task } from "../lib/tasks.ts";
-import { landingMessages } from "../lib/view-helpers.ts";
+import { promptMessages } from "../lib/view-helpers.ts";
 import { liveDialog } from "./choices.ts";
 import type { CompletionModel } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
@@ -218,7 +218,7 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     ),
     welcome:
       (blank !== null ||
-        (view !== null && view.turns.length === 0 && landingMessages(view).length === 0)) &&
+        (view !== null && view.turns.length === 0 && promptMessages(view).length === 0)) &&
       followedShells(state).length === 0,
     followUp: input.followUp,
     selectionActive: state.facts.terminal.selection,

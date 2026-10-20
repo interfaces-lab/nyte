@@ -1,9 +1,3 @@
-/**
- * Scopes. A scope pairs a hue theme with the tinted roles, so everything
- * inside reads that hue: pass `surfaceTheme.blue` or `intent.danger` to
- * `props()` on the element that starts it. Both halves are needed: a role
- * resolved at <html> stays gray below a hue theme alone.
- */
 import { tinted } from "./styles/roles.stylex.ts";
 import {
   blue,
@@ -35,7 +29,6 @@ export const surfaceTheme = {
 
 export type Tint = keyof typeof surfaceTheme;
 
-/** Control intents select a hue by meaning. */
 export const intent = {
   primary: surfaceTheme.blue,
   success: surfaceTheme.green,

@@ -190,16 +190,9 @@ type RowPartProps<Style extends XStyle = XStyle> = StyledProps<
 >;
 
 interface RowOwnProps {
-  /** `lg` is taller, with room for a description under the label. */
   readonly size?: "md" | "lg";
-  /**
-   * Paints the row's own fill on hover, on focus within, and while selected. A
-   * surface that sets `--_row-fill` itself owns every state of it and leaves this off.
-   */
   readonly interactive?: boolean;
-  /** Marks the row current. Surfaces style it through `[data-selected]`. */
   readonly selected?: boolean;
-  /** Hides actions until hover or focus; always visible without hover support. */
   readonly revealActions?: boolean;
 }
 
@@ -208,12 +201,10 @@ type RowProps =
       RowOwnProps & { readonly variant?: "list" })
   | (StyledProps<useRender.ComponentProps<"button">, Restyle<"Row">> &
       RowOwnProps & {
-        /** Makes the row itself the control, a `<button type="button">`, with no `Row.Primary`. */
         readonly variant: "nav";
       })
   | (StyledProps<useRender.ComponentProps<"div">, Restyle<"Row[variant=bare]">> &
       RowOwnProps & {
-        /** Keeps the activation and paints nothing, for a surface such as a bubble that draws itself. */
         readonly variant: "bare";
       });
 
@@ -267,7 +258,6 @@ function activateRow(event: RowClickEvent) {
   if (!primary.dispatchEvent(new MouseEvent("click", event.nativeEvent))) event.preventDefault();
 }
 
-/** One painted target, with sibling controls excluded from its primary action. */
 export function Row({
   className,
   interactive = false,
@@ -341,10 +331,6 @@ function rowPart<Style extends XStyle = XStyle>(
   };
 }
 
-/**
- * The primary action for the whole row, including padding and sibling metadata.
- * `render` swaps the button for a link or another trigger. Actions remain siblings.
- */
 function RowPrimary({
   className,
   render,
@@ -364,27 +350,18 @@ function RowPrimary({
   });
 }
 
-/** Sits behind the row's content, for a selection layer the surface animates itself. */
 const RowBackdrop = rowPart("row-backdrop", styles.backdrop, true);
 
-/** A fixed lane, so labels align down the list whatever glyph each row carries. */
 const RowLeading = rowPart<Restyle<"Row.Leading">>("row-leading", styles.leading);
 
-/** Stacks its children, so a label can carry a description under it. */
 const RowBody = rowPart<Restyle<"Row.Body">>("row-body", styles.body);
 
 const RowLabel = rowPart<Restyle<"Row.Label">>("row-label", styles.label);
 
 const RowDescription = rowPart<Restyle<"Row.Description">>("row-description", styles.description);
 
-/** Trailing text such as a time or a count. */
 const RowMeta = rowPart<Restyle<"Row.Meta">>("row-meta", styles.meta);
 
-/**
- * Actions, a switch, or a chevron. A sibling of the primary, never a child.
- * `overlay` floats the lane without taking layout space. The entire lane,
- * including gaps between controls, is excluded from primary activation.
- */
 function RowActions({
   className,
   placement = "inline",

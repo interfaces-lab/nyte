@@ -1,9 +1,3 @@
-/**
- * Settings rows. The layout primitives (`SettingsSection`, `SettingsRow`,
- * `SettingsSwitchRow`) draw the card and its rows; the bound rows take a
- * `Setting` handle and required copy, and render nothing where this host
- * can't back the value. A section with nothing rendered inside hides itself.
- */
 import { Input } from "@nyte-ai/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { Slider } from "@nyte-ai/ui/slider";
@@ -22,10 +16,8 @@ import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { available, type Capability } from "./capability.ts";
 import { settingsStyles } from "./settings.stylex.ts";
 
-/** Marks a rendered row, so an empty card can hide itself. */
 const ROW_MARK = { "data-settings-row": "" } as const;
 
-/** A small title over one card of rows. */
 export function SettingsSection({
   title,
   description,
@@ -109,7 +101,6 @@ interface Copy {
 
 interface Bound<T> extends Copy {
   readonly setting: Setting<T>;
-  /** Beyond what the setting itself needs. */
   readonly needs?: readonly Capability[];
 }
 
@@ -180,11 +171,6 @@ export function SelectRow<T extends string>(
   );
 }
 
-/**
- * min, max, and step bound the control; the setting's schema bounds what is
- * stored. The field is keyed by the value, so a change from another window
- * remounts it.
- */
 export function NumberRow(
   input: Bound<number> & { readonly min: number; readonly max: number; readonly step?: number },
 ): ReactElement | null {
@@ -215,7 +201,6 @@ export function NumberRow(
   );
 }
 
-/** A slider over ordered options, labelled at both ends. */
 export function StepsRow<T extends string>(
   input: Bound<T> & {
     readonly options: readonly [Option<NoInfer<T>>, Option<NoInfer<T>>, ...Option<NoInfer<T>>[]];

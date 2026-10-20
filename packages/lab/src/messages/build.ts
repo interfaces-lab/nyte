@@ -18,7 +18,7 @@ import type {
   TurnInfo,
   UserContent,
 } from "@nyte-ai/sdk";
-import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import type { TurnMessages } from "@nyte-ai/app/view-helpers.ts";
 import { showsTool, type UserMessage } from "@nyte-ai/plugin/client/presentation";
 
 export const CWD = "/Users/lab/nyte";
@@ -28,9 +28,9 @@ export const T0 = Date.UTC(2026, 9, 7, 13, 30);
 export const RUN = asId<"run">("lab-run");
 
 export interface Scene {
-  readonly turns: readonly ConversationTurn[];
+  readonly turns: readonly TurnMessages[];
   readonly execution?: Execution;
-  readonly landing?: readonly UserMessage[];
+  readonly prompts?: readonly UserMessage[];
   readonly loading?: true;
   readonly failed?: true;
 }
@@ -217,7 +217,7 @@ export const WORKING: TurnInfo["state"] = { kind: "working", activity: null };
 export function turn(
   drafts: readonly Message[],
   state: TurnInfo["state"] = { kind: "ended", end: COMPLETED },
-): ConversationTurn {
+): TurnMessages {
   const id = asId<"turn">(oid("turn"));
   const messages = drafts.map((message) => ({ ...message, turn: id }));
   const steps = messages.filter((message) => message.kind === "part" && message.role === "step");

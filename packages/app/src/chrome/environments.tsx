@@ -1,8 +1,3 @@
-/**
- * Environments: where chats run. It opens over the stage the way Customize
- * does, in the Settings column. Remote access leads: other devices sending
- * chats to this Mac. The Server is the reverse, where this app sends chats.
- */
 import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";

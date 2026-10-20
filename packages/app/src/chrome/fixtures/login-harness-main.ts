@@ -1,7 +1,3 @@
-/**
- * The window the login harness runs in. Nothing from the real app: no
- * preload, no IPC; the page installs its own recorded bridge.
- */
 import { join } from "node:path";
 import { app, BrowserWindow } from "electron";
 

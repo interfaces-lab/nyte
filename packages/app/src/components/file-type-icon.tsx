@@ -1,10 +1,3 @@
-/**
- * File identity is Pierre's concern; size and color remain Nyte schema choices.
- * One shared sprite keeps rows cheap, while exact basenames and compound
- * extensions stay inside Pierre's resolver instead of becoming desktop lore.
- *
- * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/file-type-icon.tsx
- */
 import { create, props } from "@stylexjs/stylex";
 import { createFileTreeIconResolver, getBuiltInSpriteSheet } from "@pierre/trees";
 import type { ReactElement } from "react";

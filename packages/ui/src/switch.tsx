@@ -71,7 +71,7 @@ const styles = create({
     },
     opacity: { default: 1, "[data-disabled]": 0.5 },
     transitionProperty: "background-color",
-    transitionDuration: motion.durationFast,
+    transitionDuration: { default: motion.durationFast, ":active:not([data-disabled])": "0s" },
     transitionTimingFunction: motion.easeOut,
     cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
   },

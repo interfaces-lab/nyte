@@ -5,7 +5,7 @@
  * when it commits.
  */
 import { contextStyles } from "@nyte-ai/app/screens/context-selector.stylex.ts";
-import { threadStyles } from "@nyte-ai/app/screens/thread.stylex.ts";
+import { sessionScreenStyles } from "@nyte-ai/app/screens/session-screen.stylex.ts";
 import { composerStyles } from "@nyte-ai/app/conversation/composer.stylex.ts";
 import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
@@ -90,7 +90,7 @@ function Composer({
         </div>
       </form>
       {start.error !== null && (
-        <p role="alert" {...props(threadStyles.error)}>
+        <p role="alert" {...props(sessionScreenStyles.error)}>
           {start.error.message}
         </p>
       )}
@@ -107,10 +107,10 @@ export function NewChatPlace({
   const repo = useRepo();
 
   return (
-    <div {...props(threadStyles.blank)}>
-      <div {...props(threadStyles.blankColumn)}>
+    <div {...props(sessionScreenStyles.blank)}>
+      <div {...props(sessionScreenStyles.blankColumn)}>
         {repo.data === undefined ? (
-          <p role="status" {...props(threadStyles.blankHint, styles.status)}>
+          <p role="status" {...props(sessionScreenStyles.blankHint, styles.status)}>
             {repo.error instanceof ReviewError && repo.error.offline ? (
               repo.error.message
             ) : (

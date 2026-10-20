@@ -20,7 +20,6 @@ import {
 import type { TerminalTab } from "./terminal-store.ts";
 import { loadGhostty } from "./ghostty.ts";
 
-/** A command line the user entered, at the buffer row it was entered on. */
 interface CommandMark {
   readonly row: number;
   readonly line: string;
@@ -29,7 +28,6 @@ interface CommandMark {
 interface TerminalView {
   readonly element: HTMLDivElement;
   readonly terminal: Terminal;
-  /** Oldest first; a mark whose row no longer reads its line has scrolled away. */
   readonly commands: CommandMark[];
   fit(): void;
 }
@@ -42,7 +40,6 @@ function notifySelection(id: string): void {
   for (const listener of selectionListeners.get(id) ?? []) listener();
 }
 
-/** Canvas terminals need resolved sRGB values, not CSS variables or color-mix expressions. */
 function terminalAppearance() {
   const probe = document.createElement("span");
   const canvas = document.createElement("canvas");
@@ -118,18 +115,10 @@ function terminalAppearance() {
   }
 }
 
-/** Whether keys typed into `tab` reach a shell: one running, or one starting, which keeps them until it runs. */
 function takesInput(tab: TerminalTab): boolean {
   return tab.kind === "shell" && (tab.state.kind === "running" || tab.state.kind === "starting");
 }
 
-/**
- * Ghostty's compatibility container is editable; only its input should accept
- * native text and IME. The fit addon defers a fit that lands while a previous
- * one settles, so the PTY follows the terminal's own resize event rather than
- * a read after fit(). A click clears the selection without an event, so every
- * press and release reports the selection once it settles.
- */
 async function createView(id: string): Promise<TerminalView | undefined> {
   const engine = await loadGhostty();
   const existing = views.get(id);
@@ -370,11 +359,6 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   return view;
 }
 
-/**
- * React owns the mount point; the terminal and scrollback live until the tab
- * closes. A hidden slot keeps its view out of the DOM, so no layout or resize
- * reaches the PTY until the slot shows again.
- */
 export function mountTerminal(id: string, container: HTMLDivElement, visible: boolean): () => void {
   let detached = false;
   let element: HTMLDivElement | undefined;
@@ -422,7 +406,6 @@ function bufferLine(terminal: Terminal, row: number): string | undefined {
   return terminal.buffer.active.getLine(row)?.translateToString(true).trim();
 }
 
-/** Remembers the line under the cursor as a command when Enter submits it; a blank one is no command. */
 function markCommand(terminal: Terminal, commands: CommandMark[]): void {
   const buffer = terminal.buffer.active;
 
@@ -436,11 +419,6 @@ function markCommand(terminal: Terminal, commands: CommandMark[]): void {
   if (commands.length > 200) commands.shift();
 }
 
-/**
- * The selection as an excerpt. An agent's command names its own output; in a
- * shell, the command is the last line entered at or above the selection's
- * first row that still reads as it did when entered.
- */
 function terminalExcerpt(id: string): ExcerptReference | undefined {
   const view = views.get(id);
   const tab = getTerminal(id);
@@ -479,7 +457,6 @@ export function subscribeTerminalSelection(id: string, listener: () => void): ()
   };
 }
 
-/** Adds the selection to the active chat and clears it; false when nothing is selected or no chat takes it. */
 export function addTerminalToChat(id: string): boolean {
   const reference = terminalExcerpt(id);
 

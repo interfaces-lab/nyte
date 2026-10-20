@@ -1,13 +1,3 @@
-/**
- * Settings navigation. The rail is the settings shell: opening Settings swaps
- * this column in beside a mounted route, so a section change is a route change
- * with nothing to fade in.
- *
- * Rows reuse the rail's row geometry, so labels and icons keep their edges when
- * the column swaps. The pages and their order come from `pages.ts`. Groups are
- * separated by space rather than a rule, which is why the gap between them has
- * to beat the gap between two rows.
- */
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Link, useRouter } from "@tanstack/react-router";
@@ -21,12 +11,6 @@ import { SETTINGS_PAGES, settingsSectionGroups, type SettingsSection } from "./p
 import { closeSettings } from "./return.ts";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 
-/**
- * Typing can shorten the list under the cursor; the last row stays highlighted
- * rather than the highlight disappearing off the end. Results are one group:
- * matches spread across the browse gaps would make the arrow keys look like
- * they skip.
- */
 export function SettingsNavigation({
   section,
 }: {

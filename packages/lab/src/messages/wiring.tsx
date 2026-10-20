@@ -24,7 +24,7 @@ const CHAINS: readonly Chain[] = [
     steps: [
       { name: "SessionView" },
       { name: "conversationTurns" },
-      { name: "ConversationTurn" },
+      { name: "TurnMessages" },
       { name: "TranscriptRow" },
       { name: "displayTranscriptParts", rewrap: true },
       { name: "StepGroupView + presentation", rewrap: true },
@@ -68,20 +68,20 @@ const APP: readonly Hop[] = [
     text: "The view carries streaming parts as messages, so TurnView draws everything. LiveTurn only holds the indicator before the first part of a run arrives.",
   },
   {
-    name: "conversationTurns → ConversationTurn",
+    name: "conversationTurns → TurnMessages",
     where: "app/src/view-helpers.ts",
     verdict: "keeps",
-    text: "Groups the view's messages under its turns in one pass. Messages whose turn is not listed yet come back apart, for the landing rows and the tray.",
+    text: "Groups the view's messages under its turns in one pass. Messages whose turn is not listed yet come back apart, for the prompt rows and the tray.",
   },
   {
     name: "transcriptRows → TranscriptRow",
     where: "app/src/conversation/transcript-rows.ts",
     verdict: "keeps",
-    text: "Virtualizer rows: a landing prompt and the turn it commits into share one key, and requestless turns ride under their prompt as continuations. The key is why the transcript holds still when a commit lands.",
+    text: "Virtualizer rows: a prompt and the turn it commits into share one key, and requestless turns ride under their prompt as continuations. The key is why the transcript holds still when a commit lands.",
   },
   {
     name: "displayTranscriptParts",
-    where: "app/src/screens/thread.tsx · conversation/turn-view.tsx",
+    where: "app/src/screens/session-screen.tsx · conversation/turn-view.tsx",
     verdict: "twice",
     text: "Regroups a turn's messages into part | step | response. The thread runs it on the last turn to decide settledWork, and TurnBody runs it again on every turn. TurnBody then unwraps a settled one-call step back into the call it wrapped.",
   },

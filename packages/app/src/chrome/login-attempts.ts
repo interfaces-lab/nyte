@@ -14,7 +14,6 @@ export interface BrowserSignIn {
 interface LoginAttemptView {
   readonly attempt: string;
   readonly method: "browser" | "api_key";
-  /** Stays for the attempt's whole life; a later message never replaces it. */
   readonly deviceCode: DeviceCode | undefined;
   readonly browser: BrowserSignIn | undefined;
   readonly cancelling: boolean;

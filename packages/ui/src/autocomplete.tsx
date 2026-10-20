@@ -134,10 +134,6 @@ const styles = create({
   },
 });
 
-/**
- * `popup` sits inside `AutocompleteContent`; `inline` sits in a host surface such as
- * a menu, which already supplies the padding and the item rhythm.
- */
 const inputVariants = create({
   popup: {},
   inline: { height: menu.itemHeight, paddingInline: space.s2, boxShadow: "none" },
@@ -237,7 +233,6 @@ export type AutocompleteContentProps = StyledProps<
     Combobox.Positioner.Props,
     "side" | "align" | "sideOffset" | "alignOffset" | "anchor" | "collisionAvoidance"
   > & {
-    /** Scopes the popup to a hue. */
     readonly tint?: Tint;
   };
 

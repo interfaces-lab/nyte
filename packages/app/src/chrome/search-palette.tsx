@@ -26,7 +26,6 @@ type PaletteTab = (typeof TABS)[number];
 interface SearchPaletteProps {
   readonly trigger: ReactElement;
   readonly open: boolean;
-  /** The sidebar's chat rows, in its order. Undefined while they load. */
   readonly recentSessions: readonly SessionInfo[] | undefined;
   readonly onOpenChange: (open: boolean) => void;
   readonly onOpenSession: (sessionId: SessionId) => void;

@@ -28,7 +28,7 @@ export function syncSticky(viewport: HTMLElement, content: HTMLElement, followin
       rect.top;
 
     const rowBottom =
-      prompt.closest("[data-turn-span], [data-message-id]")?.getBoundingClientRect().bottom ??
+      prompt.closest("[data-turn-span], [data-row-key]")?.getBoundingClientRect().bottom ??
       rect.bottom;
 
     const eligible =

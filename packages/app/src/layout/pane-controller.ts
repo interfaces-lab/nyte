@@ -24,6 +24,7 @@ import type { ComposerViewState } from "./session-view-state.ts";
 interface LayoutStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem(key: string): void;
 }
 
 export interface PaneControllerSnapshot {
@@ -31,10 +32,6 @@ export interface PaneControllerSnapshot {
   readonly focusRequest: { readonly paneId: PaneId; readonly revision: number };
 }
 
-/**
- * A window tab owns the layout and its history: the controller proposes each
- * change and adopts whichever layout the tab settles on.
- */
 type LayoutRoute = (current: PaneLayout, next: PaneLayout, action: PaneLayoutAction) => PaneLayout;
 
 function selectedSession(action: PaneLayoutAction): SessionId | undefined {
@@ -95,7 +92,6 @@ export class PaneController {
     return this.#viewState;
   }
 
-  /** A denied or full local store must not break pane navigation. */
   dispatch(action: PaneLayoutAction): PaneLayout {
     const current = this.#snapshot.layout;
     this.#rememberLayout(current);
@@ -143,7 +139,6 @@ export class PaneController {
     return layout;
   }
 
-  /** Adopt a layout the owning tab moved to on its own, as Back does. */
   show(layout: PaneLayout): void {
     if (layout === this.#snapshot.layout) return;
     this.#rememberLayout(layout);
@@ -223,12 +218,6 @@ export class PaneController {
     return layout;
   }
 
-  /**
-   * The draft started chat `sessionId`: the pane showing the draft opens the
-   * chat, wherever the draft moved meanwhile, and a pane showing anything
-   * else stays put. `composer` waits in the chat's composer when the start
-   * handed the message back.
-   */
   openDraftChat(draftId: string, sessionId: SessionId, composer?: ComposerViewState): void {
     const visible = this.#paneShowingDraft(draftId);
 
@@ -277,7 +266,6 @@ export class PaneController {
     return this.dispatch({ kind: "remove-session", sessionId });
   }
 
-  /** Undo restores only the untouched blank pane, never a newer chat or draft. */
   removeSessionWithUndo(sessionId: SessionId): () => boolean {
     const previous = this.#snapshot.layout;
     const paneId = paneForSession(previous, sessionId);

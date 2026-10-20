@@ -10,7 +10,7 @@ import type { Placement, SessionId, SubmitDraft } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { canvasRenderers } from "./conversation/canvas-frame.tsx";
 import { RawPartView } from "./conversation/raw-part.tsx";
-import { connected, connection, directoryWatch } from "./sdk.tsx";
+import { connected, connection, sessionsWatch } from "./sdk.tsx";
 
 let mounting: Promise<ClientPlugins> | undefined;
 
@@ -43,7 +43,7 @@ export function watchClientPlugins(
   });
 
   const plugins = mounting;
-  const directory = directoryWatch("all");
+  const directory = sessionsWatch("all");
 
   const feed = (): void => {
     const sessions = directory.value;

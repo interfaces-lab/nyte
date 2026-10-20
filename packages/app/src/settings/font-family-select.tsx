@@ -1,4 +1,3 @@
-/** Searchable font family picker. Theme stays on Select. */
 import {
   Autocomplete,
   AutocompleteCollection,

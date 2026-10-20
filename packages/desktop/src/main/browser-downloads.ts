@@ -1,4 +1,3 @@
-/** Downloads a browser panel started: saved to the downloads folder and reported to its window. */
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -8,7 +7,6 @@ import type { BrowserDownload, HostEvent } from "@nyte-ai/app/bridge.ts";
 import { uniqueDownloadName } from "./browser-policy.ts";
 import type { Surface } from "./browser-surface.ts";
 
-/** Progress is reported at most this often; a finished state always is. */
 const PROGRESS_INTERVAL_MS = 250;
 
 export class BrowserDownloads {

@@ -1,7 +1,6 @@
 import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
-/** The renderer reads `window.nyte` at import time, so the bridge is stubbed first. */
 const setup = `
 const recorded = [];
 window.__nyteBounds = recorded;

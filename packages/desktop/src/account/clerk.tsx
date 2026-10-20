@@ -13,14 +13,12 @@ const bridge = window.nyteAccount;
 
 const redirectUrl = new URL(window.location.pathname, window.location.href).href;
 
-/** The account's sign-in address and nothing more: no name, username, or photo. */
 function formatAccountLabel(user: User): string {
   return (
     user.primaryEmailAddress?.emailAddress ?? user.primaryPhoneNumber?.phoneNumber ?? "Nyte account"
   );
 }
 
-/** Reports state to main and serves its one pending command. Returns the teardown. */
 function connect(clerk: Clerk, show: (command: AccountCommand | undefined) => void): () => void {
   let command: AccountCommand | undefined;
   let working = false;

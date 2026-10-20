@@ -28,7 +28,6 @@ type ClientContext = {
   readonly credential: CredentialSource;
   readonly journal: RequestJournal;
   readonly journaled: readonly JournalEntry[];
-  /** The `connection.watch` that connecting read the host's first view from, left open for the first host watch to continue. */
   readonly hostFrames?: AsyncIterator<Json>;
 };
 
@@ -213,9 +212,8 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
     async view(options) {
       const view = await rows.call("head.view", { session, head, options });
       journal.landed(session, head, view);
-      const ids = new Set(view.messages.map((message) => message.id));
 
-      return withUnsent(view, journal.unsent(session, head), (id) => ids.has(id));
+      return withUnsent(view, journal.unsent(session, head));
     },
     watch: (options) => watchHead(bound.views, journal, { session, head, options }),
     ...watchStore(() => watchHead(bound.views, journal, { session, head })),

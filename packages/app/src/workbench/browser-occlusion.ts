@@ -1,23 +1,3 @@
-/**
- * Native `WebContentsView` pages composite above the whole renderer, so no
- * z-index can put a menu or a dialog over a browser panel. While a native
- * surface listens, floating surfaces are tracked, and the native surface hides
- * itself while one of their rectangles covers it.
- *
- * Floating surfaces live in two places. Base UI portals mount as direct
- * children of `body`; their subtrees are small, so each is observed whole and
- * its surfaces are found by `data-slot`. A surface rendered inline in the app,
- * such as the address suggestions, the chat tray, or a drag overlay, passes
- * `occludes` as its ref. The app root itself is never observed, so transcript
- * commits cost nothing here. A new floating surface that can overlap a page
- * must be portaled with a listed slot or pass `occludes`.
- *
- * Rectangles are measured after a tracked subtree changes (a popup opens,
- * closes, or its positioner moves it), then once per frame only while a
- * tracked surface animates or its rectangle is still moving. With no listener
- * nothing is observed.
- */
-
 const PORTAL_SELECTOR = ":scope > [data-base-ui-portal]";
 
 const OVERLAY_SELECTOR = [
@@ -51,7 +31,6 @@ interface OverlayRect {
 
 const NONE: readonly OverlayRect[] = Object.freeze([]);
 
-/** Inline floating surfaces mounted with `occludes`. */
 const inline = new Set<Element>();
 
 const listeners = new Set<() => void>();
@@ -73,11 +52,6 @@ function overlays(): readonly Element[] {
   ];
 }
 
-/**
- * Base UI keeps a popup mounted through its exit transition. A closing popup is
- * on its way out and must not keep a page hidden, and neither must an element
- * that is mounted but not painted.
- */
 function painted(element: Element): boolean {
   if (!element.isConnected) return false;
 
@@ -88,7 +62,6 @@ function painted(element: Element): boolean {
   return style.visibility !== "hidden" && style.opacity !== "0";
 }
 
-/** Publishes the painted rectangles and reports whether they changed. */
 function publish(elements: readonly Element[]): boolean {
   const next: OverlayRect[] = [];
 
@@ -139,7 +112,6 @@ function schedule(): void {
   frame ??= requestAnimationFrame(measure);
 }
 
-/** Watches `body` for portals coming and going, and each portal and inline surface for changes. */
 function observe(): void {
   if (observer === undefined) return;
   observer.disconnect();
@@ -153,7 +125,6 @@ function changed(records: readonly MutationRecord[]): void {
   schedule();
 }
 
-/** Only a native surface subscribes, and only then is anything observed or measured. */
 export function subscribeOverlayRects(listener: () => void): () => void {
   listeners.add(listener);
 
@@ -177,10 +148,6 @@ export function subscribeOverlayRects(listener: () => void): () => void {
   };
 }
 
-/**
- * A callback ref for a floating surface rendered inline rather than portaled:
- * while it is mounted, a browser page it covers steps aside.
- */
 export function occludes(element: Element | null): (() => void) | undefined {
   if (element === null) return undefined;
   inline.add(element);
@@ -194,7 +161,6 @@ export function occludes(element: Element | null): (() => void) | undefined {
   };
 }
 
-/** Whether any overlay covers part of this area, in viewport coordinates. */
 export function overlayCovers(area: OverlayRect): boolean {
   return rects.some(
     (rect) =>

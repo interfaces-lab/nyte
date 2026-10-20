@@ -5,7 +5,6 @@ import { useApplyPluginSetting } from "../queries.ts";
 import { hostWatch, useWatch } from "../sdk.tsx";
 import { SettingsRow, SettingsSection } from "./rows.tsx";
 
-/** The host's tool approval policy, the one the terminal's `/permissions` changes. */
 export function PermissionsSection(): ReactElement | null {
   const setting = useWatch(hostWatch("host")).value?.settings.find(
     (candidate) => candidate.id === PERMISSIONS,

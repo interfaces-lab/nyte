@@ -1,7 +1,3 @@
-/**
- * Adding a device to a Cloudflare tunnel: name it, then show its pairing code
- * once. Removing one acts at once.
- */
 import { props } from "@stylexjs/stylex";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -34,12 +30,6 @@ export function useRevokeDevice() {
   });
 }
 
-/**
- * A new device's code. Its token is that device's lasting credential, held
- * only in the serving panel's state; Done, a claim, a removal, or expiry
- * drops it, and so does leaving the page. The host stops listing an unused
- * code once it expires but says nothing then, so the panel times it out.
- */
 export function PairingPanel({
   pairing,
   name,

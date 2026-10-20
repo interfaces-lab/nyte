@@ -1,15 +1,3 @@
-/**
- * The Changes panel's header: which changes are on screen, which branch they
- * belong to, and how they are drawn.
- *
- * The scope menu is the only surface that knows every scope a reader can pick,
- * so it does its own reads: the working-tree counts and the history page are
- * fetched by the rows that show them, and nothing is read until the menu opens.
- * The panel keeps the read that produces the diffs it renders.
- *
- * Nothing here writes to the repository. The branch readout reports HEAD and
- * offers no checkout, and refresh only invalidates the reads.
- */
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
@@ -58,12 +46,10 @@ import type { ChangesLayout, ChangesViewOptions } from "./changes-view-options.t
 import type { WorkbenchChangesScope } from "./controller.ts";
 import { nyte } from "../nyte.ts";
 
-/** One page of history, and how deep the menu will page before it stops offering more. */
 const COMMIT_PAGE_SIZE = 20;
 
 const MAX_COMMIT_PAGES = 10;
 
-/** The panel's own keyboard bindings, which is all the Changes panel claims. */
 type ChangesShortcutAction = "filter-files" | "ignore-whitespace" | "refresh";
 
 type ShortcutEvent = Pick<
@@ -78,11 +64,6 @@ type ShortcutEvent = Pick<
   | "isComposing"
 >;
 
-/**
- * Changes shortcuts apply only while focus is inside the panel.
- * They are deliberately not window actions: ⌘R and ⌘F belong to whatever
- * surface has focus, and the panel must not take them from an editor or a page.
- */
 export function changesShortcutAction(
   event: ShortcutEvent,
   mac: boolean,
@@ -205,7 +186,6 @@ function ChangeStats({
   );
 }
 
-/** A row's counts, or the files it holds while its diff has not been read. */
 function ScopeMeta({
   stats,
   fileCount,
@@ -237,10 +217,6 @@ function scopeIcon(scope: WorkbenchChangesScope): IconName {
   }
 }
 
-/**
- * A row for one scope. Every scope stays selectable, including one with no
- * counts and no files: picking it is how a reader learns it is empty.
- */
 function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): ReactElement {
   return (
     <MenuRadioItem
@@ -266,10 +242,6 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
   );
 }
 
-/**
- * One page of history and, on request, the page after it. Each page owns its
- * own read, so paging never refetches the pages already on screen.
- */
 function CommitScopeItems({
   repository,
   readByOid,
@@ -344,7 +316,6 @@ function branchDescription(branch: BranchReadout): string {
   }
 }
 
-/** HEAD as it stands. Reading only: no checkout, no fetch, no branch switch. */
 function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): ReactElement {
   const description = branchDescription(branch);
 
@@ -369,7 +340,6 @@ function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): Reac
 }
 
 interface ChangesToolbarProps {
-  /** The scope the panel is showing, which is not always the stored one. */
   readonly scope: WorkbenchChangesScope;
   readonly scopeLabel: string;
   readonly scopeStats: ChangeScopeStats | undefined;
@@ -377,8 +347,7 @@ interface ChangesToolbarProps {
   readonly snapshot: GitStatus | undefined;
   readonly repository: ChangesRepository | undefined;
   readonly branch: BranchReadout | undefined;
-  /** The whole chat's changes, absent outside a chat. */
-  readonly threadOption: ChangesScopeOption | undefined;
+  readonly sessionOption: ChangesScopeOption | undefined;
   readonly turnOptions: readonly TurnChangeOption[];
   readonly viewOptions: ChangesViewOptions;
   readonly fileTreeVisible: boolean;
@@ -387,12 +356,9 @@ interface ChangesToolbarProps {
   readonly onToggleFileTree: () => void;
   readonly onRefresh: () => void;
   readonly refreshing: boolean;
-  /** Focuses the rail's file filter; the rail owns the only search surface. */
   readonly onFilterFiles: () => void;
-  /** Every file in the scope is collapsed, so the command offers to expand instead. */
   readonly allFilesCollapsed: boolean;
   readonly onToggleCollapseAll: () => void;
-  /** Opens a pull request or check page; the system browser when absent. */
   readonly onOpenLink?: (url: string) => void;
 }
 
@@ -404,7 +370,7 @@ export function ChangesToolbar({
   snapshot,
   repository,
   branch,
-  threadOption,
+  sessionOption,
   turnOptions,
   viewOptions,
   fileTreeVisible,
@@ -435,7 +401,7 @@ export function ChangesToolbar({
   const selectScope = (value: string): void => {
     for (const candidate of [
       ...workingTreeScopeOptions(snapshot).map((option) => option.scope),
-      ...(threadOption === undefined ? [] : [threadOption.scope]),
+      ...(sessionOption === undefined ? [] : [sessionOption.scope]),
       ...turnOptions.map((option) => option.scope),
     ]) {
       if (changesScopeValue(candidate) === value) {
@@ -504,8 +470,8 @@ export function ChangesToolbar({
                   </MenuSubContent>
                 </MenuSub>
               )}
-              {(threadOption !== undefined || visibleTurns.length > 0) && <MenuSeparator />}
-              {threadOption !== undefined && <ScopeRadioItem option={threadOption} />}
+              {(sessionOption !== undefined || visibleTurns.length > 0) && <MenuSeparator />}
+              {sessionOption !== undefined && <ScopeRadioItem option={sessionOption} />}
               {visibleTurns.map((option) => (
                 <MenuRadioItem
                   key={option.scope.turnId}

@@ -4,10 +4,6 @@ import { ComposerReadOnly } from "./composer-surface.tsx";
 
 export type MessageFile = Extract<Exclude<UserContent, string>[number], { readonly kind: "file" }>;
 
-/**
- * A sent or queued message, drawn with the chips its text stands for. The
- * text is the provider's; only its presentation is compact.
- */
 export function UserMessageText({ text }: { readonly text: string }): ReactElement {
   return text.length > 100_000 ? (
     <>Message is too long to display</>

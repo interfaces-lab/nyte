@@ -77,7 +77,7 @@ test("a browser paired through Remote access shares the desktop's chats until it
   const remoteErrors = collectErrors(remote);
   await serveShell(remote);
   await remote.goto(`${WEB_ORIGIN}/pair${pairingUrl.hash}`);
-  await expect(remote.getByRole("form", { name: "Message composer" })).toBeVisible();
+  await expect(remote.getByRole("form", { name: "Message", exact: true })).toBeVisible();
 
   for (const name of Object.values(FIXTURES)) await expect(chatRow(remote, name)).toBeVisible();
 

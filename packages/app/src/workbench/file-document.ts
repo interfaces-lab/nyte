@@ -24,12 +24,6 @@ export interface FileDocumentSnapshot {
   readonly status: FileSaveState;
 }
 
-/**
- * A save acknowledges only the captured text, never edits made while the write
- * is pending. Formatting may take seconds, so it does not replace text typed in
- * the meantime, and a refetch cannot move the save baseline underneath an
- * unsaved draft.
- */
 export function createFileDocument(document: TextFile, draft?: string) {
   let snapshot: FileDocumentSnapshot = {
     contents: draft ?? document.contents,

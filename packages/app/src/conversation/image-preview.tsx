@@ -97,7 +97,6 @@ const styles = create({
   },
 });
 
-/** The original image dimensions determine the preview, capped only by the window. */
 export function ImagePreview({
   src,
   name,

@@ -31,5 +31,4 @@ const hidden = create({
   },
 });
 
-/** Visually hidden, still announced: labels a control that reads by shape alone. */
 export const srOnly = hidden.srOnly;

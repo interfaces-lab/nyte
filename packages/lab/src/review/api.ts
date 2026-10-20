@@ -1,4 +1,4 @@
-import { conversationTurns, type ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import { conversationTurns, type TurnMessages } from "@nyte-ai/app/view-helpers.ts";
 import { asId } from "@nyte-ai/schema";
 import { sdk, type Connection, type SessionView } from "@nyte-ai/sdk";
 import {
@@ -251,11 +251,11 @@ async function headTurns(
   session: string,
   head: string,
   forkedAt: number | null,
-): Promise<readonly ConversationTurn[]> {
+): Promise<readonly TurnMessages[]> {
   const connection = await nyte();
   const view = await connection.session(asId<"session">(session)).head(asId<"head">(head)).view();
 
-  return conversationTurns(view).turns.filter(
+  return conversationTurns(view).filter(
     (turn) => forkedAt === null || turn.info.startedAt > forkedAt,
   );
 }
@@ -265,7 +265,7 @@ export function useHeadTurns(
   session: string | undefined,
   head: { readonly name: string; readonly forkedAt: number | null } | undefined,
   version: number,
-): readonly ConversationTurn[] {
+): readonly TurnMessages[] {
   const name = head?.name ?? "";
   const forkedAt = head?.forkedAt ?? null;
 
@@ -289,13 +289,13 @@ export function useSideThread(
   review: ReviewDetail,
   thread: Extract<SideThread, { readonly kind: "live" }> | undefined,
   version: number,
-): readonly ConversationTurn[] {
+): readonly TurnMessages[] {
   const author = review.author?.sessionId;
   const forks = review.threads.filter((entry) => entry.thread === thread?.id);
 
   const { data } = useQuery({
     queryKey: ["review", "side", review.id, thread?.id ?? "", forks.length, version],
-    queryFn: async (): Promise<readonly ConversationTurn[]> => {
+    queryFn: async (): Promise<readonly TurnMessages[]> => {
       const turns = await Promise.all([
         ...forks.map((fork) => headTurns(review.sessionId, fork.name, fork.forkedAt)),
         author === undefined || thread === undefined

@@ -31,14 +31,12 @@ export function applyTransparency(reduced: boolean): void {
   toggle(opaque, reduced);
 }
 
-/** Chromium matches `:focus-visible` on pointer focus in fields, so the ring's colour gates it. */
 export function applyFocusModality(modality: "keyboard" | "pointer"): void {
   toggle(quiet, modality === "pointer");
 }
 
 let reduceTransparencyQuery: MediaQueryList | undefined;
 
-/** Lazy, so importing this module needs no window; tests load it under node. */
 function transparencyQuery(): MediaQueryList {
   return (reduceTransparencyQuery ??= window.matchMedia("(prefers-reduced-transparency: reduce)"));
 }

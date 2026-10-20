@@ -12,7 +12,6 @@ const styles = create({
   },
 });
 
-/** Clerk flat against its container, in Nyte's type and control sizes. Render Clerk inside `AccountScope`. */
 export const accountAppearance = {
   theme: "simple",
   variables: {
@@ -46,7 +45,6 @@ export const accountAppearance = {
   },
 } satisfies NonNullable<ClerkProviderProps["appearance"]>;
 
-/** Takes the title from the surrounding surface and the primary fill from the accent hue, then draws the rest gray. */
 export function AccountScope({ children }: { readonly children: ReactNode }): ReactElement {
   return (
     <div {...props(styles.title)}>

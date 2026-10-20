@@ -1,7 +1,3 @@
-/**
- * The rail's rows: a chat, with its status, hover actions, rename field and
- * hover card, and an unsent draft.
- */
 import { failureNotice } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
@@ -27,7 +23,7 @@ import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { preloadSession, sessionWatch } from "../sdk.tsx";
+import { sessionWatch, warmSession } from "../sdk.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { StatusGlyph } from "./status-glyph.tsx";
 
@@ -35,10 +31,8 @@ function sessionTitle(session: SessionInfo): string {
   return session.name ?? "New chat";
 }
 
-/** How long the pointer rests on a chat's row before its view starts loading. */
 const WARM_DELAY_MS = 50;
 
-/** With a tab strip, ⌘-click or middle-click opens a background tab and ⌘⇧-click shows it. */
 function openTarget(event: MouseEvent): OpenTarget {
   if (!windowTabs.strip) return "here";
 
@@ -49,7 +43,6 @@ function openTarget(event: MouseEvent): OpenTarget {
   return "here";
 }
 
-/** A new chat's unsent text, listed until it is sent or deleted. */
 export function DraftRow({
   draft,
   selected,
@@ -67,7 +60,6 @@ export function DraftRow({
 
   const row = (
     <Row
-      render={<motion.div layout={layoutEnabled ? "position" : false} initial={false} />}
       selected={selected}
       revealActions
       xstyle={[
@@ -82,7 +74,6 @@ export function DraftRow({
           xstyle={styles.sessionSelection}
           render={
             <motion.div
-              key={layoutEnabled ? "moving" : "static"}
               initial={false}
               layout={layoutEnabled ? "position" : false}
               layoutId={layoutEnabled ? "selected-session" : undefined}
@@ -147,19 +138,15 @@ function sessionAsk(session: SessionInfo): string | undefined {
   return undefined;
 }
 
-/** One folder of the rail: Home, or a folder the user opened. */
 export interface SessionPlace {
   readonly workspace: WorkspaceId | null;
   readonly path: string | null;
 }
 
-/** What every chat row in the rail shares: what is current, and what its actions do. */
 export interface RailRows {
   readonly openWorkspace: WorkspaceId | null;
   readonly activeSessionId: SessionId | undefined;
-  /** Folders that can't be reached; their chats stay listed and fade. */
   readonly unavailable: ReadonlySet<WorkspaceId>;
-  /** The open folder's GitHub repository, for its rows' hover cards. */
   readonly repository: Pick<GitHubRepository, "owner" | "name"> | undefined;
   readonly working: ReadonlySet<SessionId>;
   readonly showUpdated: boolean;
@@ -172,12 +159,6 @@ export interface RailRows {
   readonly removeDraft: (draftId: string) => void;
 }
 
-/**
- * A chat in its folder. Only the open folder's rows drag, since a pane takes
- * a chat from the current folder. A hidden panel's selection never becomes a
- * shared-layout destination. Resting the pointer on a row, or pressing it,
- * loads the chat's view so opening it shows the chat at once.
- */
 export function SessionRow({
   session,
   place,
@@ -217,7 +198,7 @@ export function SessionRow({
   const warm = (): void => {
     cancelWarm();
 
-    if (!selected) void preloadSession(session.id);
+    if (!selected) warmSession(session.id);
   };
 
   useMountEffect(() => cancelWarm);
@@ -232,10 +213,7 @@ export function SessionRow({
 
   if (draftName !== undefined) {
     return (
-      <Row
-        render={<motion.div layout={layoutEnabled ? "position" : false} initial={false} />}
-        xstyle={[styles.rowSurface, styles.sessionRenameRow]}
-      >
+      <Row xstyle={[styles.rowSurface, styles.sessionRenameRow]}>
         <Row.Leading xstyle={styles.rowIcon}>
           <StatusGlyph session={session} mark={mark} />
         </Row.Leading>
@@ -293,9 +271,7 @@ export function SessionRow({
 
   const row = (
     <Row
-      render={
-        <motion.div ref={setNodeRef} layout={layoutEnabled ? "position" : false} initial={false} />
-      }
+      render={<div ref={setNodeRef} />}
       selected={selected}
       revealActions
       xstyle={[
@@ -311,7 +287,6 @@ export function SessionRow({
           xstyle={styles.sessionSelection}
           render={
             <motion.div
-              key={layoutEnabled ? "moving" : "static"}
               initial={false}
               layout={layoutEnabled ? "position" : false}
               layoutId={layoutEnabled ? "selected-session" : undefined}
@@ -413,14 +388,7 @@ export function SessionRow({
   );
 }
 
-/**
- * Preloads the chats listed either side of the open one, as main did, so moving
- * to one shows it without a round trip to the host. It waits for the open chat's
- * first frame, the paint after it and an idle period, so it never competes with
- * the open or a stream. Keyed by the open chat and its neighbours, so a move
- * cancels it.
- */
-export function NeighbourPreload({
+export function NeighbourWarm({
   active,
   neighbours,
 }: {
@@ -436,7 +404,7 @@ export function NeighbourPreload({
     const afterPaint = (): void => {
       frame = requestAnimationFrame(() => {
         idle = requestIdleCallback(() => {
-          for (const sessionId of neighbours) void preloadSession(sessionId);
+          for (const sessionId of neighbours) warmSession(sessionId);
         });
       });
     };

@@ -1,8 +1,3 @@
-/**
- * A line range picked in a diff, as the excerpt the chat receives: the hunk
- * text of exactly the picked rows, with a header that counts them, and the
- * lines it covers on one side of the change.
- */
 import type { FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
 import type { ExcerptReference } from "../conversation/message-references.ts";
 
@@ -17,11 +12,6 @@ function lineText(lines: readonly string[], index: number): string {
   return (lines[index] ?? "").replace(/\r?\n$/u, "");
 }
 
-/**
- * Every row the diff draws, in unified order. A diff that holds whole files
- * (expanded, or built from contents) also draws the unchanged lines between
- * and after its hunks, so a range may start or end in them.
- */
 function diffRows(diff: FileDiffMetadata): readonly DiffRow[] {
   const rows: DiffRow[] = [];
   const whole = !diff.isPartial;
@@ -104,11 +94,6 @@ function span(numbers: readonly (number | undefined)[]) {
     : { start: Math.min(...present), count: present.length, end: Math.max(...present) };
 }
 
-/**
- * The excerpt a picked range stands for; none when a picked line is not one
- * the diff draws. A side with no picked rows starts, as in a patch, after the
- * last line it had before them.
- */
 export function diffRangeExcerpt(
   path: string,
   diff: FileDiffMetadata,

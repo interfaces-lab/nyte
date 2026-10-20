@@ -21,14 +21,14 @@ import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
-import { ThreadScreen } from "./thread.tsx";
+import { SessionScreen } from "./session-screen.tsx";
 import { createAppRouter } from "../router.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow, settledTool } from "../../test/view-fixtures.ts";
 
-const ID = asId<"session">("thread-render");
+const ID = asId<"session">("session-screen-render");
 
 const TURNS = 32;
 
@@ -206,7 +206,7 @@ const sends: string[] = [];
 
 installConnection(
   scriptedConnection({
-    sessions: [sessionRow("thread-render", { name: "Transcript rules" })],
+    sessions: [sessionRow("session-screen-render", { name: "Transcript rules" })],
     views: new Map([[ID, stream]]),
     session: () => ({
       send: async (content) => {
@@ -235,7 +235,7 @@ const host = { workspace: undefined } satisfies HostState;
 
 let renderFailure: unknown;
 
-const panes = new PaneController({ storageKey: "thread-render-test" });
+const panes = new PaneController({ storageKey: "session-screen-render-test" });
 
 panes.selectSession(ID);
 
@@ -260,7 +260,7 @@ function mount(container: HTMLElement): Root {
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
             <PaneControllerProvider controller={panes}>
               <SessionDndProvider>
-                <ThreadScreen />
+                <SessionScreen />
               </SessionDndProvider>
             </PaneControllerProvider>
           </TooltipProvider>
@@ -316,7 +316,7 @@ function measureTop(element: Element): number {
 }
 
 function listRows(): HTMLElement[] {
-  return Array.from(stage.log.querySelectorAll<HTMLElement>("[data-message-id]")).sort(
+  return Array.from(stage.log.querySelectorAll<HTMLElement>("[data-row-key]")).sort(
     (first, second) => Number(first.dataset.index) - Number(second.dataset.index),
   );
 }
@@ -334,7 +334,7 @@ function visible(selector: string): HTMLElement[] {
 }
 
 function answerIndex(row: HTMLElement): number | undefined {
-  const match = /^response:answer-(\d+)$/u.exec(row.dataset.messageId ?? "");
+  const match = /^response:answer-(\d+)$/u.exec(row.dataset.rowKey ?? "");
 
   return match?.[1] === undefined ? undefined : Number(match[1]);
 }
@@ -444,31 +444,26 @@ async function openEditor(row: HTMLElement): Promise<void> {
 }
 
 async function firstPaintedRows(container: HTMLElement): Promise<Stage> {
-  await until(
-    () => container.querySelector("[aria-label='Conversation input']") !== null,
-    "the composer",
-  );
+  await until(() => container.querySelector("[data-composer-region]") !== null, "the composer");
 
   for (;;) {
     await painted();
     const viewport = container.querySelector<HTMLElement>("[aria-label='Messages']");
     const log = container.querySelector<HTMLElement>("[aria-label='Messages'] > div");
-    const dock = container.querySelector<HTMLElement>(
-      "[aria-label='Conversation input']",
-    )?.parentElement;
+    const dock = container.querySelector<HTMLElement>("[data-composer-region]")?.parentElement;
 
     if (
       viewport &&
       log &&
       dock &&
-      log.querySelector("[data-message-id]:not([data-message-id='row:skeleton'])")
+      log.querySelector("[data-row-key]:not([data-row-key='row:skeleton'])")
     )
       return { viewport, log, dock };
   }
 }
 
 async function type(text: string): Promise<void> {
-  const draft = stage.dock.querySelector<HTMLElement>("[aria-label='Message']");
+  const draft = stage.dock.querySelector<HTMLElement>("[aria-multiline][aria-label='Message']");
 
   if (draft === null) throw new Error("The composer has no editor");
   draft.focus();
@@ -574,7 +569,7 @@ async function checkRules(): Promise<string> {
       visible(PROSE).find((block) => measureTop(block) > 100),
       "visible prose",
     );
-    const selected = first(paragraph.closest<HTMLElement>("[data-message-id]"), "the prose's row");
+    const selected = first(paragraph.closest<HTMLElement>("[data-row-key]"), "the prose's row");
     window.getSelection()?.setBaseAndExtent(paragraph, 0, paragraph, paragraph.childNodes.length);
     await painted();
     await holds("8", selected, 4);
@@ -629,7 +624,7 @@ async function checkRules(): Promise<string> {
           measureTop(row) + row.getBoundingClientRect().height > 0,
       );
     const lowerProse = (): HTMLElement | undefined =>
-      visible(PROSE).find((block) => block.closest("[data-message-id]") !== spanning());
+      visible(PROSE).find((block) => block.closest("[data-row-key]") !== spanning());
 
     await wheelUntil(() => spanning() !== undefined && lowerProse() !== undefined, -150);
     const spanningRow = first(spanning(), "a row spanning the top edge");
@@ -658,7 +653,7 @@ async function checkRules(): Promise<string> {
     await wheelUntil(() => reading() !== undefined, -50);
     const readIndex = first(answerIndex(first(reading(), "an answer being read")), "its turn");
     const stuck = stage.log.querySelector<HTMLElement>(
-      `[data-message-id='landing:prompt-${String(readIndex)}'] [data-sticky-user-message]`,
+      `[data-row-key='prompt:prompt-${String(readIndex)}'] [data-sticky-user-message]`,
     );
     expectRule(
       "16",
@@ -666,7 +661,7 @@ async function checkRules(): Promise<string> {
       "the prompt of the turn being read is not stuck at the top",
     );
     const tallRow = (): HTMLElement | null =>
-      stage.log.querySelector(`[data-message-id='landing:prompt-${String(TALL_PROMPT)}']`);
+      stage.log.querySelector(`[data-row-key='prompt:prompt-${String(TALL_PROMPT)}']`);
     await wheelUntil(() => tallRow() !== null, -400, 80);
     const tall = first(
       tallRow()?.querySelector<HTMLElement>("[data-sticky-user-message]"),
@@ -756,15 +751,15 @@ async function checkRules(): Promise<string> {
     step = "20, 24";
     await wheel(-900);
     const kept = first(
-      visible(PROSE)[0]?.closest<HTMLElement>("[data-message-id]"),
+      visible(PROSE)[0]?.closest<HTMLElement>("[data-row-key]"),
       "a visible row",
     );
-    const keptId = kept.dataset.messageId;
+    const keptId = kept.dataset.rowKey;
     const keptTop = measureTop(kept);
     flushSync(() => root.unmount());
     root = mount(container);
     stage = await firstPaintedRows(container);
-    const restored = listRows().find((row) => row.dataset.messageId === keptId);
+    const restored = listRows().find((row) => row.dataset.rowKey === keptId);
     expectRule(
       "20/24",
       restored !== undefined && near(measureTop(restored), keptTop),
@@ -787,18 +782,18 @@ async function checkRules(): Promise<string> {
     };
     stream.push(view(liveText, [action]));
     await until(
-      () => listRows().some((row) => row.dataset.messageId === "landing:action-1"),
-      "the landing row",
+      () => listRows().some((row) => row.dataset.rowKey === "prompt:action-1"),
+      "the prompt row",
     );
     await painted();
-    checkFollowing("landing row");
-    const landingRow = first(
-      listRows().find((row) => row.dataset.messageId === "landing:action-1"),
-      "the landing row",
+    checkFollowing("prompt row");
+    const promptRow = first(
+      listRows().find((row) => row.dataset.rowKey === "prompt:action-1"),
+      "the prompt row",
     );
     await wheel(-300);
-    const beforeLanding = first(visible(PROSE)[0], "visible prose");
-    const beforeLandingTop = measureTop(beforeLanding);
+    const beforePrompt = first(visible(PROSE)[0], "visible prose");
+    const beforePromptTop = measureTop(beforePrompt);
     const landedTurn = asId<"turn">("landed");
     const landed: UserMessage = {
       ...action,
@@ -824,25 +819,21 @@ async function checkRules(): Promise<string> {
       ),
     );
     await until(
-      () => landingRow.firstElementChild?.getAttribute("title") === null,
-      "the landing message to settle",
+      () => promptRow.firstElementChild?.getAttribute("title") === null,
+      "the prompt to settle",
     );
     await painted();
     checkFrame("landed");
-    expectRule(
-      "9",
-      near(measureTop(beforeLanding), beforeLandingTop),
-      "a landing message moved the view",
-    );
+    expectRule("9", near(measureTop(beforePrompt), beforePromptTop), "a prompt moved the view");
     expectRule(
       "19",
-      landingRow.isConnected && landingRow.textContent?.includes("Pending prompt") === true,
+      promptRow.isConnected && promptRow.textContent?.includes("Pending prompt") === true,
       "the landed message replaced its row",
     );
     expectRule(
       "19",
-      !landingRow.textContent?.includes("Instructions for") &&
-        !Array.from(landingRow.querySelectorAll("button")).some(
+      !promptRow.textContent?.includes("Instructions for") &&
+        !Array.from(promptRow.querySelectorAll("button")).some(
           (control) => control.textContent?.trim() === "Edit Message",
         ),
       "an action message became editable or showed its instructions",

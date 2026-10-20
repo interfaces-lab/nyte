@@ -1,4 +1,3 @@
-/** One browser panel page: its native view, why it is alive, and where it is placed. */
 import type { BrowserWindow, Session, WebContents, WebContentsView } from "electron";
 import type {
   BrowserBoundsMessage,
@@ -14,7 +13,6 @@ import { surfaceSecurity } from "./browser-policy.ts";
 import type { SurfaceRuntime } from "./browser-runtime.ts";
 import type { HostWindow } from "./host-window.ts";
 
-/** Per-workspace guest session: its own cookie jar and storage. */
 export interface GuestSession {
   readonly session: Session;
   readonly plainHosts: Set<string>;
@@ -23,14 +21,10 @@ export interface GuestSession {
 }
 
 export interface BrowserSurfacesDependencies {
-  /** The open window with this id, or the last focused one when it is gone or unset. */
   readonly window: (id: HostWindow | undefined) => BrowserWindow | undefined;
-  /** Push a host event to one window, or to every window when `window` is omitted. */
   readonly emit: (event: HostEvent, window?: HostWindow) => void;
   readonly filterListPath: string;
-  /** Whether the window has been shown at least once. Mouse input is dropped until then. */
   readonly windowShown: (window: BrowserWindow) => boolean;
-  /** Read per request, so a changed setting applies to the next one. */
   readonly settings: () => Pick<
     DesktopSettings,
     "blockAds" | "adblockAllowedHosts" | "upgradeToHttps"
@@ -48,23 +42,16 @@ export interface BrowserSurfacesDependencies {
 export interface Surface {
   readonly id: string;
   readonly view: WebContentsView;
-  /** A surface stays alive while at least one holder retains it. */
   readonly holders: Set<BrowserHolder>;
-  /** The last real size, so a parked page keeps a usable viewport. */
   lastBounds: BrowserRect;
   readonly runtime: SurfaceRuntime;
   readonly guestSession: GuestSession;
   bounds: BrowserBoundsMessage["bounds"];
   visible: boolean;
-  /** The window whose panel last showed this page; agent-only pages have none. */
   home: HostWindow | undefined;
-  /** The window the view is a child of. */
   attachedTo: BrowserWindow | undefined;
-  /** Set once by destroy. Native events still arrive afterwards and must not touch state. */
   destroyed: boolean;
-  /** Agent operations in flight. Throttling is off only while this is above zero. */
   operations: number;
-  /** Tick of the last agent operation, so reclamation drops the longest-idle page first. */
   lastUse: number;
   blocked: number;
   error: BrowserSurfaceState["error"];
@@ -84,22 +71,17 @@ export interface Surface {
   visited: string | undefined;
   paused: boolean;
   readonly pressed: BrowserKey[];
-  /** The state the renderer last received and where it went, so an unchanged state is not resent. */
   published:
     | { readonly state: BrowserSurfaceState; readonly window: HostWindow | undefined }
     | undefined;
 }
 
-/** What the surface modules need from the registry that owns every surface. */
 export interface SurfaceRegistry {
   readonly dependencies: BrowserSurfacesDependencies;
-  /** Ad blocking for this url right now, from the settings and the loaded filter engine. */
   blocking(url: string): BrowserSurfaceState["blocking"];
-  /** Cosmetic filter styles for this url, or "" when blocking is off. */
   blockedStyles(url: string): string;
   place(surface: Surface): void;
   publish(surface: Surface): void;
-  /** Send a surface's event to the window showing it, or to every window when none does. */
   notify(surface: Surface, event: HostEvent): void;
   load(surface: Surface, url: string): void;
   remember(surface: Surface, url: string): void;
@@ -169,10 +151,6 @@ export function surfaceState(
   };
 }
 
-/**
- * A hidden page keeps keyboard focus unless it is handed back, which leaves a
- * menu that just opened over the page unable to receive arrow keys.
- */
 function hide(surface: Surface, window: BrowserWindow): void {
   const contents = surface.view.webContents;
   const held = !contents.isDestroyed() && contents.isFocused();
@@ -187,12 +165,6 @@ function show(surface: Surface, focus: boolean): void {
   if (focus) surface.view.webContents.focus();
 }
 
-/**
- * Attach the view to `window` and lay it out from the surface's bounds, visibility, and holders.
- * A zero-sized view lays the page out at a 0-wide viewport, which changes what is visible and
- * ruins screenshots, so an unplaced or unmeasured surface is parked off-screen at a real size.
- * `focus` hands the page keyboard focus when this shows it.
- */
 export function placeSurface(surface: Surface, window: BrowserWindow, focus: boolean): void {
   if (surface.attachedTo !== window) {
     if (surface.attachedTo !== undefined && !surface.attachedTo.isDestroyed()) {

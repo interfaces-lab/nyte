@@ -39,11 +39,8 @@ const styles = create({
 
 export type KbdProps = Omit<StyledProps<ComponentProps<"kbd">, Restyle<"Kbd">>, "children"> & {
   readonly keys: readonly string[];
-  /** Drops the fill and padding, for a shortcut beside other row metadata. */
   readonly plain?: boolean;
-  /** A square cap in the UI face, one per key. */
   readonly keycap?: boolean;
-  /** Lights the key while it is held down. */
   readonly held?: boolean;
 };
 

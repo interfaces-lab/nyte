@@ -10,15 +10,10 @@ export const pointerCursor = defineVars({
   "--nyte-cursor-interactive": "pointer",
 });
 
-/** 1 makes the materials opaque. */
 export const transparency = defineVars({
   "--nyte-reduce-transparency": "0",
 });
 
-/**
- * Fixed blue marks focus. A field shows it whenever it holds the
- * caret; the ring around other controls clears while focus arrives by pointer.
- */
 export const focusModality = defineVars({
   "--nyte-focus-color": "lab(53.1052% -1.53607 -54.9391)",
   "--nyte-focus-ring": "var(--nyte-focus-color)",
@@ -57,7 +52,6 @@ export const typography = defineVars({
   "--nyte-font-weight-semibold": "600",
 });
 
-/** One 4px unit; the scale steps follow Tailwind's, with `px` for a hairline. */
 export const spacing = defineVars({
   "--nyte-space-unit": "4px",
 });

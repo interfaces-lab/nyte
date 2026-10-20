@@ -188,11 +188,6 @@ function SessionDragSurface({ children }: { readonly children: ReactNode }): Rea
   );
 }
 
-/**
- * The row itself is the drag source, so only the pointer sensor is wired: a
- * keyboard sensor would claim Enter and Space before the row's click. Keyboard
- * users split panes from the row's context menu instead.
- */
 export function SessionDndProvider({ children }: { readonly children: ReactNode }): ReactElement {
   const { layout } = usePaneControllerSnapshot();
   const panes = usePaneActions();

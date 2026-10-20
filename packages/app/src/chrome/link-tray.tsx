@@ -1,9 +1,3 @@
-/**
- * Linking this Mac to a Nyte account, one step at a time. The tray grows from
- * whatever opened it and changes height with each step, so moving forward is
- * visible. Its owner keeps it mounted until it closes, even once the Mac is
- * linked; managing a linked Mac lives in Environments, never here.
- */
 import { Button } from "@nyte-ai/ui/button";
 import { Popover } from "@nyte-ai/ui/popover";
 import { Spinner } from "@nyte-ai/ui/spinner";
@@ -49,7 +43,6 @@ const styles = create({
 
 const EASE = [0.32, 0.72, 0, 1] as const;
 
-/** Follows its content's height, so a step change reads as the tray growing or shrinking. */
 function Morph({ children }: { readonly children: ReactNode }): ReactElement {
   const inner = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number | undefined>(undefined);

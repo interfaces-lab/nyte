@@ -1,9 +1,3 @@
-/**
- * Remote access through the Nyte account, as the renderer reads it: one query,
- * the actions that change it, and the words for where it stands. The account
- * session and this Mac's link have separate lifetimes, so each surface reads
- * the part it shows and nothing else.
- */
 import { toast } from "@nyte-ai/ui/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -106,10 +100,6 @@ export function linkFailure(reason: ConnectLinkFailure): string | undefined {
   }
 }
 
-/**
- * Only a current lease admits devices, so nothing short of one reads as
- * reachable, however connected the relay is.
- */
 export function linkedStanding(view: LinkedView): LinkedStanding {
   if (!view.enabled) return { tone: "off", status: "Off", note: undefined };
 

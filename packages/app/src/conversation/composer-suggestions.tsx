@@ -1,9 +1,3 @@
-/**
- * The `@` and `/` completion popup every composer editor shares: the message
- * composer and the in-transcript message edit. The hook owns the open token,
- * ranking, keyboard navigation, and the preview card; the caller wires it to
- * one `ComposerEditor` and renders `menu` beside it.
- */
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -64,7 +58,6 @@ type ComposerSuggestion =
   | MentionSuggestion
   | FileSuggestion;
 
-/** Suggestions that become chips; the rest rewrite the token in place. */
 type ChipSuggestion = Exclude<ComposerSuggestion, PluginCommandSuggestion | ArgumentSuggestion>;
 
 type SuggestionMenuState =
@@ -88,7 +81,6 @@ type SuggestionMenuState =
       readonly query: string;
     };
 
-/** The text after a completing command's name while the caret is past it; it runs to the end of the draft. */
 function argumentToken(
   document: ComposerDocumentState,
   commands: readonly CommandInfo[],
@@ -111,11 +103,6 @@ interface ArgumentAnswer {
   readonly suggestions: readonly ArgumentSuggestion[];
 }
 
-/**
- * The menu's token as the editor holds it now. The menu state commits after
- * the editor does, so a key or click can land before it catches up; undefined
- * when the token no longer starts where the menu opened.
- */
 function liveToken(
   document: ComposerDocumentState,
   menu: SuggestionMenuState,
@@ -147,7 +134,6 @@ function liveToken(
   return { kind: menu.kind, start: menu.start, end: menu.start + token.end, query: token.query };
 }
 
-/** A fetched input the popup renders truthfully: loading and failure are states, not empty lists. */
 type ComposerSource<T> =
   | { readonly status: "loading" }
   | { readonly status: "error" }
@@ -167,12 +153,6 @@ export function composerSource<T>(data: T | undefined, failed: boolean): Compose
 
 const NYTE_COMMAND_OWNERS = new Set(["", "rename", "web-search"]);
 
-/**
- * Scroll the popup's own list so the option is visible. `scrollIntoView` also
- * walks the fixed popup's ancestors and can drag the thread or the window with
- * it; this touches nothing but the list. The list is positioned, so option
- * offsets are relative to it.
- */
 function revealSuggestion(list: HTMLElement | null, option: HTMLElement): void {
   if (list === null) return;
   const top = option.offsetTop;
@@ -322,7 +302,6 @@ function suggestionEmptyText(
   }
 }
 
-/** Where the trimmed query first appears in `text`, ignoring case; undefined when it is blank or absent. */
 function findQuery(
   text: string,
   query: string,
@@ -368,11 +347,6 @@ function HighlightedSuggestionText({
   );
 }
 
-/**
- * A mentioned path reads as the walk down to it: one row per folder, the file
- * or folder itself last. The path line it replaces said the same thing in one
- * ellipsised string.
- */
 function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElement {
   const rows = mentionPreviewRows(file.displayPath);
 
@@ -453,17 +427,13 @@ function suggestionReference(suggestion: ChipSuggestion): MessageReference {
 
 interface ComposerSuggestionsOptions {
   readonly editorRef: RefObject<ComposerEditorHandle | null>;
-  /** The popup anchors here; presses and focus moves inside it are editing, not dismissal. */
   readonly anchorRef: RefObject<HTMLElement | null>;
   readonly side: "top" | "bottom";
   readonly suggestionCatalog: ComposerSuggestionCatalog;
   readonly mentionFiles: ComposerMentionFiles;
   readonly hasConversationContext: boolean;
-  /** Chips already in the draft; a repeated skill or context chip is dropped instead of doubled. */
   readonly references: readonly MessageReference[];
-  /** Sends a draft that is only a picked `run` command; absent where commands cannot run, which hides them. */
   readonly onCommand?: () => void;
-  /** Suggests the text after a command whose `completes` is set. */
   readonly completeCommand?: (
     name: string,
     prefix: string,
@@ -473,40 +443,16 @@ interface ComposerSuggestionsOptions {
 interface ComposerSuggestions {
   readonly open: boolean;
   readonly combobox: ComposerComboboxState;
-  /** Workspace entries the editor resolves typed paths against. */
   readonly files: readonly MentionFile[];
   readonly onCompletionChange: (
     completion: ComposerCompletion | undefined,
     document: ComposerDocumentState,
   ) => void;
-  /** Menu navigation and selection; true when the key was consumed. */
   readonly onKeyDown: (event: KeyboardEvent) => boolean;
-  /** Types the trigger at the caret so the completion opens from the edit itself. */
   readonly insertTrigger: (trigger: "@" | "/") => void;
   readonly menu: ReactElement;
 }
 
-/**
- * The `@` and `/` completion menu the composer drives, plus the host's
- * suggestions for the text after a command that completes it.
- *
- * - Up to thousands of files rank per keystroke, so ranking stays off the
- *   render path for renders that changed nothing it reads.
- * - Inside Enter's key command a command's replacement is a queued nested
- *   update; it commits before the microtask, so a running command submits the
- *   command line.
- * - A pressed row acts as itself or not at all, even when the list has not
- *   caught up.
- * - Plain Enter and Tab pick; a modifier keeps its meaning and sends past the
- *   menu. When the token moved or went away under a stale menu, the key neither
- *   picks nor sends.
- * - The highlight belongs to the list on screen; a query the list has not
- *   caught up with ranks afresh.
- * - An argument menu stays closed until the host answers for the prefix on
- *   screen and closes on an empty answer; Enter then sends.
- * - The editor drives the popup: a press or focus move inside the anchor is
- *   editing, not dismissal, and `select` decides then.
- */
 export function useComposerSuggestions({
   editorRef,
   anchorRef,
@@ -522,7 +468,6 @@ export function useComposerSuggestions({
   const [activeOption, setActiveOption] = useState<HTMLDivElement | null>(null);
   const [menu, setMenu] = useState<SuggestionMenuState>();
   const [index, setIndex] = useState(0);
-  /** The first row is Enter's target from the start, but it only highlights once the pointer or keys move to a row. */
   const [highlighted, setHighlighted] = useState(false);
   const popupId = useId();
   const deferredQuery = useDeferredValue(menu?.query ?? "");
@@ -608,6 +553,7 @@ export function useComposerSuggestions({
       setIndex(0);
       setHighlighted(false);
     }
+
     setMenu(next);
   };
 
@@ -850,6 +796,7 @@ export function useComposerSuggestions({
                         )}
                         onPointerMove={() => {
                           setHighlighted(true);
+
                           if (!selected) setIndex(optionIndex);
                         }}
                         onPointerDown={(event) => event.preventDefault()}

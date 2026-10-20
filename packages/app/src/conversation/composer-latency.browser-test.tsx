@@ -1,11 +1,3 @@
-/**
- * Keystroke-to-paint check for the composer, run inside Electron by
- * `composer-latency.test.ts`. The page carries a realistic load: the real
- * composer frame, one streaming Prose block growing every frame, and a long
- * settled transcript of memoized prose. Keys arrive on a typing cadence
- * without waiting for paint, so a blocked main thread shows up as several
- * characters landing in one frame, which is the lag a person sees.
- */
 import "../../test/window-bridge.ts";
 // oxlint-disable-next-line no-restricted-imports -- the stream loop runs only while the flag is set
 import { StrictMode, memo, useEffect, useState } from "react";
@@ -104,20 +96,16 @@ export interface LatencyReport {
   readonly streaming: boolean;
   readonly typed: number;
   readonly rendered: number;
-  /** Characters that landed in the busiest single frame; 1 means no coalescing. */
   readonly maxCharsPerFrame: number;
-  /** Keystroke send time to the first painted frame containing it. */
   readonly maxLatencyMs: number;
   readonly p95LatencyMs: number;
   readonly frames: number;
-  /** The longest gap between two sampled frames while typing. */
   readonly longestFrameMs: number;
-  /** Frames that carried more than one character: offset from the first key, in ms. */
   readonly coalescedAtMs: readonly number[];
 }
 
 function editorElement(): HTMLElement {
-  const element = document.querySelector<HTMLElement>("[aria-label='Message']");
+  const element = document.querySelector<HTMLElement>("[aria-multiline][aria-label='Message']");
 
   if (element === null) {
     const labels = [...document.querySelectorAll("[aria-label]")].map((node) =>
@@ -136,11 +124,6 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Typing starts once the first commit and the streaming load settle. A warm-up
- * word absorbs one-time costs (history init, first layout of the frame): they
- * belong to the app's first paint, not to the steady state a person types in.
- */
 export async function run(streaming: boolean): Promise<LatencyReport> {
   const client = new QueryClient();
   const host = document.createElement("div");

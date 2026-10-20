@@ -19,7 +19,7 @@ export default function Changes() {
   const parsed = parseSessionId(rawId);
 
   if (parsed === undefined) {
-    return <EmptyState title="Chat not found" description="This conversation doesn't exist." />;
+    return <EmptyState title="Chat not found" description="This chat doesn't exist." />;
   }
 
   return (

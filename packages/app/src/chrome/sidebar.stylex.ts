@@ -1,7 +1,3 @@
-/**
- * Sidebar feature styles.
- * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
- */
 import { glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { sidebar } from "../theme/schema.stylex.ts";
@@ -21,7 +17,6 @@ export const sidebarStyles = create({
   content: {
     "--_sidebar-motion-duration": motion.durationNormal,
     "--_sidebar-motion-easing": motion.easeOutQuint,
-    // Archiving is a dismissal, not a rearrangement: one short slide, no glide.
     "--_sidebar-archive-duration": motion.durationFast,
     position: "relative",
     display: "flex",
@@ -47,11 +42,6 @@ export const sidebarStyles = create({
     paddingInline: sidebar.gutter,
     paddingBlockStart: space.s1_5,
   },
-  /**
-   * A `Row` that is itself the button, shared with the settings rail. The row
-   * brings the fill and colour states; this adds the rail's type and reveals
-   * the shortcut with them.
-   */
   navRow: {
     minHeight: sidebar.rowHeight,
     gap: sidebar.rowGap,
@@ -153,12 +143,6 @@ export const sidebarStyles = create({
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
   },
-  /**
-   * A folder header is a group label, not a list cell: it leaves `--_row-fill`
-   * unset, so the revealed action's own hover fill is the only background. It
-   * still opens on activation, so its cursor follows the app's interactive
-   * cursor preference; `interactive` would paint a fill with it.
-   */
   workspaceRow: {
     "--_workspace-folder-display": {
       default: "inline-flex",
@@ -173,7 +157,6 @@ export const sidebarStyles = create({
     cursor: appearance.cursorInteractive,
     flexShrink: 0,
   },
-  /** Room for the create action, which floats over the row rather than in it. */
   workspacePrimary: {
     paddingInlineEnd: `calc(${sidebar.actionSize} + 2px)`,
   },
@@ -189,67 +172,44 @@ export const sidebarStyles = create({
     touchAction: "pan-y",
     WebkitUserDrag: "none",
   },
-  /**
-   * Opening the room between the title and the time, rather than at the end of
-   * the row, keeps the time where it was: the title is the only thing that
-   * gives way to the actions. The width multiplies `Row`'s own reveal flag, so
-   * the room and the lane cannot fall out of step. A chat has two actions, a
-   * draft one.
-   */
   sessionLabel: {
     marginInlineEnd: `calc(var(--_row-actions-opacity, 0) * (2 * ${target.min} + ${target.gap} + ${sidebar.rowGap}))`,
   },
   draftLabel: {
     marginInlineEnd: `calc(var(--_row-actions-opacity, 0) * (${target.min} + ${sidebar.rowGap}))`,
   },
-  /**
-   * A row that needs you carries a second line: the question asked, or why the
-   * run failed. Every other row keeps one line, so height goes only where a
-   * decision is pending.
-   */
   sessionRowAsk: {
     minHeight: sidebar.askRowHeight,
     alignItems: "flex-start",
     paddingBlock: space.s1,
   },
-  /** The time rides the title line, so the second line runs the row's full width. */
   sessionTitleLine: {
     display: "flex",
     alignItems: "center",
     gap: sidebar.rowGap,
     minWidth: 0,
   },
-  /** The actions cover the title line's box, clear of the second line. */
   rowActionsAsk: {
     top: 4,
     height: type.leadingBase,
   },
   rowIconAsk: { alignSelf: "flex-start", paddingBlockStart: space.s0_5 },
   sessionAsk: { color: role.contentSecondary },
-  /** Replaces the row's title while renaming; same footprint, so the list does not jump. */
   sessionRenameRow: {
     "--_row-fill": role.bgInteractiveSecondaryTranslucent,
   },
   sessionRenameInput: { width: "100%" },
-  /** The layer `Row.Backdrop` positions behind the row; only the tone is ours. */
   sessionSelection: {
     backgroundColor: role.bgInteractiveSecondaryTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderPrimary}`,
   },
   rowSelected: {
-    // The selection layer behind the row is the fill; hover must not add a second.
     "--_row-fill": "transparent",
     "--_row-meta-color": role.contentSecondary,
     color: role.contentPrimary,
   },
   draftRow: { color: role.contentSecondary },
-  /** The status glyph's box, so a badge can sit on its corner without moving the label. */
-  /**
-   * A chat whose folder can't be reached keeps its place at half weight. The
-   * content fades, not the row, so a selected row keeps a solid selection.
-   */
   sessionUnreachable: { opacity: 0.5 },
-  /** The lane's width comes from the rail; this is the tone and the box height. */
   rowIcon: {
     width: sidebar.iconSlot,
     height: sidebar.iconSlot,
@@ -286,10 +246,6 @@ export const sidebarStyles = create({
   },
   workspaceChevronOpen: { transform: "rotate(0deg)" },
   workspaceUnavailable: { color: role.contentSecondary },
-  /**
-   * The time holds a column at rest. Once the actions show it shrinks to two
-   * digits, so the lane sits against the time and stays put between `2h` and `20h`.
-   */
   rowMeta: {
     anchorName: "--nyte-row-time",
     minWidth: `max(3ch, calc(${sidebar.metaWidth} * (1 - var(--_row-actions-opacity, 0))))`,
@@ -300,12 +256,10 @@ export const sidebarStyles = create({
     lineHeight: type.leadingXs,
     letterSpacing: 0.07,
   },
-  /** On a timed row the lane stops a row gap short of the time. */
   rowActionsBesideMeta: {
     positionAnchor: "--nyte-row-time",
     insetInlineEnd: `calc(anchor(start) + ${sidebar.rowGap})`,
   },
-  /** Archive's box+lid is heavy below the grid; lift the glyph, not the hit target. */
   actionGlyphArchive: {
     display: "grid",
     placeItems: "center",
@@ -397,10 +351,6 @@ export const sidebarStyles = create({
     flexShrink: 0,
   },
   footerRow: { display: "flex", alignItems: "center", gap: space.s0_5, minWidth: 0 },
-  /**
-   * The footer is the one row that is always on screen. It answers the pointer
-   * with its label and glyph alone, so a resting rail never carries a lit row.
-   */
   accountButton: {
     "--_row-fill": "transparent",
     width: "auto",
@@ -417,7 +367,6 @@ export const sidebarStyles = create({
   },
   accountLabel: { display: "flex", alignItems: "center", gap: space.s1_5 },
   accountName: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
-  /** Roles under `intent.danger` resolve red; elsewhere they follow the theme hue. */
   updateDot: {
     flexShrink: 0,
     width: 6,

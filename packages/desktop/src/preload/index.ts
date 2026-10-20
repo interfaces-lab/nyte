@@ -53,10 +53,6 @@ contextBridge.exposeInMainWorld("nyteAccount", {
   report: (report) => ipcRenderer.send(ACCOUNT_CHANNELS.report, report),
 } satisfies AccountBridge);
 
-/**
- * One host operation. Only Nyte's main process handles CALL_CHANNEL; it decodes the
- * path's request and answers in the matching `CallReplyFor<P>` envelope.
- */
 async function call<P extends CallPath>(path: P, input: CallInput<P>): Promise<CallOutput<P>> {
   const result: CallReplyFor<P> = await ipcRenderer.invoke(CALL_CHANNEL, { path, input });
 
@@ -95,7 +91,6 @@ const bridge = {
   windowPainted: () => ipcRenderer.send(WINDOW_PAINTED_CHANNEL),
   ...(canvasShell === undefined ? {} : { canvasShell }),
   host: {
-    /** Only the main process sends this private channel; the IPC event is never exposed. */
     onMenuCommand(listener: (command: AppMenuCommand) => void) {
       const wrapped = (_event: Electron.IpcRendererEvent, command: AppMenuCommand): void => {
         listener(command);
@@ -168,7 +163,6 @@ const bridge = {
         ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
       setFocus: (message: BrowserFocusMessage) => ipcRenderer.send(BROWSER_FOCUS_CHANNEL, message),
     },
-    /** HOST_EVENT_CHANNEL is private to Nyte main and emits only HostEvent. */
     onEvent(listener: (event: HostEvent) => void) {
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {
         listener(event);
@@ -185,10 +179,11 @@ const bridge = {
 
 contextBridge.exposeInMainWorld("nyte", bridge);
 
-/** Only Nyte main sends HOST_PORT_CHANNEL: the nonce a window asked with and, unless the host is stopped, its port. */
-ipcRenderer.on(HOST_PORT_CHANNEL, (event, nonce: string) => {
+function handOverHostPort(event: Electron.IpcRendererEvent, nonce: string): void {
   window.postMessage({ channel: HOST_PORT_CHANNEL, nonce }, "*", event.ports);
-});
+}
+
+ipcRenderer.on(HOST_PORT_CHANNEL, handOverHostPort);
 
 let windowZoomFactor: number | undefined;
 
@@ -203,7 +198,6 @@ function syncWindowZoom(): void {
 
 window.addEventListener("resize", syncWindowZoom);
 
-/** Only Nyte main sends WINDOW_FULLSCREEN_CHANNEL, and only a boolean. */
 function markFullscreen(_event: Electron.IpcRendererEvent, fullscreen: boolean): void {
   if (fullscreen) document.documentElement.dataset["fullscreen"] = "";
   else delete document.documentElement.dataset["fullscreen"];

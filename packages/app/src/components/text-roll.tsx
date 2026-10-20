@@ -44,21 +44,15 @@ const styles = create({
 
 interface Shown {
   readonly text: string;
-  /** The text rolling away; set only while the roll runs. */
   readonly outgoing: string | undefined;
   readonly at: number;
 }
 
-/**
- * Status text that rolls up to each new value. Every value stays at least
- * `HOLD_MS`; values that arrive during the hold are skipped for the newest.
- */
 export function TextRoll({
   text,
   itemStyle,
 }: {
   readonly text: string;
-  /** Styles the text itself, so a shimmer never competes with the roll. */
   readonly itemStyle?: StyleXStyles;
 }): ReactElement {
   const [shown, setShown] = useState<Shown>(() => ({

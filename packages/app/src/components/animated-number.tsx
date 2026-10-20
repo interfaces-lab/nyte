@@ -9,12 +9,10 @@ const styles = create({
     clipPath: "inset(0)",
     fontVariantNumeric: "tabular-nums",
   },
-  // The current value owns layout and accessibility, never an animation frame.
   value: { opacity: 0 },
   morph: { position: "absolute", top: 0, left: 0 },
 });
 
-/** Mounts are static; only value updates morph. The text is the ungrouped count, which filename premeasurement reads. */
 export function AnimatedNumber({ value }: { readonly value: number }) {
   const element = useRef<HTMLSpanElement>(null);
   const morph = useRef<TextMorph | null>(null);

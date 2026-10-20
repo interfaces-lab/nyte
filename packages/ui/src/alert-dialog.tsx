@@ -26,7 +26,6 @@ function AlertDialogTrigger({
   return <AlertDialog.Trigger {...rest} {...mergeStyleProps(props(xstyle), className, style)} />;
 }
 
-/** The dialog's parts under a root that ignores outside presses and announces as `alertdialog`. */
 const alertDialogParts = {
   Root: AlertDialog.Root,
   Trigger: AlertDialogTrigger,
@@ -38,7 +37,6 @@ const alertDialogParts = {
   Close: Dialog.Close,
 };
 
-/** A destructive yes-or-no question. Focus starts on Cancel. */
 export function ConfirmDialog({
   open,
   title,

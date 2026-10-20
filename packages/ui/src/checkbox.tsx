@@ -56,7 +56,6 @@ const styles = create({
     borderWidth: 1.5,
     borderStyle: "solid",
     borderRadius: checkbox.radius,
-    // Ticked and mixed fill with the selected control; an empty box answers the pointer.
     borderColor: {
       default: role.bgControlSelected,
       "[data-unchecked]": role.borderControlTranslucent,
@@ -99,12 +98,6 @@ const styles = create({
   },
 });
 
-/**
- * A box that is ticked, empty, or mixed. `indeterminate` draws the dash, for a
- * master box over a list that is partly ticked. It paints inside the primary
- * intent, whose selected control is blue. `attention` dots an empty box in the
- * warning hue, for an item that wants another look.
- */
 export function Checkbox({
   size = "md",
   attention = false,

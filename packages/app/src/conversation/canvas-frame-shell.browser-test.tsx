@@ -10,7 +10,6 @@ import { CanvasFrame } from "./canvas-frame.tsx";
 
 declare global {
   interface Window {
-    /** The compiled canvases the test hands the fixture, by name. */
     readonly canvases: Readonly<
       Record<string, { readonly runtime: number; readonly code: string }>
     >;
@@ -26,7 +25,6 @@ async function until(predicate: () => boolean, what: () => string): Promise<void
   }
 }
 
-/** Draws each canvas in a real CanvasFrame over the built shell: the multi-file three.js galaxy settles at its height, and a canvas that throws reports its error with the file and line. */
 export async function run(): Promise<string> {
   applyDisplayMode("dark");
   preferences.theme.set("dark");
@@ -35,6 +33,7 @@ export async function run(): Promise<string> {
   document.body.append(host);
   const root = createRoot(host);
   const reported: string[] = [];
+
   const state = (name: string, title: string): CanvasState => {
     const compiled = window.canvases[name];
 
@@ -59,6 +58,7 @@ export async function run(): Promise<string> {
   );
 
   const boxes = (): HTMLElement[] => [...host.querySelectorAll<HTMLElement>("figure > div")];
+
   const caption = (): string | undefined =>
     host.querySelector("figcaption")?.textContent ?? undefined;
 

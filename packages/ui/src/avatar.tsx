@@ -60,7 +60,6 @@ const toneFill = create({
   },
 });
 
-/** Each tone but `neutral` scopes the avatar to its hue. */
 const toneScopes = {
   neutral: null,
   orange: surfaceTheme.orange,

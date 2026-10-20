@@ -1,15 +1,3 @@
-/**
- * A command palette: a dialog near the top of the window holding an inline
- * Base UI Autocomplete. The dialog owns open state, the scrim, and focus; the
- * autocomplete owns the input, the highlight, and arrow-key and Enter handling.
- * `Popup` renders the portal, scrim, viewport, panel, and autocomplete root as
- * one unit, so every palette opens the same surface and navigates the same way.
- *
- * Filtering is the caller's: render the rows that match and pass their values
- * as `items`, in render order, so the highlight tracks the rows that exist.
- * Rows keep the menu's three columns, leading glyph, label, and meta, so labels
- * align in every group.
- */
 import { Autocomplete } from "@base-ui/react/autocomplete";
 import { Dialog } from "@base-ui/react/dialog";
 import { create, props } from "@stylexjs/stylex";
@@ -218,7 +206,6 @@ type PaletteProps<ItemValue> = Pick<
   | "itemToStringValue"
   | "loopFocus"
 > & {
-  /** Every row's `value`, in render order. The highlight follows this list as rows change. */
   readonly items: readonly ItemValue[];
 };
 
@@ -240,11 +227,8 @@ function CommandPopup<ItemValue>({
   ...rest
 }: StyledProps<Dialog.Popup.Props, Restyle<"Command.Popup">> &
   PaletteProps<ItemValue> & {
-    /** The dialog's accessible name. Read by screen readers, never shown. */
     readonly title?: string;
-    /** The dialog's accessible description. Read by screen readers, never shown. */
     readonly description?: string;
-    /** Scopes the panel to a hue; the scrim stays neutral. */
     readonly tint?: Tint;
   }): ReactElement {
   return (
@@ -299,7 +283,6 @@ function CommandInput({
   style,
   ...rest
 }: StyledProps<Autocomplete.Input.Props, Restyle<"Command.Input">> & {
-  /** Right of the field: a shortcut hint, a clear button. */
   readonly trailing?: ReactNode;
 }): ReactElement {
   return (
@@ -342,7 +325,6 @@ function CommandGroup({
   style,
   ...rest
 }: StyledProps<Autocomplete.Group.Props> & {
-  /** Labels the group; the rows follow it. */
   readonly heading?: ReactNode;
 }): ReactElement {
   return (
@@ -386,10 +368,8 @@ function CommandItem<ItemValue>({
   style,
   ...rest
 }: StyledProps<Omit<Autocomplete.Item.Props, "value">, Restyle<"Command.Item">> & {
-  /** Identifies the row; it must appear in the popup's `items`. */
   readonly value: ItemValue;
   readonly leading?: ReactNode;
-  /** Right column: a shortcut, a timestamp. Display only. */
   readonly meta?: ReactNode;
 }): ReactElement {
   return (
@@ -408,7 +388,6 @@ function CommandItem<ItemValue>({
   );
 }
 
-/** Shows its children while `items` is empty: nothing matched, still loading, failed. */
 function CommandEmpty({
   xstyle,
   className,

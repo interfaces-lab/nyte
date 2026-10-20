@@ -1,15 +1,5 @@
-/**
- * The rail's seat in the stage owns visibility and the resize handle, so the
- * rail itself only ever renders at its full width.
- *
- * Hiding changes geometry immediately and keeps the rail mounted so scroll
- * position, search text, and in-progress rename survive a toggle without an
- * intermediate flickering state. Resizing writes the width straight to the
- * root variable on every pointer move and commits to the store on release,
- * so the drag never waits for React.
- */
+import { useSettingsOpen } from "./use-settings-open.ts";
 import { create, props } from "@stylexjs/stylex";
-import { useMatch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar } from "../theme/schema.stylex.ts";
@@ -71,7 +61,6 @@ const styles = create({
     },
     ":focus-visible::after": { backgroundColor: role.borderStrongTranslucent },
   },
-  /** Without window tabs the content is flush with the rail; the handle draws their edge. */
   handleEdge: { "::after": { backgroundColor: role.borderSecondaryTranslucent } },
   handleActive: { "::after": { backgroundColor: role.borderStrongTranslucent } },
 });
@@ -86,8 +75,10 @@ interface ResizeState {
 export function SidebarPane({ children }: { readonly children: ReactNode }): ReactElement {
   const sidebarVisible = useSetting(preferences.sidebarVisible);
   const sidebarWidth = useSetting(preferences.sidebarWidth);
-  const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
-  const visible = sidebarVisible || settings !== undefined;
+
+  const settingsOpen = useSettingsOpen();
+
+  const visible = sidebarVisible || settingsOpen;
   const [resizing, setResizing] = useState(false);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
 

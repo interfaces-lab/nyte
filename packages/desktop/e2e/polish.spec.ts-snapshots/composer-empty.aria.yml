@@ -2,7 +2,7 @@
   - region "Active chat pane":
     - button "Home"
     - button "This Mac"
-    - form "Message composer":
+    - form "Message":
       - combobox "Message":
         - text: Ask Nyte, or type / for skills and @ for context
         - paragraph

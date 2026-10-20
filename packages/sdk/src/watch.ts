@@ -27,12 +27,10 @@ interface ViewHold {
   subscribe(sink: Sink<SessionView>): Disposer;
 }
 
-/** Returns the client's open `head.watch`es, one per head and tail, each closed when its last watcher leaves. */
 export interface HeadViews {
   acquire(session: SessionId, head: HeadName, options?: ViewOptions): ViewHold;
 }
 
-/** Returns the head watches of one client over `rows`: a hold applies the host's frames in order, a reconnect starting again from the whole view the host sends. */
 export function createHeadViews(rows: Rows): HeadViews {
   const open = new Map<string, ViewHold>();
 
@@ -103,7 +101,6 @@ export function createHeadViews(rows: Rows): HeadViews {
   };
 }
 
-/** Returns a head's views from its shared hold, each with the journal's unsent messages for the head merged in. */
 export function watchHead(
   views: HeadViews,
   journal: JournalLoop,
@@ -124,8 +121,7 @@ export function watchHead(
 
         if (view === null) return;
         journal.landed(session, head, view);
-        const ids = new Set(view.messages.map((message) => message.id));
-        const next = withUnsent(view, journal.unsent(session, head), (id) => ids.has(id));
+        const next = withUnsent(view, journal.unsent(session, head));
 
         if (next === shown) return;
         shown = next;
@@ -149,7 +145,6 @@ export function watchHead(
   );
 }
 
-/** Returns the host's views, continuing `opened` when connecting left its `connection.watch` open. */
 export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterable<HostView> {
   return coalesce(
     pushed<HostView>((sink) => {
@@ -189,13 +184,11 @@ export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterab
   );
 }
 
-export function withUnsent(
-  view: SessionView,
-  unsent: readonly Message[],
-  known: (id: Message["id"]) => boolean,
-): SessionView {
+export function withUnsent(view: SessionView, unsent: readonly Message[]): SessionView {
+  if (unsent.length === 0) return view;
   const over = new Map(unsent.map((message) => [message.id, message]));
-  const missing = unsent.filter((message) => !known(message.id));
+  const known = new Set(view.messages.map((message) => message.id));
+  const missing = unsent.filter((message) => !known.has(message.id));
 
   if (missing.length === 0 && !view.messages.some((message) => over.has(message.id))) return view;
   const messages = view.messages.map((message) => over.get(message.id) ?? message);
@@ -228,7 +221,6 @@ function hostView(wire: HostViewWire, link: HostView["link"], operations: string
   };
 }
 
-/** Returns an iterable over what `start` pushes into its sink, the latest value kept while nobody pulls; its disposer runs when the iteration ends. */
 export function pushed<T>(start: (sink: Sink<T>) => () => void): AsyncIterable<T> {
   return closable<T>(() => {
     let slot: { readonly value: T } | null = null;

@@ -1,4 +1,6 @@
-import type { ExoticComponent } from "react";
+import type { ExoticComponent, FunctionComponent } from "react";
+
+type Component = ExoticComponent<never> | FunctionComponent<never>;
 
 interface Fiber {
   readonly child: Fiber | null;
@@ -12,32 +14,24 @@ interface FiberRoot {
   readonly current: Fiber;
 }
 
-/** React sets this flag on a fiber whose render function ran in the commit. */
 const PERFORMED_WORK = 1;
 
 const watched = new Map<Fiber["elementType"], { mounts: number; updates: number }>();
 
 let committedAt = 0;
 
-/** When React last committed, on the `performance.now()` clock. */
 export function lastCommit(): number {
   return committedAt;
 }
 
-/**
- * Renders of `component` since the last `resetRenders`, first mounts and
- * re-renders apart, counted from React's devtools commit hook. Import this
- * module before `react-dom`: React reads the hook once, when it loads.
- */
-export function renderCount(component: ExoticComponent<never>): {
+export function renderCount(component: Component): {
   mounts: number;
   updates: number;
 } {
   return watched.get(component) ?? { mounts: 0, updates: 0 };
 }
 
-/** Start counting `component` from zero. */
-export function resetRenders(component: ExoticComponent<never>): void {
+export function resetRenders(component: Component): void {
   watched.set(component, { mounts: 0, updates: 0 });
 }
 

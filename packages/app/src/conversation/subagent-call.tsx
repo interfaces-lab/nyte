@@ -107,7 +107,6 @@ const lineStyles = create({
   },
 });
 
-/** A listed child speaks for itself; until then its create call does. */
 type SubagentSubject =
   | { readonly kind: "session"; readonly session: SessionInfo }
   | { readonly kind: "call"; readonly status: SubagentStatus };
@@ -122,7 +121,6 @@ function SubagentModel({ session }: { readonly session: SessionInfo }): ReactEle
   return <span {...props(subagentCallStyles.model)}>{name}</span>;
 }
 
-/** The status line; while the child runs, its current step replaces the status. */
 function SubagentStatusLine({
   status,
   watched,
@@ -151,7 +149,6 @@ function SubagentStatusLine({
   );
 }
 
-/** Indicator, title, model, and status; the whole row opens the child in the tray. */
 function SubagentRow({
   title,
   subject,
@@ -217,7 +214,6 @@ function SubagentRow({
   );
 }
 
-/** A coordinator's own children, one compact row each. */
 function SubagentNestedRows({
   session,
   cwd,
@@ -342,7 +338,6 @@ export function SubagentGroupView({
   );
 }
 
-/** A call on a child, drawn as a tool line: the verb, then the agent it names, which opens the child. */
 export function SubagentLineView({
   toolClass,
   message,
@@ -543,7 +538,6 @@ function CitationModel({ session }: { readonly session: SessionInfo }): ReactEle
   );
 }
 
-/** The folder a subagent works in, or the branch of the worktree it works in. */
 function CitationFolder({ session }: { readonly session: SessionInfo }): ReactElement {
   const workspace = useWorkspaces().data?.find((candidate) => candidate.id === session.workspace);
   const branch = workspace?.worktree?.branch;

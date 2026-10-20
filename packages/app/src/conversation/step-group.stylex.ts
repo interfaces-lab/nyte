@@ -1,4 +1,3 @@
-/** A run of steps folded under one verb, and the thinking line. */
 import { create } from "@stylexjs/stylex";
 import { button, media, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";

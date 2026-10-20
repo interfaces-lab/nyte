@@ -71,11 +71,6 @@ function fixture(path: string | null = "/projects/one") {
   return client;
 }
 
-/**
- * SSR creates fresh observers, so these probes test cache visibility, not mounted
- * effects. SSR has no effects either, so the probe captures the real hook result
- * for actions after rendering.
- */
 function probe(client: QueryClient) {
   let found: ReturnType<typeof useGitHubAccount> | undefined;
   let repo: ReturnType<typeof useGitHubState> | undefined;

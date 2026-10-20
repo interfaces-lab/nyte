@@ -93,16 +93,6 @@ function linked(patch: Partial<Linked>): Linked {
   };
 }
 
-/**
- * Walks Remote Access through every account and link state:
- * - a build without the account service shows no row;
- * - signed out, the tray signs in and links in one press;
- * - a real failure says what happened, and signed in, the button only links;
- * - linked, the tray stays for its last step, and access starts off;
- * - a connected relay without a current lease admits no device;
- * - when another instance takes the link over, only the user can take it back;
- * - unlinking asks first and names what happens.
- */
 export async function run() {
   let view: ConnectView = { kind: "unavailable", reason: "not_configured" };
   const calls: string[] = [];

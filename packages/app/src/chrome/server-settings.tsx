@@ -1,10 +1,3 @@
-/**
- * Remote access, the inbound connection: this desktop serving one of its own
- * local stores, with the web app on the same address, to a browser or the iOS
- * app. The Nyte account option comes first; this Mac only, Tailscale, and the
- * user's own Cloudflare tunnel follow as manual setup. Nothing here touches
- * local providers.
- */
 import { props } from "@stylexjs/stylex";
 import { focusManager, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useSyncExternalStore } from "react";
@@ -40,7 +33,6 @@ function servedTargetLabel(target: ServedTarget): string {
   return target.kind === "home" ? "Home" : target.workspace.name;
 }
 
-/** The link, address, and token a client needs, with the token hidden until asked for. */
 function ServingPanel({ state }: { state: TokenServing }) {
   const [revealed, setRevealed] = useState(false);
   const [step, setStep] = useState<"scan" | "details">("scan");
@@ -267,7 +259,6 @@ const subscribeToWindowFocus = (notify: () => void): (() => void) => focusManage
 
 const readWindowFocus = (): boolean => focusManager.isFocused();
 
-/** Connection state is polled only while the window has focus. */
 export function useWindowFocused(): boolean {
   return useSyncExternalStore(subscribeToWindowFocus, readWindowFocus, readWindowFocus);
 }

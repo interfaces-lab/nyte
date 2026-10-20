@@ -1,18 +1,10 @@
-/**
- * What this host can back, in a leaf module: rows and pages both ask it, and
- * the page table imports every page, so the question can't live there.
- */
 import { clientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
 
-/** What this host can back. A row or page shows only where everything it needs holds. */
 export interface SettingsContext {
-  /** ~/.nyte/settings.json is reachable: the desktop, not the web app or mobile. */
   readonly hostSettings: boolean;
   readonly mac: boolean;
-  /** The built-in browser panel exists. */
   readonly browser: boolean;
-  /** Sign-ins and model defaults change here: the desktop, or a server environment not reached over the relay. */
   readonly providers: boolean;
   readonly account: boolean;
   readonly usage: boolean;
@@ -20,7 +12,6 @@ export interface SettingsContext {
 
 export type Capability = keyof SettingsContext;
 
-/** Computed per call: the installed bridge decides, and tests install different ones. */
 export function settingsContext(): SettingsContext {
   const ownEnvironment = nyte.clientSurface === "desktop";
   const { browser } = clientCapabilities(nyte.host);

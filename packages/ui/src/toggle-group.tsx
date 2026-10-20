@@ -20,7 +20,6 @@ const styles = create({
   },
 });
 
-/** A track of `Toggle`s that share one pressed state. */
 export function ToggleGroup<Value extends string>({
   xstyle,
   className,

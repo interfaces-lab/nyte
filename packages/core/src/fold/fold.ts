@@ -6,9 +6,9 @@ import type {
   Delivery,
   Execution,
   Failure,
-  FileChange,
   HeadInfo,
   HeadName,
+  Message,
   MessageId,
   PartId,
   PartStatus,
@@ -33,7 +33,6 @@ import type {
   FoldState,
   Index,
   Logged,
-  UserMessage,
 } from "../contract/fold.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import { readPositionCommit, START } from "../store/session.ts";
@@ -60,7 +59,11 @@ import { finish } from "./paths.ts";
 
 const INACTIVE: Activation = { kind: "inactive" };
 
-const SINGLE: UserMessage["siblings"] = { index: 0, count: 1, ids: [] };
+const SINGLE: Extract<Message, { readonly kind: "user" }>["siblings"] = {
+  index: 0,
+  count: 1,
+  ids: [],
+};
 
 export const EMPTY_CATALOG: SessionCatalogView = {
   commands: [],

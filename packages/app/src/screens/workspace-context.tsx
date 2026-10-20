@@ -13,12 +13,7 @@ import { useGitHub, useGitHubState } from "../chrome/github-account.ts";
 import { folderPicker, handleOpenOutcome } from "../chrome/open-workspace.tsx";
 import { clientActions } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
-import {
-  useHostState,
-  useVcsSnapshot,
-  useWorkspaceSessionDirectory,
-  useWorkspaces,
-} from "../queries.ts";
+import { useHostState, useVcsSnapshot, useWorkspaceSessions, useWorkspaces } from "../queries.ts";
 import { ContextSelector } from "./context-selector.tsx";
 import { contextStyles } from "./context-selector.stylex.ts";
 import { EnvironmentMenu } from "./environment-menu.tsx";
@@ -50,10 +45,10 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
 
   const openFolder = folderPicker();
 
-  const directories = useWorkspaceSessionDirectory().data ?? [];
+  const groups = useWorkspaceSessions().data ?? [];
   const lastActivity = new Map<string, number>();
 
-  for (const { workspacePath, sessions } of directories) {
+  for (const { workspacePath, sessions } of groups) {
     if (workspacePath === null) continue;
 
     for (const session of sessions)

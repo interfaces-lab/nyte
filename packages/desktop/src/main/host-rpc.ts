@@ -1,20 +1,12 @@
-/** A request's settled answer as it crosses the process boundary. */
 export type Outcome<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly message: string };
 
-/** What one side of an {@link Rpc} sends: its asks, its aborts of them, and its answers to the other side's asks. */
 export type RpcMessage<Ask, Answer> =
   | { readonly kind: "ask"; readonly id: number; readonly ask: Ask }
   | { readonly kind: "abort"; readonly id: number }
   | { readonly kind: "settle"; readonly id: number; readonly outcome: Outcome<Answer> };
 
-/**
- * Requests in both directions over one message port, used by main and the host process alike.
- * `ask` settles with the other side's outcome; `receive` routes the other side's messages and
- * answers its asks through `serve`, posting a settle whether `serve` fulfils or rejects.
- * `close` rejects every pending ask and aborts every ask being served.
- */
 export class Rpc<Ask, Answer, Served, Serves> {
   readonly #post: (message: RpcMessage<Ask, Serves>) => void;
   readonly #serve: (ask: Served, signal: AbortSignal) => Promise<Serves>;
@@ -31,7 +23,6 @@ export class Rpc<Ask, Answer, Served, Serves> {
     this.#serve = serve;
   }
 
-  /** Asks the other side; an aborted `signal` tells it to give up on the ask. */
   ask(ask: Ask, signal?: AbortSignal): Promise<Answer> {
     if (this.#closed !== undefined) return Promise.reject(new Error(this.#closed));
 
@@ -73,7 +64,6 @@ export class Rpc<Ask, Answer, Served, Serves> {
     }
   }
 
-  /** The other side is gone: pending asks reject with `message` and served asks abort. */
   close(message: string): void {
     this.#closed = message;
 

@@ -78,7 +78,6 @@ export class HostProcess {
     return reply;
   }
 
-  /** One end of a new channel whose other end the host serves; undefined while the host is stopped. A restarting host is waited for. */
   async openPort(): Promise<MessagePortMain | undefined> {
     const run = await this.#current;
 

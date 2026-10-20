@@ -10,13 +10,11 @@ import type { ToolStatus } from "@nyte-ai/plugin/client/presentation";
 
 export interface SubagentStatus {
   readonly indicator: "running" | "attention" | "failed" | "unread" | "done";
-  /** Empty when there is nothing to add to the indicator. */
   readonly text: string;
 }
 
 const PLANNING: SubagentStatus = { indicator: "running", text: "Planning next moves" };
 
-/** The create call speaks for a child until the parent lists it. */
 export function callStatus(status: ToolStatus): SubagentStatus {
   switch (status.tone) {
     case "running":
@@ -73,7 +71,6 @@ export function sessionStatus(session: SessionInfo, unread: boolean): SubagentSt
   }
 }
 
-/** What a running child is doing now: its unsettled call, else what it streams. */
 export function subagentActivity(
   view: SessionView | undefined,
   cwd: string | undefined,

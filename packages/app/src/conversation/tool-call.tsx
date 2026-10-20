@@ -1,11 +1,3 @@
-/**
- * One tool call, drawn by its class: shell, edit and subagent calls have their
- * own rows, and every other class is a quiet verb line that expands into its
- * evidence. No status icons on tool calls: the running state is the shimmer,
- * the outcome is a word after the subject, and the chevron is a control.
- *
- * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/tool-call.tsx
- */
 import { memo } from "react";
 import type { ReactElement } from "react";
 import { toolOutput } from "@nyte-ai/plugin/client/presentation";

@@ -1,5 +1,4 @@
-/** The bar over each pane of a split: its title and its layout menu. */
-import { threadStyles } from "./thread.stylex.ts";
+import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
@@ -18,7 +17,6 @@ export function PaneHeader({
 }: {
   paneId: PaneId;
   title: ReactNode;
-  /** Session-only entries appended below the layout entries. */
   sessionItems?: ReactNode;
   menuTriggerRef?: RefObject<HTMLButtonElement | null>;
 }): ReactElement {
@@ -27,9 +25,9 @@ export function PaneHeader({
   const mac = nyte.platform === "darwin";
 
   return (
-    <div {...props(threadStyles.header)}>
-      <span {...props(threadStyles.title)}>{title}</span>
-      <span {...props(threadStyles.headerActions)}>
+    <div {...props(sessionScreenStyles.header)}>
+      <span {...props(sessionScreenStyles.title)}>{title}</span>
+      <span {...props(sessionScreenStyles.headerActions)}>
         <Menu>
           <MenuTrigger
             render={<Button iconOnly ref={menuTriggerRef} icon="more" aria-label="Pane actions" />}

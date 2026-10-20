@@ -1,14 +1,14 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
-import { Extension } from "@tiptap/core";
-import type { Editor } from "@tiptap/core";
+import { Editor, Extension } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
-import type { ReactNodeViewProps } from "@tiptap/react";
+import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
+import type { EditorContentProps, ReactNodeViewProps } from "@tiptap/react";
 import { useLayoutEffect, useState } from "react";
+import type { ReactElement } from "react";
 import { ComposerChipView } from "./composer-chip.tsx";
 import {
   ComposerDocument,
@@ -26,6 +26,7 @@ import { openConversationLink } from "./external-link.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import type { ReferenceOpener } from "./reference-opener.tsx";
 import { composerStyles } from "./composer.stylex.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 
 const URL_PATTERN =
   /((https?:\/\/(www\.)?)|(www\.))[-\p{L}\p{N}@:%._+~#=]{1,256}\.[\p{L}\p{N}]{1,6}(?:[-\p{L}\p{N}()@:%_+.~#?&//=]*[\p{L}\p{N}()@_~#?&//=])?/gu;
@@ -172,7 +173,6 @@ function ReferenceChip({
   );
 }
 
-/** Tiptap names every editor a textbox; a read-only message is text, and its row stays clickable. */
 export function useComposerSurface({
   text,
   files,
@@ -184,7 +184,7 @@ export function useComposerSurface({
 }): Editor {
   const opener = useReferenceOpener();
 
-  const [options] = useState(() => {
+  const [editor] = useState(() => {
     const chip = (nodeView: ReactNodeViewProps) => (
       <ReferenceChip {...nodeView} removable={editable} />
     );
@@ -218,25 +218,47 @@ export function useComposerSurface({
       injectCSS: false,
     };
 
-    return editable
-      ? surface
-      : {
-          ...surface,
-          editable: false,
-          editorProps: {
-            attributes: {
-              role: "",
-              class: props(composerStyles.readOnly).className ?? "",
-              "data-composer-readonly": "",
+    return new Editor(
+      editable
+        ? surface
+        : {
+            ...surface,
+            editable: false,
+            editorProps: {
+              attributes: {
+                role: "",
+                class: props(composerStyles.readOnly).className ?? "",
+                "data-composer-readonly": "",
+              },
             },
           },
-        };
+    );
   });
 
-  const editor = useEditor(options);
   useLayoutEffect(() => registerComposerLinkClicks(editor.view.dom, opener), [editor, opener]);
 
   return editor;
+}
+
+function EditorViewLifetime({ editor }: { readonly editor: Editor }): null {
+  useLayoutEffect(() => {
+    if (editor.isDestroyed) editor.mount(document.createElement("div"));
+  }, [editor]);
+  useMountEffect(() => () => editor.unmount());
+
+  return null;
+}
+
+export function ComposerSurfaceContent({
+  editor,
+  ...content
+}: Omit<EditorContentProps, "editor" | "ref"> & { readonly editor: Editor }): ReactElement {
+  return (
+    <>
+      <EditorViewLifetime editor={editor} />
+      <EditorContent editor={editor} {...content} />
+    </>
+  );
 }
 
 const noFiles: ReadonlyMap<string, MentionFile> = new Map();
@@ -244,7 +266,7 @@ const noFiles: ReadonlyMap<string, MentionFile> = new Map();
 function ReadOnlyMessage({ draft }: { readonly draft: string }) {
   const editor = useComposerSurface({ text: draft, files: () => noFiles, editable: false });
 
-  return <EditorContent editor={editor} style={editorContentStyle} />;
+  return <ComposerSurfaceContent editor={editor} style={editorContentStyle} />;
 }
 
 export function ComposerReadOnly({ text }: { readonly text: string }) {

@@ -214,11 +214,6 @@ function Stats({
   );
 }
 
-/**
- * An edit is a file and its diff. Compact and balanced draw a verb line that
- * opens the diff in place; detailed draws a card whose header opens the file
- * and whose body previews four rows of the diff.
- */
 export const EditCallView = memo(function EditCallView({
   message,
   toolClass,

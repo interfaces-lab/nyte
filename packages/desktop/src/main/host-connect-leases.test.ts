@@ -1,7 +1,3 @@
-/**
- * Leases decide who a linked Mac serves: which devices get in, when a lease is
- * asked for, and which leases are refused. See `fixtures/connect-machine.ts`.
- */
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
@@ -38,7 +34,6 @@ import type { Fixture, LeaseCraft } from "./fixtures/connect-machine.ts";
 
 afterEach(cleanUp);
 
-/** Back-date a recorded device, as if an earlier run had recorded it `ageMs` ago. */
 async function backdateDevice(setup: Fixture, deviceId: string, ageMs: number): Promise<void> {
   const path = join(setup.state, "connect.json");
   const file = JSON.parse(await readFile(path, "utf8"));

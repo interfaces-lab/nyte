@@ -1,7 +1,7 @@
 import type { WorkspaceId } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../../lib/catalog.ts";
 import { shortId } from "../../lib/format.ts";
-import { landingMessages } from "../../lib/view-helpers.ts";
+import { promptMessages } from "../../lib/view-helpers.ts";
 import type { AuthDialog } from "../dialogs/auth.ts";
 import { snapshot } from "../draft.ts";
 import { queueRows } from "../queue.ts";
@@ -99,7 +99,7 @@ export const sessionHandlers = {
     const session = followedSession(state);
     const view = session?.view ?? null;
 
-    if (queueRows(session, null).length > 0 || (view !== null && landingMessages(view).length > 0))
+    if (queueRows(session, null).length > 0 || (view !== null && promptMessages(view).length > 0))
       return refuse(
         state,
         "error: Wait for queued messages before changing directories.",

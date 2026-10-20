@@ -2,29 +2,14 @@ import { Value } from "typebox/value";
 import type { AccountState } from "./account-session.ts";
 import type { AccountStore } from "./account-store.ts";
 
-/** The sign-in main holds for Clerk: its client token and the account it describes. */
 type SignInKeeper = {
   readonly state: () => AccountState;
-  /** The renderer's report of who Clerk has signed in. */
   readonly report: (next: AccountState) => void;
-  /** Clerk's client token, the saved one opened on first read. */
   readonly readToken: () => Promise<string | null>;
-  /** Clerk replaced or cleared its client token. */
   readonly writeToken: (token: string | null) => void;
-  /** The user signed out: forget the token and the saved sign-in. */
   readonly signOut: () => void;
 };
 
-/**
- * Keeps the sign-in in line with the store across restarts: the store holds a
- * sign-in once both the client token and the account describe one. A restored
- * token stays `sealed` until Clerk first asks for it. One the keychain cannot
- * open leaves the run signed out and `unopened`: the file keeps it until this
- * run signs in or signs out, so one keychain failure never deletes it. `kept`
- * is what this run last saved, undefined while the file may hold a restored
- * token. A failure to seal, open, or write leaves the file as it was and warns
- * once per run.
- */
 export function createSignInKeeper(
   store: AccountStore | undefined,
   onChange: () => void,

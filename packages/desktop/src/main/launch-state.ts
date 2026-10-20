@@ -1,8 +1,3 @@
-/**
- * What main needs before the first window exists, kept across launches: the theme the renderer
- * last chose, so the window and the startup shell open in it, and the frame of the window that
- * closed last, so the next one opens where it was.
- */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { Type } from "typebox";
@@ -49,11 +44,6 @@ function readState(path: string): LaunchState {
   }
 }
 
-/**
- * Reads once at construction and writes synchronously on change. The file is a few hundred
- * bytes and changes when the theme does or a window closes, and a window that closes while the
- * app quits must still be written before the process exits.
- */
 export class LaunchStateStore {
   readonly #path: string;
   #state: LaunchState;

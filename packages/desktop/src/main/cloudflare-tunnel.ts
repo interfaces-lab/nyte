@@ -1,16 +1,3 @@
-/**
- * The built-in Cloudflare remote-access plugin. The user brings a Cloudflare
- * account, a domain on it, and a remotely-managed named tunnel whose public
- * hostname routes to `http://127.0.0.1:<port>`; Nyte brings the listener on
- * that port and runs `cloudflared` only while it serves.
- *
- * Cloudflare terminates TLS, so it reads every request, device tokens
- * included, and so can anyone with access to the tunnel's live logs in the
- * user's Cloudflare account. Every device still authenticates to the listener
- * itself with its own bearer token. A token is minted when the user adds a
- * device, returned once, and stored only as a digest. An unused token expires;
- * the first request that presents it claims it.
- */
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import { Type } from "typebox";
@@ -36,7 +23,6 @@ import type { StoredDevice, TunnelFile } from "./cloudflare-tunnel-store.ts";
 import { ExpectedHostError } from "./errors.ts";
 import type { RemoteAccessPlugin, RemoteExposure } from "./remote-access-plugin.ts";
 
-/** Devices waiting for their first request at once. */
 const PENDING_LIMIT = 5;
 
 const PAIRING_WINDOW_MS = 10 * 60 * 1_000;
@@ -67,9 +53,7 @@ function storeFailed(): ExpectedHostError {
 }
 
 interface CloudflareTunnelOptions {
-  /** Holds the settings file and cloudflared's private home. */
   readonly home: string;
-  /** The cloudflared executable. Absent, the usual install paths are searched. */
   readonly cloudflared?: string;
   readonly pairingWindowMs?: number;
   readonly timing?: ConnectorTiming;
@@ -81,11 +65,9 @@ interface Exposed {
   readonly exposure: RemoteExposure;
   readonly connector: CloudflaredConnector;
   readonly hostname: string;
-  /** Tells the host something Settings shows has changed; carries nothing itself. */
   readonly changed: () => void;
 }
 
-/** Padded standard base64 that re-encodes to itself, as Go's `StdEncoding` reads it. */
 function standardBase64(text: string): Buffer | undefined {
   if (text === "" || text.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(text))
     return undefined;
@@ -94,12 +76,6 @@ function standardBase64(text: string): Buffer | undefined {
   return bytes.toString("base64") === text ? bytes : undefined;
 }
 
-/**
- * What a dashboard token decodes to: standard base64 of JSON naming the
- * account, the tunnel's UUID, and its secret as base64 bytes. cloudflared
- * 2026.8.3 refuses anything else (`ParseToken`), so it is checked before
- * saving rather than discovered as a connector that never starts.
- */
 function cloudflaredAccepts(token: string): boolean {
   const decoded = standardBase64(token);
 
@@ -120,12 +96,10 @@ function invalid(message: string): ExpectedHostError {
   return new ExpectedHostError({ code: "invalid", message });
 }
 
-/** Paired, or pending with time left to claim it. */
 function unexpired(device: StoredDevice, now: number): boolean {
   return device.state.kind === "paired" || device.state.expiresAt > now;
 }
 
-/** The device whose digest is `wanted`, compared against every digest so the time taken does not say which one matched. */
 function findDevice(devices: readonly StoredDevice[], wanted: Buffer): StoredDevice | undefined {
   let match: StoredDevice | undefined;
 
@@ -174,7 +148,6 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
     };
   }
 
-  /** Save the tunnel. A new hostname drops every device, since each saved the old one and could not reach the new. */
   async configure(settings: CloudflareTunnelSettings): Promise<void> {
     this.refuseWhileExposed();
     const hostname = settings.hostname.trim().toLowerCase();
@@ -207,10 +180,6 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
     await this.change(() => ({ file: undefined, result: undefined }));
   }
 
-  /**
-   * Mint a device token, only while the tunnel is connected: a code shown while it is down could not
-   * be used, and would still be a live credential.
-   */
   async pair(input: { readonly name: string }): Promise<RemotePairing> {
     const exposed = this.exposed;
 
@@ -280,11 +249,6 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
     });
   }
 
-  /**
-   * Claim the exposure. Nothing awaits between the last `refuseWhileExposed` and the claim, and the
-   * exposure stays claimed until its connector is gone, so nothing reconfigures or pairs during
-   * shutdown.
-   */
   async expose(changed: () => void): Promise<RemoteExposure> {
     this.refuseWhileExposed();
     const loaded = await this.store.read();
@@ -346,12 +310,6 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
     return exposure;
   }
 
-  /**
-   * Missing credential: unauthorized. Anything else that is not a live device
-   * token, or any token once the store has failed: forbidden. A pending token's
-   * claim queues behind any earlier revoke, so a revoked token never comes back,
-   * and a claim tells Settings, which shows the device as waiting until then.
-   */
   private async authorize(request: Request): Promise<AuthDecision> {
     const presented = bearerToken(request);
 

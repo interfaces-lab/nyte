@@ -1,12 +1,3 @@
-/**
- * A stand-in for the broker's relay over a real `ws` server on loopback. It
- * checks a desktop's first frame through `authenticate`, opens channels the
- * way the Worker does, and holds everything the desktop sends to the
- * framing and credit rules: a frame that breaks them is recorded and closes
- * the socket with `invalid`. Response bodies are granted credit only as the
- * caller reads them. The desktop under test dials it with the global
- * `WebSocket` through `dial`.
- */
 import assert from "node:assert/strict";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -43,9 +34,7 @@ interface Exchange {
   readonly head: PromiseWithResolvers<Response>;
   readonly queue: Uint8Array[];
   readonly waiters: Set<() => void>;
-  /** Request bytes the desktop still has room for. */
   credit: number;
-  /** Response bytes received and not yet read. */
   unreturned: number;
   status: number | undefined;
   ended: boolean;
@@ -68,9 +57,7 @@ function waitOn(exchange: Exchange): Promise<void> {
 }
 
 interface RelayServerOptions {
-  /** The broker origin the desktop was built with. */
   readonly origin: string;
-  /** Undefined accepts the socket; a number closes it with that code. */
   readonly authenticate: (input: {
     readonly environmentId: string;
     readonly proof: string;
@@ -78,19 +65,12 @@ interface RelayServerOptions {
 }
 
 export class RelayServer {
-  /** Close codes of every desktop socket, as the server saw them. */
   readonly closes: number[] = [];
-  /** Frames from the desktop that broke the contract. */
   readonly violations: string[] = [];
-  /** Auth frames answered, accepted or not. */
   auths = 0;
-  /** Exchanges the desktop reset. */
   resets = 0;
-  /** Response body bytes the desktop sent. */
   received = 0;
-  /** Request body bytes sent to the desktop. */
   uploaded = 0;
-  /** Stop answering pings, as a dead relay would. */
   muted = false;
   private readonly server: WebSocketServer;
   private readonly options: RelayServerOptions;
@@ -111,7 +91,6 @@ export class RelayServer {
     return new RelayServer(server, options);
   }
 
-  /** The environment whose desktop holds the relay now. */
   connected(): string | undefined {
     return this.environmentId;
   }
@@ -126,7 +105,6 @@ export class RelayServer {
     return new WebSocket(`ws://127.0.0.1:${String(address.port)}${target.pathname}`);
   };
 
-  /** A phone request to `<origin>/r/<id>/...`, forwarded the way the Worker forwards one. */
   readonly fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const request = new Request(input, init);
     const url = new URL(request.url);
@@ -155,12 +133,7 @@ export class RelayServer {
     });
   };
 
-  /**
-   * One relayed exchange, as the broker opens one itself. A reset before the
-   * head answers 503 as the Worker does; one after it errors the body.
-   */
   exchange(input: {
-    /** A channel id to use instead of a fresh one. */
     readonly ch?: string;
     readonly method: RelayMethod;
     readonly path: string;
@@ -204,12 +177,10 @@ export class RelayServer {
     return exchange.head.promise;
   }
 
-  /** Anything on the desktop's socket; a `Buffer` goes as a binary message. */
   send(data: string | Buffer): void {
     this.socket?.send(data);
   }
 
-  /** Close the desktop's socket with a relay close code. */
   close(code: number): void {
     this.socket?.close(code);
   }
@@ -289,7 +260,6 @@ export class RelayServer {
     });
   }
 
-  /** Undefined when the frame keeps the contract; otherwise what it broke. */
   private desktopFrame(
     frame: Exclude<DesktopFrame, { t: "auth" } | { t: "ping" }>,
   ): string | undefined {
@@ -419,7 +389,6 @@ export class RelayServer {
     if (this.exchanges.get(exchange.ch) === exchange) this.frame({ t: "end", ch: exchange.ch });
   }
 
-  /** The exchange is over here: a pending head answers 503, a body errors. */
   private end(exchange: Exchange): void {
     this.exchanges.delete(exchange.ch);
     exchange.reset = true;

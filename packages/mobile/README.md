@@ -518,9 +518,7 @@ screenshots for that direction are kept outside the repository.
   above it, alongside delivery controls during a response. Both the input and
   material follow the app's light or dark appearance.
 - Thinking levels use a native inline picker in a menu, restricted to the selected
-  model's supported levels. The searchable model sheet stays separate. This follows
-  the picker and model-sheet declarations in Cursor's shipped iOS app; exact
-  presentation remains a Nyte design choice.
+  model's supported levels. The searchable model sheet stays separate.
 - The attachment menu ports [expo-morphing-menu](https://github.com/rit3zh/expo-morphing-menu)
   as one interaction: the plus hands off to a glass menu, rows appear in sequence,
   the menu expands into a photo grid, and an added photo flies into the measured

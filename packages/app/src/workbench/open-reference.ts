@@ -4,12 +4,6 @@ import type { WorkbenchViewKey } from "./controller.ts";
 import { workbenchController } from "./controller.ts";
 import { fileActions } from "./file-store.ts";
 
-/**
- * Opens what a composer chip or link stands for in this view's workbench:
- * files as preview tabs, folders as explorer selections, links as browser
- * tabs. The editor reads only inside the workspace, so anything else is not
- * openable.
- */
 export function workbenchReferenceOpener(input: {
   readonly viewKey: WorkbenchViewKey;
   readonly workspacePath: string | undefined;

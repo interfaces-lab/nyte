@@ -32,19 +32,19 @@ const Time = Type.Integer({ minimum: 0 });
 
 const Origin = Type.String({ pattern: "^https://[^/?#]+$", maxLength: 256 });
 
-const StoredDevice = strict({
+const deviceFields = {
   id: Uuid,
   clientId: ClientId,
   name: Name,
   digest: Base64Url32,
   createdAt: Time,
-  role: DeviceRole,
-});
+};
+
+const StoredDevice = strict({ ...deviceFields, role: DeviceRole });
 
 export type StoredDevice = Static<typeof StoredDevice>;
 
-const StoredLink = strict({
-  origin: Origin,
+const linkFields = {
   environment: strict({ id: Uuid, name: Name }),
   owner: strict({
     id: Type.String({ minLength: 1, maxLength: 128 }),
@@ -52,7 +52,6 @@ const StoredLink = strict({
   }),
   key: PrivateJwk,
   brokerKeys: BrokerKeys,
-  devices: Type.Array(StoredDevice, { maxItems: DEVICE_LIMIT }),
   revocations: Type.Array(
     strict({
       deviceId: Uuid,
@@ -62,6 +61,12 @@ const StoredLink = strict({
     { maxItems: REVOCATION_LIMIT },
   ),
   consumed: Type.Array(strict({ jti: RandomId, exp: Time }), { maxItems: CONSUMED_LIMIT }),
+};
+
+const StoredLink = strict({
+  origin: Origin,
+  ...linkFields,
+  devices: Type.Array(StoredDevice, { maxItems: DEVICE_LIMIT }),
 });
 
 export type StoredLink = Static<typeof StoredLink>;
@@ -107,6 +112,58 @@ const ConnectFileType = strict({
 });
 
 const connectFile = Compile(ConnectFileType);
+
+/** The file before links recorded their broker origin and devices their role. */
+const connectFileV3 = Compile(
+  strict({
+    version: Type.Literal(3),
+    enabled: Type.Boolean(),
+    link: Type.Union([
+      strict({
+        ...linkFields,
+        devices: Type.Array(strict(deviceFields), { maxItems: DEVICE_LIMIT }),
+      }),
+      Type.Null(),
+    ]),
+    linkKey: Type.Union([
+      strict({
+        key: PrivateJwk,
+        owner: Type.Union([Type.String({ minLength: 1, maxLength: 128 }), Type.Null()]),
+      }),
+      Type.Null(),
+    ]),
+    unlinks: Type.Array(strict({ environmentId: Uuid, key: PrivateJwk, at: Time }), {
+      maxItems: UNLINK_LIMIT,
+    }),
+  }),
+);
+
+/**
+ * A version 3 file was written by a build with one broker, so its link is
+ * read as this build's broker's. Devices enrolled then get the controller
+ * role, the one an enrollment without a role gets.
+ */
+function parseConnectFile(text: string, origin: string | undefined): ConnectFile {
+  const value: unknown = JSON.parse(text);
+
+  if (origin === undefined || !connectFileV3.Check(value)) return connectFile.Parse(value);
+  const { link, linkKey, unlinks } = value;
+
+  return {
+    version: 4,
+    enabled: value.enabled,
+    link:
+      link === null
+        ? null
+        : {
+            ...link,
+            origin,
+            devices: link.devices.map((device) => ({ ...device, role: "controller" as const })),
+          },
+    linkKey: linkKey === null ? null : { kind: "session", origin, ...linkKey },
+    unlinks: unlinks.map((unlink) => ({ ...unlink, origin })),
+  };
+}
 
 export type ConnectFile = Static<typeof ConnectFileType>;
 
@@ -235,7 +292,7 @@ export class ConnectStore {
   }
 
   private async load(): Promise<ConnectRead> {
-    return readConnectFile(this.path);
+    return readConnectFile(this.path, this.origin);
   }
 }
 
@@ -247,7 +304,7 @@ async function fileKey(path: string): Promise<string | null> {
     : `${String(stats.ino)}:${String(stats.mtimeMs)}:${String(stats.size)}`;
 }
 
-async function readConnectFile(path: string): Promise<ConnectRead> {
+async function readConnectFile(path: string, origin: string | undefined): Promise<ConnectRead> {
   let text: string;
 
   try {
@@ -271,7 +328,7 @@ async function readConnectFile(path: string): Promise<ConnectRead> {
   }
 
   try {
-    return { kind: "ready", file: connectFile.Parse(JSON.parse(text)) };
+    return { kind: "ready", file: parseConnectFile(text, origin) };
   } catch {
     return { kind: "failed" };
   }

@@ -1,16 +1,3 @@
-/**
- * The desktop canvas previewer, in main: each preview opens its own
- * offscreen window on the real canvas shell from its scheme, with the
- * preview's driver (`preload/canvas-preview.ts`) as its preload, answers the
- * driver's resizes and captures, and destroys the window after, so a canvas
- * that hangs its renderer takes nothing down with it once the preview's
- * signal aborts. The driver runs beside the canvas, so main reads its report
- * as untrusted and keeps its own capture. The windows share one in-memory
- * session of their own, which serves only the shell, under its policy plus
- * the chat frame's sandbox, so the page gets the frame's opaque origin; it
- * grants no permission, and its WebRTC may only go through a proxy that leads
- * nowhere. The host process asks for a preview over its RPC (`host-messages.ts`).
- */
 import { pathToFileURL } from "node:url";
 import { BrowserWindow, net, session } from "electron";
 import type { Session } from "electron";
@@ -26,18 +13,14 @@ import type { accountScheme } from "../account/scheme.ts";
 import { CANVAS_PREVIEW_CHANNELS } from "../shared/canvas-preview.ts";
 import { canvasShellUrl } from "./renderer.ts";
 
-/** The preview session's partition; without the `persist:` prefix, nothing it stores outlives the app. */
 const PARTITION = "canvas-preview";
 
-/** A proxy nothing listens on, for every host, loopback included: WebRTC, kept to proxied traffic, then reaches no one, over UDP or TCP. */
 const NOWHERE = "socks5://127.0.0.1:9";
 
-/** The largest viewport side a driver may ask for, in CSS pixels. */
 const VIEWPORT_LIMIT = 4_096;
 
 const ViewportSide = Type.Integer({ minimum: 1, maximum: VIEWPORT_LIMIT });
 
-/** What the driver answers with. Its report's PNG is not read: main answers with the capture it took. */
 const DriverOutcome = Type.Union([
   Type.Object({
     kind: Type.Literal("rendered"),
@@ -56,7 +39,6 @@ const DriverOutcome = Type.Union([
   Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
 ]);
 
-/** Opens the preview session, serving the shell at `root` over `scheme`. */
 async function openPreviewSession(
   scheme: ReturnType<typeof accountScheme>,
   root: string,
@@ -110,6 +92,7 @@ function previewWindow(preview: Session, driver: string): BrowserWindow {
       session: preview,
     },
   });
+
   window.webContents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -118,34 +101,29 @@ function previewWindow(preview: Session, driver: string): BrowserWindow {
   return window;
 }
 
-/** Waits for the next two painted frames, so a resize has laid out before anyone measures or captures. */
 function painted(window: BrowserWindow): Promise<void> {
   return new Promise((resolve) => {
     let frames = 0;
+
     const done = (): void => {
       clearTimeout(fallback);
 
       if (!window.isDestroyed()) window.webContents.off("paint", paint);
       resolve();
     };
+
     const paint = (): void => {
       frames += 1;
 
       if (frames >= 2) done();
     };
+
     const fallback = setTimeout(done, 500);
     window.webContents.on("paint", paint);
     window.webContents.invalidate();
   });
 }
 
-/**
- * Returns a previewer over the canvas shell at `root`, served over
- * `scheme`, driven by the preload at `driver`. Each preview renders
- * offscreen, or answers unavailable when its window fails to load the shell,
- * its driver fails, or its signal aborts first; the window is destroyed
- * either way.
- */
 export function offscreenCanvasPreviewer(
   scheme: ReturnType<typeof accountScheme>,
   root: string,

@@ -1,9 +1,3 @@
-/**
- * Host settings as `Setting`s. The value is whatever main last answered or
- * pushed, held in one query entry. A change goes to main, and main's answer is
- * what every window shows. Nothing is optimistic, so a refused change never
- * appears made.
- */
 import { hashKey } from "@tanstack/react-query";
 import type { HostSettingKey, HostSettings, HostSettingsPatch } from "../bridge.ts";
 import { toast } from "@nyte-ai/ui/toast";
@@ -31,7 +25,6 @@ export async function loadHostSettings(): Promise<void> {
   }
 }
 
-/** Main pushed the file's new values: from this window, another, the terminal UI, or a hand edit. */
 export function acceptHostSettings(settings: HostSettings): void {
   queryClient.setQueryData(keys.hostSettings, settings);
 }

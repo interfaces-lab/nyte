@@ -15,6 +15,31 @@ type TranscriptDisplayPart =
   | { readonly kind: "agents"; readonly messages: readonly ToolMessage[] }
   | { readonly kind: "response"; readonly messages: readonly TextMessage[] };
 
+export type TranscriptSlot =
+  | { readonly kind: "await" }
+  | { readonly kind: "blank" }
+  | { readonly kind: "agents"; readonly message: ToolMessage }
+  | { readonly kind: "response"; readonly message: TextMessage }
+  | { readonly kind: "step"; readonly message: StepMessage }
+  | { readonly kind: "part"; readonly message: Message };
+
+export function transcriptSlot(message: Message): TranscriptSlot {
+  if (showsTool(message) && message.state.class.kind === "delegate") {
+    const { role } = message.state.class;
+
+    if (role === "await") return { kind: "await" };
+
+    if (role === "task" || role === "create") return { kind: "agents", message };
+  }
+
+  if (showsText(message))
+    return /\S/u.test(message.state.markdown) ? { kind: "response", message } : { kind: "blank" };
+
+  if (showsTool(message) || showsThinking(message)) return { kind: "step", message };
+
+  return { kind: "part", message };
+}
+
 export function displayTranscriptParts(messages: readonly Message[]): TranscriptDisplayPart[] {
   const display: TranscriptDisplayPart[] = [];
   let step: StepMessage[] = [];
@@ -40,37 +65,41 @@ export function displayTranscriptParts(messages: readonly Message[]): Transcript
   };
 
   for (const message of messages) {
-    if (showsTool(message) && message.state.class.kind === "delegate") {
-      const { role } = message.state.class;
+    const slot = transcriptSlot(message);
 
-      if (role === "await") continue;
-
-      if (role === "task" || role === "create") {
+    switch (slot.kind) {
+      case "await":
+        break;
+      case "blank":
+        flushAgents();
+        break;
+      case "agents":
         flushStep();
         flushResponse();
-        agents.push(message);
-        continue;
+        agents.push(slot.message);
+        break;
+      case "response":
+        flushAgents();
+        flushStep();
+        response.push(slot.message);
+        break;
+      case "step":
+        flushAgents();
+        flushResponse();
+        step.push(slot.message);
+        break;
+      case "part":
+        flushAgents();
+        flushStep();
+        flushResponse();
+        display.push({ kind: "part", message: slot.message });
+        break;
+      default: {
+        const _exhaustive: never = slot;
+
+        return _exhaustive;
       }
     }
-
-    flushAgents();
-
-    if (showsText(message)) {
-      if (message.state.markdown.trim() === "") continue;
-      flushStep();
-      response.push(message);
-      continue;
-    }
-
-    if (showsTool(message) || showsThinking(message)) {
-      flushResponse();
-      step.push(message);
-      continue;
-    }
-
-    flushStep();
-    flushResponse();
-    display.push({ kind: "part", message });
   }
 
   flushAgents();
@@ -80,7 +109,6 @@ export function displayTranscriptParts(messages: readonly Message[]): Transcript
   return display;
 }
 
-/** A sent message's draft text with each chip as its label, for assistive text. */
 export function userDisplayText(source: string): string {
   return messageParts(source.replaceAll(/\n{3,}/gu, "\n\n"), { complete: true })
     .map((part) => (part.kind === "text" ? part.text : referenceLabel(part.reference)))

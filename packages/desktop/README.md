@@ -2,6 +2,8 @@
 
 The Electron desktop client embeds the Nyte host. Main-process code lives in `src/main`, the preload bridge in `src/preload`, and the renderer entry in `src/renderer`. The React interface itself is [`@nyte-ai/app`](../renderer/README.md). Shared session behavior belongs in core.
 
+The host runs in the Nyte Host utility process, and a window reaches it over a MessagePort that main hands both sides, not over loopback HTTP. `src/shared/host-port.ts` carries each fetch the SDK makes as numbered exchanges with per-exchange flow control. A window has no per-origin connection cap, its uploads stream, and a host restart fails open requests as a dropped connection does, so the SDK reconnects through a new port.
+
 ## Development
 
 From the repository root:

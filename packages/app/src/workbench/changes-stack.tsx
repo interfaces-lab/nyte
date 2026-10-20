@@ -44,7 +44,6 @@ const styles = create({
     overflow: "auto",
     backgroundColor: role.bgBase,
   },
-  // The file tree's filter row sits beside the first header, so both take the workbench header height.
   headerRow: {
     display: "flex",
     alignItems: "center",
@@ -85,11 +84,6 @@ const styles = create({
 
 const STACK_CSS = `${PIERRE_TOKEN_CSS}${DIFF_SEPARATOR_CSS}`;
 
-/**
- * The scroll position is workbench state, and every write to it re-renders the
- * workbench and persists the snapshot. Scrolling reports once it settles;
- * the active file reports only when it changes.
- */
 const SCROLL_SETTLE_MS = 150;
 
 interface ScrollReport {
@@ -98,12 +92,6 @@ interface ScrollReport {
   path: string | undefined;
 }
 
-/**
- * The first header starts flush with the file tree's filter row. React clears
- * the viewer ref on unmount, so a scroll report timer that outlives the stack
- * writes nothing. Lines picked in a diff go to the chat from the gutter's
- * button, the file header's Add to Chat, or its chord.
- */
 export function ChangesStack({
   items,
   collapsedPaths,

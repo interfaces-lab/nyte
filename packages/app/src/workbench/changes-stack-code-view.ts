@@ -15,13 +15,6 @@ function itemId(path: string, index: number): string {
   return index === 0 ? path : `${path}\u0000${String(index)}`;
 }
 
-/**
- * A pending file's stand-in: a diff with no hunks, shown collapsed, so only its
- * header renders. It is a diff item like the patch that replaces it, so CodeView
- * updates the record in place and can keep it as the scroll anchor while the
- * body grows below its header; a record of another type would be replaced and
- * skipped as an anchor, and the body would push the view past it.
- */
 function placeholderDiff(path: string): FileDiffMetadata {
   return {
     name: path,

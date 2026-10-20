@@ -9,6 +9,8 @@ const Report = Type.Object({
   rowUpdates: Type.Number(),
   rowMounts: Type.Number(),
   updatesPerDelta: Type.Number(),
+  sessionRenders: Type.Number(),
+  timelineRenders: Type.Number(),
   commitMsPerDelta: Type.Number(),
 });
 
@@ -21,5 +23,7 @@ test("a streamed delta re-renders only the streaming row", { timeout: 120_000 },
   const report = Value.Parse(Report, JSON.parse(output));
   console.info(`transcript streaming: ${JSON.stringify(report)}`);
 
-  expect(report.updatesPerDelta).toBeLessThanOrEqual(1);
+  expect(report.rowUpdates).toBe(report.deltas);
+  expect(report.sessionRenders).toBe(0);
+  expect(report.timelineRenders).toBe(0);
 });

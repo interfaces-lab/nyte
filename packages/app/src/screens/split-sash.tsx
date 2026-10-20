@@ -1,4 +1,4 @@
-import { threadStyles } from "./thread.stylex.ts";
+import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent, ReactElement, RefObject } from "react";
@@ -6,14 +6,6 @@ import { usePaneActions } from "../layout/pane-context.tsx";
 import { clampSplitRatio, clampSplitRatioForSize } from "../layout/pane-layout.ts";
 import type { SplitDirection } from "../layout/pane-layout.ts";
 
-/**
- * The drag lives in the parent as state: the leading pane renders `dragRatio`
- * while the pointer is down and the layout's ratio otherwise, and the
- * controller only hears about the ratio the pointer released at. Only a
- * side-by-side split can starve a pane of width, so the pixel floor applies
- * on that axis alone; stacked panes keep the full container width whatever
- * the ratio.
- */
 export function SplitSash({
   direction,
   ratio,
@@ -90,8 +82,8 @@ export function SplitSash({
       aria-valuemax={Math.round(clampRatio(1, availableWidth) * 100)}
       aria-valuenow={Math.round((dragRatio ?? ratio) * 100)}
       {...props(
-        threadStyles.sash,
-        direction === "right" ? threadStyles.sashRight : threadStyles.sashDown,
+        sessionScreenStyles.sash,
+        direction === "right" ? sessionScreenStyles.sashRight : sessionScreenStyles.sashDown,
       )}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
@@ -147,8 +139,10 @@ export function SplitSash({
     >
       <span
         {...props(
-          threadStyles.sashLine,
-          direction === "right" ? threadStyles.sashLineRight : threadStyles.sashLineDown,
+          sessionScreenStyles.sashLine,
+          direction === "right"
+            ? sessionScreenStyles.sashLineRight
+            : sessionScreenStyles.sashLineDown,
         )}
       />
     </div>

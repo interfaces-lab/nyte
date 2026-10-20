@@ -12,9 +12,9 @@ export interface Stage {
 }
 
 export function stage(scene: Scene): Stage {
-  const landing = scene.landing ?? [];
+  const prompts = scene.prompts ?? [];
   const running = scene.execution !== undefined && scene.execution.kind !== "idle";
-  const working = running || landing.length > 0;
+  const working = running || prompts.length > 0;
   const lastTurn = scene.turns.at(-1);
 
   const settledWork =
@@ -47,10 +47,9 @@ export function stage(scene: Scene): Stage {
     failed: scene.failed === true,
     turns: scene.turns,
     changes,
-    landing,
+    prompts,
     held: scene.execution?.kind === "idle" && scene.execution.lastRun?.end.kind !== "completed",
     retrying: scene.execution?.kind === "retrying" ? scene.execution.reason : undefined,
-    working,
     running,
   });
 
@@ -72,10 +71,10 @@ function rowLines(row: TranscriptRow, working: boolean): readonly string[] {
       return [row.kind];
     case "retry":
       return [`retry "${row.message}"`];
-    case "landing":
-      return [`landing${row.pending ? " · pending" : ""}`];
+    case "prompt":
+      return [`prompt${row.pending ? " · pending" : ""}`];
     case "live":
-      return row.working ? ["live"] : [];
+      return working ? ["live"] : [];
     case "part": {
       const { message } = row;
 
@@ -108,7 +107,7 @@ function rowLines(row: TranscriptRow, working: boolean): readonly string[] {
     case "failure":
       return [`  failure ${row.failure.class}`];
     case "changes":
-      return [`  changes ×${String(row.files.length)}`];
+      return working ? [] : [`  changes ×${String(row.files.length)}`];
     default: {
       const _exhaustive: never = row;
 

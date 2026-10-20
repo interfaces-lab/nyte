@@ -1,4 +1,3 @@
-/** The Nyte account's linked devices; revoking one asks first, since it also ends that sign-in. */
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { useState } from "react";
 import type { ReactElement } from "react";

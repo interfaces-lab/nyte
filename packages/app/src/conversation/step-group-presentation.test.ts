@@ -1,4 +1,3 @@
-/** The settled step header counts what the calls did, read from their typed state, never from the class alone. */
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { PartStatus, ToolClass, ToolPartState } from "@nyte-ai/sdk";

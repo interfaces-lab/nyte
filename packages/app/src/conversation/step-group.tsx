@@ -1,11 +1,3 @@
-/**
- * Intermediate narration, reasoning, and tool calls form one work episode.
- * Compact mode keeps the episode in a clipped window
- * that follows new output; opening the group reveals the full list. The
- * final assistant response remains outside this component.
- *
- * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/work-group.tsx
- */
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -41,24 +33,23 @@ const STEP_LIMIT = 200;
 
 const FOCUSABLE = "a[href], button, [tabindex]";
 
-interface StepEntry {
+interface StepLine {
   readonly key: string;
   readonly message: StepMessage;
   readonly markdown: string;
 }
 
-function StepEntryView({
+function StepLineView({
   entry,
   cwd,
   density,
   thinkingOnly,
   titled,
 }: {
-  entry: StepEntry;
+  entry: StepLine;
   cwd: string | undefined;
   density: ToolCallDensity;
   thinkingOnly: boolean;
-  /** The group header already carries this lone thought's heading. */
   titled: boolean;
 }): ReactElement | null {
   const { message } = entry;
@@ -81,15 +72,6 @@ function StepEntryView({
   return <ThinkingLine text={entry.markdown} streaming={streaming} />;
 }
 
-/**
- * The preview follows new output. Scrolling away pauses that; ten seconds
- * without another input, or a return to the bottom, resumes it.
- *
- * The disclosure controls the full list alone. The preview is the group's own
- * window onto live work, so it neither reads as expanded nor closes on the
- * trigger; opening from either state shows the list, and closing the list
- * returns the group to whatever the density shows by default.
- */
 export function StepGroupView({
   messages,
   cwd,
@@ -129,7 +111,7 @@ export function StepGroupView({
 
   const entries = useMemo(
     () =>
-      messages.reduce<StepEntry[]>((merged, message) => {
+      messages.reduce<StepLine[]>((merged, message) => {
         const previous = merged.at(-1);
 
         if (
@@ -348,7 +330,7 @@ export function StepGroupView({
               </Button>
             )}
             {entries.slice(earlier).map((entry) => (
-              <StepEntryView
+              <StepLineView
                 key={entry.key}
                 entry={entry}
                 cwd={cwd}

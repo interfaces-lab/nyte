@@ -1,9 +1,3 @@
-/**
- * What a sign-in shows while it waits on the user: a device code to carry to
- * the provider's site, or the page a browser sign-in finishes on. Settings ›
- * Models and Settings › Accounts both use them. The row that holds a panel
- * owns its Cancel button, so a panel never repeats it.
- */
 import { props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
@@ -19,12 +13,10 @@ import { openExternal } from "../open-external.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 
-/** The site a verification link points at, for a button that says where it goes. */
 function linkHost(url: string): string | undefined {
   return URL.canParse(url) ? new URL(url).hostname : undefined;
 }
 
-/** Where a verification link goes, as people would type it: host and path, no scheme. */
 function linkText(url: string): string {
   if (!URL.canParse(url)) return url;
   const { host, pathname } = new URL(url);
@@ -32,11 +24,6 @@ function linkText(url: string): string {
   return pathname === "/" ? host : `${host}${pathname}`;
 }
 
-/**
- * The code is the one thing to read, so it sits first and largest, beside where
- * to enter it. The flow's messages sit under it so a poll update never hides
- * what the user still has to type.
- */
 export function DeviceCodePanel({ deviceCode }: { deviceCode: DeviceCode }): ReactElement {
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const { userCode, verificationUri, expiresInSeconds, instructions } = deviceCode;
@@ -98,7 +85,6 @@ export function DeviceCodePanel({ deviceCode }: { deviceCode: DeviceCode }): Rea
   );
 }
 
-/** The code or address a browser sign-in's page ended on, sent once. */
 function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): ReactElement {
   const [code, setCode] = useState("");
 
@@ -147,12 +133,6 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
   );
 }
 
-/**
- * Finishing on a page the host cannot open for the user. The link opens from
- * a click, so the browser does not block it. When the attempt accepts a code,
- * the user pastes what the page ended on: its code, or the address it tried
- * to load on the serving machine.
- */
 export function BrowserSignInPanel({
   provider,
   browser,

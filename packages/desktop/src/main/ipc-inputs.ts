@@ -1,8 +1,3 @@
-/**
- * Main is the only Electron process that compiles validators: `Compile` emits
- * code through `new Function`, which the renderer's CSP forbids. Renderer code
- * imports `typebox/value` and never `typebox/compile`.
- */
 import { HOST_OPERATION_PATHS } from "../shared/ipc.ts";
 import { Type } from "typebox";
 import type { Static, TProperties, TSchema } from "typebox";
@@ -20,7 +15,6 @@ type Parser<T> = Pick<Validator<TProperties, TSchema, T>, "Parse">;
 const strict = <P extends TProperties>(properties: P) =>
   Type.Object(properties, { additionalProperties: false });
 
-/** Only request-schema failures are invalid input; internal parser failures remain diagnostics. */
 function compile<T extends TSchema>(schema: T) {
   const validator = Compile(schema);
 
@@ -69,10 +63,8 @@ const checkedUsageWindow: typeof usageWindow = {
   },
 };
 
-/** Each operation's input parser, keyed by its path. */
 type CallInputParsers = { readonly [P in CallPath]: Parser<CallInput<P>> };
 
-/** Each operation's input schema; the IPC boundary decodes a request's input with its path's parser. */
 export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.endpoint": compile(noInput),
   "host.state": compile(noInput),
@@ -243,7 +235,6 @@ const browserBounds = compile(
   }),
 );
 
-/** Preserve the caller's correlated type after its boundary schema accepts it. */
 function checked<T>(validator: Parser<unknown>, value: T): T {
   validator.Parse(value);
 
@@ -266,7 +257,6 @@ const browserKey = compile(
   }),
 );
 
-/** The request envelope: a known operation path. Its input is decoded by `decodeCallInput`. */
 export function decodeCallRequest(input: CallRequest): CallRequest {
   return checked(callRequest, input);
 }

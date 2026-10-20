@@ -62,15 +62,14 @@ test("a create call finds its child by the call that made it", () => {
           failed: false,
           turns: [turn],
           changes: [],
-          landing: [],
+          prompts: [],
           held: false,
           retrying: undefined,
-          working: false,
           running: false,
         }).map((row) =>
           row.kind === "part" ? (
             <TurnItemView
-              key={row.messageId}
+              key={row.key}
               row={row}
               running={false}
               density="compact"

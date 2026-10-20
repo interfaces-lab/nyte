@@ -1,8 +1,3 @@
-/**
- * The element picker's page script, which runs in the picker's own isolated world
- * (`browser-picker.ts`). The build writes it beside main as `browser-picker-page.js`, and main
- * reads it on the first pick, so a page's code is never part of main's startup.
- */
 import { HTML_CHARS } from "../shared/browser-picker.ts";
 
 export const PICKER_SCRIPT = `(() => {

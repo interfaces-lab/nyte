@@ -9,7 +9,6 @@ import { workbenchStyles } from "./workbench.stylex.ts";
 
 const styles = create({ status: { color: role.contentSecondary } });
 
-/** Row height at the current UI size. A tree reads it once, so its owner keys the tree on the size. */
 export function treeItemHeight(): number {
   const probe = document.createElement("div");
   probe.style.cssText = `position: absolute; visibility: hidden; height: max(${target.min}, ${type.leadingSm} + 8px)`;
@@ -72,7 +71,6 @@ export function useTreeStatusTheme() {
   return workbenchStyles.treeStatus(colors.added, colors.modified, colors.deleted);
 }
 
-/** The tree has no conflict mark; a conflict is a modification to resolve. */
 export function treeStatus(kind: FileStatus): Exclude<FileStatus, "conflicted"> {
   return kind === "conflicted" ? "modified" : kind;
 }

@@ -1,35 +1,15 @@
-/*
- * The browser baseline every Nyte surface starts from, after Tailwind's
- * preflight. Everything sits in the `base` layer, which a host declares below
- * StyleX's priority layers, so a component rule always wins and these still
- * win over user-agent styles.
- *
- * It paints no page background and sets no `color-scheme`: the desktop
- * window's vibrancy and the canvas frame need a transparent page, and the
- * display mode owns the scheme. Font smoothing reads the appearance
- * preference the desktop writes on <html>.
- */
 @layer base {
-  /*
-   * 1. Padding and border stay inside the width.
-   * 2. No default margins or padding.
-   * 3. A border needs only a width.
-   */
   *,
   ::after,
   ::before,
   ::backdrop,
   ::file-selector-button {
-    box-sizing: border-box; /* 1 */
-    margin: 0; /* 2 */
-    padding: 0; /* 2 */
-    border: 0 solid; /* 3 */
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
   }
 
-  /*
-   * 1. Avoid one-word last lines; Chromium keeps the line count, so heights hold.
-   * 2. Smoothing is set once here, from the font smoothing preference.
-   */
   html,
   :host {
     font-family: var(--nyte-font-family-sans);
@@ -40,11 +20,10 @@
     font-synthesis: none;
     color: var(--nyte-content-primary);
     tab-size: 4;
-    text-wrap: pretty; /* 1 */
     overflow-wrap: break-word;
     interpolate-size: allow-keywords;
-    -webkit-font-smoothing: var(--nyte-font-smoothing, antialiased); /* 2 */
-    -moz-osx-font-smoothing: var(--nyte-moz-font-smoothing, grayscale); /* 2 */
+    -webkit-font-smoothing: var(--nyte-font-smoothing, antialiased);
+    -moz-osx-font-smoothing: var(--nyte-moz-font-smoothing, grayscale);
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
   }
@@ -80,7 +59,6 @@
     font-weight: bolder;
   }
 
-  /* Code wraps greedily, where an editor would break. */
   code,
   kbd,
   samp,
@@ -90,7 +68,6 @@
     text-wrap: wrap;
   }
 
-  /* Typed text keeps its earlier lines still. */
   input,
   textarea,
   [contenteditable] {
@@ -131,14 +108,12 @@
     display: list-item;
   }
 
-  /* Lists opt back into markers; prose reverts to the user agent's. */
   ol,
   ul,
   menu {
     list-style: none;
   }
 
-  /* Replaced elements are blocks, so an icon leaves no descender gap under it. */
   img,
   svg,
   video,
@@ -240,7 +215,6 @@
     height: auto;
   }
 
-  /* Important in the lowest layer, so no component can show a hidden element. */
   [hidden]:where(:not([hidden="until-found"])) {
     display: none !important;
   }
@@ -253,10 +227,6 @@
     background: var(--nyte-bg-scrim);
   }
 
-  /*
-   * iOS zooms into a field under 16px. Important in the lowest layer beats
-   * every component size, so it keeps a larger UI font size the user chose.
-   */
   @media (hover: none) and (pointer: coarse) {
     input,
     select,

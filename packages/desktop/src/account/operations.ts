@@ -25,12 +25,6 @@ const FAILURES: Record<AccountFailure, string> = {
   unreachable: "Nyte can't reach the account service. Try again.",
 };
 
-/**
- * The single operation the sign-in dialog serves. Each one has a fresh id, and
- * only an answer naming the current id settles it, so an answer that arrives
- * after a close, an abort, or a newer request is dropped. A newer request
- * cancels the one before it.
- */
 export class AccountOperations {
   #pending: Pending | undefined;
 
@@ -81,7 +75,6 @@ export class AccountOperations {
     return { id, result };
   }
 
-  /** True when the answer settled the current operation. */
   settle(answer: AccountAnswer): boolean {
     const pending = this.#pending;
 
@@ -114,7 +107,6 @@ export class AccountOperations {
     return false;
   }
 
-  /** Rejects the current operation, or only `id` when given, with `AccountCancelled`. */
   cancel(id?: string): void {
     this.fail(new AccountCancelled(), id);
   }

@@ -1,7 +1,7 @@
 import type { Execution, SessionInfo, ToolClass, TurnInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
-import type { ConversationTurn } from "../src/view-helpers.ts";
+import type { TurnMessages } from "../src/view-helpers.ts";
 
 export const USAGE = {
   input: 1,
@@ -70,9 +70,9 @@ export function settledTool(id: string, toolClass: ToolClass, text = ""): ToolMe
 }
 
 export function endedTurn(
-  messages: ConversationTurn["messages"],
+  messages: TurnMessages["messages"],
   change: Partial<TurnInfo> = {},
-): ConversationTurn {
+): TurnMessages {
   return {
     info: {
       id: asId<"turn">("turn"),

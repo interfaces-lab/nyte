@@ -43,10 +43,6 @@ interface BackgroundWorkProps {
   readonly viewport: HTMLElement | null;
 }
 
-/**
- * Until the list lands there is nothing to say: most chats have no jobs, and
- * a placeholder would sit under a transcript that already painted.
- */
 export function BackgroundWork({
   sessionId,
   open,

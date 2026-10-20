@@ -13,11 +13,6 @@ import type { AccountStore } from "./account-store.ts";
 
 const CLIENT_TOKEN_KEY = "__clerk_client_jwt";
 
-/**
- * `@clerk/electron` answers this with the bare deep link, which leaves the
- * browser tab on a page that never loads. Nyte answers with the hosted page
- * that opens the deep link instead. Internal to @clerk/electron 0.0.x.
- */
 const OAUTH_REDIRECT_CHANNEL = "clerk:oauth-transport:get-redirect-url";
 
 export function registerAccount(options: {
@@ -25,7 +20,6 @@ export function registerAccount(options: {
   readonly scheme: ReturnType<typeof accountScheme>;
   readonly window: (id?: number) => BrowserWindow | undefined;
   readonly onChange: () => void;
-  /** Keeps the sign-in across restarts. Without one, quitting signs out. */
   readonly store: AccountStore | undefined;
 }): AccountSession {
   const signIn = createSignInKeeper(options.store, options.onChange);

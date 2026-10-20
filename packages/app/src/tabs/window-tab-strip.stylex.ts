@@ -23,7 +23,6 @@ export const stripStyles = create({
     overflowY: "hidden",
     scrollbarWidth: "none",
   },
-  /** Tabs share the row up to 240px each and shrink to 72px before the list scrolls. */
   slot: { display: "flex", flex: "0 1 240px", minWidth: 72, WebkitAppRegion: "no-drag" },
   tab: {
     "--_close-opacity": {
@@ -48,7 +47,6 @@ export const stripStyles = create({
     },
   },
   tabClosable: { paddingInlineEnd: space.s1 },
-  /** The main area is a card set into the chrome; the active tab wears the card. */
   tabActive: {
     backgroundColor: {
       default: role.bgBase,
@@ -77,7 +75,6 @@ export const stripStyles = create({
     cursor: "default",
     userSelect: "none",
   },
-  /** Without a close button the label keeps the same distance from both edges. */
   tabButtonUnclosable: { paddingInlineEnd: space.s2_5 },
   glyph: {
     display: { default: "grid", ":empty": "none" },

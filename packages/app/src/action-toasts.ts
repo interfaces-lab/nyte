@@ -2,7 +2,6 @@ import { toast } from "@nyte-ai/ui/toast";
 
 interface UndoableAction {
   undo(): void;
-  /** Irreversible work starts only when the notification closes without Undo. */
   commit?(): void;
 }
 
@@ -12,7 +11,6 @@ interface ActionBatch {
   readonly actions: Set<UndoableAction>;
 }
 
-/** Repeated clicks update one notification and Undo reverses that whole batch. */
 export class ActionToasts {
   readonly #batches = new Map<string, ActionBatch>();
   #nextId = 0;

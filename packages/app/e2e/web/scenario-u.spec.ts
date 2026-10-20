@@ -119,7 +119,7 @@ test("scenario U on the web: a random restaurant nearby, quit mid-answer, reopen
     .frameLocator("iframe");
 
   await page.goto(host.pairing);
-  await expect(page.getByRole("form", { name: "Message composer" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Message", exact: true })).toBeVisible();
   let submitted = 0;
   let quitAt = 0;
 

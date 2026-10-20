@@ -52,7 +52,6 @@ const VIEWED_FILTERS: readonly { readonly value: ViewedFilterMode; readonly labe
 ];
 
 const styles = create({
-  // The stack's file header sits beside this row, so both take the workbench header height.
   search: {
     display: "flex",
     alignItems: "center",
@@ -67,7 +66,6 @@ const styles = create({
     borderBottomColor: role.borderSecondaryTranslucent,
   },
   field: { flex: 1 },
-  // Short labels with no icons, so the menu fits them instead of the default menu width.
   filterMenu: { minWidth: 0 },
   overviewTitle: {
     display: "flex",
@@ -136,7 +134,6 @@ function sidebarCountLabel(total: number, shown: number, filtered: boolean): str
   return `${String(shown)} of ${filesChangedLabel(total)}`;
 }
 
-/** The filter sits outside the tree: focus inside it makes the tree pull focus back to a row as the rows change. */
 export const ChangesSidebar = memo(function ChangesSidebar({
   files,
   activePath,

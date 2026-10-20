@@ -21,10 +21,10 @@ export function RowView(props: {
     return row.kind === "turn" ? row.turn : undefined;
   });
 
-  const landing = createMemo(() => {
+  const prompt = createMemo(() => {
     const row = props.row();
 
-    return row.kind === "landing" ? row.message : undefined;
+    return row.kind === "prompt" ? row.message : undefined;
   });
 
   const shell = createMemo(() => {
@@ -38,7 +38,7 @@ export function RowView(props: {
       <Match when={turn()}>
         {(model: Accessor<TurnModel>) => <TurnView turn={model} ref={props.anchor} />}
       </Match>
-      <Match when={landing()}>
+      <Match when={prompt()}>
         {(message: Accessor<UserMessage>) => (
           <Column id={key} ref={props.anchor}>
             <MessageView message={message} />

@@ -6,12 +6,6 @@ import { props } from "@stylexjs/stylex";
 import { trayStyles } from "./tray.stylex.ts";
 import { composerStyles } from "../conversation/composer.stylex.ts";
 
-/**
- * A tray has to read as a surface of its own. Its fill was the page's in dark
- * mode, so a hovered queued row was the only thing drawn and looked like a
- * loose grey bar under the header. Light keeps the raised surface as white as
- * the page and lets the tray's hairline and shadow draw it.
- */
 function Dock() {
   return (
     <div id="dock" {...props(composerStyles.dock)}>

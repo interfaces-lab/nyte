@@ -77,9 +77,7 @@ export function TooltipContent({
   ...rest
 }: StyledProps<TooltipPrimitive.Popup.Props, Restyle<"TooltipContent">> &
   Pick<TooltipPrimitive.Positioner.Props, "side" | "align" | "sideOffset" | "alignOffset"> & {
-    /** Scopes the popup to a hue. */
     readonly tint?: Tint;
-    /** `card` raises a rich preview on the popup material instead of a one-line label. */
     readonly variant?: "label" | "card";
   }): ReactElement {
   return (

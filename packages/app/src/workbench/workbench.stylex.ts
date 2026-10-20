@@ -20,7 +20,6 @@ export const workbenchStyles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
-  /** The header row every panel opens with: its controls and, at the end, its side-tree toggle. */
   toolbar: {
     display: "flex",
     alignItems: "center",
@@ -95,7 +94,6 @@ export const workbenchStyles = create({
     paddingBlock: space.s0_5,
     color: role.contentSecondary,
   },
-  // The stats follow the label rather than the row's end.
   railLabel: { flex: "0 1 auto" },
   railValue: { color: role.contentPrimary, fontVariantNumeric: "tabular-nums" },
   railDetail: {

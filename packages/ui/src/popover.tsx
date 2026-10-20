@@ -84,7 +84,6 @@ function PopoverPopup({
   xstyle,
   ...rest
 }: StyledProps<Popover.Popup.Props, Restyle<"Popover.Popup">> & {
-  /** Scopes the popup to a hue. */
   readonly tint?: Tint;
 }): ReactElement {
   return (

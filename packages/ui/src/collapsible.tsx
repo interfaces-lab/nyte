@@ -170,13 +170,6 @@ function CollapsiblePanel({
   );
 }
 
-/**
- * What a closed collapsible still shows of its content, when that content has
- * controls of its own. Closed, a press anywhere in it opens the collapsible, and
- * a disclosure pressed inside opens without closing. Open, it is a plain
- * container. The trigger stays the accessible control, so the preview takes no
- * role and no tab stop.
- */
 function CollapsiblePreview({
   xstyle,
   className,
@@ -205,7 +198,6 @@ function CollapsiblePreview({
   );
 }
 
-/** A chevron that turns a quarter while its trigger's panel is open. Place it inside the trigger. */
 function CollapsibleChevron({
   size = 11,
   xstyle,

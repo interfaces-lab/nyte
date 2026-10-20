@@ -181,8 +181,10 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
     },
     landed(session, head, view) {
       const key = JSON.stringify([session, head]);
-      const ids = new Set(view.messages.map((message) => message.id));
       shown.set(key, Math.max(shown.get(key) ?? 0, view.seq));
+
+      if (held.size === 0) return;
+      const ids = new Set(view.messages.map((message) => message.id));
 
       for (const [receipt, current] of held) {
         const { answered, answeredAfter, entry } = current;

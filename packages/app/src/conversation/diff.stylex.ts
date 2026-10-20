@@ -1,10 +1,8 @@
-/** Diffs, wherever a patch is drawn: edit calls, the Changes stack, and the file editor. */
 import { create } from "@stylexjs/stylex";
 import { glyph, media, row, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { diffView } from "../theme/schema.stylex.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-/** The ring around a code surface; prose, the composer, and diffs each draw this one. */
 const CODE_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`;
 
 export const diffStyles = create({
@@ -139,7 +137,6 @@ export const diffStyles = create({
   bodyInline: { maxHeight: diffView.previewMaxHeight },
   bodyWorkbench: { flex: 1, minHeight: 0, maxHeight: "none" },
   bodyStack: { overflow: "visible", maxHeight: "none" },
-  // Pierre's :host remaps these through *-override / light-dark tokens.
   patch: {
     display: "block",
     width: "100%",
@@ -156,10 +153,6 @@ export const diffStyles = create({
     "--diffs-fg-number-override": role.contentTertiary,
     "--diffs-bg-selection-override": role.bgInteractiveSecondaryTranslucent,
     "--diffs-gap-style": "none",
-    /**
-     * Pierre pads the code grid top and bottom. The section header already
-     * spaces the patch, and the stack's height arithmetic counts rows alone.
-     */
     "--diffs-gap-block": "0px",
     "--diffs-min-number-column-width": "calc(4ch + 8px)",
     "--diffs-font-family": type.fontMono,

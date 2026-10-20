@@ -19,7 +19,6 @@ const workspace = asId<"workspace">("terminal-workspace");
 
 const firstSession = asId<"session">("terminal-session-1");
 
-/** A job whose output the test feeds and whose input, sizes and stop it records. */
 function fakeJob(key: string) {
   const frames: OutputFrame[] = [];
   let wake: (() => void) | null = null;
@@ -189,6 +188,7 @@ describe("shell terminals", () => {
     job.job.write = async () => {
       throw new Error("The pipe closed");
     };
+
     const id = tabId();
     const starting = terminalActions.create({ id, workspacePath: "/workspace" });
 

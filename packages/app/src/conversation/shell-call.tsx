@@ -243,7 +243,6 @@ function outputTail(text: string) {
   return { text: text.slice(-PREVIEW_CHARS), clipped: text.length > PREVIEW_CHARS };
 }
 
-/** How long core measured the command took; a cut output already says so in its own last line. */
 function Facts({ durationMs }: { readonly durationMs: number }): ReactElement {
   return <span {...props(styles.facts)}>{formatDuration(durationMs)}</span>;
 }
@@ -372,11 +371,6 @@ function OutputPreview({ output }: { readonly output: string }): ReactElement {
   );
 }
 
-/**
- * A shell call. Compact and balanced draw a verb line that opens the command
- * and its output in a bordered body; detailed draws a card whose collapsed
- * body is the output's last five lines.
- */
 export const ShellCallView = memo(function ShellCallView({
   message,
   toolClass,
@@ -413,6 +407,7 @@ export const ShellCallView = memo(function ShellCallView({
 
   const verb =
     status.tense === "none" || description !== "" ? undefined : toolVerbs(toolClass)[status.tense];
+
   const heading = verb === undefined ? label : `${verb} ${label}`;
   const follow = running ? output : undefined;
 

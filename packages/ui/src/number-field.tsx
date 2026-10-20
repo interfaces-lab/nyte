@@ -71,7 +71,6 @@ const styles = create({
     lineHeight: type.leadingSm,
     fontVariantNumeric: "tabular-nums",
     textAlign: "center",
-    // The global ::selection is an accent wash and would tint the value.
     "::selection": {
       backgroundColor: role.bgInteractiveSecondaryTranslucent,
       color: role.contentSecondary,
@@ -81,7 +80,6 @@ const styles = create({
 
 export const NumberField = NumberFieldPrimitive.Root;
 
-/** A compact stepper: the decrement button, the value, and the increment button. */
 export function NumberFieldGroup({
   xstyle,
   className,

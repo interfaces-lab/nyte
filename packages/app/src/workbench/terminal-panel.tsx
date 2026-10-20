@@ -26,7 +26,6 @@ import { getTerminal, terminalActions, useTerminal } from "./terminal-store";
 import type { TerminalTab } from "./terminal-store";
 import { terminalStyles } from "./terminal.stylex";
 
-/** "Starting terminal…" lies over the canvas, so the grid keeps its size when the shell comes up. */
 const startingStyles = create({
   overlay: {
     position: "absolute",
@@ -37,7 +36,6 @@ const startingStyles = create({
   },
 });
 
-/** Add to Chat floats over the grid's top corner while text is selected, clear of the prompt below. */
 const chatStyles = create({
   action: {
     position: "absolute",

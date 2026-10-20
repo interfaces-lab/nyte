@@ -70,6 +70,7 @@ const control = create({
     transitionProperty: "background-color, color, opacity, scale",
     transitionDuration: {
       default: motion.durationFast,
+      ":active:not([data-disabled])": "0s",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOut,
@@ -105,11 +106,6 @@ const control = create({
     },
   },
   joinedIcon: { width: `max(var(--_btn-height), ${target.min})` },
-  /**
-   * Disabled is one state merged after the variant, so label, glyph, and fill
-   * dim together in every variant. A joined button leaves the dimming to its
-   * group, which fades as one surface.
-   */
   dimmed: { opacity: { default: null, "[data-disabled]:not([aria-busy='true'])": 0.5 } },
 });
 
@@ -450,17 +446,10 @@ const pickerWidths = create({
 });
 
 export type PickerTriggerProps = Omit<StyledProps<ButtonPrimitive.Props>, "xstyle"> & {
-  /** `wide` lets the trigger fill its container instead of stopping at 180px. */
   readonly width?: keyof typeof pickerWidths;
   readonly xstyle?: ButtonLayout;
 };
 
-/**
- * The one control a picker opens from: an `outline` `md` button showing the
- * current value and ending in a chevron. Select and Autocomplete render it
- * through their primitive's `render` prop, so a new picker inherits the fill,
- * border, and height instead of restyling a trigger of its own.
- */
 export function PickerTrigger({
   width = "standard",
   children,

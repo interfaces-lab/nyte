@@ -1,4 +1,3 @@
-/** Browser panel pages: one `WebContentsView` per surface, the holders that keep it, and the bridge over them. */
 import { WebContentsView, webContents } from "electron";
 import { Value } from "typebox/value";
 import type { WebContents } from "electron";
@@ -27,14 +26,8 @@ import { wireSurface } from "./browser-surface-events.ts";
 import { ExpectedHostError } from "./errors.ts";
 import type { HostWindow } from "./host-window.ts";
 
-/**
- * How many idle agent-only hidden pages stay warm. Beyond this the longest-idle one
- * is closed and its session sees `closed` on its next call, exactly as if it had
- * never opened a page. A starting point, not a measured limit.
- */
 const WARM_POOL_LIMIT = 6;
 
-/** JPEG quality of the still frame shown under an overlay. */
 const FRAME_QUALITY = 80;
 
 function readOwner(path: string | null): BrowserOwner {
@@ -45,11 +38,6 @@ function ownerPath(owner: BrowserOwner): string | null {
   return owner.kind === "home" ? null : owner.path;
 }
 
-/**
- * An idle page nobody is looking at: no panel holds it, it is not placed, not
- * loading, and no agent call is running against it. View-held pages are never
- * candidates.
- */
 function reclaimable(surface: Surface): boolean {
   if (surface.operations > 0 || surface.visible || hasViewHolder(surface)) return false;
 
@@ -60,13 +48,11 @@ function reclaimable(surface: Surface): boolean {
 
 export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   readonly dependencies: BrowserSurfacesDependencies;
-  /** The BrowserAgent implementation for the tools plugin. */
   readonly agent: BrowserAgent = new SurfaceAgent(this);
   readonly #surfaces = new Map<string, Surface>();
   readonly #byWebContents = new Map<number, Surface>();
   readonly #downloads: BrowserDownloads;
   readonly #guests: GuestSessions;
-  /** The surface whose browser chrome (address field, find bar) has focus, per window. */
   readonly #chromeFocus = new Map<HostWindow, string>();
   #useClock = 0;
 
@@ -123,7 +109,6 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     this.reclaimIdle();
   }
 
-  /** Lays the surface out in its window; `focus` hands the page keyboard focus if this shows it. */
   place(surface: Surface, focus = false): void {
     if (surface.destroyed) return;
     const window = this.dependencies.window(surface.home);
@@ -132,7 +117,6 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     placeSurface(surface, window, focus);
   }
 
-  /** A state the surface's window already has is not sent again. */
   publish(surface: Surface): void {
     if (surface.destroyed) return;
     const state = surfaceState(surface, (url) => this.blocking(url));
@@ -196,11 +180,6 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     this.dependencies.forwardKey({ surface: surface.id, window: surface.home, contents, key });
   }
 
-  /**
-   * Opening a page places it in the requesting window. The renderer may have sent this
-   * surface's bounds before the holder existed, and it does not resend an identical
-   * message, so the page is placed here.
-   */
   open(
     input: { readonly surface: string; readonly url: string; readonly owner?: BrowserOwner },
     window: HostWindow,
@@ -346,17 +325,10 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     });
   }
 
-  /** The panel let go: its view holder is released, which closes the page unless an agent holds it. */
   close(input: { readonly surface: string }): void {
     this.release(input.surface, `view:${input.surface}`);
   }
 
-  /**
-   * The page's current pixels as a JPEG data URL at the view's size in points, captured without
-   * showing the view. The still frame sits under a scrim while an overlay covers the page, so device
-   * pixels and lossless encoding buy nothing there. `stayHidden` keeps a hidden page from flashing
-   * into view and lets an occluded page answer with its last pixels.
-   */
   async captureFrame(input: { readonly surface: string }): Promise<string | undefined> {
     const surface = this.#surfaces.get(input.surface);
 
@@ -378,7 +350,6 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     }
   }
 
-  /** The page takes the keys while the user points at an element on it. */
   pickElement(input: { readonly surface: string }): Promise<BrowserElementPick | undefined> {
     const contents = this.#surfaces.get(input.surface)?.view.webContents;
 
@@ -443,7 +414,6 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     return this.dependencies.history.remove(readOwner(input.owner), input.url);
   }
 
-  /** A visible placement moves the page into the reporting window, which then needs its state. */
   setBounds(message: BrowserBoundsMessage, window: HostWindow): void {
     const surface = this.#surfaces.get(message.surface);
 
@@ -483,7 +453,6 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       host.webContents.focus();
   }
 
-  /** The surface keyboard commands act on: the focused page or its devtools, else the focused chrome. */
   focused(window: HostWindow | undefined): string | undefined {
     const focusedContents = webContents.getFocusedWebContents();
 
@@ -505,7 +474,6 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     for (const surface of this.#surfaces.values()) this.publish(surface);
   }
 
-  /** The window closed: its panels let go, and pages the agent still holds move elsewhere. */
   releaseWindow(window: HostWindow): void {
     this.#chromeFocus.delete(window);
 

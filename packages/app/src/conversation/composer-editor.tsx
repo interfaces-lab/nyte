@@ -2,7 +2,6 @@ import { props } from "@stylexjs/stylex";
 import type { EditorEvents } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
-import { EditorContent } from "@tiptap/react";
 import { useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
 import type { ReactElement, Ref } from "react";
 import type { MentionFile } from "./message-references.ts";
@@ -25,22 +24,24 @@ import type {
   ComposerDocumentState,
   ComposerSubmission,
 } from "./composer-document.ts";
-import { editorContentStyle, focusComposer, useComposerSurface } from "./composer-surface.tsx";
+import {
+  ComposerSurfaceContent,
+  editorContentStyle,
+  focusComposer,
+  useComposerSurface,
+} from "./composer-surface.tsx";
 import { clipboardReferenceFromPaste } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 
 export interface ComposerEditorHandle {
-  /** The editable root, or null once the editor is destroyed. */
   readElement(): HTMLDivElement | null;
   focus(options?: FocusOptions): void;
   read(): ComposerSubmission;
   readDocument(): ComposerDocumentState;
   replaceText(start: number, end: number, text: string): void;
   insertReference(reference: MessageReference, start?: number, end?: number): void;
-  /** Insert at the text under a viewport point, else at the caret. */
   dropReferences(references: readonly MessageReference[], clientX: number, clientY: number): void;
-  /** Hands files to the composer as a paste would; dropped where it takes no files. */
   attachFiles(files: readonly File[]): void;
 }
 
@@ -55,7 +56,6 @@ interface ComposerEditorProps {
   readonly inputRef?: (handle: ComposerEditorHandle | null) => void;
   readonly className?: string;
   readonly label?: string;
-  /** Applied when it differs from the editor's last report; the parent's echoes never reseed. */
   readonly document: ComposerDocumentState;
   readonly onDocumentChange: (
     document: ComposerDocumentState,
@@ -65,7 +65,6 @@ interface ComposerEditorProps {
   readonly files: readonly MentionFile[];
   readonly disabled: boolean;
   readonly placeholder: string;
-  /** Present when a suggestion popup can open: the editor is then its combobox. */
   readonly combobox?: ComposerComboboxState;
   readonly onKeyDown: (event: KeyboardEvent) => void;
   readonly onFocusChange?: (focused: boolean) => void;
@@ -88,12 +87,6 @@ function nodeRects(node: Node): readonly DOMRect[] {
   return Array.from(range.getClientRects());
 }
 
-/**
- * Where a collapsed selection sits. Chromium reports no usable box beside a
- * chip: the trailing <br> after it has zero height at the baseline, and an
- * empty text node has no rect at all. The neighbours know the line instead:
- * after a line break the caret opens the next line at the block's start edge.
- */
 function caretBox(range: Range): CaretBox | undefined {
   const own = range.getClientRects()[0];
 
@@ -134,21 +127,6 @@ function caretBox(range: Range): CaretBox | undefined {
   return { x: rect.left, top: rect.top, height: rect.height };
 }
 
-/**
- * The composer's editable surface.
- *
- * - `reported` is the last document this editor reported, so the parent's copy
- *   of it is an echo, not an instruction. `observed` also holds composition
- *   updates whose report is deliberately deferred.
- * - Composition can end without a transaction, so `compositionend` reports too;
- *   ProseMirror has cleared its composing flag by then.
- * - A drop lands at the pointer, or at the caret on engines that lack
- *   `caretPositionFromPoint`.
- * - The drawn caret only mirrors the native selection and never sets it. An
- *   invisible glyph measures the font so the caret keeps its height on an empty
- *   line, and the native caret stays wherever Chromium reports no reliable box
- *   or the caret scrolled away.
- */
 export function ComposerEditor({
   ref,
   inputRef,
@@ -454,7 +432,7 @@ export function ComposerEditor({
 
   return (
     <div {...props(composerStyles.editorHost)}>
-      <EditorContent
+      <ComposerSurfaceContent
         editor={editor}
         style={editorContentStyle}
         onFocus={() => onFocusChange?.(true)}

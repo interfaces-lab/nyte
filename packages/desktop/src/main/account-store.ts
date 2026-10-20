@@ -14,10 +14,8 @@ const savedSignIn = Compile(
   ),
 );
 
-/** Seals text under this Mac's secrets key and opens it again; the host owns the key. */
 export interface SecretSealer {
   seal(plain: string): Promise<string>;
-  /** Rejects when the text was sealed under another key or the key cannot be read now. */
   open(sealed: string): Promise<string>;
 }
 
@@ -31,7 +29,6 @@ export class AccountStore {
     this.sealer = options.sealer;
   }
 
-  /** The saved sign-in, its token still sealed; undefined when there is none to restore. */
   async load(): Promise<ReturnType<typeof savedSignIn.Parse> | undefined> {
     try {
       return savedSignIn.Parse(JSON.parse(await readFile(this.path, "utf8")));
@@ -40,15 +37,10 @@ export class AccountStore {
     }
   }
 
-  /** The token a saved sign-in sealed; rejects when the keychain cannot open it now. */
   open(sealed: string): Promise<string> {
     return this.sealer.open(sealed);
   }
 
-  /**
-   * Seals and writes the sign-in, or removes the file for none. A sign-in the
-   * keychain cannot seal rejects and leaves the saved one as it was.
-   */
   save(signIn: { readonly token: string; readonly label: string } | undefined): Promise<void> {
     return this.writes.run(async () => {
       if (signIn === undefined) return rm(this.path, { force: true });

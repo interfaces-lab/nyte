@@ -12,7 +12,6 @@ export interface ClientCapabilities {
   readonly browser: boolean;
 }
 
-/** What the client can show beyond what every host backs: a browser only where the desktop gives it a native view. */
 export function clientCapabilities(host: { readonly browser?: unknown }): ClientCapabilities {
   return { browser: host.browser !== undefined };
 }
@@ -35,7 +34,6 @@ type ActionDefinition = ActionDetails &
     | { readonly key?: never; readonly chord?: never }
   );
 
-/** Window actions only. Editors, terminals, and browser pages own their input bindings. */
 export const clientActions = {
   newChat: {
     id: "new-chat",
@@ -231,11 +229,6 @@ type ActionKeyEvent = Pick<
   | "isComposing"
 >;
 
-/**
- * Ghostty prevents the default for the Backquote chord it hands back to the
- * shell; other consumed events stay with the editor or terminal that handled
- * them. The workbench chord has always accepted Shift as well.
- */
 export function resolveClientAction(
   event: ActionKeyEvent,
   mac: boolean,
@@ -276,7 +269,6 @@ type TabShortcut =
   | { readonly kind: "activate-index"; readonly index: number }
   | { readonly kind: "cycle-tab"; readonly step: 1 | -1 };
 
-/** ⌘1–⌘9 pick a window tab by position; ⌃Tab and ⌘⌥→ step through them, with Shift or ← going back. */
 export function resolveTabShortcut(event: ActionKeyEvent, mac: boolean): TabShortcut | undefined {
   if (event.defaultPrevented || event.isComposing) return undefined;
   const primary = mac ? event.metaKey : event.ctrlKey;

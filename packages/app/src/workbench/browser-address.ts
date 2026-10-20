@@ -21,7 +21,6 @@ function looksLikeHost(value: string): boolean {
   return /^[\w-]+(\.[\w-]+)+(:\d+)?$/.test(host);
 }
 
-/** URL, then bare host with `https://`, then a search. No request before Enter. */
 export function resolveBrowserAddress(input: string): string | undefined {
   const value = input.trim();
 
@@ -43,7 +42,6 @@ export function searchAddress(query: string): string {
   return `${SEARCH_URL}${encodeURIComponent(query)}`;
 }
 
-/** What the address bar shows for a loaded page. */
 export function displayAddress(url: string): string {
   try {
     const parsed = new URL(url);

@@ -49,7 +49,6 @@ export function connectAddress(connection: Connection, repair: boolean): Promise
 }
 
 interface ConnectScreenProps {
-  /** Prefills the form, for a saved or linked connection that failed to connect. */
   readonly initial?: Connection;
   readonly failure?: ConnectFailure;
   readonly onConnected: (connection: Connection) => void;

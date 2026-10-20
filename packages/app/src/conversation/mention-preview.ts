@@ -1,12 +1,3 @@
-/**
- * The rows a mention preview draws for a workspace path: one per folder on the
- * way down, the mentioned file or folder last. Deep paths keep their tail and
- * collapse the folders above it into a single row, so the card stays short.
- *
- * Source attribution: THIRD-PARTY-NOTICES.md.
- */
-
-/** Folders that keep a row of their own; the ones above them share the first. */
 const MAX_FOLDER_ROWS = 4;
 
 interface MentionPreviewRow {
@@ -14,7 +5,6 @@ interface MentionPreviewRow {
   readonly label: string;
 }
 
-/** The mention itself always keeps its own row; only the folders above it collapse. */
 export function mentionPreviewRows(displayPath: string): readonly MentionPreviewRow[] {
   const segments = displayPath.split("/").filter((segment) => segment !== "");
   const collapsed = Math.max(0, segments.length - 1 - MAX_FOLDER_ROWS);

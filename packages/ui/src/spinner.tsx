@@ -6,11 +6,6 @@ import { glyph } from "./styles/schema.stylex.ts";
 import { mergeStyleProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 
-/**
- * The app icon's dithered moon, 5 cells across on a 3px pitch, with the sun
- * orbiting once per loop: new, waxing, full, waning. Unlit cells keep a trace
- * of earthshine so the disc holds its outline through the new moon.
- */
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
 const CELLS = 5;
@@ -50,10 +45,8 @@ const FRAMES = Array.from({ length: FRAME_COUNT }, (_, frame) => {
     .join("");
 });
 
-/** Shown under reduced motion: the waxing gibbous, which reads as a moon at rest. */
 const STILL_FRAME = 6;
 
-// One frame of sixteen is lit at a time.
 const lit = keyframes({ "0%": { opacity: 1 }, "6.25%": { opacity: 0 }, "100%": { opacity: 0 } });
 
 const styles = create({
@@ -79,7 +72,6 @@ export interface SpinnerProps {
   readonly xstyle?: Restyle<"Spinner">;
 }
 
-/** Every spinner on screen shows the same phase: the loop offset syncs to the page clock on mount. */
 export function Spinner({ className, style, xstyle }: SpinnerProps = {}): ReactElement {
   const root = useRef<SVGSVGElement>(null);
 

@@ -1,9 +1,3 @@
-/**
- * The checked-out branch's pull request under the commit bar: its number,
- * title and state, and the checks on its head commit summed up in one line
- * that opens to each check. Every link opens where the host opens links, the
- * workbench browser on the desktop.
- */
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import type { GitHubCheck, GitHubPullRequest } from "@nyte-ai/sdk";
@@ -19,7 +13,6 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 
 type CheckState = GitHubCheck["state"];
 
-/** The order a summary names the states in: what needs attention first. */
 const SUMMARY_ORDER: readonly CheckState[] = ["failed", "pending", "passed", "skipped"];
 
 const CHECK_LABELS = {
@@ -65,7 +58,6 @@ function pullRequestState(pullRequest: GitHubPullRequest): string {
   }
 }
 
-/** The check rollup in a few words: `All 5 checks passed`, or each state's count, failing first. */
 export function checksSummary(checks: readonly GitHubCheck[]): string {
   if (checks.length === 0) return "No checks";
 
@@ -79,7 +71,6 @@ export function checksSummary(checks: readonly GitHubCheck[]): string {
   }).join(", ");
 }
 
-/** The state the rollup reads as: any failure, else anything still running, else passed. */
 function rollupState(checks: readonly GitHubCheck[]): CheckState {
   return SUMMARY_ORDER.find((state) => checks.some((check) => check.state === state)) ?? "skipped";
 }

@@ -1,41 +1,3 @@
-/**
- * `cloudflared` as the Cloudflare plugin runs it: one connector for the user's
- * own remotely-managed named tunnel, alive only while remote access serves
- * over it.
- *
- * Nothing the user's environment sets reaches it. It gets a fixed environment
- * with a private `HOME`, an explicit `--config` (which turns off cloudflared's
- * search of `~/.cloudflared` and `/etc/cloudflared`), and explicit flags for
- * log level, metrics address, diagnostics, and updates. The token travels in
- * `TUNNEL_TOKEN`, never in argv.
- *
- * `--loglevel info` keeps request headers, bearer tokens included, out of the
- * local log only. cloudflared hands every event to its management logger
- * whatever the local level, and a live-log session from the Cloudflare
- * dashboard picks its own level, debug included
- * (`logger/create.go`, `resilientMultiWriter`). `--management-diagnostics=false`
- * removes the pprof and metrics routes, not that log stream. Whoever can open
- * the tunnel's live logs in the Cloudflare account can read device tokens.
- *
- * Status comes from cloudflared's JSON log records, read in memory and never
- * forwarded: field and message names are those of cloudflared 2026.8.3
- * (`connection/observer.go`, `connection/control.go`, `supervisor/supervisor.go`,
- * `orchestration/orchestrator.go`). Before the dashboard's configuration
- * arrives cloudflared has no ingress and answers 503, so `connected` waits for
- * that configuration and requires its public-hostname ingress to send only
- * this hostname to this listener.
- *
- * That check cannot cover private network routing. In cloudflared 2026.8.3
- * the pushed `warp-routing` block holds only timeouts and a flow limit (no
- * `enabled` switch, and 0 flows means unlimited); routes to private networks
- * are attached to the tunnel in Cloudflare and never appear in what the
- * connector receives, so neither Nyte nor the connector can see or refuse
- * them. A tunnel used here must have no private network routes.
- *
- * cloudflared runs under a POSIX `sh` supervisor holding the read end of a
- * pipe from this process. Stopping closes the pipe; so does this process
- * dying, even by SIGKILL, and either way the supervisor ends cloudflared.
- */
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { constants } from "node:fs";
@@ -46,18 +8,12 @@ import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import type { TunnelConnection, TunnelFailure } from "@nyte-ai/app/bridge.ts";
 
-/** Where macOS and Linux installs put the CLI, in the order to try them. */
 const CLOUDFLARED_PATHS = [
   "/opt/homebrew/bin/cloudflared",
   "/usr/local/bin/cloudflared",
   "/usr/bin/cloudflared",
 ] as const;
 
-/**
- * Runs `"$@"` with stdin from /dev/null and watches its own stdin. End of
- * file there sends SIGTERM, then SIGKILL after five seconds. The watcher uses
- * the `read` builtin so killing it leaves no reader behind.
- */
 export const SUPERVISOR_SCRIPT = `exec 3<&0 0</dev/null
 "$@" 3<&- &
 child=$!
@@ -75,7 +31,6 @@ kill -KILL "$watcher" 2>/dev/null
 exit "$status"
 `;
 
-/** Longest stderr line kept; a longer one is dropped whole. */
 const LINE_LIMIT = 131_072;
 
 const record = Compile(
@@ -89,7 +44,6 @@ const record = Compile(
   ),
 );
 
-/** The origin settings that turn a rule into a proxy to somewhere other than its service. */
 const originRequestType = Type.Object(
   {
     bastionMode: Type.Optional(Type.Unknown()),
@@ -133,29 +87,16 @@ const remoteConfig = Compile(
 );
 
 export interface ConnectorTiming {
-  /** Delay before each restart after an unexpected exit; its length is the retry limit. */
   readonly retryDelaysMs: readonly number[];
-  /** How long after the first connection the dashboard's configuration may take. */
   readonly ingressTimeoutMs: number;
-  /** Connected this long, the retry count starts over. */
   readonly stableMs: number;
-  /** After closing the supervisor's pipe, how long before its process group is killed. */
   readonly stopTimeoutMs: number;
 }
 
-/** After the process group is killed, how long a stop still waits for the exit event. */
 const KILL_GRACE_MS = 2_000;
 
-/** How long a run's leftover process group may take to empty after SIGKILL. */
 const REAP_LIMIT_MS = 1_000;
 
-/**
- * SIGKILL what is left of a run's process group (the supervisor led it, so
- * its pid is the group id) and wait until the group is empty. The id cannot
- * be reused while the group has members, so the polling never reaches an
- * unrelated process; the first kill runs as the supervisor's exit is
- * reported, before its id could have been handed out again.
- */
 async function reap(pid: number | undefined): Promise<void> {
   if (pid === undefined || !signalGroup(pid, "SIGKILL")) return;
 
@@ -165,7 +106,6 @@ async function reap(pid: number | undefined): Promise<void> {
   }
 }
 
-/** Send `signal` to the process group `pid` leads; false once the group is gone. */
 function signalGroup(pid: number, signal: NodeJS.Signals | 0): boolean {
   try {
     process.kill(-pid, signal);
@@ -188,7 +128,6 @@ interface ConnectorOptions {
   readonly tunnelToken: string;
   readonly hostname: string;
   readonly port: number;
-  /** cloudflared's private `HOME`, holding the config file Nyte writes. */
   readonly directory: string;
   readonly onChange: () => void;
   readonly timing?: ConnectorTiming;
@@ -200,12 +139,10 @@ interface Run {
   ingress: "pending" | "verified";
   ingressTimer: ReturnType<typeof setTimeout> | undefined;
   exited: boolean;
-  /** Set once this process asked the run to end, so its exit is not a crash. */
   ending: boolean;
   readonly done: Promise<void>;
 }
 
-/** The first install path holding an executable `cloudflared`, if any. */
 export async function findCloudflared(): Promise<string | undefined> {
   if (process.platform === "win32") return undefined;
 
@@ -225,7 +162,6 @@ function configPath(directory: string): string {
   return join(directory, "config.yml");
 }
 
-/** The private `HOME` and the config file `--config` names, so no other config file is read. */
 export async function prepareConnectorDirectory(directory: string): Promise<void> {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await writeFile(
@@ -265,10 +201,6 @@ function connectorArguments(directory: string): readonly string[] {
   ];
 }
 
-/**
- * Public-hostname ingress that sends this hostname to this listener and
- * everything else to a status code. Private network routes are outside it.
- */
 export function routesOnlyTo(config: string, hostname: string, port: number): boolean {
   let parsed: unknown;
 
@@ -296,7 +228,6 @@ export function routesOnlyTo(config: string, hostname: string, port: number): bo
   );
 }
 
-/** One connector's life: started once, stopped once. */
 export class CloudflaredConnector {
   private readonly options: ConnectorOptions;
   private readonly timing: ConnectorTiming;
@@ -334,7 +265,6 @@ export class CloudflaredConnector {
     this.spawn();
   }
 
-  /** Resolves once cloudflared and its supervisor are gone, or after the kill deadline. */
   async stop(): Promise<void> {
     this.stopped = true;
     clearTimeout(this.retryTimer);
@@ -345,12 +275,6 @@ export class CloudflaredConnector {
     if (run !== undefined) await this.end(run);
   }
 
-  /**
-   * Start a supervised run. The supervisor leads its own process group, so a stuck stop can kill it
-   * and cloudflared together, and the run is over only once that whole group is gone: the
-   * supervisor can exit before cloudflared does when it is killed on its own. A write to the
-   * supervisor's pipe after it is gone is swallowed rather than thrown into this process.
-   */
   private spawn(): void {
     const { directory } = this.options;
 
@@ -429,7 +353,6 @@ export class CloudflaredConnector {
     child.stdin?.on("error", () => undefined);
   }
 
-  /** Track one JSON log line's connections and ingress; only an unbroken connected stretch earns back the retries. */
   private read(run: Run, line: string): void {
     if (this.run !== run || run.ending) return;
     let value: unknown;
@@ -486,7 +409,6 @@ export class CloudflaredConnector {
     this.options.onChange();
   }
 
-  /** A policy failure ends the run and never retries. */
   private fail(run: Run, reason: TunnelFailure): void {
     if (this.run !== run || run.ending) return;
     this.failure = reason;
@@ -525,7 +447,6 @@ export class CloudflaredConnector {
     this.options.onChange();
   }
 
-  /** Close the supervisor's pipe; kill its process group if it outlives the deadline. */
   private async end(run: Run): Promise<void> {
     run.ending = true;
     clearTimeout(run.ingressTimer);

@@ -1,4 +1,3 @@
-/** App-specific status marks and time labels, styled on the palette. */
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -8,7 +7,6 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 
-/** The spinner's disc at full: 5 cells across on a 3px pitch. */
 const MOON = Array.from({ length: 25 }, (_, index) => ({ x: index % 5, y: Math.floor(index / 5) }))
   .filter(({ x, y }) => (x - 2) ** 2 + (y - 2) ** 2 < 6.25)
   .map(({ x, y }) => `M${x * 3} ${y * 3}h2v2h-2z`)
@@ -27,7 +25,6 @@ const styles = create({
     height: glyph.box,
     color: role.contentInteractiveTertiary,
     animationName: { default: pulse, "@media (prefers-reduced-motion: reduce)": "none" },
-    // The spinner's loop, so an unread moon breathes at the pace a working one turns.
     animationDuration: "1600ms",
     animationTimingFunction: "ease-in-out",
     animationIterationCount: "infinite",
@@ -63,10 +60,6 @@ const styles = create({
 const STATUS_MARK_LABEL = {
   idle: "Idle",
   working: "Running",
-  /**
-   * `sessionMark` reports this only for a run parked on a reply. A run parked on
-   * background work reads as running, because nothing is being asked of anyone.
-   */
   waiting: "Needs attention",
   retry: "Retrying",
   failed: "Failed",
@@ -92,11 +85,6 @@ function statusMarkStyle(mark: SessionMark) {
   }
 }
 
-/**
- * One glyph per row state, distinguished by shape before colour: a spinner
- * while a run works, a question when it needs an answer, a warning when it
- * failed, and a full moon for a completion you have not read.
- */
 export function StatusDot({
   mark,
   unread = false,
@@ -120,7 +108,6 @@ export function StatusDot({
   );
 }
 
-/** The spinner's moon come to full, pulsing: a completion nobody has read yet. */
 export function UnreadMark(): ReactElement {
   return (
     <svg
@@ -135,7 +122,6 @@ export function UnreadMark(): ReactElement {
   );
 }
 
-/** "2m ago" for lists; bare clock time within today. */
 export function formatTimeAgo(timestamp: number, now = Date.now()): string {
   const elapsed = Math.max(0, now - timestamp);
   const minutes = Math.floor(elapsed / 60_000);

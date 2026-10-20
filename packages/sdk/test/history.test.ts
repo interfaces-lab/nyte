@@ -72,6 +72,16 @@ it("pages a head's older messages and their turns into its views and keeps them 
     expect(slid.turns.map((turn) => turn.prompt)).toEqual(
       slid.messages.flatMap((message) => (message.kind === "user" ? [message.id] : [])),
     );
+
+    const quiet = (view: SessionView): boolean =>
+      view.execution.kind === "idle" && view.turns.every((turn) => turn.state.kind === "ended");
+    const settled = quiet(slid) ? slid : await next(quiet);
+    await session.configure({ thinking: "off" });
+    const configured = await next((view) => view.configuration !== settled.configuration);
+
+    expect(configured.configuration.selected?.thinking).toBe("off");
+    expect(configured.messages).toBe(settled.messages);
+    expect(configured.turns).toBe(settled.turns);
   } finally {
     await iterator.return?.();
   }

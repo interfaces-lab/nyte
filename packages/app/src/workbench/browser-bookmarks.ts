@@ -41,7 +41,6 @@ function snapshot(): Bookmarks {
   return current;
 }
 
-/** Bookmarks stay usable for this window when storage is unavailable. */
 function save(next: Bookmarks): void {
   current = next;
 

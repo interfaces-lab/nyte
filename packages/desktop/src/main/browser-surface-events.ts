@@ -1,4 +1,3 @@
-/** The native events of one surface's page, turned into surface state, placement, and host events. */
 import type { IpcMainEvent, WebContents } from "electron";
 import type { BrowserKey } from "@nyte-ai/app/bridge.ts";
 import { BROWSER_PAGE_KEY_CHANNEL } from "../shared/browser-page.ts";
@@ -15,10 +14,8 @@ import { hasViewHolder } from "./browser-surface.ts";
 import type { Surface, SurfaceRegistry } from "./browser-surface.ts";
 import { decodeBrowserKey } from "./ipc-inputs.ts";
 
-/** Chromium's net error for a load the page itself aborted, which is not a failure to show. */
 const ABORTED = -3;
 
-/** New tabs go to the workbench, small popups (OAuth) get a window, everything else stays here. */
 function wirePopups(registry: SurfaceRegistry, surface: Surface, contents: WebContents): void {
   contents.setWindowOpenHandler(({ url, disposition }) => {
     const target = webUrl(url);
@@ -120,11 +117,6 @@ async function watchPauses(contents: WebContents): Promise<void> {
   await contents.debugger.sendCommand("Debugger.setBreakpointsActive", { active: false });
 }
 
-/**
- * Keys the page does not consume reach the window's shortcuts. A visible, live,
- * running page reports its unhandled keys through the page preload; a hidden,
- * crashed, or paused one has its chorded keys taken before the page sees them.
- */
 function wireKeys(registry: SurfaceRegistry, surface: Surface, contents: WebContents): void {
   const forwardFrom =
     (source: WebContents, user: (key: BrowserKey) => boolean) =>
@@ -204,7 +196,6 @@ function wireKeys(registry: SurfaceRegistry, surface: Surface, contents: WebCont
   });
 }
 
-/** HTML fullscreen fills the window, taking the window fullscreen too when it was not. */
 function wireFullscreen(registry: SurfaceRegistry, surface: Surface, contents: WebContents): void {
   contents.on("enter-html-full-screen", () => {
     const window = surface.attachedTo;

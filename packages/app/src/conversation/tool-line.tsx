@@ -152,7 +152,6 @@ export const toolLineStyles = create({
   },
 });
 
-/** Without a verb the subject names the tool itself: "x.ts read", or a custom tool's own name. */
 function lineCopy(toolClass: LineToolClass, cwd: string | undefined, tense: ToolTense): CustomTool {
   switch (toolClass.kind) {
     case "read":
@@ -181,7 +180,6 @@ function lineCopy(toolClass: LineToolClass, cwd: string | undefined, tense: Tool
   }
 }
 
-/** The word the outcome adds after the subject; a failure takes the danger tone, a stop stays quiet. */
 export function ToolOutcome({ status }: { readonly status: ToolStatus }): ReactElement | null {
   if (status.word === undefined) return null;
 

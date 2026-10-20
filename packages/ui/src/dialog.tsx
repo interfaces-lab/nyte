@@ -1,8 +1,3 @@
-/**
- * A centered modal over a scrim. `Popup` renders the portal, backdrop, and
- * panel as one unit, so every dialog paints the same surface. The alert dialog
- * reuses these parts under its own root.
- */
 import { Dialog } from "@base-ui/react/dialog";
 import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement } from "react";
@@ -81,7 +76,6 @@ function DialogPopup({
   style,
   ...rest
 }: StyledProps<Dialog.Popup.Props, Restyle<"Dialog.Popup">> & {
-  /** Scopes the panel to a hue; the scrim stays neutral. */
   readonly tint?: Tint;
 }): ReactElement {
   return (

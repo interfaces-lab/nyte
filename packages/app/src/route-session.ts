@@ -24,12 +24,7 @@ export function missingAsNull(cause: unknown): null {
   throw cause;
 }
 
-/**
- * Whether the chat a route shows still exists. The session directory listing
- * it answers without a request; a chat it does not list, one past its newest
- * or one that is gone, is read from the host.
- */
-export async function routeChatExists({
+export async function routeSessionExists({
   client,
   sessionId,
   listed,

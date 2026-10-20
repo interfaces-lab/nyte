@@ -1,4 +1,3 @@
-/** Filter engine over bundled EasyList and EasyPrivacy. No Electron in here. */
 import { readFile } from "node:fs/promises";
 import { FiltersEngine, Request } from "@ghostery/adblocker";
 import type { ElectronRequestType } from "@ghostery/adblocker";
@@ -16,7 +15,6 @@ interface RequestDetails {
 
 export interface Blocker {
   decide(details: RequestDetails): BlockDecision;
-  /** Hostname-scoped element hiding for a committed page; empty when nothing applies. */
   stylesFor(url: string): string;
 }
 
@@ -86,7 +84,6 @@ export function parseFilterLists(text: string): FiltersEngine {
   });
 }
 
-/** Undefined when the file is missing or was written by another engine version. */
 export async function loadBlocker(path: string): Promise<Blocker | undefined> {
   let bytes: Uint8Array;
 

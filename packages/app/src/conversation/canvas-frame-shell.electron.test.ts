@@ -44,7 +44,6 @@ const Compiled = Type.Object({
   code: Type.String(),
 });
 
-/** Compiles a canvas in a child process over the canvas package's script, since a client package may not import the compiler. */
 async function compile(canvas: {
   readonly source: string;
   readonly files: Readonly<Record<string, string>>;
@@ -66,10 +65,12 @@ test.skipIf(!built)(
     const galaxy = await compile(
       await readCanvasFixture(join(canvasPackage, "test/fixtures/repo-galaxy")),
     );
+
     const broken = await compile({
       source: BROKEN,
       files: { "rows.ts": "export const rows: { label: string }[] = [];" },
     });
+
     const server = createServer((request, response) => {
       const path = normalize((request.url ?? "/").split("?")[0] ?? "/");
       const file = join(shellRoot, path === "/" ? "index.html" : path);
@@ -91,6 +92,7 @@ test.skipIf(!built)(
         },
       );
     });
+
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 
     try {
@@ -98,6 +100,7 @@ test.skipIf(!built)(
 
       if (address === null || typeof address === "string") throw new Error("No port.");
       const { port } = address;
+
       const canvases = {
         galaxy: { runtime: galaxy.runtime, code: galaxy.code },
         broken: { runtime: broken.runtime, code: broken.code },

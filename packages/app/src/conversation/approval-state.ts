@@ -6,7 +6,6 @@ import { useMemo, useSyncExternalStore } from "react";
 import { useChildSessions, useSessionView } from "../queries.ts";
 import { connection, sessionWatch } from "../sdk.tsx";
 
-/** The approval a chat shows: its own first, then a waiting subagent's, named by `origin`. */
 export interface ApprovalRequest {
   readonly sessionId: SessionId;
   readonly approval: OpenApproval;
@@ -34,7 +33,6 @@ function watchChildViews(stores: readonly ReturnType<typeof sessionWatch>[]) {
   };
 }
 
-/** The oldest approval waiting in `sessionId` or one of its subagents. */
 export function useApprovalRequest(sessionId: SessionId): ApprovalRequest | undefined {
   const view = useSessionView(sessionId);
   const children = useChildSessions(sessionId);
@@ -73,7 +71,6 @@ export function useApprovalRequest(sessionId: SessionId): ApprovalRequest | unde
   return undefined;
 }
 
-/** Sends one answer to an approval; a refusal, such as another client answering first, throws its reason. */
 export function useAnswerApproval() {
   return useMutation({
     mutationKey: ["approval", "answer"],

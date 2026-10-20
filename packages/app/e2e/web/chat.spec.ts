@@ -5,7 +5,7 @@ import { collectErrors } from "../utils/errors.ts";
 test("a new chat shows the reply and takes its title from the provider", async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto(pairingLink(E2E_TOKEN));
-  await expect(page.getByRole("form", { name: "Message composer" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Message", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: /New Chat/u }).click();
   const composer = page.getByLabel("Message", { exact: true });
@@ -49,6 +49,6 @@ test("a new chat shows the reply and takes its title from the provider", async (
 
   await page.reload();
   await expect(page).toHaveURL(/\/session\/[^/?#]+$/u);
-  await expect(page.getByRole("form", { name: "Message composer" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Message", exact: true })).toBeVisible();
   expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
 });

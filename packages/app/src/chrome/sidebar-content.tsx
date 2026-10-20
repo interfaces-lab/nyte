@@ -1,7 +1,3 @@
-/**
- * The rail's two layers, workspaces and Settings, and the list motion they
- * share.
- */
 import { props } from "@stylexjs/stylex";
 import { useMatch } from "@tanstack/react-router";
 import { LayoutGroup, motion, MotionConfig } from "motion/react";
@@ -13,17 +9,14 @@ import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 
 const INSTANT: Transition = { duration: 0 };
 
-/** How far a rail layer travels while it fades; the two layers pass each other by this much. */
 const LAYER_SHIFT = 12;
 
-/** Repeats collapse into one settle, the way they collapse into one notification. */
 const ARCHIVE_BURST_MS = 100;
 
 let archiveSettle: "single" | "burst" | undefined;
 
 let lastArchiveAt = -ARCHIVE_BURST_MS;
 
-/** Call before the archive itself, so the render it causes settles the list to match. */
 export function recordArchive(count: number): void {
   const at = performance.now();
   archiveSettle = count === 1 && at - lastArchiveAt > ARCHIVE_BURST_MS ? "single" : "burst";
@@ -47,36 +40,20 @@ function sidebarLayoutTransition(node: HTMLElement, durationVariable: string): T
   return { type: "tween", duration, ease: [x1, y1, x2, y2] };
 }
 
-/**
- * The rail's two layers. The workspace column stays mounted under Settings so
- * scroll position and row state survive the round trip; the settings column
- * stays mounted so opening it has nothing to build. The layer that is not
- * showing is inert and transparent, which Chromium neither paints nor hit-tests.
- *
- * Opening settings sends the workspace column a step left as the settings
- * column arrives from the right; going back plays the same in reverse. Only
- * opacity and transform move, so the swap composites without touching layout
- * or repainting the list.
- *
- * The settings column keeps its last section through the fade out, so the
- * selection does not jump to General as it leaves. Reduced motion is read
- * live, since Motion's useReducedMotion snapshots it at mount. Archiving is a
- * dismissal, not a rearrangement: one chat leaving gets a short slide, a burst
- * of them snaps rather than reading as churn; rows read the transition as they
- * render, so the settle is spent by the time this commits. The row that opened
- * a layer is inert once it has, so its counterpart on the new layer takes the
- * focus and the keyboard does not fall to the body.
- */
 export function SidebarContent({ children }: { readonly children: ReactNode }): ReactElement {
-  const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
-  const settingsOpen = settings !== undefined;
+  const openSection = useMatch({
+    from: "/settings/$section",
+    shouldThrow: false,
+    select: (match) => match.params.section,
+  });
+
+  const settingsOpen = openSection !== undefined;
   const contentRef = useRef<HTMLElement>(null);
   const layoutId = useId();
   const [transitions, setTransitions] = useState({ list: INSTANT, archive: INSTANT });
   const [section, setSection] = useState<SettingsSection>("general");
 
-  if (settings !== undefined && settings.params.section !== section)
-    setSection(settings.params.section);
+  if (openSection !== undefined && openSection !== section) setSection(openSection);
 
   useLayoutEffect(() => {
     const node = contentRef.current;
@@ -133,7 +110,7 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
         transition={transitions.list}
         {...props(styles.contentLayer)}
       >
-        <MotionConfig reducedMotion="never" transition={{ layout: transition }}>
+        <MotionConfig transition={{ layout: transition }}>
           <LayoutGroup id={layoutId} inherit={false}>
             {children}
           </LayoutGroup>

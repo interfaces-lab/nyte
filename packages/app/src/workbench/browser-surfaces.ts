@@ -33,7 +33,6 @@ function set(surface: string, view: BrowserSurfaceView): void {
   for (const listener of listeners) listener();
 }
 
-/** The workbench tab whose id names this surface, when one is open. */
 function browserTab(
   surface: string,
 ): { readonly view: WorkbenchViewKey; readonly id: WorkbenchTabId } | undefined {
@@ -48,12 +47,6 @@ function browserTab(
   return undefined;
 }
 
-/**
- * A surface's events land while something in the renderer still owns it: a
- * live store entry, a workbench tab named after it, or an agent holding it
- * ahead of any panel. A surface the panel forgot and no tab names is closed or
- * closing in main, and a late event must not write it back.
- */
 export function applyBrowserEvent(
   event: Extract<
     HostEvent,

@@ -46,13 +46,13 @@ const NEXT = new Set(["ArrowRight", "ArrowDown"]);
 
 const PREVIOUS = new Set(["ArrowLeft", "ArrowUp"]);
 
-/** Arrow keys move between the answers, from the card onto the first or the last, and Escape denies, as in the terminal's approval list. */
 function moveFocus(event: KeyboardEvent<HTMLDivElement>): void {
   const step = NEXT.has(event.key) ? 1 : PREVIOUS.has(event.key) ? -1 : 0;
 
   if (step === 0) return;
   const buttons = [...event.currentTarget.querySelectorAll("button")];
   const current = buttons.findIndex((button) => button === document.activeElement);
+
   const next =
     current === -1 ? buttons.at(step > 0 ? 0 : -1) : buttons.at((current + step) % buttons.length);
 
@@ -61,7 +61,6 @@ function moveFocus(event: KeyboardEvent<HTMLDivElement>): void {
   next.focus();
 }
 
-/** Takes the keyboard when a card arrives, on the card itself rather than an answer, so an Enter meant for the composer cannot allow the call. */
 function takeFocus(card: HTMLDivElement | null): void {
   card?.focus();
 }
@@ -139,7 +138,6 @@ function ApprovalCard({
   );
 }
 
-/** The tray above the composer that asks before a tool call runs, for this chat and its subagents. */
 export function ApprovalTray({
   sessionId,
   disabled,

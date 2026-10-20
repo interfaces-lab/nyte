@@ -1,4 +1,3 @@
-/** Native font discovery for Settings. Renderer pages never receive font-file access. */
 import { execFile } from "node:child_process";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -108,7 +107,6 @@ function parseFontconfigCatalog(output: string): LocalFontCatalog {
   return { sans: normalizedFamilies(sans), monospace: normalizedFamilies(monospace) };
 }
 
-/** Read OS font metadata in the trusted host, using no shell and no renderer permission. */
 async function readLocalFonts(
   platform: NodeJS.Platform,
   run: CommandRunner = runFile,

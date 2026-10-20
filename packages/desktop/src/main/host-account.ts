@@ -1,8 +1,3 @@
-/**
- * The Nyte account across the process line: Clerk's sign-in lives in main with the windows,
- * and Connect, which needs a session token to link this Mac, runs in the host process. The host
- * asks main for one `AccountCall` at a time; main pushes each account state change.
- */
 import { AccountCancelled } from "./account-session.ts";
 import type { AccountSession, AccountState } from "./account-session.ts";
 
@@ -17,7 +12,6 @@ export type AccountAnswer =
   | { readonly kind: "cancelled" }
   | { readonly kind: "done" };
 
-/** Main's side: runs one call against the signed-in account. `signal` aborts a pending token request. */
 export async function answerAccount(
   account: AccountSession,
   call: AccountCall,
@@ -53,7 +47,6 @@ export async function answerAccount(
   }
 }
 
-/** The host process's side: the account as main last described it, each action asked of main. */
 export class RemoteAccount implements AccountSession {
   readonly #ask: (call: AccountCall, signal?: AbortSignal) => Promise<AccountAnswer>;
   #state: AccountState;
@@ -66,7 +59,6 @@ export class RemoteAccount implements AccountSession {
     this.#ask = ask;
   }
 
-  /** Main reported a sign-in, a sign-out or a new label. */
   changed(state: AccountState): void {
     this.#state = state;
   }

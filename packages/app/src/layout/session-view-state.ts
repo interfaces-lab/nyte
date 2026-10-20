@@ -6,7 +6,9 @@ import { Value } from "typebox/value";
 import type { ComposerImageAttachment } from "../conversation/composer-files.ts";
 import type { PaneId, SplitDirection } from "./pane-layout.ts";
 
-const DRAFT_LIST_DEBOUNCE_MS = 200;
+const FLUSH_DEBOUNCE_MS = 200;
+
+const KEPT_SESSION_VIEWS = 64;
 
 const IMAGE_CONTENT = Type.Object({
   type: Type.Literal("image"),
@@ -108,7 +110,7 @@ type LocatedDraft =
   | { readonly kind: "parked"; readonly paneId: PaneId; readonly draft: ChatDraft };
 
 interface Persistence {
-  readonly storage: Pick<Storage, "getItem" | "setItem">;
+  readonly storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   readonly storageKey: string;
 }
 
@@ -121,31 +123,22 @@ const composerSchema = Type.Object(
   strict,
 );
 
-const chatDraftSchema = Type.Object(
-  {
-    id: Type.String({ minLength: 1 }),
-    updatedAt: Type.Number(),
-    composer: composerSchema,
-  },
+const storedDraftSchema = Type.Object(
+  { updatedAt: Type.Number(), composer: composerSchema },
   strict,
 );
 
-const paneDraftsSchema = Type.Object(
-  { active: chatDraftSchema, parked: Type.Array(chatDraftSchema) },
-  strict,
-);
+const ownerId = Type.String({ minLength: 1 });
 
-const persistedSnapshotSchema = Type.Object(
+const paneIndexSchema = Type.Object({ active: ownerId, parked: Type.Array(ownerId) }, strict);
+
+const indexSchema = Type.Object(
   {
-    version: Type.Literal(1),
     panes: Type.Object(
-      {
-        primary: Type.Optional(paneDraftsSchema),
-        secondary: Type.Optional(paneDraftsSchema),
-      },
+      { primary: Type.Optional(paneIndexSchema), secondary: Type.Optional(paneIndexSchema) },
       strict,
     ),
-    sessions: Type.Record(Type.String({ minLength: 1 }), composerSchema),
+    sessions: Type.Array(ownerId),
   },
   strict,
 );
@@ -157,27 +150,19 @@ const attachmentsSchema = Type.Array(
   ),
 );
 
-const persistedImagesSchema = Type.Object(
-  {
-    drafts: Type.Record(Type.String({ minLength: 1 }), attachmentsSchema),
-    sessions: Type.Record(Type.String({ minLength: 1 }), attachmentsSchema),
-  },
-  strict,
-);
-
 type PersistedComposer = Static<typeof composerSchema>;
 
-type PersistedChatDraft = Static<typeof chatDraftSchema>;
+type StoredDraft = Static<typeof storedDraftSchema>;
 
-type PersistedSnapshot = Static<typeof persistedSnapshotSchema>;
+type StoredIndex = Static<typeof indexSchema>;
 
 type PersistedAttachments = Static<typeof attachmentsSchema>;
 
-type PersistedImages = Static<typeof persistedImagesSchema>;
+type StoredValue = PersistedComposer | StoredDraft | readonly ComposerImageAttachment[];
 
 function composerView(
   composer: PersistedComposer,
-  attachments: PersistedAttachments = [],
+  attachments: readonly ComposerImageAttachment[],
 ): ComposerViewState {
   const length = composer.draft.length;
 
@@ -198,38 +183,13 @@ function persistableComposer(composer: ComposerViewState): PersistedComposer {
   };
 }
 
-function persistableDraft(draft: ChatDraft): PersistedChatDraft {
-  return {
-    id: draft.id,
-    updatedAt: draft.updatedAt,
-    composer: persistableComposer(draft.composer),
-  };
+function contentChanged(left: ComposerViewState, right: ComposerViewState): boolean {
+  return left.draft !== right.draft || left.attachments !== right.attachments;
 }
 
-function hydrateDraft(draft: PersistedChatDraft, images: PersistedImages | undefined): ChatDraft {
-  return {
-    id: draft.id,
-    updatedAt: draft.updatedAt,
-    composer: composerView(draft.composer, images?.drafts[draft.id]),
-    choice: undefined,
-    status: EDITING,
-  };
-}
-
-function persistablePane(state: PaneDraftState): Static<typeof paneDraftsSchema> {
-  const parked: PersistedChatDraft[] = [];
-
-  for (const draft of state.parked.values()) {
-    if (draftHasContent(draft)) parked.push(persistableDraft(draft));
-  }
-
-  return { active: persistableDraft(state.active), parked };
-}
-
-function composerChanged(left: ComposerViewState, right: ComposerViewState): boolean {
+function storedChanged(left: ComposerViewState, right: ComposerViewState): boolean {
   return (
-    left.draft !== right.draft ||
-    left.attachments !== right.attachments ||
+    contentChanged(left, right) ||
     left.selectionStart !== right.selectionStart ||
     left.selectionEnd !== right.selectionEnd
   );
@@ -258,14 +218,27 @@ function readStored(persistence: Persistence, key: string): string | null {
   }
 }
 
-function writeStored(persistence: Persistence, key: string, value: string): void {
+function writeStored(persistence: Persistence, key: string, value: string | undefined): void {
   try {
-    persistence.storage.setItem(key, value);
+    if (value === undefined) persistence.storage.removeItem(key);
+    else persistence.storage.setItem(key, value);
   } catch {}
 }
 
-function imagesKey(persistence: Persistence): string {
-  return `${persistence.storageKey}:images`;
+function readOwner<Schema extends TSchema>(
+  persistence: Persistence,
+  owner: string,
+  schema: Schema,
+): { readonly record: Static<Schema>; readonly attachments: PersistedAttachments } | undefined {
+  const key = `${persistence.storageKey}:${owner}`;
+  const record = parseStored(schema, readStored(persistence, key));
+
+  if (record === undefined) return undefined;
+
+  return {
+    record,
+    attachments: parseStored(attachmentsSchema, readStored(persistence, `${key}:images`)) ?? [],
+  };
 }
 
 export class SessionViewStateStore {
@@ -273,8 +246,10 @@ export class SessionViewStateStore {
   readonly #drafts = new Map<PaneId, PaneDraftState>();
   readonly #listeners = new Set<() => void>();
   readonly #persistence: Persistence | undefined;
+  readonly #pending = new Map<string, StoredValue | undefined>();
+  #flushTimer: ReturnType<typeof setTimeout> | undefined;
   #publishTimer: ReturnType<typeof setTimeout> | undefined;
-  #savedImages = "";
+  #savedIndex = "";
   #listed: readonly ChatDraft[] | undefined;
 
   constructor(persistence?: Persistence) {
@@ -290,7 +265,6 @@ export class SessionViewStateStore {
     return () => this.#listeners.delete(listener);
   };
 
-  /** The drafts as of the last publication, the same array until the next one. */
   readonly listedDrafts = (): readonly ChatDraft[] => {
     this.#listed ??= this.drafts();
 
@@ -302,11 +276,26 @@ export class SessionViewStateStore {
   }
 
   writeSession(sessionId: SessionId, state: SessionViewState): void {
-    const previous = this.#sessions.get(sessionId);
+    const known = this.#sessions.get(sessionId);
+    const previous = known?.composer ?? DEFAULT_COMPOSER_VIEW_STATE;
+    this.#sessions.delete(sessionId);
     this.#sessions.set(sessionId, state);
 
-    if (composerChanged(previous?.composer ?? DEFAULT_COMPOSER_VIEW_STATE, state.composer)) {
-      this.#persist();
+    if (known === undefined) {
+      for (const [id, kept] of this.#sessions) {
+        if (this.#sessions.size <= KEPT_SESSION_VIEWS) break;
+
+        if (!composerHasContent(kept.composer)) this.#sessions.delete(id);
+      }
+    }
+
+    if (storedChanged(previous, state.composer)) {
+      this.#save(
+        `session:${sessionId}`,
+        previous,
+        state.composer,
+        persistableComposer(state.composer),
+      );
     }
   }
 
@@ -331,22 +320,18 @@ export class SessionViewStateStore {
 
     if (current === state) return;
 
-    const contentChanged =
-      current.composer.draft !== state.composer.draft ||
-      current.composer.attachments !== state.composer.attachments;
+    const changed = contentChanged(current.composer, state.composer);
 
     const next: ChatDraft = {
       ...state,
       id: current.id,
-      updatedAt: contentChanged ? Date.now() : current.updatedAt,
+      updatedAt: changed ? Date.now() : current.updatedAt,
       status: current.status,
     };
 
     drafts.active = next;
 
-    if (contentChanged) this.#schedulePublish();
-
-    if (composerChanged(current.composer, next.composer)) this.#persist();
+    if (storedChanged(current.composer, next.composer)) this.#saveDraft(current, next);
   }
 
   drafts(): readonly ChatDraft[] {
@@ -412,6 +397,7 @@ export class SessionViewStateStore {
       drafts.parked.delete(draftId);
     }
 
+    this.#save(`draft:${draftId}`, located.draft.composer, DEFAULT_COMPOSER_VIEW_STATE, undefined);
     this.#emit();
 
     return true;
@@ -428,13 +414,15 @@ export class SessionViewStateStore {
     if (current.status.kind === "waiting" || current.status.kind === "starting") return undefined;
     const status: DraftStatus = { kind: "waiting" };
 
-    drafts.active = {
+    const next: ChatDraft = {
       ...current,
       composer,
       status,
       updatedAt: current.composer.draft === composer.draft ? current.updatedAt : Date.now(),
     };
 
+    drafts.active = next;
+    this.#saveDraft(current, next);
     this.#emit();
 
     return status;
@@ -506,113 +494,137 @@ export class SessionViewStateStore {
     const persistence = this.#persistence;
 
     if (persistence === undefined) return;
+    const index = parseStored(indexSchema, readStored(persistence, persistence.storageKey));
 
-    const persisted = parseStored(
-      persistedSnapshotSchema,
-      readStored(persistence, persistence.storageKey),
-    );
+    if (index === undefined) return;
 
-    if (persisted === undefined) return;
+    const readDraft = (id: string): ChatDraft | undefined => {
+      const stored = readOwner(persistence, `draft:${id}`, storedDraftSchema);
 
-    const images = parseStored(
-      persistedImagesSchema,
-      readStored(persistence, imagesKey(persistence)),
-    );
+      return (
+        stored && {
+          id,
+          updatedAt: stored.record.updatedAt,
+          composer: composerView(stored.record.composer, stored.attachments),
+          choice: undefined,
+          status: EDITING,
+        }
+      );
+    };
 
     for (const paneId of ["primary", "secondary"] as const) {
-      const stored = persisted.panes[paneId];
+      const stored = index.panes[paneId];
 
       if (stored === undefined) continue;
       const parked = new Map<string, ChatDraft>();
 
-      for (const storedDraft of stored.parked) {
-        const draft = hydrateDraft(storedDraft, images);
+      for (const id of stored.parked) {
+        const draft = readDraft(id);
 
-        if (draftHasContent(draft) && draft.id !== stored.active.id) {
-          parked.set(draft.id, draft);
+        if (draft !== undefined && draftHasContent(draft) && id !== stored.active) {
+          parked.set(id, draft);
         }
       }
 
-      this.#drafts.set(paneId, { active: hydrateDraft(stored.active, images), parked });
+      this.#drafts.set(paneId, { active: readDraft(stored.active) ?? this.#createDraft(), parked });
     }
 
-    for (const [id, stored] of Object.entries(persisted.sessions)) {
-      const composer = composerView(stored, images?.sessions[id]);
+    for (const id of index.sessions) {
+      const stored = readOwner(persistence, `session:${id}`, composerSchema);
+
+      if (stored === undefined) continue;
+      const composer = composerView(stored.record, stored.attachments);
 
       if (!composerHasContent(composer)) continue;
       this.#sessions.set(asId<"session">(id), { ...defaultSessionViewState("primary"), composer });
     }
   }
 
-  #schedulePublish(): void {
-    if (this.#publishTimer !== undefined) clearTimeout(this.#publishTimer);
-    this.#publishTimer = setTimeout(() => this.#emit(), DRAFT_LIST_DEBOUNCE_MS);
+  #saveDraft(previous: ChatDraft, next: ChatDraft): void {
+    this.#save(`draft:${next.id}`, previous.composer, next.composer, {
+      updatedAt: next.updatedAt,
+      composer: persistableComposer(next.composer),
+    });
+
+    if (!contentChanged(previous.composer, next.composer)) return;
+    clearTimeout(this.#publishTimer);
+    this.#publishTimer = setTimeout(this.#emit, FLUSH_DEBOUNCE_MS);
   }
 
-  #persist(): void {
+  #save(
+    owner: string,
+    previous: ComposerViewState,
+    next: ComposerViewState,
+    record: PersistedComposer | StoredDraft | undefined,
+  ): void {
     const persistence = this.#persistence;
 
-    if (persistence === undefined) return;
-    const panes: PersistedSnapshot["panes"] = {};
-    const primary = this.#drafts.get("primary");
-    const secondary = this.#drafts.get("secondary");
+    if (persistence !== undefined) {
+      const key = `${persistence.storageKey}:${owner}`;
+      this.#pending.set(key, composerHasContent(next) ? record : undefined);
 
-    if (primary !== undefined) panes.primary = persistablePane(primary);
-
-    if (secondary !== undefined) panes.secondary = persistablePane(secondary);
-    const sessions: PersistedSnapshot["sessions"] = {};
-
-    for (const [id, state] of this.#sessions) {
-      if (!composerHasContent(state.composer)) continue;
-      sessions[id] = persistableComposer(state.composer);
-    }
-
-    writeStored(
-      persistence,
-      persistence.storageKey,
-      JSON.stringify({ version: 1, panes, sessions } satisfies PersistedSnapshot),
-    );
-    this.#persistImages(persistence);
-  }
-
-  #persistImages(persistence: Persistence): void {
-    const images: PersistedImages = { drafts: {}, sessions: {} };
-
-    for (const state of this.#drafts.values()) {
-      for (const draft of [state.active, ...state.parked.values()]) {
-        if (draft.composer.attachments.length === 0) continue;
-        images.drafts[draft.id] = [...draft.composer.attachments];
+      if (previous.attachments !== next.attachments) {
+        this.#pending.set(
+          `${key}:images`,
+          next.attachments.length > 0 ? next.attachments : undefined,
+        );
       }
     }
 
-    for (const [id, state] of this.#sessions) {
-      if (state.composer.attachments.length === 0) continue;
-      images.sessions[id] = [...state.composer.attachments];
-    }
+    clearTimeout(this.#flushTimer);
+    this.#flushTimer = setTimeout(this.#store, FLUSH_DEBOUNCE_MS);
 
-    const signature = JSON.stringify(
-      [images.drafts, images.sessions].map((owners) =>
-        Object.entries(owners).map(([owner, attachments]) => [
-          owner,
-          attachments.map(({ id }) => id),
-        ]),
-      ),
-    );
-
-    if (signature === this.#savedImages) return;
-    this.#savedImages = signature;
-    writeStored(persistence, imagesKey(persistence), JSON.stringify(images));
+    if (globalThis.window === undefined) return;
+    window.addEventListener("pagehide", this.#store);
+    document.addEventListener("visibilitychange", this.#store);
   }
 
-  #emit(): void {
-    if (this.#publishTimer !== undefined) {
-      clearTimeout(this.#publishTimer);
-      this.#publishTimer = undefined;
+  #flush(): void {
+    const persistence = this.#persistence;
+
+    if (persistence === undefined) return;
+
+    for (const [key, value] of this.#pending) {
+      writeStored(persistence, key, value === undefined ? undefined : JSON.stringify(value));
     }
 
-    this.#persist();
+    this.#pending.clear();
+    const panes: StoredIndex["panes"] = {};
+
+    for (const [paneId, state] of this.#drafts) {
+      panes[paneId] = { active: state.active.id, parked: [...state.parked.keys()] };
+    }
+
+    const sessions = [...this.#sessions]
+      .filter(([, state]) => composerHasContent(state.composer))
+      .map(([id]) => id)
+      .toSorted();
+
+    const index = JSON.stringify({ panes, sessions } satisfies StoredIndex);
+
+    if (index === this.#savedIndex) return;
+    this.#savedIndex = index;
+    writeStored(persistence, persistence.storageKey, index);
+  }
+
+  readonly #store = (): void => {
+    clearTimeout(this.#flushTimer);
+    this.#flushTimer = undefined;
+
+    if (globalThis.window !== undefined) {
+      window.removeEventListener("pagehide", this.#store);
+      document.removeEventListener("visibilitychange", this.#store);
+    }
+
+    this.#flush();
+  };
+
+  readonly #emit = (): void => {
+    clearTimeout(this.#publishTimer);
+    this.#publishTimer = undefined;
+    this.#store();
     this.#listed = undefined;
 
     for (const listener of this.#listeners) listener();
-  }
+  };
 }

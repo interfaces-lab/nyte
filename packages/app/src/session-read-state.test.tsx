@@ -112,15 +112,6 @@ test("execution and attention indicators take priority over unread completion", 
   }
 });
 
-/**
- * The regression that motivated the outline: a parked run drew the same filled
- * disc as an unread completion, in a different hue, so the row looked like
- * something had happened. Compare the atomic style classes, which stand for the
- * resolved declarations: accessible names always differ and would hide two
- * states that look alike, and StyleX's debug classes name the style key rather
- * than what it renders. Asserting that they differ, not what they are, leaves
- * restyling free.
- */
 function looksLike(markup: string): string {
   return (markup.match(/class="([^"]*)"/)?.[1] ?? "")
     .split(" ")

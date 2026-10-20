@@ -1,9 +1,3 @@
-/**
- * Settings › Models driven by real clicks in Electron's Chromium, over the
- * recorded bridge in ./fixtures/login-harness-bridge.ts. Only the host IPC
- * and the clipboard are stood in for; React, the query cache, the attempt
- * store, and the toasts are the real ones.
- */
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -57,7 +51,6 @@ const disconnected: Catalog = {
   providers: [copilot],
 };
 
-/** What the host's catalog looks like once the credential is saved and discovery ran. */
 const connected: Catalog = {
   ...disconnected,
   providers: [
@@ -75,22 +68,18 @@ const deviceCode: HarnessStep = {
   code: "ABCD-1234",
 };
 
-/** Playwright waits are bounded per step; the whole flow gets one budget. */
 const TEST_TIMEOUT = 30_000;
 
 let directory: string | undefined;
 
 let application: ElectronApplication | undefined;
 
-/** Assigned by beforeAll; every test runs after it or not at all. */
 let page: Page;
 
 const pageErrors: string[] = [];
 
-/** Outside Electron the package resolves to the path of its executable. */
 const executablePath = Value.Parse(Type.String(), electronExecutable);
 
-/** The renderer half loads from file://, so its asset links must be relative. */
 async function buildHarness(outDir: string): Promise<void> {
   await build({
     configFile: false,

@@ -6,7 +6,7 @@ import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
 import { PierreWorkerProvider } from "@nyte-ai/app/pierre-worker-provider.tsx";
-import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import type { TurnMessages } from "@nyte-ai/app/view-helpers.ts";
 import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -53,7 +53,7 @@ export interface GuideNavigation {
 
 export const sectionNumber = (index: number): string => String(index + 1).padStart(2, "0");
 
-function lastStep(turns: readonly ConversationTurn[]): string | undefined {
+function lastStep(turns: readonly TurnMessages[]): string | undefined {
   const step = turns.flatMap((turn) => turn.messages).findLast(showsTool)?.state.class;
 
   if (step?.kind === "read") return `Reading ${step.path}`;

@@ -1,4 +1,3 @@
-/** A subagent call and its report. */
 import { create } from "@stylexjs/stylex";
 import { button, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -19,7 +18,6 @@ export const subagentCallStyles = create({
   header: { paddingBlock: space.s1_5 },
   nested: { display: "flex", flexDirection: "column", marginTop: space.s2_5 },
   nestedRow: { paddingBlock: space.s0_5, paddingInlineStart: space.s3 },
-  // One text line tall, so a moon and a 6px dot both centre on the title.
   indicator: {
     display: "flex",
     alignItems: "center",

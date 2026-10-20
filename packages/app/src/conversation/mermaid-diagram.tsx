@@ -63,14 +63,6 @@ const renderResponse = Type.Object({
   ]),
 });
 
-/**
- * Render one diagram in a dedicated worker. The protocol's `id` field is moot
- * when the worker serves a single request, but the request shape still
- * requires it. A worker failure resolves as `source` — the fence fallback — so
- * the query has no error state. A streamed fence changes source with every
- * delta, and a reader can leave before a render lands; the signal ends the
- * worker for a result nothing will show.
- */
 export function renderMermaid(source: string, signal: AbortSignal): Promise<DiagramResult> {
   if (signal.aborted) return Promise.resolve({ kind: "source" });
 
@@ -102,12 +94,6 @@ export function renderMermaid(source: string, signal: AbortSignal): Promise<Diag
   });
 }
 
-/**
- * A Mermaid fence is a diagram first, with its source available on demand.
- * Prose draws a fence as source until its message settles, so each diagram
- * renders once; the same source always renders the same svg, so the result
- * stays cached past unmount and a row that scrolls back paints it at once.
- */
 export function MermaidDiagram({ source }: { readonly source: string }): ReactElement {
   const render = useQuery({
     queryKey: keys.mermaid(source),

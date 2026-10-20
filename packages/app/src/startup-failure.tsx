@@ -15,7 +15,6 @@ const styles = create({
   },
 });
 
-/** What a window shows when its own startup work failed, in place of the interface. */
 export function StartupFailure({
   message,
   onRetry,

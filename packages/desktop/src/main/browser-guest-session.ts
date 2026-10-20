@@ -1,4 +1,3 @@
-/** Guest sessions: one cookie jar per workspace, with its permission, ad-block, and HTTPS policy. */
 import { createHash } from "node:crypto";
 import { app, session } from "electron";
 import type { BrowserSurfaceState } from "@nyte-ai/app/bridge.ts";
@@ -27,14 +26,12 @@ function guestUserAgent(): string {
 interface GuestSessionsOptions {
   readonly dependencies: BrowserSurfacesDependencies;
   readonly downloads: BrowserDownloads;
-  /** The live surface showing this `WebContents`, if any. */
   readonly surface: (webContentsId: number) => Surface | undefined;
   readonly publish: (surface: Surface) => void;
 }
 
 export class GuestSessions {
   readonly #options: GuestSessionsOptions;
-  /** Keyed by partition name. */
   readonly #sessions = new Map<string, GuestSession>();
   #blocker: Blocker | undefined;
   #blockerReady: Promise<void> | undefined;
@@ -43,7 +40,6 @@ export class GuestSessions {
     this.#options = options;
   }
 
-  /** Loads the filter engine once; pages load after it so the first request is filtered. */
   ensureBlocker(): Promise<void> {
     this.#blockerReady ??= loadBlocker(this.#options.dependencies.filterListPath).then((loaded) => {
       this.#blocker = loaded;

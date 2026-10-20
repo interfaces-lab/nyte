@@ -1,8 +1,3 @@
-/**
- * The page side of a pick is main's script; this proves the panel's half: the
- * toggle and the chord start a pick, and a picked element reaches the chat as
- * its HTML under its selector with its crop as a PNG.
- */
 import "../../test/window-bridge.ts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRef } from "react";

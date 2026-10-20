@@ -1,16 +1,73 @@
+diff --git a/es/Streamdown.d.mts b/es/Streamdown.d.mts
+index cb6fded844a8408d02798e0371510b28236d8deb..bf8dcaf7e3701e75001b2ace0b8c07e3b386f3cd 100644
+--- a/es/Streamdown.d.mts
++++ b/es/Streamdown.d.mts
+@@ -2,6 +2,7 @@ import { StreamAnimationGranularity, StreamSmoothingPreset } from "./types.mjs";
+ import { Options } from "react-markdown";
+ //#region src/Streamdown.d.ts
+ interface StreamdownProps extends Omit<Options, 'children'> {
++  animated?: boolean;
+   content: string;
+   granularity?: StreamAnimationGranularity;
+   /**
+@@ -14,5 +15,6 @@ interface StreamdownProps extends Omit<Options, 'children'> {
+   smoothing?: StreamSmoothingPreset;
+ }
+ declare const Streamdown: import("react").NamedExoticComponent<StreamdownProps>;
++declare const StreamdownBlockOpen: import("react").Context<boolean>;
+ //#endregion
+-export { Streamdown, Streamdown as default, StreamdownProps };
+\ No newline at end of file
++export { Streamdown, StreamdownBlockOpen, Streamdown as default, StreamdownProps };
+\ No newline at end of file
 diff --git a/es/Streamdown.mjs b/es/Streamdown.mjs
-index 18f692f8ac03c51b35bc9d9339e8772cb7a73054..44ebd5b679ccdc604095c1ac113394744ef713f7 100644
+index 18f692f8ac03c51b35bc9d9339e8772cb7a73054..2251f7d83406d64a1e6cec35971ae8321f670210 100644
 --- a/es/Streamdown.mjs
 +++ b/es/Streamdown.mjs
-@@ -141,6 +141,7 @@ const StreamdownBlocks = memo(({ content: smoothedContent, granularity, markdown
+@@ -11,10 +11,11 @@ import { useStreamdownProfiler } from "./profiler/StreamdownProfilerProvider.mjs
+ import "./profiler/index.mjs";
+ import { countChars, useSmoothStreamContent } from "./useSmoothStreamContent.mjs";
+ import { useStreamQueue } from "./useStreamQueue.mjs";
+-import { Profiler, createElement, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
++import { Profiler, createContext, createElement, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+ import { jsx, jsxs } from "react/jsx-runtime";
+ //#region src/Streamdown.tsx
+ const EMPTY_PLUGINS = [];
++const StreamdownBlockOpen = createContext(false);
+ const isSamePlugin = (prevPlugin, nextPlugin) => {
+ 	const prevTuple = Array.isArray(prevPlugin) ? prevPlugin : [prevPlugin];
+ 	const nextTuple = Array.isArray(nextPlugin) ? nextPlugin : [nextPlugin];
+@@ -112,7 +113,7 @@ const updateBlockAnimation = ({ blocks, charDelay, getBlockState, pluginsCache,
+ 	}
+ 	return blockAnimationMeta;
+ };
+-const StreamdownBlocks = memo(({ content: smoothedContent, granularity, markdownOptions, tailUnitsRef }) => {
++const StreamdownBlocks = memo(({ animated, content: smoothedContent, granularity, markdownOptions, tailUnitsRef }) => {
+ 	const profiler = useStreamdownProfiler();
+ 	const { components: baseComponents, ...rest } = markdownOptions;
+ 	const baseRehypePlugins = useStablePlugins(markdownOptions.rehypePlugins ?? EMPTY_PLUGINS);
+@@ -141,9 +142,10 @@ const StreamdownBlocks = memo(({ content: smoothedContent, granularity, markdown
  	const blockRuntimesRef = useRef(/* @__PURE__ */ new Map());
  	const blockPluginsRef = useRef(/* @__PURE__ */ new Map());
  	const revealClockRef = useRef({ lastTs: 0 });
 +	const [settleTick, setSettleTick] = useState(0);
  	const renderNow = getNow();
  	const animationStart = profiler ? getNow() : 0;
- 	const blockAnimationMeta = updateBlockAnimation({
-@@ -185,21 +186,30 @@ const StreamdownBlocks = memo(({ content: smoothedContent, granularity, markdown
+-	const blockAnimationMeta = updateBlockAnimation({
++	const blockAnimationMeta = animated ? updateBlockAnimation({
+ 		blocks,
+ 		charDelay,
+ 		getBlockState,
+@@ -151,7 +153,7 @@ const StreamdownBlocks = memo(({ content: smoothedContent, granularity, markdown
+ 		renderNow,
+ 		revealClock: revealClockRef.current,
+ 		runtimes: blockRuntimesRef.current
+-	});
++	}) : null;
+ 	const blockAnimationDurationMs = profiler ? getNow() - animationStart : 0;
+ 	useEffect(() => {
+ 		if (!profiler) return;
+@@ -185,21 +187,30 @@ const StreamdownBlocks = memo(({ content: smoothedContent, granularity, markdown
  		if (settled) return baseRehypePlugins;
  		const cache = blockPluginsRef.current;
  		const entry = cache.get(startOffset);
@@ -43,3 +100,142 @@ index 18f692f8ac03c51b35bc9d9339e8772cb7a73054..44ebd5b679ccdc604095c1ac11339474
  	const handleRootRender = useCallback((_, phase, actualDuration, baseDuration) => {
  		profiler?.recordRootCommit({
  			actualDuration,
+@@ -237,26 +248,31 @@ const StreamdownBlocks = memo(({ content: smoothedContent, granularity, markdown
+ 	const content = /* @__PURE__ */ jsxs("div", {
+ 		className: STREAMDOWN_ANIMATED_CLASS,
+ 		children: [/* @__PURE__ */ jsx(StreamdownStyles, {}), blocks.map((block, index) => {
+-			const animationMeta = blockAnimationMeta.get(block.startOffset);
+-			if (!animationMeta) return null;
+-			const plugins = resolveBlockPlugins(block.startOffset, animationMeta.settled);
++			const animationMeta = blockAnimationMeta?.get(block.startOffset);
++			if (blockAnimationMeta && !animationMeta) return null;
++			const plugins = animationMeta ? resolveBlockPlugins(block.startOffset, animationMeta.settled) : baseRehypePlugins;
+ 			const key = `${generatedId}-${block.startOffset}`;
+-			if (!profiler) return /* @__PURE__ */ createElement(StreamdownBlock, {
+-				...rest,
+-				components,
+-				key,
+-				rehypePlugins: plugins,
+-				remarkPlugins
+-			}, block.content);
+-			return /* @__PURE__ */ jsx(Profiler, {
+-				id: `streamdown-block:${index}:${block.startOffset}`,
+-				onRender: handleBlockRender,
+-				children: /* @__PURE__ */ jsx(StreamdownBlock, {
++			if (!profiler) return /* @__PURE__ */ jsx(StreamdownBlockOpen, {
++				value: index === blocks.length - 1,
++				children: /* @__PURE__ */ createElement(StreamdownBlock, {
+ 					...rest,
+ 					components,
+ 					rehypePlugins: plugins,
+-					remarkPlugins,
+-					children: block.content
++					remarkPlugins
++				}, block.content)
++			}, key);
++			return /* @__PURE__ */ jsx(Profiler, {
++				id: `streamdown-block:${index}:${block.startOffset}`,
++				onRender: handleBlockRender,
++				children: /* @__PURE__ */ jsx(StreamdownBlockOpen, {
++					value: index === blocks.length - 1,
++					children: /* @__PURE__ */ jsx(StreamdownBlock, {
++						...rest,
++						components,
++						rehypePlugins: plugins,
++						remarkPlugins,
++						children: block.content
++					})
+ 				})
+ 			}, key);
+ 		})]
+@@ -278,17 +294,19 @@ const useLatexGuard = (content, enabled) => {
+ 	}
+ 	return validRef.current || content;
+ };
+-const Streamdown = memo(({ content, granularity = "char", latexGuard = false, preprocess, smoothing, ...rest }) => {
++const Streamdown = memo(({ animated = true, content, granularity = "char", latexGuard = false, preprocess, smoothing, ...rest }) => {
+ 	const preprocessed = useMemo(() => preprocess ? preprocess(content) : content, [content, preprocess]);
+ 	const guardedContent = useLatexGuard(preprocessed, latexGuard);
+ 	const tailUnitsRef = useRef(0);
+ 	const smoothedContent = useSmoothStreamContent(guardedContent, {
++		enabled: animated,
+ 		preset: smoothing ?? "balanced",
+ 		tailUnitsRef
+ 	});
+ 	const markdownOptions = useStableValue(rest);
+ 	return /* @__PURE__ */ jsx(StreamdownBlocks, {
+-		content: smoothedContent,
++		animated,
++		content: animated ? smoothedContent : guardedContent,
+ 		granularity,
+ 		markdownOptions,
+ 		tailUnitsRef
+@@ -296,4 +314,4 @@ const Streamdown = memo(({ content, granularity = "char", latexGuard = false, pr
+ });
+ Streamdown.displayName = "Streamdown";
+ //#endregion
+-export { Streamdown, Streamdown as default };
++export { Streamdown, StreamdownBlockOpen, Streamdown as default };
+diff --git a/es/blockLexer.mjs b/es/blockLexer.mjs
+index 0a7c474f8dd832b83e898f4e9353db9dbf6e7a97..4636a4c441b439f986539d128575d10306313d3f 100644
+--- a/es/blockLexer.mjs
++++ b/es/blockLexer.mjs
+@@ -6,9 +6,10 @@ const FROZEN_TYPES = /* @__PURE__ */ new Set([
+ 	"code",
+ 	"heading",
+ 	"hr",
+ 	"paragraph",
+ 	"table"
+ ]);
++const CROSS_BLOCK = /^ {0,3}\[[^\]\n]+\]:/mu;
+ const isFrozenBoundary = (token, next) => next?.type === "space" && FROZEN_TYPES.has(token.type) && !(token.type === "code" && token.codeBlockStyle === "indented");
+ const toBlocks = (tokens, startOffset) => {
+ 	let offset = startOffset;
+@@ -44,6 +46,19 @@ const createBlockLexer = () => {
+ 		frozenRaw += processedTail.slice(0, cutEnd);
+ 	};
+ 	return (content) => {
++		if (CROSS_BLOCK.test(content)) {
++			frozenRaw = "";
++			frozenBlocks = [];
++			const processed = remend(content);
++			return {
++				blocks: [{
++					content: processed,
++					startOffset: 0
++				}],
++				completeEnd: 0,
++				processed
++			};
++		}
+ 		if (!content.startsWith(frozenRaw)) {
+ 			frozenRaw = "";
+ 			frozenBlocks = [];
+diff --git a/es/index.d.mts b/es/index.d.mts
+index 76dca320fbdba55e44e398a43eade40810c45f04..ca0dee07b4157c16690952ea7968f2e5ed2fb5bd 100644
+--- a/es/index.d.mts
++++ b/es/index.d.mts
+@@ -5,7 +5,7 @@ import { StreamAnimatedOptions, StreamAnimatedRuntime, rehypeStreamAnimated } fr
+ import { BlockInfo, BlockState, UseStreamQueueReturn, useStreamQueue } from "./useStreamQueue.mjs";
+ import { BlockAnimationMeta, ResolveBlockAnimationMetaOptions, resolveBlockAnimationMeta } from "./streamAnimationMeta.mjs";
+ import { StreamAnimationGranularity, StreamSmoothingPreset } from "./types.mjs";
+-import { Streamdown, StreamdownProps } from "./Streamdown.mjs";
++import { Streamdown, StreamdownBlockOpen, StreamdownProps } from "./Streamdown.mjs";
+ import { STREAMDOWN_ANIMATED_CLASS, STREAM_FADE_DURATION } from "./styles.mjs";
+ import { countChars, useSmoothStreamContent } from "./useSmoothStreamContent.mjs";
+-export { type BlockAnimationMeta, type BlockInfo, type BlockState, CachedMarkdown, type ResolveBlockAnimationMetaOptions, STREAMDOWN_ANIMATED_CLASS, STREAM_FADE_DURATION, type StreamAnimatedOptions, type StreamAnimatedRuntime, type StreamAnimationGranularity, type StreamSmoothingPreset, Streamdown, type StreamdownProps, type UseStreamQueueReturn, convertLatexDelimiters, countChars, escapeCurrencyDollars, escapeLatexPipes, escapeMhchemCommands, escapeTextUnderscores, findOpenFenceLanguage, fixCommonLaTeXErrors, handleCJKWithLatex, isLastFormulaRenderable, normalizeLatexSpacing, preprocessLaTeX, preprocessLaTeXMinimal, preprocessLaTeXStrict, rehypeStreamAnimated, resolveBlockAnimationMeta, useSmoothStreamContent, useStreamQueue, validateLatexExpressions };
+\ No newline at end of file
++export { type BlockAnimationMeta, type BlockInfo, type BlockState, CachedMarkdown, type ResolveBlockAnimationMetaOptions, STREAMDOWN_ANIMATED_CLASS, STREAM_FADE_DURATION, type StreamAnimatedOptions, type StreamAnimatedRuntime, type StreamAnimationGranularity, type StreamSmoothingPreset, Streamdown, StreamdownBlockOpen, type StreamdownProps, type UseStreamQueueReturn, convertLatexDelimiters, countChars, escapeCurrencyDollars, escapeLatexPipes, escapeMhchemCommands, escapeTextUnderscores, findOpenFenceLanguage, fixCommonLaTeXErrors, handleCJKWithLatex, isLastFormulaRenderable, normalizeLatexSpacing, preprocessLaTeX, preprocessLaTeXMinimal, preprocessLaTeXStrict, rehypeStreamAnimated, resolveBlockAnimationMeta, useSmoothStreamContent, useStreamQueue, validateLatexExpressions };
+\ No newline at end of file
+diff --git a/es/index.mjs b/es/index.mjs
+index 75a2a74e6c1e568ee84b826763cc468709875847..f50abdbcb023202508e12901913b2f54a8fbd9a6 100644
+--- a/es/index.mjs
++++ b/es/index.mjs
+@@ -6,5 +6,5 @@ import { rehypeStreamAnimated } from "./rehypeStreamAnimated.mjs";
+ import { resolveBlockAnimationMeta } from "./streamAnimationMeta.mjs";
+ import { countChars, useSmoothStreamContent } from "./useSmoothStreamContent.mjs";
+ import { useStreamQueue } from "./useStreamQueue.mjs";
+-import { Streamdown } from "./Streamdown.mjs";
+-export { CachedMarkdown, STREAMDOWN_ANIMATED_CLASS, STREAM_FADE_DURATION, Streamdown, convertLatexDelimiters, countChars, escapeCurrencyDollars, escapeLatexPipes, escapeMhchemCommands, escapeTextUnderscores, findOpenFenceLanguage, fixCommonLaTeXErrors, handleCJKWithLatex, isLastFormulaRenderable, normalizeLatexSpacing, preprocessLaTeX, preprocessLaTeXMinimal, preprocessLaTeXStrict, rehypeStreamAnimated, resolveBlockAnimationMeta, useSmoothStreamContent, useStreamQueue, validateLatexExpressions };
++import { Streamdown, StreamdownBlockOpen } from "./Streamdown.mjs";
++export { CachedMarkdown, STREAMDOWN_ANIMATED_CLASS, STREAM_FADE_DURATION, Streamdown, StreamdownBlockOpen, convertLatexDelimiters, countChars, escapeCurrencyDollars, escapeLatexPipes, escapeMhchemCommands, escapeTextUnderscores, findOpenFenceLanguage, fixCommonLaTeXErrors, handleCJKWithLatex, isLastFormulaRenderable, normalizeLatexSpacing, preprocessLaTeX, preprocessLaTeXMinimal, preprocessLaTeXStrict, rehypeStreamAnimated, resolveBlockAnimationMeta, useSmoothStreamContent, useStreamQueue, validateLatexExpressions };

@@ -40,7 +40,6 @@ interface TrustPrompt {
 
 let prompt: TrustPrompt | undefined;
 
-/** Folders the user declined this session; a replayed activation must not nag. */
 const declined = new Set<string>();
 
 const listeners = new Set<() => void>();
@@ -70,7 +69,6 @@ export function requestTrust(path: string): void {
   if (prompt?.path !== path) setPrompt({ path, origin: "action" });
 }
 
-/** Route a folder-open outcome to the shared dialog host. */
 export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
   switch (outcome.kind) {
     case "needs_trust":
@@ -186,14 +184,12 @@ function grantTrust(
     });
 }
 
-/** The native folder picker, then open. Absent where the host has no picker to show. */
 export function folderPicker(): (() => void) | undefined {
   const pick = nyte.host.pickWorkspace;
 
   return pick === undefined ? undefined : () => void pick().then(handleOpenOutcome);
 }
 
-/** Mounted once in the shell; renders whichever prompt is live. */
 export function WorkspaceDialogHost(): ReactElement | null {
   const current = useSyncExternalStore(subscribe, snapshot);
   const trust = nyte.host.trustWorkspace;

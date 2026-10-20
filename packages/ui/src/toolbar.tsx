@@ -68,7 +68,6 @@ function ToolbarSeparator({
   );
 }
 
-/** Renders a `Button` unless `render` passes a `Toggle` or a popup trigger. */
 function ToolbarButton(
   buttonProps:
     | (ButtonProps & { readonly render?: never })

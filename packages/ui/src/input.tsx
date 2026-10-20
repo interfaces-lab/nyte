@@ -1,9 +1,3 @@
-/**
- * Text fields. `raised` sits on panels and in the workbench, `quiet` on the
- * Settings surface, and `code` holds a key, token, or port in the code face.
- * An `InputGroup` draws the same frame around an `Input` and whatever glyphs
- * or controls sit beside it; the input inside turns bare.
- */
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ComponentProps, type ReactElement } from "react";
@@ -113,7 +107,6 @@ const group = create({
   },
 });
 
-/** Input sizes grow under a coarse pointer. */
 const sizes = create({
   md: {
     "--_input-radius": input.radiusMd,
@@ -144,7 +137,6 @@ const sizes = create({
   },
 });
 
-/** A framed field clears its text by the inset plus the control's own start padding. */
 const framedPadding = create({
   base: {
     paddingInlineStart: "calc(var(--_input-inset) + 4px)",
@@ -176,9 +168,7 @@ export function Input({
   style,
   ...rest
 }: StyledProps<Omit<InputPrimitive.Props, "size">, Restyle<"Input">> & {
-  /** Defaults to `raised`, or to `bare` inside an `InputGroup`. */
   readonly variant?: keyof typeof variants | "bare";
-  /** Defaults to `md`, or to the size of the enclosing `InputGroup`. */
   readonly size?: keyof typeof sizes;
 }): ReactElement {
   const groupSize = use(InputGroupContext);
@@ -208,7 +198,6 @@ export function Input({
   );
 }
 
-/** A framed `<label>` that makes the `Input` inside it bare, beside its glyphs and controls. */
 export function InputGroup({
   variant = "raised",
   size = "md",

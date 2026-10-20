@@ -16,10 +16,8 @@ const app = create({
   focus: { outlineColor: appearance.focusRing },
 });
 
-/** Gradients, not colours: they paint `background-image`. */
 const nonColorRoles = new Set(["layerHover", "layerPressed"]);
 
-/** Roles roles.stylex.ts resolves to one value in both schemes, on purpose. */
 const schemeIndependentRoles = new Map([
   ["contentOnInteractiveStrong", "theme-0: the label on a strong fill is white in both modes"],
   ["contentOnControl", "neutral-0: a switch knob or checkbox mark is white in both modes"],

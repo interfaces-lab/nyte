@@ -23,7 +23,7 @@ import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
-import { ThreadScreen } from "../screens/thread.tsx";
+import { SessionScreen } from "../screens/session-screen.tsx";
 import { createAppRouter } from "../router.tsx";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
@@ -186,7 +186,7 @@ function Stage(): ReactElement {
         <TooltipProvider delay={0} closeDelay={0} timeout={0}>
           <PaneControllerProvider controller={panes}>
             <SessionDndProvider>
-              <ThreadScreen />
+              <SessionScreen />
             </SessionDndProvider>
           </PaneControllerProvider>
         </TooltipProvider>

@@ -152,24 +152,24 @@ export const liveSection: Section = {
       },
     },
     {
-      id: "landing-pending",
+      id: "prompt-pending",
       title: "Sent while a run is live",
-      source: 'landing · status = pending · schedule = "joined"',
+      source: 'prompt · status = pending · schedule = "joined"',
       scene: {
         turns: [
           turn([user(PROMPT), call(shell("pnpm --dir packages/app test"), RUNNING, 2)], WORKING),
         ],
         execution: executing(),
-        landing: [pending("Also run the lab typecheck.", { kind: "joined", run: RUN })],
+        prompts: [pending("Also run the lab typecheck.", { kind: "joined", run: RUN })],
       },
     },
     {
-      id: "landing-idle",
+      id: "prompt-idle",
       title: "Sent, not landed yet",
-      source: "landing · status = pending · no turn yet",
+      source: "prompt · status = pending · no turn yet",
       scene: {
         turns: [],
-        landing: [pending(PROMPT, { kind: "next-turn", reason: "idle" })],
+        prompts: [pending(PROMPT, { kind: "next-turn", reason: "idle" })],
       },
     },
   ],

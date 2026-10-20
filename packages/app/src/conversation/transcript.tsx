@@ -23,7 +23,7 @@ import { usePaneViewStateStore } from "../layout/pane-context.tsx";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { ScrollViewState } from "../layout/session-view-state.ts";
 import { messageScrollerStyles } from "./transcript.stylex.ts";
-import type { TranscriptRow } from "./transcript-rows.ts";
+import type { RowLayout } from "./transcript-rows.ts";
 import {
   navigates,
   scrollsWithin,
@@ -48,33 +48,28 @@ const MEASURED_TRANSCRIPTS = 16;
 
 const measured = new Map<string, VirtualItem[]>();
 
-type TranscriptItem = Pick<
-  TranscriptRow,
-  "messageId" | "scrollAnchor" | "group" | "leads" | "sticky"
->;
-
-function readStickyRows(items: readonly TranscriptItem[]) {
+function readStickyRows(rows: readonly RowLayout[]) {
   const above: number[] = [];
   const ends = new Map<number, number>();
   let sticky = -1;
 
-  for (const [index, item] of items.entries()) {
-    if (item.group === null || item.group !== items[index - 1]?.group) sticky = -1;
+  for (const [index, row] of rows.entries()) {
+    if (row.group === null || row.group !== rows[index - 1]?.group) sticky = -1;
 
-    if (item.sticky && item.group !== null) sticky = index;
+    if (row.sticky && row.group !== null) sticky = index;
     above.push(sticky);
   }
 
-  let end = items.length - 1;
+  let end = rows.length - 1;
 
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index];
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
 
-    if (item === undefined) continue;
+    if (row === undefined) continue;
 
-    if (item.group === null || item.group !== items[index + 1]?.group) end = index;
+    if (row.group === null || row.group !== rows[index + 1]?.group) end = index;
 
-    if (item.sticky && item.group !== null) ends.set(index, end);
+    if (row.sticky && row.group !== null) ends.set(index, end);
   }
 
   return { above, ends };
@@ -113,7 +108,6 @@ interface Anchor {
 interface TranscriptControls {
   readonly end: () => void;
   readonly hold: (element: Element) => void;
-  /** Keeps the element's row rendered while it scrolls out of view, until the returned release runs. */
   readonly keep: (element: Element) => () => void;
   readonly page: (direction: 1 | -1) => void;
 }
@@ -122,7 +116,6 @@ interface TranscriptOptions {
   readonly paneId: PaneId;
   readonly sessionId: SessionId;
   readonly viewportRef?: (viewport: HTMLDivElement | null) => void;
-  /** Loads older messages above the first row and resolves how many arrived: 0 once the first message is shown. */
   readonly loadEarlier?: () => Promise<number>;
 }
 
@@ -211,15 +204,15 @@ export function TranscriptProvider({
 }
 
 export const TranscriptContent = memo(function TranscriptContent({
-  items,
+  rows,
   ready,
   estimateSize,
-  renderItem,
+  renderRow,
 }: {
-  readonly items: readonly TranscriptItem[];
+  readonly rows: readonly RowLayout[];
   readonly ready: boolean;
   readonly estimateSize: (index: number) => number;
-  readonly renderItem: (index: number) => ReactNode;
+  readonly renderRow: (index: number) => ReactNode;
 }): ReactElement {
   const {
     paneId,
@@ -248,37 +241,39 @@ export const TranscriptContent = memo(function TranscriptContent({
 
   const measuredKey = `${sessionId}\u0000${paneId}`;
   const [initialMeasurements] = useState(() => measured.get(measuredKey) ?? []);
-  const sticky = useMemo(() => readStickyRows(items), [items]);
+  const sticky = useMemo(() => readStickyRows(rows), [rows]);
+
+  const indexes = useMemo(() => new Map(rows.map((row, index) => [row.key, index])), [rows]);
 
   const [kept, setKept] = useState<ReadonlySet<string>>(() => new Set());
 
   const rangeExtractor = useCallback(
     (range: Range) => {
-      const indexes = stickyRange(range, sticky.above);
+      const shown = stickyRange(range, sticky.above);
 
-      if (kept.size === 0) return indexes;
-      const rendered = new Set(indexes);
+      if (kept.size === 0) return shown;
+      const rendered = new Set(shown);
 
-      for (const [index, item] of items.entries())
-        if (kept.has(item.messageId)) rendered.add(index);
+      for (const key of kept) {
+        const index = indexes.get(key);
+
+        if (index !== undefined) rendered.add(index);
+      }
 
       return [...rendered].toSorted((first, second) => first - second);
     },
-    [items, kept, sticky],
+    [indexes, kept, sticky],
   );
 
   const [initialOffset] = useState(() => {
     let total = TRANSCRIPT_PADDING_START;
 
-    for (let index = 0; index < items.length; index += 1) total += estimateSize(index);
+    for (let index = 0; index < rows.length; index += 1) total += estimateSize(index);
 
     return Math.max(0, total - VIEWPORT_GUESS);
   });
 
-  const getItemKey = useCallback(
-    (index: number) => items[index]?.messageId ?? String(index),
-    [items],
-  );
+  const getItemKey = useCallback((index: number) => rows[index]?.key ?? String(index), [rows]);
 
   const correct = (instance: TranscriptVirtualizer): void => {
     const anchor = heldRef.current;
@@ -342,7 +337,7 @@ export const TranscriptContent = memo(function TranscriptContent({
 
   // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
-    count: items.length,
+    count: rows.length,
     getScrollElement: () => viewport,
     estimateSize,
     getItemKey,
@@ -364,13 +359,15 @@ export const TranscriptContent = memo(function TranscriptContent({
     heldRef.current = held;
   }, [held]);
 
+  const virtualRows = virtualizer.getVirtualItems();
+
   useLayoutEffect(() => {
     const scroll = virtualizer.scrollElement;
     stretchSpans(virtualizer, sticky.ends);
 
     if (scroll !== null && content.current !== null)
       syncSticky(scroll, content.current, atEnd.current);
-  });
+  }, [sticky, virtualRows, virtualizer]);
 
   useLayoutEffect(() => {
     virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
@@ -389,20 +386,23 @@ export const TranscriptContent = memo(function TranscriptContent({
     [viewportRef],
   );
 
-  const hold = (element: Element): void => {
-    const key = element.closest<HTMLElement>("[data-message-id]")?.dataset.messageId;
-    const scroll = virtualizer.scrollElement;
+  const hold = useCallback(
+    (element: Element): void => {
+      const key = element.closest<HTMLElement>("[data-row-key]")?.dataset.rowKey;
+      const scroll = virtualizer.scrollElement;
 
-    if (key === undefined || scroll === null) return;
-    virtualizer.cancelScroll();
-    opening.current = false;
-    const anchor = { key, element, top: topIn(scroll, element) };
-    heldRef.current = anchor;
-    flushSync(() => setHeld(anchor));
-  };
+      if (key === undefined || scroll === null) return;
+      virtualizer.cancelScroll();
+      opening.current = false;
+      const anchor = { key, element, top: topIn(scroll, element) };
+      heldRef.current = anchor;
+      flushSync(() => setHeld(anchor));
+    },
+    [virtualizer],
+  );
 
-  const keep = (element: Element): (() => void) => {
-    const key = element.closest<HTMLElement>("[data-message-id]")?.dataset.messageId;
+  const keep = useCallback((element: Element): (() => void) => {
+    const key = element.closest<HTMLElement>("[data-row-key]")?.dataset.rowKey;
 
     if (key === undefined) return ignore;
     setKept((current) => new Set(current).add(key));
@@ -414,21 +414,16 @@ export const TranscriptContent = memo(function TranscriptContent({
 
         return next;
       });
-  };
+  }, []);
 
-  const release = (): void => {
+  const release = useCallback((): void => {
     virtualizer.cancelScroll();
     opening.current = false;
 
     if (heldRef.current === null) return;
     heldRef.current = null;
     setHeld(null);
-  };
-
-  const end = (): void => {
-    release();
-    virtualizer.scrollToEnd();
-  };
+  }, [virtualizer]);
 
   const restoreHeld = useEffectEvent((): void => {
     const anchor = heldRef.current;
@@ -439,9 +434,9 @@ export const TranscriptContent = memo(function TranscriptContent({
       return;
     }
 
-    const index = items.findIndex((item) => item.messageId === anchor.key);
+    const index = indexes.get(anchor.key);
 
-    if (anchor.element === undefined && index >= 0) {
+    if (anchor.element === undefined && index !== undefined) {
       virtualizer.scrollToIndex(index, { align: "start" });
     }
   });
@@ -452,7 +447,7 @@ export const TranscriptContent = memo(function TranscriptContent({
 
   useLayoutEffect(() => {
     if (atEnd.current) virtualizer.scrollToEnd();
-  }, [dockHeight, items, virtualizer]);
+  }, [dockHeight, rows, virtualizer]);
 
   useLayoutEffect(
     () => () => {
@@ -502,7 +497,10 @@ export const TranscriptContent = memo(function TranscriptContent({
     if (viewport === null) return undefined;
 
     controlsRef.current = {
-      end,
+      end: () => {
+        release();
+        virtualizer.scrollToEnd();
+      },
       hold,
       keep,
       page: (direction) => {
@@ -514,7 +512,7 @@ export const TranscriptContent = memo(function TranscriptContent({
     return () => {
       controlsRef.current = null;
     };
-  });
+  }, [controlsRef, hold, keep, release, viewport, virtualizer]);
 
   const holdRow = useEffectEvent(hold);
   const releaseHeld = useEffectEvent(release);
@@ -575,7 +573,7 @@ export const TranscriptContent = memo(function TranscriptContent({
       const anchor = heldRef.current;
 
       const row = (node instanceof Element ? node : node?.parentElement)?.closest(
-        "[data-message-id]",
+        "[data-row-key]",
       );
 
       if (
@@ -626,32 +624,32 @@ export const TranscriptContent = memo(function TranscriptContent({
         }}
         {...props(text.lg, messageScrollerStyles.content)}
       >
-        {virtualizer.getVirtualItems().map((virtualItem) => {
-          const item = items[virtualItem.index];
+        {virtualRows.map((virtualRow) => {
+          const row = rows[virtualRow.index];
 
-          if (item === undefined) return null;
+          if (row === undefined) return null;
 
           return (
             <div
-              key={item.messageId}
+              key={row.key}
               ref={virtualizer.measureElement}
-              data-message-id={item.messageId}
-              data-index={virtualItem.index}
-              data-nyte-scroll-anchor={item.scrollAnchor}
+              data-row-key={row.key}
+              data-index={virtualRow.index}
+              data-nyte-scroll-anchor={row.scrollAnchor}
               {...props(
                 messageScrollerStyles.item,
-                !item.leads && messageScrollerStyles.itemWithin,
-                item.sticky && messageScrollerStyles.itemSticky,
-                virtualItem.index === 0 && messageScrollerStyles.itemFirst,
+                !row.leads && messageScrollerStyles.itemWithin,
+                row.sticky && messageScrollerStyles.itemSticky,
+                virtualRow.index === 0 && messageScrollerStyles.itemFirst,
               )}
             >
-              {item.sticky ? (
+              {row.sticky ? (
                 <div data-turn-span {...props(messageScrollerStyles.span)}>
-                  {renderItem(virtualItem.index)}
+                  {renderRow(virtualRow.index)}
                   <div aria-hidden />
                 </div>
               ) : (
-                renderItem(virtualItem.index)
+                renderRow(virtualRow.index)
               )}
             </div>
           );

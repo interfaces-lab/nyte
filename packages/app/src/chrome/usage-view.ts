@@ -1,32 +1,8 @@
-/**
- * Settings › Usage derives every list on the page from one flat report.
- *
- * The report is the whole history; the range is a window onto it. A host read
- * walks every stored commit no matter which window it is asked for, so reading
- * per range bought nothing and charged a full re-read for every press. One read
- * answers all four ranges, and a range press is arithmetic.
- *
- * Within a window every list is the same cells summed along a different axis,
- * so any two of them agree. Chats rank on their spend inside the window like
- * folders and models do, which is why the page needs no note explaining that
- * they do not.
- *
- * Everything leaves here formatted. One row shape carries every ranked list on
- * the page, so the renderer picks no numbers apart and the wording of a row is
- * something a test can read.
- *
- * The host folds days in its own time zone; the renderer shares the machine,
- * so `localDay` here is the same calendar as the one that wrote the report.
- */
 import type { SessionId } from "@nyte-ai/sdk";
 import type { ProviderUsage } from "@nyte-ai/sdk";
 import type { UsageSnapshot } from "../bridge.ts";
 import type { UsageReport, UsageTotals, UsageWindow } from "../nyte.ts";
 
-/**
- * Past this a report is old enough that the query fetches again when the page
- * is opened. The limit windows share it, so "current" means one thing here.
- */
 export const USAGE_STALE_AFTER_MS = 60_000;
 
 export const USAGE_RANGES = ["7d", "30d", "90d", "all"] as const;
@@ -46,7 +22,6 @@ const RANGE_LENGTHS: Readonly<Record<Exclude<UsageRange, "all">, number>> = {
   "90d": 90,
 };
 
-/** Past this many days a per-day point is noise, so the series buckets by week. */
 const WEEKLY_ABOVE_DAYS = 120;
 
 type UsageGrain = "day" | "week";
@@ -72,7 +47,6 @@ export interface UsageRow {
   readonly cache: UsageCache;
   readonly trend: readonly number[] | undefined;
   readonly value: { readonly text: string; readonly absent: boolean };
-  /** Of the window's cost, or of its tokens when nothing in it was priced. */
   readonly share: number;
 }
 
@@ -85,12 +59,10 @@ export interface UsageDerived {
   readonly to: string;
   readonly points: readonly UsagePoint[];
   readonly totals: UsageTotals;
-  /** The window of equal length before this one, when history reached that far. */
   readonly previousCost: number | undefined;
   readonly models: readonly UsageRow[];
   readonly folders: readonly UsageRow[];
   readonly chats: readonly UsageRow[];
-  /** Folders whose read failed, so their spend is missing from every total. */
   readonly unreadFolders: readonly string[];
 }
 
@@ -122,7 +94,6 @@ function group(digits: string): string {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/gu, ",");
 }
 
-/** Dollars with cents, so a column of spend lines up on the decimal. */
 export function formatUsd(dollars: number): string {
   if (dollars === 0) return "$0.00";
 
@@ -155,7 +126,6 @@ function plural(count: number, noun: string): string {
   return `${group(String(Math.round(count)))} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-/** `YYYY-MM-DD` for a local day, matching the calendar the host folded with. */
 function localDay(at: number): string {
   const date = new Date(at);
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -164,7 +134,6 @@ function localDay(at: number): string {
   return `${String(date.getFullYear())}-${month}-${day}`;
 }
 
-/** Local midnight, so the arithmetic below stays on calendar days across a DST shift. */
 function dayStart(day: string): number {
   return new Date(
     Number(day.slice(0, 4)),
@@ -191,15 +160,10 @@ export function spanLabel(from: string, to: string): string {
   return from === to ? dayLabel(to) : `${dayLabel(from)} – ${dayLabel(to)}`;
 }
 
-/** When a read happened, stated absolutely so the page needs no ticking clock. */
 export function timeLabel(at: number): string {
   return new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-/**
- * How this window compares with the one before it. An empty previous window
- * has no rate of change to report, only the fact that everything here is new.
- */
 export function costChange(
   current: number,
   previous: number | undefined,
@@ -257,7 +221,6 @@ export function describeTotals(totals: UsageTotals): string {
   return [`${cache.hit} cache hit`, cache.saved].filter((part) => part !== undefined).join(" · ");
 }
 
-/** The window a range asks the host for. `all` cannot name its own start. */
 export function usageWindow(range: UsageRange, now: number): UsageWindow {
   const untilDay = localDay(now);
 
@@ -279,7 +242,6 @@ function bucketLabel(first: string, last: string, grain: UsageGrain): string {
   return grain === "day" ? dayLabel(first) : `${dayLabel(first)} – ${dayLabel(last)}`;
 }
 
-/** Inclusive day count, which is also how far back the comparison reaches. */
 function daysBetween(from: string, to: string): number {
   let span = 1;
 
@@ -288,10 +250,6 @@ function daysBetween(from: string, to: string): number {
   return span;
 }
 
-/**
- * The window of equal length before this one. `All time` has no length of its
- * own and so has nothing to compare against.
- */
 function priorWindow(
   from: string,
   to: string,
@@ -303,7 +261,6 @@ function priorWindow(
   return { from: shiftDay(priorTo, -(daysBetween(from, to) - 1)), to: priorTo };
 }
 
-/** The last path segment, which is what a person calls the folder. */
 function folderLabel(path: string | null): string {
   if (path === null) return "Home";
   const segments = path.split("/").filter((segment) => segment !== "");
@@ -311,7 +268,6 @@ function folderLabel(path: string | null): string {
   return segments.at(-1) ?? path;
 }
 
-/** The segment above the leaf, which is what tells two `api` folders apart. */
 function folderParent(path: string | null): string | undefined {
   if (path === null) return undefined;
   const segments = path.split("/").filter((segment) => segment !== "");
@@ -357,18 +313,6 @@ function addSpend(spend: Spend, totals: UsageTotals, bucket: number): void {
   spend.tokensBy[bucket] = (spend.tokensBy[bucket] ?? 0) + totals.tokens;
 }
 
-/**
- * Group the cells of one window into every list the page draws.
- *
- * `window` is the range the reader picked; `report` is everything the host
- * read. A window that reaches back before the first recorded day still spans
- * the days it asked for: the range is a question about a period, and an idle
- * stretch inside it is an answer, not an absence to be cropped away.
- *
- * Rows rank by cost while anything is priced; a free local model still ranks
- * by tokens. Two checkouts can end in the same directory name, so a repeated
- * leaf earns the segment above it; unique names stay short.
- */
 export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDerived {
   const to = window.untilDay;
   const from = window.sinceDay ?? report.earliestDay ?? to;
@@ -536,7 +480,6 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
   };
 }
 
-/** Why a window holds nothing, and whether all time would hold something. */
 export function describeEmptyRange(
   report: UsageSnapshot,
   unreadFolders: readonly string[],
@@ -570,11 +513,6 @@ export function describeEmptyRange(
   };
 }
 
-/**
- * The tools whose local history the page reads, in the order their rows sit.
- * Claude Code and Codex fold whole histories with no days, so the comparison
- * across tools is all-time and Nyte joins it with its all-time sum.
- */
 const USAGE_TOOLS = ["nyte", "claudeCode", "codex"] as const;
 
 type UsageTool = (typeof USAGE_TOOLS)[number];
@@ -587,7 +525,6 @@ const USAGE_TOOL_LABELS: Readonly<Record<UsageTool, string>> = {
   codex: "Codex",
 };
 
-/** Where each tool's history lives, for the row that found none. */
 const USAGE_TOOL_HOMES: Readonly<Record<LocalTool, string>> = {
   claudeCode: "CLAUDE_CONFIG_DIR or ~/.claude",
   codex: "CODEX_HOME or ~/.codex",
@@ -595,7 +532,6 @@ const USAGE_TOOL_HOMES: Readonly<Record<LocalTool, string>> = {
 
 type LocalHistory = UsageSnapshot["claudeCode"];
 
-/** What a history left out. Unpriced records still count toward tokens. */
 function coverageGaps(usage: Extract<LocalHistory, { kind: "ready" }>): readonly string[] {
   return [
     usage.malformedRecords > 0 && plural(usage.malformedRecords, "malformed record"),
@@ -646,7 +582,6 @@ function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
   };
 }
 
-/** Every tool's all-time spend against the sum of them, so a share means one thing. */
 export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
   const spends = USAGE_TOOLS.map((tool) => ({ tool, spend: toolSpend(report, tool) }));
   const counted = spends.flatMap(({ spend }) => ("absent" in spend ? [] : [spend]));
@@ -680,11 +615,9 @@ export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
   });
 }
 
-/** One window's meter: how much is gone, and when it comes back. */
 interface LimitMeter {
   readonly key: string;
   readonly label: string;
-  /** Whole percent, which is the precision every provider reports in practice. */
   readonly used: number;
   readonly reset: string;
 }

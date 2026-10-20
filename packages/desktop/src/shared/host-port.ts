@@ -2,11 +2,13 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 
-/** The origin a desktop window's requests to its Nyte Host carry. Nothing listens on it: `portFetch` sends them over a MessagePort. */
 export const HOST_PORT_ORIGIN = "http://127.0.0.1";
 
-/** Bytes one side sends on an exchange's body beyond what the other side has read. */
 const WINDOW = 1 << 20;
+
+function frameCost(bytes: Uint8Array): number {
+  return Math.max(bytes.byteLength, 1024);
+}
 
 const Id = Type.Integer({ minimum: 0 });
 
@@ -38,14 +40,8 @@ const PortMessageType = Type.Union([
   Type.Object({ kind: Type.Literal("reset"), id: Id }),
 ]);
 
-/**
- * One frame of an exchange, the fetch the client numbered `id`. Bodies cross
- * as `data` then `end`; `credit` returns the bytes the other side has read,
- * and either side abandons the exchange with `reset`.
- */
 export type PortMessage = Static<typeof PortMessageType>;
 
-/** A MessagePort, whichever process holds it. `closed` runs once the other end is gone. */
 export interface PortEnd {
   open(handlers: { readonly message: (data: unknown) => void; readonly closed: () => void }): void;
   post(message: PortMessage): void;
@@ -66,11 +62,6 @@ export function messagePortEnd(port: MessagePort): PortEnd {
   };
 }
 
-/**
- * A fetch over the port `connect` opens, kept until it closes; the next
- * request then opens another. A request fails with a TypeError, as a dropped
- * connection does, when the port closes under it or none can be opened.
- */
 export function portFetch(
   connect: () => Promise<PortEnd>,
 ): (url: string, init?: RequestInit) => Promise<Response> {
@@ -111,9 +102,12 @@ export function portFetch(
   };
 }
 
-/** Answers the port's requests with `fetch` until the port closes, which abandons every exchange still open. */
 export function servePort(port: PortEnd, fetch: (request: Request) => Promise<Response>): void {
-  const exchanges = new Map<number, { receive: (message: PortMessage) => void; abandon: () => void }>();
+  const exchanges = new Map<
+    number,
+    { receive: (message: PortMessage) => void; abandon: () => void }
+  >();
+
   const post: Post = (message) => port.post(message);
 
   const shut = (): void => {
@@ -196,17 +190,16 @@ export function servePort(port: PortEnd, fetch: (request: Request) => Promise<Re
     });
 
     void (async () => {
+      const url = new URL(message.path, HOST_PORT_ORIGIN);
+      const init = { method: message.method, headers: message.headers, signal: controller.signal };
+
+      const withBody =
+        upload === undefined ? init : { ...init, body: upload.stream, duplex: "half" as const };
+
       let response: Response;
 
       try {
-        response = await fetch(
-          new Request(new URL(message.path, HOST_PORT_ORIGIN), {
-            method: message.method,
-            headers: message.headers,
-            signal: controller.signal,
-            ...(upload === undefined ? {} : { body: upload.stream, duplex: "half" as const }),
-          }),
-        );
+        response = await fetch(new Request(url, withBody));
       } catch {
         if (!exchanges.has(id)) return;
         post({ kind: "reset", id });
@@ -265,6 +258,7 @@ function openClient(port: PortEnd, lost: () => void): Client {
     closed = true;
     lost();
     const reason = new TypeError("The Nyte host's port closed.");
+
     for (const exchange of exchanges.values()) exchange.fail(reason);
     exchanges.clear();
   };
@@ -341,6 +335,7 @@ function openClient(port: PortEnd, lost: () => void): Client {
 
             return;
           }
+
           case "data":
             body?.push(message.bytes);
 
@@ -401,12 +396,15 @@ interface Inbound {
   fail(reason: unknown): void;
 }
 
-/** A body the other side sends, returning credit as this side reads it. */
 function inbound(credit: (bytes: number) => void, cancelled: () => void): Inbound {
   const queue: Uint8Array[] = [];
-  let state: { readonly kind: "open" | "ended" | "cancelled" } | { readonly kind: "failed"; readonly reason: unknown } = {
+
+  let state:
+    | { readonly kind: "open" | "ended" | "cancelled" }
+    | { readonly kind: "failed"; readonly reason: unknown } = {
     kind: "open",
   };
+
   let unreturned = 0;
   let arrived: (() => void) | undefined;
 
@@ -439,7 +437,7 @@ function inbound(credit: (bytes: number) => void, cancelled: () => void): Inboun
           }
 
           controller.enqueue(chunk);
-          unreturned += chunk.byteLength;
+          unreturned += frameCost(chunk);
 
           if (unreturned < WINDOW / 2) return;
           credit(unreturned);
@@ -477,7 +475,6 @@ interface Outbound {
   stop(): void;
 }
 
-/** Sends `body` while the other side has read all but WINDOW bytes of it. */
 function outbound(
   id: number,
   body: ReadableStream<Uint8Array>,
@@ -516,7 +513,7 @@ function outbound(
 
         if (read.value.byteLength === 0) continue;
         const bytes = wholeBuffer(read.value);
-        unread += bytes.byteLength;
+        unread += frameCost(bytes);
         post({ kind: "data", id, bytes });
       }
     } catch (cause) {
@@ -538,7 +535,6 @@ function outbound(
   };
 }
 
-/** Structured clone sends a view's whole ArrayBuffer, so a view into a larger one is copied out first. */
 function wholeBuffer(bytes: Uint8Array): Uint8Array {
   return bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
     ? bytes

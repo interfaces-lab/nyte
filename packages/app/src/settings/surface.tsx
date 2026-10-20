@@ -1,4 +1,3 @@
-/** The route-owned Settings content: one h1, then the page's sections. */
 import { props } from "@stylexjs/stylex";
 import { useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";

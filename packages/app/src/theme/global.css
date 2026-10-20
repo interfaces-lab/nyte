@@ -1,11 +1,3 @@
-/*
- * StyleX emits every rule inside `@layer priority1..6` (`useCSSLayers` in the
- * vite config), and unlayered author styles outrank every layer. So the resets
- * here live in a `base` layer pinned below StyleX's. The first declaration
- * fixes the order, and in development the StyleX sheet loads before this one,
- * so `index.html` declares `base` before either. Component styles win over the
- * resets again; the resets still win over user-agent styles.
- */
 @layer base, priority1, priority2, priority3, priority4, priority5, priority6;
 
 @import "@nyte-ai/ui/styles/base.css";
@@ -25,11 +17,6 @@
     background: transparent;
   }
 
-  /*
-   * ProseMirror places this caret hack after a chip that ends a line; base.css
-   * makes every img a block, which would push the trailing break onto a line of
-   * its own. The composer turns off Tiptap's injected CSS, which carries this.
-   */
   img.ProseMirror-separator {
     display: inline;
   }
@@ -40,13 +27,6 @@
     user-select: none !important;
   }
 
-  /*
-   * Native scrolling is one cross-tree browser contract, rather than a
-   * pseudo-element recipe repeated by every StyleX component. Chromium drops
-   * every `::-webkit-scrollbar` rule on a scroller that sets `scrollbar-width`
-   * or `scrollbar-color`, so the standard properties are the whole contract.
-   * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/index.css
-   */
   [data-nyte-scrollport] {
     scrollbar-gutter: stable;
     scrollbar-width: thin;
@@ -54,10 +34,6 @@
     overscroll-behavior: contain;
   }
 
-  /*
-   * A pane holds its scroll at the edge; a block inside one hands the rest
-   * back, so a code block, diff, or tool output cannot stop the conversation.
-   */
   [data-nyte-scrollport] [data-nyte-scrollport] {
     overscroll-behavior: auto;
   }
@@ -70,7 +46,6 @@
     scrollbar-color: var(--nyte-scrollbar-thumb) transparent;
   }
 
-  /* Highlighted code carries both palettes; pick the side by the html attribute. */
   [data-nyte-code] span {
     color: var(--diffs-token-light);
   }
@@ -80,7 +55,6 @@
   }
 }
 
-/* Preference overrides intentionally sit above StyleX's cascade layers. */
 :root[data-nyte-code-block-word-wrap="true"] figure [data-nyte-scrollport] {
   overflow-x: hidden;
 }
@@ -90,7 +64,6 @@
   overflow-wrap: anywhere;
 }
 
-/* macOS draws traffic lights on the frameless window; fullscreen hides them. */
 :root:not([data-platform="darwin"]),
 :root[data-fullscreen] {
   --nyte-titlebar-traffic-light-inset: 0px;

@@ -109,19 +109,6 @@ function FilePreferenceItem({
   );
 }
 
-/**
- * The workspace file tree.
- *
- * - The tree keeps its creation-time composition callbacks, so they read late
- *   values through refs.
- * - A row's menu button and its right-click share one native menu. The tree
- *   keeps its own open state, so it closes before the native menu takes over
- *   the pointer, and without a native menu the tree keeps neither trigger.
- *   Directories are not in the file list, so their location comes from the root.
- * - Rows drag out as composer mentions; nothing moves inside the tree.
- * - The file list may arrive after a reveal, so the reveal retries until the
- *   entry exists.
- */
 export function FilesPanel({
   viewKey,
   visible,
@@ -476,7 +463,7 @@ export function FilesPanel({
       )}
       <div {...props(styles.body)}>
         <div {...props(styles.editors)}>
-          {tabs.tabs.length === 0 && (
+          {activeFile === undefined && (
             <FilesEmptyState
               files={files.data}
               changes={changes ?? []}

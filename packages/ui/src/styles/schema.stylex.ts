@@ -2,10 +2,6 @@ import { defineConsts } from "@stylexjs/stylex";
 
 import "./tokens.stylex.ts";
 
-/**
- * Padding, gaps, margins, and insets. Steps count 4px units as Tailwind's do:
- * `s1_5` is 6px, `s2` is 8px. `px` is a hairline.
- */
 export const space = defineConsts({
   px: "1px",
   s0_5: "calc(var(--nyte-space-unit) * 0.5)",
@@ -27,12 +23,10 @@ export const glyph = defineConsts({
   box: "var(--nyte-glyph-box)",
 });
 
-/** Media queries used as keys: `":hover": { [media.hover]: … }` styles hover only where a fine pointer can hover. */
 export const media = defineConsts({
   hover: "@media (hover: hover) and (pointer: fine)",
 });
 
-/** A control's minimum hit area and the gap between independent controls: 24 and 2, or 44 and 8 for touch. */
 export const target = defineConsts({
   min: "var(--nyte-target-min)",
   gap: "var(--nyte-target-gap)",
@@ -49,12 +43,6 @@ export const slider = defineConsts({
   thumb: "var(--nyte-slider-thumb)",
 });
 
-/**
- * Every part of a toast's first row centres on the title's first line box.
- * `paddingBlock` makes a one-line toast exactly `minHeight`; controls are
- * `target.min` tall and overhang that line box by `overhang` above and below,
- * which leaves them `inset` from the edge.
- */
 export const toast = defineConsts({
   minHeight: "var(--nyte-toast-min-height)",
   paddingBlock: "var(--nyte-toast-padding-block)",
@@ -67,7 +55,6 @@ export const clipboardPreview = defineConsts({
   maxHeight: "var(--nyte-clipboard-preview-max-height)",
 });
 
-/** Button sizes, 2xs to xl. An icon-only button is a square of the height. */
 export const button = defineConsts({
   height2xs: "var(--nyte-btn-height-2xs)",
   paddingInline2xs: "var(--nyte-btn-padding-inline-2xs)",
@@ -167,10 +154,6 @@ export const dialog = defineConsts({
   radius: "var(--nyte-dialog-radius)",
 });
 
-/**
- * Global paint order. Ordinary component-local stacking contexts stay local;
- * only surfaces that cross feature boundaries belong here.
- */
 export const layer = defineConsts({
   stickyContent: 10,
   workbench: 20,

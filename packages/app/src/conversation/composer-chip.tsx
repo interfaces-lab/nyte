@@ -37,13 +37,11 @@ function referenceIcon(reference: MessageReference): IconName {
   }
 }
 
-/** One chip, the same in the editor, the queue strip, the transcript, and a message edit. */
 export function ComposerChipView({
   reference,
   onRemove,
 }: {
   readonly reference: MessageReference;
-  /** Present only inside an editor; read-only surfaces draw the chip without controls. */
   readonly onRemove?: () => void;
 }): ReactElement {
   const label = referenceLabel(reference);

@@ -35,13 +35,11 @@ interface TerminalTabFields {
   readonly cwd: string;
 }
 
-/** A user's login shell, which takes input. */
 interface ShellTerminalTab extends TerminalTabFields {
   readonly kind: "shell";
   readonly state: ShellTerminalState;
 }
 
-/** An agent's job, shown read-only. */
 interface JobTerminalTab extends TerminalTabFields {
   readonly kind: "job";
   readonly sessionId: SessionId;
@@ -58,7 +56,6 @@ export interface TerminalOutput {
   dispose(): void;
 }
 
-/** The job behind an open tab, and the chunks it printed while the tab showed it, the oldest dropped past 64 Ki characters. */
 interface Feed {
   readonly job: Job;
   readonly workspace: WorkspaceId;
@@ -70,7 +67,6 @@ interface TerminalSnapshot {
   readonly tabs: ReadonlyMap<WorkbenchTabId, TerminalTab>;
 }
 
-/** The output a tab keeps to restore after a restart, in characters of terminal stream. */
 const KEPT_OUTPUT = 64 * 1024;
 
 const SAVE_DELAY_MS = 2_000;
@@ -95,10 +91,8 @@ const queued = new Map<WorkbenchTabId, string[]>();
 
 const feeds = new Map<WorkbenchTabId, Feed>();
 
-/** What the user typed into a shell tab while its shell was starting, sent in order once it runs, as a terminal emulator keeps typeahead. */
 const typedAhead = new Map<WorkbenchTabId, string[]>();
 
-/** A shell tab's typeahead on its way to the shell, which input typed after it waits for. */
 const flushing = new Map<WorkbenchTabId, Promise<void>>();
 
 const creating = new Map<WorkbenchTabId, Promise<void>>();
@@ -150,7 +144,6 @@ export function getTerminal(id: WorkbenchTabId): TerminalTab | undefined {
   return snapshot.tabs.get(id);
 }
 
-/** What the tab's job printed while the tab showed it, at most the last 64 Ki characters. */
 export function terminalPrinted(id: WorkbenchTabId): string {
   return feeds.get(id)?.printed.join("") ?? "";
 }
@@ -186,14 +179,12 @@ function print(id: WorkbenchTabId, data: string): void {
   if (feed !== undefined && shellTab(id) !== undefined) scheduleSave(id);
 }
 
-/** The tab at `id` when it is a user's shell. */
 function shellTab(id: WorkbenchTabId): ShellTerminalTab | undefined {
   const tab = getTerminal(id);
 
   return tab !== undefined && tab.kind === "shell" ? tab : undefined;
 }
 
-/** Streams a job's output into its tab until the job ends or the tab lets it go: the host replays the scrollback it kept first. */
 async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
   const decoder = new TextDecoder();
 
@@ -277,7 +268,6 @@ async function readHostView(connection: Connection): Promise<HostView> {
   throw new Error("The host closed before describing itself");
 }
 
-/** The job a saved shell tab ran, when the host still runs it. */
 async function reattach(
   connection: Connection,
   saved: { readonly workspace: WorkspaceId; readonly key: JobKey },
@@ -302,7 +292,6 @@ async function spawnShell(connection: Connection, workspacePath: string | null):
   return { job, workspace, printed: [], length: 0 };
 }
 
-/** The workspace a terminal opened at `path` runs in: the available folder there, or the host's Home for none. A path can hold stale registrations of a replaced folder beside the live one. */
 async function findShellWorkspace(
   connection: Connection,
   path: string | null,
@@ -325,7 +314,6 @@ async function findShellWorkspace(
   return found.id;
 }
 
-/** Tells the user a write to a running shell failed; a shell that stopped or failed already says so. */
 function writeFailed(id: WorkbenchTabId, cause: unknown): void {
   const current = getTerminal(id);
 
@@ -398,13 +386,6 @@ function startShell(
   return pending;
 }
 
-/**
- * Re-attaches the saved shell tabs among `shells` whose job the host still
- * runs, shown or not. Every open shell tab holds a reader this way, as one
- * shown since the window loaded does, and the host stops a user's shell left
- * without a reader for a minute. A tab whose shell is gone waits for its
- * panel, which starts a new one.
- */
 export function reattachShells(
   shells: Iterable<{ readonly id: WorkbenchTabId; readonly workspacePath: string | null }>,
 ): void {
@@ -479,7 +460,6 @@ function remove(id: WorkbenchTabId): void {
 }
 
 export const terminalActions = {
-  /** Starts a login shell as a pty job in the folder at `workspacePath`, or the host's Home for null. */
   create({
     id,
     workspacePath,
@@ -489,7 +469,6 @@ export const terminalActions = {
   }): Promise<void> {
     return startShell(id, workspacePath, null, "");
   },
-  /** Brings back a shell tab the workbench kept across a reload or restart: its job when the host still runs it (the host replays its scrollback), else a new shell under the output the tab saved. */
   restore({
     id,
     workspacePath,
@@ -586,7 +565,6 @@ export const terminalActions = {
   async resize(id: WorkbenchTabId, columns: number, rows: number): Promise<void> {
     await feeds.get(id)?.job.resize({ columns, rows });
   },
-  /** Whether the shell sits at its prompt, so closing it stops nothing the user started. */
   async idle(id: WorkbenchTabId): Promise<boolean> {
     const feed = feeds.get(id);
 
@@ -625,7 +603,6 @@ export const terminalActions = {
   retryRender(id: WorkbenchTabId): void {
     update(id, (tab) => (tab.kind === "shell" ? tab : { ...tab, rendering: { kind: "ready" } }));
   },
-  /** Closes the tab; a shell tab stops its shell, an agent's tab leaves the job running. */
   async close(id: WorkbenchTabId): Promise<void> {
     const tab = getTerminal(id);
 

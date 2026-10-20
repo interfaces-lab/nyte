@@ -21,7 +21,7 @@ import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient, useSessionView } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
-import { ThreadScreen } from "../screens/thread.tsx";
+import { SessionScreen } from "../screens/session-screen.tsx";
 import { createAppRouter } from "../router.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
@@ -289,7 +289,7 @@ const STATES: readonly ComposerState[] = [
   },
 ];
 
-const LAYERS = ["composer", "thread"] as const;
+const LAYERS = ["composer", "session"] as const;
 
 type Layer = (typeof LAYERS)[number];
 
@@ -371,7 +371,7 @@ function Stage({
         <TooltipProvider delay={0} closeDelay={0} timeout={0}>
           <PaneControllerProvider controller={panes}>
             <SessionDndProvider>
-              {layer === "composer" ? <LoneComposer state={state} /> : <ThreadScreen />}
+              {layer === "composer" ? <LoneComposer state={state} /> : <SessionScreen />}
             </SessionDndProvider>
           </PaneControllerProvider>
         </TooltipProvider>
@@ -423,7 +423,7 @@ async function show(host: HTMLElement, state: ComposerState, layer: Layer, width
   flushSync(() => root.render(<Stage state={state} layer={layer} />));
 
   const region = await until(
-    () => stage.querySelector<HTMLElement>("[role='region'][aria-label='Conversation input']"),
+    () => stage.querySelector<HTMLElement>("[data-composer-region]"),
     "the composer",
   );
 
@@ -436,7 +436,7 @@ async function show(host: HTMLElement, state: ComposerState, layer: Layer, width
     await until(
       () =>
         layer === "composer" ||
-        stage.querySelector("[aria-label='Messages'] [data-message-id]") !== null
+        stage.querySelector("[aria-label='Messages'] [data-row-key]") !== null
           ? true
           : null,
       "the transcript",
@@ -648,7 +648,7 @@ export function studio(): void {
     else if (event.key === "ArrowRight") select({ state: (selection.state + 1) % count });
     else if (event.key === "ArrowLeft") select({ state: (selection.state - 1 + count) % count });
     else if (event.key === "l")
-      select({ layer: selection.layer === "composer" ? "thread" : "composer" });
+      select({ layer: selection.layer === "composer" ? "session" : "composer" });
     else if (event.key === "w") select({ width: selection.width === "wide" ? "narrow" : "wide" });
   });
   select({});

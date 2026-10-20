@@ -1,11 +1,3 @@
-/**
- * The window's tabs, the one navigation model. One store per renderer: it owns
- * the tabs and gives each its own pane controller. A desktop window starts it:
- * the strip shows, survives a reload in sessionStorage, and is mirrored from
- * the focused window to localStorage, which the first window of the next
- * launch adopts. The web app shows its single tab as the page, which the URL
- * keeps.
- */
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -18,7 +10,8 @@ import type { Tab, View, WindowAction, WindowState } from "./model.ts";
 
 const STRIP_KEY = "nyte.desktop.tabs.v1";
 
-/** Each tab's drafts and images live under this prefix and its id. */
+const SAVE_DELAY_MS = 250;
+
 const TAB_KEY_PREFIX = "nyte.desktop.tab.v1:";
 
 const strict = { additionalProperties: false };
@@ -134,19 +127,16 @@ function read(store: Storage | undefined, key: string): string | null {
   }
 }
 
-/** A full or denied store keeps the strip for this window only. */
 function write(store: Storage | undefined, key: string, value: string): void {
   try {
     store?.setItem(key, value);
   } catch {}
 }
 
-/** The ids a strip still refers to: open tabs and the reopen list. */
 function knownTabIds(state: WindowState): ReadonlySet<string> {
   return new Set([...state.tabs, ...state.closed.map(({ tab }) => tab)].map((tab) => tab.id));
 }
 
-/** Drop the stored drafts of tabs no strip refers to any more; a failure leaves them, and they only cost space. */
 function forgetTabs(shouldForget: (tabId: string) => boolean): void {
   const local = storage("localStorage");
 
@@ -167,12 +157,11 @@ function forgetTabs(shouldForget: (tabId: string) => boolean): void {
 class WindowTabs {
   #strip = false;
   #state: WindowState = initialWindow("tab");
-  /** False once a started window restores a strip: the startup chat applies to a fresh one only. */
   #startupDestination = true;
   readonly #controllers = new Map<string, PaneController>();
   readonly #listeners = new Set<() => void>();
+  #saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /** A started window draws the strip and takes tab commands; the web's one tab never does. */
   get strip(): boolean {
     return this.#strip;
   }
@@ -181,13 +170,13 @@ class WindowTabs {
     return this.#startupDestination;
   }
 
-  /** Restore a reload's strip, or adopt the saved one in the launch's first window. */
   start(firstWindow: boolean): void {
     this.#strip = true;
     this.#startupDestination = false;
     const reloaded = parseStrip(read(storage("sessionStorage"), STRIP_KEY));
     this.#state = reloaded ?? initialWindow(crypto.randomUUID());
     window.addEventListener("focus", () => this.#mirror());
+    window.addEventListener("pagehide", this.#flush);
 
     if (!firstWindow || reloaded !== undefined) return;
     const saved = parseStrip(read(storage("localStorage"), STRIP_KEY));
@@ -219,7 +208,6 @@ class WindowTabs {
     return canTravel(this.#state, step);
   }
 
-  /** The pane controller of a tab, the active one by default. */
   controller(tabId: string = this.#state.activeTabId): PaneController {
     const existing = this.#controllers.get(tabId);
 
@@ -258,7 +246,6 @@ class WindowTabs {
     return tab === undefined ? current : tabLayout(tab);
   }
 
-  /** `routing` is the controller whose own proposal this is; it adopts the result itself. */
   #apply(next: WindowState, routing?: string): void {
     if (next === this.#state) return;
     const before = knownTabIds(this.#state);
@@ -286,10 +273,16 @@ class WindowTabs {
 
   #save(): void {
     if (!this.#strip) return;
+    this.#saveTimer ??= setTimeout(this.#flush, SAVE_DELAY_MS);
+  }
+
+  readonly #flush = (): void => {
+    clearTimeout(this.#saveTimer);
+    this.#saveTimer = undefined;
     write(storage("sessionStorage"), STRIP_KEY, this.#serialized());
 
     if (document.hasFocus()) this.#mirror();
-  }
+  };
 
   #mirror(): void {
     write(storage("localStorage"), STRIP_KEY, this.#serialized());

@@ -48,7 +48,6 @@ export interface SessionViewSettings {
   readonly statuses: readonly SessionStatus[];
   readonly pullRequests: readonly SessionPullRequest[];
   readonly environments: readonly SessionEnvironment[];
-  /** When unchecked, Archived hides archived sessions. */
   readonly archived: boolean;
 }
 
@@ -68,11 +67,6 @@ export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
   archived: false,
 });
 
-/**
- * `sessionMark` reports `waiting` only for a run parked on a reply; one parked
- * on background work arrives here as `working`. A session is never a draft:
- * `draft` is the client's chats that have not started.
- */
 function deriveSessionStatus(
   session: SessionInfo,
   working: ReadonlySet<SessionId>,
@@ -146,11 +140,6 @@ function compareUpdated(left: SessionInfo, right: SessionInfo): number {
   );
 }
 
-/**
- * Needs a decision, then running, then finished and waiting on a look. Read
- * state takes no part: opening a chat never moves it. A chat leaves the
- * ranking only when it is archived.
- */
 function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): number {
   const mark = sessionActivityMark(session, working.has(session.id));
 
@@ -171,7 +160,6 @@ function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): numbe
   }
 }
 
-/** The row order a view settles on; the flat list merges workspaces with it. */
 export function sessionOrder(
   sort: SessionSort,
   working: ReadonlySet<SessionId> = NO_WORKING_SESSIONS,
@@ -257,7 +245,6 @@ function groupSessions(
   }
 }
 
-/** Child sessions stay available to task/job inspection, but never become navigation rows. */
 export function sessionsForNavigation(
   sessions: readonly SessionInfo[],
   includeArchived = false,
@@ -267,7 +254,6 @@ export function sessionsForNavigation(
   );
 }
 
-/** Dimensions are ANDed; checked values within one dimension are ORed. */
 export function sessionsForView(
   sessions: readonly SessionInfo[],
   settings: SessionViewSettings,
@@ -301,7 +287,6 @@ export function hasSessionFilters(settings: SessionViewSettings): boolean {
   );
 }
 
-/** Every filter dimension back to "show everything", grouping and ordering kept. */
 export function clearSessionFilters(settings: SessionViewSettings): SessionViewSettings {
   return {
     ...settings,

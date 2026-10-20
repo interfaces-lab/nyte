@@ -103,12 +103,6 @@ function post(frame: HTMLIFrameElement | null, message: CanvasPost): void {
   frame?.contentWindow?.postMessage(message, "*");
 }
 
-/**
- * What a canvas link opens: a web link where the user's link setting says (the
- * workbench browser or the system browser), a workspace path such as
- * `src/ci.ts:42` in the file editor at its line. Undefined when nothing can
- * open it, so the canvas is told the link failed and stays where it is.
- */
 function canvasLink(
   href: string,
   files: readonly MentionFile[],
@@ -125,17 +119,12 @@ function canvasLink(
 
 const HEIGHTS_KEY = "nyte.canvas-heights";
 
-/** Canvases whose last reported height is kept; older ones paint at their hint again. */
 const HEIGHTS_KEPT = 200;
+
+const HEIGHTS_SAVE_DELAY_MS = 1_000;
 
 const storedHeights = Type.Array(Type.Tuple([Type.String(), Type.Number()]));
 
-/**
- * The height each canvas last reported, by a digest of its code. A canvas
- * reloads whenever its row remounts (virtualized scrolling, switching chats,
- * a restart), and seeding the frame with this keeps it from opening at the
- * agent's hint and jumping when the shell measures.
- */
 const measuredHeights = new Map<string, number>(readStoredHeights());
 
 function readStoredHeights(): readonly (readonly [string, number])[] {
@@ -148,13 +137,24 @@ function readStoredHeights(): readonly (readonly [string, number])[] {
   }
 }
 
+let heightsTimer: ReturnType<typeof setTimeout> | undefined;
+
 function rememberHeight(key: string, height: number): void {
   if (measuredHeights.get(key) === height) return;
   measuredHeights.delete(key);
   measuredHeights.set(key, height);
 
-  for (const stale of [...measuredHeights.keys()].slice(0, -HEIGHTS_KEPT))
-    measuredHeights.delete(stale);
+  if (measuredHeights.size > HEIGHTS_KEPT) {
+    const [oldest] = measuredHeights.keys();
+
+    if (oldest !== undefined) measuredHeights.delete(oldest);
+  }
+
+  heightsTimer ??= setTimeout(saveHeights, HEIGHTS_SAVE_DELAY_MS);
+}
+
+function saveHeights(): void {
+  heightsTimer = undefined;
 
   try {
     window.localStorage.setItem(HEIGHTS_KEY, JSON.stringify([...measuredHeights]));

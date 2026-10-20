@@ -121,7 +121,6 @@ function connect(): void {
   });
 }
 
-/** Seeds what the host would answer: GitHub served or not, the machine's login, and the selected folder on GitHub. */
 function seed(
   api: GitHubApi | null,
   account: GitHubAccountState | null,
@@ -180,7 +179,6 @@ async function menuItems(): Promise<readonly HTMLElement[]> {
   return items;
 }
 
-/** A disabled control that explains itself stays focusable, so it says so through `aria-disabled`. */
 function disabled(button: HTMLButtonElement): boolean {
   return button.disabled || button.getAttribute("aria-disabled") === "true";
 }
@@ -192,7 +190,6 @@ function typeMessage(text: string): void {
   document.execCommand("insertText", false, text);
 }
 
-/** Each state the bar can find GitHub in, with the pull request action chosen. */
 export async function run(): Promise<string> {
   applyDisplayMode("light");
   window.localStorage.setItem("nyte.desktop.changes-commit-action.v1", "pull-request");
@@ -292,9 +289,11 @@ export async function run(): Promise<string> {
       section.textContent.includes("Open"),
     `it names the pull request and its state: ${section.textContent ?? ""}`,
   );
+
   const summary = [...section.querySelectorAll("button")].find((button) =>
     button.textContent?.includes("1 failing, 1 pending, 1 passed"),
   );
+
   check(
     summary !== undefined,
     `the checks are summed up failing first: ${section.textContent ?? ""}`,

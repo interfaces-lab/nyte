@@ -3,11 +3,6 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sessionId } from "../schemas.ts";
 
-/**
- * A pane's identity, not its position: drafts, mounted components, and the
- * focus request follow a pane across reorders, and the survivor of a close
- * keeps its identity, so a single layout can legitimately be "secondary".
- */
 export type PaneId = "primary" | "secondary";
 
 export type SplitDirection = "right" | "down";
@@ -20,7 +15,6 @@ export type PaneSelection =
   | { readonly kind: "blank" }
   | { readonly kind: "session"; readonly sessionId: SessionId };
 
-/** A derived pairing for iteration; the layout stores selections directly. */
 export interface PaneState {
   readonly id: PaneId;
   readonly selection: PaneSelection;
@@ -63,13 +57,8 @@ const MIN_SPLIT_RATIO = 0.2;
 
 const MAX_SPLIT_RATIO = 0.8;
 
-/**
- * A ratio alone lets the composer, the model chip, and the header actions
- * collide on a narrow window. Below this the pane clips, so the sash stops.
- */
 const MIN_PANE_WIDTH = 320;
 
-/** Both split commands use the same window-width floor as their menu availability. */
 export function canSplitPane(layout: PaneLayout, windowWidth: number): boolean {
   return layout.kind === "single" && windowWidth >= 2 * MIN_PANE_WIDTH;
 }
@@ -131,10 +120,6 @@ export function clampSplitRatio(ratio: number): number {
   return Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, ratio));
 }
 
-/**
- * The ratio clamp plus a pixel floor, measured against the split container.
- * A container too narrow to hold two full panes keeps the ratio clamp alone.
- */
 export function clampSplitRatioForSize(ratio: number, size: number): number {
   const clamped = clampSplitRatio(ratio);
 
@@ -371,7 +356,6 @@ export const paneSelectionSchema = Type.Union([
   Type.Object({ kind: Type.Literal("session"), sessionId }, strict),
 ]);
 
-/** A layout as a window tab stores it: the persisted shape without its version. */
 export const paneLayoutSchema = Type.Union([
   Type.Object(
     { kind: Type.Literal("single"), paneId: paneIdSchema, selection: paneSelectionSchema },
@@ -416,7 +400,6 @@ const persistedPaneLayoutSchema = Type.Union([
   ),
 ]);
 
-/** The version 1 shape, frozen: stored pane objects carried their own ids and a pane order. */
 const legacyPaneSchema = Type.Object({ id: paneIdSchema, selection: paneSelectionSchema }, strict);
 
 const legacyPaneLayoutSchema = Type.Union([

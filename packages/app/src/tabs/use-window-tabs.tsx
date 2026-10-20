@@ -10,9 +10,9 @@ import {
   queryClient,
   sessionFolderPath,
   useWorkingSessionIds,
-  useWorkspaceSessionDirectory,
+  useWorkspaceSessions,
 } from "../queries.ts";
-import { directoryWatch } from "../sdk.tsx";
+import { sessionsWatch } from "../sdk.tsx";
 import { sessionActivityMark } from "../session-activity.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
@@ -95,7 +95,7 @@ export function useWindowTabsSync(): void {
     follow();
     const unsubscribeRouter = router.subscribe("onResolved", adopt);
     const unsubscribeTabs = windowTabs.subscribe(follow);
-    const unsubscribeDirectory = directoryWatch("roots").subscribe(follow);
+    const unsubscribeSessions = sessionsWatch("roots").subscribe(follow);
 
     const unsubscribeWorkspaces = queryClient.getQueryCache().subscribe((event) => {
       if (event.query.queryKey[0] === keys.workspaces[0]) follow();
@@ -104,7 +104,7 @@ export function useWindowTabsSync(): void {
     return () => {
       unsubscribeRouter();
       unsubscribeTabs();
-      unsubscribeDirectory();
+      unsubscribeSessions();
       unsubscribeWorkspaces();
     };
   });
@@ -135,17 +135,17 @@ function placeTitle(place: Place, sessions: ReadonlyMap<SessionId, SessionInfo>)
 }
 
 export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] {
-  const directory = useWorkspaceSessionDirectory();
+  const workspaceSessions = useWorkspaceSessions();
   const working = useWorkingSessionIds();
 
   const sessions = useMemo(
     () =>
       new Map(
-        (directory.data ?? []).flatMap((entry) =>
+        (workspaceSessions.data ?? []).flatMap((entry) =>
           entry.sessions.map((session) => [session.id, session] as const),
         ),
       ),
-    [directory.data],
+    [workspaceSessions.data],
   );
 
   return state.tabs.map((tab) => {

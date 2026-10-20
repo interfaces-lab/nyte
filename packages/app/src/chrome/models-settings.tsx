@@ -53,7 +53,6 @@ const popularProviders = [
   },
 ];
 
-/** Model and reasoning for new chats. Rendered by Settings › Agent, from the same catalog. */
 export function NewChatsSection({
   catalog,
   defaults,

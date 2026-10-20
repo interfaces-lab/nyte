@@ -21,7 +21,6 @@ export function carriesFiles(event: ComposerFileDropEvent): boolean {
 
 let treeDrag: readonly MentionFile[] = [];
 
-/** The workspace tree's drag carries only its row path as text, so the files ride here. */
 export function setTreeDrag(files: readonly MentionFile[]): void {
   treeDrag = files;
 }
@@ -32,7 +31,6 @@ export function carriesTreeFiles(event: ComposerFileDropEvent): boolean {
   return treeDrag.length > 0 && types.includes("text/plain") && !types.includes("Files");
 }
 
-/** The tree's files, when the dropped text is the path its drag started from. */
 export function droppedTreeFiles(event: ComposerFileDropEvent): readonly MentionFile[] {
   const path = event.dataTransfer?.getData("text/plain");
 

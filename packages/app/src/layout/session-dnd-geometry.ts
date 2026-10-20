@@ -8,7 +8,6 @@ export interface SessionDragPoint {
   readonly y: number;
 }
 
-/** The nearest normalized edge wins; the middle 25% is reserved for center. */
 export function placementInRect(
   rect: ClientRect,
   point: SessionDragPoint,

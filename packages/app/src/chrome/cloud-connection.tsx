@@ -1,7 +1,3 @@
-/**
- * The outbound connection: a remote Nyte host this desktop reaches, whose
- * chats run with the server's keys.
- */
 import { props } from "@stylexjs/stylex";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";

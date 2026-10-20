@@ -8,7 +8,6 @@ import { stepGroupStyles } from "./step-group.stylex.ts";
 import { Prose } from "./prose.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";
 
-/** Reasoning between tool calls: open while it streams, folded to its title once it settles. */
 export function ThinkingLine({
   text: reasoning,
   streaming,

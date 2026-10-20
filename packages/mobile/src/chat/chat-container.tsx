@@ -116,10 +116,10 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
           icon="trash"
           destructive
           onPress={() => {
-            Alert.alert("Delete Conversation", "This can't be undone.", [
+            Alert.alert("Delete Chat", "This can't be undone.", [
               { text: "Cancel", style: "cancel" },
               {
-                text: "Delete Conversation",
+                text: "Delete Chat",
                 style: "destructive",
                 onPress: () => {
                   void session
@@ -140,7 +140,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
             ]);
           }}
         >
-          Delete Conversation
+          Delete Chat
         </Stack.Toolbar.MenuAction>
       </Stack.Toolbar.Menu>
     </Stack.Toolbar>

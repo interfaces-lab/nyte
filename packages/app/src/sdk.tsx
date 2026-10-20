@@ -148,11 +148,6 @@ export class WatchStore<T> {
 
   getState = (): WatchState<T> => this.state;
 
-  prime(value: T): void {
-    if (this.state.value !== undefined) return;
-    this.publish({ value, error: undefined });
-  }
-
   first(): Promise<void> {
     if (this.state.value !== undefined || this.state.error !== undefined || !this.active)
       return Promise.resolve();
@@ -263,8 +258,20 @@ export function watchFamily<K extends string, T>(
   return (key: K): WatchStore<T> => {
     const existing = stores.get(key);
 
-    const store = existing ?? new WatchStore(async () => open(await connected(), key), prune);
-    stores.delete(key);
+    if (existing !== undefined) return existing;
+
+    const store: WatchStore<T> = new WatchStore(
+      async () => open(await connected(), key),
+      () => {
+        if (stores.get(key) === store) {
+          stores.delete(key);
+          stores.set(key, store);
+        }
+
+        prune();
+      },
+    );
+
     stores.set(key, store);
     prune();
 
@@ -352,15 +359,15 @@ export const hostWatch = watchFamily((current, _key: "host"): AsyncIterable<Host
   current.watch(),
 );
 
-export const directoryWatch = watchFamily(
+export const sessionsWatch = watchFamily(
   (current, parents: "roots" | "all"): AsyncIterable<readonly SessionInfo[]> =>
     current.sessions.watch({ parents: { kind: parents } }),
 );
 
 export function findListedSession(session: SessionId): SessionInfo | undefined {
   return (
-    directoryWatch("roots").value?.find((item) => item.id === session) ??
-    directoryWatch("all").value?.find((item) => item.id === session)
+    sessionsWatch("roots").value?.find((item) => item.id === session) ??
+    sessionsWatch("all").value?.find((item) => item.id === session)
   );
 }
 
@@ -372,8 +379,6 @@ export const childrenWatch = watchFamily(
 const OPENING_TAIL = 40;
 
 const pagers = new Map<SessionId, PagedViews>();
-
-const exhausted = new Map<SessionId, string>();
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
@@ -398,8 +403,6 @@ function keepItems<T>(
 }
 
 function keepShown(shown: SessionView, next: SessionView): SessionView {
-  if (JSON.stringify(shown) === JSON.stringify(next)) return shown;
-
   return {
     ...next,
     messages: keepItems(shown.messages, next.messages, (message) => message.id),
@@ -410,13 +413,11 @@ function keepShown(shown: SessionView, next: SessionView): SessionView {
 
 export const sessionWatch = watchFamily(
   (current, session: SessionId): AsyncIterable<SessionView> => {
-    const views = pagedViews(current.session(session), { tail: OPENING_TAIL });
-    pagers.set(session, views);
-    exhausted.delete(session);
-
     const kept: AsyncIterable<SessionView> = {
       [Symbol.asyncIterator]() {
+        const views = pagedViews(current.session(session), { tail: OPENING_TAIL });
         const iterator = views[Symbol.asyncIterator]();
+        pagers.set(session, views);
         let first = true;
 
         return {
@@ -432,6 +433,7 @@ export const sessionWatch = watchFamily(
               : { done: false, value: keepShown(shown, next.value) };
           },
           async return() {
+            if (pagers.get(session) === views) pagers.delete(session);
             await iterator.return?.();
 
             return { done: true, value: undefined };
@@ -444,36 +446,35 @@ export const sessionWatch = watchFamily(
   },
 );
 
-const previews = new Map<SessionId, Promise<void>>();
+const WARM_SESSIONS = 3;
 
-export function preloadSession(session: SessionId): Promise<void> {
-  if (sessionWatch(session).value !== undefined) return Promise.resolve();
+const WARM_MS = 5_000;
 
-  const pending =
-    previews.get(session) ??
-    connected()
-      .then((current) => current.session(session).view({ tail: OPENING_TAIL }))
-      .then(
-        (view) => sessionWatch(session).prime(view),
-        () => undefined,
-      )
-      .finally(() => previews.delete(session));
+const hotSet = new Map<SessionId, () => void>();
 
-  previews.set(session, pending);
+export function warmSession(session: SessionId): void {
+  const holds = [
+    sessionWatch(session).subscribe(() => undefined),
+    childrenWatch(session).subscribe(() => undefined),
+  ];
 
-  return pending;
+  const release = (): void => {
+    clearTimeout(timer);
+
+    if (hotSet.get(session) === release) hotSet.delete(session);
+
+    for (const leave of holds) leave();
+  };
+
+  const timer = setTimeout(release, WARM_MS);
+  hotSet.get(session)?.();
+  hotSet.set(session, release);
+
+  if (hotSet.size > WARM_SESSIONS) hotSet.values().next().value?.();
 }
 
 export async function loadEarlierMessages(session: SessionId, limit: number): Promise<number> {
-  const pager = pagers.get(session);
-  const oldest = sessionWatch(session).value?.messages[0]?.id;
-
-  if (pager === undefined || oldest === undefined || exhausted.get(session) === oldest) return 0;
-  const loaded = await pager.earlier(limit);
-
-  if (loaded === 0) exhausted.set(session, oldest);
-
-  return loaded;
+  return (await pagers.get(session)?.earlier(limit)) ?? 0;
 }
 
 export const jobsWatch = watchFamily(

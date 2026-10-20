@@ -12,7 +12,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { HostState } from "./bridge.ts";
 import { keys, newestModelCatalog, queryClient } from "./queries.ts";
-import { directoryWatch, sessionWatch } from "./sdk.tsx";
+import { sessionsWatch, sessionWatch } from "./sdk.tsx";
 import { sessionId } from "./schemas.ts";
 import { startupConnection } from "./startup.ts";
 import { activeTab, tabPlace } from "./tabs/model.ts";
@@ -141,7 +141,7 @@ function windowFolder(): FirstFrame["folder"] {
 function write(): void {
   const catalog = newestModelCatalog();
   const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
-  const directory = directoryWatch("roots").value;
+  const directory = sessionsWatch("roots").value;
 
   if (recording === undefined || catalog === undefined) return;
 
@@ -197,7 +197,7 @@ export async function windowContentReady(): Promise<void> {
       failed.promise,
       Promise.all([
         queryClient.getQueryData(keys.firstFrameRoots) === undefined
-          ? directoryWatch("roots").first()
+          ? sessionsWatch("roots").first()
           : undefined,
         place.kind === "session" ? sessionWatch(place.sessionId).first() : undefined,
       ]),

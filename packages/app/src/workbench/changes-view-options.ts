@@ -6,7 +6,6 @@ import { preferences, useSetting } from "../preferences/index.ts";
 
 const STORAGE_KEY = "nyte.desktop.changes-view-options.v1";
 
-/** Options follow the repositories a person actually reviews, not every one ever opened. */
 const MAX_SCOPES = 32;
 
 const changesViewOptionsSchema = Type.Object(
@@ -56,10 +55,6 @@ function decodeChangesViewOptions(serialized: string | null): StoredChangesViewO
   }
 }
 
-/**
- * Changes overflow-menu options per workspace or repository. A repository reviewed in
- * split mode keeps that view without forcing it on every other workspace.
- */
 class ChangesViewOptionsStore {
   readonly #storage: OptionsStorage | undefined;
   readonly #now: () => number;
@@ -67,7 +62,6 @@ class ChangesViewOptionsStore {
   readonly #listeners = new Set<() => void>();
   #stored: StoredChangesViewOptions = EMPTY_CHANGES_VIEW_OPTIONS;
 
-  /** A corrupt preference must not prevent opening the Changes tab. */
   constructor(options: ChangesViewOptionsStoreOptions = {}) {
     this.#storage = options.storage;
     this.#now = options.now ?? Date.now;
@@ -109,7 +103,6 @@ class ChangesViewOptionsStore {
     this.#commit(next);
   }
 
-  /** The chosen view holds for this window even when persistence is unavailable. */
   #commit(stored: StoredChangesViewOptions): void {
     this.#stored = this.#evictOldest(stored);
 

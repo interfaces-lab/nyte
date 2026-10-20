@@ -1,8 +1,3 @@
-/**
- * The server the web app talks to, entered by hand or opened from a pairing
- * link, and remembered in this browser. The address rules match the iOS app:
- * HTTPS anywhere, plain HTTP only toward a local or Tailscale address.
- */
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { Connection } from "./bridge.ts";
@@ -17,12 +12,6 @@ const ConnectionSchema = Type.Object(
   { additionalProperties: false },
 );
 
-/**
- * Plain HTTP is allowed only toward loopback, private IPv4 ranges, and the
- * Tailscale range, checked numerically. 100.64.0.0/10 is shared address space
- * rather than a private network; reaching one means this device is already
- * inside an authenticated tailnet.
- */
 function allowsPlainHttp(hostname: string): boolean {
   if (hostname === "localhost" || hostname === "[::1]" || hostname.endsWith(".local")) return true;
 
@@ -74,7 +63,6 @@ export function parseConnection(value: Connection): Connection {
   return { url: url.href.replace(/\/$/, ""), token };
 }
 
-/** Host address without scheme or path. */
 export function displayAddress(connection: Connection): string {
   return new URL(connection.url).host;
 }
@@ -104,10 +92,6 @@ export function forgetConnection(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
 
-/**
- * A `/pair#host=<url>&token=<token>` link. The fragment never leaves the
- * browser, and it leaves the address bar and history as soon as it is read.
- */
 export function readPairingRequest(url: URL): Connection | undefined {
   if (url.pathname !== "/pair") return undefined;
   const fragment = new URLSearchParams(url.hash.slice(1));

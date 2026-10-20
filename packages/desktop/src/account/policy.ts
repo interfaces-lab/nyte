@@ -9,11 +9,6 @@ const PUBLISHABLE_KEY = /^pk_(?:test|live)_([A-Za-z0-9+/_-]+={0,2})$/u;
 const HOST =
   /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/iu;
 
-/**
- * Clerk loads its UI from the host the publishable key encodes, so a CSP built
- * from a different `frontendApiHost` would block it. Refuse the mismatch at
- * startup instead of shipping a window that never renders.
- */
 export function checkedFrontendApiHost(config: {
   readonly publishableKey: string;
   readonly frontendApiHost: string;

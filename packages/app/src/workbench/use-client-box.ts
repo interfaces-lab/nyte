@@ -1,6 +1,5 @@
 import { useLayoutEffect, useState } from "react";
 
-/** Container size only — not text. Pretext owns label and patch heights. */
 export function useClientBox(): [(node: HTMLElement | null) => void, number, number] {
   const [node, setNode] = useState<HTMLElement | null>(null);
   const [width, setWidth] = useState(0);

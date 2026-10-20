@@ -1,12 +1,12 @@
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
-import { threadStyles } from "./thread.stylex.ts";
+import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { modelConfiguration } from "./model-configuration.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { Revision, SessionId, SessionInfo, SessionView, UserContent } from "@nyte-ai/sdk";
+import type { Revision, SessionId, SessionInfo, UserContent } from "@nyte-ai/sdk";
 import { Composer } from "../conversation/composer.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "../conversation/turn-view.tsx";
@@ -28,20 +28,16 @@ import {
   useRenameSession,
   useSession,
   useSessionChoice,
-  useSessionState,
 } from "../queries.ts";
-import { connection, loadEarlierMessages } from "../sdk.tsx";
+import { connection, loadEarlierMessages, sessionWatch, useWatchSelect } from "../sdk.tsx";
 import type { DesktopModelOption } from "../catalog.ts";
-import { conversationTurns } from "../view-helpers.ts";
-import type { ConversationTurn } from "../view-helpers.ts";
 
 import { BackgroundWork } from "../conversation/tray/terminals.tsx";
 import { Timeline } from "../conversation/timeline.tsx";
 import { TranscriptProvider, useTranscriptControls } from "../conversation/transcript.tsx";
 import { ApprovalTray } from "../conversation/approval-tray.tsx";
 import { QuestionTray } from "../conversation/tray/questions.tsx";
-import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
-import { conversationMessages, transcriptRows } from "../conversation/transcript-rows.ts";
+import { transcriptProjector } from "../conversation/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
 import { openJobTerminal } from "../workbench/terminal-store.ts";
@@ -50,11 +46,7 @@ import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
 import { useReleaseStartupReads } from "../startup.ts";
 
-const EMPTY_TURNS: readonly ConversationTurn[] = [];
-
 const EMPTY_CHILDREN: readonly SessionInfo[] = [];
-
-const NO_CHANGES: SessionView["changes"] = [];
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 
@@ -216,20 +208,17 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     [inputRef],
   );
 
-  const { value: view, error: viewError, retry: retryView } = useSessionState(sessionId);
+  const store = sessionWatch(sessionId);
+  const [projector] = useState(transcriptProjector);
+  const ready = useWatchSelect(store, (state) => state.value !== undefined);
+  const failed = useWatchSelect(store, (state) => state.error !== undefined);
+  const execution = useWatchSelect(store, (state) => state.value?.execution);
+  const activation = useWatchSelect(store, (state) => state.value?.activation);
+  const messages = useWatchSelect(store, projector.messages);
   const choice = useSessionChoice(sessionId);
-  useReleaseStartupReads(
-    (view !== undefined && session.data !== undefined) || viewError !== undefined,
-  );
-
-  const turns = useMemo(
-    () => (view === undefined ? EMPTY_TURNS : conversationTurns(view).turns),
-    [view],
-  );
+  useReleaseStartupReads((ready && session.data !== undefined) || failed);
 
   const viewStore = usePaneViewStateStore();
-  const messages = useMemo(() => conversationMessages(view), [view]);
-  const activation = view?.activation;
   useLayoutEffect(() => {
     if (activation !== undefined && presentation === "full") observeActivation(activation);
   }, [activation, presentation]);
@@ -238,7 +227,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const working =
     navigating ||
     parentRunning ||
-    messages.submitted.some(
+    messages.prompts.some(
       (message) =>
         !messages.held || (message.source.kind !== "child" && message.source.kind !== "job"),
     );
@@ -250,7 +239,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
   const [column, setColumn] = useState<HTMLDivElement | null>(null);
 
-  const ready = view !== undefined;
   const modelOptions = catalog.data?.models ?? EMPTY_MODEL_OPTIONS;
 
   const configuredModel = choice?.model;
@@ -266,41 +254,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
       fast: selected?.fast === true,
     };
   }, [catalog.data, configuredModel, modelOptions, thinkingLevel]);
-
-  const lastTurn = turns.at(-1);
-
-  const settledWork = useMemo(
-    () =>
-      lastTurn !== undefined && displayTranscriptParts(lastTurn.messages).at(-1)?.kind === "step",
-    [lastTurn],
-  );
-
-  const retrying = view?.execution.kind === "retrying" ? view.execution.reason : undefined;
-
-  const rows = useMemo(
-    () =>
-      transcriptRows({
-        loading: view === undefined && viewError === undefined,
-        failed: viewError !== undefined,
-        turns,
-        changes: view?.changes ?? NO_CHANGES,
-        landing: messages.submitted,
-        held: messages.held,
-        retrying,
-        working,
-        running: messages.running,
-      }),
-    [
-      view,
-      viewError,
-      turns,
-      messages.submitted,
-      messages.held,
-      messages.running,
-      retrying,
-      working,
-    ],
-  );
 
   const title = session.data?.name ?? "New chat";
 
@@ -323,12 +276,12 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
       return applyMessageEdit({
         sessionId,
         message,
-        revision: view?.revision,
+        revision: store.getState().value?.revision,
         content,
         choice: edit,
       }).finally(() => setNavigating(false));
     },
-    [sessionId, view?.revision],
+    [sessionId, store],
   );
 
   const childSessions = children.data ?? EMPTY_CHILDREN;
@@ -391,8 +344,13 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   return (
     <SubagentSessionsProvider value={subagentSessions}>
       <div
-        {...props(threadStyles.screen, presentation === "tray" && threadStyles.embeddedScreen)}
-        aria-busy={view === undefined && viewError === undefined}
+        {...props(
+          sessionScreenStyles.screen,
+          presentation === "full"
+            ? sessionScreenStyles.paneScreen
+            : sessionScreenStyles.embeddedScreen,
+        )}
+        aria-busy={!ready && !failed}
       >
         {presentation === "full" && layout.kind === "split" && (
           <PaneHeader
@@ -404,7 +362,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
               ) : (
                 <Input
                   aria-label="Chat name"
-                  xstyle={threadStyles.renameInput}
+                  xstyle={sessionScreenStyles.renameInput}
                   value={draftName}
                   onValueChange={setDraftName}
                   onBlur={commitRename}
@@ -431,8 +389,8 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
           />
         )}
 
-        <div {...props(threadStyles.body)}>
-          <div ref={setColumn} {...props(threadStyles.conversation)}>
+        <div {...props(sessionScreenStyles.body)}>
+          <div ref={setColumn} {...props(sessionScreenStyles.conversation)}>
             <TranscriptProvider
               paneId={paneId}
               sessionId={sessionId}
@@ -442,16 +400,15 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
               {presentation === "full" && <ComposerPaging column={column} />}
               {presentation === "full" && <RunAnnouncer working={working} />}
               <Timeline
-                sessionId={sessionId}
+                store={store}
+                projector={projector}
                 ready={ready}
-                rows={rows}
                 working={working}
-                settledWork={settledWork}
                 cwd={cwd}
                 branchModel={branchModel}
                 onEditUser={editUserMessage}
                 onOpenChanges={openChanges}
-                onRetry={retryView}
+                onRetry={store.retry}
               />
 
               {presentation === "full" && (
@@ -463,13 +420,10 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                       <>
                         <ApprovalTray
                           sessionId={sessionId}
-                          disabled={viewError !== undefined || navigating}
+                          disabled={failed || navigating}
                           viewport={scroll}
                         />
-                        <QuestionTray
-                          disabled={viewError !== undefined || navigating}
-                          viewport={scroll}
-                        />
+                        <QuestionTray disabled={failed || navigating} viewport={scroll} />
                         <SubagentTray
                           parentSessionId={sessionId}
                           agents={childSessions}
@@ -518,7 +472,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                       return true;
                     },
                   }}
-                  execution={view?.execution}
+                  execution={execution}
                   pending={messages.queued}
                   unsent={messages.unsent}
                   fileDropRoot={column}

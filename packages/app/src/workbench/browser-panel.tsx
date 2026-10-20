@@ -62,7 +62,6 @@ const styles = create({
     backgroundColor: role.bgBase,
   },
   toolbar: { position: "relative", gap: space.s2 },
-  /** A thin line over the toolbar's bottom edge while a page loads; the page's native view stays put. */
   progress: {
     position: "absolute",
     insetInline: 0,
@@ -173,10 +172,6 @@ const styles = create({
     color: role.contentSecondary,
     fontSize: type.fontSm,
   },
-  /**
-   * Sits under the native view at all times, so hiding the page reveals a
-   * still frame that is already painted rather than an empty panel.
-   */
   frozenFrame: {
     position: "absolute",
     inset: 0,
@@ -186,7 +181,6 @@ const styles = create({
     objectPosition: "top",
     pointerEvents: "none",
   },
-  // The still frame is not the live page; a light wash says so without words.
   frozenVeil: {
     position: "absolute",
     inset: 0,
@@ -195,12 +189,6 @@ const styles = create({
   },
 });
 
-/**
- * One panel's hold on a surface in main, from the first open until the panel
- * leaves the surface or its owner. Navigation reuses the hold; a reply that
- * lands after release, or after a newer request, is dropped so it cannot write
- * a forgotten surface back into the store.
- */
 interface SurfaceHold {
   opened: boolean;
   url: string | undefined;
@@ -215,7 +203,6 @@ function browserBridge(): BrowserBridge {
   return browser;
 }
 
-/** Release this surface's view holder in main. */
 function releaseSurface(surface: string): void {
   forgetBrowserSurface(surface);
   void browserBridge()
@@ -223,21 +210,12 @@ function releaseSurface(surface: string): void {
     .catch(() => undefined);
 }
 
-/** Where the page sits and whether it takes the keys as it shows. */
 interface SurfacePlacement {
-  /** An overlay hides the page, so its last frame stands in for it. */
   readonly covered: boolean;
-  /** The page takes the keys once a placement shows it, unless something else owns them by then. */
   readonly focus: () => void;
-  /** The panel's own controls took the keys, so a pending page focus is dropped. */
   readonly cancelFocus: () => void;
 }
 
-/**
- * The page composites above the renderer, so it steps aside while a menu or a
- * dialog overlaps it. The overlay store already batches to a frame, so an
- * overlay change applies at once rather than a frame after the popup painted.
- */
 function useSurfacePlacement(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,
@@ -341,14 +319,6 @@ function useSurfacePlacement(
   };
 }
 
-/**
- * The page's last pixels, painted in the slot the native view sits over and
- * refreshed whenever an overlay forces the page to hide, so an open menu leaves
- * a still frame behind it instead of an empty panel. A frame belongs to the url
- * it was taken from; after a navigation the old one is not shown again. A page
- * re-covered later needs a fresh capture, and a frame is page-sized pixels, so
- * none is kept once nothing shows it.
- */
 function usePageFrame(surface: string, url: string, covered: boolean): string | undefined {
   const frame = useQuery({
     queryKey: keys.browserFrame(surface, url),
@@ -382,7 +352,6 @@ function blockedPermissionsLabel(permissions: readonly string[]): string {
 
 const PNG_DATA_URL = "data:image/png;base64,";
 
-/** A picked element goes to the chat as its HTML under its selector, with its crop as a picture. */
 function addElementToChat(picked: BrowserElementPick): void {
   const image =
     picked.image?.startsWith(PNG_DATA_URL) === true
@@ -409,18 +378,9 @@ interface BrowserPanelProps {
   readonly url: string;
   readonly onUrlChange: (url: string) => void;
   readonly toolbarActions?: ReactNode;
-  /** Workspace path for per-workspace cookie jars. Null for home. */
   readonly workspacePath: string | null;
 }
 
-/**
- * The surface hold lasts as long as the panel shows this surface for this
- * owner. Navigation never ends it; only leaving does, and that is the one
- * close. The first open retains the view holder in main. Later runs ask for a
- * page only when the tab url moved away from what the page shows: an address
- * the user entered, a bookmark, a history entry. A url that arrived from the
- * page itself (a link, back, forward, a redirect) is already where it points.
- */
 export function BrowserPanel({
   surface,
   visible,

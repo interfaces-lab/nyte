@@ -41,7 +41,6 @@ function Fallback(): null {
   return null;
 }
 
-/** The workbench's terminal slots as `PanelContent` draws them, without the panel itself. */
 function TerminalSlots(): ReactElement {
   const view = useWorkbenchSnapshot().views.get(WORKBENCH_HOME_VIEW_KEY);
 
@@ -64,11 +63,6 @@ declare global {
   }
 }
 
-/**
- * The New Terminal shortcut, cold: the panels' chunk has not loaded and no
- * idle prefetch runs, since no workbench mounts. A module script stands in
- * for the chunk and publishes the real panels as it evaluates.
- */
 export async function run(): Promise<string> {
   check(readDeferred("workbench") === undefined, "The panels' chunk was already loaded");
   window.publishWorkbench = () =>

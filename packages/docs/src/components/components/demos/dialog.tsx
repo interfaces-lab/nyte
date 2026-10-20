@@ -35,13 +35,13 @@ export function AlertDialogDemo() {
       <AlertDialog.Trigger
         render={
           <Button variant="solid" tone="danger">
-            Delete Session
+            Delete Chat
           </Button>
         }
       />
       <AlertDialog.Popup>
         <AlertDialog.Header>
-          <AlertDialog.Title>Delete Session</AlertDialog.Title>
+          <AlertDialog.Title>Delete Chat</AlertDialog.Title>
           <AlertDialog.Description>
             The history tree and every head under it are removed. This cannot be undone.
           </AlertDialog.Description>
@@ -51,7 +51,7 @@ export function AlertDialogDemo() {
           <AlertDialog.Close
             render={
               <Button variant="solid" tone="danger">
-                Delete Session
+                Delete Chat
               </Button>
             }
           />

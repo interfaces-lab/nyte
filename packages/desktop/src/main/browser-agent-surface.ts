@@ -1,4 +1,3 @@
-/** The `BrowserAgent` over browser surfaces: one page per chat session, driven through the runtime. */
 import type { WebContents } from "electron";
 import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import type { SessionId } from "@nyte-ai/sdk";
@@ -17,32 +16,20 @@ import {
 } from "./browser-runtime.ts";
 import type { Surface } from "./browser-surface.ts";
 
-/** What the agent needs from the registry that owns every surface. */
 export interface AgentSurfaces {
   readonly emit: (event: HostEvent) => void;
   surface(id: string): Surface | undefined;
-  /** The surface with this id, created for `owner` when missing, held by `holder`. */
   retain(id: string, holder: BrowserHolder, owner: BrowserOwner): Surface;
-  /** Drop a holder; the surface closes when none remain. */
   release(id: string, holder: BrowserHolder): void;
   load(surface: Surface, url: string): void;
   place(surface: Surface): void;
   reclaimIdle(): void;
-  /** Mark the surface as just used, so reclamation keeps it longest. */
   touch(surface: Surface): void;
-  /** Whether the window the page is in has been shown, without which mouse input is dropped. */
   windowShown(surface: Surface): boolean;
 }
 
 const CLOSED = { kind: "failed", failure: { kind: "closed" } } as const;
 
-/**
- * Resolve once the page is worth reading. Measured on Electron 44: a response the
- * server never completes fires no event at all, not even `dom-ready`, so the bounded
- * wait is the only exit from it; a view destroyed mid-load fires only `destroyed`.
- * Returning while a page still loads is safe because the state carries `loading`, and
- * the model can wait longer with browser_wait.
- */
 const SETTLE_LIMIT_MS = 10_000;
 
 function waitForSettle(contents: WebContents, signal?: AbortSignal): Promise<void> {
@@ -253,11 +240,6 @@ export class SurfaceAgent implements BrowserAgent {
     return this.#surfaces.surface(sessionSurfaceId(sessionId));
   }
 
-  /**
-   * Background throttling is off only while an agent call runs against this
-   * surface. Electron never throttles a visible page, so this only changes what a
-   * hidden page does between calls. Calls may overlap; the count, not a lock, owns it.
-   */
   async #operate<T>(surface: Surface, run: (contents: WebContents) => Promise<T>): Promise<T> {
     const contents = surface.view.webContents;
     surface.operations += 1;

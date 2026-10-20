@@ -13,12 +13,6 @@ export function canvasShellUrl(scheme: ReturnType<typeof accountScheme>): string
   return `${scheme}://${CANVAS_HOST}/index.html`;
 }
 
-/**
- * Serve the renderer, account and canvas shell over the privileged scheme. The scheme keeps a code
- * cache, since the renderer bundle is served by it and a launch would otherwise compile it again,
- * which file: URLs never did. The sandboxed canvas frame's origin is opaque, so the shell's module
- * script, stylesheet and fonts are CORS requests.
- */
 export function registerRenderer(input: {
   readonly scheme: ReturnType<typeof accountScheme>;
   readonly frontendApiHost: string | undefined;

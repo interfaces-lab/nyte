@@ -27,14 +27,8 @@ const Report = Type.Object({
   coalescedAtMs: Type.Array(Type.Number()),
 });
 
-/** Two frames at 60Hz plus scheduling jitter; anything slower reads as lag. */
 const LATENCY_BUDGET_MS = 40;
 
-/**
- * The harness builds in production mode, so the measurement carries no
- * dev-only React checks. Vitest runs with NODE_ENV=test, which would otherwise
- * pick the dev JSX runtime.
- */
 async function buildHarness(outDir: string): Promise<void> {
   await build({
     configFile: false,
@@ -58,7 +52,6 @@ async function buildHarness(outDir: string): Promise<void> {
   });
 }
 
-/** Other test files spawn their own Electron at the same time; a regression fails every attempt, contention fails one. */
 const CONTENDED_RUN = { timeout: 60_000, retry: 2 };
 
 beforeAll(async () => {

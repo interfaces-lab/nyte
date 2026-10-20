@@ -60,7 +60,6 @@ async function click(element: Element, shift: boolean): Promise<void> {
   await paint();
 }
 
-/** Every element under `root`, through open shadow roots, that matches `selector`. */
 function deepQuery(root: ParentNode, selector: string): readonly Element[] {
   const found = [...root.querySelectorAll(selector)];
 
@@ -70,7 +69,6 @@ function deepQuery(root: ParentNode, selector: string): readonly Element[] {
   return found;
 }
 
-/** The line-number cell the diff draws for `line` of the file after the change. */
 function newLineNumber(container: HTMLElement, line: number): Element {
   const cell = deepQuery(container, `[data-column-number="${String(line)}"]`).find(
     (element) =>

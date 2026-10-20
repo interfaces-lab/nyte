@@ -1,4 +1,4 @@
-import { threadStyles } from "./thread.stylex.ts";
+import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -177,18 +177,18 @@ export function BlankConversation({
   }, [addFiles, dropDisabled]);
 
   return (
-    <div {...props(threadStyles.screen)}>
+    <div {...props(sessionScreenStyles.screen)}>
       {layout.kind === "split" && <PaneHeader paneId={paneId} title="New chat" />}
       <div
         ref={blankRef}
-        {...props(threadStyles.blank)}
+        {...props(sessionScreenStyles.blank)}
         onKeyDown={(event) => {
           if (event.key !== "Escape" || status.kind !== "waiting") return;
           event.preventDefault();
           viewStore.cancelSend(viewState.id);
         }}
       >
-        <div {...props(threadStyles.blankColumn)}>
+        <div {...props(sessionScreenStyles.blankColumn)}>
           <WorkspaceContext active={activePane(layout).id === paneId} />
           <ComposerFrame
             surface="new-chat"
@@ -280,7 +280,7 @@ export function BlankConversation({
             }
           />
           {status.kind === "waiting" && (
-            <div role="status" {...props(text.base, threadStyles.startRow)}>
+            <div role="status" {...props(text.base, sessionScreenStyles.startRow)}>
               Sends when Nyte connects
               <Button variant="ghost" size="xs" onClick={() => viewStore.cancelSend(viewState.id)}>
                 Cancel
@@ -293,8 +293,10 @@ export function BlankConversation({
               title={status.kind === "failed" ? status.cause : undefined}
               {...props(
                 intent.danger,
-                threadStyles.error,
-                status.kind === "refused" && status.fix !== undefined && threadStyles.startRow,
+                sessionScreenStyles.error,
+                status.kind === "refused" &&
+                  status.fix !== undefined &&
+                  sessionScreenStyles.startRow,
               )}
             >
               {status.kind === "failed" ? "Couldn’t start the chat. Try again." : status.message}

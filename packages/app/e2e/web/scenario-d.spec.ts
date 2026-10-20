@@ -74,7 +74,7 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
     if (window === window.top) localStorage.setItem("NYTE_TRACE", "1");
   });
   await page.goto(server.pairing);
-  await expect(page.getByRole("form", { name: "Message composer" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Message", exact: true })).toBeVisible();
   const log = messages(page);
 
   await test.step("a new chat in the repo asks why CI failed", async () => {

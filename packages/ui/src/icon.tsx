@@ -1,7 +1,3 @@
-/**
- * One leaf owns Nyte's icon family. Feature components choose a semantic
- * name; they never sketch SVG paths or import individual glyphs.
- */
 import { create, props } from "@stylexjs/stylex";
 import {
   CentralIconBase,
@@ -165,7 +161,6 @@ const IconCloudflare: Glyph = (iconProps) => (
   </CentralIconBase>
 );
 
-/** Each row reads as "semantic name → Central Icons name". Keep the rows sorted by semantic name. */
 const GLYPHS = {
   agent: IconCursorAi,
   apps: IconApps,
@@ -290,12 +285,6 @@ const GLYPHS = {
 
 export type IconName = keyof typeof GLYPHS;
 
-/**
- * The names that also draw filled. Every Central glyph module carries its own
- * copy of the icon base, so a filled twin is added only for a mark that needs
- * the weight. Both packages export the same names, so these are their
- * `Default` exports.
- */
 const FILLED_GLYPHS = {
   "bubble-question": IconBubbleQuestionDefault,
   warning: IconBell2ActiveDefault,
@@ -319,7 +308,6 @@ export function ControlGlyphs({ children }: { readonly children: ReactNode }): R
 }
 
 interface IconFrameProps {
-  /** Announced to assistive tech. Without it the icon is decorative and hidden. */
   readonly label?: string;
   readonly children: ReactNode;
   readonly className?: string;
@@ -370,17 +358,11 @@ export function Icon(iconProps: IconProps): ReactElement {
 
 export type PanelSide = "left" | "right";
 
-/**
- * Where the panel divider sits on the 24-unit grid. A visible panel draws a
- * full-height divider inside the frame; a hidden one shrinks it and nudges it
- * toward the edge it collapsed into.
- */
 const DIVIDER_X: Readonly<Record<PanelSide, Readonly<Record<"visible" | "hidden", number>>>> = {
   left: { visible: 9, hidden: 6.25 },
   right: { visible: 15, hidden: 17.75 },
 };
 
-// Both paths keep three points so the two shapes can morph into each other.
 function panelDividerPath(side: PanelSide, visible: boolean): string {
   const x = String(DIVIDER_X[side][visible ? "visible" : "hidden"]);
 
@@ -396,10 +378,6 @@ export interface PanelToggleIconProps {
   readonly size?: number;
 }
 
-/**
- * A side-aware panel outline whose divider reflects the current panel state.
- * Only the glyph moves; the panel geometry still changes immediately.
- */
 export function PanelToggleIcon({ side, visible, size = 16 }: PanelToggleIconProps): ReactElement {
   const reducedMotion = useReducedMotion();
 

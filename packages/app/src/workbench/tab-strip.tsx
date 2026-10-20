@@ -148,7 +148,6 @@ const styles = create({
     height: glyph.box,
     flexShrink: 0,
   },
-  // The tab reveals its close button over the faded end of its label.
   close: {
     position: "absolute",
     insetBlock: 0,

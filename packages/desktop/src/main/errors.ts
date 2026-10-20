@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { IpcFailure, IpcResult } from "@nyte-ai/app/errors.ts";
 
-/** Local-only, bounded diagnostics. Never export original exceptions to telemetry or IPC. */
 export const ipcDiagnostics = new Map<string, unknown>();
 
-/** Preserve the owner's ID and opaque cause in the shared local retention budget. */
 export function retainDiagnostic(diagnostic: {
   readonly correlationId: string;
   readonly cause: unknown;
@@ -18,10 +16,6 @@ export function retainDiagnostic(diagnostic: {
   }
 }
 
-/**
- * A failure already safe to show the renderer: a fixed message main or the host process wrote,
- * or an SDK failure the host process classified. Never pass request or provider text.
- */
 export class ExpectedHostError extends Error {
   readonly error: IpcFailure;
 
@@ -44,7 +38,6 @@ function ipcFailure(cause: unknown): IpcFailure {
   };
 }
 
-/** Owns failures from both request decoding and the operation, preserving returned outcomes. */
 export async function ipcResult<T>(operation: () => T | Promise<T>): Promise<IpcResult<T>> {
   try {
     return { ok: true, value: await operation() };

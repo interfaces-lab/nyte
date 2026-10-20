@@ -186,6 +186,7 @@ const styles = create({
     transitionProperty: "background-color, scale",
     transitionDuration: {
       default: motion.durationFast,
+      ":active": "0s",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOut,
@@ -234,6 +235,7 @@ const styles = create({
     transitionProperty: "background-color, color, scale",
     transitionDuration: {
       default: motion.durationFast,
+      ":active": "0s",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOut,
@@ -254,7 +256,6 @@ function copyText(title: ReactNode, description: ReactNode): string | undefined 
   return typeof description === "string" ? `${title}\n${description}` : title;
 }
 
-/** Says "Copied" in place for a moment; both labels share one cell so the width holds. */
 function CopyButton({
   value,
   inline,
@@ -287,10 +288,6 @@ function CopyButton({
   );
 }
 
-/**
- * Error toasts offer Copy. A lone button sits inline beside the title; a
- * description or a second button moves the buttons under the text.
- */
 function ToastList(): ReactElement[] {
   const { toasts } = Toast.useToastManager();
 

@@ -1,9 +1,3 @@
-/**
- * What a caller may restyle on each component through `xstyle`. A component
- * owns its padding, colours, height, corners, and type; a caller places it.
- * The `xstyle` types derive from this map, and the `nyte-restyle` lint rule
- * reads it to explain a rejected property.
- */
 import type {
   CSSProperties,
   InlineStyles,
@@ -113,13 +107,9 @@ export const restyleCategories = {
 type Category = keyof typeof restyleCategories;
 
 interface Contract {
-  /** The file that defines the component and its options. */
   readonly file: string;
-  /** The props that choose its look. */
   readonly options: readonly string[];
-  /** `host` paints nothing of its own, so the caller styles all of it. */
   readonly allow: readonly Category[] | "host";
-  /** Single properties allowed beyond the categories. */
   readonly also?: readonly string[];
 }
 
@@ -375,20 +365,14 @@ type Allowed<Entry extends Contract> =
       : never)
   | (Entry extends { readonly also: readonly (infer Property)[] } ? Property : never);
 
-/** A hue scope such as `intent.danger`, which retints a component without restyling it. */
 type Scope = Readonly<{ theme: StyleXClassNameFor<unknown, unknown> }>;
 
-/**
- * A compiled style that sets only `Property`, plus custom properties. Other
- * properties and pseudo-element blocks must be absent.
- */
 type Restyled<Property extends string> = Readonly<
   { readonly [Key in Property]?: StyleXClassNameFor<Key, unknown> | null } & {
     readonly [Key in Exclude<keyof CSSProperties, Property>]?: never;
   } & { readonly [pseudo: `:${string}`]: never }
 >;
 
-/** The `xstyle` a component accepts: the properties its contract lets a caller set. */
 export type Restyle<Name extends keyof Contracts> = Contracts[Name]["allow"] extends "host"
   ? XStyle
   : StyleXArray<

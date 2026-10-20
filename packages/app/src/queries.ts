@@ -48,15 +48,15 @@ import type {
   UsageSnapshot,
   UsageWindow,
 } from "./bridge.ts";
-import { groupDirectory } from "./session-directory.ts";
-import type { WorkspaceSessionDirectory } from "./session-directory.ts";
+import { groupByWorkspace } from "./session-list.ts";
+import type { WorkspaceSessions } from "./session-list.ts";
 import { nyte } from "./nyte.ts";
 import {
   childrenWatch,
   connectHost,
   connected,
   currentConnection,
-  directoryWatch,
+  sessionsWatch,
   findListedSession,
   gitStatusWatch,
   hostWatch,
@@ -309,7 +309,7 @@ export function useForgetWorkspace() {
 
 function useRootSessions(): readonly SessionInfo[] | undefined {
   const projection = useSessionProjection();
-  const roots = useWatch(directoryWatch("roots")).value;
+  const roots = useWatch(sessionsWatch("roots")).value;
 
   const recorded = useQuery<readonly SessionInfo[]>({
     queryKey: keys.firstFrameRoots,
@@ -326,7 +326,7 @@ function useRootSessions(): readonly SessionInfo[] | undefined {
 const NO_SESSIONS: ReadonlySet<SessionId> = new Set();
 
 export function useWorkingSessionIds(): ReadonlySet<SessionId> {
-  const all = useWatch(directoryWatch("all")).value;
+  const all = useWatch(sessionsWatch("all")).value;
 
   return useMemo(() => {
     if (all === undefined) return NO_SESSIONS;
@@ -346,15 +346,15 @@ export function useWorkingSessionIds(): ReadonlySet<SessionId> {
   }, [all]);
 }
 
-export function useWorkspaceSessionDirectory(): {
-  readonly data: readonly WorkspaceSessionDirectory[] | undefined;
+export function useWorkspaceSessions(): {
+  readonly data: readonly WorkspaceSessions[] | undefined;
 } {
   const roots = useRootSessions();
   const workspaces = useWorkspaces();
 
   return useMemo(
     () => ({
-      data: roots === undefined ? undefined : groupDirectory(roots, workspaces.data ?? []),
+      data: roots === undefined ? undefined : groupByWorkspace(roots, workspaces.data ?? []),
     }),
     [roots, workspaces.data],
   );
@@ -382,12 +382,15 @@ export function useSessionSearch(search: string, enabled = true) {
 
 export function useSession(sessionId: SessionId | undefined) {
   const projection = useSessionProjection();
-  const directory = useWatch(directoryWatch("roots"));
-  const recent = useWatch(directoryWatch("all"));
+  const directory = useWatch(sessionsWatch("roots"));
+  const recent = useWatch(sessionsWatch("all"));
 
-  const listed =
-    directory.value?.find((session) => session.id === sessionId) ??
-    recent.value?.find((session) => session.id === sessionId);
+  const listed = useMemo(
+    () =>
+      directory.value?.find((session) => session.id === sessionId) ??
+      recent.value?.find((session) => session.id === sessionId),
+    [directory.value, recent.value, sessionId],
+  );
 
   const read = useQuery({
     queryKey: keys.session(sessionId ?? asId<"session">("")),
@@ -867,7 +870,7 @@ export function connectLocalHost(): Promise<Connection> {
 export async function loadLocalResources(): Promise<void> {
   const version = ++localLoadVersion;
   const host = hostWatch("host");
-  const directory = directoryWatch("roots");
+  const directory = sessionsWatch("roots");
 
   const [state, workspaces, catalog] = await Promise.all([
     readHost(),

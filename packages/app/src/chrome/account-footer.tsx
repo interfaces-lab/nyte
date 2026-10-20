@@ -1,9 +1,3 @@
-/**
- * The sidebar footer's account row. Its label is the GitHub CLI login, or this
- * Mac's name without one; it never shows the Nyte account. The menu lists each
- * account in its own group, each read by its own component, so signing in or
- * out of one never changes how the other reads. Signing out lives in Profile.
- */
 import { Icon } from "@nyte-ai/ui/icon";
 import {
   Menu,
@@ -32,10 +26,6 @@ const FEEDBACK_URL = "https://github.com/interfaces-lab/nyte/issues/new/choose";
 
 const INSTALL_GITHUB_CLI_URL = "https://cli.github.com";
 
-/**
- * The GitHub CLI's item: who is signed in, or the one step that gets there.
- * Signing in opens Profile, which shows the device code the sign-in waits on.
- */
 function GitHubGroup({
   account: { query, auth, busy },
   onOpenProfile,
@@ -70,7 +60,6 @@ function GitHubGroup({
   );
 }
 
-/** The Nyte account's item: its address, or Sign In. Absent where accounts are unavailable. */
 function NyteGroup({
   connect,
   onOpenProfile,
@@ -107,7 +96,6 @@ function NyteGroup({
   );
 }
 
-/** The machine's GitHub login labels the row; a refetch keeps the last answer meanwhile. */
 export function AccountFooterMenu({
   connect,
   anchor,

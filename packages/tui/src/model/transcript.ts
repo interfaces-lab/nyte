@@ -3,7 +3,7 @@ import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { MIN_REPORTED_DURATION_MS } from "../lib/constants.ts";
-import { landingMessages, pendingReports } from "../lib/view-helpers.ts";
+import { promptMessages, pendingReports } from "../lib/view-helpers.ts";
 import type { ShellJob, TranscriptLocal } from "./state.ts";
 import { mountWindow } from "./window.ts";
 import type { MountWindow } from "./window.ts";
@@ -13,7 +13,7 @@ export type RowKey = string;
 /** One transcript row. A row carries its content, and an unchanged row keeps its identity across frames. */
 export type Row =
   | { readonly kind: "turn"; readonly key: RowKey; readonly turn: TurnModel }
-  | { readonly kind: "landing"; readonly key: RowKey; readonly message: UserMessage }
+  | { readonly kind: "prompt"; readonly key: RowKey; readonly message: UserMessage }
   | { readonly kind: "shell"; readonly key: RowKey; readonly job: ShellJob };
 
 export interface TranscriptModel {
@@ -172,7 +172,7 @@ function turnRows(view: SessionView): readonly Row[] {
     rows.push(turnRow(turn));
   }
 
-  for (const message of [...landingMessages(view), ...pendingReports(view)])
+  for (const message of [...promptMessages(view), ...pendingReports(view)])
     rows.push(messageRow(message));
 
   return rows;
@@ -293,7 +293,7 @@ function messageRow(message: UserMessage): Row {
   const known = MESSAGE_ROWS.get(message);
 
   if (known !== undefined) return known;
-  const row: Row = { kind: "landing", key: `landing:${message.id}`, message };
+  const row: Row = { kind: "prompt", key: `prompt:${message.id}`, message };
   MESSAGE_ROWS.set(message, row);
 
   return row;

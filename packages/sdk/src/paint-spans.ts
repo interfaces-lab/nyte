@@ -1,4 +1,5 @@
 import { followedTrace, startSpan, tracing } from "@nyte-ai/core";
+import { mapped } from "@nyte-ai/protocol";
 import type { SessionId, SessionView } from "@nyte-ai/schema";
 
 /**
@@ -15,34 +16,33 @@ export function tracePaints(
   session: SessionId,
   painted: () => Promise<void>,
 ): AsyncIterable<SessionView> {
-  return tracing.enabled ? timed(views, session, painted) : views;
-}
+  if (!tracing.enabled) return views;
 
-async function* timed(
-  views: AsyncIterable<SessionView>,
-  session: SessionId,
-  painted: () => Promise<void>,
-): AsyncIterable<SessionView> {
-  let shown: ReadonlySet<string> | null = null;
+  return {
+    [Symbol.asyncIterator]() {
+      let shown: SessionView["messages"] | null = null;
 
-  for await (const view of views) {
-    const ids = new Set(view.messages.map((message) => message.id));
+      return mapped(views, (view) => {
+        if (view.messages === shown) return view;
+        const known = shown === null ? null : new Set(shown.map((message) => message.id));
+        const followed = followedTrace(session);
 
-    const followed = followedTrace(session);
+        for (const message of view.messages) {
+          if (known === null ? message.id !== followed : known.has(message.id)) continue;
+          const user = message.kind === "user";
 
-    for (const message of view.messages) {
-      if (shown === null ? message.id !== followed : shown.has(message.id)) continue;
-      const user = message.kind === "user";
+          const ended = startSpan("client.paint", user ? message.id : followed, {
+            session,
+            kind: user ? "user" : message.partKind,
+          });
 
-      const ended = startSpan("client.paint", user ? message.id : followed, {
-        session,
-        kind: user ? "user" : message.partKind,
-      });
+          void painted().then(() => ended());
+        }
 
-      void painted().then(() => ended());
-    }
+        shown = view.messages;
 
-    shown = ids;
-    yield view;
-  }
+        return view;
+      })[Symbol.asyncIterator]();
+    },
+  };
 }

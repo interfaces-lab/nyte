@@ -34,7 +34,6 @@ type RuntimeState =
 
 const bridge = window.nyteAccount;
 
-/** Clerk shows its own error in the form when the callback fails, so "Finishing" stops covering it. */
 const FINISHING_COVER_MS = 15_000;
 
 const styles = create({

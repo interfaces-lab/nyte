@@ -11,7 +11,7 @@ The transcript is always in one of two modes.
 
 ## Entering Following
 
-1. Opening a thread that was left at the end.
+1. Opening a session that was left at the end.
 2. Sending a message.
 3. Clicking scroll-to-bottom.
 4. The reader scrolling to the real end.
@@ -46,11 +46,11 @@ Only the reader moves Reading back to Following, through rules 3 and 4. Saving o
 
 ## Row identity
 
-19. A row keeps its identity, its DOM, and its position through every change to its content. That covers a landing or steered message joining its turn, a continuation folding into the previous row, a commit replacing live parts, and streamed text arriving.
+19. A row keeps its identity, its DOM, and its position through every change to its content. That covers a prompt or steered message joining its turn, a continuation folding into the previous row, a commit replacing live parts, and streamed text arriving.
 
 ## Restore and resize
 
-20. Each pane remembers each thread's position. A thread left at the end reopens at the end. Otherwise it reopens with the same anchor row at the same offset within it.
+20. Each pane remembers each session's position. A session left at the end reopens at the end. Otherwise it reopens with the same anchor row at the same offset within it.
 21. On window or pane resize, Following stays at the end and Reading keeps its anchor.
 
 ## Always

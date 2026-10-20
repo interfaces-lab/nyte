@@ -1,4 +1,3 @@
-/** Browser panel decisions that need no Electron; `browser.ts` applies them. */
 import type { BrowserKey, BrowserSurfaceState } from "@nyte-ai/app/bridge.ts";
 
 const NET_ERROR_ABORTED = -3;
@@ -20,7 +19,6 @@ export function webUrl(input: string): string | undefined {
   return url.protocol === "https:" || url.protocol === "http:" ? url.href : undefined;
 }
 
-/** Dev servers rarely speak TLS, so local and intranet hosts stay plain. */
 export function onLocalNetwork(hostname: string): boolean {
   const host = hostname.toLowerCase();
 

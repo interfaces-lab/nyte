@@ -61,7 +61,6 @@ export function PreviewCardContent({
     PreviewCardPrimitive.Positioner.Props,
     "anchor" | "side" | "align" | "sideOffset" | "alignOffset" | "collisionAvoidance"
   > & {
-    /** Scopes the popup to a hue. */
     readonly tint?: Tint;
   }): ReactElement {
   return (

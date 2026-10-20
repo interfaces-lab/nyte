@@ -69,7 +69,6 @@ export interface DesktopHostDependencies {
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
   readonly agent: BrowserAgent;
   readonly openDelayMs?: number | undefined;
-  /** The token windows hold from an earlier run of this host; default a new one. */
   readonly token?: string;
   readonly preview?: CanvasPreviewer;
   readonly revoked?: () => void;
@@ -391,7 +390,6 @@ export class DesktopHost {
     return { host, listener, token };
   }
 
-  /** Answers a window's request to the host, as `servePort` passes it on from the window's MessagePort. */
   async fetch(request: Request): Promise<Response> {
     return (await this.#ready()).listener.fetch(request);
   }

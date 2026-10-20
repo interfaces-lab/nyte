@@ -1,13 +1,7 @@
-/**
- * Renderer surfaces describe their right-click menu; main pops it natively.
- * A native menu needs no overlay occlusion to sit above browser pages, and
- * clipboard roles act on the focused web contents with full format fidelity.
- */
 import { Menu } from "electron";
 import type { BrowserWindow, MenuItemConstructorOptions } from "electron";
 import type { CallInput, CallOutput } from "../shared/ipc.ts";
 
-/** Pop the menu and resolve the chosen item's index. Accelerators only label rows: the renderer owns the shortcuts. */
 export async function showContextMenu({
   window,
   input: { items, x, y },

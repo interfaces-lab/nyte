@@ -1,8 +1,3 @@
-/**
- * The browser agent across the process line: the host process runs the browser tools, and
- * main owns the pages they drive. The host asks for one `AgentCall` at a time and main answers
- * it from its `BrowserAgent`. Abort signals cannot be cloned, so a call never carries one.
- */
 import type {
   BrowserActionResult,
   BrowserAgent,
@@ -33,7 +28,6 @@ export type AgentAnswer =
   | { readonly kind: "captured"; readonly bytes: Uint8Array | undefined }
   | { readonly kind: "released" };
 
-/** Main's side: runs one call against the panel's agent. */
 export async function answerAgent(agent: BrowserAgent, call: AgentCall): Promise<AgentAnswer> {
   switch (call.method) {
     case "open":
@@ -68,7 +62,6 @@ export async function answerAgent(agent: BrowserAgent, call: AgentCall): Promise
   }
 }
 
-/** The host process's side: a `BrowserAgent` whose every call `ask`s main. */
 export function remoteAgent(ask: (call: AgentCall) => Promise<AgentAnswer>): BrowserAgent {
   const action = async (call: AgentCall): Promise<BrowserActionResult> => {
     const answer = await ask(call);

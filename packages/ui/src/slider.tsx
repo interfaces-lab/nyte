@@ -36,7 +36,6 @@ const styles = create({
     backgroundColor: role.bgControl,
     userSelect: "none",
   },
-  // The filled part paints inside the primary intent.
   indicator: {
     borderRadius: "inherit",
     backgroundColor: role.bgControlSelected,

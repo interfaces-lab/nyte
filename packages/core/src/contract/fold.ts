@@ -116,8 +116,6 @@ export interface FoldTurn {
   readonly live: readonly CallId[];
 }
 
-export type UserMessage = Extract<Message, { readonly kind: "user" }>;
-
 export type Logged<Kind extends SessionEvent["kind"]> = Extract<
   SessionEvent,
   { readonly kind: Kind }

@@ -1,11 +1,3 @@
-/**
- * The occlusion contract, end to end: a menu that opens over a browser panel
- * must make the panel report its page hidden, without changing its bounds, and
- * must hand the page back when the menu closes.
- *
- * `window.nyte` is installed by the setup script below, before this module's
- * imports run, because the renderer reads the bridge at import time.
- */
 import "../../test/window-bridge.ts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
@@ -46,7 +38,6 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
   }
 }
 
-/** A menu anchored at the centre of the viewport, so its popup lands on the page. */
 function Harness({ menuOpen }: { menuOpen: boolean }): ReactElement {
   return (
     <>

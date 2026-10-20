@@ -37,7 +37,6 @@ async function until(condition: () => boolean, message: string): Promise<void> {
   }
 }
 
-/** A shell job whose output the test prints. */
 function shellJob() {
   const frames: OutputFrame[] = [];
   let wake: (() => void) | null = null;
@@ -80,7 +79,6 @@ function shellJob() {
   };
 }
 
-/** The vertical centres of the grid rows that hold ink, top to bottom. */
 function inkedRows(canvas: HTMLCanvasElement): readonly number[] {
   const context = canvas.getContext("2d");
 

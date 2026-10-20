@@ -32,7 +32,7 @@ export function queuedMessages(view: SessionView): readonly UserMessage[] {
   );
 }
 
-export function landingMessages(view: SessionView): readonly UserMessage[] {
+export function promptMessages(view: SessionView): readonly UserMessage[] {
   return unlandedMessages(view.messages).filter(
     (message) => !showsReport(message) && landsNow(message, view),
   );

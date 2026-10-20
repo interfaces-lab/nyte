@@ -2,7 +2,6 @@ import type { MentionFile } from "./message-references.ts";
 import { createFileRanking } from "../file-ranking.ts";
 import { mentionsFolder } from "./message-references.ts";
 
-/** The context entry does not count toward the workspace result limit. */
 const MAX_FILE_SUGGESTIONS = 20;
 
 export interface MentionSuggestion {
@@ -41,7 +40,6 @@ function fileSuggestion(file: MentionFile): FileSuggestion {
   };
 }
 
-/** One catalog owns one lazy index, not a growing cache of queries or catalogs. */
 export function createMentionSuggestionRanking(files: readonly MentionFile[]) {
   const rankFiles = createFileRanking(files, MAX_FILE_SUGGESTIONS);
 
