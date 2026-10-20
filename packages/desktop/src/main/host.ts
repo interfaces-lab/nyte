@@ -49,7 +49,7 @@ import { callTable } from "./ipc-call.ts";
 import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { SavedServer } from "./server-settings.ts";
-import { findTailnetAddress } from "./tailnet.ts";
+import { findTailnetAddress, serveTailnet } from "./tailnet.ts";
 
 export type DesktopUpdateActivity =
   | { readonly kind: "idle" }
@@ -91,7 +91,7 @@ type ActiveRemote =
       readonly listener: Listener;
       readonly address: string;
       readonly token: string;
-      readonly pairingUrl: string;
+      readonly unexpose: () => Promise<void>;
     }
   | {
       readonly kind: "plugin";
@@ -276,19 +276,6 @@ async function tailnetAvailability(): Promise<TailnetAvailability> {
   return lookup.kind === "ready"
     ? { kind: "ready", ip: lookup.address.ip, name: lookup.address.name }
     : lookup;
-}
-
-async function requireTailnetHost(): Promise<string> {
-  const lookup = await findTailnetAddress(process.platform);
-
-  if (lookup.kind === "ready") return lookup.address.ip;
-  throw new ExpectedHostError({
-    code: "unavailable",
-    message:
-      lookup.kind === "missing"
-        ? "Tailscale isn't installed on this Mac"
-        : "Tailscale isn't running. Start it, then try again.",
-  });
 }
 
 export class DesktopHost {
@@ -747,12 +734,14 @@ export class DesktopHost {
         cloudflare,
       };
 
+    const { reach, address, token } = active;
+
     return {
       kind: "serving",
-      reach: active.reach,
-      address: active.address,
-      token: active.token,
-      pairingUrl: active.pairingUrl,
+      reach,
+      address,
+      token,
+      pairingUrl: `${APP_ORIGINS[0]}/pair#host=${encodeURIComponent(address)}&token=${encodeURIComponent(token)}`,
       target: { kind: "home" },
       cloudflare,
     };
@@ -817,19 +806,34 @@ export class DesktopHost {
     const { host } = await this.#opened;
 
     if (reach === "local" || reach === "tailnet") {
-      const hostname = reach === "tailnet" ? await requireTailnetHost() : "127.0.0.1";
       const token = newToken();
 
       const listener = await host.listen({
-        transport: { kind: "http", hostname },
+        transport: { kind: "http", hostname: "127.0.0.1" },
         auth: { kind: "token", token },
         origins: APP_ORIGINS,
       });
 
-      const address = listenerAddress(listener);
-      const pairingUrl = `${APP_ORIGINS[0]}/pair#host=${encodeURIComponent(address)}&token=${encodeURIComponent(token)}`;
+      const local = listenerAddress(listener);
 
-      return { kind: "token", reach, listener, address, token, pairingUrl };
+      if (reach === "local")
+        return { kind: "token", reach, listener, address: local, token, unexpose: async () => {} };
+
+      try {
+        const served = await serveTailnet(Number(new URL(local).port));
+
+        return {
+          kind: "token",
+          reach,
+          listener,
+          address: served.address,
+          token,
+          unexpose: served.stop,
+        };
+      } catch (cause) {
+        await listener.close();
+        throw cause;
+      }
     }
 
     const exposure = await this.#remotePlugin(reach).expose(this.#remoteChanged);
@@ -866,8 +870,13 @@ export class DesktopHost {
     if (active === undefined) return;
     this.#remote = undefined;
 
-    if (active.kind === "plugin") await active.exposure.disconnect();
-    await active.listener.close();
+    try {
+      if (active.kind === "plugin") await active.exposure.disconnect();
+      else await active.unexpose();
+    } finally {
+      await active.listener.close();
+    }
+
     this.#remoteChanged();
   }
 
