@@ -69,7 +69,7 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
   await saveFrame(tui, "U-04-canvas");
   await tui.frame((frame) => frame.includes("I picked Luigi's Trattoria"));
   await tui.state((store) => store.screen().run.kind === "idle");
-  await tui.renderOnce();
+  await tui.highlighted();
   await saveFrame(tui, "U-05-answer");
 
   expect(turns.pending()).toEqual([]);
@@ -174,7 +174,7 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
 
   await resumed.frame((frame) => frame.includes("I picked Luigi's Trattoria"));
   await resumed.state((store) => store.screen().run.kind === "idle");
-  await resumed.renderOnce();
+  await resumed.highlighted();
   await saveFrame(resumed, "U-07-resumed");
 
   expect(resumed.captureCharFrame()).toBe(before);
