@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import type { ToolClass } from "@nyte-ai/sdk";
+import type { PartId, SessionId, ToolClass } from "@nyte-ai/sdk";
 import {
   condensedCommand,
   formatDuration,
@@ -11,18 +11,24 @@ import {
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
+import type { ButtonSize } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { toast } from "@nyte-ai/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { useMutation } from "@tanstack/react-query";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { errorMessage } from "../errors.ts";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { activityStyles } from "./activity.stylex.ts";
+import { moveToBackground } from "./shell-background.ts";
 import { terminalText } from "./terminal-text.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
+import { useTranscriptScope } from "./transcript.tsx";
 
 type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
 
@@ -136,6 +142,7 @@ const styles = create({
     whiteSpace: "nowrap",
     userSelect: "none",
   },
+  headerWithBackground: { paddingInlineEnd: `calc(${space.s8} + ${space.s6})` },
   iconSwap: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
   iconDefault: { display: "var(--_icon-default)" },
   iconHover: { display: "var(--_icon-hover)" },
@@ -173,6 +180,8 @@ const styles = create({
     },
   },
   previewText: { flexShrink: 0, width: "100%", minWidth: 0 },
+  lineRow: { display: "flex", alignItems: "center", gap: space.s1, minWidth: 0 },
+  lineInRow: { width: "auto" },
 });
 
 const tokenStyles = create({
@@ -306,6 +315,45 @@ function CopyCommand({ command }: { readonly command: string }): ReactElement {
   );
 }
 
+function MoveToBackground({
+  sessionId,
+  part,
+  size,
+}: {
+  readonly sessionId: SessionId;
+  readonly part: PartId;
+  readonly size: ButtonSize;
+}): ReactElement {
+  const move = useMutation({
+    mutationFn: () => moveToBackground(sessionId, part),
+    onError: (cause) =>
+      toast.add({
+        type: "error",
+        title: "Couldn't move the command to the background",
+        description: errorMessage(cause),
+      }),
+  });
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size={size}
+            iconOnly
+            icon="minimize"
+            aria-label="Move to background"
+            loading={move.isPending || move.isSuccess}
+            onClick={() => move.mutate()}
+          />
+        }
+      />
+      <TooltipContent>Move to background</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function FollowScroll({
   follow,
   height,
@@ -386,6 +434,10 @@ export const ShellCallView = memo(function ShellCallView({
   const running = status.tense === "running";
   const [open, setOpen] = useState(false);
   const { state } = message;
+  const sessionId = useTranscriptScope()?.sessionId;
+
+  const movable =
+    sessionId !== undefined && state.phase === "running" && message.status.kind === "live";
 
   const raw = running
     ? state.phase === "running"
@@ -428,6 +480,7 @@ export const ShellCallView = memo(function ShellCallView({
             xstyle={[
               text.base,
               styles.header,
+              movable && styles.headerWithBackground,
               status.tone === "stopped" && toolLineStyles.dimmedText,
               focus.ringInset,
             ]}
@@ -444,6 +497,7 @@ export const ShellCallView = memo(function ShellCallView({
             <ToolOutcome status={status} />
           </Collapsible.Trigger>
           <span {...props(styles.headerActions)}>
+            {movable && <MoveToBackground sessionId={sessionId} part={message.part} size="xs" />}
             <CopyCommand command={toolClass.command} />
           </span>
         </div>
@@ -460,24 +514,36 @@ export const ShellCallView = memo(function ShellCallView({
     );
   }
 
+  const line = (
+    <Collapsible.Trigger
+      variant="plain"
+      xstyle={[
+        toolLineStyles.line,
+        toolLineStyles.clickable,
+        status.tone === "stopped" && toolLineStyles.dimmed,
+        movable && styles.lineInRow,
+        focus.ringInset,
+      ]}
+    >
+      {verb !== undefined && (
+        <span {...props(toolLineStyles.action, running && activityStyles.shimmer)}>{verb}</span>
+      )}
+      <span {...props(toolLineStyles.details)}>{label}</span>
+      <ToolOutcome status={status} />
+      <Collapsible.Chevron size={12} xstyle={toolLineStyles.chevron} />
+    </Collapsible.Trigger>
+  );
+
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} xstyle={toolLineStyles.root}>
-      <Collapsible.Trigger
-        variant="plain"
-        xstyle={[
-          toolLineStyles.line,
-          toolLineStyles.clickable,
-          status.tone === "stopped" && toolLineStyles.dimmed,
-          focus.ringInset,
-        ]}
-      >
-        {verb !== undefined && (
-          <span {...props(toolLineStyles.action, running && activityStyles.shimmer)}>{verb}</span>
-        )}
-        <span {...props(toolLineStyles.details)}>{label}</span>
-        <ToolOutcome status={status} />
-        <Collapsible.Chevron size={12} xstyle={toolLineStyles.chevron} />
-      </Collapsible.Trigger>
+      {movable ? (
+        <div {...props(styles.lineRow)}>
+          {line}
+          <MoveToBackground sessionId={sessionId} part={message.part} size="2xs" />
+        </div>
+      ) : (
+        line
+      )}
       <Collapsible.Panel
         data-tool-body
         role="region"
