@@ -1,6 +1,7 @@
 import type { CredentialInfo, Models, Provider } from "@nyte-ai/ai";
 import { ModelRefType, ThinkingType } from "@nyte-ai/schema";
 import type { Json, ModelRef, Thinking } from "@nyte-ai/schema";
+import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { CredentialStatus, ModelState } from "../contract/host.ts";
 import { decodeKvValue } from "../contract/records.ts";
@@ -23,6 +24,33 @@ const CHECK_INTERVAL_MS = 60_000;
 export const MODEL_PREFERENCE = kvRef("host", "models", "default");
 
 const THINKING_PREFERENCES = kvRef("host", "models", "thinking/");
+
+const MODEL_LISTINGS = kvRef("host", "models", "listing/");
+
+const SavedListingType = Type.Enum(["hidden", "favorite"]);
+
+export function modelListingRef(model: ModelRef): string {
+  return `${MODEL_LISTINGS}${model.provider}/${model.id}`;
+}
+
+export async function readModelListings(
+  store: StoreConnection,
+): Promise<ReadonlyMap<string, "hidden" | "favorite">> {
+  const refs = await store.refs.list(MODEL_LISTINGS);
+
+  const entries = await Promise.all(
+    refs.map(async (ref): Promise<readonly (readonly [string, "hidden" | "favorite"])[]> => {
+      if (ref.target === null) return [];
+      const value = decodeKvValue(await store.objects.get(ref.target));
+
+      return Value.Check(SavedListingType, value)
+        ? [[ref.name.slice(MODEL_LISTINGS.length), value]]
+        : [];
+    }),
+  );
+
+  return new Map(entries.flat());
+}
 
 export function thinkingPreferenceRef(model: ModelRef): string {
   return `${THINKING_PREFERENCES}${model.provider}/${model.id}`;

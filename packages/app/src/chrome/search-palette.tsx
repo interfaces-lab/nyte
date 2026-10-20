@@ -142,6 +142,8 @@ export function SearchPalette({
           return onOpenSettings("profile");
         case "customize-settings":
           return onOpenCustomize();
+        case "reload-window":
+          return window.location.reload();
         default: {
           const _exhaustive: never = action;
 

@@ -85,6 +85,16 @@ export const operations = {
     { kind: "unknown-model" },
     { kind: "unset" },
   ),
+  "models.setListing input": operation(
+    OPERATIONS["models.setListing"].input,
+    { refs: [modelRef], listing: "favorite" },
+    { refs: [modelRef], listing: "pinned" },
+  ),
+  "models.setListing output": operation(
+    OPERATIONS["models.setListing"].output,
+    { kind: "set" },
+    { kind: "unset" },
+  ),
   "models.verify input": operation(OPERATIONS["models.verify"].input, { provider: "test" }, {}),
   "models.verify output": operation(
     OPERATIONS["models.verify"].output,

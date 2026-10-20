@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
 test(
-  "the native stacked diff collapses and reveals one file without affecting another",
+  "the native stacked diff collapses one file without affecting another and finds text in a collapsed file",
   { timeout: 60_000 },
   async () => {
     const bridge =

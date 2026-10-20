@@ -180,7 +180,7 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "test": "vitest --run",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsrs --noEmit",
     "build:package": "bun ../../scripts/sdk-packages.mjs build plugin"
   },
   "dependencies": {

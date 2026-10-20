@@ -44,6 +44,7 @@ const copilot: Catalog["providers"][number] = {
   methods: [{ kind: "oauth" }],
   limits: [],
   models: [model("gpt", "GPT Fixture")],
+  listings: {},
 };
 
 const disconnected: Catalog = {

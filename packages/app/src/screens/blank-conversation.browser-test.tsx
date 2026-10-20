@@ -38,7 +38,17 @@ function catalog(credential: "configured" | "missing"): ModelCatalogView {
   return {
     generation: asId<"catalog-generation">(`live-${credential}`),
     default: MODEL.ref,
-    providers: [{ id: "test", name: "Test", credential, methods: [], limits: [], models: [MODEL] }],
+    providers: [
+      {
+        id: "test",
+        name: "Test",
+        credential,
+        methods: [],
+        limits: [],
+        models: [MODEL],
+        listings: {},
+      },
+    ],
   };
 }
 

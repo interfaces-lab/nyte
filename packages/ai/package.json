@@ -161,7 +161,7 @@
     "clean": "rm -rf node_modules .turbo",
     "models:generate": "node scripts/generate-models.ts",
     "models:publish": "node scripts/publish-models.ts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsrs --noEmit",
     "test": "vitest --run",
     "build:package": "bun ../../scripts/sdk-packages.mjs build ai"
   },

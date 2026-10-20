@@ -187,6 +187,7 @@ export type {
   ModelAccount,
   ModelCatalogView,
   ModelInfo,
+  ModelListing,
   ModelRef,
   ModelRequest,
   ModelRequestInput,

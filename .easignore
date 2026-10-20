@@ -25,6 +25,7 @@ share/
 /tmp/
 .next/
 /packages/ai/catalog/
+.agents/skills/pnpm-*
 /packages/app/e2e/test-results/
 /packages/app/e2e/playwright-report/
 /packages/desktop/e2e/test-results/
@@ -40,9 +41,12 @@ packages/lab/audits/
 packages/lab/references/
 packages/lab/research_notes/
 packages/lab/reports/
+packages/lab/video/
+packages/lab/.tanstack/
 
 # packages/desktop
 packages/desktop/out/
+packages/desktop/out-e2e/
 packages/desktop/resources/adblock.bin
 *.log*
 

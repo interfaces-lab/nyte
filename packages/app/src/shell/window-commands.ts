@@ -36,6 +36,7 @@ const COMMANDS = [
   "back",
   "forward",
   "focus-pane",
+  "reload-window",
 ] as const satisfies readonly AppMenuAction[];
 
 export function windowCommand(id: string): AppMenuAction | undefined {
@@ -172,6 +173,10 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
       return splitPanes(windowTabs.controller(), command === "split-down" ? "down" : "right");
     case "focus-pane":
       return focusNextPane(windowTabs.controller());
+    case "reload-window":
+      window.location.reload();
+
+      return true;
     default: {
       const _exhaustive: never = command;
 

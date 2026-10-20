@@ -22,6 +22,7 @@ export const CATALOG: ModelCatalogView = {
       credential: "configured",
       methods: [{ kind: "key" }],
       limits: [],
+      listings: {},
       models: [
         {
           ref: { provider: "test", id: "model" },

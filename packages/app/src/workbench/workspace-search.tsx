@@ -329,7 +329,6 @@ export function WorkspaceSearch({
             </div>
           </InputGroup>
           <Button
-            size="sm"
             iconOnly
             icon="filters"
             aria-label="Search filters"
@@ -340,28 +339,24 @@ export function WorkspaceSearch({
         </div>
         <div id={filtersId} hidden={!filtersOpen}>
           <div {...props(styles.filters)}>
-            <InputGroup xstyle={styles.field}>
-              <Input
-                type="text"
-                aria-label="Files to include"
-                placeholder="Files to include"
-                title="Glob patterns separated by semicolons, for example src/**; lib/**"
-                value={include}
-                spellCheck={false}
-                onValueChange={setInclude}
-              />
-            </InputGroup>
-            <InputGroup xstyle={styles.field}>
-              <Input
-                type="text"
-                aria-label="Files to exclude"
-                placeholder="Files to exclude"
-                title="Glob patterns separated by semicolons, for example **/*.test.*"
-                value={exclude}
-                spellCheck={false}
-                onValueChange={setExclude}
-              />
-            </InputGroup>
+            <Input
+              type="text"
+              aria-label="Files to include"
+              placeholder="Files to include"
+              title="Glob patterns separated by semicolons, for example src/**; lib/**"
+              value={include}
+              spellCheck={false}
+              onValueChange={setInclude}
+            />
+            <Input
+              type="text"
+              aria-label="Files to exclude"
+              placeholder="Files to exclude"
+              title="Glob patterns separated by semicolons, for example **/*.test.*"
+              value={exclude}
+              spellCheck={false}
+              onValueChange={setExclude}
+            />
           </div>
         </div>
       </div>

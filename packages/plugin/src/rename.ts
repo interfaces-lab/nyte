@@ -29,12 +29,14 @@ const renameCommand: Command<"core"> = {
 };
 
 /**
- * Names an unnamed root session after its first run: one `api.request` to
- * the session's model for a title, then `session.update({ name })`. A named
- * session or a child keeps its name, so every later run is a no-op. The
- * request runs past the hook's budget, bounded by the plugin's deactivation;
- * a failure is reported and leaves the name alone. `/rename <name>` names the
- * chat; `/rename` alone asks the model again.
+ * Names an unnamed root session as its first run starts: the first line of
+ * the user's message at once, then the title one `api.request` to the
+ * session's model returns, alongside the run. The title replaces only that
+ * first line, so a name given meanwhile stays. A named session or a child
+ * keeps its name, so every later run is a no-op. The request runs past the
+ * hook's budget, bounded by the plugin's deactivation; a failure is reported
+ * and leaves the first line as the name. `/rename <name>` names the chat;
+ * `/rename` alone asks the model again.
  *
  * @category plugins
  * @since 0.1.0
@@ -43,11 +45,13 @@ export default {
   id: "rename",
   contribute: { commands: [renameCommand] },
   hooks: {
-    run_ended: (_end, { api }) => {
+    run_started: (run, { api }) => {
+      if (run.origin.kind !== "input") return;
+
       void nameUnnamed(api).catch((error: unknown) =>
         api.report({
           severity: "warning",
-          path: ["run_ended"],
+          path: ["run_started"],
           message: `Naming the session failed: ${error instanceof Error ? error.message : String(error)}`,
           source: { plugin: "rename" },
         }),
@@ -61,7 +65,27 @@ async function nameUnnamed(api: PluginApi): Promise<void> {
 
   if (info.name !== null || info.parent !== null) return;
 
-  await api.session.update({ name: await requestTitle(api, api.signal) });
+  const view = await api.session.view();
+
+  const words = view.messages.flatMap((message) =>
+    message.kind === "user" ? [userWords(message.content)] : [],
+  )[0];
+
+  const firstLine = words
+    ?.split("\n")
+    .find((line) => line.trim() !== "")
+    ?.trim()
+    .slice(0, NAME_LIMIT);
+
+  if (firstLine === undefined) return;
+
+  await api.session.update({ name: firstLine });
+
+  const title = await requestTitle(api, api.signal);
+
+  if ((await api.session.info()).name !== firstLine) return;
+
+  await api.session.update({ name: title });
 }
 
 async function requestTitle(api: PluginApi, signal: AbortSignal): Promise<string> {
@@ -101,19 +125,16 @@ async function requestTitle(api: PluginApi, signal: AbortSignal): Promise<string
 function transcript(messages: readonly Message[]): string {
   return messages
     .flatMap((message) => {
-      if (message.kind === "user") {
-        const words =
-          typeof message.content === "string"
-            ? message.content
-            : message.content
-                .flatMap((block) => (block.kind === "text" ? [block.text] : []))
-                .join(" ");
-
-        return [`User: ${words}`];
-      }
+      if (message.kind === "user") return [`User: ${userWords(message.content)}`];
 
       return isPart(message, text) ? [`Assistant: ${message.state.markdown}`] : [];
     })
     .join("\n\n")
     .slice(0, 4000);
+}
+
+function userWords(content: Extract<Message, { kind: "user" }>["content"]): string {
+  return typeof content === "string"
+    ? content
+    : content.flatMap((block) => (block.kind === "text" ? [block.text] : [])).join(" ");
 }

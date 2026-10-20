@@ -689,6 +689,39 @@ const sessionSnapshotDropped: SchemaStep = {
   sql: { sqlite: [], postgres: [] },
 };
 
+/** A `changes` event holds the session's whole list of changed files; 0.0.18 logged each call's own files and merged them as it folded. Each event becomes the list that merge reached there, a path already listed keeping its place, so the fold that takes the latest event shows what 0.0.18 showed. */
+const changesAsWholeList: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-20-changes-as-whole-list",
+  rewriteLog(events) {
+    let listed = new Map<Json, Json>();
+
+    return events.map((event) => {
+      if (!isJsonObject(event) || event.kind !== "changes") return null;
+      const logged = event.files;
+
+      if (!Array.isArray(logged)) return null;
+      listed = new Map(listed);
+
+      for (const file of logged)
+        if (isJsonObject(file) && typeof file.path === "string") listed.set(file.path, file);
+
+      const files = [...listed.values()];
+
+      return files.length === logged.length && files.every((file, index) => file === logged[index])
+        ? null
+        : { ...event, files };
+    });
+  },
+};
+
+/** Fold checkpoints are a cache over the log, and `changesAsWholeList` rewrote the events they folded. Core folds a session from its log again when it has none. */
+const foldCheckpointsCleared: SchemaStep = {
+  kind: "schema",
+  name: "2026-10-20-fold-checkpoints-cleared",
+  sql: { sqlite: ["DELETE FROM fold_checkpoints"], postgres: [] },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -710,6 +743,8 @@ const STORE_STEPS: readonly StoreStep[] = [
   folderTrust,
   workspaceTrustMoved,
   sessionSnapshotDropped,
+  changesAsWholeList,
+  foldCheckpointsCleared,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

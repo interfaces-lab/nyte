@@ -131,6 +131,7 @@ export const RELAY_OPERATIONS = [
   "models.usage",
   "models.refresh",
   "models.setDefault",
+  "models.setListing",
   "models.verify",
   "models.login",
   "models.logout",

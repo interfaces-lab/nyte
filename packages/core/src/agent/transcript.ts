@@ -36,6 +36,7 @@ import { decodeRunRecord } from "../contract/records.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import type { Resources } from "../contract/workspace.ts";
 import { withFold } from "../fold/reads.ts";
+import { modelImage } from "./images.ts";
 import { runRef } from "../store/refs.ts";
 import {
   load,
@@ -89,7 +90,7 @@ const projections = new WeakMap<object, CommitId>();
 
 const IMAGE_CACHE_CHARS = 64 * 1024 * 1024;
 
-const imageCache = new WeakMap<Kernel, Map<BlobId, string>>();
+const imageCache = new WeakMap<Kernel, Map<BlobId, readonly (TextContent | ImageContent)[]>>();
 
 export function projectedCommit(message: Message): CommitId | null {
   return projections.get(message) ?? null;
@@ -608,13 +609,15 @@ async function toolResult(
 
   switch (outcome.kind) {
     case "ok": {
-      const content = await Promise.all(
-        outcome.content.map((item): Promise<TextContent | ImageContent> =>
-          item.kind === "text"
-            ? Promise.resolve({ type: "text", text: item.text })
-            : fileContent(kernel, item, images),
-        ),
-      );
+      const content = (
+        await Promise.all(
+          outcome.content.map((item): Promise<readonly (TextContent | ImageContent)[]> =>
+            item.kind === "text"
+              ? Promise.resolve([{ type: "text", text: item.text }])
+              : fileContent(kernel, item, images),
+          ),
+        )
+      ).flat();
 
       return result(
         content.length > 0
@@ -656,38 +659,45 @@ async function userContent(
 ): Promise<UserMessage["content"]> {
   if (typeof content === "string") return content;
 
-  return Promise.all(
-    content.map((item): Promise<TextContent | ImageContent> => {
+  const parts = await Promise.all(
+    content.map((item): Promise<readonly (TextContent | ImageContent)[]> => {
       switch (item.kind) {
         case "text":
-          return Promise.resolve({ type: "text", text: item.text });
+          return Promise.resolve([{ type: "text", text: item.text }]);
         case "file":
           return fileContent(kernel, item, images);
         case "reference":
-          return mentionContent(kernel.store, item);
+          return mentionContent(kernel.store, item).then((mention) => [mention]);
         case "skill":
-          return Promise.resolve({
-            type: "text",
-            text: `<skill name="${escapeAttribute(item.name)}" location="${escapeAttribute(item.location)}">\nRead the skill's file at its location and follow it.\n</skill>`,
-          });
+          return Promise.resolve([
+            {
+              type: "text",
+              text: `<skill name="${escapeAttribute(item.name)}" location="${escapeAttribute(item.location)}">\nRead the skill's file at its location and follow it.\n</skill>`,
+            },
+          ]);
         case "excerpt":
-          return Promise.resolve({
-            type: "text",
-            text: `<excerpt ${excerptAttributes(item.source)}>\n${fencedExcerpt(item.text)}\n</excerpt>`,
-          });
+          return Promise.resolve([
+            {
+              type: "text",
+              text: `<excerpt ${excerptAttributes(item.source)}>\n${fencedExcerpt(item.text)}\n</excerpt>`,
+            },
+          ]);
       }
     }),
   );
+
+  return parts.flat();
 }
 
 async function fileContent(
   kernel: Kernel,
   file: { readonly blob: BlobId; readonly mime: string; readonly name?: string },
   images: boolean,
-): Promise<TextContent | ImageContent> {
+): Promise<readonly (TextContent | ImageContent)[]> {
   const name = file.name ?? file.blob;
   const image = images && file.mime.startsWith("image/");
-  const cache = imageCache.get(kernel) ?? new Map<BlobId, string>();
+  const cache =
+    imageCache.get(kernel) ?? new Map<BlobId, readonly (TextContent | ImageContent)[]>();
   imageCache.set(kernel, cache);
   const cached = image ? cache.get(file.blob) : undefined;
 
@@ -695,47 +705,54 @@ async function fileContent(
     cache.delete(file.blob);
     cache.set(file.blob, cached);
 
-    return { type: "image", data: cached, mimeType: file.mime };
+    return cached.map((part) => ({ ...part }));
   }
 
   const reader = await kernel.store.objects.blob(file.blob);
 
   if (reader === null)
-    return { type: "text", text: `[File ${name}, ${file.mime}: no longer stored]` };
+    return [{ type: "text", text: `[File ${name}, ${file.mime}: no longer stored]` }];
 
   try {
-    if (image) {
-      const chunks: Uint8Array[] = [];
+    if (!image)
+      return [
+        {
+          type: "text",
+          text: `[File ${name}, ${reader.size === null ? "unknown size" : `${reader.size} bytes`}, ${file.mime}]`,
+        },
+      ];
+    const chunks: Uint8Array[] = [];
 
-      for await (const chunk of reader.chunks()) chunks.push(chunk);
-      const bytes = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
-      let offset = 0;
+    for await (const chunk of reader.chunks()) chunks.push(chunk);
+    const bytes = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
+    let offset = 0;
 
-      for (const chunk of chunks) {
-        bytes.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-
-      const data = bytes.toBase64();
-      cache.set(file.blob, data);
-      let size = [...cache.values()].reduce((total, kept) => total + kept.length, 0);
-
-      for (const [blob, kept] of cache) {
-        if (size <= IMAGE_CACHE_CHARS) break;
-        cache.delete(blob);
-        size -= kept.length;
-      }
-
-      return { type: "image", data, mimeType: file.mime };
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
     }
 
-    return {
-      type: "text",
-      text: `[File ${name}, ${reader.size === null ? "unknown size" : `${reader.size} bytes`}, ${file.mime}]`,
-    };
+    const content = await modelImage(kernel.images, { bytes, mime: file.mime, name });
+    cache.set(file.blob, content);
+    let size = [...cache.values()].reduce((total, kept) => total + cachedChars(kept), 0);
+
+    for (const [blob, kept] of cache) {
+      if (size <= IMAGE_CACHE_CHARS) break;
+      cache.delete(blob);
+      size -= cachedChars(kept);
+    }
+
+    return content.map((part) => ({ ...part }));
   } finally {
     await reader.close();
   }
+}
+
+function cachedChars(content: readonly (TextContent | ImageContent)[]): number {
+  return content.reduce(
+    (total, part) => total + (part.type === "image" ? part.data.length : part.text.length),
+    0,
+  );
 }
 
 async function mentionContent(

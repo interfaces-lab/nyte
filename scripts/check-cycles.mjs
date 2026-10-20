@@ -18,9 +18,19 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import ts from "typescript";
+import { ScriptKind, SyntaxKind } from "tsrs/unstable/ast";
+import {
+  isExportDeclaration,
+  isExternalModuleReference,
+  isImportDeclaration,
+  isImportEqualsDeclaration,
+  isNamedExports,
+} from "tsrs/unstable/ast/is";
+import { API } from "tsrs/unstable/sync";
 
 const root = resolve(import.meta.dirname, "..");
+
+const api = new API();
 
 const SOURCE = /\.(?:[cm]?[jt]sx?)$/;
 
@@ -58,7 +68,7 @@ function readPaths(directory) {
 
   if (!existsSync(file)) return [];
 
-  const { config } = ts.parseConfigFileTextToJson(file, readFileSync(file, "utf8"));
+  const { config } = api.readConfigFile(file);
   const paths = config?.compilerOptions?.paths ?? {};
 
   return Object.entries(paths).map(([pattern, [target]]) => {
@@ -189,26 +199,24 @@ function resolveSpecifier(specifier, from, owner, byName) {
 
 /** The specifiers of a file's imports that load their module when the file evaluates. */
 function readRuntimeImports(file) {
-  const source = ts.createSourceFile(
-    file,
-    readFileSync(file, "utf8"),
-    ts.ScriptTarget.Latest,
-    false,
-    file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
+  using retained = api.createSourceFile(file, readFileSync(file, "utf8"), {
+    scriptKind: file.endsWith("x") ? ScriptKind.TSX : ScriptKind.TS,
+  });
+
+  const source = retained.sourceFile;
 
   const specifiers = [];
 
   for (const statement of source.statements) {
-    if (ts.isImportDeclaration(statement)) {
-      if (statement.importClause?.isTypeOnly) continue;
+    if (isImportDeclaration(statement)) {
+      if (statement.importClause?.phaseModifier === SyntaxKind.TypeKeyword) continue;
 
       specifiers.push({ text: statement.moduleSpecifier.text, node: statement });
-    } else if (ts.isExportDeclaration(statement) && statement.moduleSpecifier) {
+    } else if (isExportDeclaration(statement) && statement.moduleSpecifier) {
       if (statement.isTypeOnly) continue;
 
       const elements =
-        statement.exportClause && ts.isNamedExports(statement.exportClause)
+        statement.exportClause && isNamedExports(statement.exportClause)
           ? statement.exportClause.elements
           : undefined;
 
@@ -217,9 +225,9 @@ function readRuntimeImports(file) {
 
       specifiers.push({ text: statement.moduleSpecifier.text, node: statement });
     } else if (
-      ts.isImportEqualsDeclaration(statement) &&
+      isImportEqualsDeclaration(statement) &&
       !statement.isTypeOnly &&
-      ts.isExternalModuleReference(statement.moduleReference)
+      isExternalModuleReference(statement.moduleReference)
     ) {
       specifiers.push({ text: statement.moduleReference.expression.text, node: statement });
     }
@@ -356,6 +364,8 @@ for (const [file, owner] of owners) {
 
   graph.set(file, edges);
 }
+
+api.close();
 
 const cycles = findComponents(graph)
   .filter((component) => component.length > 1 || graph.get(component[0]).has(component[0]))

@@ -175,6 +175,23 @@ describe("models", () => {
     ]);
   });
 
+  it("saves model listings, refusing the whole batch when one model is unknown", async () => {
+    await using host = await open(catalog());
+    const listings = async () => (await host.models.list()).providers[0].listings;
+
+    expect(
+      await host.models.setListing([smart, { provider: "test", id: "nope" }], "hidden"),
+    ).toEqual({ kind: "unknown-model" });
+    expect(await listings()).toEqual({});
+
+    expect(await host.models.setListing([smart, basic], "hidden")).toEqual({ kind: "set" });
+    expect(await host.models.setListing([basic], "favorite")).toEqual({ kind: "set" });
+    expect(await listings()).toEqual({ [smart.id]: "hidden", [basic.id]: "favorite" });
+
+    expect(await host.models.setListing([smart], "shown")).toEqual({ kind: "set" });
+    expect(await listings()).toEqual({ [basic.id]: "favorite" });
+  });
+
   it("sets the default model, answering unknown-model for one the catalog lacks", async () => {
     const fake = catalog();
     await using host = await open(fake);

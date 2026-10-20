@@ -91,6 +91,9 @@ SOFTWARE.
 - Transcript reconciliation, checkpoint instruction snapshots, provider system
   updates, and cache warming are ported from the 1.0.0 release commit
   `a13d35a742c6ef8462812a28fbe1d8c8b7431c32`.
+- Fitting images to model limits (`packages/core/src/agent/images.ts` and
+  `packages/host/src/images`) is ported from `@earendil-works/pi-durable`'s
+  images at commit `73f8de80bc87021375f8b525292ac07492253002`.
 
 License: MIT, with the following notice:
 
@@ -147,6 +150,16 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
+
+## Photon (`silvia-odwyer/photon`)
+
+- Repository: https://github.com/silvia-odwyer/photon
+- Package: `@silvia-odwyer/photon` 0.3.3
+- What: the host decodes, orients, scales and re-encodes images for the model
+  with Photon's WebAssembly build.
+
+License: Apache License 2.0, reproduced in the appendix below. Copyright 2023
+Silvia O'Dwyer.
 
 ## Pierre
 

@@ -236,14 +236,6 @@ const browserSurfaces = new BrowserSurfaces({
 
 function applyViewCommand(contents: Electron.WebContents, command: ViewCommand): void {
   switch (command) {
-    case "reload":
-      contents.reload();
-
-      return;
-    case "hard-reload":
-      contents.reloadIgnoringCache();
-
-      return;
     case "toggle-devtools":
       contents.toggleDevTools();
 

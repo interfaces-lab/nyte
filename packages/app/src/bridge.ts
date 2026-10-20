@@ -139,7 +139,8 @@ export type AppMenuAction =
   | typeof clientActions.splitDown.id
   | typeof clientActions.back.id
   | typeof clientActions.forward.id
-  | typeof clientActions.focusPane.id;
+  | typeof clientActions.focusPane.id
+  | typeof clientActions.reloadWindow.id;
 
 export interface AppInfo {
   readonly name: string;

@@ -1,6 +1,6 @@
 import { DEFAULT_CODE_VIEW_LAYOUT } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/edit";
-import type { EditorOptions, EditorType } from "@pierre/diffs/edit";
+import type { EditorOptions, EditorSearch, EditorType } from "@pierre/diffs/edit";
 import { CodeView, EditProvider } from "@pierre/diffs/react";
 import type { CodeViewHandle, CodeViewItem } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
@@ -35,6 +35,7 @@ import {
 } from "../queries.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { watchFamily } from "../sdk.tsx";
+import { FindWidget } from "./find-widget.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -251,6 +252,7 @@ export function TextFileEditor({
 
   const snapshot = useSyncExternalStore(buffer.subscribe, buffer.getSnapshot, buffer.getSnapshot);
   const viewer = useRef<CodeViewHandle<undefined, undefined>>(null);
+  const [search, setSearch] = useState<EditorSearch>();
 
   const navigation = useRef({
     active,
@@ -536,6 +538,7 @@ export function TextFileEditor({
               historyMaxEntries: 200,
               ownsVerticalViewport: true,
               onAttach: attachEditor,
+              onSearchChange: setSearch,
             }}
             options={viewOptions}
             className={props(diffStyles.patch, styles.code).className}
@@ -543,6 +546,15 @@ export function TextFileEditor({
           />
         </EditProvider>
       </PierreWorkerProvider>
+      {search !== undefined && (
+        <EditorFind
+          search={search}
+          onClose={() => {
+            search.close();
+            viewer.current?.getEditor(file.path)?.focus();
+          }}
+        />
+      )}
       <div {...props(styles.status)} title={gitBlame ? blameText : undefined}>
         {gitBlame && (
           <>
@@ -572,5 +584,30 @@ export function TextFileEditor({
         )}
       </div>
     </div>
+  );
+}
+
+function EditorFind({
+  search,
+  onClose,
+}: {
+  readonly search: EditorSearch;
+  readonly onClose: () => void;
+}): ReactElement {
+  const snapshot = useSyncExternalStore(search.subscribe, search.getSnapshot);
+
+  return (
+    <FindWidget
+      label="Find in file"
+      target={search}
+      initialText={snapshot.defaultQuery}
+      focusRevision={snapshot.openRevision}
+      replace={{
+        target: search,
+        open: snapshot.mode === "replace",
+        onOpenChange: (open) => search.setMode(open ? "replace" : "find"),
+      }}
+      onClose={onClose}
+    />
   );
 }

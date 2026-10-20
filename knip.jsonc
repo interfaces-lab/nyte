@@ -65,7 +65,7 @@
       "entry": ["scripts/*.ts", "src/deploy/vercel/server/{routes,workflows}/**/*.ts"],
     },
     "packages/lab": {
-      "entry": ["sdk-shape.ts", "src/devtools.ts", "video/src/index.ts"],
+      "entry": ["src/devtools.ts", "video/src/index.ts"],
     },
     "packages/mobile": {
       "entry": ["plugins/*.cjs"],

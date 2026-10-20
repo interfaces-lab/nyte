@@ -12,10 +12,9 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
-import { Streamdown, StreamdownBlockOpen } from "@lobehub/streamdown";
-import { defaultUrlTransform } from "react-markdown";
-import type { Components, ExtraProps, UrlTransform } from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { defaultUrlTransform, Streamdown, useIsCodeFenceIncomplete } from "streamdown";
+import type { Components, ExtraProps, StreamdownProps, UrlTransform } from "streamdown";
+import "streamdown/styles.css";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./external-link.ts";
 import { useQuery } from "@tanstack/react-query";
@@ -52,8 +51,6 @@ function nodeText(node: ReactNode): string {
 const AGENT_LINK = "agent:";
 
 const InsideLink = createContext(false);
-
-const ProseStreaming = createContext(false);
 
 export function useCitableFiles(enabled: boolean) {
   return useQuery({
@@ -245,7 +242,7 @@ function MarkdownPre({
   node: _node,
   ...elementProps
 }: ComponentProps<"pre"> & ExtraProps): ReactElement {
-  const open = use(ProseStreaming) && use(StreamdownBlockOpen);
+  const open = useIsCodeFenceIncomplete();
   const child = Children.toArray(children)[0];
 
   if (Children.count(children) === 1 && isValidElement<ComponentProps<"code">>(child)) {
@@ -330,10 +327,10 @@ const markdownComponents = {
   ),
 } satisfies Components;
 
-const remarkPlugins = [remarkGfm];
+const rehypePlugins: NonNullable<StreamdownProps["rehypePlugins"]> = [];
 
-const urlTransform: UrlTransform = (url) =>
-  url.startsWith(AGENT_LINK) ? url : defaultUrlTransform(url);
+const urlTransform: UrlTransform = (url, key, node) =>
+  url.startsWith(AGENT_LINK) ? url : defaultUrlTransform(url, key, node);
 
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -357,18 +354,17 @@ export const Prose = memo(function Prose({
   );
 
   return (
-    <ProseStreaming value={streaming}>
-      <div {...props(proseStyles.root)}>
-        <Streamdown
-          content={markdown}
-          animated={streaming && !reducedMotion}
-          granularity="word"
-          components={markdownComponents}
-          remarkPlugins={remarkPlugins}
-          urlTransform={urlTransform}
-          skipHtml
-        />
-      </div>
-    </ProseStreaming>
+    <div {...props(proseStyles.root)}>
+      <Streamdown
+        isAnimating={streaming}
+        animated={!reducedMotion}
+        components={markdownComponents}
+        rehypePlugins={rehypePlugins}
+        urlTransform={urlTransform}
+        skipHtml
+      >
+        {markdown}
+      </Streamdown>
+    </div>
   );
 });

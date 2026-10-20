@@ -21,6 +21,8 @@
     "./credentials": "./src/credentials.ts",
     "./durable-object": "./src/durable-object.ts",
     "./identity": "./src/identity.ts",
+    "./images": "./src/images/node.ts",
+    "./image-worker": "./src/images/worker.ts",
     "./listen-fetch": "./src/listen-fetch.ts",
     "./providers": "./src/providers.ts",
     "./secrets": "./src/secrets.ts",
@@ -54,6 +56,14 @@
       "./identity": {
         "types": "./dist/src/identity.d.ts",
         "import": "./dist/src/identity.js"
+      },
+      "./images": {
+        "types": "./dist/src/images/node.d.ts",
+        "import": "./dist/src/images/node.js"
+      },
+      "./image-worker": {
+        "types": "./dist/src/images/worker.d.ts",
+        "import": "./dist/src/images/worker.js"
       },
       "./listen-fetch": {
         "types": "./dist/src/listen-fetch.d.ts",
@@ -105,10 +115,9 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "typecheck": "tsgo --noEmit && tsgo --noEmit -p src/deploy/vercel",
+    "typecheck": "tsrs --noEmit && tsrs --noEmit -p src/deploy/vercel",
     "test": "vitest --run",
     "check:store": "node scripts/check-store.ts",
-    "compact:store": "node scripts/compact-store.ts",
     "build:package": "bun ../../scripts/sdk-packages.mjs build host"
   },
   "dependencies": {
@@ -119,6 +128,7 @@
     "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
+    "@silvia-odwyer/photon": "0.3.3",
     "fflate": "0.8.3",
     "ignore": "7.0.9",
     "pg": "8.23.0",

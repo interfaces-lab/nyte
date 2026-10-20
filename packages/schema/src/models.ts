@@ -119,6 +119,10 @@ export const ModelInfoType = Type.Object({
 
 export type ModelInfo = Decoded<typeof ModelInfoType>;
 
+export const ModelListingType = Type.Enum(["shown", "hidden", "favorite"]);
+
+export type ModelListing = Decoded<typeof ModelListingType>;
+
 export const ModelCatalogViewType = Type.Object({
   generation: idSchema<"catalog-generation">(),
   default: nullable(ModelRefType),
@@ -130,6 +134,7 @@ export const ModelCatalogViewType = Type.Object({
       methods: Type.Array(LoginMethodType),
       limits: PROVIDER_LIMITS,
       models: Type.Array(ModelInfoType),
+      listings: Type.Record(Type.String(), Type.Enum(["hidden", "favorite"])),
     }),
   ),
 });

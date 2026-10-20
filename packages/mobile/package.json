@@ -24,7 +24,7 @@
     "eas-build-post-install": "pnpm canvas:build",
     "submit": "eas submit --platform ios --profile production",
     "test": "vitest --run",
-    "typecheck": "pnpm icons:sync && pnpm canvas:build && tsgo --noEmit",
+    "typecheck": "pnpm icons:sync && pnpm canvas:build && tsrs --noEmit",
     "icons:sync": "node scripts/sync-completion-icons.mjs"
   },
   "dependencies": {
@@ -38,8 +38,8 @@
     "@nyte-ai/sdk": "workspace:*",
     "@nyte-ai/ui": "workspace:*",
     "@tanstack/react-query": "5.104.1",
-    "@use-voltra/ios": "2.3.2",
-    "@use-voltra/ios-client": "2.3.2",
+    "@use-voltra/ios": "2.4.0",
+    "@use-voltra/ios-client": "2.4.0",
     "core-js": "3.47.0",
     "expo": "57.0.26",
     "expo-auth-session": "57.0.13",

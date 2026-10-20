@@ -42,6 +42,8 @@ interface Launch {
   readonly history: readonly SessionStoreEntry[];
   readonly tools: readonly Tool[];
   readonly query: StartQuery;
+  /** The installed `claude` to run; without one the Agent SDK looks for its own. */
+  readonly claude: string | undefined;
   readonly approve: Approve;
 }
 
@@ -265,6 +267,7 @@ export class ClaudeCodeSession {
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
       },
       stderr: (chunk) => (this.#stderr = (this.#stderr + chunk).slice(-4_096)),
+      pathToClaudeCodeExecutable: launch.claude,
     };
 
     if (launch.effort !== undefined) options.effort = launch.effort;

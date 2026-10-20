@@ -1,9 +1,9 @@
-import { constants } from "node:fs";
-import { access, readFile, realpath } from "node:fs/promises";
-import { basename, delimiter, dirname, join } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
+import { executable, findOnPath } from "../find-on-path.ts";
 
 /** An ACP agent this machine can start without downloading anything. */
 export interface AcpAgent {
@@ -52,26 +52,6 @@ function platformTarget(): string {
     process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch;
 
   return `${os}-${arch}`;
-}
-
-async function executable(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.X_OK);
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function findOnPath(name: string, path: string): Promise<string | undefined> {
-  const names = process.platform === "win32" ? [`${name}.exe`, `${name}.cmd`, name] : [name];
-
-  for (const dir of path.split(delimiter))
-    for (const candidate of names)
-      if (dir !== "" && (await executable(join(dir, candidate)))) return join(dir, candidate);
-
-  return undefined;
 }
 
 async function resolved(path: string): Promise<string | undefined> {

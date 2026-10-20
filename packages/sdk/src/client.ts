@@ -105,6 +105,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
         await rows.call("models.refresh", { provider });
       },
       setDefault: (ref) => rows.call("models.setDefault", { ref }),
+      setListing: (refs, listing) => rows.call("models.setListing", { refs, listing }),
       verify: (provider) => rows.call("models.verify", { provider }),
       login: (input) =>
         loginHandle(

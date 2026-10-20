@@ -1,10 +1,12 @@
-export { ALL_AUTHORITY, LOCAL } from "./contract/host.ts";
+export { ALL_AUTHORITY, IMAGE_LIMITS, LOCAL } from "./contract/host.ts";
 
 export type {
   ConnectOptions,
   Connection,
   ConnectionContext,
   Host,
+  ImageLimits,
+  ImageProcessor,
   ListenOptions,
   Listener,
   Login,
@@ -13,6 +15,7 @@ export type {
   PluginFile,
   PluginStorage,
   PluginsApi,
+  PreparedImage,
   PrincipalsApi,
   RequestJournal,
   SettingsApi,

@@ -35,6 +35,7 @@ export const modelCatalog = toDesktopCatalog({
       credential: "verified",
       methods: [{ kind: "oauth" }],
       limits: [],
+      listings: {},
       models: [
         model(
           "anthropic",
@@ -58,6 +59,7 @@ export const modelCatalog = toDesktopCatalog({
       credential: "configured",
       methods: [{ kind: "key" }],
       limits: [],
+      listings: {},
       models: [
         model("openai", "gpt", "GPT-5.1", ["off", "minimal", "low", "medium", "high"], true),
         model("openai", "gpt-codex", "GPT-5.1 Codex", ["off", "low", "medium", "high"], false),

@@ -117,6 +117,7 @@ export async function run(): Promise<string> {
           ]}
           collapsedPaths={[]}
           onToggleCollapsed={() => {}}
+          onExpand={() => {}}
           scrollTop={0}
           focusPath={undefined}
           focusRevision={0}

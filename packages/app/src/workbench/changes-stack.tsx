@@ -1,5 +1,5 @@
 import { DEFAULT_CODE_VIEW_LAYOUT } from "@pierre/diffs";
-import type { CodeViewLineSelection, SelectedLineRange } from "@pierre/diffs";
+import type { CodeViewLineSelection, CodeViewSearch, SelectedLineRange } from "@pierre/diffs";
 import { CodeView } from "@pierre/diffs/react";
 import type { CodeViewHandle, CodeViewItem, CodeViewReactOptions } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
@@ -28,6 +28,7 @@ import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
+import { FindWidget } from "./find-widget.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-stack-code-view.ts";
 import { diffRangeExcerpt } from "./diff-range.ts";
@@ -35,6 +36,17 @@ import type { ChangesLayout } from "./changes-view-options.ts";
 import type { ViewedState } from "./changes-viewed.ts";
 
 const styles = create({
+  stack: {
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    width: "100%",
+    height: "100%",
+    minWidth: 0,
+    minHeight: 0,
+  },
+  findPlacement: { insetBlockStart: `calc(${workbench.headerHeight} + ${space.s2})` },
   preview: {
     flex: 1,
     width: "100%",
@@ -96,6 +108,7 @@ export function ChangesStack({
   items,
   collapsedPaths,
   onToggleCollapsed,
+  onExpand,
   scrollTop,
   focusPath,
   focusRevision,
@@ -113,6 +126,7 @@ export function ChangesStack({
   readonly items: readonly ChangesStackItem[];
   readonly collapsedPaths: readonly string[];
   readonly onToggleCollapsed: (path: string) => void;
+  readonly onExpand: (path: string) => void;
   readonly scrollTop: number;
   readonly focusPath: string | undefined;
   readonly focusRevision: number;
@@ -138,6 +152,11 @@ export function ChangesStack({
   const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
   const sources = useRef(model.sourceById);
   const mac = nyte.platform === "darwin";
+
+  const [find, setFind] = useState<{
+    readonly search: CodeViewSearch;
+    readonly revision: number;
+  }>();
 
   useLayoutEffect(() => {
     sources.current = model.sourceById;
@@ -290,53 +309,92 @@ export function ChangesStack({
   );
 
   return (
-    <PierreWorkerProvider>
-      <CodeView
-        ref={viewer}
-        items={model.items}
-        options={options}
-        className={props(styles.preview, diffStyles.patch).className}
-        containerRef={(node) => {
-          if (node === null) return;
-          node.dataset.nyteScrollport = "balanced";
-          node.dataset.changesStack = "";
-        }}
-        onSelectedLinesChange={setSelection}
-        renderCustomHeader={renderHeader}
-        renderAnnotation={(annotation) => (
-          <div {...props(text.sm, styles.notice)}>{annotation.metadata}</div>
-        )}
-        onScroll={(top, instance) => {
-          const report = scrollReport.current;
-          report.top = top;
-          window.clearTimeout(report.timer);
-          report.timer = window.setTimeout(() => {
-            report.timer = undefined;
+    <div
+      {...props(styles.stack)}
+      onKeyDown={(event) => {
+        if (
+          event.nativeEvent.isComposing ||
+          event.altKey ||
+          event.shiftKey ||
+          (mac ? !event.metaKey || event.ctrlKey : !event.ctrlKey || event.metaKey) ||
+          event.key.toLowerCase() !== "f"
+        ) {
+          return;
+        }
 
-            if (viewer.current !== null) onScrollTop(report.top);
-          }, SCROLL_SETTLE_MS);
-          const last = items.at(-1);
+        const next = viewer.current?.getInstance()?.search;
 
-          if (last === undefined) return;
+        if (next === undefined) return;
+        event.preventDefault();
+        setFind((current) => ({ search: next, revision: (current?.revision ?? 0) + 1 }));
+      }}
+    >
+      {find !== undefined && (
+        <FindWidget
+          label="Find in changes"
+          target={find.search}
+          focusRevision={find.revision}
+          placement={styles.findPlacement}
+          onClose={() => {
+            find.search.clear();
+            setFind(undefined);
+            viewer.current?.getInstance()?.getContainerElement()?.focus({ preventScroll: true });
+          }}
+        />
+      )}
+      <PierreWorkerProvider>
+        <CodeView
+          ref={viewer}
+          items={model.items}
+          options={options}
+          className={props(styles.preview, diffStyles.patch).className}
+          containerRef={(node) => {
+            if (node === null) return;
+            node.dataset.nyteScrollport = "balanced";
+            node.dataset.changesStack = "";
+          }}
+          onSelectedLinesChange={setSelection}
+          onRevealSearchMatch={(codeItem) => {
+            const source = model.sourceById.get(codeItem.id);
 
-          let active = items[0]?.path;
+            if (source !== undefined) onExpand(source.path);
+          }}
+          renderCustomHeader={renderHeader}
+          renderAnnotation={(annotation) => (
+            <div {...props(text.sm, styles.notice)}>{annotation.metadata}</div>
+          )}
+          onScroll={(top, instance) => {
+            const report = scrollReport.current;
+            report.top = top;
+            window.clearTimeout(report.timer);
+            report.timer = window.setTimeout(() => {
+              report.timer = undefined;
 
-          if (top + instance.getHeight() >= instance.getScrollHeight() - 2) active = last.path;
-          else {
-            for (const [id, source] of model.sourceById) {
-              const itemTop = instance.getTopForItem(id);
+              if (viewer.current !== null) onScrollTop(report.top);
+            }, SCROLL_SETTLE_MS);
+            const last = items.at(-1);
 
-              if (itemTop === undefined || itemTop > top + 1) break;
-              active = source.path;
+            if (last === undefined) return;
+
+            let active = items[0]?.path;
+
+            if (top + instance.getHeight() >= instance.getScrollHeight() - 2) active = last.path;
+            else {
+              for (const [id, source] of model.sourceById) {
+                const itemTop = instance.getTopForItem(id);
+
+                if (itemTop === undefined || itemTop > top + 1) break;
+                active = source.path;
+              }
             }
-          }
 
-          if (active === undefined || active === report.path) return;
-          report.path = active;
-          onActivePath(active);
-        }}
-      />
-    </PierreWorkerProvider>
+            if (active === undefined || active === report.path) return;
+            report.path = active;
+            onActivePath(active);
+          }}
+        />
+      </PierreWorkerProvider>
+    </div>
   );
 }
 

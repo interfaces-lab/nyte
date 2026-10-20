@@ -6,7 +6,7 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo .wrangler dist",
     "test": "vitest --run",
-    "typecheck": "tsgo --noEmit && tsgo --noEmit -p test/tsconfig.json",
+    "typecheck": "tsrs --noEmit && tsrs --noEmit -p test/tsconfig.json",
     "build": "wrangler deploy --dry-run --outdir dist"
   },
   "dependencies": {

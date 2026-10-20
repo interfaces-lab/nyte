@@ -134,6 +134,14 @@ export const clientActions = {
     scope: "window",
     palette: { keywords: "agents skills rules mcp", icon: "customize", group: "settings" },
   },
+  reloadWindow: {
+    id: "reload-window",
+    label: "Reload Window",
+    key: "r",
+    chord: "primary-shift",
+    scope: "window",
+    palette: { keywords: "refresh restart", icon: "refresh", group: "actions" },
+  },
   search: { id: "search", label: "Search", key: "k", chord: "primary", scope: "window" },
   settings: {
     id: "settings",

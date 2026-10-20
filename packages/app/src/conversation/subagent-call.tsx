@@ -32,7 +32,7 @@ import {
   useWorkspaces,
 } from "../queries.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
-import { modelDisplayName, providerIcon, THINKING_LABELS } from "./model-picker-state.ts";
+import { modelDisplayName, modelIcon, THINKING_LABELS } from "./model-picker-state.ts";
 import { activityStyles } from "./activity.stylex.ts";
 import { proseStyles } from "./prose.stylex.ts";
 import { subagentCallStyles } from "./subagent-call.stylex.ts";
@@ -528,7 +528,7 @@ function CitationModel({ session }: { readonly session: SessionInfo }): ReactEle
 
   return (
     <span {...props(citationStyles.detail)}>
-      <Icon name={providerIcon(model.provider)} size={12} />
+      <Icon name={modelIcon(model)} size={12} />
       <span {...props(citationStyles.detailText)}>
         {thinkingLevel === undefined || thinkingLevel === "off"
           ? name

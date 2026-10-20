@@ -14,6 +14,7 @@ import {
   LoginMethodType,
   ModelAccountType,
   ModelCatalogViewSchema,
+  ModelListingType,
   ModelRefType,
   ProviderUsageType,
 } from "../../models.ts";
@@ -86,6 +87,17 @@ export const HOST_OPERATIONS = {
     ...OWNER,
     kind: "command",
     input: wireObject({ ref: ModelRefType }),
+    output: wireSchema(
+      Type.Union([
+        Type.Object({ kind: Type.Literal("set") }),
+        Type.Object({ kind: Type.Literal("unknown-model") }),
+      ]),
+    ),
+  },
+  "models.setListing": {
+    ...OWNER,
+    kind: "command",
+    input: wireObject({ refs: Type.Array(ModelRefType), listing: ModelListingType }),
     output: wireSchema(
       Type.Union([
         Type.Object({ kind: Type.Literal("set") }),

@@ -10,7 +10,7 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "test": "vitest --run",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsrs --noEmit"
   },
   "dependencies": {
     "@nyte-ai/connect": "workspace:*",

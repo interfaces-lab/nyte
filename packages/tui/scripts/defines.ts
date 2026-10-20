@@ -10,4 +10,5 @@ export const BINARY_ENTRYPOINTS = [
   "tui/src/host-worker.ts",
   "tui/src/codemode-worker.ts",
   "tui/src/mermaid-worker.ts",
+  "tui/src/image-worker.ts",
 ] as const;

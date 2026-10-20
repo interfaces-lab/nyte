@@ -27,7 +27,9 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
 
 const ANSWER = "The test **fails** because `sum` subtracts.\n\nFix the operator and rerun.";
 
-const DIAGRAM = "Flow:\n\n```mermaid\ngraph TD\n  A --> B\n```\n";
+const OPEN_DIAGRAM = "Flow:\n\n```mermaid\ngraph TD\n  A --> B\n";
+
+const DIAGRAM = `${OPEN_DIAGRAM}\`\`\`\n`;
 
 export async function run(): Promise<string> {
   applyDisplayMode("light");
@@ -58,7 +60,7 @@ export async function run(): Promise<string> {
     check(host.textContent?.includes("rerun.") === true, "The settled answer is whole");
 
     flushSync(() => root.render(null));
-    draw(DIAGRAM, true);
+    draw(OPEN_DIAGRAM, true);
     await until(() => host.textContent?.includes("A --> B") === true, "the streamed fence");
     check(
       host.querySelector('[aria-label="Mermaid diagram"]') === null,

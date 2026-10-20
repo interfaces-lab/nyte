@@ -128,7 +128,8 @@ export default {
     ? { provider: "generic", url: "http://localhost:8917" }
     : { provider: "github", owner: "interfaces-lab", repo: "nyte", releaseType: "release" },
   directories: { output: "dist", buildResources: "build" },
-  files: ["out/**/*", "package.json"],
+  // Claude Code runs the user's installed `claude`, so the SDK's ~230 MB platform binaries stay out.
+  files: ["out/**/*", "package.json", "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*"],
   asarUnpack: ["node_modules/@lydell/**/*", "node_modules/@anthropic-ai/claude-agent-sdk*/**/*"],
   extraResources: [
     { from: "resources/adblock.bin", to: "adblock.bin" },

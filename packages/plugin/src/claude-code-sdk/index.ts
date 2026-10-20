@@ -31,6 +31,7 @@ import type { Static } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { Plugin } from "../core.ts";
+import { findOnPath } from "../find-on-path.ts";
 import { question } from "../question/question.ts";
 import { answerInput } from "../question/schema.ts";
 import { ClaudeCodeSession } from "./session.ts";
@@ -98,7 +99,16 @@ function effortFor(
   return EFFORTS.find((effort) => effort === mapped) ?? (level === "minimal" ? "low" : undefined);
 }
 
+/** The `claude` the user installed, which the Agent SDK runs: Nyte ships no copy of its own. */
+async function findClaudeCode(): Promise<string | undefined> {
+  await processEnvironment();
+
+  return await findOnPath("claude", process.env.PATH ?? "");
+}
+
 async function claudeCodeConfigured(): Promise<boolean> {
+  if ((await findClaudeCode()) === undefined) return false;
+
   try {
     await access(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"));
 
@@ -124,7 +134,7 @@ function answerOnce(
   void (async () => {
     try {
       stream.push({ type: "start", partial: output });
-      await processEnvironment();
+      const claude = await findClaudeCode();
 
       for await (const message of start({
         prompt: flatPrompt(context.messages),
@@ -140,6 +150,7 @@ function answerOnce(
           includePartialMessages: true,
           thinking: { type: "disabled" },
           env: { ...process.env, ...options?.env },
+          pathToClaudeCodeExecutable: claude,
         },
       })) {
         if (message.type === "stream_event" && message.parent_tool_use_id === null)
@@ -362,7 +373,7 @@ export function claudeCodeSdk(start: StartQuery = query) {
       session?.close();
 
       if (prompt.length === 0) throw new Error(NOT_RUNNING);
-      await processEnvironment();
+      const claude = await findClaudeCode();
       const claudeSession = randomUUID();
 
       session = new ClaudeCodeSession({
@@ -381,6 +392,7 @@ export function claudeCodeSdk(start: StartQuery = query) {
         }),
         tools,
         query: start,
+        claude,
         approve: binding.approve,
       });
       sessions.set(id, session);

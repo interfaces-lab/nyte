@@ -43,7 +43,7 @@ Each folder shows five chat items by default, including drafts. Lists with six o
 
 ## Chat Markdown
 
-Chat uses [`@lobehub/streamdown`](https://github.com/lobehub/streamdown) with GFM tables and task lists. Active responses use its realtime streaming renderer. Saved responses use its cached whole-document renderer, so reference links and footnotes resolve across blocks. Cross-block references may remain literal during streaming until the response finishes.
+Chat uses [`streamdown`](https://github.com/vercel/streamdown) with GFM tables and task lists. It splits a response into blocks so only the growing tail renders again; a response with footnotes or reference-link definitions stays one block, so its references resolve while it streams.
 
 Nyte keeps its own code blocks, worker-based syntax highlighting, Mermaid diagrams, and host-routed links. Raw HTML is disabled and images appear as text labels. Reduced motion displays incoming text immediately without reveal effects, including when the preference changes during a response.
 

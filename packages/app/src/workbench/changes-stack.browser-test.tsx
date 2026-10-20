@@ -64,6 +64,10 @@ export async function run(): Promise<string> {
               : [...collapsedPaths, path];
             render();
           }}
+          onExpand={(path) => {
+            collapsedPaths = collapsedPaths.filter((entry) => entry !== path);
+            render();
+          }}
           scrollTop={0}
           focusPath={undefined}
           focusRevision={0}
@@ -138,6 +142,46 @@ export async function run(): Promise<string> {
       container.querySelector("[data-nyte-scrollport]")?.getBoundingClientRect().width === 760,
       "The diff follows the restored container width",
     );
+
+    header("src/alpha.ts").click();
+    await settle();
+    const scrollport = container.querySelector("[data-nyte-scrollport]");
+
+    if (!(scrollport instanceof HTMLElement)) throw new Error("Missing scrollport");
+    scrollport.focus();
+    scrollport.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", code: "KeyF", ctrlKey: true, bubbles: true }),
+    );
+    await settle();
+    const find = container.querySelector('input[aria-label="Find in changes"]');
+
+    if (!(find instanceof HTMLInputElement)) throw new Error("Ctrl+F in the stack opens find");
+    check(document.activeElement === find, "Find takes focus");
+
+    document.execCommand("insertText", false, "alpha 9");
+    await settle();
+    await settle();
+
+    const count = (): string =>
+      container.querySelector('[role="search"] [aria-live]')?.textContent ?? "";
+
+    check(count() === "1 of 1", `Find counts the match inside collapsed alpha, not ${count()}`);
+    check(
+      header("src/alpha.ts").getAttribute("aria-expanded") === "true",
+      "Revealing the match unfolds alpha",
+    );
+    check(CSS.highlights.get("diffs-search-focus")?.size === 1, "The current match is highlighted");
+    check(
+      container
+        .querySelector('[data-change-path="src/alpha.ts"]')
+        ?.closest("[data-nyte-scrollport]") === scrollport,
+      "The header stays in the stack",
+    );
+
+    find.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await settle();
+    check(container.querySelector('[role="search"]') === null, "Escape closes find");
+    check(CSS.highlights.get("diffs-search-focus")?.size === 0, "Closing find clears highlights");
 
     return "passed";
   } finally {

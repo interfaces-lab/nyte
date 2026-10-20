@@ -6,7 +6,6 @@
 - Make the smallest complete fix. Leave unrelated work alone. Stage only files for this change.
 - To test without your change, revert only your files (`git diff -- <files> | git apply -R`) or use `git worktree add`. Never `stash`, `reset`, `checkout .` or `clean`: they take everyone's uncommitted work with them.
 - Add backward compatibility only when requested.
-- Core contracts: JSDoc on `@nyte-ai/core` exports and `packages/lab/sdk-shape.ts`.
 - Treat `node_modules` as the source of truth for library types.
 
 ## Code style

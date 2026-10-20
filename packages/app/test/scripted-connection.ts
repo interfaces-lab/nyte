@@ -209,6 +209,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       usage: refuse,
       refresh: refuse,
       setDefault: refuse,
+      setListing: refuse,
       verify: refuse,
       login: () => ({ steps: refused, answer: refuse }),
       logout: refuse,

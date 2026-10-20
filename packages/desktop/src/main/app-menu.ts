@@ -12,7 +12,7 @@ import { shortcutCharacter } from "@nyte-ai/app/workbench/browser-shortcuts.ts";
 
 export type ViewCommand = Extract<
   BrowserNavigationAction,
-  "reload" | "hard-reload" | "toggle-devtools" | "zoom-reset" | "zoom-in" | "zoom-out"
+  "toggle-devtools" | "zoom-reset" | "zoom-in" | "zoom-out"
 >;
 
 export function applicationMenuTemplate(options: {
@@ -130,18 +130,17 @@ export function applicationMenuTemplate(options: {
         command(clientActions.splitDown),
         command(clientActions.focusPane),
         { type: "separator" },
+        command(clientActions.reloadWindow),
         ...(options.developer
           ? [
-              view("Reload", "CommandOrControl+R", "reload"),
-              view("Force Reload", "Shift+CommandOrControl+R", "hard-reload"),
               view(
                 "Toggle Developer Tools",
                 options.platform === "darwin" ? "Alt+Command+I" : "Control+Shift+I",
                 "toggle-devtools",
               ),
-              { type: "separator" } satisfies MenuItemConstructorOptions,
             ]
           : []),
+        { type: "separator" },
         view("Actual Size", "CommandOrControl+0", "zoom-reset"),
         view("Zoom In", "CommandOrControl+Plus", "zoom-in"),
         view("Zoom Out", "CommandOrControl+-", "zoom-out"),

@@ -221,6 +221,7 @@ export const basicCases = {
           methods: [{ kind: "oauth" }, { kind: "key" }],
           limits: [{ label: "5h", used: 1, limit: 10, resetsAt: null }],
           models: [modelInfo],
+          listings: { [modelInfo.ref.id]: "favorite" },
         },
       ],
     },

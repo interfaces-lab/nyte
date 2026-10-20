@@ -22,6 +22,7 @@ import type {
   LoginMethod,
   ModelAccount,
   ModelCatalogView,
+  ModelListing,
   ModelRef,
   Owned,
   Paged,
@@ -119,6 +120,36 @@ export interface OpenOptions {
   readonly mcp?: McpHubFactory;
   /** The serving machine's GitHub CLI login, served as `Connection.github`; absent, its calls throw `SdkError("unavailable")`. */
   readonly github?: GitHubAccountApi;
+  readonly images?: ImageProcessor;
+}
+
+export interface ImageLimits {
+  readonly maxWidth: number;
+  readonly maxHeight: number;
+  readonly maxBase64Bytes: number;
+}
+
+export const IMAGE_LIMITS: ImageLimits = {
+  maxWidth: 2000,
+  maxHeight: 2000,
+  maxBase64Bytes: 4.5 * 1024 * 1024,
+};
+
+export interface PreparedImage {
+  readonly data: string;
+  readonly mimeType: string;
+  readonly resized?: {
+    readonly from: { readonly width: number; readonly height: number };
+    readonly to: { readonly width: number; readonly height: number };
+  };
+}
+
+export interface ImageProcessor {
+  prepare(
+    bytes: Uint8Array,
+    mimeType: string,
+    limits: ImageLimits,
+  ): Promise<PreparedImage | undefined>;
 }
 
 export interface ConnectOptions {
@@ -198,6 +229,11 @@ export interface ModelsApi {
   refresh(provider?: string): Promise<void>;
 
   setDefault(ref: ModelRef): Promise<{ readonly kind: "set" } | { readonly kind: "unknown-model" }>;
+
+  setListing(
+    refs: readonly ModelRef[],
+    listing: ModelListing,
+  ): Promise<{ readonly kind: "set" } | { readonly kind: "unknown-model" }>;
 
   verify(
     provider: string,

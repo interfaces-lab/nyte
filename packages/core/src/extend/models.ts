@@ -34,6 +34,8 @@ import type { Refusal } from "../engine/contributions.ts";
 import { commit } from "../fold/commit.ts";
 import {
   MODEL_PREFERENCE,
+  modelListingRef,
+  readModelListings,
   readModelSelection,
   readThinkingPreference,
   readThinkingPreferences,
@@ -131,6 +133,20 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
 
       return { kind: "set" };
     },
+    async setListing(refs, listing) {
+      if (refs.some((ref) => models.getModel(ref.provider, ref.id) === undefined))
+        return { kind: "unknown-model" };
+
+      const target = listing === "shown" ? null : await put(kernel.store, "kv", listing);
+
+      await commit(
+        kernel,
+        refs.map((ref) => ({ name: modelListingRef(ref), target })),
+      );
+      bumpGeneration(kernel);
+
+      return { kind: "set" };
+    },
     async verify(provider) {
       let verification: Awaited<ReturnType<Models["verifyAuth"]>>;
 
@@ -160,9 +176,10 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
 async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalogView> {
   const generation = kernel.host.current().catalog;
   const policies = staticPolicies(kernel);
-  const [preferred, remembered, credentials] = await Promise.all([
+  const [preferred, remembered, listed, credentials] = await Promise.all([
     readModelSelection(kernel.store),
     readThinkingPreferences(kernel.store),
+    readModelListings(kernel.store),
     kernel.modelState.read(models),
   ]);
   const providers = models.getProviders().map((provider): ProviderRow => {
@@ -173,23 +190,32 @@ async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalo
       if (model.variant?.mode === "fast" && !fast.has(model.variant.base))
         fast.set(model.variant.base, { provider: model.provider, id: model.id });
 
+    const base = catalog.filter((model) => model.variant === undefined);
+
+    const listings = Object.fromEntries(
+      base.flatMap((model) => {
+        const listing = listed.get(formatModelKey(model));
+
+        return listing === undefined ? [] : [[model.id, listing] as const];
+      }),
+    );
+
     return {
       id: provider.id,
       name: provider.name,
       credential: credentials.get(provider.id) ?? "unknown",
       methods: listLoginMethods(provider),
       limits: readProviderLimits(models, provider.id),
-      models: catalog
-        .filter((model) => model.variant === undefined)
-        .map((model) =>
-          projectModel(
-            model,
-            fast.get(model.id) ?? null,
-            policies.get(formatModelKey(model)),
-            provider.capabilities,
-            remembered.get(formatModelKey(model)),
-          ),
+      listings,
+      models: base.map((model) =>
+        projectModel(
+          model,
+          fast.get(model.id) ?? null,
+          policies.get(formatModelKey(model)),
+          provider.capabilities,
+          remembered.get(formatModelKey(model)),
         ),
+      ),
     };
   });
   const fallback =

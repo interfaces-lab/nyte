@@ -31,6 +31,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "models.usage": () => sdk.models.usage(),
     "models.refresh": () => sdk.models.refresh(),
     "models.setDefault": () => sdk.models.setDefault({ provider: "p", id: "m" }),
+    "models.setListing": () => sdk.models.setListing([{ provider: "p", id: "m" }], "hidden"),
     "models.verify": () => sdk.models.verify("p"),
     "models.login": login,
     "login.steps": () => login().steps(),
@@ -150,7 +151,7 @@ describe("connection gate (§52 rule 5)", () => {
       covered: false,
     });
 
-    expect(elevated).toHaveLength(37);
+    expect(elevated).toHaveLength(38);
     expect(await elevatedRows(participant, participant.workspace(at))).toEqual(denied);
     expect(await elevatedRows(invocation.sdk, invocation.workspace)).toEqual(denied);
   });

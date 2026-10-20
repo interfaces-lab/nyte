@@ -39,7 +39,7 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsrs --noEmit",
     "test": "vitest --run",
     "build:package": "bun ../../scripts/sdk-packages.mjs build schema"
   },

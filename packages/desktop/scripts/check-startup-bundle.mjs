@@ -5,10 +5,10 @@ import { failure, formatSize, green, red, table } from "./terminal.mjs";
 const KIB = 1_024;
 
 const budgets = {
-  main: 108 * KIB,
-  host: 1_297 * KIB,
+  main: 114 * KIB,
+  host: 1_400 * KIB,
   preload: 8 * KIB,
-  renderer: 2_840 * KIB,
+  renderer: 3_100 * KIB,
   css: 190 * KIB,
 };
 

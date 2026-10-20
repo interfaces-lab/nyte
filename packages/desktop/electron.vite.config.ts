@@ -2,6 +2,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type UserConfig } from "electron-vite";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { resolvePhotonWasmPath } from "@nyte-ai/host/images";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/deferred-entries.ts";
@@ -11,7 +12,6 @@ import {
   dropInlinedGhosttyWasm,
   shareCentralIconBase,
   stylex,
-  withoutKatex,
 } from "@nyte-ai/app/vite";
 
 const offlineModels: Plugin = {
@@ -38,7 +38,6 @@ const renderer = {
         packages: ["@clerk/"],
       },
     }),
-    withoutKatex(),
     shareCentralIconBase(),
     dropInlinedGhosttyWasm(),
     stylex.vite({
@@ -93,6 +92,16 @@ const config = (mode: string): UserConfig => ({
         },
       } satisfies Plugin,
       {
+        name: "nyte:photon-wasm",
+        async generateBundle() {
+          this.emitFile({
+            type: "asset",
+            fileName: "photon_rs_bg.wasm",
+            source: await readFile(resolvePhotonWasmPath()),
+          });
+        },
+      } satisfies Plugin,
+      {
         name: "nyte:browser-picker-page",
         generateBundle() {
           this.emitFile({
@@ -105,6 +114,7 @@ const config = (mode: string): UserConfig => ({
     ],
     build: {
       ...(mode === "e2e" ? { outDir: "out-e2e/main" } : {}),
+      externalizeDeps: { exclude: ["@clerk/electron"] },
       minify: true,
       target: "node24",
       rolldownOptions: {
@@ -114,11 +124,14 @@ const config = (mode: string): UserConfig => ({
           "usage-worker": resolve("src/main/usage-worker.ts"),
           "codemode-worker": resolve("src/main/codemode-worker.ts"),
           "codemode-runtime": resolve("src/main/codemode-runtime.ts"),
+          "image-worker": resolve("src/main/image-worker.ts"),
+          "image-runtime": resolve("src/main/image-runtime.ts"),
         },
         output: {
           entryFileNames: "[name].js",
           chunkFileNames: (chunk) =>
-            chunk.moduleIds.includes(resolve("src/main/codemode-runtime.ts"))
+            chunk.moduleIds.includes(resolve("src/main/codemode-runtime.ts")) ||
+            chunk.moduleIds.includes(resolve("src/main/image-runtime.ts"))
               ? "[name]-[hash].js"
               : "chunks/[name].js",
         },

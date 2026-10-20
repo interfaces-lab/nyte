@@ -42,6 +42,7 @@ import type {
   ConnectionRegistry,
   Host,
   HostState,
+  ImageProcessor,
   ModelState,
   OpenOptions,
 } from "./host.ts";
@@ -145,6 +146,8 @@ export interface Kernel {
   readonly mcp: McpHub | null;
 
   readonly github: GitHubAccountApi | null;
+
+  readonly images: ImageProcessor | null;
 
   readonly plugins: PluginHost;
 

@@ -8,7 +8,6 @@ import {
   devConsole,
   dropInlinedGhosttyWasm,
   shareCentralIconBase,
-  withoutKatex,
 } from "./vite.ts";
 
 /**
@@ -20,7 +19,6 @@ import {
 export default defineConfig({
   plugins: [
     deferredChunks(deferredEntries),
-    withoutKatex(),
     shareCentralIconBase(),
     dropInlinedGhosttyWasm(),
     canvasShell(),

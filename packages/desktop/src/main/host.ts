@@ -5,6 +5,7 @@ import { serial } from "@nyte-ai/schema/serial";
 import { canvasPlugin } from "@nyte-ai/plugin/core/canvas";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
+import { nodeImages } from "@nyte-ai/host/images";
 import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
 import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
@@ -39,6 +40,7 @@ import type { BrowserAgent } from "./browser-agent.ts";
 import type { HostWindow } from "./host-window.ts";
 import { desktopBrowserPlugin } from "./browser-tools.ts";
 import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
+import { imageRuntimeOptions } from "./image-runtime.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
 import type { DesktopSettings } from "./desktop-settings.ts";
 import { desktopSettings, desktopSettingsPlugin } from "./host-settings.ts";
@@ -367,6 +369,7 @@ export class DesktopHost {
       onRevoked: this.#deps.revoked,
       workspace: { kind: "local", path: home },
       shell: () => this.#settings.terminalShell,
+      images: nodeImages(imageRuntimeOptions()),
       plugins: [
         desktopSettingsPlugin,
         browserTools,

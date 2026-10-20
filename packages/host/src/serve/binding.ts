@@ -193,6 +193,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       return null;
     },
     "models.setDefault": ({ ref }) => connection.models.setDefault(ref),
+    "models.setListing": ({ refs, listing }) => connection.models.setListing(refs, listing),
     "models.verify": ({ provider }) => connection.models.verify(provider),
     "models.login": async (input) => {
       const { provider } = input;

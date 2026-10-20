@@ -2,27 +2,35 @@ import { expect, it } from "vitest";
 import rename from "../src/rename.ts";
 import { fakeModels, open, until } from "./fake-models.ts";
 
-it("names an unnamed session once from a title request, and a later run asks nothing", async () => {
+it("names an unnamed session from its first message, then from a title request, and a later run asks nothing", async () => {
   const fake = fakeModels();
 
   fake.reply(
-    { content: [{ type: "text", text: "Use a 30 s timeout." }] },
     { content: [{ type: "text", text: "\nTimeout for flaky fetch\nignored" }] },
+    { content: [{ type: "text", text: "Use a 30 s timeout." }] },
     { content: [{ type: "text", text: "Done." }] },
   );
 
   await using host = await open(fake, [rename]);
   const { session, receipt: started } = await host.sessions.start({
-    content: "Why does fetch time out?",
+    content: "\nWhy does fetch time out?\nIt hangs on CI.",
   });
-  await started.settled();
 
   expect(await until(async () => (await session.info()).name ?? undefined)).toBe(
-    "Timeout for flaky fetch",
+    "Why does fetch time out?",
   );
-  expect(fake.requests[1]?.context.messages.at(-1)).toMatchObject({
+  await started.settled();
+
+  expect(
+    await until(async () => {
+      const name = (await session.info()).name;
+
+      return name === "Why does fetch time out?" ? undefined : name;
+    }),
+  ).toBe("Timeout for flaky fetch");
+  expect(fake.requests[0]?.context.messages.at(-1)).toMatchObject({
     role: "user",
-    content: "User: Why does fetch time out?\n\nAssistant: Use a 30 s timeout.",
+    content: "User: \nWhy does fetch time out?\nIt hangs on CI.",
   });
 
   await (await session.send("Thanks.")).settled();

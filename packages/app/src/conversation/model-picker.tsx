@@ -33,6 +33,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
 import { showsSettingsSection } from "../settings/index.ts";
 import {
+  modelIcon,
   modelTriggerLabel,
   pickerGroups,
   supportedThinkingLevel,
@@ -84,6 +85,7 @@ const styles = create({
   emptyTitle: {
     color: role.contentSecondary,
   },
+  optionLabel: { display: "inline-flex", alignItems: "center", gap: space.s2, minWidth: 0 },
 });
 
 interface ModelPickerProps {
@@ -279,16 +281,21 @@ function ModelPickerView({
                   </div>
                 )}
                 {groups.map((group) => (
-                  <AutocompleteGroup key={group.provider.id}>
+                  <AutocompleteGroup key={group.id}>
                     <AutocompleteGroupLabel variant="inline">
-                      <span>{group.provider.name}</span>
-                      {group.provider.credential === "missing" ? (
-                        <span>· Not connected</span>
-                      ) : null}
+                      <span>{group.label}</span>
+                      {group.disconnected ? <span>· Not connected</span> : null}
                     </AutocompleteGroupLabel>
                     {group.options.map((option) => (
                       <AutocompleteItem variant="inline" key={option.key} value={option}>
-                        {option.name}
+                        {group.id === "favorites" || option.provider === "acp" ? (
+                          <span {...props(styles.optionLabel)}>
+                            <Icon name={modelIcon(option)} size={14} />
+                            {option.name}
+                          </span>
+                        ) : (
+                          option.name
+                        )}
                       </AutocompleteItem>
                     ))}
                   </AutocompleteGroup>

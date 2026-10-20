@@ -27,7 +27,7 @@ import { mcpPlugin } from "./builtins/mcp.ts";
 import { systemPromptPlugin } from "./builtins/system-prompt.ts";
 import type { SessionBus } from "./contract/fold.ts";
 import { CORE_CONTEXT } from "./contract/host.ts";
-import type { ModelsApi, OpenOptions } from "./contract/host.ts";
+import type { ImageProcessor, ModelsApi, OpenOptions } from "./contract/host.ts";
 import type {
   Kernel,
   PluginHost,
@@ -116,6 +116,7 @@ const NO_MODELS: ModelsApi = {
   usage: async () => unavailable("models"),
   refresh: async () => unavailable("models"),
   setDefault: async () => unavailable("models"),
+  setListing: async () => unavailable("models"),
   verify: async () => unavailable("models"),
   login: () => unavailable("models"),
   logout: async () => unavailable("models"),
@@ -323,6 +324,7 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
     models: options.models,
     mcp: options.mcp,
     github: options.github,
+    images: options.images,
     builtins: BUILTINS,
     hostPlugins: options.plugins,
     pluginSources: options.pluginSources,
@@ -371,6 +373,7 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     readonly models?: Models;
     readonly mcp?: McpHubFactory;
     readonly github?: GitHubAccountApi;
+    readonly images?: ImageProcessor;
   };
 
 export function createKernel(input: KernelOptions): Kernel {
@@ -489,6 +492,7 @@ export function createKernel(input: KernelOptions): Kernel {
     connections: createConnectionRegistry(),
     secrets: input.secrets ?? null,
     github: input.github ?? null,
+    images: input.images ?? null,
     get mcp() {
       if (mcp === undefined) mcp = input.mcp?.({ secrets: pluginSecrets(kernel, "mcp") }) ?? null;
 

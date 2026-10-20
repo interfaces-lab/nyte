@@ -43,6 +43,7 @@ import { localProvider } from "./local/provider.ts";
 import { importLegacyTrust } from "./local/legacy-trust.ts";
 import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts";
 import { listen } from "./listen.ts";
+import { nodeImages } from "./images/node.ts";
 import { createMcpHub } from "./mcp/hub.ts";
 import { loadPluginDirectory, pluginLoader } from "./plugins/loader.ts";
 import { defaultSecrets } from "./secrets.ts";
@@ -151,6 +152,7 @@ async function composeOpen(
     models,
     mcp: options.mcp ?? createMcpHub({ home }),
     github: options.github ?? (usesLocalProvider ? localGitHubAccount({ home }) : undefined),
+    images: options.images ?? nodeImages(),
     plugins: [...plugins, ...files.plugins],
     pluginSources: files.sources,
     secrets,
