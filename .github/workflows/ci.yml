@@ -89,10 +89,15 @@ jobs:
             runner: blacksmith-8vcpu-ubuntu-2404
           - os: macos
             runner: blacksmith-6vcpu-macos-15
+          - os: windows
+            runner: blacksmith-4vcpu-windows-2025
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
       CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -124,6 +129,13 @@ jobs:
       - name: Install macOS test dependencies
         if: runner.os == 'macOS'
         run: command -v rg || brew install ripgrep
+      - name: Install Windows test dependencies
+        if: runner.os == 'Windows'
+        run: command -v rg || choco install ripgrep -y --no-progress
+      - name: Configure git identity
+        run: |
+          git config --global user.email "ci@nyte.sh"
+          git config --global user.name "nyte-ci"
       - name: Run unit tests
         timeout-minutes: 35
         env:
@@ -131,7 +143,7 @@ jobs:
         run: |
           display=""
           if [ "$RUNNER_OS" = Linux ]; then display="xvfb-run --auto-servernum"; fi
-          $display pnpm exec turbo run test $FILTER --concurrency=3
+          $display pnpm exec turbo run test $FILTER --concurrency=3 --continue
 
   e2e-web:
     name: e2e web (${{ matrix.leg.name }})

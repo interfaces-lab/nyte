@@ -325,8 +325,9 @@ it("stops a run by cancelling the agent's turn", async () => {
 });
 
 it("offers only the registry agents installed on this machine, an npx one by its own bin", async () => {
+  const windows = process.platform === "win32";
   const bin = join(dir, "prefix", "bin");
-  const modules = join(dir, "prefix", "lib", "node_modules");
+  const modules = windows ? join(bin, "node_modules") : join(dir, "prefix", "lib", "node_modules");
   const gemini = join(modules, "@google", "gemini-cli");
   const qwen = join(modules, "@qwen-code", "qwen-code");
   await mkdir(bin, { recursive: true });
@@ -334,14 +335,21 @@ it("offers only the registry agents installed on this machine, an npx one by its
   await mkdir(qwen, { recursive: true });
   await writeFile(join(gemini, "package.json"), JSON.stringify({ bin: { gemini: "index.js" } }));
   await writeFile(join(gemini, "index.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
-  await symlink(join(gemini, "index.js"), join(bin, "gemini"));
+  const geminiCommand = join(bin, windows ? "gemini.cmd" : "gemini");
+  if (windows)
+    await writeFile(
+      geminiCommand,
+      '@node "%~dp0\\node_modules\\@google\\gemini-cli\\index.js" %*\r\n',
+    );
+  else await symlink(join(gemini, "index.js"), geminiCommand);
   await writeFile(join(qwen, "package.json"), JSON.stringify({ bin: { qwen: "cli.js" } }));
   await writeFile(join(qwen, "cli.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
 
   for (const name of ["npx", "goose", "qwen"])
     await writeFile(join(bin, name), "#!/bin/sh\n", { mode: 0o755 });
 
-  const target = `${process.platform}-${process.arch === "arm64" ? "aarch64" : "x86_64"}`;
+  const os = windows ? "windows" : process.platform;
+  const target = `${os}-${process.arch === "arm64" ? "aarch64" : "x86_64"}`;
 
   const entries = registryEntries({
     agents: [
@@ -374,7 +382,7 @@ it("offers only the registry agents installed on this machine, an npx one by its
   });
 
   expect(await installedAgents(entries, bin)).toEqual([
-    { id: "gemini", name: "Gemini CLI", command: join(bin, "gemini"), args: ["--acp"], env: {} },
+    { id: "gemini", name: "Gemini CLI", command: geminiCommand, args: ["--acp"], env: {} },
     { id: "goose", name: "goose", command: join(bin, "goose"), args: ["acp"], env: {} },
   ]);
 });

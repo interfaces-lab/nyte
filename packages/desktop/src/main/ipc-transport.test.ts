@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "vite";
 import { test } from "vitest";
+import { electronExecutable, isolatedElectronEnvironment } from "./fixtures/electron.ts";
 
 const execute = promisify(execFile);
 
@@ -48,25 +48,14 @@ test("production preload preserves rejected error data through Electron", async 
       join(directory, "index.html"),
       '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\'"><script src="renderer.js"></script>',
     );
-    const require = createRequire(import.meta.url);
-    const electronDirectory = dirname(require.resolve("electron/package.json"));
-
-    const executable = join(
-      electronDirectory,
-      "dist",
-      (await readFile(join(electronDirectory, "path.txt"), "utf8")).trim(),
-    );
 
     const env = {
-      HOME: join(directory, "home"),
+      ...isolatedElectronEnvironment(directory),
       NYTE_HOME: join(directory, "home", "nyte"),
-      TMPDIR: directory,
-      TMP: directory,
-      TEMP: directory,
     };
 
     await execute(
-      executable,
+      electronExecutable,
       [join(directory, "main.cjs"), directory, "--use-mock-keychain", "--password-store=basic"],
       { cwd: directory, env, timeout: 30_000 },
     );

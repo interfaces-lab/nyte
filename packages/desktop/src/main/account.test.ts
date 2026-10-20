@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { builtinModules, createRequire } from "node:module";
+import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build, defaultClientConditions } from "vite";
@@ -24,6 +24,7 @@ import { createSignInKeeper } from "./account-keeper.ts";
 import { AccountCancelled } from "./account-session.ts";
 import { AccountStore } from "./account-store.ts";
 import type { SecretSealer } from "./account-store.ts";
+import { electronExecutable, isolatedElectronEnvironment } from "./fixtures/electron.ts";
 
 const HOST = "clerk.example.com";
 
@@ -484,26 +485,13 @@ test("sign-in uses the existing Nyte window, in real Electron", async () => {
       join(directory, "package.json"),
       JSON.stringify({ name: "nyte-account-test", main: "main.cjs" }),
     );
-    const require = createRequire(import.meta.url);
-    const electronDirectory = dirname(require.resolve("electron/package.json"));
-
-    const executable = join(
-      electronDirectory,
-      "dist",
-      (await readFile(join(electronDirectory, "path.txt"), "utf8")).trim(),
-    );
 
     await execute(
-      executable,
+      electronExecutable,
       [directory, directory, "--use-mock-keychain", "--password-store=basic"],
       {
         cwd: directory,
-        env: {
-          HOME: join(directory, "home"),
-          TMPDIR: directory,
-          TMP: directory,
-          TEMP: directory,
-        },
+        env: isolatedElectronEnvironment(directory),
         timeout: 60_000,
       },
     );

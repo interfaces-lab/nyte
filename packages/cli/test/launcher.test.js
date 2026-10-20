@@ -7,7 +7,9 @@ import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { ensureBinary } from "../src/launcher.js";
 
-test("downloads, verifies, and caches the native binary", async () => {
+const posixTest = process.platform === "win32" ? test.skip : test;
+
+posixTest("downloads, verifies, and caches the native binary", async () => {
   const root = await mkdtemp(join(tmpdir(), "nyte-launcher-"));
   const fixture = await mkdtemp(join(tmpdir(), "nyte-release-"));
   try {

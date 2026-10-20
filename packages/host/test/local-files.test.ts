@@ -122,7 +122,8 @@ describe("localFiles", () => {
 
     await writeFile(join(root, "run.sh"), "#!/bin/sh\n", { mode: 0o755 });
     await files.write("run.sh", "#!/bin/sh\necho\n");
-    expect((await stat(join(root, "run.sh"))).mode & 0o777).toBe(0o755);
+    if (process.platform !== "win32")
+      expect((await stat(join(root, "run.sh"))).mode & 0o777).toBe(0o755);
 
     await symlink("new.txt", join(root, "alias"));
     const read = await files.read("alias");

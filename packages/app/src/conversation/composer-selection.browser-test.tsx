@@ -275,8 +275,25 @@ export async function run(): Promise<string> {
         ): Promise<void> => {
           const point = textPoint(area, anchor);
           area.focus();
-          selection.setBaseAndExtent(point.node, point.offset, point.node, point.offset);
-          await paint();
+          await until(
+            () => {
+              const placed = editor.readDocument();
+
+              const caret = nativeOffset(area, selection.focusNode, selection.focusOffset);
+
+              if (
+                selection.isCollapsed &&
+                caret === anchor &&
+                placed.selectionStart === anchor &&
+                placed.selectionEnd === anchor
+              )
+                return placed;
+              selection.setBaseAndExtent(point.node, point.offset, point.node, point.offset);
+
+              return null;
+            },
+            `${variant.name}/${name}: the editor to take the caret at ${String(anchor)}`,
+          );
           const owner = document.elementFromPoint(x, y);
           check(
             owner instanceof HTMLElement && owner.isContentEditable,

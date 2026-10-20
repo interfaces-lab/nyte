@@ -454,6 +454,7 @@ test("explicit config beats environment; blank environment falls back to home", 
   await history(environment, "a.jsonl", [record("environment", 2)]);
   await history(join(home, ".claude"), "a.jsonl", [record("home", 3)]);
   vi.stubEnv("HOME", home);
+  vi.stubEnv("USERPROFILE", home);
   vi.stubEnv("CLAUDE_CONFIG_DIR", environment);
   const first = await readClaudeCodeUsage({ models, configDir: explicit });
   assert.equal(first.kind === "ready" && first.summary.total.output, 1);
@@ -517,7 +518,7 @@ test.each(["config", "ancestor", "projects"])("follows a linked %s root", async 
   assert.equal(result.unreadableFiles, 0);
 });
 
-test.skipIf(process.getuid?.() === 0)(
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
   "continues unreadable files and subdirectories but fails an unreadable root",
   async () => {
     const configDir = await fixture();

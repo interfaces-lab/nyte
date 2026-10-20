@@ -22,6 +22,8 @@ import {
   expectCors,
   broker,
   withWorkerdRelay,
+  abortBeforeHeadKeepsSocket,
+  answerUntilReset,
 } from "./relay-fixture.ts";
 
 withWorkerdRelay();
@@ -188,19 +190,22 @@ describe("flow control", () => {
 });
 
 describe("cancellation and revocation", () => {
-  it("resets the desktop's channel when the phone goes away before the response head", async () => {
-    const { environmentId, desktop, bearer } = await enrolled();
+  it.skipIf(abortBeforeHeadKeepsSocket)(
+    "resets the desktop's channel when the phone goes away before the response head",
+    async () => {
+      const { environmentId, desktop, bearer } = await enrolled();
 
-    desktop.handler = undefined;
-    const abort = new AbortController();
-    const answer = phone({ environmentId, bearer }, "/head.view", { signal: abort.signal }).catch(
-      (error: unknown) => error,
-    );
-    const { ch } = await desktop.next("open");
-    abort.abort();
-    await answer;
-    await desktop.next("reset", (reset) => reset.ch === ch);
-  });
+      desktop.handler = undefined;
+      const abort = new AbortController();
+      const answer = phone({ environmentId, bearer }, "/head.view", { signal: abort.signal }).catch(
+        (error: unknown) => error,
+      );
+      const { ch } = await desktop.next("open");
+      abort.abort();
+      await answer;
+      await answerUntilReset(desktop, [ch], "send");
+    },
+  );
 
   it.each([undefined, "https://app.nyte.sh"])(
     "resets the desktop channel when a client with Origin %s goes away mid-stream",
@@ -230,7 +235,7 @@ describe("cancellation and revocation", () => {
       expect(new TextDecoder().decode((await reader?.read())?.value)).toBe("data: one\n\n");
       if (origin !== undefined) expectCors(response, origin, RELAY_EXPOSED);
       abort.abort();
-      await desktop.next("reset", (reset) => reset.ch === ch);
+      await answerUntilReset(desktop, [ch], "sent");
     },
   );
 

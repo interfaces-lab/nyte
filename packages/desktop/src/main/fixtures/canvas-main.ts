@@ -10,10 +10,9 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { ACCOUNT_SCHEMES } from "../../account/scheme.ts";
 import { canvasShellUrl, registerRenderer } from "../renderer.ts";
+import { exitWithParent } from "./exit-with-parent.ts";
 
-process.stdin.on("close", () => app.exit(1));
-
-process.stdin.resume();
+exitWithParent();
 
 const directory = process.argv[2];
 

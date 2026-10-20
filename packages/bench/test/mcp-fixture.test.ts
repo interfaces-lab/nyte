@@ -17,7 +17,8 @@ const SEARCH = "mcp__places__search_places";
 const folders: string[] = [];
 
 afterEach(async () => {
-  for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true });
+  for (const folder of folders.splice(0))
+    await rm(folder, { recursive: true, force: true, maxRetries: 10 });
 });
 
 async function placesHome(

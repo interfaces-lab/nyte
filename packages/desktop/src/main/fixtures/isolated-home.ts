@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll } from "vitest";
+import { afterAll } from "vitest";
 
 const home = join(realpathSync(tmpdir()), `nyte-desktop-home-${randomUUID()}`);
 
@@ -23,13 +23,11 @@ const inherited = new Map(
 
 for (const name of inherited.keys()) delete process.env[name];
 
+mkdirSync(home, { mode: 0o700 });
+
 process.env.HOME = home;
 
 process.env.USERPROFILE = home;
-
-beforeAll(() => {
-  mkdirSync(home, { mode: 0o700 });
-});
 
 afterAll(() => {
   for (const [name, value] of inherited) {

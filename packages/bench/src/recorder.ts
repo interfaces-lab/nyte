@@ -580,7 +580,10 @@ function readPlaces(paths: Readonly<Record<string, string>>): readonly Place[] {
 function scrubPaths(text: string, places: readonly Place[]): string {
   let scrubbed = text;
 
-  for (const place of places) scrubbed = scrubbed.replaceAll(place.path, place.placeholder);
+  for (const place of places)
+    scrubbed = scrubbed
+      .replaceAll(JSON.stringify(place.path).slice(1, -1), place.placeholder)
+      .replaceAll(place.path, place.placeholder);
 
   return scrubbed;
 }

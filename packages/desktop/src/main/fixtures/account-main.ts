@@ -14,10 +14,9 @@ import { registerAccount } from "../account.ts";
 import { AccountCancelled } from "../account-session.ts";
 import { AccountStore } from "../account-store.ts";
 import { registerRenderer } from "../renderer.ts";
+import { exitWithParent } from "./exit-with-parent.ts";
 
-process.stdin.on("close", () => app.exit(1));
-
-process.stdin.resume();
+exitWithParent();
 
 const directory = process.argv[2];
 
@@ -298,7 +297,8 @@ async function run(): Promise<void> {
       (await openSecret(secrets, kept.sealed).catch(() => "")) === "client.two"
     );
   }, "The new token was not sealed to disk");
-  assert.equal((await stat(saved)).mode & 0o777, 0o600);
+
+  if (process.platform !== "win32") assert.equal((await stat(saved)).mode & 0o777, 0o600);
 
   const redirectUrl = `${scheme}://${ACCOUNT_HOST}/`;
 

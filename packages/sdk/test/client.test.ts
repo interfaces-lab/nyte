@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
@@ -92,17 +92,19 @@ describe("client", () => {
   });
 
   it("binds GitHub on a local workspace and leaves it unsupported on a chat-only one", async () => {
+    const windows = process.platform === "win32";
     const git = (process.env.PATH ?? "")
       .split(delimiter)
-      .map((dir) => join(dir, "git"))
+      .map((dir) => join(dir, windows ? "git.exe" : "git"))
       .find((file) => existsSync(file));
     assert(git !== undefined);
-    const bin = await mkdtemp(join(tmpdir(), "nyte-no-gh-"));
-    await symlink(git, join(bin, "git"));
+    const bin = windows ? dirname(git) : await mkdtemp(join(tmpdir(), "nyte-no-gh-"));
+    assert(!existsSync(join(bin, windows ? "gh.exe" : "gh")));
+    if (!windows) await symlink(git, join(bin, "git"));
     vi.stubEnv("PATH", bin);
     cleanups.push(async () => {
       vi.unstubAllEnvs();
-      await rm(bin, { recursive: true, force: true });
+      if (!windows) await rm(bin, { recursive: true, force: true });
     });
     const chat = await open();
     const [chatWorkspace] = await (await client(chat)).workspaces.list();

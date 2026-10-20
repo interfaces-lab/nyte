@@ -53,12 +53,11 @@ beforeAll(async () => {
     `
     const { app, BrowserWindow } = require("electron");
     const { writeFileSync } = require("node:fs");
-    process.stdin.on("close", () => app.exit(1));
-    process.stdin.resume();
+    setInterval(() => { try { process.kill(${process.pid}, 0); } catch { app.exit(1); } }, 1000).unref();
     app.setPath("userData", ${JSON.stringify(join(directory, "profile"))});
     app.setPath("sessionData", ${JSON.stringify(join(directory, "session"))});
     app.whenReady().then(async () => {
-      const window = new BrowserWindow({ show: false, webPreferences: { backgroundThrottling: false } });
+      const window = new BrowserWindow({ show: ${JSON.stringify(process.platform !== "darwin")}, webPreferences: { backgroundThrottling: false } });
       try {
         await window.loadFile(${JSON.stringify(join(directory, "index.html"))});
         window.webContents.debugger.attach("1.3");

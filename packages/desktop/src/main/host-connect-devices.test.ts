@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { chmod } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import { BROKER_ROUTES, DESKTOP_ROUTES } from "@nyte-ai/connect";
 import type { RelayMethod } from "@nyte-ai/connect/relay";
@@ -253,6 +254,7 @@ test("a store that cannot be written refuses everyone and stops serving", async 
   const { ended: streaming } = await watch(setup, desktop_.host, phone.token);
 
   await chmod(setup.state, 0o500);
+  await chmod(join(setup.state, "connect.json"), 0o400);
   const token = randomBytes(32).toString("base64url");
   const grant = await broker.grant({ token });
   const answer = await broker.enroll(grant.authorization, grant.deviceId);

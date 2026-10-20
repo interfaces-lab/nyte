@@ -14,7 +14,7 @@
     "bench:interaction": "node --conditions=nyte-source e2e/bench-interaction.ts",
     "e2e": "pnpm --dir ../canvas build && pnpm --dir ../app build && pnpm build && pnpm build:e2e && playwright test --config e2e/playwright.config.ts",
     "dev": "install-electron && node scripts/build-adblock.mjs && node scripts/dev.mjs",
-    "test": "vitest --run",
+    "test": "install-electron && vitest --run",
     "update:local": "node scripts/update-test.mjs",
     "typecheck": "tsgo --noEmit && tsgo --noEmit -p e2e",
     "package": "node scripts/build.mjs --package --publish never",

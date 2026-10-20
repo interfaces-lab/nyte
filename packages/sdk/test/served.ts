@@ -103,7 +103,7 @@ export async function served(options?: {
       await listener.close();
       await host.close();
 
-      if (root !== null) await rm(root, { recursive: true, force: true });
+      if (root !== null) await rm(root, { recursive: true, force: true, maxRetries: 10 });
     },
   };
 }

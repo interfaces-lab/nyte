@@ -211,6 +211,33 @@ async function acquireLock(
 }
 
 /**
+ * Windows refuses to replace a file another process has open, so a reader holding the
+ * credentials for a moment makes the rename fail with EPERM, EACCES or EBUSY until it closes.
+ */
+async function publish(staging: string, path: string): Promise<void> {
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+
+  for (;;) {
+    try {
+      renameSync(staging, path);
+      return;
+    } catch (error) {
+      const busy =
+        process.platform === "win32" &&
+        error instanceof Error &&
+        "code" in error &&
+        (error.code === "EPERM" || error.code === "EACCES" || error.code === "EBUSY");
+
+      if (!busy || Date.now() >= deadline) throw error;
+    }
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, LOCK_RETRY_MS);
+    });
+  }
+}
+
+/**
  * File-backed credential store. The file is created 0600 under a 0700
  * directory. Storage failures reject instead of resolving empty, so a file
  * that cannot be read is never replaced by one that drops its credentials.
@@ -251,7 +278,7 @@ export class FileCredentialStore implements CredentialStore {
    * lock cannot make the held check and the rename one step; the check keeps a holder that
    * already lost its lock from overwriting the current owner.
    */
-  private save(lock: CredentialLock, entries: Record<string, unknown>): void {
+  private async save(lock: CredentialLock, entries: Record<string, unknown>): Promise<void> {
     if (!lock.held()) {
       throw new Error(`Another process took over ${this.lockPath}; nothing was written`);
     }
@@ -260,7 +287,7 @@ export class FileCredentialStore implements CredentialStore {
 
     try {
       writeFileSync(staging, `${JSON.stringify(entries, null, 2)}\n`, { mode: 0o600 });
-      renameSync(staging, this.path);
+      await publish(staging, this.path);
     } catch (error) {
       rmSync(staging, { force: true });
       throw error;
@@ -330,7 +357,7 @@ export class FileCredentialStore implements CredentialStore {
       if (next !== undefined) {
         if (next.accounts.length === 0) delete entries[providerId];
         else entries[providerId] = next;
-        this.save(lock, entries);
+        await this.save(lock, entries);
       }
 
       return next ?? current;
@@ -343,7 +370,7 @@ export class FileCredentialStore implements CredentialStore {
 
       if (providerId in entries) {
         delete entries[providerId];
-        this.save(lock, entries);
+        await this.save(lock, entries);
       }
     }, options);
   }

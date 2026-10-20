@@ -20,6 +20,8 @@ declare global {
 
 const ELECTRON_CHROMIUM = 152 << 16;
 
+export const NO_MOUSE = "The host has no mouse to hover or point finely with";
+
 export async function testRenderer(
   entry: URL,
   setup = "",
@@ -29,12 +31,14 @@ export async function testRenderer(
     forcePseudoSelector = "button",
     studio = false,
     captures,
+    mouse = false,
   }: {
     pointer?: "fine" | "coarse";
     forcePseudoClasses?: readonly string[];
     forcePseudoSelector?: string;
     studio?: boolean;
     captures?: string;
+    mouse?: boolean;
   } = {},
 ): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "nyte-renderer-test-"));
@@ -83,11 +87,10 @@ ${setup}
       `
 const { app, BrowserWindow } = require("electron");
 const { writeFileSync } = require("node:fs");
-process.stdin.on("close", () => app.exit(1));
-process.stdin.resume();
+setInterval(() => { try { process.kill(${process.pid}, 0); } catch { app.exit(1); } }, 1000).unref();
 app.setPath("userData", ${JSON.stringify(join(directory, "profile"))});
 app.whenReady().then(async () => {
-  const window = new BrowserWindow({ show: ${JSON.stringify(studio)},${studio ? " width: 1280, height: 860," : ""} webPreferences: { backgroundThrottling: false } });
+  const window = new BrowserWindow({ show: ${JSON.stringify(studio || process.platform !== "darwin")},${studio ? " width: 1280, height: 860," : ""} webPreferences: { backgroundThrottling: false } });
   try {
     await window.loadFile(${JSON.stringify(join(directory, "index.html"))});
     if (${JSON.stringify(studio)}) {
@@ -96,6 +99,14 @@ app.whenReady().then(async () => {
         app.exit(0);
       });
       await window.webContents.executeJavaScript("RendererTest.studio()");
+      return;
+    }
+    if (${JSON.stringify(process.platform !== "darwin")}) {
+      await window.webContents.executeJavaScript('new Promise((resolve) => { let settled = setTimeout(resolve, 100); addEventListener("resize", () => { clearTimeout(settled); settled = setTimeout(resolve, 100); }); })');
+    }
+    if (${JSON.stringify(mouse)} && !(await window.webContents.executeJavaScript('matchMedia("(any-pointer: fine) and (any-hover: hover)").matches'))) {
+      writeFileSync(${JSON.stringify(join(directory, "result.txt"))}, ${JSON.stringify(NO_MOUSE)});
+      app.exit(0);
       return;
     }
     window.webContents.debugger.attach("1.3");
@@ -125,8 +136,10 @@ app.whenReady().then(async () => {
     await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererCapture" });
     window.webContents.debugger.on("message", async (_event, method, params) => {
       if (method !== "Runtime.bindingCalled" || params.name !== "rendererCapture") return;
-      const image = await window.webContents.capturePage();
-      writeFileSync(${JSON.stringify(join(captures ?? directory, "/"))} + params.payload + ".png", image.toPNG());
+      if (${JSON.stringify(captures !== undefined)}) {
+        const image = await window.webContents.capturePage();
+        writeFileSync(${JSON.stringify(join(captures ?? directory, "/"))} + params.payload + ".png", image.toPNG());
+      }
       await window.webContents.executeJavaScript('document.dispatchEvent(new Event("renderer-captured"))');
     });
     window.webContents.debugger.on("message", async (_event, method, params) => {
@@ -151,7 +164,11 @@ app.whenReady().then(async () => {
       throw new Error("Expected the Electron executable path");
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
-    await execute(electron, [join(directory, "main.cjs")], { env, timeout: studio ? 0 : 40_000 });
+    await execute(electron, [join(directory, "main.cjs")], {
+      env,
+      timeout: studio ? 0 : 40_000,
+      killSignal: "SIGKILL",
+    });
 
     return await readFile(join(directory, "result.txt"), "utf8");
   } finally {

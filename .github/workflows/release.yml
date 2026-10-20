@@ -28,7 +28,7 @@ env:
 
 jobs:
   verify:
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-6vcpu-macos-15
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -79,15 +79,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
-      - name: Install test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ripgrep xvfb
-          pnpm --dir packages/app exec playwright install-deps chromium
-          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
-            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          fi
-      - run: xvfb-run --auto-servernum pnpm exec turbo run test --concurrency=3 --continue
+      - run: command -v rg || brew install ripgrep
+      - run: pnpm exec turbo run test --concurrency=3 --continue
       - run: pnpm sdk:pack
       - run: pnpm sdk:verify
 
