@@ -10,7 +10,6 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { props } from "@stylexjs/stylex";
-import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import type { MouseEvent, ReactElement } from "react";
 import type { GitHubRepository } from "@nyte-ai/sdk";
@@ -46,12 +45,10 @@ function openTarget(event: MouseEvent): OpenTarget {
 export function DraftRow({
   draft,
   selected,
-  layoutEnabled,
   rail,
 }: {
   readonly draft: ChatDraft;
   readonly selected: boolean;
-  readonly layoutEnabled: boolean;
   readonly rail: RailRows;
 }): ReactElement {
   const onOpen = (): void => rail.openDraft(draft.id);
@@ -69,19 +66,7 @@ export function DraftRow({
         selected && styles.rowSelected,
       ]}
     >
-      {selected && (
-        <Row.Backdrop
-          xstyle={styles.sessionSelection}
-          render={
-            <motion.div
-              initial={false}
-              layout={layoutEnabled ? "position" : false}
-              layoutId={layoutEnabled ? "selected-session" : undefined}
-              layoutCrossfade={false}
-            />
-          }
-        />
-      )}
+      {selected && <Row.Backdrop xstyle={styles.sessionSelection} />}
       <Row.Primary
         title={`Draft: ${title}`}
         aria-current={selected ? "page" : undefined}
@@ -162,12 +147,10 @@ export interface RailRows {
 export function SessionRow({
   session,
   place,
-  layoutEnabled,
   rail,
 }: {
   readonly session: SessionInfo;
   readonly place: SessionPlace;
-  readonly layoutEnabled: boolean;
   readonly rail: RailRows;
 }): ReactElement {
   const selected = session.id === rail.activeSessionId;
@@ -282,19 +265,7 @@ export function SessionRow({
         ask !== undefined && styles.sessionRowAsk,
       ]}
     >
-      {selected && (
-        <Row.Backdrop
-          xstyle={styles.sessionSelection}
-          render={
-            <motion.div
-              initial={false}
-              layout={layoutEnabled ? "position" : false}
-              layoutId={layoutEnabled ? "selected-session" : undefined}
-              layoutCrossfade={false}
-            />
-          }
-        />
-      )}
+      {selected && <Row.Backdrop xstyle={styles.sessionSelection} />}
       <Row.Primary
         xstyle={unreachable && styles.sessionUnreachable}
         aria-current={selected ? "page" : undefined}

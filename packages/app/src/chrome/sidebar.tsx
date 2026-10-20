@@ -159,7 +159,6 @@ export function Sidebar(): ReactElement {
   const page = useStagePage();
   const paletteOpen = useOverlays().search;
   const homeVisible = useSetting(preferences.homeVisible);
-  const sidebarVisible = useSetting(preferences.sidebarVisible);
   const router = useRouter();
 
   const settingsOpen = useSettingsOpen();
@@ -380,7 +379,6 @@ export function Sidebar(): ReactElement {
           place={place}
           sessions={sessions}
           open={place.workspace === (open?.id ?? null)}
-          layoutEnabled={sidebarVisible && collectionExpanded && expanded}
           context={context}
         />
       </WorkspaceRow>
@@ -525,7 +523,6 @@ export function Sidebar(): ReactElement {
                     listId={`${sessionListId}-chats`}
                     listed={listed}
                     hold={hold}
-                    layoutEnabled={sidebarVisible && collectionExpanded}
                     context={context}
                   />
                 ) : (

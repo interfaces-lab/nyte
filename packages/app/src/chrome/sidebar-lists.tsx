@@ -161,24 +161,16 @@ function ShowMore({
 function Drafts({
   drafts,
   activeDraftId,
-  layoutEnabled,
   rail,
 }: {
   readonly drafts: readonly ChatDraft[];
   readonly activeDraftId: string | undefined;
-  readonly layoutEnabled: boolean;
   readonly rail: RailRows;
 }): ReactElement {
   return (
     <>
       {drafts.map((draft) => (
-        <DraftRow
-          key={draft.id}
-          draft={draft}
-          selected={draft.id === activeDraftId}
-          layoutEnabled={layoutEnabled}
-          rail={rail}
-        />
+        <DraftRow key={draft.id} draft={draft} selected={draft.id === activeDraftId} rail={rail} />
       ))}
     </>
   );
@@ -186,23 +178,15 @@ function Drafts({
 
 function ListedRows({
   rows,
-  layoutEnabled,
   rail,
 }: {
   readonly rows: readonly ListedSession[];
-  readonly layoutEnabled: boolean;
   readonly rail: RailRows;
 }): ReactElement {
   return (
     <>
       {rows.map(({ place, session }) => (
-        <SessionRow
-          key={session.id}
-          session={session}
-          place={place}
-          layoutEnabled={layoutEnabled}
-          rail={rail}
-        />
+        <SessionRow key={session.id} session={session} place={place} rail={rail} />
       ))}
     </>
   );
@@ -212,13 +196,11 @@ export function ChatsList({
   listId,
   listed,
   hold,
-  layoutEnabled,
   context,
 }: {
   readonly listId: string;
   readonly listed: readonly ListedSession[] | undefined;
   readonly hold: ShelfHold | undefined;
-  readonly layoutEnabled: boolean;
   readonly context: ListContext;
 }): ReactElement | null {
   const { view, rail, reveal } = context;
@@ -234,12 +216,7 @@ export function ChatsList({
       {rows.length === 0 && drafts.length === 0 && (
         <EmptyList filtered={hasSessionFilters(view)} onClearFilters={context.onClearFilters} />
       )}
-      <Drafts
-        drafts={drafts}
-        activeDraftId={activeDraftId}
-        layoutEnabled={layoutEnabled}
-        rail={rail}
-      />
+      <Drafts drafts={drafts} activeDraftId={activeDraftId} rail={rail} />
     </>
   );
 
@@ -285,7 +262,7 @@ export function ChatsList({
             })
           }
         >
-          <ListedRows rows={visible} layoutEnabled={layoutEnabled && open} rail={rail} />
+          <ListedRows rows={visible} rail={rail} />
           {page.next > 0 && (
             <ShowMore
               listId={panelId}
@@ -300,7 +277,7 @@ export function ChatsList({
     return (
       <div id={listId} {...props(styles.section)}>
         {lead}
-        <ListedRows rows={inbox} layoutEnabled={layoutEnabled} rail={rail} />
+        <ListedRows rows={inbox} rail={rail} />
         {inbox.length === 0 && drafts.length === 0 && rows.length > 0 && (
           <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>Nothing new</div>
         )}
@@ -321,7 +298,7 @@ export function ChatsList({
   return (
     <div id={listId} {...props(styles.section)}>
       {lead}
-      <ListedRows rows={visible} layoutEnabled={layoutEnabled} rail={rail} />
+      <ListedRows rows={visible} rail={rail} />
       {page.next > 0 && (
         <ShowMore
           listId={listId}
@@ -338,14 +315,12 @@ export function FolderList({
   place,
   sessions,
   open,
-  layoutEnabled,
   context,
 }: {
   readonly listId: string;
   readonly place: SessionPlace;
   readonly sessions: readonly SessionInfo[] | undefined;
   readonly open: boolean;
-  readonly layoutEnabled: boolean;
   readonly context: ListContext;
 }): ReactElement | null {
   const { view, rail, reveal } = context;
@@ -370,12 +345,7 @@ export function FolderList({
           {view.grouping === "status" && (
             <div {...props(text.xs, styles.sessionGroupLabel)}>Draft</div>
           )}
-          <Drafts
-            drafts={visibleDrafts}
-            activeDraftId={activeDraftId}
-            layoutEnabled={layoutEnabled}
-            rail={rail}
-          />
+          <Drafts drafts={visibleDrafts} activeDraftId={activeDraftId} rail={rail} />
         </div>
       )}
       {sessions !== undefined && listedCount === 0 && (
@@ -386,11 +356,7 @@ export function FolderList({
           {group.label !== undefined && (
             <div {...props(text.xs, styles.sessionGroupLabel)}>{group.label}</div>
           )}
-          <ListedRows
-            rows={group.sessions.map((session) => ({ place, session }))}
-            layoutEnabled={layoutEnabled}
-            rail={rail}
-          />
+          <ListedRows rows={group.sessions.map((session) => ({ place, session }))} rail={rail} />
         </div>
       ))}
       {page.next > 0 && (
