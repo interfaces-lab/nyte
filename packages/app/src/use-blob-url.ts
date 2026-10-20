@@ -43,7 +43,6 @@ export function useBlobUrl(blob: BlobId): string | undefined {
   const read = useQuery({
     queryKey: ["blob", blob],
     queryFn: ({ client, queryKey }) => readBlobUrl(blob, client.getQueryCache(), queryKey),
-    staleTime: Infinity,
   });
 
   return read.data;

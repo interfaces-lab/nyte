@@ -46,7 +46,6 @@ export function useGitHub(): GitHubApi | undefined {
 
             return found.kind === "available" ? found.api : null;
           },
-    staleTime: Number.POSITIVE_INFINITY,
   });
 
   return capability.data ?? undefined;
@@ -79,8 +78,6 @@ export function useGitHubState(github: GitHubApi | undefined) {
 }
 
 export function useGitHubAccountState() {
-  const pending = usePendingAuth();
-
   return useQuery({
     queryKey: ACCOUNT_KEY,
     queryFn: async (): Promise<GitHubAccountState | null> => {
@@ -92,15 +89,12 @@ export function useGitHubAccountState() {
         throw error;
       }
     },
-    staleTime: 30_000,
-    refetchOnMount: true,
-    refetchOnWindowFocus: pending.length === 0,
     refetchInterval: (current) =>
       current.state.data?.kind === "signing_in" ? SIGNING_IN_POLL_MS : false,
   });
 }
 
-export function useGitHubAccount() {
+export function useGitHubAuth() {
   const client = useQueryClient();
 
   const auth = useMutation({
@@ -118,7 +112,10 @@ export function useGitHubAccount() {
   });
 
   const pending = usePendingAuth();
-  const query = useGitHubAccountState();
 
-  return { query, auth, busy: pending.length > 0, connecting: pending.includes("signIn") };
+  return { auth, busy: pending.length > 0, connecting: pending.includes("signIn") };
+}
+
+export function useGitHubAccount() {
+  return { query: useGitHubAccountState(), ...useGitHubAuth() };
 }

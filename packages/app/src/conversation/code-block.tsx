@@ -110,7 +110,6 @@ function HighlightedCode({
     queryKey: keys.highlight(language, code),
     queryFn: () => requestHighlight(code, language),
     enabled: nearViewport && language !== "" && cached === undefined,
-    staleTime: Infinity,
     gcTime: 0,
   });
 

@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   QueryClient,
   skipToken,
   useMutation,
@@ -66,12 +67,12 @@ import {
   useWatchSelect,
 } from "./sdk.tsx";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
-import { toDesktopCatalog } from "./catalog.ts";
+import { applyListings, toDesktopCatalog } from "./catalog.ts";
 import { workspaceName, workspacePath } from "./view-helpers.ts";
 import { mentionFile } from "./conversation/message-references.ts";
 import { subagentActivity } from "./conversation/subagent-status.ts";
 import type { MentionFile } from "./conversation/message-references.ts";
-import type { DesktopCatalog } from "./catalog.ts";
+import type { DesktopCatalog, ListingChange } from "./catalog.ts";
 import { startupReadsReleased } from "./startup.ts";
 
 export { keys } from "./query-keys.ts";
@@ -142,6 +143,8 @@ function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalo
 }
 
 const DEFAULT_MODEL_MUTATION = ["catalog", "default"] as const;
+
+const MODEL_LISTING_MUTATION = ["catalog", "listing"] as const;
 
 export async function readStartCatalog(): Promise<DesktopCatalog> {
   const newest = newestCatalogQuery();
@@ -218,13 +221,10 @@ export function setUpdateStateForDemo(state: UpdateState): void {
   queryClient.setQueryData(keys.updates, state);
 }
 
-export function useServerState(active: boolean) {
+export function useServerState() {
   return useQuery({
     queryKey: keys.server,
     queryFn: () => nyte.host.server.state(),
-    staleTime: active ? 0 : Infinity,
-    refetchOnWindowFocus: active ? "always" : false,
-    refetchOnMount: active ? "always" : false,
   });
 }
 
@@ -701,7 +701,6 @@ export function useHostRelease(): { readonly version: string } | undefined {
   const own = useQuery({
     queryKey: keys.clientOperations,
     queryFn: operationsDigest,
-    staleTime: Number.POSITIVE_INFINITY,
   }).data;
 
   return operations !== undefined &&
@@ -724,12 +723,21 @@ export function useCatalog(_sessionId?: SessionId) {
     filters: { mutationKey: DEFAULT_MODEL_MUTATION, status: "pending" },
   });
 
+  const listings = useMutationState<MutationState<unknown, Error, ListingChange>>({
+    filters: { mutationKey: MODEL_LISTING_MUTATION, status: "pending" },
+  });
+
   return useQuery({
     queryKey: keys.modelCatalog(generation),
     queryFn: readModelCatalog,
     placeholderData: cachedModelCatalog,
     select: (view): DesktopCatalog => {
-      const catalog = toDesktopCatalog(view);
+      const catalog = toDesktopCatalog(
+        applyListings(
+          view,
+          listings.flatMap((change) => (change.variables === undefined ? [] : [change.variables])),
+        ),
+      );
       const model = pending.at(-1)?.variables;
 
       return model === undefined || catalog.defaults === undefined
@@ -739,38 +747,46 @@ export function useCatalog(_sessionId?: SessionId) {
   });
 }
 
-export function usageReportOptions(untilDay: string) {
+/** A host read of local history, kept with the window it answers. */
+export interface UsageRead {
+  readonly window: UsageWindow;
+  readonly report: UsageSnapshot;
+}
+
+export function usageReportOptions(window: UsageWindow) {
   return {
-    queryKey: keys.usage(untilDay),
-    queryFn: () => {
+    queryKey: keys.usage(window.sinceDay, window.untilDay),
+    queryFn: async (): Promise<UsageRead> => {
       const usage = nyte.host.usage;
 
       if (usage === undefined) throw new Error("This host keeps no usage history.");
 
-      return usage({ sinceDay: null, untilDay } satisfies UsageWindow);
+      return { window, report: await usage(window) };
     },
+    placeholderData: keepPreviousData,
     refetchOnMount: true,
     staleTime: USAGE_STALE_AFTER_MS,
   } as const;
 }
 
 interface UsageQueryView {
-  readonly report: UsageSnapshot | undefined;
+  readonly read: UsageRead | undefined;
+  /** Whether `read` answers an earlier window while the requested one is read. */
+  readonly superseded: boolean;
   readonly error: Error | null;
-  readonly isPending: boolean;
   readonly isFetching: boolean;
   readonly refresh: () => void;
 }
 
-export function useUsageReport(untilDay: string): UsageQueryView {
-  const query = useQuery(usageReportOptions(untilDay));
+export function useUsageReport(window: UsageWindow): UsageQueryView {
+  const query = useQuery(usageReportOptions(window));
 
   return {
-    report: query.data,
+    read: query.data,
+    superseded: query.isPlaceholderData,
     error: query.isError
       ? (query.error ?? new Error("The host could not read local history."))
       : null,
-    isPending: query.data === undefined && !query.isError,
     isFetching: query.isFetching,
     refresh: () => void query.refetch({ cancelRefetch: false }),
   };
@@ -817,6 +833,21 @@ export function usePluginCatalog(sessionId?: SessionId) {
   );
 
   return { data, isError: failed };
+}
+
+export function useSetListing() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationKey: MODEL_LISTING_MUTATION,
+    mutationFn: async ({ models, listing }: ListingChange) => {
+      const outcome = await (await connected()).models.setListing(models, listing);
+
+      if (outcome.kind === "unknown-model") throw new Error("That model is no longer available");
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: ["catalog"] }),
+    onError: () => toast.add({ type: "error", title: "Couldn't save the model list. Try again." }),
+  });
 }
 
 export function useSetPreference() {

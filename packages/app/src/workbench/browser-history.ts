@@ -9,7 +9,6 @@ export function useBrowserHistory(owner: string | null): readonly BrowserHistory
   const history = useQuery({
     queryKey: keys.browserHistory(owner),
     queryFn: async () => (await nyte.host.browser?.history({ owner })) ?? NONE,
-    staleTime: Infinity,
   });
 
   return history.data ?? NONE;

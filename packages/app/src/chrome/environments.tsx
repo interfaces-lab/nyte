@@ -23,7 +23,7 @@ export function EnvironmentsSurface(): ReactElement {
             <h2 {...props(settingsPatterns.sectionTitle)}>Server</h2>
           </div>
           <ConnectionList>
-            <CloudConnection active={active} />
+            <CloudConnection />
           </ConnectionList>
         </section>
       </div>

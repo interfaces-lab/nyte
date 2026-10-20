@@ -98,7 +98,6 @@ export function MermaidDiagram({ source }: { readonly source: string }): ReactEl
   const render = useQuery({
     queryKey: keys.mermaid(source),
     queryFn: ({ signal }) => renderMermaid(source, signal),
-    staleTime: Infinity,
   });
 
   const [sourceVisible, setSourceVisible] = useState(false);

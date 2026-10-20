@@ -96,9 +96,9 @@ function serverDetail(state: Exclude<ServerState, { kind: "none" }>): string {
   return `Nyte ${state.version}.`;
 }
 
-export function CloudConnection({ active }: { readonly active: boolean }): ReactElement {
+export function CloudConnection(): ReactElement {
   const client = useQueryClient();
-  const server = useServerState(active);
+  const server = useServerState();
   const [editing, setEditing] = useState(false);
 
   const connect = useMutation({

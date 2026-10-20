@@ -18,7 +18,6 @@ export async function loadHostSettings(): Promise<void> {
     await queryClient.ensureQueryData({
       queryKey: keys.hostSettings,
       queryFn: () => bridge.get(),
-      staleTime: Number.POSITIVE_INFINITY,
     });
   } catch (cause) {
     toast.add({ type: "error", title: errorMessage(cause) });

@@ -59,12 +59,12 @@ function render(state: GitHubAccountState, view: ConnectView): string {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.add(client);
   client.setQueryData(keys.host, { workspace: undefined } satisfies HostState);
-  client.setQueryData([...keys.github, "account"], state);
   client.setQueryData(keys.connect, view);
 
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <AccountFooterMenu
+        account={state}
         connect={connect}
         anchor={{ current: null }}
         onOpenProfile={() => undefined}

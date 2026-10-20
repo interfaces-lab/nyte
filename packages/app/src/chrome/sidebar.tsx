@@ -150,7 +150,7 @@ export function Sidebar(): ReactElement {
   const open = host.data.workspace;
   const workspaces = useWorkspaces();
   const workspaceSessions = useWorkspaceSessions();
-  const server = useServerState(false);
+  const server = useServerState();
   const sessionActions = useSessionActions();
   const renameSession = useRenameSession();
   const forgetWorkspace = useForgetWorkspace();
@@ -566,6 +566,7 @@ export function Sidebar(): ReactElement {
         <div {...props(styles.footer)}>
           <div ref={footerRowRef} {...props(styles.footerRow)}>
             <AccountFooterMenu
+              account={githubAccount}
               connect={nyte.host.connect}
               anchor={footerRowRef}
               onOpenProfile={() => openSettings("profile")}
