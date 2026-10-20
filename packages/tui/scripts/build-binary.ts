@@ -8,7 +8,7 @@ import { VERSION } from "../src/version.ts";
 import { codemodePlugin } from "./codemode-plugin.ts";
 import { BINARY_ENTRYPOINTS, binaryDefines } from "./defines.ts";
 
-const destination = fileURLToPath(new URL("../../../bin/", import.meta.url));
+const destination = fileURLToPath(new URL("../dist/", import.meta.url));
 
 const packages = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -61,7 +61,7 @@ try {
   await rename(executable, join(destination, name));
   await writeFile(join(destination, "nyte.version"), `${VERSION}\n`);
   process.stdout.write(
-    `Built bin/${name} in ${((performance.now() - started) / 1000).toFixed(1)}s\n`,
+    `Built packages/tui/dist/${name} in ${((performance.now() - started) / 1000).toFixed(1)}s\n`,
   );
 } catch (cause) {
   process.stderr.write(`Build failed: ${describe(cause)}\n`);

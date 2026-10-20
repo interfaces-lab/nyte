@@ -11,7 +11,7 @@
     "@nyte-ai/tui#build": {
       "dependsOn": ["^build"],
       "env": ["NYTE_CONNECT_ORIGIN"],
-      "outputs": ["../../bin/nyte", "../../bin/nyte.exe", "../../bin/nyte.version"]
+      "outputs": ["dist/nyte", "dist/nyte.exe", "dist/nyte.version"]
     },
     "build:package": {
       "dependsOn": ["^build:package"],

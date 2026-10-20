@@ -1,5 +1,5 @@
 #!/bin/sh
-# `pnpm package` in packages/tui. Builds bin/nyte and stages release artifacts in dist/.
+# `pnpm package` in packages/tui. Builds packages/tui/dist/nyte and stages release artifacts in dist/.
 # Produces dist/<name>.tar.gz plus a .sha256 beside it, where
 # <name> is nyte-v<version>-<os>-<arch>.
 #
@@ -20,8 +20,8 @@ case "$platform" in
 		;;
 esac
 
-# Under Turbo, package depends on build, so bin/nyte is already current.
+# Under Turbo, package depends on build, so packages/tui/dist/nyte is already current.
 if [ -z "${TURBO_HASH:-}" ]; then
 	pnpm --filter @nyte-ai/tui build
 fi
-sh scripts/assemble-release.sh bin/nyte dist "$target"
+sh scripts/assemble-release.sh packages/tui/dist/nyte dist "$target"

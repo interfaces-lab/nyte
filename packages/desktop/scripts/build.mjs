@@ -82,8 +82,8 @@ if (compiled && !existsSync(join(desktopRoot, "..", "canvas", "dist", "shell", "
   process.exit(1);
 }
 
-if (compiled && bundlesCli && !existsSync(join(desktopRoot, "..", "..", "bin", "nyte"))) {
-  failure("bin/nyte is missing. Run `pnpm build:tui` first.");
+if (compiled && bundlesCli && !existsSync(join(desktopRoot, "..", "tui", "dist", "nyte"))) {
+  failure("packages/tui/dist/nyte is missing. Run `pnpm build:tui` first.");
   process.exit(1);
 }
 

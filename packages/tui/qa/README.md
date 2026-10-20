@@ -1,7 +1,7 @@
 # Binary smoke
 
 ```sh
-pnpm --dir packages/tui test:binary                     # builds bin/nyte, then runs the smoke
+pnpm --dir packages/tui test:binary                     # builds dist/nyte, then runs the smoke
 NYTE_BINARY=/path/to/nyte bun test ./qa/binary.smoke.ts # an existing build
 ```
 

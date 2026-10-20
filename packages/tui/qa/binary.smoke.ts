@@ -11,7 +11,7 @@ import { freshHome, PLUGIN_ANSWER, serveForBinary } from "./service.ts";
 import type { TestService } from "./service.ts";
 
 const BINARY =
-  process.env["NYTE_BINARY"] ?? fileURLToPath(new URL("../../../bin/nyte", import.meta.url));
+  process.env["NYTE_BINARY"] ?? fileURLToPath(new URL("../dist/nyte", import.meta.url));
 
 const RESUME = /To resume previous session\nnyte --session=([^\n]+)\n$/u;
 

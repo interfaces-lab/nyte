@@ -11,8 +11,8 @@ const updateTest = process.env["NYTE_UPDATE_TEST"] === "1";
 const productName = updateTest ? "Nyte Update Test" : "Nyte";
 
 const CLI = [
-  { from: "../../bin/nyte", to: "nyte" },
-  { from: "../../bin/nyte.version", to: "nyte.version" },
+  { from: "../tui/dist/nyte", to: "nyte" },
+  { from: "../tui/dist/nyte.version", to: "nyte.version" },
 ];
 
 const CLI_ENTITLEMENTS = join(import.meta.dirname, "..", "tui", "entitlements.plist");

@@ -6,6 +6,7 @@
     "build": "turbo build --filter=@nyte-ai/tui --filter=@nyte-ai/desktop",
     "build:tui": "turbo build --filter=@nyte-ai/tui",
     "build:desktop": "turbo build --filter=@nyte-ai/desktop",
+    "install:nyte": "turbo build --filter=@nyte-ai/tui && sh scripts/install-nyte.sh",
     "package": "turbo package --filter=@nyte-ai/tui --filter=@nyte-ai/desktop",
     "package:tui": "turbo package --filter=@nyte-ai/tui",
     "package:desktop": "turbo package --filter=@nyte-ai/desktop",
