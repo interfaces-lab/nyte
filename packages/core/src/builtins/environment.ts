@@ -1,12 +1,11 @@
 import { PatchEntrySchema, standard, writePatch } from "@nyte-ai/schema";
-import type { Infer, PatchEntry, ToolContent } from "@nyte-ai/schema";
+import type { Infer, JobView, OutputFrame, PatchEntry, ToolContent } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Plugin } from "../contract/plugin.ts";
 import type { ToolDefinition } from "../contract/tools.ts";
 import type { FilesApi } from "../contract/workspace.ts";
 import { textDigest } from "../util/content.ts";
 import { lineDiff } from "../util/line-diff.ts";
-import { followedTrace, traceparent } from "../util/trace.ts";
 
 const READ_LINES = 2000;
 
@@ -17,6 +16,8 @@ const LIST_LIMIT = 500;
 const SHELL_BYTES = 32 * 1024;
 
 const PROGRESS_BYTES = 4 * 1024;
+
+const FIRST_OUTPUT_MS = 1000;
 
 const MIME_TYPES = new Map([
   ["png", "image/png"],
@@ -74,6 +75,21 @@ const bashParameters = standard(
     description: Type.Optional(
       Type.String({ description: "What the command does, in a few words, for the user." }),
     ),
+    background: Type.Optional(
+      Type.Boolean({
+        description:
+          "Start the command and return a job id with its first output instead of waiting for it to exit. Use for servers, watchers, and other long-lived commands, without a trailing &. The command keeps running across turns, and you are told when it exits; read its output or stop it with the job tool. Do not use it to speed up ordinary commands.",
+      }),
+    ),
+  }),
+);
+
+const jobParameters = standard(
+  Type.Object({
+    id: Type.String({ description: "The job id a background bash call returned." }),
+    action: Type.Enum(["output", "stop"], {
+      description: "output reads the job's state and latest output; stop ends it.",
+    }),
   }),
 );
 
@@ -257,59 +273,159 @@ const bash: ToolDefinition<Infer<typeof bashParameters>> = {
       : { kind: "shell", command: args.command, description: args.description },
   replay: "never",
   async execute(args, invocation) {
-    const { env } = invocation;
-    const trace = followedTrace(invocation.session.id);
+    const { foreground, signal } = invocation;
 
-    const job = await env.exec(args.command, {
-      cwd: env.cwd,
-      signal: invocation.signal,
-      env: trace === null ? undefined : { TRACEPARENT: traceparent(trace) },
+    const running = await foreground.start({
+      command: args.command,
+      title: args.description ?? args.command,
     });
 
-    const chunks: Uint8Array[] = [];
-    let kept = 0;
-    let dropped = 0;
-    let code: number | null = null;
+    const stop = (): void => void running.stop().catch(() => undefined);
+    signal.addEventListener("abort", stop, { once: true });
 
-    for await (const frame of job.output()) {
-      if (frame.kind === "exit") {
-        code = frame.code;
+    if (signal.aborted) stop();
+    const shell = createShellOutput((tail) => invocation.progress({ text: tail }));
+    const frames = running.output()[Symbol.asyncIterator]();
 
-        break;
+    try {
+      const exited = await shell.read(
+        frames,
+        args.background === true
+          ? AbortSignal.any([foreground.released, AbortSignal.timeout(FIRST_OUTPUT_MS)])
+          : foreground.released,
+      );
+
+      if (!exited && (foreground.released.aborted || foreground.release())) {
+        await frames.return?.();
+
+        return text(
+          shell.render(
+            `[running in the background as job ${running.id}: you are told when it exits; the job tool reads its output or stops it]`,
+          ),
+        );
       }
 
-      if (frame.kind === "gap") continue;
-      chunks.push(frame.data);
-      kept += frame.data.byteLength;
+      if (!exited) await shell.read(frames, new AbortController().signal);
+      const end = await running.settled();
+      const exit = end.kind === "exited" ? (end.code ?? shell.code()) : shell.code();
 
-      while (kept - (chunks[0]?.byteLength ?? 0) >= SHELL_BYTES && chunks.length > 1) {
-        const first = chunks.shift();
-        kept -= first?.byteLength ?? 0;
-        dropped += first?.byteLength ?? 0;
-      }
+      return text(
+        shell.render(
+          end.kind === "lost"
+            ? "[the process was lost]"
+            : `[exit code ${exit ?? "none"}${end.reason === "exited" ? "" : `, ${end.reason}`}]`,
+        ),
+      );
+    } catch (error) {
+      stop();
 
-      invocation.progress({ text: decodeOutputTail(chunks, PROGRESS_BYTES) });
+      throw error;
+    } finally {
+      signal.removeEventListener("abort", stop);
     }
-
-    const end = await job.settled();
-    const exit = end.kind === "exited" ? (end.code ?? code) : code;
-    const joined = joinBytes(chunks);
-    const cut = Math.max(0, joined.byteLength - SHELL_BYTES);
-    const output = new TextDecoder().decode(joined.subarray(cut)).trimEnd();
-
-    const truncated =
-      dropped + cut > 0
-        ? [`[truncated: the first ${dropped + cut} bytes of output are not shown]`]
-        : [];
-
-    const status =
-      end.kind === "lost"
-        ? "[the process was lost]"
-        : `[exit code ${exit ?? "none"}${end.reason === "exited" ? "" : `, ${end.reason}`}]`;
-
-    return text([...truncated, ...(output === "" ? [] : [output]), status].join("\n"));
   },
 };
+
+const job: ToolDefinition<Infer<typeof jobParameters>> = {
+  name: "job",
+  description:
+    "Read the state and latest output of a job a background bash call started, or stop it.",
+  parameters: jobParameters,
+  class: (args) => ({
+    kind: "custom",
+    label: args.action === "stop" ? `Stopping job ${args.id}` : `Reading job ${args.id}`,
+  }),
+  effects: "none",
+  replay: "safe",
+  async execute(args, invocation) {
+    const { jobs } = invocation.workspace;
+
+    const find = async (): Promise<JobView | undefined> =>
+      (await jobs.list()).find(
+        (view) => view.id === args.id && view.session === invocation.session.id,
+      );
+
+    const found = await find();
+
+    if (found === undefined) return text(`This chat has no job ${args.id}.`);
+
+    if (args.action === "stop") await invocation.workspace.job(found.id).stop();
+    const view = args.action === "stop" ? ((await find()) ?? found) : found;
+    const tail = view.tail.trimEnd();
+    const state = describeJobState(view.state);
+
+    return text(tail === "" ? `Job ${view.id} ${state}.` : `Job ${view.id} ${state}:\n${tail}`);
+  },
+};
+
+function describeJobState(state: JobView["state"]): string {
+  if (state.kind === "running") return "is running";
+
+  if (state.kind === "lost") return "was lost with the host";
+
+  return state.reason === "exited"
+    ? `exited with code ${state.code ?? "none"}`
+    : `ended (${state.reason}) with code ${state.code ?? "none"}`;
+}
+
+function createShellOutput(progress: (tail: string) => void) {
+  const chunks: Uint8Array[] = [];
+  let kept = 0;
+  let dropped = 0;
+  let code: number | null = null;
+  let pending: Promise<IteratorResult<OutputFrame>> | null = null;
+
+  return {
+    async read(frames: AsyncIterator<OutputFrame>, until: AbortSignal): Promise<boolean> {
+      const detached = new Promise<null>((resolve) => {
+        if (until.aborted) resolve(null);
+        until.addEventListener("abort", () => resolve(null), { once: true });
+      });
+
+      for (;;) {
+        pending ??= frames.next();
+        const next = await Promise.race([pending, detached]);
+
+        if (next === null) return false;
+        pending = null;
+
+        if (next.done === true) return true;
+        const frame = next.value;
+
+        if (frame.kind === "exit") {
+          code = frame.code;
+
+          return true;
+        }
+
+        if (frame.kind === "gap") continue;
+        chunks.push(frame.data);
+        kept += frame.data.byteLength;
+
+        while (kept - (chunks[0]?.byteLength ?? 0) >= SHELL_BYTES && chunks.length > 1) {
+          const first = chunks.shift();
+          kept -= first?.byteLength ?? 0;
+          dropped += first?.byteLength ?? 0;
+        }
+
+        progress(decodeOutputTail(chunks, PROGRESS_BYTES));
+      }
+    },
+    code: () => code,
+    render(status: string): string {
+      const joined = joinBytes(chunks);
+      const cut = Math.max(0, joined.byteLength - SHELL_BYTES);
+      const output = new TextDecoder().decode(joined.subarray(cut)).trimEnd();
+
+      const truncated =
+        dropped + cut > 0
+          ? [`[truncated: the first ${dropped + cut} bytes of output are not shown]`]
+          : [];
+
+      return [...truncated, ...(output === "" ? [] : [output]), status].join("\n");
+    },
+  };
+}
 
 function joinBytes(chunks: readonly Uint8Array[]): Uint8Array {
   const joined = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
@@ -342,7 +458,7 @@ function decodeOutputTail(chunks: readonly Uint8Array[], limit: number): string 
 
 export const environmentPlugin: Plugin<"core"> = {
   id: "environment",
-  contribute: { tools: [read, write, edit, list, bash] },
+  contribute: { tools: [read, write, edit, list, bash, job] },
   activate(api) {
     const cwd = tryReadCwd(() => api.env);
 

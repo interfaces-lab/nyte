@@ -1,5 +1,6 @@
 import { asSeq } from "@nyte-ai/schema";
 import type { CallId, ChangeSet, HeadName, Seq, SessionId, SnapshotId } from "@nyte-ai/schema";
+import type { Kernel } from "../contract/kernel.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import type { SnapshotsApi } from "../contract/workspace.ts";
 import { listSessionRecords, liveRuns, threadStart } from "../store/session.ts";
@@ -61,11 +62,8 @@ export async function ownedChanges(
   };
 }
 
-export async function anotherChatLive(
-  store: StoreConnection,
-  session: SessionId,
-): Promise<boolean> {
-  const records = await listSessionRecords(store);
+export async function anotherChatLive(kernel: Kernel, session: SessionId): Promise<boolean> {
+  const records = await listSessionRecords(kernel.store);
   const parents = new Map(records.map((record) => [record.id, record.parent]));
 
   const findRoot = (id: SessionId): SessionId => {
@@ -75,13 +73,27 @@ export async function anotherChatLive(
   };
 
   const workspace = records.find((record) => record.id === session)?.workspace;
+
+  if (workspace === undefined) return false;
   const family = findRoot(session);
 
-  const others = records.filter(
-    (record) => record.workspace === workspace && findRoot(record.id) !== family,
+  const others = new Set(
+    records.flatMap((record) =>
+      record.workspace === workspace && findRoot(record.id) !== family ? [record.id] : [],
+    ),
   );
 
-  const runs = await Promise.all(others.map((record) => liveRuns(store, record.id)));
+  const working = kernel.jobs
+    .list(workspace)
+    .some(
+      (entry) =>
+        entry.view.state.kind === "running" &&
+        entry.owner !== null &&
+        others.has(entry.owner.session),
+    );
+
+  if (working) return true;
+  const runs = await Promise.all([...others].map((id) => liveRuns(kernel.store, id)));
 
   return runs.some((live) => live.length > 0);
 }

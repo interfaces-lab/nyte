@@ -5,7 +5,7 @@ import { memoryStore } from "../src/store.ts";
 import type { SnapshotsApi, ToolDefinition } from "../src/index.ts";
 import { main, recording, setup } from "../src/harness.ts";
 import { requireSession } from "../src/store/session.ts";
-import { collect } from "./fake-env.ts";
+import { collect, createDisk, world } from "./fake-env.ts";
 import { echo, toolPlugin, liveRun, call, readRun, scripted, toolPart } from "./tool-support.ts";
 
 function treeSnapshots(tree: Map<string, string>): SnapshotsApi {
@@ -416,6 +416,47 @@ describe("tool changes", () => {
       await finish();
     },
   );
+
+  it("charges a command nothing while another chat's job runs in the shared folder after its run ended", async () => {
+    const disk = createDisk();
+
+    const make = {
+      ...echo,
+      name: "make",
+      class: (args) => ({ kind: "shell", command: args.text }),
+      execute: async (args) => {
+        disk.put(`/work/project/${args.text}`, args.text);
+
+        return { content: [{ kind: "text", text: args.text }] };
+      },
+    } satisfies ToolDefinition<{ text: string }>;
+
+    const { kernel, host, workspace } = await world({ disk, plugins: [toolPlugin([make])] });
+    const { session: other } = await host.sessions.start({ workspace, content: "Serve." });
+
+    const server = await host
+      .workspace(workspace)
+      .jobs.start({ command: "pnpm dev", session: other.id });
+
+    const { session } = await host.sessions.start({ workspace, content: "Build." });
+    const run = await liveRun(kernel, session.id);
+    const build = (id: string, text: string) =>
+      call(kernel, { session: session.id, run, call: id, name: "make", args: { text } });
+
+    await build("a1", "dist.js");
+    await server.stop();
+    await build("a2", "app.js");
+
+    expect((await toolPart(session, "a1")).state).toHaveProperty("changes", {
+      added: 0,
+      removed: 0,
+      paths: [],
+      unattributed: true,
+    });
+    expect((await toolPart(session, "a2")).state).toMatchObject({
+      changes: { paths: ["app.js"] },
+    });
+  });
 
   it("lists, reviews and patches only the files a chat's own calls changed", async () => {
     const { a, b, workspace, act, paths, finish } = await sharedFolder();

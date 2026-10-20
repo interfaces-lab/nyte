@@ -15,7 +15,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { Connection } from "./host.ts";
 import type { Session } from "./session.ts";
-import type { ExecutionEnv, Workspace } from "./workspace.ts";
+import type { ExecutionEnv, Job, Workspace } from "./workspace.ts";
 
 export interface ToolInvocation extends Durable {
   readonly run: RunId;
@@ -27,6 +27,7 @@ export interface ToolInvocation extends Durable {
   readonly workspace: Workspace;
   readonly env: ExecutionEnv;
   progress(update: ToolProgress): void;
+  readonly foreground: ForegroundJobs;
   readonly tools: {
     execute(
       name: string,
@@ -35,6 +36,12 @@ export interface ToolInvocation extends Durable {
     ): Promise<ToolOutcome>;
     list(): readonly ToolInfo[];
   };
+}
+
+export interface ForegroundJobs {
+  start(input: { readonly command: string; readonly title?: string }): Promise<Job>;
+  release(): boolean;
+  readonly released: AbortSignal;
 }
 
 export interface Durable {

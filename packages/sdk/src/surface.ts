@@ -18,6 +18,7 @@ export type {
   ExecutionEnv,
   FileBatch,
   FilesApi,
+  ForegroundJobs,
   GitApi,
   GitHubAccountApi,
   GitHubApi,

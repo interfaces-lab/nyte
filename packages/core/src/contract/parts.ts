@@ -157,7 +157,7 @@ export const thinking = definePart({
 export const tool = definePart({
   kind: "tool",
   state: ToolPartStateSchema,
-  actions: { stop: { input: EMPTY_INPUT } },
+  actions: { stop: { input: EMPTY_INPUT }, background: { input: EMPTY_INPUT } },
   fallback: (state, { id }) =>
     `${clip(state.name)} ${state.phase}${state.phase === "settled" ? ` ${state.outcome.kind}` : ""} [${id}]`,
 });
