@@ -1,11 +1,6 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
-  "changelog": [
-    "@changesets/changelog-github",
-    {
-      "repo": "interfaces-lab/nyte"
-    }
-  ],
+  "changelog": ["@changesets/changelog-github", { "repo": "interfaces-lab/nyte" }],
   "commit": false,
   "access": "public",
   "baseBranch": "main",
@@ -23,12 +18,10 @@
       "@nyte-ai/desktop"
     ]
   ],
-  "privatePackages": {
-    "version": true,
-    "tag": false
-  },
+  "privatePackages": { "version": true, "tag": false },
   "ignore": [
     "@nyte-ai/app",
+    "@nyte-ai/bench",
     "@nyte-ai/canvas",
     "@nyte-ai/connect",
     "@nyte-ai/connect-worker",

@@ -232,10 +232,13 @@ From the repository root:
 
 ```sh
 pnpm --dir packages/tui test
+pnpm --dir packages/tui test:binary
 pnpm --dir packages/tui typecheck
 ```
 
-`test` runs every test in process under `bun test`.
+`test` runs every test in process under `bun test`: the whole TUI on OpenTUI's test renderer over
+an in-process host with a scripted provider. `test:binary` builds `dist/nyte` and runs a small smoke
+of the compiled binary through pipes and a PTY. See `qa/README.md`.
 
 ## Local shell
 

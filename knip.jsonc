@@ -13,6 +13,9 @@
       "entry": ["lint/*.js", "lint/fixtures/*.{ts,tsx}"],
       "ignoreBinaries": ["electron-vite"],
     },
+    "packages/bench": {
+      "entry": ["src/scenarios/*.mjs"],
+    },
     "packages/canvas": {
       "entry": [
         "scripts/check-shell.mjs",

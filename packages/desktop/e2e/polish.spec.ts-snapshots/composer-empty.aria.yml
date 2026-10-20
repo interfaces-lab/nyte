@@ -1,0 +1,18 @@
+- main:
+  - region "Active chat pane":
+    - button "Home"
+    - button "This Mac"
+    - form "Message":
+      - combobox "Message":
+        - text: Ask Nyte, or type / for skills and @ for context
+        - paragraph
+      - button "Add to message"
+      - button "Choose a model"
+      - button "Send message" [disabled]
+  - complementary "Workbench":
+    - navigation "Workbench navigation":
+      - text: Open Tabs
+      - button "Collapse workbench"
+      - text: On This Mac
+      - button "Browser"
+      - button "Terminal"

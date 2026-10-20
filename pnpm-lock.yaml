@@ -329,9 +329,18 @@ importers:
         specifier: 1.3.36
         version: 1.3.36
     devDependencies:
+      '@nyte-ai/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@nyte-ai/bench':
+        specifier: workspace:*
+        version: link:../bench
       '@nyte-ai/canvas':
         specifier: workspace:*
         version: link:../canvas
+      '@nyte-ai/host':
+        specifier: workspace:*
+        version: link:../host
       '@playwright/test':
         specifier: 1.63.0
         version: 1.63.0
@@ -359,6 +368,43 @@ importers:
       vite:
         specifier: 8.3.4
         version: 8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0)
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
+
+  packages/bench:
+    dependencies:
+      '@nyte-ai/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@nyte-ai/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nyte-ai/host':
+        specifier: workspace:*
+        version: link:../host
+      '@nyte-ai/plugin':
+        specifier: workspace:*
+        version: link:../plugin
+      '@nyte-ai/schema':
+        specifier: workspace:*
+        version: link:../schema
+      typebox:
+        specifier: 1.3.36
+        version: 1.3.36
+    devDependencies:
+      '@nyte-ai/connect':
+        specifier: workspace:*
+        version: link:../connect
+      '@nyte-ai/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
@@ -668,6 +714,9 @@ importers:
       '@nyte-ai/app':
         specifier: workspace:*
         version: link:../app
+      '@nyte-ai/bench':
+        specifier: workspace:*
+        version: link:../bench
       '@nyte-ai/canvas':
         specifier: workspace:*
         version: link:../canvas
@@ -1345,6 +1394,9 @@ importers:
         specifier: workspace:*
         version: link:../schema
     devDependencies:
+      '@nyte-ai/bench':
+        specifier: workspace:*
+        version: link:../bench
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
@@ -1446,6 +1498,9 @@ importers:
       '@babel/preset-typescript':
         specifier: 7.27.1
         version: 7.27.1(@babel/core@7.29.7(supports-color@7.2.0))(supports-color@7.2.0)
+      '@nyte-ai/bench':
+        specifier: workspace:*
+        version: link:../bench
       '@nyte-ai/core':
         specifier: workspace:*
         version: link:../core

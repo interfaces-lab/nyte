@@ -244,9 +244,11 @@ function mount(container: HTMLElement): Root {
   queryClient.setQueryData(keys.modelCatalog("initial"), catalog);
   queryClient.setQueryData(keys.mentionFiles, []);
   renderFailure = undefined;
+
   const router = createAppRouter({
     history: createMemoryHistory({ initialEntries: [`/session/${ID}`] }),
   });
+
   const root = createRoot(container, {
     onUncaughtError: (error) => {
       renderFailure = error;
@@ -354,25 +356,31 @@ function checkFrame(label: string): void {
 
   for (const [index, below] of rows.entries()) {
     const above = rows[index - 1];
+
     const overlap =
       above === undefined
         ? 0
         : above.getBoundingClientRect().bottom - below.getBoundingClientRect().top;
+
     expectRule("22", overlap <= 0.5, `${label}: rows overlap by ${overlap.toFixed(1)}px`);
   }
 
   const last = rows.at(-1);
+
   const extent =
     last === undefined
       ? 0
       : stage.log.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
+
   expectRule(
     "23",
     extent >= -0.5,
     `${label}: extent ends ${(-extent).toFixed(1)}px above the last row`,
   );
+
   const column =
     stage.viewport.getBoundingClientRect().bottom - stage.dock.getBoundingClientRect().bottom;
+
   expectRule(
     "13",
     Math.abs(column) <= 1,
@@ -393,10 +401,12 @@ function checkFollowing(label: string): void {
     `${label}: ${distance().toFixed(1)}px from the end while following`,
   );
   const last = listRows().at(-1);
+
   const gap =
     last === undefined
       ? 0
       : stage.dock.getBoundingClientRect().top - last.getBoundingClientRect().bottom;
+
   expectRule(
     "14",
     Math.abs(gap - 114) <= 1,
@@ -506,12 +516,14 @@ async function checkRules(): Promise<string> {
     expectRule("window", listRows().length < TURNS, "a long thread renders every row");
 
     step = "7, 12";
+
     const editable = first(
       visible("[data-sticky-user-message]").findLast(
         (row) => row.querySelector("[data-composer-readonly]") !== null && measureTop(row) > 100,
       ),
       "an editable message below the top edge",
     );
+
     await openEditor(editable);
     await holds("7/12", editable, 6);
     expectRule(
@@ -554,10 +566,12 @@ async function checkRules(): Promise<string> {
     step = "3, 1-4, 17";
     await toEnd();
     await streamFrames(8, checkFollowing);
+
     const latest = first(
       Array.from(stage.log.querySelectorAll<HTMLElement>("[data-sticky-user-message]")).at(-1),
       "the latest prompt",
     );
+
     expectRule(
       "17",
       latest.dataset.stickyDisabled === "true" && measureTop(latest) < -1,
@@ -565,10 +579,12 @@ async function checkRules(): Promise<string> {
     );
 
     step = "8";
+
     const paragraph = first(
       visible(PROSE).find((block) => measureTop(block) > 100),
       "visible prose",
     );
+
     const selected = first(paragraph.closest<HTMLElement>("[data-row-key]"), "the prose's row");
     window.getSelection()?.setBaseAndExtent(paragraph, 0, paragraph, paragraph.childNodes.length);
     await painted();
@@ -581,17 +597,21 @@ async function checkRules(): Promise<string> {
     await toEnd();
     await wheel(-250);
     await holds("5/9", first(visible(PROSE)[0], "visible prose"), 6);
+
     const rowAbove = (): HTMLElement | undefined =>
       listRows().find(
         (row) =>
           answerIndex(row) !== undefined &&
           measureTop(row) + row.getBoundingClientRect().height < 0,
       );
+
     await wheelUntil(() => rowAbove() !== undefined);
+
     const aboveIndex = first(
       answerIndex(first(rowAbove(), "an answer above the anchor")),
       "its turn",
     );
+
     const held = first(visible(PROSE)[0], "visible prose");
     const heldTop = measureTop(held);
 
@@ -616,6 +636,7 @@ async function checkRules(): Promise<string> {
     await grow(aboveIndex);
     checkFrame("row above grew");
     expectRule("10", near(measureTop(held), heldTop), `a row above grew: ${moved(held, heldTop)}`);
+
     const spanning = (): HTMLElement | undefined =>
       listRows().find(
         (row) =>
@@ -623,6 +644,7 @@ async function checkRules(): Promise<string> {
           measureTop(row) < 0 &&
           measureTop(row) + row.getBoundingClientRect().height > 0,
       );
+
     const lowerProse = (): HTMLElement | undefined =>
       visible(PROSE).find((block) => block.closest("[data-row-key]") !== spanning());
 
@@ -642,6 +664,7 @@ async function checkRules(): Promise<string> {
     window.getSelection()?.removeAllRanges();
 
     step = "16, 18";
+
     const reading = (): HTMLElement | undefined =>
       listRows().find(
         (row) =>
@@ -650,23 +673,30 @@ async function checkRules(): Promise<string> {
           measureTop(row) < -20 &&
           measureTop(row) + row.getBoundingClientRect().height > 40,
       );
+
     await wheelUntil(() => reading() !== undefined, -50);
     const readIndex = first(answerIndex(first(reading(), "an answer being read")), "its turn");
+
     const stuck = stage.log.querySelector<HTMLElement>(
       `[data-row-key='prompt:prompt-${String(readIndex)}'] [data-sticky-user-message]`,
     );
+
     expectRule(
       "16",
       stuck !== null && Math.abs(measureTop(stuck)) <= 2 && stuck.dataset.stickyActive === "true",
       "the prompt of the turn being read is not stuck at the top",
     );
+
     const tallRow = (): HTMLElement | null =>
       stage.log.querySelector(`[data-row-key='prompt:prompt-${String(TALL_PROMPT)}']`);
+
     await wheelUntil(() => tallRow() !== null, -400, 80);
+
     const tall = first(
       tallRow()?.querySelector<HTMLElement>("[data-sticky-user-message]"),
       "the tall prompt",
     );
+
     await openEditor(tall);
     container.style.height = "220px";
     await painted();
@@ -750,7 +780,9 @@ async function checkRules(): Promise<string> {
 
     step = "20, 24";
     await wheel(-900);
+
     const kept = first(visible(PROSE)[0]?.closest<HTMLElement>("[data-row-key]"), "a visible row");
+
     const keptId = kept.dataset.rowKey;
     const keptTop = measureTop(kept);
     flushSync(() => root.unmount());
@@ -771,12 +803,14 @@ async function checkRules(): Promise<string> {
     checkFollowing("reopened at the end");
 
     step = "19";
+
     const action: UserMessage = {
       ...user("action-1", TURNS, "Instructions for the selected Git action.", "steer"),
       source: { kind: "action", label: "Pending prompt" },
       turn: asId<"turn">("pending:action-1"),
       status: { kind: "pending", schedule: { kind: "joined", run: liveRun.id }, covered: true },
     };
+
     stream.push(view(liveText, [action]));
     await until(
       () => listRows().some((row) => row.dataset.rowKey === "prompt:action-1"),
@@ -784,14 +818,17 @@ async function checkRules(): Promise<string> {
     );
     await painted();
     checkFollowing("prompt row");
+
     const promptRow = first(
       listRows().find((row) => row.dataset.rowKey === "prompt:action-1"),
       "the prompt row",
     );
+
     await wheel(-300);
     const beforePrompt = first(visible(PROSE)[0], "visible prose");
     const beforePromptTop = measureTop(beforePrompt);
     const landedTurn = asId<"turn">("landed");
+
     const landed: UserMessage = {
       ...action,
       turn: landedTurn,
@@ -802,6 +839,7 @@ async function checkRules(): Promise<string> {
         replaced: null,
       },
     };
+
     stream.push(
       view(
         liveText,

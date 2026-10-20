@@ -24,6 +24,7 @@
     "docs:dep": "node scripts/dependency-docs.mjs",
     "docs:dep:test": "node --test scripts/dependency-docs.test.mjs",
     "profile:test": "node scripts/profile-test.mjs",
+    "e2e": "pnpm --dir packages/app e2e",
     "e2e:desktop": "pnpm --dir packages/desktop e2e",
     "typecheck": "turbo typecheck",
     "sdk:check": "bun scripts/sdk-packages.mjs check",

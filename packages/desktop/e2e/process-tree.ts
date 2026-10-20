@@ -5,7 +5,6 @@ import { promisify } from "node:util";
 export interface TreeProcess {
   readonly pid: number;
   readonly parent: number;
-  readonly residentBytes: number;
   readonly command: string;
 }
 
@@ -13,21 +12,14 @@ export async function inspectProcessTree(
   root: number | undefined,
 ): Promise<readonly TreeProcess[] | null> {
   if (root === undefined || process.platform === "win32") return null;
-  const { stdout } = await promisify(execFile)("ps", ["-A", "-o", "pid=,ppid=,rss=,comm="]);
+  const { stdout } = await promisify(execFile)("ps", ["-A", "-o", "pid=,ppid=,comm="]);
 
   const rows = stdout.split("\n").flatMap((line) => {
-    const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/u.exec(line);
+    const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/u.exec(line);
 
     return match === null
       ? []
-      : [
-          {
-            pid: Number(match[1]),
-            parent: Number(match[2]),
-            residentBytes: Number(match[3]) * 1_024,
-            command: match[4] ?? "",
-          },
-        ];
+      : [{ pid: Number(match[1]), parent: Number(match[2]), command: match[3] ?? "" }];
   });
 
   const tree = new Set([root]);

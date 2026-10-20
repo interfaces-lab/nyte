@@ -6,6 +6,7 @@ const CI = process.env.CI !== undefined && process.env.CI !== "";
 
 export default defineConfig({
   testDir: import.meta.dirname,
+  testIgnore: "stores/**",
   outputDir: resolve(import.meta.dirname, "test-results"),
   forbidOnly: CI,
   retries: CI ? 2 : 0,

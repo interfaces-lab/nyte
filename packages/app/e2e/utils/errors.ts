@@ -5,6 +5,7 @@ interface PageProblems {
   readonly consoleErrors: readonly string[];
 }
 
+/** Collects uncaught exceptions and `console.error` output from the moment it is attached. */
 export function collectErrors(page: Page): PageProblems {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];

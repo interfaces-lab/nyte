@@ -42,10 +42,11 @@ verification_root=$(mktemp -d /tmp/nyte-verification.XXXXXX)
 pnpm --dir packages/canvas build
 VITE_NYTE_CLERK_PUBLISHABLE_KEY= pnpm --dir packages/app build
 pnpm --dir packages/desktop build
-pnpm --dir packages/desktop exec playwright test --config e2e/playwright.config.ts e2e/first-run.spec.ts --workers=1 --retries=0 --reporter=list --output="$verification_root/desktop"
+pnpm --dir packages/desktop build:e2e
+pnpm --dir packages/desktop exec playwright test --config e2e/playwright.config.ts e2e/chat.spec.ts --workers=1 --retries=0 --reporter=list --output="$verification_root/desktop"
 ```
 
-Stop on a failed build. Add a chapter beside `first-run.spec.ts` when a change needs one.
+Stop on a failed build. Select the matching chapter instead of `chat.spec.ts` when appropriate.
 The launcher waits for `[data-nyte-shell]`; the journey must then assert the controls it needs
 are usable. Desktop chapters share a window within each file, so replay the whole chapter when
 the failing test depends on earlier steps. The fixture owns Electron tracing; a global
@@ -70,11 +71,16 @@ Every runner starts from an empty store, so none of them can see rows an older b
 After changing a stored shape, run `pnpm --dir packages/host check:store [path]`. It reads the
 store read-only and exits 1 with each unreadable group, its count and first location.
 
+For web verification, use `pnpm e2e`. First read `packages/app/e2e/server/address.ts` and inspect
+the selected port with `lsof -iTCP:5181 -sTCP:LISTEN`, substituting `NYTE_E2E_PORT` when set.
+The config reuses listeners outside CI. If the listener is unrelated, select an unused port
+through `NYTE_E2E_PORT` for the entire command. HTTP readiness still needs a usable-page check.
+
 ## Drive and observe
 
 Desktop selectors live in `packages/desktop/e2e/ui.ts`. The composer is
 `getByRole("combobox", { name: "Message" })`; transcript assertions use the `Messages` region's
-`log`. Use `launch.ts` and the existing user actions. Wait for the specific state required
+`log`. Use the chapter fixtures and existing user actions. Wait for the specific state required
 by the next action. Register event waits before the action and avoid fixed sleeps.
 
 For TUI changes, extend a named `beat` in `qa/tui.ts` or `qa/headless.ts` when coverage is needed.

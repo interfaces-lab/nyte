@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { collectErrors } from "./errors.ts";
+import { collectErrors } from "@nyte-ai/app/e2e/errors";
 import { launchDesktop } from "./launch.ts";
-import { chatPane, composer, sidebar } from "./ui.ts";
+import { chatPane, composer, openSettings, sidebar } from "./ui.ts";
 
 test("an empty home opens on a new chat with nothing listed", async () => {
   await using cleanup = new AsyncDisposableStack();
@@ -30,7 +30,9 @@ test("an empty home opens on a new chat with nothing listed", async () => {
 
   const chats = sidebar(page).getByRole("region", { name: "Chats" });
   await expect(chats.getByRole("button", { name: /^(Unread )?.* now$/u })).toHaveCount(0);
-  await expect(chats.getByRole("button", { name: /^Done \d+$/u })).toHaveCount(0);
+
+  await openSettings(page, "Providers");
+  await expect(page.getByRole("button", { name: "E2E: Connected" })).toBeVisible();
 
   expect(errors.pageErrors).toEqual([]);
   expect(errors.consoleErrors.filter((text) => !text.startsWith("DEV:"))).toEqual([]);
