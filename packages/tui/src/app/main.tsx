@@ -149,7 +149,7 @@ export async function runTui(flags: RunFlags): Promise<number> {
   return status === 0 && failures.length > 0 ? 1 : status;
 }
 
-export function exitText(input: {
+function exitText(input: {
   readonly session: SessionId | null;
   readonly unsent: string | null;
   readonly failures: readonly string[];

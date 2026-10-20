@@ -14,17 +14,6 @@ import {
   withoutKatex,
 } from "@nyte-ai/app/vite";
 
-const offlineModels: Plugin = {
-  name: "nyte:e2e-models",
-  enforce: "pre",
-  resolveId(source, importer) {
-    if (importer === undefined || resolve(importer, "..", source) !== resolve("src/main/models.ts"))
-      return null;
-
-    return resolve("src/main/fixtures/e2e-models.ts");
-  },
-};
-
 /**
  * The renderer. StyleX compiles @nyte-ai/ui from source here, so it resolves the
  * `nyte-source` condition.
@@ -78,10 +67,9 @@ const renderer = {
   server: { host: "127.0.0.1", port: 5174, strictPort: true, forwardConsole: true },
 } satisfies UserConfig["renderer"];
 
-const config = (mode: string): UserConfig => ({
+const config = (): UserConfig => ({
   main: {
     plugins: [
-      ...(mode === "e2e" ? [offlineModels] : []),
       {
         name: "nyte:codemode-wasm",
         async generateBundle() {
@@ -104,7 +92,6 @@ const config = (mode: string): UserConfig => ({
       } satisfies Plugin,
     ],
     build: {
-      ...(mode === "e2e" ? { outDir: "out-e2e/main" } : {}),
       minify: true,
       target: "node24",
       rolldownOptions: {
@@ -144,8 +131,4 @@ const config = (mode: string): UserConfig => ({
   renderer,
 });
 
-export default defineConfig(({ mode }) => {
-  const { main, ...rest } = config(mode);
-
-  return mode === "e2e" ? { main } : { main, ...rest };
-});
+export default defineConfig(config);

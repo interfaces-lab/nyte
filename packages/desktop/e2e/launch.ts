@@ -13,9 +13,8 @@ const DESKTOP_ROOT = resolve(import.meta.dirname, "..");
 
 const PACKAGES_ROOT = resolve(DESKTOP_ROOT, "..");
 
-const MAIN_ENTRY = resolve(DESKTOP_ROOT, "out-e2e/main/index.js");
+const MAIN_ENTRY = resolve(DESKTOP_ROOT, "out/main/index.js");
 
-/** How long Electron has after `close()` to reap its helpers and the Nyte Host utility process. */
 const REAP_MS = 5_000;
 
 const KEPT_VARIABLES = new Set([
@@ -46,16 +45,9 @@ interface LaunchOptions {
   readonly home: string;
   readonly parentDirectory: string;
   readonly downloadsDirectory?: string;
-  /** The app-data folder to keep across launches, as a relaunch reuses its profile; default a new one removed on close. */
   readonly appData?: string;
-  /** Variables set over the kept ones, such as `NYTE_TRACE`. */
   readonly environment?: Readonly<Record<string, string>>;
-  /** Hold the host this long before it opens. */
   readonly hostDelayMs?: number;
-  /**
-   * Typed into the focused element by main the moment the renderer reports its first frame,
-   * long before Playwright could reach the window.
-   */
   readonly typeAtFirstFrame?: string;
 }
 
@@ -64,13 +56,12 @@ interface LaunchedDesktop {
   readonly page: Page;
   readonly home: string;
   readonly output: readonly string[];
-  /** Quits the app and throws if any process of its tree, the Nyte Host utility process included, outlives it. */
   close(): Promise<void>;
 }
 
 async function assertBuilt(): Promise<void> {
   const required = [
-    [MAIN_ENTRY, "pnpm --dir packages/desktop build:e2e"],
+    [MAIN_ENTRY, "pnpm --dir packages/desktop build"],
     [resolve(DESKTOP_ROOT, "out/renderer/index.html"), "pnpm --dir packages/desktop build"],
     [resolve(PACKAGES_ROOT, "app/dist/index.html"), "pnpm --dir packages/app build"],
   ] as const;

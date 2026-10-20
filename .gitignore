@@ -24,8 +24,6 @@ share/
 /*.html
 
 # Playwright e2e output
-/packages/app/e2e/test-results/
-/packages/app/e2e/playwright-report/
 /packages/desktop/e2e/test-results/
 /packages/desktop/e2e/playwright-report/
 /packages/desktop/e2e/.cache/

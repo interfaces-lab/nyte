@@ -4,7 +4,7 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/oxlint/report-violations.mjs"],
-      "ignoreBinaries": ["bench", "playwright"],
+      "ignoreBinaries": ["playwright"],
     },
     "packages/ai": {
       "ignoreBinaries": ["wrangler"],
@@ -12,9 +12,6 @@
     "packages/app": {
       "entry": ["lint/*.js", "lint/fixtures/*.{ts,tsx}"],
       "ignoreBinaries": ["electron-vite"],
-    },
-    "packages/bench": {
-      "entry": ["src/scenarios/*.mjs"],
     },
     "packages/canvas": {
       "entry": [

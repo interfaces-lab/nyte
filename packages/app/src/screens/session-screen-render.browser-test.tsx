@@ -750,10 +750,7 @@ async function checkRules(): Promise<string> {
 
     step = "20, 24";
     await wheel(-900);
-    const kept = first(
-      visible(PROSE)[0]?.closest<HTMLElement>("[data-row-key]"),
-      "a visible row",
-    );
+    const kept = first(visible(PROSE)[0]?.closest<HTMLElement>("[data-row-key]"), "a visible row");
     const keptId = kept.dataset.rowKey;
     const keptTop = measureTop(kept);
     flushSync(() => root.unmount());

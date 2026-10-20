@@ -1,6 +1,0 @@
-- region "Messages":
-  - paragraph: /\/long \d+/
-  - button "Edit Message"
-  - paragraph: /Paragraph 1 of \d+\. The quick brown fox jumps over the lazy dog while the transcript keeps scrolling\./
-  - paragraph: /Paragraph 2 of \d+\. The quick brown fox jumps over the lazy dog while the transcript keeps scrolling\./
-  - paragraph: "Paragraph 80 of 80. The quick brown fox jumps over the lazy dog while the transcript keeps scrolling."

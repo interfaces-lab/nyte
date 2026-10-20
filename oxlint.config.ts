@@ -163,8 +163,7 @@ export default defineConfig({
       },
     },
     {
-      // Playwright hands each fixture a `use` callback; it is not React's hook.
-      files: ["packages/app/e2e/**", "packages/desktop/e2e/**"],
+      files: ["packages/desktop/e2e/**"],
       rules: {
         "react/rules-of-hooks": "off",
       },

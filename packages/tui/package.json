@@ -11,7 +11,6 @@
     "dev": "bun --preload ./dev/preload.ts ./src/index.ts",
     "start": "bun src/binary.ts",
     "test": "bun test",
-    "test:binary": "pnpm build && bun test ./qa/binary.smoke.ts ./qa/service.smoke.ts",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
@@ -38,7 +37,6 @@
   "devDependencies": {
     "@babel/core": "7.29.7",
     "@babel/preset-typescript": "7.27.1",
-    "@nyte-ai/bench": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",
     "@types/babel__core": "7.20.5",

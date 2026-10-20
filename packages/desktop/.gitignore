@@ -1,6 +1,5 @@
 node_modules
 dist
 out
-out-e2e
 *.log*
 resources/adblock.bin

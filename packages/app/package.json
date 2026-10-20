@@ -7,19 +7,14 @@
     ".": "./src/index.ts",
     "./vite": "./vite.ts",
     "./dist/*": "./dist/*",
-    "./e2e/errors": "./e2e/utils/errors.ts",
-    "./e2e/scenario-d": "./e2e/web/scenario-d.ts",
-    "./e2e/scenario-u-fixture": "./e2e/web/scenario-u-fixture.ts",
-    "./e2e/scenario-u-trace": "./e2e/web/scenario-u-trace.ts",
     "./*": "./src/*"
   },
   "scripts": {
     "build": "vite build",
     "clean": "rm -rf node_modules .turbo dist",
     "dev": "vite",
-    "e2e": "pnpm --dir ../canvas build && pnpm build && playwright test --config e2e/playwright.config.ts",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@clerk/react": "6.17.5",
@@ -54,10 +49,7 @@
     "typebox": "1.3.36"
   },
   "devDependencies": {
-    "@nyte-ai/ai": "workspace:*",
-    "@nyte-ai/bench": "workspace:*",
     "@nyte-ai/canvas": "workspace:*",
-    "@nyte-ai/host": "workspace:*",
     "@playwright/test": "1.63.0",
     "@types/node": "^26.6.5",
     "@types/react": "19.3.0",

@@ -23,14 +23,6 @@ pnpm --dir packages/desktop package
 
 The package command disables publishing. Platform-specific packaging scripts are listed in [package.json](package.json).
 
-Measure a packaged app's startup from the repository root:
-
-```sh
-pnpm bench:desktop --exe "/path/Nyte.app/Contents/MacOS/Nyte"
-```
-
-The benchmark runs fresh, restored-chat, and heavy-history workspaces in private homes and profiles, with five samples and one warmup per case. It checks restored content and typed composer input, reports the five-second splash limit, and saves every sample as JSON. Use `--scenario`, `--runs`, `--warmup`, `--compare`, or `--out` to select a case, change the sample count, compare packaged executables, or choose the report path. Run `pnpm bench:desktop --help` for usage.
-
 Photon is also listed as a desktop runtime dependency so Electron externalizes core's image processor instead of embedding its WASM in the main entry.
 
 ## Design scale

@@ -572,9 +572,7 @@ export const TranscriptContent = memo(function TranscriptContent({
       const node = selection?.anchorNode;
       const anchor = heldRef.current;
 
-      const row = (node instanceof Element ? node : node?.parentElement)?.closest(
-        "[data-row-key]",
-      );
+      const row = (node instanceof Element ? node : node?.parentElement)?.closest("[data-row-key]");
 
       if (
         selection?.isCollapsed === false &&
