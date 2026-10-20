@@ -72,7 +72,7 @@ function rowLines(row: TranscriptRow, working: boolean): readonly string[] {
     case "retry":
       return [`retry "${row.message}"`];
     case "prompt":
-      return [`prompt${row.pending ? " · pending" : ""}`];
+      return ["prompt"];
     case "live":
       return working ? ["live"] : [];
     case "part": {

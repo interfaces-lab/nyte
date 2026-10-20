@@ -1,4 +1,4 @@
-import { create, keyframes } from "@stylexjs/stylex";
+import { create } from "@stylexjs/stylex";
 import { glyph, layer, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -10,13 +10,6 @@ const USER_PROMPT_PADDING_INLINE = 10;
 const USER_IMAGES_GAP = 8;
 
 export const USER_MESSAGE_PREVIEW_LINES = 3.5;
-
-const USER_PENDING_OPACITY = 0.6;
-
-const userPendingIn = keyframes({
-  from: { opacity: 0, transform: "translateY(4px)" },
-  to: { opacity: USER_PENDING_OPACITY, transform: "translateY(0)" },
-});
 
 const USER_PREVIEW_BLEED_TOP = 2;
 
@@ -84,15 +77,6 @@ export const turnStyles = create({
       default: "none",
       "[data-sticky-active='true']": shadow.shadowSm,
     },
-  },
-  userPending: {
-    opacity: USER_PENDING_OPACITY,
-    animationName: {
-      default: userPendingIn,
-      "@media (prefers-reduced-motion: reduce)": "none",
-    },
-    animationDuration: "180ms",
-    animationTimingFunction: motion.easeOut,
   },
   userPreview: { display: "block", minWidth: 0 },
   userPreviewCollapsed: {
