@@ -5,8 +5,10 @@ import {
   copyFile,
   mkdir,
   mkdtemp,
+  open,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,7 +17,13 @@ import process from "node:process";
 import { afterEach, test, vi } from "vitest";
 import type { Models } from "@nyte-ai/ai";
 import { emptyUsageSummary } from "../src/usage-summary.ts";
-import { createUsageScanCaches, readClaudeCodeUsage } from "../src/usage.ts";
+import {
+  createUsageScanCaches,
+  loadUsageScanCaches,
+  readClaudeCodeUsage,
+  saveUsageScanCaches,
+} from "../src/usage.ts";
+import type { UsageWindow } from "../src/usage-types.ts";
 
 const model: ReturnType<Models["getModels"]>[number] = {
   id: "claude-test-20260101",
@@ -31,6 +39,8 @@ const model: ReturnType<Models["getModels"]>[number] = {
 };
 
 const models: Pick<Models, "getModels"> = { getModels: () => [model] };
+
+const allTime: UsageWindow = { sinceDay: null, untilDay: "9999-12-31" };
 
 const directories: string[] = [];
 
@@ -83,7 +93,7 @@ test("reads all projects and nested agents, preserving TTL subsets and current c
   await history(configDir, "project-b/session/subagents/agent.jsonl", [record("other")]);
   await writeFile(join(configDir, "projects", "ignored.js"), "throw new Error('must not execute')");
   await writeFile(join(configDir, ".credentials.json"), "not json and must not be read");
-  const result = await readClaudeCodeUsage({ models, configDir });
+  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
@@ -123,7 +133,7 @@ test.each([false, true])(
     await mkdir(join(configDir, "projects", "copy"));
     await copyFile(file, join(configDir, "projects", "copy", "session.jsonl"));
     await history(configDir, "b/session.jsonl", [record("different", 40)]);
-    const result = await readClaudeCodeUsage({ models, configDir });
+    const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
     assert.equal(result.kind, "ready");
 
     if (result.kind !== "ready") return;
@@ -143,7 +153,7 @@ test.each([
   const later = record("request", expected.laterOutput);
   later.timestamp = "2026-01-01T00:00:01.000Z";
   await history(configDir, "a.jsonl", [early, later]);
-  const result = await readClaudeCodeUsage({ models, configDir });
+  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
@@ -168,7 +178,7 @@ test.each(["message", "request"])("deduplicates copied %s-only identities", asyn
 
   const file = await history(configDir, "a.jsonl", blocks);
   await copyFile(file, join(configDir, "projects", "copy.jsonl"));
-  const result = await readClaudeCodeUsage({ models, configDir });
+  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
@@ -189,7 +199,7 @@ test("namespaces partial identities and preserves complete tuples", async () => 
     { ...full, requestId: "c", message: { ...full.message, id: "a:b" } },
     { ...full, requestId: "b:c", message: { ...full.message, id: "a" } },
   ]);
-  const result = await readClaudeCodeUsage({ models, configDir });
+  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
@@ -209,7 +219,7 @@ test("records without either nonblank identity remain independent", async () => 
 
   const file = await history(configDir, "a.jsonl", records);
   await copyFile(file, join(configDir, "projects", "copy.jsonl"));
-  const result = await readClaudeCodeUsage({ models, configDir });
+  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
@@ -226,7 +236,7 @@ test("reported nonnegative costs, including zero, override estimates without inv
     { ...record("free"), costUSD: 0 },
     { ...unknown, costUSD: 3 },
   ]);
-  const result = await readClaudeCodeUsage({ models, configDir });
+  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
@@ -241,7 +251,7 @@ test.each([-1, "2", null])(
   async (costUSD) => {
     const configDir = await fixture();
     await history(configDir, "a.jsonl", [{ ...record(), costUSD }]);
-    const result = await readClaudeCodeUsage({ models, configDir });
+    const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
     assert.equal(result.kind, "ready");
 
     if (result.kind !== "ready") return;
@@ -263,6 +273,7 @@ test("unknown, fuzzy, wrong-provider and ambiguous matches retain unpriced token
   await history(configDir, "a.jsonl", [...entries, entries[0]]);
 
   const result = await readClaudeCodeUsage({
+    window: allTime,
     configDir,
     models: {
       getModels: () => [
@@ -287,7 +298,13 @@ test("an empty catalog retains all tokens and model rows without inventing price
   const unknown = record("unknown");
   unknown.message.model = "unknown";
   await history(configDir, "a.jsonl", [record(), record(), unknown]);
-  const result = await readClaudeCodeUsage({ models: { getModels: () => [] }, configDir });
+
+  const result = await readClaudeCodeUsage({
+    window: allTime,
+    models: { getModels: () => [] },
+    configDir,
+  });
+
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
@@ -310,7 +327,7 @@ test("aggregates many turns into model rows and computes totals from those rows"
       return value;
     }),
   );
-  const result = await readClaudeCodeUsage({ models, configDir });
+  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
@@ -331,6 +348,7 @@ test("zero catalog rates are known prices and catalog tiers use the complete inp
   await history(configDir, "a.jsonl", [record()]);
 
   const free = await readClaudeCodeUsage({
+    window: allTime,
     configDir,
     models: {
       getModels: () => [{ ...model, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
@@ -344,6 +362,7 @@ test("zero catalog rates are known prices and catalog tiers use the complete inp
   assert.equal(free.summary.total.cost.total, 0);
 
   const tiered = await readClaudeCodeUsage({
+    window: allTime,
     configDir,
     models: {
       getModels: () => [
@@ -396,7 +415,7 @@ test("validates numeric usage once and continues after malformed records", async
       JSON.stringify(valid).replace('"input_tokens":100', '"input_tokens":1e400') +
       "\n",
   );
-  const result = await readClaudeCodeUsage({ models, configDir });
+  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
@@ -411,14 +430,14 @@ test("streams across chunk boundaries, ignores incomplete tails, and rereads wit
   const file = await history(configDir, "a.jsonl", [large]);
   const tail = JSON.stringify(record("tail"));
   await appendFile(file, tail.slice(0, -3));
-  const partial = await readClaudeCodeUsage({ models, configDir });
+  const partial = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(partial.kind, "ready");
 
   if (partial.kind !== "ready") return;
   assert.equal(partial.malformedRecords, 0);
   assert.equal(partial.summary.models[0]?.turns, 1);
   await appendFile(file, tail.slice(-3));
-  const complete = await readClaudeCodeUsage({ models, configDir });
+  const complete = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(complete.kind, "ready");
 
   if (complete.kind !== "ready") return;
@@ -428,7 +447,7 @@ test("streams across chunk boundaries, ignores incomplete tails, and rereads wit
 
 test("empty history is ready, absent projects are missing, non-directories fail", async () => {
   const configDir = await fixture();
-  const empty = await readClaudeCodeUsage({ models, configDir });
+  const empty = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.deepEqual(empty, {
     kind: "ready",
     summary: emptyUsageSummary(),
@@ -437,12 +456,17 @@ test("empty history is ready, absent projects are missing, non-directories fail"
     unreadableFiles: 0,
   });
   await rm(join(configDir, "projects"), { recursive: true });
-  assert.deepEqual(await readClaudeCodeUsage({ models, configDir }), { kind: "missing" });
-  assert.deepEqual(await readClaudeCodeUsage({ models, configDir: join(configDir, "absent") }), {
+  assert.deepEqual(await readClaudeCodeUsage({ window: allTime, models, configDir }), {
     kind: "missing",
   });
+  assert.deepEqual(
+    await readClaudeCodeUsage({ window: allTime, models, configDir: join(configDir, "absent") }),
+    {
+      kind: "missing",
+    },
+  );
   await writeFile(join(configDir, "projects"), "not a directory");
-  const failed = await readClaudeCodeUsage({ models, configDir });
+  const failed = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(failed.kind, "failed");
 });
 
@@ -456,12 +480,12 @@ test("explicit config beats environment; blank environment falls back to home", 
   vi.stubEnv("HOME", home);
   vi.stubEnv("USERPROFILE", home);
   vi.stubEnv("CLAUDE_CONFIG_DIR", environment);
-  const first = await readClaudeCodeUsage({ models, configDir: explicit });
+  const first = await readClaudeCodeUsage({ window: allTime, models, configDir: explicit });
   assert.equal(first.kind === "ready" && first.summary.total.output, 1);
-  const second = await readClaudeCodeUsage({ models });
+  const second = await readClaudeCodeUsage({ window: allTime, models });
   assert.equal(second.kind === "ready" && second.summary.total.output, 2);
   vi.stubEnv("CLAUDE_CONFIG_DIR", "  \t ");
-  const third = await readClaudeCodeUsage({ models });
+  const third = await readClaudeCodeUsage({ window: allTime, models });
   assert.equal(third.kind === "ready" && third.summary.total.output, 3);
 });
 
@@ -479,7 +503,7 @@ test("skips child transcript and directory symlinks without counting copies", as
   await symlink(local, join(configDir, "projects", "copy.jsonl"));
   await symlink(join(outside, "projects"), join(configDir, "projects", "linked-project"));
   await symlink(join(configDir, "projects"), join(configDir, "projects", "cycle"));
-  const result = await readClaudeCodeUsage({ models, configDir });
+  const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
   assert.equal(result.kind, "ready");
 
   if (result.kind !== "ready") return;
@@ -502,6 +526,7 @@ test.each(["config", "ancestor", "projects"])("follows a linked %s root", async 
   }
 
   const result = await readClaudeCodeUsage({
+    window: allTime,
     models,
     configDir:
       linked === "projects"
@@ -530,7 +555,7 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     await chmod(blockedDirectory, 0);
 
     try {
-      const result = await readClaudeCodeUsage({ models, configDir });
+      const result = await readClaudeCodeUsage({ window: allTime, models, configDir });
       assert.equal(result.kind, "ready");
 
       if (result.kind !== "ready") return;
@@ -544,7 +569,10 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     await chmod(join(configDir, "projects"), 0);
 
     try {
-      assert.equal((await readClaudeCodeUsage({ models, configDir })).kind, "failed");
+      assert.equal(
+        (await readClaudeCodeUsage({ window: allTime, models, configDir })).kind,
+        "failed",
+      );
     } finally {
       await chmod(join(configDir, "projects"), 0o700);
     }
@@ -555,7 +583,7 @@ test("cancellation rejects before and during scans without returning partial tot
   const configDir = await fixture();
   const reason = new Error("scan cancelled");
   await assert.rejects(
-    readClaudeCodeUsage({ models, configDir, signal: AbortSignal.abort(reason) }),
+    readClaudeCodeUsage({ window: allTime, models, configDir, signal: AbortSignal.abort(reason) }),
     (error) => error === reason,
   );
   await history(
@@ -564,7 +592,14 @@ test("cancellation rejects before and during scans without returning partial tot
     Array.from({ length: 20_000 }, (_, index) => record(String(index))),
   );
   const controller = new AbortController();
-  const reading = readClaudeCodeUsage({ models, configDir, signal: controller.signal });
+
+  const reading = readClaudeCodeUsage({
+    window: allTime,
+    models,
+    configDir,
+    signal: controller.signal,
+  });
+
   const timer = setTimeout(() => controller.abort(reason), 10);
 
   try {
@@ -581,7 +616,7 @@ test("a cache reuses unchanged files, reparses changed ones, and forgets removed
   const first = await history(configDir, "first.jsonl", [record("one")]);
   const second = await history(configDir, "second.jsonl", [record("two")]);
   const cache = createUsageScanCaches().claudeCode;
-  const cold = await readClaudeCodeUsage({ models, configDir, cache });
+  const cold = await readClaudeCodeUsage({ window: allTime, models, configDir, cache });
   assert.equal(cold.kind, "ready");
 
   if (cold.kind !== "ready") return;
@@ -591,7 +626,7 @@ test("a cache reuses unchanged files, reparses changed ones, and forgets removed
   await chmod(first, 0);
 
   try {
-    const warm = await readClaudeCodeUsage({ models, configDir, cache });
+    const warm = await readClaudeCodeUsage({ window: allTime, models, configDir, cache });
     assert.equal(warm.kind, "ready");
 
     if (warm.kind !== "ready") return;
@@ -601,12 +636,18 @@ test("a cache reuses unchanged files, reparses changed ones, and forgets removed
     await chmod(first, 0o600);
   }
 
-  const unpriced = await readClaudeCodeUsage({ models: { getModels: () => [] }, configDir, cache });
+  const unpriced = await readClaudeCodeUsage({
+    window: allTime,
+    models: { getModels: () => [] },
+    configDir,
+    cache,
+  });
+
   assert.equal(unpriced.kind, "ready");
 
   if (unpriced.kind !== "ready") return;
   assert.equal(unpriced.unpricedRecords, 2, "each read prices from the catalog, not the cache");
-  const repriced = await readClaudeCodeUsage({ models, configDir, cache });
+  const repriced = await readClaudeCodeUsage({ window: allTime, models, configDir, cache });
   assert.equal(repriced.kind, "ready");
 
   if (repriced.kind !== "ready") return;
@@ -615,10 +656,147 @@ test("a cache reuses unchanged files, reparses changed ones, and forgets removed
 
   await appendFile(first, `${JSON.stringify(record("three"))}\n`);
   await rm(second);
-  const changed = await readClaudeCodeUsage({ models, configDir, cache });
+  const changed = await readClaudeCodeUsage({ window: allTime, models, configDir, cache });
   assert.equal(changed.kind, "ready");
 
   if (changed.kind !== "ready") return;
   assert.equal(changed.summary.models[0]?.turns, 2);
   assert.deepEqual([...cache.keys()], [first]);
+});
+
+function recordAt(requestId: string, at: Date | undefined) {
+  const { timestamp: _timestamp, ...rest } = record(requestId);
+
+  return at === undefined ? rest : { ...rest, timestamp: at.toISOString() };
+}
+
+function turns(result: Awaited<ReturnType<typeof readClaudeCodeUsage>>): number {
+  assert.equal(result.kind, "ready");
+
+  return result.kind === "ready" ? (result.summary.models[0]?.turns ?? 0) : 0;
+}
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "a window counts the records dated in it and leaves files last written before it unopened",
+  async () => {
+    const configDir = await fixture();
+    const noon = (day: number) => new Date(2026, 0, day, 12);
+
+    await history(configDir, "a.jsonl", [
+      recordAt("old", noon(10)),
+      recordAt("new", noon(20)),
+      recordAt("undated", undefined),
+    ]);
+
+    const stale = await history(configDir, "stale.jsonl", [recordAt("stale", noon(1))]);
+    await utimes(stale, noon(1), noon(1));
+    await chmod(stale, 0);
+
+    try {
+      const late = await readClaudeCodeUsage({
+        window: { sinceDay: "2026-01-15", untilDay: "2026-01-31" },
+        models,
+        configDir,
+      });
+
+      assert.equal(turns(late), 1);
+      assert.equal(
+        late.kind === "ready" && late.unreadableFiles,
+        0,
+        "the stale file is not opened",
+      );
+
+      const early = await readClaudeCodeUsage({
+        window: { sinceDay: null, untilDay: "2026-01-12" },
+        models,
+        configDir,
+      });
+
+      assert.equal(turns(early), 2, "an unbounded start also counts the undated record");
+      assert.equal(early.kind === "ready" && early.unreadableFiles, 1);
+    } finally {
+      await chmod(stale, 0o600);
+    }
+
+    const bounded = await readClaudeCodeUsage({
+      window: { sinceDay: "2026-01-01", untilDay: "2026-12-31" },
+      models,
+      configDir,
+    });
+
+    assert.equal(turns(bounded), 3, "an undated record counts only toward all time");
+  },
+);
+
+test("a grown file is read on from its last newline, counting its unterminated tail once", async () => {
+  const configDir = await fixture();
+  const first = JSON.stringify(record("one"));
+  const file = await history(configDir, "a.jsonl", [record("one")]);
+  const cache = createUsageScanCaches().claudeCode;
+  assert.equal(turns(await readClaudeCodeUsage({ window: allTime, models, configDir, cache })), 1);
+
+  await appendFile(file, JSON.stringify(record("two")));
+  assert.equal(turns(await readClaudeCodeUsage({ window: allTime, models, configDir, cache })), 2);
+
+  const handle = await open(file, "r+");
+  await handle.write("x".repeat(first.length), 0);
+  await handle.close();
+  await appendFile(file, `\n${JSON.stringify(record("three"))}\n`);
+  const grown = await readClaudeCodeUsage({ window: allTime, models, configDir, cache });
+  assert.equal(turns(grown), 3);
+  assert.equal(grown.kind === "ready" && grown.malformedRecords, 0, "the first line is not reread");
+});
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "saved scans answer after a restart while their files are unchanged",
+  async () => {
+    const configDir = await fixture();
+    const file = await history(configDir, "a.jsonl", [record("one")]);
+    const saved = join(configDir, "usage-scan-cache.json");
+    const caches = createUsageScanCaches();
+    await readClaudeCodeUsage({ window: allTime, models, configDir, cache: caches.claudeCode });
+    await saveUsageScanCaches(saved, caches);
+    await chmod(file, 0);
+
+    try {
+      const restored = await loadUsageScanCaches(saved);
+
+      const result = await readClaudeCodeUsage({
+        window: allTime,
+        models,
+        configDir,
+        cache: restored.claudeCode,
+      });
+
+      assert.equal(turns(result), 1);
+      assert.equal(result.kind === "ready" && result.unreadableFiles, 0);
+
+      await writeFile(saved, JSON.stringify({ version: 0, claudeCode: [], codex: [] }));
+      const outdated = await loadUsageScanCaches(saved);
+      assert.deepEqual(
+        [...outdated.claudeCode.keys()],
+        [],
+        "another version's document is dropped",
+      );
+    } finally {
+      await chmod(file, 0o600);
+    }
+  },
+);
+
+test("a save that fails is tried again by the next one", async () => {
+  const configDir = await fixture();
+  await history(configDir, "a.jsonl", [record("one")]);
+  const caches = createUsageScanCaches();
+  await readClaudeCodeUsage({ window: allTime, models, configDir, cache: caches.claudeCode });
+  const blocked = join(configDir, "file");
+  await writeFile(blocked, "");
+  await saveUsageScanCaches(join(blocked, "usage-scan-cache.json"), caches);
+
+  const saved = join(configDir, "usage-scan-cache.json");
+  await saveUsageScanCaches(saved, caches);
+  assert.deepEqual(
+    [...(await loadUsageScanCaches(saved)).claudeCode.keys()],
+    [join(configDir, "projects", "a.jsonl")],
+  );
 });

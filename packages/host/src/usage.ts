@@ -1,46 +1,82 @@
-import { Buffer } from "node:buffer";
-import { constants, existsSync } from "node:fs";
-import { lstat, open, opendir, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { lstat, opendir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
-import { StringDecoder } from "node:string_decoder";
 import { Type, type Static } from "typebox";
+import { Compile } from "typebox/compile";
 import { Value } from "typebox/value";
 import { calculateCost, type Models } from "@nyte-ai/ai";
+import { localDay } from "./store-usage.ts";
+import {
+  fileScanSchema,
+  readCacheDocument,
+  readHistory,
+  UsageScanCache,
+  writeCacheDocument,
+  type HistoryLine,
+  type HistoryParser,
+} from "./usage-history.ts";
 import { summarizeModels, emptyModelUsage, recordedUsage } from "./usage-summary.ts";
-import type { LocalHistoryUsage, ModelUsage } from "./usage-types.ts";
+import type { LocalHistoryUsage, ModelUsage, UsageWindow } from "./usage-types.ts";
 import type { Usage } from "@nyte-ai/schema/model";
 
 export interface ClaudeCodeUsageOptions {
   readonly models: Pick<Models, "getModels">;
+  readonly window: UsageWindow;
   readonly configDir?: string;
   readonly signal?: AbortSignal;
   readonly cache?: UsageScanCache<ClaudeCodeFileScan>;
-}
-
-export type UsageScanCache<T> = Map<string, FileScan<T>>;
-
-export interface FileScan<T> {
-  readonly size: number;
-  readonly mtimeMs: number;
-  readonly scan: T;
-}
-
-export interface ClaudeCodeFileScan {
-  readonly keyed: readonly (readonly [string, Snapshot])[];
-  readonly anonymous: readonly Snapshot[];
-  readonly malformedRecords: number;
 }
 
 export type ClaudeCodeUsage = LocalHistoryUsage;
 
 const tokens = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
 
+const count = Type.Number({ minimum: 0 });
+
+const modelUsage = Type.Object({
+  input: count,
+  output: count,
+  cacheRead: count,
+  cacheWrite: count,
+  cacheWrite1h: Type.Optional(count),
+  reasoning: Type.Optional(count),
+  totalTokens: count,
+  cost: Type.Object({
+    input: Type.Number(),
+    output: Type.Number(),
+    cacheRead: Type.Number(),
+    cacheWrite: Type.Number(),
+    total: Type.Number(),
+  }),
+});
+
+/** When a record was written, in epoch ms; `null` when its line carries no readable timestamp. */
+const recordedAt = Type.Union([Type.Number(), Type.Null()]);
+
+const snapshot = Type.Object({
+  model: Type.String(),
+  usage: modelUsage,
+  costUSD: Type.Optional(Type.Number()),
+  at: recordedAt,
+});
+
+export type Snapshot = Static<typeof snapshot>;
+
+const claudeCodeFileScan = Type.Object({
+  keyed: Type.Array(Type.Tuple([Type.String(), snapshot])),
+  anonymous: Type.Array(snapshot),
+  malformedRecords: Type.Integer({ minimum: 0 }),
+});
+
+export type ClaudeCodeFileScan = Static<typeof claudeCodeFileScan>;
+
 const envelope = Type.Object({ type: Type.String() });
 
 const assistantRecord = Type.Object({
   type: Type.Literal("assistant"),
+  timestamp: Type.Optional(Type.String()),
   requestId: Type.Optional(Type.String()),
   costUSD: Type.Optional(Type.Unknown()),
   message: Type.Object({
@@ -63,12 +99,6 @@ const assistantRecord = Type.Object({
 
 const reportedCost = Type.Number({ minimum: 0, maximum: Number.MAX_VALUE });
 
-export interface Snapshot {
-  readonly model: string;
-  readonly usage: Usage;
-  readonly costUSD: number | undefined;
-}
-
 function betterSnapshot(previous: Snapshot | undefined, next: Snapshot): boolean {
   if (previous === undefined) return true;
   const usage = next.usage;
@@ -83,38 +113,51 @@ function betterSnapshot(previous: Snapshot | undefined, next: Snapshot): boolean
   );
 }
 
-/** Reads one Claude Code transcript's usage snapshots. An unparsable last line without its newline is not counted malformed: a writer may still be appending it. */
-async function scanClaudeCodeFile(
-  path: string,
-  signal: AbortSignal | undefined,
-): Promise<ClaudeCodeFileScan> {
-  const keyed = new Map<string, Snapshot>();
-  const anonymous: Snapshot[] = [];
-  let malformedRecords = 0;
+function parseRecordedAt(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  const parsed = Date.parse(value);
 
-  for await (const line of historyLines(path, signal)) {
-    signal?.throwIfAborted();
+  return Number.isNaN(parsed) ? null : parsed;
+}
 
-    if (!line.text.trim()) continue;
+/** Whether a record falls in `window`, by the host's local day. An undated record counts only toward all time. */
+function recordedIn(window: UsageWindow, at: number | null): boolean {
+  if (at === null) return window.sinceDay === null;
+  const day = localDay(at);
+
+  return day <= window.untilDay && (window.sinceDay === null || day >= window.sinceDay);
+}
+
+/** Folds Claude Code transcript lines into usage snapshots. An unparsable last line without its newline is not counted malformed: a writer may still be appending it. */
+const claudeCodeParser: HistoryParser<ClaudeCodeFileScan> = (from) => {
+  const keyed = new Map(from?.keyed);
+  const anonymous = [...(from?.anonymous ?? [])];
+  let malformedRecords = from?.malformedRecords ?? 0;
+
+  const line = ({ text, terminated }: HistoryLine): void => {
+    if (!text.trim()) return;
     let value: unknown;
 
     try {
-      value = JSON.parse(line.text);
+      value = JSON.parse(text);
     } catch {
-      if (line.terminated) malformedRecords++;
-      continue;
+      if (terminated) malformedRecords++;
+
+      return;
     }
 
     if (!Value.Check(envelope, value)) {
       malformedRecords++;
-      continue;
+
+      return;
     }
 
-    if (value.type !== "assistant") continue;
+    if (value.type !== "assistant") return;
 
     if (!Value.Check(assistantRecord, value)) {
       malformedRecords++;
-      continue;
+
+      return;
     }
 
     const raw = value.message.usage;
@@ -123,7 +166,8 @@ async function scanClaudeCodeFile(
 
     if ((cacheWrite1h ?? 0) + (raw.cache_creation?.ephemeral_5m_input_tokens ?? 0) > cacheWrite) {
       malformedRecords++;
-      continue;
+
+      return;
     }
 
     const usage: Usage = {
@@ -141,50 +185,53 @@ async function scanClaudeCodeFile(
     const snapshot: Snapshot = {
       model: value.message.model,
       usage,
-      costUSD: Value.Check(reportedCost, value.costUSD) ? value.costUSD : undefined,
+      at: parseRecordedAt(value.timestamp),
     };
+
+    if (Value.Check(reportedCost, value.costUSD)) snapshot.costUSD = value.costUSD;
 
     const messageId = value.message.id?.trim() || null;
     const requestId = value.requestId?.trim() || null;
 
     if (messageId === null && requestId === null) {
       anonymous.push(snapshot);
-      continue;
+
+      return;
     }
 
     const identity = JSON.stringify([messageId, requestId]);
 
     if (betterSnapshot(keyed.get(identity), snapshot)) keyed.set(identity, snapshot);
-  }
+  };
 
-  return { keyed: [...keyed], anonymous, malformedRecords };
-}
+  return { line, scan: () => ({ keyed: [...keyed], anonymous: [...anonymous], malformedRecords }) };
+};
 
-async function scanCached<T>(
+/**
+ * Reads one history file unless it was last written before `window` opens: no record is dated
+ * after its file's last write. The path counts as seen either way, so the cache keeps a file the
+ * window passes over.
+ */
+async function readHistoryInWindow<Scan>(
   path: string,
-  cache: UsageScanCache<T> | undefined,
-  seen: Set<string>,
-  parse: () => Promise<T>,
-): Promise<T> {
-  seen.add(path);
-
-  if (cache === undefined) return parse();
+  window: UsageWindow,
+  read: {
+    readonly parser: HistoryParser<Scan>;
+    readonly cache: UsageScanCache<Scan> | undefined;
+    readonly seen: Set<string>;
+    readonly signal: AbortSignal | undefined;
+  },
+): Promise<Scan | undefined> {
+  read.seen.add(path);
   const info = await lstat(path);
 
   if (!info.isFile()) throw new Error("History is not a regular file.");
-  const hit = cache.get(path);
 
-  if (hit !== undefined && hit.size === info.size && hit.mtimeMs === info.mtimeMs) return hit.scan;
-  const scan = await parse();
-  cache.set(path, { size: info.size, mtimeMs: info.mtimeMs, scan });
+  const opens = window.sinceDay === null ? 0 : new Date(`${window.sinceDay}T00:00:00`).getTime();
 
-  return scan;
-}
+  if (info.mtimeMs < opens) return undefined;
 
-function pruneCache<T>(cache: UsageScanCache<T> | undefined, seen: Set<string>): void {
-  if (cache === undefined) return;
-
-  for (const path of cache.keys()) if (!seen.has(path)) cache.delete(path);
+  return readHistory(path, info, read.parser, read.cache, read.signal);
 }
 
 /**
@@ -248,10 +295,14 @@ export async function readClaudeCodeUsage(
           if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
 
           try {
-            const scan = await scanCached(path, options.cache, seen, () =>
-              scanClaudeCodeFile(path, options.signal),
-            );
+            const scan = await readHistoryInWindow(path, options.window, {
+              parser: claudeCodeParser,
+              cache: options.cache,
+              seen,
+              signal: options.signal,
+            });
 
+            if (scan === undefined) continue;
             malformedRecords += scan.malformedRecords;
             anonymous.push(...scan.anonymous);
 
@@ -272,7 +323,7 @@ export async function readClaudeCodeUsage(
     }
 
     options.signal?.throwIfAborted();
-    pruneCache(options.cache, seen);
+    options.cache?.keepOnly(seen);
 
     const catalog = options.models
       .getModels("anthropic")
@@ -283,6 +334,8 @@ export async function readClaudeCodeUsage(
 
     for (const snapshot of [...keyed.values(), ...anonymous]) {
       options.signal?.throwIfAborted();
+
+      if (!recordedIn(options.window, snapshot.at)) continue;
       const usage: Usage = { ...snapshot.usage, cost: { ...snapshot.usage.cost } };
 
       if (snapshot.costUSD !== undefined) {
@@ -323,21 +376,32 @@ export type CodexUsage = LocalHistoryUsage;
 
 export interface CodexUsageOptions {
   readonly models: Pick<Models, "getModels">;
+  readonly window: UsageWindow;
   readonly homeDir?: string;
   readonly signal?: AbortSignal;
   readonly cache?: UsageScanCache<CodexFileScan>;
 }
 
-export interface CodexFileScan {
-  readonly modern: readonly (readonly [string, CodexRow])[];
-  readonly legacy: readonly CodexRow[];
-  readonly malformedRecords: number;
-}
+const codexRow = Type.Object({ model: Type.String(), usage: modelUsage, at: recordedAt });
 
-export interface CodexRow {
-  readonly model: string;
-  readonly usage: Usage;
-}
+export type CodexRow = Static<typeof codexRow>;
+
+/** What a rollout's next line is read against: see {@link codexParser}. */
+const codexCursor = Type.Object({
+  model: Type.String(),
+  sawMeta: Type.Boolean(),
+  signature: Type.Optional(Type.String()),
+  forkAnchorMs: Type.Optional(Type.Number()),
+});
+
+const codexFileScan = Type.Object({
+  modern: Type.Array(Type.Tuple([Type.String(), codexRow])),
+  legacy: Type.Array(codexRow),
+  malformedRecords: Type.Integer({ minimum: 0 }),
+  cursor: codexCursor,
+});
+
+export type CodexFileScan = Static<typeof codexFileScan>;
 
 const codexTokens = Type.Object({
   input_tokens: Type.Optional(tokens),
@@ -349,6 +413,7 @@ const codexTokens = Type.Object({
 
 const usageRecord = Type.Object({
   type: Type.Literal("token_usage_record"),
+  timestamp: Type.Optional(Type.String()),
   payload: Type.Object({
     response_id: Type.Optional(Type.String()),
     usage: codexTokens,
@@ -400,13 +465,6 @@ function codexUsage(raw: CodexTokens): Usage {
 
 const FORK_COPY_MAX_GAP_MS = 1000;
 
-function parseMs(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const parsed = Date.parse(value);
-
-  return Number.isNaN(parsed) ? undefined : parsed;
-}
-
 /**
  * Reads Codex's local usage from `sessions` and `archived_sessions` (where the legacy format
  * lives). A `response_id` is unique across files, so one map dedups a forked rollout's repeated
@@ -448,10 +506,14 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
     for (const root of present) {
       for await (const path of jsonlFiles(root, options.signal)) {
         try {
-          const scan = await scanCached(path, options.cache, seen, () =>
-            scanCodexRollout(path, options.signal),
-          );
+          const scan = await readHistoryInWindow(path, options.window, {
+            parser: codexParser,
+            cache: options.cache,
+            seen,
+            signal: options.signal,
+          });
 
+          if (scan === undefined) continue;
           malformedRecords += scan.malformedRecords;
 
           if (scan.modern.length > 0) {
@@ -467,7 +529,7 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
     }
 
     options.signal?.throwIfAborted();
-    pruneCache(options.cache, seen);
+    options.cache?.keepOnly(seen);
 
     const catalog = options.models
       .getModels("openai-codex")
@@ -478,6 +540,8 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
 
     for (const row of [...responses.values(), ...legacy]) {
       options.signal?.throwIfAborted();
+
+      if (!recordedIn(options.window, row.at)) continue;
       const usage: Usage = { ...row.usage, cost: { ...row.usage.cost } };
       const matches = catalog.filter((model) => model.id === row.model);
       const model = matches.length === 1 ? matches[0] : undefined;
@@ -507,94 +571,103 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
 }
 
 /**
- * Reads one Codex rollout. A `token_count` names no model, so the last `turn_context` does; only
+ * Folds one Codex rollout. A `token_count` names no model, so the last `turn_context` does; only
  * the file's first session meta counts, since a fork repeats its ancestors' metas straight after
  * and would move the fork anchor; and a `token_count` equal to the one before is a re-emission
- * at a stream boundary, not new usage.
+ * at a stream boundary, not new usage. That reading state is the scan's cursor, so a grown
+ * rollout resumes against it.
  */
-async function scanCodexRollout(
-  path: string,
-  signal: AbortSignal | undefined,
-): Promise<CodexFileScan> {
-  const modern = new Map<string, CodexRow>();
-  const legacy: CodexRow[] = [];
-  let malformedRecords = 0;
-  let model = "";
-  let sawMeta = false;
-  let signature: string | undefined;
-  let forkAnchorMs: number | undefined;
+const codexParser: HistoryParser<CodexFileScan> = (from) => {
+  const modern = new Map(from?.modern);
+  const legacy = [...(from?.legacy ?? [])];
+  let malformedRecords = from?.malformedRecords ?? 0;
+  const cursor: CodexFileScan["cursor"] = { ...(from?.cursor ?? { model: "", sawMeta: false }) };
 
-  for await (const line of historyLines(path, signal)) {
-    signal?.throwIfAborted();
-
-    if (!line.text.trim()) continue;
+  const line = ({ text, terminated }: HistoryLine): void => {
+    if (!text.trim()) return;
     let value: unknown;
 
     try {
-      value = JSON.parse(line.text);
+      value = JSON.parse(text);
     } catch {
-      if (line.terminated) malformedRecords++;
-      continue;
+      if (terminated) malformedRecords++;
+
+      return;
     }
 
     if (!Value.Check(envelope, value)) {
       malformedRecords++;
-      continue;
+
+      return;
     }
 
     if (Value.Check(turnContext, value)) {
-      if (value.payload.model !== undefined) model = value.payload.model;
-      continue;
+      if (value.payload.model !== undefined) cursor.model = value.payload.model;
+
+      return;
     }
 
     if (Value.Check(sessionMeta, value)) {
-      if (sawMeta) continue;
-      sawMeta = true;
+      if (cursor.sawMeta) return;
+      cursor.sawMeta = true;
 
       const forked =
         value.payload.forked_from_id !== undefined || value.payload.parent_thread_id !== undefined;
 
-      if (forked) forkAnchorMs = parseMs(value.timestamp);
-      continue;
+      const anchor = parseRecordedAt(value.timestamp);
+
+      if (forked && anchor !== null) cursor.forkAnchorMs = anchor;
+
+      return;
     }
 
     if (Value.Check(usageRecord, value)) {
       const id = value.payload.response_id;
 
-      if (id === undefined || model === "") continue;
+      if (id === undefined || cursor.model === "") return;
       const usage = codexUsage(value.payload.usage);
 
-      if (usage.totalTokens > 0 && !modern.has(id)) modern.set(id, { model, usage });
-      continue;
+      if (usage.totalTokens > 0 && !modern.has(id))
+        modern.set(id, { model: cursor.model, usage, at: parseRecordedAt(value.timestamp) });
+
+      return;
     }
 
-    if (!Value.Check(tokenCount, value)) continue;
+    if (!Value.Check(tokenCount, value)) return;
     const last = value.payload.info.last_token_usage;
 
-    if (last === undefined || model === "") continue;
+    if (last === undefined || cursor.model === "") return;
     const next = JSON.stringify(last);
 
-    if (next === signature) continue;
-    signature = next;
+    if (next === cursor.signature) return;
+    cursor.signature = next;
+    const at = parseRecordedAt(value.timestamp);
 
-    if (forkAnchorMs !== undefined) {
-      const at = parseMs(value.timestamp);
+    if (cursor.forkAnchorMs !== undefined) {
+      if (at !== null && at - cursor.forkAnchorMs < FORK_COPY_MAX_GAP_MS) {
+        cursor.forkAnchorMs = at;
 
-      if (at !== undefined && at - forkAnchorMs < FORK_COPY_MAX_GAP_MS) {
-        forkAnchorMs = at;
-        continue;
+        return;
       }
 
-      forkAnchorMs = undefined;
+      delete cursor.forkAnchorMs;
     }
 
     const usage = codexUsage(last);
 
-    if (usage.totalTokens > 0) legacy.push({ model, usage });
-  }
+    if (usage.totalTokens > 0) legacy.push({ model: cursor.model, usage, at });
+  };
 
-  return { modern: [...modern], legacy, malformedRecords };
-}
+  return {
+    line,
+    scan: () => ({
+      modern: [...modern],
+      legacy: [...legacy],
+      malformedRecords,
+      cursor: { ...cursor },
+    }),
+  };
+};
 
 async function* jsonlFiles(root: string, signal: AbortSignal | undefined): AsyncGenerator<string> {
   const directories = [root];
@@ -618,52 +691,51 @@ async function* jsonlFiles(root: string, signal: AbortSignal | undefined): Async
   }
 }
 
-/** Yields a history file's lines up to the size it had when opened, though its writer may keep appending; the last line is `terminated: false` without its newline. */
-async function* historyLines(path: string, signal: AbortSignal | undefined) {
-  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-
-  try {
-    const stat = await file.stat();
-
-    if (!stat.isFile()) throw new Error("History is not a regular file.");
-    const buffer = Buffer.alloc(64 * 1024);
-    const decoder = new StringDecoder("utf8");
-    let pending = "";
-    let position = 0;
-
-    while (position < stat.size) {
-      signal?.throwIfAborted();
-
-      const { bytesRead } = await file.read(
-        buffer,
-        0,
-        Math.min(buffer.length, stat.size - position),
-        position,
-      );
-
-      if (bytesRead === 0) break;
-      position += bytesRead;
-      const lines = `${pending}${decoder.write(buffer.subarray(0, bytesRead))}`.split("\n");
-      pending = lines.pop() ?? "";
-
-      for (const text of lines) yield { text, terminated: true };
-    }
-
-    pending += decoder.end();
-
-    if (pending) yield { text: pending, terminated: false };
-  } finally {
-    await file.close();
-  }
-}
-
 export interface UsageScanCaches {
   readonly claudeCode: UsageScanCache<ClaudeCodeFileScan>;
   readonly codex: UsageScanCache<CodexFileScan>;
 }
 
 export function createUsageScanCaches(): UsageScanCaches {
-  return { claudeCode: new Map(), codex: new Map() };
+  return { claudeCode: new UsageScanCache(), codex: new UsageScanCache() };
+}
+
+/** Bump when a parser changes what it keeps, so an older document is dropped instead of misread. */
+const USAGE_SCAN_CACHE_VERSION = 1;
+
+const usageScanCacheDocument = Type.Object({
+  version: Type.Literal(USAGE_SCAN_CACHE_VERSION),
+  claudeCode: Type.Array(Type.Tuple([Type.String(), fileScanSchema(claudeCodeFileScan)])),
+  codex: Type.Array(Type.Tuple([Type.String(), fileScanSchema(codexFileScan)])),
+});
+
+const usageScanCacheValidator = Compile(usageScanCacheDocument);
+
+/** Restores the scans {@link saveUsageScanCaches} wrote to `path`; each still answers only while its file is unchanged. */
+export async function loadUsageScanCaches(path: string): Promise<UsageScanCaches> {
+  const document = await readCacheDocument(path, usageScanCacheValidator);
+
+  if (document === undefined) return createUsageScanCaches();
+
+  return {
+    claudeCode: new UsageScanCache(document.claudeCode),
+    codex: new UsageScanCache(document.codex),
+  };
+}
+
+/** Writes `caches` to `path` when a read changed them since they were last saved; a failed write is tried again on the next save. */
+export async function saveUsageScanCaches(path: string, caches: UsageScanCaches): Promise<void> {
+  if (!caches.claudeCode.changed && !caches.codex.changed) return;
+
+  const saved = await writeCacheDocument(path, {
+    version: USAGE_SCAN_CACHE_VERSION,
+    claudeCode: [...caches.claudeCode.entries()],
+    codex: [...caches.codex.entries()],
+  } satisfies Static<typeof usageScanCacheDocument>);
+
+  if (!saved) return;
+  caches.claudeCode.markSaved();
+  caches.codex.markSaved();
 }
 
 export interface LocalUsage {
@@ -673,6 +745,7 @@ export interface LocalUsage {
 
 export async function readLocalUsage(options: {
   readonly models: Pick<Models, "getModels">;
+  readonly window: UsageWindow;
   readonly signal?: AbortSignal;
   readonly caches?: UsageScanCaches;
 }): Promise<LocalUsage> {
@@ -685,11 +758,13 @@ export async function readLocalUsage(options: {
   const [claudeCode, codex] = await Promise.all([
     readClaudeCodeUsage({
       models: options.models,
+      window: options.window,
       signal: options.signal,
       cache: options.caches?.claudeCode,
     }).catch(() => failed("Could not read Claude Code history.")),
     readCodexUsage({
       models: options.models,
+      window: options.window,
       signal: options.signal,
       cache: options.caches?.codex,
     }).catch(() => failed("Could not read Codex history.")),

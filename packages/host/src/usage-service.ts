@@ -5,7 +5,12 @@ import type { Models } from "@nyte-ai/ai";
 import { serial } from "@nyte-ai/schema/serial";
 import type { Api, Model } from "@nyte-ai/schema/model";
 import { readNyteUsage } from "./store-usage.ts";
-import { createUsageScanCaches, readLocalUsage } from "./usage.ts";
+import {
+  loadUsageScanCaches,
+  readLocalUsage,
+  saveUsageScanCaches,
+  type UsageScanCaches,
+} from "./usage.ts";
 import type { UsageSnapshot, UsageWindow } from "./usage-types.ts";
 
 export interface UsageScanRequest {
@@ -26,12 +31,14 @@ export function catalogForUsage(models: Pick<Models, "getModels">): readonly Mod
 
 export class UsageScanner implements UsageScanReader {
   private readonly home: string;
-  private readonly caches = createUsageScanCaches();
+  private readonly cachePath: string;
+  private caches: UsageScanCaches | undefined;
   private readonly models: ReturnType<typeof createModels>;
   private readonly scans = serial();
 
   constructor(home: string) {
     this.home = home;
+    this.cachePath = join(home, ".nyte", "usage-scan-cache.json");
     this.models = createModels({
       modelsStore: new FileModelsStore(join(home, ".nyte", "models-store.json")),
     });
@@ -56,8 +63,10 @@ export class UsageScanner implements UsageScanReader {
                 catalog.filter((model) => provider === undefined || model.provider === provider),
             };
 
-      const local = await readLocalUsage({ models, caches: this.caches });
+      const caches = (this.caches ??= await loadUsageScanCaches(this.cachePath));
+      const local = await readLocalUsage({ models, window: request.window, caches });
       const report = readNyteUsage(this.home, request.window);
+      void this.scans.run(() => saveUsageScanCaches(this.cachePath, caches));
 
       return {
         ...report,

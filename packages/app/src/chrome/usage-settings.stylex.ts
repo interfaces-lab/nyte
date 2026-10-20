@@ -1,6 +1,6 @@
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes } from "@stylexjs/stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { settings } from "../theme/schema.stylex.ts";
 
 const NARROW = "@container (max-width: 560px)";
@@ -19,6 +19,12 @@ export const usageStyles = create({
     backgroundColor: role.bgMutedTranslucent,
   },
   spend: { flex: "1 1 320px", gap: space.s4 },
+  chart: { flexGrow: 1 },
+  superseded: {
+    opacity: 0.6,
+    transitionProperty: "opacity",
+    transitionDuration: motion.durationNormal,
+  },
   limits: { flex: "0 0 248px", gap: space.s3 },
 
   spendHead: {

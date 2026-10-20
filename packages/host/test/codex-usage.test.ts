@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import type { Models } from "@nyte-ai/ai";
-import { readCodexUsage } from "../src/usage.ts";
+import { createUsageScanCaches, readCodexUsage } from "../src/usage.ts";
+import type { UsageWindow } from "../src/usage-types.ts";
 
 const model: ReturnType<Models["getModels"]>[number] = {
   id: "gpt-test-1",
@@ -20,6 +21,8 @@ const model: ReturnType<Models["getModels"]>[number] = {
 };
 
 const models: Pick<Models, "getModels"> = { getModels: () => [model] };
+
+const allTime: UsageWindow = { sinceDay: null, untilDay: "9999-12-31" };
 
 const directories: string[] = [];
 
@@ -76,7 +79,7 @@ function tokenCount(at: string, overrides?: Partial<Record<string, number>>) {
 }
 
 async function read(homeDir: string) {
-  const result = await readCodexUsage({ models, homeDir });
+  const result = await readCodexUsage({ window: allTime, models, homeDir });
   assert.equal(result.kind, "ready");
 
   return result;
@@ -126,18 +129,22 @@ test("a forked rollout repeating its parent's responses is counted once", async 
 
 test("the legacy event drops re-emitted duplicates and the fork's copied prologue", async () => {
   const homeDir = await fixture();
+
   const copiedPrologue = [
     tokenCount("2026-01-01T00:00:00.100Z"),
     tokenCount("2026-01-01T00:00:00.400Z", { output_tokens: 21, total_tokens: 121 }),
   ];
+
   const firstOwnTurn = tokenCount("2026-01-01T00:00:30.000Z", {
     output_tokens: 22,
     total_tokens: 122,
   });
+
   const reEmitted = tokenCount("2026-01-01T00:00:31.000Z", {
     output_tokens: 22,
     total_tokens: 122,
   });
+
   await rollout(homeDir, "archived_sessions/2026/01/01/legacy.jsonl", [
     {
       type: "session_meta",
@@ -222,7 +229,7 @@ test("a malformed line is counted, not fatal", async () => {
 test("no Codex home is missing history, not a failed read or zero spend", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "nyte-codex-empty-"));
   directories.push(homeDir);
-  assert.deepEqual(await readCodexUsage({ models, homeDir }), { kind: "missing" });
+  assert.deepEqual(await readCodexUsage({ window: allTime, models, homeDir }), { kind: "missing" });
 });
 
 test("CODEX_HOME names the history when no directory is given", async () => {
@@ -230,7 +237,21 @@ test("CODEX_HOME names the history when no directory is given", async () => {
   await rollout(homeDir, "sessions/2026/01/01/env.jsonl", [turnContext, usageRecord("resp-1")]);
   vi.stubEnv("CODEX_HOME", homeDir);
 
-  const result = await readCodexUsage({ models });
+  const result = await readCodexUsage({ window: allTime, models });
   assert.equal(result.kind, "ready");
   assert.equal(result.kind === "ready" && result.summary.total.total, 120);
+});
+
+test("a grown rollout resumes against the model its earlier lines named", async () => {
+  const homeDir = await fixture();
+  await rollout(homeDir, "sessions/a.jsonl", [turnContext, usageRecord("one")]);
+  const cache = createUsageScanCaches().codex;
+  await readCodexUsage({ window: allTime, models, homeDir, cache });
+  await appendFile(join(homeDir, "sessions/a.jsonl"), `${JSON.stringify(usageRecord("two"))}\n`);
+  const result = await readCodexUsage({ window: allTime, models, homeDir, cache });
+  assert.equal(result.kind, "ready");
+
+  if (result.kind !== "ready") return;
+  assert.equal(result.summary.models[0]?.model, model.id);
+  assert.equal(result.summary.models[0]?.turns, 2);
 });

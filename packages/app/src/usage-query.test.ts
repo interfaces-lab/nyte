@@ -71,8 +71,10 @@ const recorded = report({
 
 const cleanups: (() => void)[] = [];
 
-function openUsage(untilDay: string = TODAY) {
-  const observer = new QueryObserver(queryClient, usageReportOptions(untilDay));
+const THIRTY_DAYS: UsageWindow = { sinceDay: "2026-08-04", untilDay: TODAY };
+
+function openUsage(window: UsageWindow = WINDOW) {
+  const observer = new QueryObserver(queryClient, usageReportOptions(window));
   cleanups.push(observer.subscribe(() => {}));
 
   return observer;
@@ -87,51 +89,66 @@ afterEach(() => {
 
 const stale = { updatedAt: Date.now() - USAGE_STALE_AFTER_MS * 10 };
 
-test("reopening shows a fresh cached report without re-reading", () => {
-  queryClient.setQueryData(usageReportOptions(TODAY).queryKey, recorded);
+test("reopening shows a fresh cached read without re-reading", () => {
+  queryClient.setQueryData(usageReportOptions(WINDOW).queryKey, {
+    window: WINDOW,
+    report: recorded,
+  });
 
   const observer = openUsage();
   assert.equal(observer.getCurrentResult().isFetching, false);
   assert.equal(observer.getCurrentResult().isSuccess, true);
-  assert.deepEqual(observer.getCurrentResult().data, recorded);
+  assert.deepEqual(observer.getCurrentResult().data, { window: WINDOW, report: recorded });
   assert.equal(readUsage.mock.calls.length, 0);
 });
 
-test("reopening re-reads a stale cached report", async () => {
-  queryClient.setQueryData(usageReportOptions(TODAY).queryKey, empty, stale);
+test("reopening re-reads a stale cached read", async () => {
+  queryClient.setQueryData(
+    usageReportOptions(WINDOW).queryKey,
+    { window: WINDOW, report: empty },
+    stale,
+  );
   const load = Promise.withResolvers<UsageSnapshot>();
   readUsage.mockReturnValueOnce(load.promise);
 
   const observer = openUsage();
   assert.equal(observer.getCurrentResult().isFetching, true);
-  assert.deepEqual(observer.getCurrentResult().data, empty);
+  assert.deepEqual(observer.getCurrentResult().data?.report, empty);
   load.resolve(recorded);
   await vi.waitFor(() => assert.equal(observer.getCurrentResult().isFetching, false));
-  assert.deepEqual(observer.getCurrentResult().data, recorded);
-  assert.equal(observer.getCurrentResult().isSuccess, true);
+  assert.deepEqual(observer.getCurrentResult().data?.report, recorded);
   assert.equal(readUsage.mock.calls.length, 1);
 });
 
-test("the read is unbounded, so one read answers every range", async () => {
+test("a range reads only its own window", async () => {
   readUsage.mockResolvedValueOnce(recorded);
-  const observer = openUsage();
+  const observer = openUsage(usageWindow("30d", Date.parse("2026-09-02T15:00:00")));
   await vi.waitFor(() => assert.equal(observer.getCurrentResult().isSuccess, true));
-  assert.deepEqual(
-    readUsage.mock.calls[0],
-    [WINDOW],
-    "no range reaches the host: the page narrows the report it already holds",
-  );
-  assert.equal(readUsage.mock.calls.length, 1);
+  assert.deepEqual(readUsage.mock.calls, [[THIRTY_DAYS]]);
+  assert.deepEqual(observer.getCurrentResult().data?.window, THIRTY_DAYS);
 });
 
-test("every range shares one key, so pressing between them reads nothing", () => {
+test("every range has its own key", () => {
   const at = Date.parse("2026-09-02T15:00:00");
+  const keys = USAGE_RANGES.map((range) => usageReportOptions(usageWindow(range, at)).queryKey);
 
-  const keys = USAGE_RANGES.map(
-    (range) => usageReportOptions(usageWindow(range, at).untilDay).queryKey,
-  );
+  assert.equal(new Set(keys.map((key) => JSON.stringify(key))).size, USAGE_RANGES.length);
+});
 
-  assert.equal(new Set(keys.map((key) => JSON.stringify(key))).size, 1);
+test("a new range keeps the last read, with its own window, until its read answers", async () => {
+  readUsage.mockResolvedValueOnce(recorded);
+  const observer = openUsage(THIRTY_DAYS);
+  await vi.waitFor(() => assert.equal(observer.getCurrentResult().isSuccess, true));
+
+  const load = Promise.withResolvers<UsageSnapshot>();
+  readUsage.mockReturnValueOnce(load.promise);
+  observer.setOptions(usageReportOptions(WINDOW));
+  assert.equal(observer.getCurrentResult().isPlaceholderData, true);
+  assert.deepEqual(observer.getCurrentResult().data, { window: THIRTY_DAYS, report: recorded });
+
+  load.resolve(empty);
+  await vi.waitFor(() => assert.equal(observer.getCurrentResult().isPlaceholderData, false));
+  assert.deepEqual(observer.getCurrentResult().data, { window: WINDOW, report: empty });
 });
 
 test("crossing midnight is a different read", async () => {
@@ -140,7 +157,7 @@ test("crossing midnight is a different read", async () => {
   await vi.waitFor(() => assert.equal(observer.getCurrentResult().isSuccess, true));
 
   readUsage.mockResolvedValueOnce(report({ readAt: 3 }));
-  observer.setOptions(usageReportOptions("2026-09-03"));
+  observer.setOptions(usageReportOptions({ sinceDay: null, untilDay: "2026-09-03" }));
   await vi.waitFor(() => assert.equal(readUsage.mock.calls.length, 2));
   assert.deepEqual(readUsage.mock.calls[1], [{ sinceDay: null, untilDay: "2026-09-03" }]);
 });

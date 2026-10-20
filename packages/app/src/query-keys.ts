@@ -12,7 +12,7 @@ export const keys = {
   firstFrameRoots: ["first-frame", "roots"] as const,
   modelCatalog: (generation: string) => ["catalog", "models", generation] as const,
   accountLimits: (generation: string) => ["account-limits", generation] as const,
-  usage: (untilDay: string) => ["usage", untilDay] as const,
+  usage: (sinceDay: string | null, untilDay: string) => ["usage", sinceDay, untilDay] as const,
   github: ["github"] as const,
   server: ["server"] as const,
   remoteAccess: ["remote-access"] as const,

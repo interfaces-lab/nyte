@@ -164,13 +164,20 @@ export function timeLabel(at: number): string {
   return new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+/** How a window reads in a sentence: "last 30 days", or "all time". */
+export function windowLabel(window: UsageWindow): string {
+  return window.sinceDay === null
+    ? "all time"
+    : `last ${plural(daysBetween(window.sinceDay, window.untilDay), "day")}`;
+}
+
 export function costChange(
   current: number,
   previous: number | undefined,
-  range: UsageRange,
+  window: UsageWindow,
 ): { readonly direction: "up" | "down" | "flat"; readonly label: string } | undefined {
-  if (previous === undefined || range === "all") return undefined;
-  const prior = `prior ${USAGE_RANGE_LABELS[range].toLocaleLowerCase()}`;
+  if (previous === undefined || window.sinceDay === null) return undefined;
+  const prior = `prior ${plural(daysBetween(window.sinceDay, window.untilDay), "day")}`;
 
   if (previous === 0)
     return current === 0 ? undefined : { direction: "up", label: `None in the ${prior}` };
@@ -250,17 +257,6 @@ function daysBetween(from: string, to: string): number {
   return span;
 }
 
-function priorWindow(
-  from: string,
-  to: string,
-  bounded: boolean,
-): { readonly from: string; readonly to: string } | undefined {
-  if (!bounded) return undefined;
-  const priorTo = shiftDay(from, -1);
-
-  return { from: shiftDay(priorTo, -(daysBetween(from, to) - 1)), to: priorTo };
-}
-
 function folderLabel(path: string | null): string {
   if (path === null) return "Home";
   const segments = path.split("/").filter((segment) => segment !== "");
@@ -316,7 +312,6 @@ function addSpend(spend: Spend, totals: UsageTotals, bucket: number): void {
 export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDerived {
   const to = window.untilDay;
   const from = window.sinceDay ?? report.earliestDay ?? to;
-  const prior = priorWindow(from, to, window.sinceDay !== null);
   const days = daySpan(from, to);
   const grain: UsageGrain = days.length > WEEKLY_ABOVE_DAYS ? "week" : "day";
   const bucketSize = grain === "day" ? 1 : 7;
@@ -330,15 +325,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
   const overhead = emptySpend(bucketCount);
   let totals = EMPTY_TOTALS;
 
-  let priorCost = 0;
-  let sawPrior = false;
-
   for (const entry of report.entries) {
-    if (prior !== undefined && entry.day >= prior.from && entry.day <= prior.to) {
-      sawPrior = true;
-      priorCost += entry.totals.cost;
-    }
-
     const bucket = bucketOf.get(entry.day);
 
     if (bucket === undefined) continue;
@@ -443,7 +430,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     to,
     points,
     totals,
-    previousCost: sawPrior ? priorCost : undefined,
+    previousCost: report.previous?.cost,
     models: ranked(models),
     folders: ranked(
       [...perFolder].map(([key, folder]) => {
@@ -483,7 +470,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
 export function describeEmptyRange(
   report: UsageSnapshot,
   unreadFolders: readonly string[],
-  range: UsageRange,
+  window: UsageWindow,
 ) {
   if (report.nyteError !== null || unreadFolders.length > 0) {
     return {
@@ -505,11 +492,9 @@ export function describeEmptyRange(
 
   return {
     title:
-      range === "all"
-        ? "No usage in this range"
-        : `Nothing in the last ${USAGE_RANGE_LABELS[range].toLocaleLowerCase()}`,
+      window.sinceDay === null ? "No usage in this range" : `Nothing in the ${windowLabel(window)}`,
     body: `Earliest recorded usage: ${dayLabel(earliest)}.`,
-    offerAllTime: range !== "all",
+    offerAllTime: window.sinceDay !== null,
   };
 }
 
@@ -605,11 +590,14 @@ export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
       ...base,
       meta: `${formatTokens(spend.tokens)} tokens${spend.partial ? " · partial history" : ""}`,
       cache: describeCache(spend),
-      value: byCost
-        ? spend.cost === 0
-          ? { text: "No price", absent: true }
-          : { text: formatUsd(spend.cost), absent: false }
-        : { text: `${formatTokens(spend.tokens)} tokens`, absent: false },
+      value:
+        spend.tokens === 0
+          ? { text: "No usage", absent: true }
+          : byCost
+            ? spend.cost === 0
+              ? { text: "No price", absent: true }
+              : { text: formatUsd(spend.cost), absent: false }
+            : { text: `${formatTokens(spend.tokens)} tokens`, absent: false },
       share: whole === 0 ? 0 : (byCost ? spend.cost : spend.tokens) / whole,
     };
   });

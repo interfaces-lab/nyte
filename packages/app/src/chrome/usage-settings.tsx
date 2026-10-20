@@ -29,12 +29,16 @@ import {
   usageWindow,
   USAGE_RANGE_LABELS,
   USAGE_RANGES,
+  windowLabel,
   type UsageDerived,
   type UsageRange,
   type UsageRow,
 } from "./usage-view.ts";
+import type { UsageWindow } from "../bridge.ts";
 
 const MAX_ROWS = 6;
+
+const SPEND_CHART_HEIGHT = 108;
 
 const LIMIT_WARM_PERCENT = 70;
 
@@ -80,11 +84,19 @@ function useUsageRange() {
 function Bone({
   width,
   height,
+  grow = false,
 }: {
   readonly width: number | string;
   readonly height: number;
+  readonly grow?: boolean;
 }): ReactElement {
-  return <span aria-hidden="true" {...props(bone.bone)} style={{ width, height }} />;
+  return (
+    <span
+      aria-hidden="true"
+      {...props(bone.bone, grow && styles.chart)}
+      style={{ width, height }}
+    />
+  );
 }
 
 function Trend({ values }: { readonly values: readonly number[] }): ReactElement {
@@ -187,12 +199,14 @@ function chartLayers(usage: UsageDerived, rows: readonly UsageRow[]) {
 function SpendCard({
   usage,
   rows,
-  range,
+  window,
+  superseded,
   empty,
 }: {
   readonly usage: UsageDerived | undefined;
   readonly rows: readonly UsageRow[] | undefined;
-  readonly range: UsageRange;
+  readonly window: UsageWindow;
+  readonly superseded: boolean;
   readonly empty: ReactNode;
 }): ReactElement {
   if (usage === undefined || rows === undefined) {
@@ -202,25 +216,27 @@ function SpendCard({
           <Bone width={132} height={10} />
           <Bone width={112} height={26} />
         </span>
-        <Bone width="100%" height={88} />
+        <Bone width="100%" height={SPEND_CHART_HEIGHT} grow />
       </section>
     );
   }
 
+  const surface = props(styles.card, styles.spend, superseded && styles.superseded);
+
   if (empty !== undefined) {
     return (
-      <section aria-label="Spend" {...props(styles.card, styles.spend)}>
+      <section aria-busy={superseded} aria-label="Spend" {...surface}>
         {empty}
       </section>
     );
   }
 
-  const change = costChange(usage.totals.cost, usage.previousCost, range);
+  const change = costChange(usage.totals.cost, usage.previousCost, window);
   const layers = chartLayers(usage, rows);
   const format = usage.measure === "cost" ? formatUsd : formatTokens;
 
   return (
-    <section aria-label="Spend" {...props(styles.card, styles.spend)}>
+    <section aria-busy={superseded} aria-label="Spend" {...surface}>
       <div {...props(styles.spendHead)}>
         <span {...props(styles.spendTitle)}>
           <span {...props(text.sm, styles.caption)}>
@@ -249,9 +265,10 @@ function SpendCard({
           <span {...props(text.sm, styles.fact)}>{describeTotals(usage.totals)}</span>
         </span>
       </div>
-      <Deferred entry="charts" fallback={<Bone width="100%" height={108} />}>
+      <Deferred entry="charts" fallback={<Bone width="100%" height={SPEND_CHART_HEIGHT} grow />}>
         {({ BarChart }) => (
           <BarChart
+            xstyle={styles.chart}
             label={`${usage.measure === "cost" ? "Spend" : "Tokens"} per ${usage.grain}`}
             series={layers.series}
             buckets={layers.buckets}
@@ -454,10 +471,19 @@ export function UsageSettings(): ReactElement {
   const [openedAt] = useState(() => Date.now());
   const [range, setRange] = useUsageRange();
   const [axis, setAxis] = useChromeTab("usage", AXES);
-  const view = useMemo(() => usageWindow(range, openedAt), [range, openedAt]);
+  const requested = useMemo(() => usageWindow(range, openedAt), [range, openedAt]);
 
-  const { report, error, isFetching, refresh: refreshHistory } = useUsageReport(view.untilDay);
+  const {
+    read,
+    superseded,
+    error,
+    isFetching,
+    refresh: refreshHistory,
+  } = useUsageReport(requested);
+
   const limits = useAccountLimits();
+  const report = read?.report;
+  const shown = read?.window ?? requested;
 
   const refresh = () => {
     refreshHistory();
@@ -465,8 +491,8 @@ export function UsageSettings(): ReactElement {
   };
 
   const usage = useMemo(
-    () => (report === undefined ? undefined : deriveUsage(report, view)),
-    [report, view],
+    () => (read === undefined ? undefined : deriveUsage(read.report, read.window)),
+    [read],
   );
 
   const tools = useMemo(() => (report === undefined ? undefined : deriveTools(report)), [report]);
@@ -491,7 +517,7 @@ export function UsageSettings(): ReactElement {
   const empty =
     report === undefined || usage === undefined || report.entries.length > 0
       ? undefined
-      : describeEmptyRange(report, usage.unreadFolders, range);
+      : describeEmptyRange(report, usage.unreadFolders, shown);
 
   const rowsFor = (of: Axis): readonly UsageRow[] | undefined =>
     of === "tools" ? tools : usage?.[of];
@@ -508,15 +534,11 @@ export function UsageSettings(): ReactElement {
   const hint =
     rows === undefined
       ? undefined
-      : `${String(rows.length)} ${AXIS_LABELS[axis].noun}${rows.length === 1 ? "" : "s"} · ${
-          axis === "tools" || range === "all"
-            ? "all time"
-            : `last ${USAGE_RANGE_LABELS[range].toLocaleLowerCase()}`
-        }`;
+      : `${String(rows.length)} ${AXIS_LABELS[axis].noun}${rows.length === 1 ? "" : "s"} · ${windowLabel(shown)}`;
 
   return (
     <div {...props(styles.page)}>
-      {report === undefined && (
+      {(report === undefined || superseded) && (
         <span role="status" {...props(srOnly)}>
           Reading local history…
         </span>
@@ -544,7 +566,8 @@ export function UsageSettings(): ReactElement {
         <SpendCard
           usage={usage}
           rows={chartRows}
-          range={range}
+          window={shown}
+          superseded={superseded}
           empty={
             empty === undefined ? undefined : (
               <Empty
@@ -566,7 +589,7 @@ export function UsageSettings(): ReactElement {
         <LimitsCard limits={limits} />
       </div>
 
-      {empty === undefined && (
+      {(empty === undefined || tools?.some((row) => row.share > 0) === true) && (
         <Tabs.Root
           variant="segmented"
           value={axis}
@@ -589,7 +612,12 @@ export function UsageSettings(): ReactElement {
             const optionRows = rowsFor(option);
 
             return (
-              <Tabs.Panel key={option} value={option}>
+              <Tabs.Panel
+                key={option}
+                value={option}
+                aria-busy={superseded}
+                xstyle={superseded && styles.superseded}
+              >
                 {optionRows === undefined ? (
                   <div aria-busy="true" {...props(styles.table)}>
                     {Array.from({ length: 3 }, (_slot, index) => (
