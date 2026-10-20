@@ -25,7 +25,7 @@ import { activePane } from "../layout/pane-layout.ts";
 import type { PaneState } from "../layout/pane-layout.ts";
 import { useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
 import { useHostState } from "../queries.ts";
-import { sessionsWatch, useWatchSelect } from "../sdk.tsx";
+import { sessionsWatch, sessionWatch, useWatchSelect } from "../sdk.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
@@ -73,6 +73,12 @@ function ReceiveExcerpts({
       if (image !== undefined) input.current?.attachFiles([image]);
     }),
   );
+
+  return null;
+}
+
+function HoldSession({ sessionId }: { readonly sessionId: SessionId }): null {
+  useMountEffect(() => sessionWatch(sessionId).subscribe(() => undefined));
 
   return null;
 }
@@ -164,6 +170,9 @@ export function PaneHost({
           <ReceiveExcerpts input={inputRef} />
         </>
       )}
+      {hotSessions.map((sessionId) => (
+        <HoldSession key={sessionId} sessionId={sessionId} />
+      ))}
       <ReferenceOpenerProvider value={referenceOpener}>
         {hotSessions.toSorted().map((sessionId) => (
           <Activity key={sessionId} mode={sessionId === shownSession ? "visible" : "hidden"}>

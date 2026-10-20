@@ -428,6 +428,8 @@ export const TranscriptContent = memo(function TranscriptContent({
     const anchor = heldRef.current;
 
     if (anchor === null) {
+      if (!atEnd.current) return;
+      opening.current = true;
       virtualizer.scrollToEnd();
 
       return;

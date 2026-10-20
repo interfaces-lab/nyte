@@ -69,6 +69,7 @@ function view(session: string): SessionView {
     seq: asSeq(1),
     activation: { kind: "active" },
     messages,
+    leadingPrompt: null,
     parts: [],
     turns,
     usage: USAGE,
@@ -242,7 +243,8 @@ async function checkRules(): Promise<string> {
     const aScrollTop = a.viewport.scrollTop;
 
     const b = await show(container, B);
-    await until(() => !sessionWatch(A).active, "the hidden session to release its watch");
+    await painted();
+    expectRule(sessionWatch(A).active, "a hidden hot session released its watch");
     const aSnapshot = readScroll(A);
     expectRule(
       aSnapshot?.kind === "anchor",
