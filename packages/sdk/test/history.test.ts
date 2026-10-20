@@ -41,7 +41,7 @@ it("pages a head's older messages and their turns into its views and keeps them 
   for (const text of ["Second.", "Third."])
     await (await session.send(text, { delivery: "queue" })).settled();
 
-  const views = pagedViews(session, { tail: 2 });
+  const views = pagedViews(session, { tail: 3 });
   const iterator = views[Symbol.asyncIterator]();
 
   const next = async (done: (view: SessionView) => boolean): Promise<SessionView> => {
@@ -55,7 +55,7 @@ it("pages a head's older messages and their turns into its views and keeps them 
 
   try {
     expect(users(await next(() => true))).toEqual(["Third."]);
-    expect(await views.earlier(3)).toBe(3);
+    expect(await views.earlier(2)).toBe(2);
     expect(users(await next((view) => view.messages.length === 5))).toEqual(["Second.", "Third."]);
     expect(await views.earlier(10)).toBe(1);
     expect(users(await next((view) => view.messages.length === 6))).toEqual([

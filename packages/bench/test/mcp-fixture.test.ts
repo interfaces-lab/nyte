@@ -9,8 +9,8 @@ import codemode from "@nyte-ai/plugin/core/codemode";
 import type { McpView } from "@nyte-ai/schema";
 import { afterEach, assert, expect, it, vi } from "vitest";
 import { createMcpHub, openHost } from "@nyte-ai/host";
-import { chatOnly, fakeModels, PLACES_SERVER } from "../src/index.ts";
-import type { FakeModels, Request } from "../src/index.ts";
+import { chatOnly, fakeModels, PLACES_SERVER, script, titleReply } from "../src/index.ts";
+import type { FakeModels, Reply, Request } from "../src/index.ts";
 
 const SEARCH = "mcp__places__search_places";
 
@@ -66,14 +66,22 @@ function systemPrompt(request: Request | undefined): string {
   return Array.isArray(content) ? content.map((part) => part.text).join("") : content;
 }
 
-function searchOnce(fake: FakeModels): void {
-  fake.reply(
-    {
-      content: [{ type: "toolCall", id: "s", name: SEARCH, arguments: { near: "here", limit: 1 } }],
-    },
-    { content: [{ type: "text", text: "Found one." }] },
+function answering(...replies: readonly Reply[]): FakeModels {
+  const turns = script(
+    replies.map((reply, index) => ({ name: `reply ${String(index + 1)}`, reply })),
   );
+
+  return fakeModels({ fallback: turns.answer });
 }
+
+function turnRequests(fake: FakeModels): readonly Request[] {
+  return fake.requests.filter((request) => titleReply(request) === null);
+}
+
+const SEARCH_ONCE: readonly Reply[] = [
+  { content: [{ type: "toolCall", id: "s", name: SEARCH, arguments: { near: "here", limit: 1 } }] },
+  { content: [{ type: "text", text: "Found one." }] },
+];
 
 async function settledCall(host: Host, prompt: string) {
   const { session, receipt: started } = await host.sessions.start({ content: prompt });
@@ -99,13 +107,12 @@ async function nextView(
 }
 
 it("carries a cold server's tools on the first request after launch", async () => {
-  const fake = fakeModels();
-  searchOnce(fake);
+  const fake = answering(...SEARCH_ONCE);
   await using host = await openPlaces(await placesHome({ PLACES_COLD_MS: "400" }), fake);
 
   const { outcome } = await settledCall(host, "Find a place nearby.");
 
-  expect(requestTools(fake.requests[0])).toContain(SEARCH);
+  expect(requestTools(turnRequests(fake)[0])).toContain(SEARCH);
   expect(outcome).toMatchObject({
     kind: "ok",
     content: [{ text: expect.stringContaining("luigi") }],
@@ -113,8 +120,7 @@ it("carries a cold server's tools on the first request after launch", async () =
 });
 
 it("lists a codemode-exposed tool in the prompt and runs it from a script on a cold start", async () => {
-  const fake = fakeModels();
-  fake.reply(
+  const fake = answering(
     {
       content: [
         {
@@ -136,8 +142,10 @@ it("lists a codemode-exposed tool in the prompt and runs it from a script on a c
 
   const { outcome } = await settledCall(host, "Find a place nearby.");
 
-  expect(requestTools(fake.requests[0])).not.toContain(SEARCH);
-  expect(systemPrompt(fake.requests[0])).toContain(`- ${SEARCH}: Find places near a location.\n`);
+  expect(requestTools(turnRequests(fake)[0])).not.toContain(SEARCH);
+  expect(systemPrompt(turnRequests(fake)[0])).toContain(
+    `- ${SEARCH}: Find places near a location.\n`,
+  );
   expect(outcome).toMatchObject({
     kind: "ok",
     content: [{ text: expect.stringContaining("luigi") }],
@@ -145,8 +153,7 @@ it("lists a codemode-exposed tool in the prompt and runs it from a script on a c
 });
 
 it("does not hold the first request for a server that crashed, and shows it failed", async () => {
-  const fake = fakeModels();
-  fake.reply({ content: [{ type: "text", text: "No places tool." }] });
+  const fake = answering({ content: [{ type: "text", text: "No places tool." }] });
   await using host = await openPlaces(await placesHome({ PLACES_CRASH: "list" }), fake);
   const { session } = await host.sessions.start({ content: "Hi." });
   const started = performance.now();
@@ -154,8 +161,10 @@ it("does not hold the first request for a server that crashed, and shows it fail
   await (await session.send("Find a place nearby.")).settled();
 
   expect(performance.now() - started).toBeLessThan(4000);
-  expect(requestTools(fake.requests[0])).not.toContain(SEARCH);
-  expect(systemPrompt(fake.requests[0])).toContain("## places\nNot connected: it failed to start");
+  expect(requestTools(turnRequests(fake)[0])).not.toContain(SEARCH);
+  expect(systemPrompt(turnRequests(fake)[0])).toContain(
+    "## places\nNot connected: it failed to start",
+  );
 
   const views = host
     .workspace((await session.info()).workspace)
@@ -169,21 +178,19 @@ it("does not hold the first request for a server that crashed, and shows it fail
 });
 
 it("fails the call, not the turn, when the server exits mid-call", async () => {
-  const fake = fakeModels();
-  searchOnce(fake);
+  const fake = answering(...SEARCH_ONCE);
   await using host = await openPlaces(await placesHome({ PLACES_CRASH: "call" }), fake);
 
   const { outcome } = await settledCall(host, "Find a place nearby.");
 
   expect(outcome).toMatchObject({ kind: "failed" });
-  expect(fake.requests).toHaveLength(2);
-  expect(requestTools(fake.requests[1])).toContain(SEARCH);
-  expect(systemPrompt(fake.requests[1])).toBe(systemPrompt(fake.requests[0]));
+  expect(turnRequests(fake)).toHaveLength(2);
+  expect(requestTools(turnRequests(fake)[1])).toContain(SEARCH);
+  expect(systemPrompt(turnRequests(fake)[1])).toBe(systemPrompt(turnRequests(fake)[0]));
 });
 
 it("tells the model a server's instructions", async () => {
-  const fake = fakeModels();
-  fake.reply({ content: [{ type: "text", text: "Noted." }] });
+  const fake = answering({ content: [{ type: "text", text: "Noted." }] });
 
   await using host = await openPlaces(
     await placesHome({ PLACES_INSTRUCTIONS: "Search before you recommend a place." }),
@@ -196,14 +203,13 @@ it("tells the model a server's instructions", async () => {
 
   await started.settled();
 
-  expect(systemPrompt(fake.requests[0])).toContain(
+  expect(systemPrompt(turnRequests(fake)[0])).toContain(
     "## places\nSearch before you recommend a place.",
   );
 });
 
 it("leaves out a tool whose input schema is not JSON Schema, and says why", async () => {
-  const fake = fakeModels();
-  fake.reply({ content: [{ type: "text", text: "No places tool." }] });
+  const fake = answering({ content: [{ type: "text", text: "No places tool." }] });
   await using host = await openPlaces(await placesHome({ PLACES_INVALID_SCHEMA: "1" }), fake);
 
   const { session, receipt: started } = await host.sessions.start({
@@ -212,7 +218,7 @@ it("leaves out a tool whose input schema is not JSON Schema, and says why", asyn
 
   await started.settled();
 
-  expect(requestTools(fake.requests[0])).not.toContain(SEARCH);
+  expect(requestTools(turnRequests(fake)[0])).not.toContain(SEARCH);
 
   const views = host
     .workspace((await session.info()).workspace)
@@ -235,8 +241,7 @@ it("leaves out a tool whose input schema is not JSON Schema, and says why", asyn
 });
 
 it("shows a server's progress on the running call", async () => {
-  const fake = fakeModels();
-  searchOnce(fake);
+  const fake = answering(...SEARCH_ONCE);
 
   await using host = await openPlaces(
     await placesHome({ PLACES_PROGRESS: "1", PLACES_DELAY_MS: "900" }),
@@ -262,8 +267,7 @@ it("shows a server's progress on the running call", async () => {
 });
 
 it("keeps a large result's head and failing tail, and attaches the whole of it", async () => {
-  const fake = fakeModels();
-  searchOnce(fake);
+  const fake = answering(...SEARCH_ONCE);
   await using host = await openPlaces(await placesHome({ PLACES_LOG_BYTES: "5000000" }), fake);
 
   const { outcome } = await settledCall(host, "Why did CI fail?");
@@ -277,7 +281,7 @@ it("keeps a large result's head and failing tail, and attaches the whole of it",
   expect(clipped.text).toContain("characters cut from the middle");
   expect(clipped.text).toMatch(/FAILED test\/places\.test\.ts .*\n$/);
   expect(attached).toMatchObject({ kind: "file", mime: "text/plain" });
-  expect(JSON.stringify(fake.requests[1]?.context.messages)).toContain(
+  expect(JSON.stringify(turnRequests(fake)[1]?.context.messages)).toContain(
     "FAILED test/places.test.ts",
   );
 });

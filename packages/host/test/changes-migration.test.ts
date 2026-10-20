@@ -5,11 +5,14 @@ import { DatabaseSync } from "node:sqlite";
 import { STORE_VERSION } from "@nyte-ai/core/store";
 import { composeHost } from "@nyte-ai/core/server";
 import type { FileChange, SessionId } from "@nyte-ai/schema";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { sqliteStore } from "../src/index.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
 const folders: string[] = [];
+
+/** How many events core replays before it checkpoints a fold. */
+const REPLAY_EVENTS = 1_024;
 
 afterEach(async () => {
   await Promise.all(folders.splice(0).map((path) => rm(path, { recursive: true, force: true })));
@@ -68,6 +71,14 @@ it("shows a 0.0.18 chat's whole changed-files list after the store migrates", as
     async (host) => (await host.sessions.start({ name: "Edits", content: "Hi." })).session.id,
   );
 
+  query(
+    path,
+    `WITH RECURSIVE pad(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM pad WHERE n < ${REPLAY_EVENTS}) INSERT INTO log (session, seq, at, event) SELECT ?, (SELECT MAX(seq) FROM log WHERE session = ?) + n, 1, ? FROM pad RETURNING seq`,
+    session,
+    session,
+    JSON.stringify({ head: null, kind: "seen", principal: "nobody", commit: null }),
+  );
+
   for (const files of [[file("a", 1)], [file("b", 1)], [file("a", 2), file("c", 1)]])
     query(
       path,
@@ -77,10 +88,14 @@ it("shows a 0.0.18 chat's whole changed-files list after the store migrates", as
       session,
     );
 
-  expect(await viewChanges(path, session)).toEqual([file("a", 2), file("c", 1)]);
-  expect(
-    query(path, "SELECT session FROM fold_checkpoints WHERE session = ?", session),
-  ).toHaveLength(1);
+  await withHost(path, async (host) => {
+    expect((await host.session(session).view()).changes).toEqual([file("a", 2), file("c", 1)]);
+    await vi.waitFor(() =>
+      expect(
+        query(path, "SELECT session FROM fold_checkpoints WHERE session = ?", session),
+      ).toHaveLength(1),
+    );
+  });
 
   query(path, "UPDATE store_meta SET version = ? RETURNING version", String(STORE_VERSION - 2));
 

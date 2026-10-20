@@ -353,11 +353,29 @@ function events(from: number): fc.Arbitrary<readonly Json[]> {
       return pairing === "part after" ? [intent, opened] : [opened, intent];
     });
 
+  const callChanges = fc
+    .array(
+      fc.array(
+        fc.record({
+          path: fc.constantFrom("a.ts", "b.ts", "c.ts"),
+          status: fc.constantFrom(...FileStatusType.enum),
+          added: fc.nat(9),
+          removed: fc.nat(9),
+        }),
+        { maxLength: 3 },
+      ),
+      { minLength: 2, maxLength: 4 },
+    )
+    .map((lists): readonly Json[] =>
+      lists.map((files) => ({ head: null, kind: "changes", files })),
+    );
+
   return fc
     .array(
       fc.oneof(
         durableEvent.map((event) => [event]),
         ...(older(from, 8) ? [intentPair] : []),
+        ...(older(from, 21) ? [callChanges] : []),
         ...(older(from, 7)
           ? [
               fc

@@ -208,6 +208,21 @@ export const MAPPING = [
     change: "nothing",
     covers: ["from 19"],
   },
+  {
+    version: 21,
+    step: "2026-10-20-changes-as-whole-list",
+    target: "logged changes events",
+    change:
+      "`files` becomes the list a session's earlier `changes` events merged into, in seq order across heads: each entry with a string `path` replaces the listed entry of that path in its place or joins the end; an event already holding that list is kept",
+    covers: ["from 20", "field log changes /files"],
+  },
+  {
+    version: 22,
+    step: "2026-10-20-fold-checkpoints-cleared",
+    target: "tables",
+    change: "empties fold_checkpoints (sqlite only)",
+    covers: ["from 21"],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {
@@ -443,11 +458,16 @@ export function migratedLog(from: number, events: readonly Json[]): readonly Jso
       : event,
   );
 
-  if (!runs(from, 8)) return unified;
-  const next = [...unified];
+  const paired = runs(from, 8) ? intentsInParts(unified) : unified;
+
+  return runs(from, 21) ? wholeChangeLists(paired) : paired;
+}
+
+function intentsInParts(events: readonly Json[]): readonly Json[] {
+  const next = [...events];
   const created = new Map<Json, number>();
 
-  for (const [index, event] of unified.entries()) {
+  for (const [index, event] of events.entries()) {
     if (!isJsonObject(event)) continue;
 
     if (event.kind === "part" && event.change === "created") created.set(event.part ?? null, index);
@@ -474,6 +494,21 @@ export function migratedLog(from: number, events: readonly Json[]): readonly Jso
   }
 
   return next;
+}
+
+function wholeChangeLists(events: readonly Json[]): readonly Json[] {
+  const listed = new Map<string, Json>();
+
+  return events.map((event) => {
+    if (!isJsonObject(event) || event.kind !== "changes" || !Array.isArray(event.files))
+      return event;
+
+    for (const file of event.files)
+      if (isJsonObject(file) && typeof file.path === "string") listed.set(file.path, file);
+    const files = [...listed.values()];
+
+    return Value.Equal(files, event.files) ? event : { ...event, files };
+  });
 }
 
 function waitNames(session: string, call: CallRecord): readonly string[] {

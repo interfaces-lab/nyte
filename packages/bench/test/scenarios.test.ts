@@ -25,6 +25,7 @@ import {
   restaurantHome,
   restaurantScript,
   simulate,
+  titleReply,
 } from "../src/index.ts";
 import type { Script, Waterfall, WaterfallRow } from "../src/index.ts";
 
@@ -128,7 +129,9 @@ it("runs scenario U: skill, places MCP, canvas, answer, one trace across host an
   const wall = performance.now() - started;
 
   await expectFinished(turns, session, RESTAURANT_ANSWER);
-  expect(lastToolText(fake.requests[2])).toContain("luigi");
+  expect(
+    lastToolText(fake.requests.filter((request) => titleReply(request) === null)[2]),
+  ).toContain("luigi");
 
   const view = await session.view();
   const parts = view.messages.flatMap((message) => (message.kind === "part" ? [message] : []));
@@ -198,7 +201,9 @@ it("runs scenario U through codemode, the MCP call nested in the script", async 
   const { trace, session } = await submit(host, RESTAURANT_PROMPT);
 
   await expectFinished(turns, session, RESTAURANT_ANSWER);
-  expect(lastToolText(fake.requests[2])).toContain("luigi");
+  expect(
+    lastToolText(fake.requests.filter((request) => titleReply(request) === null)[2]),
+  ).toContain("luigi");
   expect((await readSpanFile(home.traceFile)).map((span) => span.trace)).toEqual([trace]);
   expectInOrder(buildWaterfall(trace, [{ process: "host", spans: readSpans() }]).rows, [
     "tool.run",

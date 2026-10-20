@@ -362,7 +362,7 @@ describe("openHost", () => {
     expect(reads).toBe(0);
   });
 
-  it("with a credential stored, reads no secrets key at open, listen, models.list() or the identity route; a model request reads it once (§55)", async () => {
+  it("with a credential stored, reads no secrets key at open, listen, models.list() or the identity route; a chat's first turn and its title request read it once (§55)", async () => {
     const home = await folder();
     const store = memoryStore();
     let reads = 0;
@@ -413,7 +413,7 @@ describe("openHost", () => {
     fake.reply({ content: [{ type: "text", text: "hi" }] });
     await (await host.sessions.start({ content: "Hello" })).receipt.settled();
 
-    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests).toHaveLength(2);
     expect(reads).toBe(1);
   });
 

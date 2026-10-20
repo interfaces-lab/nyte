@@ -446,13 +446,18 @@ export const operations = {
   ),
   "workspace.changes input": operation(
     OPERATIONS["workspace.changes"].input,
+    { workspace, source: { kind: "run", run } },
     { workspace, run },
-    { workspace },
   ),
   "workspace.patches input": operation(
     OPERATIONS["workspace.patches"].input,
-    { workspace, run, paths: ["a.ts"], options: { ignoreWhitespace: false } },
-    { workspace, run, paths: "a.ts" },
+    {
+      workspace,
+      source: { kind: "session", session },
+      paths: ["a.ts"],
+      options: { ignoreWhitespace: false },
+    },
+    { workspace, source: { kind: "session", session }, paths: "a.ts" },
   ),
   "workspace.files input": operation(OPERATIONS["workspace.files"].input, workspaceInput, {}),
   "workspace.git input": operation(OPERATIONS["workspace.git"].input, workspaceInput, {}),

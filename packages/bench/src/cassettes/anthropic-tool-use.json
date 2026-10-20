@@ -170,7 +170,7 @@
                     "ttl": "1h",
                     "type": "ephemeral"
                   },
-                  "text": "User: What do my notes say?\n\nAssistant: I'll read your notes.\n\nAssistant: Your notes say to buy oat milk and call the landlord.",
+                  "text": "User: What do my notes say?",
                   "type": "text"
                 }
               ],

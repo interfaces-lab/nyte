@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import type {
   CanUseTool,
   HookJSONOutput,
@@ -86,12 +88,20 @@ const gate: Plugin<"core"> = {
   },
 };
 
-beforeEach(() => {
+let bin = "";
+
+beforeEach(async () => {
+  bin = await mkdtemp(join(tmpdir(), "nyte-claude-code-"));
+  await writeFile(join(bin, process.platform === "win32" ? "claude.exe" : "claude"), "", {
+    mode: 0o755,
+  });
+  vi.stubEnv("PATH", `${bin}${delimiter}${process.env.PATH ?? ""}`);
   vi.stubEnv("CLAUDE_CONFIG_DIR", tmpdir());
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllEnvs();
+  await rm(bin, { recursive: true, force: true });
 });
 
 function stream(event: StreamEvent): SDKMessage {

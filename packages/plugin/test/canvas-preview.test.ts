@@ -12,7 +12,9 @@ import { fakeModels, open, testModel } from "./fake-models.ts";
 
 const source = `import { Text } from "${KIT_SPECIFIER}";\nexport default () => <Text>Hi</Text>;`;
 
-const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG = Uint8Array.fromBase64(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
+);
 
 const report: CanvasPreviewReport = {
   png: PNG,

@@ -117,7 +117,7 @@ it("calls a tool of a server in ~/.nyte/mcp.json as mcp__<server>__<tool>", asyn
 
   const folder = await home({ fake: { url: "https://fake.test/mcp", exposure: "direct" } });
   await using host = await open(folder, fake, () => fakeServer());
-  const { session } = await host.sessions.start({ content: "Hi." });
+  const { session } = await host.sessions.start({ name: "Echo", content: "Hi." });
 
   const views = host
     .workspace((await session.info()).workspace)
