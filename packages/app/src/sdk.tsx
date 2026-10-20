@@ -14,6 +14,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import { useSyncExternalStore } from "react";
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { startupReadsReleased } from "./startup.ts";
 
 export interface HostEndpoint {
@@ -78,7 +79,7 @@ export function connection(): Connection {
   return installed;
 }
 
-interface WatchState<T> {
+export interface WatchState<T> {
   readonly value: T | undefined;
   readonly error: Error | undefined;
 }
@@ -297,13 +298,18 @@ export function useWatch<T>(
   return { value: state.value, error: state.error, retry: store?.retry ?? noRetry };
 }
 
+/**
+ * Reads one selection of a watch and re-renders only when it changes. Without `isEqual` a
+ * change is a new reference, so a selection derived into a fresh object needs `isEqual`.
+ */
 export function useWatchSelect<T, S>(
   store: WatchStore<T> | undefined,
   select: (state: WatchState<T>) => S,
+  isEqual?: (previous: S, next: S) => boolean,
 ): S {
-  const read = (): S => select(store?.getState() ?? UNSTARTED);
+  const read: () => WatchState<T> = store?.getState ?? unstarted;
 
-  return useSyncExternalStore(store?.subscribe ?? nothing, read, read);
+  return useSyncExternalStoreWithSelector(store?.subscribe ?? nothing, read, read, select, isEqual);
 }
 
 export function hostChanged(cause: unknown): boolean {

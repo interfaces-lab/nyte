@@ -41,9 +41,9 @@ import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
 function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement | null {
-  const session = useSession(sessionId);
+  const workspaceId = useSession(sessionId, (session) => session.workspace).data;
   const workspaces = useWorkspaces();
-  const workspace = workspaces.data?.find((candidate) => candidate.id === session.data?.workspace);
+  const workspace = workspaces.data?.find((candidate) => candidate.id === workspaceId);
 
   if (workspace === undefined) return null;
   const { worktree } = workspace;
@@ -79,10 +79,9 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
 const SessionLink = createLink(ButtonLink);
 
 function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
-  const session = useSession(sessionId);
+  const parentSessionId = useSession(sessionId, (session) => session.parent).data ?? undefined;
+  const title = useSession(sessionId, (session) => session.name).data ?? "New chat";
   const panes = usePaneActions();
-  const parentSessionId = session.data?.parent ?? undefined;
-  const title = session.data?.name ?? "New chat";
 
   return (
     <span {...props(titlebarStyles.sessionTitleGroup)}>

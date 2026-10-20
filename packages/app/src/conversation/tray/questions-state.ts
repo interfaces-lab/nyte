@@ -3,8 +3,8 @@ import type { OpenQuestion, QuestionAnswers, QuestionInfo } from "@nyte-ai/plugi
 import type { SessionId } from "@nyte-ai/sdk";
 import { useMutation } from "@tanstack/react-query";
 import { createContext, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useChildSessions, useSessionView } from "../../queries.ts";
-import { connection, sessionWatch } from "../../sdk.tsx";
+import { useChildSessions } from "../../queries.ts";
+import { connection, sessionWatch, useWatchSelect } from "../../sdk.tsx";
 import { sameComposerDocument } from "../composer-document.ts";
 import type { ComposerDocumentState } from "../composer-document.ts";
 
@@ -130,8 +130,8 @@ function observeQuestionViews(stores: readonly ReturnType<typeof sessionWatch>[]
 }
 
 export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined {
-  const view = useSessionView(sessionId);
-  const own = useMemo(() => openQuestions(view), [view]);
+  const parts = useWatchSelect(sessionWatch(sessionId), (state) => state.value?.parts);
+  const own = useMemo(() => openQuestions({ parts: parts ?? [] }), [parts]);
   const children = useChildSessions(sessionId);
 
   const watched = useMemo(

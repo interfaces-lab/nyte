@@ -7,7 +7,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { MutationState } from "@tanstack/react-query";
+import type { MutationState, UseQueryResult } from "@tanstack/react-query";
 import { useMemo, useSyncExternalStore } from "react";
 import { asId } from "@nyte-ai/schema";
 import type { ClientCommandName } from "@nyte-ai/schema";
@@ -66,6 +66,7 @@ import {
   useWatch,
   useWatchSelect,
 } from "./sdk.tsx";
+import type { WatchState } from "./sdk.tsx";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
 import { applyListings, toDesktopCatalog } from "./catalog.ts";
 import { workspaceName, workspacePath } from "./view-helpers.ts";
@@ -136,10 +137,6 @@ export function newestModelCatalog(): ModelCatalogView | undefined {
   return newest === undefined
     ? undefined
     : queryClient.getQueryData<ModelCatalogView>(newest.queryKey);
-}
-
-function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalogView | undefined {
-  return previous ?? newestModelCatalog();
 }
 
 const DEFAULT_MODEL_MUTATION = ["catalog", "default"] as const;
@@ -380,41 +377,50 @@ export function useSessionSearch(search: string, enabled = true) {
   );
 }
 
-export function useSession(sessionId: SessionId | undefined) {
-  const projection = useSessionProjection();
-  const directory = useWatch(sessionsWatch("roots"));
-  const recent = useWatch(sessionsWatch("all"));
+const UNLISTED = Symbol("unlisted");
 
-  const listed = useMemo(
-    () =>
-      directory.value?.find((session) => session.id === sessionId) ??
-      recent.value?.find((session) => session.id === sessionId),
-    [directory.value, recent.value, sessionId],
-  );
+type SessionRead<S> = Omit<UseQueryResult, "data"> & { readonly data: S | null | undefined };
+
+type SelectSession<S> = (session: SessionInfo) => S;
+
+/** `data` is `undefined` while loading and `null` for a missing session. With `select`, only a change to the selected value re-renders. */
+export function useSession(id: SessionId | undefined): SessionRead<SessionInfo>;
+export function useSession<S>(id: SessionId | undefined, select: SelectSession<S>): SessionRead<S>;
+export function useSession<S>(
+  id: SessionId | undefined,
+  select?: SelectSession<S>,
+): SessionRead<S | SessionInfo> {
+  const projection = useSessionProjection();
+
+  const pick = (session: SessionInfo) => {
+    const projected = projection.session(session);
+
+    return projected === null || select === undefined ? projected : select(projected);
+  };
+
+  const list = ({ value }: WatchState<readonly SessionInfo[]>) => {
+    const session = value?.find((candidate) => candidate.id === id);
+
+    return session === undefined ? UNLISTED : pick(session);
+  };
+
+  const roots = sessionsWatch("roots");
+  const root = useWatchSelect(roots, list);
+  const row = useWatchSelect(sessionsWatch("all"), (all) => (root === UNLISTED ? list(all) : root));
+  const settled = useWatchSelect(roots, (state) => (state.value ?? state.error) !== undefined);
 
   const read = useQuery({
-    queryKey: keys.session(sessionId ?? asId<"session">("")),
-    queryFn: () => (sessionId === undefined ? null : readSession(sessionId).catch(missingAsNull)),
-    enabled:
-      (directory.value !== undefined || directory.error !== undefined) &&
-      listed === undefined &&
-      sessionId !== undefined,
+    queryKey: keys.session(id ?? asId<"session">("")),
+    queryFn: () => (id === undefined ? null : readSession(id).catch(missingAsNull)),
+    enabled: settled && row === UNLISTED && id !== undefined,
+    select: (session: SessionInfo | null) => (session === null ? null : pick(session)),
   });
 
-  const row = listed ?? read.data;
-
-  return {
-    ...read,
-    data: row === undefined || row === null ? row : projection.session(row),
-  };
-}
-
-export function useSessionState(sessionId: SessionId | undefined) {
-  return useWatch(sessionId === undefined ? undefined : sessionWatch(sessionId));
+  return { ...read, data: row === UNLISTED ? read.data : row };
 }
 
 export function useSessionView(sessionId: SessionId | undefined): SessionView | undefined {
-  return useSessionState(sessionId).value;
+  return useWatch(sessionId === undefined ? undefined : sessionWatch(sessionId)).value;
 }
 
 export function useSessionActivity(
@@ -730,7 +736,7 @@ export function useCatalog(_sessionId?: SessionId) {
   return useQuery({
     queryKey: keys.modelCatalog(generation),
     queryFn: readModelCatalog,
-    placeholderData: cachedModelCatalog,
+    placeholderData: (previous) => previous ?? newestModelCatalog(),
     select: (view): DesktopCatalog => {
       const catalog = toDesktopCatalog(
         applyListings(

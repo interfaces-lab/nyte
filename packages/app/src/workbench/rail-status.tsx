@@ -9,7 +9,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { formatTokens, formatUsd } from "../chrome/usage-view.ts";
-import { useSessionView } from "../queries.ts";
+import { sessionWatch, useWatchSelect } from "../sdk.tsx";
 import { showsSettingsSection } from "../settings/index.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
@@ -110,9 +110,9 @@ export function SessionStatusRows({
   readonly sessionId: SessionId;
   readonly actions: ReactNode;
 }): ReactElement {
-  const view = useSessionView(sessionId);
-  const context = view?.context;
-  const execution = view?.execution;
+  const store = sessionWatch(sessionId);
+  const context = useWatchSelect(store, (state) => state.value?.context);
+  const execution = useWatchSelect(store, (state) => state.value?.execution);
   const lastRun = execution?.kind === "idle" ? execution.lastRun : null;
   const usage = lastRun?.end.kind === "completed" ? lastRun.end.usage : undefined;
 

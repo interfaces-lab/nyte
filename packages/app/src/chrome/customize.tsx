@@ -8,8 +8,8 @@ import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { revealLabel } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
-import { useApplyPluginSetting, usePluginSettingsProjection, useSessionView } from "../queries.ts";
-import { hostWatch, useWatch } from "../sdk.tsx";
+import { useApplyPluginSetting, usePluginSettingsProjection } from "../queries.ts";
+import { hostWatch, sessionWatch, useWatchSelect } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import { SettingsRow, SettingsSwitchRow } from "../settings/rows.tsx";
@@ -446,20 +446,25 @@ export function CustomizeSurface({
   const navigate = useNavigate();
   const projectSettings = usePluginSettingsProjection(sessionId);
 
-  const hostView = useWatch(hostWatch("host")).value;
-  const view = useSessionView(sessionId);
+  const plugins = useWatchSelect(hostWatch("host"), (state) => state.value?.plugins);
+  const hostSettings = useWatchSelect(hostWatch("host"), (state) => state.value?.settings);
+
+  const catalog = useWatchSelect(
+    sessionId === undefined ? undefined : sessionWatch(sessionId),
+    (state) => state.value?.catalog,
+  );
 
   const inventory = {
     data:
-      hostView === undefined
+      plugins === undefined || hostSettings === undefined
         ? undefined
         : ({
-            plugins: hostView.plugins,
-            settings: projectSettings(view?.catalog.settings ?? hostView.settings),
-            skills: view?.catalog.skills ?? [],
-            commands: view?.catalog.commands ?? [],
+            plugins,
+            settings: projectSettings(catalog?.settings ?? hostSettings),
+            skills: catalog?.skills ?? [],
+            commands: catalog?.commands ?? [],
           } satisfies CustomizeInventory),
-    isPending: hostView === undefined,
+    isPending: plugins === undefined,
   };
 
   const show = (next: string): void =>

@@ -50,7 +50,7 @@ export function BackgroundWork({
   onOpenTerminal,
   viewport,
 }: BackgroundWorkProps) {
-  const workspace = useSession(sessionId).data?.workspace;
+  const workspace = useSession(sessionId, (session) => session.workspace).data ?? undefined;
   const jobs = useWorkspaceJobs(workspace);
 
   const { root, ref, availableHeight } = useTrayRoot(viewport);

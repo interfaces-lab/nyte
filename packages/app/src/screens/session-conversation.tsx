@@ -180,7 +180,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const host = useHostState();
   const paneActions = usePaneActions();
   const { layout } = usePaneControllerSnapshot();
-  const session = useSession(sessionId);
+  const sessionName = useSession(sessionId, (session) => session.name).data;
   const catalog = useCatalog(sessionId);
   const children = useChildSessions(sessionId);
   const renameSession = useRenameSession();
@@ -216,7 +216,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const activation = useWatchSelect(store, (state) => state.value?.activation);
   const messages = useWatchSelect(store, projector.messages);
   const choice = useSessionChoice(sessionId);
-  useReleaseStartupReads((ready && session.data !== undefined) || failed);
+  useReleaseStartupReads((ready && sessionName !== undefined) || failed);
 
   const viewStore = usePaneViewStateStore();
   useLayoutEffect(() => {
@@ -255,7 +255,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     };
   }, [catalog.data, configuredModel, modelOptions, thinkingLevel]);
 
-  const title = session.data?.name ?? "New chat";
+  const title = sessionName ?? "New chat";
 
   const commitRename = (): void => {
     if (draftName === undefined) return;

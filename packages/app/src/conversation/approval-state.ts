@@ -3,8 +3,8 @@ import type { ApprovalDecision, OpenApproval } from "@nyte-ai/plugin/approvals/s
 import type { SessionId } from "@nyte-ai/sdk";
 import { useMutation } from "@tanstack/react-query";
 import { useMemo, useSyncExternalStore } from "react";
-import { useChildSessions, useSessionView } from "../queries.ts";
-import { connection, sessionWatch } from "../sdk.tsx";
+import { useChildSessions } from "../queries.ts";
+import { connection, sessionWatch, useWatchSelect } from "../sdk.tsx";
 
 export interface ApprovalRequest {
   readonly sessionId: SessionId;
@@ -34,7 +34,7 @@ function watchChildViews(stores: readonly ReturnType<typeof sessionWatch>[]) {
 }
 
 export function useApprovalRequest(sessionId: SessionId): ApprovalRequest | undefined {
-  const view = useSessionView(sessionId);
+  const parts = useWatchSelect(sessionWatch(sessionId), (state) => state.value?.parts);
   const children = useChildSessions(sessionId);
 
   const waiting = useMemo(
@@ -57,7 +57,7 @@ export function useApprovalRequest(sessionId: SessionId): ApprovalRequest | unde
     observation.snapshot,
   );
 
-  const [own] = openApprovals(view);
+  const [own] = openApprovals({ parts: parts ?? [] });
 
   if (own !== undefined) return { sessionId, approval: own, origin: undefined };
 
