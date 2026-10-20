@@ -1,4 +1,5 @@
 import type { ConfigContext, ExpoConfig } from "expo/config";
+import { version } from "./package.json";
 
 /**
  * Variant overrides layered onto `app.json`, which stays the source of
@@ -72,6 +73,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   return {
     ...config,
     name: variant.name,
+    version,
     slug: config.slug ?? "nyte-ios",
     scheme: variant.scheme,
     runtimeVersion: runtimeVersion(variantName),

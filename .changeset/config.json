@@ -15,7 +15,8 @@
       "@nyte-ai/sdk",
       "nyte-ai",
       "@nyte-ai/tui",
-      "@nyte-ai/desktop"
+      "@nyte-ai/desktop",
+      "@nyte-ai/ios"
     ]
   ],
   "privatePackages": { "version": true, "tag": false },
@@ -27,7 +28,6 @@
     "@nyte-ai/connect-worker",
     "@nyte-ai/demo-tui",
     "@nyte-ai/demo-website",
-    "@nyte-ai/ios",
     "@nyte-ai/lab",
     "@nyte-ai/service",
     "@nyte-ai/ui",
