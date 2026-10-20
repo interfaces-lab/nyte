@@ -18,7 +18,7 @@ import { asId } from "@nyte-ai/schema";
 
 export interface ConnectionScript {
   readonly views?: ReadonlyMap<SessionId, readonly SessionView[] | ViewStream>;
-  readonly sessions?: readonly SessionInfo[];
+  readonly sessions?: readonly SessionInfo[] | ViewStream<readonly SessionInfo[]>;
   readonly workspaces?: readonly WorkspaceInfo[];
   readonly session?: (id: SessionId) => Partial<Session>;
   readonly host?: ViewStream<HostView>;
@@ -92,7 +92,8 @@ export function scriptedConnection(script: ConnectionScript = {}): {
   readonly sent: readonly ScriptedSend[];
 } {
   const sent: ScriptedSend[] = [];
-  const rows = script.sessions ?? [];
+  const listed = script.sessions ?? [];
+  const rows = "watch" in listed ? (listed.latest() ?? []) : listed;
 
   const session = (id: SessionId): Session => {
     const scripted = script.views?.get(id) ?? [];
@@ -187,7 +188,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     principal: asId<"principal">("tester"),
     credential: { kind: "token", token: "scripted-token-0000" },
     sessions: {
-      watch: () => replay([rows]),
+      watch: () => ("watch" in listed ? listed.watch() : replay([rows])),
       start: refuse,
       list: async () => ({ items: rows, next: null }),
     },

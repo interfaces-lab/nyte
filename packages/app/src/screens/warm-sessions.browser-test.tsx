@@ -5,7 +5,7 @@ import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-rout
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
-import type { Message, ModelCatalogView, SessionId, SessionView } from "@nyte-ai/sdk";
+import type { Message, ModelCatalogView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
@@ -18,7 +18,7 @@ import { SessionScreen } from "./session-screen.tsx";
 import { createAppRouter } from "../router.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
-import { scriptedConnection } from "../../test/scripted-connection.ts";
+import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
 
 const TURNS = 24;
@@ -82,9 +82,11 @@ function view(session: string): SessionView {
   };
 }
 
+const listed = viewStream<readonly SessionInfo[]>([A, B, C, D].map((id) => sessionRow(id)));
+
 installConnection(
   scriptedConnection({
-    sessions: [A, B, C, D].map((id) => sessionRow(id)),
+    sessions: listed,
     views: new Map([A, B, C, D].map((id) => [id, [view(id)]])),
   }).connection,
 );
@@ -267,6 +269,11 @@ async function checkRules(): Promise<string> {
     expectRule(readScroll(B) === bSnapshot, "a hidden session wrote its scroll snapshot");
     expectRule(a.viewport.isConnected && b.viewport.isConnected, "a hot session was unmounted");
     await until(() => !sessionWatch(D).active, "the evicted session to release its watch");
+
+    listed.push([A, C, D].map((id) => sessionRow(id)));
+    await until(() => !b.viewport.isConnected, "the deleted hidden session to unmount");
+    expectRule(!b.composer.isConnected, "a deleted hidden session kept its composer mounted");
+    expectRule(a.viewport.isConnected, "deleting another session unmounted a hot one");
 
     return failures.length === 0 ? "passed" : failures.join("\n");
   } finally {

@@ -25,6 +25,7 @@ import { activePane } from "../layout/pane-layout.ts";
 import type { PaneState } from "../layout/pane-layout.ts";
 import { useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
 import { useHostState } from "../queries.ts";
+import { sessionsWatch, useWatchSelect } from "../sdk.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
@@ -105,10 +106,22 @@ export function PaneHost({
   const shownSession = pane.selection.kind === "session" ? pane.selection.sessionId : undefined;
   const [hotSessions, setHotSessions] = useState<readonly SessionId[]>([]);
 
+  const listedHot = useWatchSelect(sessionsWatch("all"), ({ value }) =>
+    value === undefined
+      ? undefined
+      : hotSessions.filter((id) => value.some((session) => session.id === id)).join(","),
+  );
+
   if (shownSession !== undefined && hotSessions[0] !== shownSession)
     setHotSessions(
       [shownSession, ...hotSessions.filter((id) => id !== shownSession)].slice(0, HOT_SESSIONS),
     );
+  else if (listedHot !== undefined) {
+    const listed = listedHot.split(",");
+    const kept = hotSessions.filter((id) => id === shownSession || listed.includes(id));
+
+    if (kept.length !== hotSessions.length) setHotSessions(kept);
+  }
 
   const inputRef = useRef<ComposerEditorHandle | null>(null);
   const attachDropTarget = useSessionPaneDropTarget(pane.id);
