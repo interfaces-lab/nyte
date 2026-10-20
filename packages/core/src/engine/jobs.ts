@@ -446,7 +446,7 @@ async function spawn(
     if (reserved.kind !== "set") throw new SdkError("stale", `Job ${id} was already started.`);
   }
 
-  const trace = owner === null ? null : followedTrace(owner.session);
+  const trace = owner === null || owner.startedBy === null ? null : followedTrace(owner.session);
 
   const process = await env
     .exec(input.command ?? [], {
