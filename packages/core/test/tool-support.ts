@@ -125,7 +125,7 @@ export function scripted(taken: string[]): NonNullable<Parameters<typeof setup>[
     after: async () => {
       taken.push("after");
 
-      return asId("s1");
+      return asId(taken.length === 1 ? "s0" : "s1");
     },
     diff: async (from, to) => ({
       revision: to,

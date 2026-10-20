@@ -22,6 +22,7 @@ import type {
   Placement,
   RefUpdate,
   RunId,
+  Seq,
   SessionId,
   SnapshotId,
   ToolCall,
@@ -97,16 +98,17 @@ type Plan = { readonly args: Json; readonly class: ToolClass } & (
 
 interface Settled {
   readonly outcome: ToolOutcome;
-  readonly changes: {
-    readonly added: number;
-    readonly removed: number;
-    readonly paths: readonly string[];
-  } | null;
+  readonly files: readonly FileChange[] | null;
   /** The session's files as they now differ from its first snapshot, or null when this call changed nothing. */
   readonly thread: readonly FileChange[] | null;
 
   readonly snapshot: SnapshotId | null;
 }
+
+type ToolBaseline = {
+  readonly snapshot: SnapshotId;
+  readonly seq: Seq;
+};
 
 interface Where {
   readonly session: SessionId;
@@ -292,6 +294,7 @@ async function perform(
 
   if (planned.kind === "parked") return PARKED;
   let concluded: Promise<Settled> | undefined;
+  let before: ToolBaseline | null = null;
 
   const snapshotted =
     planned.kind === "execute" && where.covered !== true && planned.definition.effects !== "none";
@@ -309,15 +312,20 @@ async function perform(
     signal,
     body:
       planned.kind === "execute"
-        ? (durable) => execute(kernel, where, planned, durable, snapshotted)
+        ? async (durable) => {
+            const executed = await execute(kernel, where, planned, durable, snapshotted);
+            before = executed.before;
+
+            return executed.outcome;
+          }
         : async () => planned.outcome,
     async settle(ended) {
-      concluded ??= conclude(kernel, where, ended, snapshotted);
+      concluded ??= conclude(kernel, where, ended, before);
       const settled = await concluded;
 
       return {
         result: settled.outcome,
-        updates: await settlement(kernel.store, where, planned, settled),
+        updates: await settlement(kernel.store, where, planned, settled, before),
       };
     },
     decode: (value) => (outcomes.Check(value) ? outcomes.Decode(value) : null),
@@ -483,11 +491,13 @@ async function execute(
   planned: Extract<Plan, { readonly kind: "execute" }>,
   durable: Durable,
   snapshotted: boolean,
-): Promise<ToolOutcome> {
+): Promise<{ readonly outcome: ToolOutcome; readonly before: ToolBaseline | null }> {
   const { session, run, signal } = where;
+  let before: ToolBaseline | null = null;
 
   try {
-    if (snapshotted) await baseline(kernel, session, run);
+    if (snapshotted)
+      before = await durable.memo("nyte:snapshot", () => baseline(kernel, session, run));
 
     const [env, found, hidden] = await Promise.all([
       kernel.environments.attach(session),
@@ -512,13 +522,19 @@ async function execute(
 
     const result = await planned.definition.execute(planned.input, invocation);
 
-    return signal.aborted ? STOPPED : await validateToolResult(planned.definition, result);
+    return {
+      outcome: signal.aborted ? STOPPED : await validateToolResult(planned.definition, result),
+      before,
+    };
   } catch (error) {
     if (signalsPark(error)) throw error;
 
-    return signal.aborted
-      ? STOPPED
-      : failed(error instanceof Error ? error.message : String(error));
+    return {
+      outcome: signal.aborted
+        ? STOPPED
+        : failed(error instanceof Error ? error.message : String(error)),
+      before,
+    };
   }
 }
 
@@ -553,7 +569,7 @@ async function conclude(
   kernel: Kernel,
   where: Where & { readonly runtime: PluginRuntime },
   ended: StepEnd<ToolOutcome>,
-  snapshotted: boolean,
+  before: ToolBaseline | null,
 ): Promise<Settled> {
   const { session, head, run } = where;
 
@@ -564,10 +580,11 @@ async function conclude(
   );
 
   const snapshots =
-    snapshotted && ended.kind === "done" ? await kernel.environments.snapshots(session) : null;
+    before !== null && ended.kind === "done" ? await kernel.environments.snapshots(session) : null;
 
-  if (snapshots === null) return { outcome, changes: null, thread: null, snapshot: null };
-  const from = (await diffBase(kernel.store, session, run)) ?? (await snapshots.before(run));
+  if (snapshots === null || before === null)
+    return { outcome, files: null, thread: null, snapshot: null };
+  const from = before.snapshot;
   const to = await snapshots.after(run);
   const files = fileChanges(await snapshots.diff(from, to));
 
@@ -578,14 +595,41 @@ async function conclude(
 
   return {
     outcome,
-    changes: {
-      added: files.reduce((sum, file) => sum + file.added, 0),
-      removed: files.reduce((sum, file) => sum + file.removed, 0),
-      paths: files.map((file) => file.path),
-    },
+    files,
     thread,
     snapshot: to,
   };
+}
+
+async function readCountedPaths(
+  store: StoreConnection,
+  where: Where,
+  after: Seq,
+): Promise<ReadonlySet<string>> {
+  const through = await store.refs.tail(where.session);
+  const paths = new Set<string>();
+  let cursor = after;
+
+  while (cursor < through) {
+    const events = await store.refs.log(where.session, cursor, 256);
+
+    for (const event of events)
+      if (
+        event.seq <= through &&
+        event.kind === "call" &&
+        event.change === "settled" &&
+        event.head === where.head &&
+        event.call !== where.call
+      )
+        for (const path of event.changes?.paths ?? []) paths.add(path);
+
+    const last = events.at(-1);
+
+    if (last === undefined) break;
+    cursor = last.seq;
+  }
+
+  return paths;
 }
 
 function fileChanges(set: ChangeSet): readonly FileChange[] {
@@ -606,6 +650,7 @@ async function settlement(
   where: Where,
   planned: Plan,
   settled: Settled,
+  before: ToolBaseline | null,
 ): Promise<readonly RefUpdate[]> {
   const { session, head, run, call } = where;
   const part = asId<"part">(call);
@@ -617,6 +662,21 @@ async function settlement(
   ]);
 
   if (found === null) return [];
+
+  const counted =
+    before === null ? new Set<string>() : await readCountedPaths(store, where, before.seq);
+
+  const files = settled.files?.filter((file) => !counted.has(file.path));
+
+  const changes =
+    files === undefined
+      ? null
+      : {
+          added: files.reduce((sum, file) => sum + file.added, 0),
+          removed: files.reduce((sum, file) => sum + file.removed, 0),
+          paths: files.map((file) => file.path),
+        };
+
   const at = Date.now();
 
   const state: Json = {
@@ -626,7 +686,7 @@ async function settlement(
     class: planned.class,
     phase: "settled",
     outcome: settled.outcome,
-    changes: settled.changes,
+    changes,
   };
 
   const based =
@@ -642,7 +702,7 @@ async function settlement(
       part,
       change: "settled",
       outcome: settled.outcome,
-      changes: settled.changes,
+      changes,
     },
     ...(settled.thread === null
       ? []
@@ -676,12 +736,16 @@ async function settlement(
   return [...landed.updates, ...based];
 }
 
-async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
-  if ((await diffBase(kernel.store, session, run)) !== null) return;
+async function baseline(
+  kernel: Kernel,
+  session: SessionId,
+  run: RunId,
+): Promise<ToolBaseline | null> {
   const snapshots = await kernel.environments.snapshots(session);
 
-  if (snapshots === null) return;
-  const before = await snapshots.before(run);
+  if (snapshots === null) return null;
+  const seq = await kernel.store.refs.tail(session);
+  const before = await snapshots.after(run);
 
   await attempt(`Recording run ${run}'s snapshot`, async () => {
     const found = await load(
@@ -702,16 +766,8 @@ async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise
 
     return outcome.kind === "set" ? undefined : STALE;
   });
-}
 
-async function diffBase(
-  store: StoreConnection,
-  session: SessionId,
-  run: RunId,
-): Promise<SnapshotId | null> {
-  const found = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
-
-  return found?.record.lastSnapshot ?? found?.record.snapshot ?? null;
+  return { snapshot: before, seq };
 }
 
 async function nextBase(
