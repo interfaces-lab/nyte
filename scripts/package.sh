@@ -25,3 +25,4 @@ if [ -z "${TURBO_HASH:-}" ]; then
 	pnpm --filter @nyte-ai/tui build
 fi
 sh scripts/assemble-release.sh packages/tui/dist/nyte dist "$target"
+sh scripts/install-nyte.sh

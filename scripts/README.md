@@ -1,13 +1,14 @@
 # Release assembly
 
 `install-nyte.sh` (`pnpm install:nyte` from the root) copies `packages/tui/dist/nyte` to
-`~/.nyte/bin/nyte`. It is the only script that changes the `nyte` a terminal runs; builds
-and packaging leave it alone.
+`~/.nyte/bin/nyte`. Builds leave the installed binary alone; packaging runs this installer.
+Put `~/.nyte/bin` first on your PATH so another installation does not shadow it.
 
 `package.sh` (`pnpm package:tui` from the root) builds and signs through `pnpm build` in `packages/tui`, then
 calls `assemble-release.sh` on `packages/tui/dist/nyte`. The assembly step only copies an existing executable,
 copies `packages/cli/docs`, writes `VERSION`, and creates the tarball and SHA-256
-file. CLI and TUI package versions must match. It never downloads or publishes.
+file, then installs the built binary at `~/.nyte/bin/nyte`. CLI and TUI package versions must match.
+It never downloads or publishes.
 
 ## SDK packages
 
