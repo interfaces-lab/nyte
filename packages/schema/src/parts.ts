@@ -53,6 +53,14 @@ export const PartViewType = Type.Object({
 
 export type PartView = Decoded<typeof PartViewType>;
 
+/** What a tool call changed in its workspace; `unattributed` when files changed while another chat shared the folder and the call named no file, so none were charged to it. */
+export const ToolChangesType = Type.Object({
+  added: Type.Number(),
+  removed: Type.Number(),
+  paths: Type.Array(Type.String()),
+  unattributed: Type.Optional(Type.Literal(true)),
+});
+
 const TOOL_CALL = {
   call: idSchema<"call">(),
   name: Type.String(),
@@ -71,13 +79,7 @@ export const ToolPartStateType = Type.Union([
     ...TOOL_CALL,
     phase: Type.Literal("settled"),
     outcome: ToolOutcomeType,
-    changes: nullable(
-      Type.Object({
-        added: Type.Number(),
-        removed: Type.Number(),
-        paths: Type.Array(Type.String()),
-      }),
-    ),
+    changes: nullable(ToolChangesType),
   }),
 ]);
 

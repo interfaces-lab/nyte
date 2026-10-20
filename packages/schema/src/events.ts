@@ -7,7 +7,7 @@ import { idSchema, SeqType } from "./ids.ts";
 import { JsonType, withJson } from "./json.ts";
 import { DeliveryType, MessageSourceType, ScheduleType, UserContentType } from "./messages.ts";
 import { ContextViewType, UsageType } from "./models.ts";
-import { PlacementType } from "./parts.ts";
+import { PlacementType, ToolChangesType } from "./parts.ts";
 import { BackgroundItemType, RunEndType, RunViewType, WaitTargetType } from "./runs.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
@@ -16,9 +16,7 @@ import { ToolOutcomeType, ToolProgressType } from "./tools.ts";
 import { nullable } from "./wire/nullable.ts";
 import { ActivationType } from "./workspaces.ts";
 
-const CHANGES = nullable(
-  Type.Object({ added: Type.Number(), removed: Type.Number(), paths: Type.Array(Type.String()) }),
-);
+const CHANGES = nullable(ToolChangesType);
 
 const REPLACED = nullable(
   Type.Object({ previous: idSchema<"message">(), stopped: nullable(idSchema<"run">()) }),

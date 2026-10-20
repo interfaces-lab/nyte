@@ -1,9 +1,11 @@
 import { asId } from "@nyte-ai/schema";
-import type { CallId, SnapshotId } from "@nyte-ai/schema";
+import type { CallId, SessionId, SnapshotId } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
 import { memoryStore } from "../src/store.ts";
 import type { SnapshotsApi, ToolDefinition } from "../src/index.ts";
 import { main, recording, setup } from "../src/harness.ts";
+import { requireSession } from "../src/store/session.ts";
+import { collect } from "./fake-env.ts";
 import { echo, toolPlugin, liveRun, call, readRun, scripted, toolPart } from "./tool-support.ts";
 
 function treeSnapshots(tree: Map<string, string>): SnapshotsApi {
@@ -38,7 +40,100 @@ function treeSnapshots(tree: Map<string, string>): SnapshotsApi {
         ),
       };
     },
-    patches: async () => [],
+    patches: async (_from, _to, paths) =>
+      paths.map((path) => ({
+        path,
+        status: "modified" as const,
+        digest: "",
+        kind: "binary" as const,
+      })),
+  };
+}
+
+async function sharedFolder(subagent = false) {
+  const tree = new Map<string, string>();
+  const gates = new Map<
+    string,
+    { readonly entered: () => void; readonly release: Promise<void> }
+  >();
+
+  const pass = async (key: string): Promise<void> => {
+    const gate = gates.get(key);
+    gate?.entered();
+    await gate?.release;
+  };
+
+  const done = (text: string) => ({ content: [{ kind: "text" as const, text }] });
+
+  const edit = {
+    ...echo,
+    name: "edit",
+    class: (args) => ({ kind: "edit", path: args.text }),
+    execute: async (args, invocation) => {
+      tree.set(args.text.replace("/tmp/project/", ""), invocation.call);
+      await pass(args.text);
+
+      return done(args.text);
+    },
+  } satisfies ToolDefinition<{ text: string }>;
+
+  const remove = {
+    ...edit,
+    name: "remove",
+    execute: async (args) => {
+      tree.delete(args.text);
+
+      return done(args.text);
+    },
+  } satisfies ToolDefinition<{ text: string }>;
+
+  const shell = {
+    ...echo,
+    name: "shell",
+    class: (args) => ({ kind: "shell", command: args.text }),
+    execute: async (args) => {
+      await pass(args.text);
+
+      return done(args.text);
+    },
+  } satisfies ToolDefinition<{ text: string }>;
+
+  const { kernel, host, script } = await setup({
+    plugins: [toolPlugin([edit, remove, shell])],
+    snapshots: treeSnapshots(tree),
+  });
+
+  const start = async (turns: number, parent?: SessionId) => {
+    const { session } = await host.sessions.start({ content: "Hi.", parent });
+    const running = host.execution.advance({ session: session.id, head: main });
+    const turn = await script.started(turns);
+
+    return { session, running, turn, run: turn.input.run.id };
+  };
+
+  const a = await start(1);
+  const b = await start(2, subagent ? a.session.id : undefined);
+  const { workspace } = (await requireSession(kernel.store, a.session.id)).record;
+
+  return {
+    a,
+    b,
+    workspace: host.workspace(workspace),
+    act: (chat: typeof a, id: string, name: string, text: string) =>
+      call(kernel, { session: chat.session.id, run: chat.run, call: id, name, args: { text } }),
+    paths: async (chat: typeof a) => (await chat.session.view()).changes.map((file) => file.path),
+    hold: (key: string) => {
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      gates.set(key, { entered: entered.resolve, release: release.promise });
+
+      return { entered: entered.promise, release: release.resolve };
+    },
+    finish: async () => {
+      a.turn.finish();
+      b.turn.finish();
+      await Promise.all([a.running, b.running]);
+    },
   };
 }
 
@@ -279,5 +374,73 @@ describe("tool changes", () => {
     expect((await session.view()).turns.at(-1)?.summary).toMatchObject({ added: 2, removed: 2 });
     turn.finish();
     await running;
+  });
+  it("keeps an edit's changes to its file while another chat edits the shared folder", async () => {
+    const { a, b, act, paths, hold, finish } = await sharedFolder();
+    const gate = hold("a.ts");
+    const editing = act(a, "a1", "edit", "a.ts");
+    await gate.entered;
+    await act(b, "b1", "edit", "other.ts");
+    gate.release();
+    await editing;
+
+    expect((await toolPart(a.session, "a1")).state).toMatchObject({
+      changes: { paths: ["a.ts"] },
+    });
+    expect((await a.session.view()).turns.at(-1)?.summary.byClass.edit.paths).toEqual(["a.ts"]);
+    expect(await paths(a)).toEqual(["a.ts"]);
+    expect(await paths(b)).toEqual(["other.ts"]);
+    await finish();
+  });
+
+  it.each([
+    {
+      subagent: false,
+      changes: { added: 0, removed: 0, paths: [], unattributed: true },
+      owned: [],
+    },
+    { subagent: true, changes: { added: 1, removed: 1, paths: ["other.ts"] }, owned: ["other.ts"] },
+  ])(
+    "charges a command nothing while another chat changes the shared folder, but its subagent's edits (subagent: $subagent)",
+    async ({ subagent, changes, owned }) => {
+      const { a, b, act, paths, hold, finish } = await sharedFolder(subagent);
+      const gate = hold("build");
+      const building = act(a, "a1", "shell", "build");
+      await gate.entered;
+      await act(b, "b1", "edit", "other.ts");
+      gate.release();
+      await building;
+
+      expect((await toolPart(a.session, "a1")).state).toHaveProperty("changes", changes);
+      expect(await paths(a)).toEqual(owned);
+      await finish();
+    },
+  );
+
+  it("lists, reviews and patches only the files a chat's own calls changed", async () => {
+    const { a, b, workspace, act, paths, finish } = await sharedFolder();
+    await act(a, "a1", "edit", "a.ts");
+    await act(b, "b1", "edit", "other.ts");
+    await act(a, "a2", "edit", "/tmp/project/a2.ts");
+    const source = { kind: "session", session: a.session.id } as const;
+    const reviewed = await workspace.changes(source);
+    const patched = await collect(workspace.patches(source, ["a.ts", "other.ts"]));
+
+    expect(await paths(a)).toEqual(["a.ts", "a2.ts"]);
+    expect(reviewed.files.map((file) => file.path)).toEqual(["a.ts", "a2.ts"]);
+    expect(patched.flatMap((set) => [...set.entries.keys()])).toEqual(["a.ts"]);
+    expect(await paths(b)).toEqual(["other.ts"]);
+
+    await act(a, "a3", "remove", "a.ts");
+    await act(a, "a4", "remove", "a2.ts");
+
+    expect(await paths(a)).toEqual([]);
+
+    await act(a, "a5", "edit", "x.ts");
+    await act(b, "b2", "edit", "x.ts");
+
+    expect(await paths(a)).toEqual(["x.ts"]);
+    expect(await paths(b)).toEqual(["other.ts", "x.ts"]);
+    await finish();
   });
 });
