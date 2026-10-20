@@ -142,7 +142,7 @@ export function WorkspaceControls({
             </Toggle>
           }
         />
-        <MenuContent side="bottom" align="end" xstyle={styles.popup}>
+        <MenuContent side="bottom" align="start" xstyle={styles.popup}>
           <MenuSub>
             <MenuSubTrigger icon="folder">Grouping</MenuSubTrigger>
             <MenuSubContent xstyle={styles.popup}>
