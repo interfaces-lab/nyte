@@ -22,6 +22,7 @@ import { JOBS, jobRef } from "../store/refs.ts";
 import { load, MAIN, put, readSession } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { closable } from "../util/iterable.ts";
+import { followedTrace, traceparent } from "../util/trace.ts";
 import { send } from "./admission.ts";
 import { recordAcquisition, recordedAcquisition } from "./durable.ts";
 import { readJob, waitFor } from "./waits.ts";
@@ -135,6 +136,18 @@ export function createJobTable(kernel: Kernel): JobTable {
           ? [{ head: entry.owner.head, item }]
           : [];
       }),
+    release(session, call) {
+      const started = [...entries.values()].filter(
+        (entry) =>
+          entry.owner?.session === session &&
+          entry.owner.startedBy === call &&
+          entry.view.state.kind === "running",
+      );
+
+      for (const entry of started) entries.set(entry.view.id, { ...entry, held: false });
+
+      return started.length > 0;
+    },
   };
 }
 
@@ -324,11 +337,12 @@ async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
     tail: entry.output.tail(),
   }));
 
+  const held = kernel.jobs.get(id)?.held === true;
   entry.output.end(end.kind === "exited" ? end.code : null);
   const consumed = await kernel.waits.jobEnded(id, end);
   const owner = entry.owner;
 
-  if (consumed || owner === null || !recorded) return;
+  if (consumed || owner === null || !recorded || held) return;
 
   await send(kernel, {
     session: owner.session,
@@ -339,11 +353,12 @@ async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
   }).catch(() => undefined);
 }
 
-async function startJob(
+export async function startJob(
   kernel: Kernel,
   origin: ConnectionContext["origin"],
   workspace: WorkspaceId,
   input: Parameters<Jobs["start"]>[0],
+  hold = false,
 ): Promise<Job> {
   const digest = JSON.stringify([
     input.command ?? null,
@@ -368,7 +383,9 @@ async function startJob(
 
   if (acquired.kind === "recorded") return held(asId<"job">(acquired.id));
   const id = acquired.value.id;
-  await kernel.jobs.start(id, digest, () => spawn(kernel, origin, workspace, input, id, digest));
+  await kernel.jobs.start(id, digest, () =>
+    spawn(kernel, origin, workspace, input, { id, digest, held: hold }),
+  );
 
   return jobHandle(kernel, id);
 }
@@ -378,8 +395,7 @@ async function spawn(
   origin: ConnectionContext["origin"],
   workspace: WorkspaceId,
   input: Parameters<Jobs["start"]>[0],
-  id: JobId,
-  digest: string,
+  { id, digest, held }: { readonly id: JobId; readonly digest: string; readonly held: boolean },
 ): Promise<void> {
   const on = async (session: SessionId): Promise<boolean> =>
     (await readSession(kernel.store, session))?.record.workspace === workspace;
@@ -430,8 +446,14 @@ async function spawn(
     if (reserved.kind !== "set") throw new SdkError("stale", `Job ${id} was already started.`);
   }
 
+  const trace = owner === null ? null : followedTrace(owner.session);
+
   const process = await env
-    .exec(input.command ?? [], { cwd: env.cwd, pty: input.pty })
+    .exec(input.command ?? [], {
+      cwd: env.cwd,
+      pty: input.pty,
+      env: trace === null ? undefined : { TRACEPARENT: traceparent(trace) },
+    })
     .catch(async (cause: unknown) => {
       if (owner !== null) await recordJobEnd(kernel, id, LOST).catch(() => false);
 
@@ -467,6 +489,7 @@ async function spawn(
     owner,
     digest,
     output,
+    held,
   });
 
   void pump(kernel, id, process, output);

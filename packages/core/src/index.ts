@@ -86,7 +86,7 @@ export type {
   StoreConnection,
 } from "./contract/store.ts";
 
-export type { Durable, ToolDefinition, ToolInvocation } from "./contract/tools.ts";
+export type { Durable, ForegroundJobs, ToolDefinition, ToolInvocation } from "./contract/tools.ts";
 
 export type {
   BrowserApi,

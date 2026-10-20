@@ -44,7 +44,11 @@ async function tools(kernel: Kernel, session: SessionId) {
 
   let calls = 0;
 
-  return async (name: string, args: Json): Promise<ToolOutcome> => {
+  return async (
+    name: string,
+    args: Json,
+    signal = new AbortController().signal,
+  ): Promise<ToolOutcome> => {
     calls += 1;
 
     const outcome = await executeCall(kernel, {
@@ -56,7 +60,7 @@ async function tools(kernel: Kernel, session: SessionId) {
       name,
       args,
       context: caller,
-      signal: new AbortController().signal,
+      signal,
     });
 
     assert(outcome.kind !== "parked");
@@ -299,12 +303,146 @@ describe("environment tools", () => {
     });
     provider.script = (process) => {
       process.emit("one\n");
-      process.emit("two\n");
-      process.exit(0);
+      void until(() => (progress.length > 0 ? true : undefined)).then(() => {
+        process.emit("two\n");
+        process.exit(0);
+      });
     };
 
     expect(readText(await call("bash", { command: "count" }))).toBe("one\ntwo\n[exit code 0]");
     expect(progress).toEqual(["one", "one\ntwo"]);
+  });
+
+  it("runs a shell command as a job of its session and call, listed until it exits, with no exit report", async () => {
+    const { kernel, host, workspace, session, provider } = await sessionFiles({
+      plugins: [environmentPlugin],
+    });
+
+    const call = await tools(kernel, session.id);
+    const jobs = host.workspace(workspace).jobs;
+    provider.script = (process) => process.emit("built\n");
+    const running = call("bash", { command: "pnpm build", description: "Builds" });
+    const job = await until(async () => (await jobs.list())[0]);
+
+    expect(job).toMatchObject({
+      command: "pnpm build",
+      title: "Builds",
+      session: session.id,
+      state: { kind: "running" },
+    });
+    expect((await session.view()).background).toEqual([
+      { kind: "job", id: job.id, title: "Builds", state: "working", startedBy: "call-1" },
+    ]);
+
+    provider.processes[0]?.exit(0);
+
+    expect(readText(await running)).toBe("built\n[exit code 0]");
+    expect(await jobs.list()).toMatchObject([
+      { id: job.id, state: { kind: "exited", code: 0, reason: "exited" } },
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(
+      (await session.view()).messages.filter(
+        (message) => message.kind === "user" && message.source.kind === "job",
+      ),
+    ).toEqual([]);
+  });
+
+  it("stops a shell command's job when its call is stopped", async () => {
+    const { kernel, host, workspace, session, provider } = await sessionFiles({
+      plugins: [environmentPlugin],
+    });
+
+    const call = await tools(kernel, session.id);
+    const jobs = host.workspace(workspace).jobs;
+    const controller = new AbortController();
+    provider.script = () => undefined;
+    const running = call("bash", { command: "sleep 600" }, controller.signal);
+    await until(async () => (await jobs.list())[0]);
+    controller.abort();
+
+    expect(await running).toEqual({ kind: "stopped" });
+    expect(await jobs.list()).toMatchObject([
+      { state: { kind: "exited", code: null, reason: "terminated" } },
+    ]);
+  });
+
+  it("starts a background command with its first output and tells the session when it exits", async () => {
+    const { kernel, host, workspace, session, provider } = await sessionFiles({
+      plugins: [environmentPlugin],
+    });
+
+    const call = await tools(kernel, session.id);
+    const jobs = host.workspace(workspace).jobs;
+    provider.script = (process) => process.emit("listening on :3000\n");
+    const started = readText(await call("bash", { command: "pnpm dev", background: true }));
+    const [job] = await jobs.list();
+    assert(job !== undefined);
+
+    expect(started).toBe(
+      `listening on :3000\n[running in the background as job ${job.id}: you are told when it exits; the job tool reads its output or stops it]`,
+    );
+    expect(job).toMatchObject({ session: session.id, state: { kind: "running" } });
+
+    provider.processes[0]?.exit(1);
+
+    expect(
+      await until(async () =>
+        (await session.view()).messages.find(
+          (message) => message.kind === "user" && message.source.kind === "job",
+        ),
+      ),
+    ).toMatchObject({
+      content: "Job pnpm dev (pnpm dev) exited with code 1.\n\nlistening on :3000",
+      source: { kind: "job", job: job.id },
+      delivery: "attach",
+    });
+  });
+
+  it("moves a running shell command to the background on its part's action, then reads and stops it with the job tool", async () => {
+    const { kernel, host, workspace, session, provider } = await sessionFiles({
+      plugins: [environmentPlugin],
+    });
+
+    const call = await tools(kernel, session.id);
+    const jobs = host.workspace(workspace).jobs;
+    const progress: (string | undefined)[] = [];
+
+    kernel.bus.subscribe(session.id, (event) => {
+      if (event.kind === "patch" && "progress" in event && event.part === "call-1")
+        progress.push(event.progress.text);
+    });
+    provider.script = (process) => process.emit("watching\n");
+    const running = call("bash", { command: "pnpm test" });
+    await until(() => progress[0]);
+
+    expect(await session.part(asId("call-1")).act("background", {})).toEqual({
+      kind: "ok",
+      output: undefined,
+    });
+
+    const [job] = await jobs.list();
+    assert(job !== undefined);
+
+    expect(readText(await running)).toBe(
+      `watching\n[running in the background as job ${job.id}: you are told when it exits; the job tool reads its output or stops it]`,
+    );
+    expect(readText(await call("job", { id: job.id, action: "output" }))).toBe(
+      `Job ${job.id} is running:\nwatching`,
+    );
+    expect(readText(await call("job", { id: job.id, action: "stop" }))).toBe(
+      `Job ${job.id} ended (terminated) with code none:\nwatching`,
+    );
+    expect(
+      await until(async () =>
+        (await session.view()).messages.find(
+          (message) => message.kind === "user" && message.source.kind === "job",
+        ),
+      ),
+    ).toMatchObject({
+      content: "Job pnpm test (pnpm test) ended (terminated) with code none.\n\nwatching",
+      source: { kind: "job", job: job.id },
+    });
   });
 
   it("names the workspace root in the cwd prompt section", async () => {

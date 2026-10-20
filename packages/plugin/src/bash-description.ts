@@ -9,6 +9,12 @@ const parameters = standard(
       description:
         "Clear, concise description of what this command does in 5-10 words, in active voice.",
     }),
+    background: Type.Optional(
+      Type.Boolean({
+        description:
+          "Start the command and return a job id with its first output instead of waiting for it to exit. Use for servers, watchers, and other long-lived commands, without a trailing &. The command keeps running across turns, and you are told when it exits; read its output or stop it with the job tool. Do not use it to speed up ordinary commands.",
+      }),
+    ),
   }),
 );
 

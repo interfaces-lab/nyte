@@ -42,6 +42,7 @@ import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.
 import type { ExecutionEnv } from "../contract/workspace.ts";
 import { anotherChatLive, ownedChanges, readAttributedPaths } from "../env/session-changes.ts";
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
+import { startJob } from "../engine/jobs.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { hiddenOwners, missingCapabilities } from "../engine/surface.ts";
 import { toolSource } from "../extend/registry.ts";
@@ -121,8 +122,14 @@ interface Where {
   readonly name: string;
   readonly context: ConnectionContext;
   readonly signal: AbortSignal;
+  readonly released?: AbortSignal;
   readonly argumentsError?: string;
   readonly covered?: boolean;
+}
+
+interface LiveCall {
+  readonly stop: AbortController;
+  readonly move: AbortController;
 }
 
 const HOOK = "hook:before_tool:";
@@ -139,13 +146,13 @@ const CONTINUE: Decision<ToolCall> = { action: "continue" };
 
 const outcomes = compile(withJson(ToolOutcomeType));
 
-const liveCalls = new WeakMap<Kernel, Map<string, Set<AbortController>>>();
+const liveCalls = new WeakMap<Kernel, Map<string, Set<LiveCall>>>();
 
-function runningCalls(kernel: Kernel): Map<string, Set<AbortController>> {
+function runningCalls(kernel: Kernel): Map<string, Set<LiveCall>> {
   const found = liveCalls.get(kernel);
 
   if (found !== undefined) return found;
-  const calls = new Map<string, Set<AbortController>>();
+  const calls = new Map<string, Set<LiveCall>>();
   liveCalls.set(kernel, calls);
 
   return calls;
@@ -157,9 +164,10 @@ export async function executeCall(
 ): Promise<ToolOutcome | typeof PARKED> {
   const { session, call } = input;
   const controller = new AbortController();
+  const running: LiveCall = { stop: controller, move: new AbortController() };
   const live = runningCalls(kernel);
-  const controllers = live.get(call) ?? new Set<AbortController>();
-  controllers.add(controller);
+  const controllers = live.get(call) ?? new Set<LiveCall>();
+  controllers.add(running);
   live.set(call, controllers);
 
   const steps = await Promise.all([
@@ -174,9 +182,10 @@ export async function executeCall(
     return await perform(kernel, {
       ...input,
       signal: AbortSignal.any([input.signal, controller.signal]),
+      released: running.move.signal,
     });
   } finally {
-    controllers.delete(controller);
+    controllers.delete(running);
 
     if (controllers.size === 0 && live.get(call) === controllers) live.delete(call);
   }
@@ -263,13 +272,20 @@ export function stoppableTool(kernel: Kernel): typeof tool {
       const running = runningCalls(kernel).get(context.part.id);
 
       if (running !== undefined && running.size > 0) {
-        for (const controller of running) controller.abort();
+        for (const live of running) live.stop.abort();
 
         return undefined;
       }
 
       for (const call of [context.part.id, `${HOOK}${context.part.id}`])
         await kernel.waits.callStopped(context.session, asId<"call">(call));
+
+      return undefined;
+    },
+    background(_input, context) {
+      if (!kernel.jobs.release(context.session, asId<"call">(context.part.id))) return undefined;
+
+      for (const live of runningCalls(kernel).get(context.part.id) ?? []) live.move.abort();
 
       return undefined;
     },
@@ -516,6 +532,7 @@ async function execute(
       call: where.call,
       context: where.context,
       signal,
+      released: where.released,
       workspace: found.record.workspace,
       env,
       durable,
@@ -597,7 +614,7 @@ async function conclude(
   const unattributed =
     path === null &&
     changed.length > 0 &&
-    (before.contended || (await anotherChatLive(kernel.store, session)));
+    (before.contended || (await anotherChatLive(kernel, session)));
 
   const files = unattributed
     ? []
@@ -757,7 +774,7 @@ async function baseline(
   const seq = await kernel.store.refs.tail(session);
   const [before, contended] = await Promise.all([
     snapshots.after(run),
-    anotherChatLive(kernel.store, session),
+    anotherChatLive(kernel, session),
   ]);
 
   await attempt(`Recording run ${run}'s snapshot`, async () => {
@@ -833,6 +850,7 @@ export function createInvocation(
     readonly call: CallId;
     readonly context: ConnectionContext;
     readonly signal: AbortSignal;
+    readonly released?: AbortSignal;
     readonly workspace: WorkspaceId;
     readonly env: ExecutionEnv;
     readonly durable: Durable;
@@ -882,6 +900,11 @@ export function createInvocation(
         part: asId<"part">(call),
         progress: update,
       });
+    },
+    foreground: {
+      start: (job) => startJob(kernel, context.origin, input.workspace, { ...job, session }, true),
+      release: () => kernel.jobs.release(session, call),
+      released: input.released ?? new AbortController().signal,
     },
     tools: {
       async execute(name, args, options) {

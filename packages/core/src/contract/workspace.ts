@@ -185,6 +185,7 @@ export interface JobEntry {
   } | null;
   readonly digest: string;
   readonly output: JobOutput;
+  readonly held: boolean;
 }
 
 export interface JobOutput {
@@ -209,6 +210,7 @@ export interface JobTable {
   background(
     session: SessionId,
   ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];
+  release(session: SessionId, call: CallId): boolean;
 }
 
 export interface ExecutionEnv {
