@@ -230,6 +230,8 @@ export class ClaudeCodeSession {
       systemPrompt: { type: "preset", preset: "claude_code" },
       includePartialMessages: true,
       mcpServers: { [NYTE_SERVER]: this.#server },
+      disallowedTools: ["Bash"],
+      allowedTools: ["Grep", "Glob"],
       permissionMode: "default",
       canUseTool: async (name, input, { signal, toolUseID, agentID }) => {
         if (name.startsWith(NYTE_TOOL_PREFIX))
