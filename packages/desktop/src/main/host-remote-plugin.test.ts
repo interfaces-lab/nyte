@@ -24,7 +24,6 @@ import type { DesktopHost } from "./host.ts";
 import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
 import { testDesktop } from "./fixtures/desktop-host.ts";
 
-/** Nyte offers no Cloudflare tunnel on Windows: `findCloudflared` finds none and the connector needs `/bin/sh` and process groups. */
 const cloudflareTest = test.skipIf(process.platform === "win32");
 
 const HOSTNAME = "nyte.example.test";
@@ -333,6 +332,7 @@ cloudflareTest(
         plugin: "cloudflare",
         name: "Race",
       });
+
       await Promise.all([
         info(setup, bearer(pairing.token)).catch(() => undefined),
         host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: pairing.deviceId }),
@@ -448,10 +448,12 @@ cloudflareTest(
     await serve(host);
     const paired = await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Paired" });
     assert.equal((await info(setup, bearer(paired.token))).status, 200);
+
     const waiting = await host.call(1, "host.remote.pair", {
       plugin: "cloudflare",
       name: "Waiting",
     });
+
     const before = await stored(setup);
 
     await chmod(setup.state, 0o500);

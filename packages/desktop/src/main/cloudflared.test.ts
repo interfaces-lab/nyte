@@ -13,7 +13,6 @@ import {
 } from "./cloudflared.ts";
 import type { ConnectorTiming } from "./cloudflared.ts";
 
-/** The connector supervises cloudflared through `/bin/sh` and process groups; Nyte offers no Cloudflare tunnel on Windows. */
 const connectorTest = test.skipIf(process.platform === "win32");
 
 const HOSTNAME = "nyte.example.test";

@@ -15,7 +15,6 @@ const PLATFORM_ENVIRONMENT = [
   "windir",
 ];
 
-/** An environment that sees only `directory` as home and temp, plus what the platform needs to open a display. */
 export function isolatedElectronEnvironment(directory: string) {
   const home = join(directory, "home");
 
