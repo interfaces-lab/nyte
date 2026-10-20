@@ -141,6 +141,10 @@ function registerComposerLinkClicks(
   };
 }
 
+export function editorRoot(editor: Editor): HTMLElement | null {
+  return editor.isDestroyed ? null : editor.view.dom;
+}
+
 export function focusComposer(editor: Editor, options?: FocusOptions): void {
   if (!editor.isEditable) return;
   editor.view.focus();
@@ -235,7 +239,11 @@ export function useComposerSurface({
     );
   });
 
-  useLayoutEffect(() => registerComposerLinkClicks(editor.view.dom, opener), [editor, opener]);
+  useLayoutEffect(() => {
+    const root = editorRoot(editor);
+
+    return root === null ? undefined : registerComposerLinkClicks(root, opener);
+  }, [editor, opener]);
 
   return editor;
 }

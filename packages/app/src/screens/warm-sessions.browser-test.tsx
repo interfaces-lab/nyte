@@ -210,6 +210,17 @@ function readScroll(sessionId: SessionId): ScrollViewState | undefined {
 
 const failures: string[] = [];
 
+const consoleErrors: string[] = [];
+
+const reportError = console.error.bind(console);
+
+console.error = (...args: unknown[]): void => {
+  consoleErrors.push(
+    args.map((arg) => (arg instanceof Error ? (arg.stack ?? arg.message) : String(arg))).join(" "),
+  );
+  reportError(...args);
+};
+
 function expectRule(passed: boolean, message: string): void {
   if (!passed) failures.push(message);
 }
@@ -274,6 +285,8 @@ async function checkRules(): Promise<string> {
     await until(() => !b.viewport.isConnected, "the deleted hidden session to unmount");
     expectRule(!b.composer.isConnected, "a deleted hidden session kept its composer mounted");
     expectRule(a.viewport.isConnected, "deleting another session unmounted a hot one");
+
+    expectRule(consoleErrors.length === 0, `console errors:\n${consoleErrors.join("\n")}`);
 
     return failures.length === 0 ? "passed" : failures.join("\n");
   } finally {

@@ -27,6 +27,7 @@ import type {
 import {
   ComposerSurfaceContent,
   editorContentStyle,
+  editorRoot,
   focusComposer,
   useComposerSurface,
 } from "./composer-surface.tsx";
@@ -161,7 +162,7 @@ export function ComposerEditor({
   const handle = useMemo<ComposerEditorHandle>(
     () => ({
       readElement: () => {
-        const root = editor.isDestroyed ? null : editor.view.dom;
+        const root = editorRoot(editor);
 
         return root instanceof HTMLDivElement ? root : null;
       },

@@ -9,7 +9,6 @@ import {
   isValidElement,
   memo,
   use,
-  useState,
   useSyncExternalStore,
 } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
@@ -357,14 +356,12 @@ export const Prose = memo(function Prose({
     () => true,
   );
 
-  const [streamedHere] = useState(streaming);
-
   return (
     <ProseStreaming value={streaming}>
       <div {...props(proseStyles.root)}>
         <Streamdown
           content={markdown}
-          animated={streamedHere && !reducedMotion}
+          animated={streaming && !reducedMotion}
           granularity="word"
           components={markdownComponents}
           remarkPlugins={remarkPlugins}
