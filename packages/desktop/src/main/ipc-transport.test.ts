@@ -61,6 +61,6 @@ test("production preload preserves rejected error data through Electron", async 
     );
     assert.equal(await readFile(join(directory, "result.txt"), "utf8"), "passed");
   } finally {
-    await rm(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true, maxRetries: 10 });
   }
 }, 90_000);

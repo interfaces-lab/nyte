@@ -97,7 +97,7 @@ test.skipIf(!built).for(["scheme", "web"] as const)(
         "passed",
       );
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      await rm(directory, { recursive: true, force: true, maxRetries: 10 });
     }
   },
 );

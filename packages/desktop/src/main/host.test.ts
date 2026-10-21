@@ -262,7 +262,9 @@ test("a key login over the loopback listener connects the provider, and the reop
     await first.close();
     const written = reads;
     assert.ok(written > 0);
-    assert.equal((await stat(join(home, ".nyte", "secret.key"))).mode & 0o777, 0o600);
+
+    if (process.platform !== "win32")
+      assert.equal((await stat(join(home, ".nyte", "secret.key"))).mode & 0o777, 0o600);
 
     const second = await desktop({ home, models: models() });
     const again = await connectLocal(second);
