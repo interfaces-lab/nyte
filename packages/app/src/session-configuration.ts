@@ -1,21 +1,7 @@
-import {
-  keepPreviousData,
-  mutationOptions,
-  useMutationState,
-  useQuery,
-} from "@tanstack/react-query";
+import { mutationOptions } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
-import type {
-  ConfigurationPatch,
-  ModelRef,
-  SessionId,
-  SessionInfo,
-  SessionView,
-  Thinking,
-} from "@nyte-ai/sdk";
-import { mainHead } from "@nyte-ai/plugin/client/presentation";
-import { keys } from "./query-keys.ts";
-import { connected, connection, sessionWatch } from "./sdk.tsx";
+import type { ConfigurationPatch, ModelRef, SessionId, SessionView, Thinking } from "@nyte-ai/sdk";
+import { connection, sessionWatch } from "./sdk.tsx";
 
 export type ConfigureSessionPatch = Pick<ConfigurationPatch, "model" | "thinking">;
 
@@ -42,29 +28,6 @@ export function projectSessionChoice(
     }),
     { model: stored?.model, thinking: stored?.thinking },
   );
-}
-
-/** A child's model and thinking without watching it: its run's configuration while one runs, else its stored configuration, read once per run it finishes. */
-export function useChildChoice(child: SessionInfo): SessionChoice | undefined {
-  const execution = mainHead(child)?.execution;
-
-  const stored = useQuery({
-    queryKey: keys.sessionConfiguration(child.id, child.lastActivityAt),
-    queryFn: async () =>
-      (await (await connected()).session(child.id).view({ tail: 0 })).configuration,
-    placeholderData: keepPreviousData,
-  });
-
-  const pending = useMutationState<PendingConfiguration>({
-    filters: { mutationKey: ["session", child.id, "configure"], status: "pending" },
-  });
-
-  const configuration =
-    execution === undefined || execution.kind === "idle"
-      ? stored.data
-      : { selected: null, effective: execution.run.configuration };
-
-  return configuration === undefined ? undefined : projectSessionChoice({ configuration }, pending);
 }
 
 export function sessionConfigurationOptions({ sessionId }: { readonly sessionId: SessionId }) {
