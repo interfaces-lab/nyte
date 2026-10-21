@@ -4,7 +4,7 @@ import { modelConfiguration } from "./model-configuration.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { Revision, SessionId, UserContent } from "@nyte-ai/sdk";
 import { Composer } from "../conversation/composer.tsx";
@@ -200,6 +200,9 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
 
   const subagentTray: SubagentTrayView =
     trayView.kind === "terminals" ? { kind: "closed" } : trayView;
+
+  const detailSessionId = subagentTray.kind === "detail" ? subagentTray.sessionId : undefined;
+  const shownDetailSessionId = useDeferredValue(detailSessionId);
 
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<ComposerEditorHandle | null>(null);
@@ -440,12 +443,13 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                           onRelease={() => composerRef.current?.focus({ preventScroll: true })}
                           viewport={scroll}
                           detail={
-                            subagentTray.kind === "detail" ? (
+                            detailSessionId !== undefined &&
+                            detailSessionId === shownDetailSessionId ? (
                               <SessionConversation
-                                key={subagentTray.sessionId}
+                                key={detailSessionId}
                                 presentation="tray"
                                 paneId={paneId}
-                                sessionId={subagentTray.sessionId}
+                                sessionId={detailSessionId}
                                 onOpenSubagentTray={openSubagentTray}
                               />
                             ) : null
