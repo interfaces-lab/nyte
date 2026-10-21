@@ -271,6 +271,7 @@ describe("sessions frames", () => {
     const c = info("c", "Gamma");
     const renamed = info("b", "Beta two", 2);
     const d = info("d", "Delta", 3);
+
     const lists = [
       [a, b, c],
       [a, renamed, c],
