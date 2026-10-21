@@ -198,7 +198,13 @@ it("keeps twelve watches on one response while commands and other watches contin
 
   try {
     const initial = await Promise.all(watches.map((watch) => watch.next()));
-    expect(initial.every((frame) => !frame.done && Array.isArray(frame.value))).toBe(true);
+    expect(initial.map((frame) => frame.value)).toEqual(
+      Array.from({ length: 12 }, () => ({
+        kind: "list",
+        order: { runs: [], items: [] },
+        items: [],
+      })),
+    );
     expect([channels, open]).toEqual([1, 1]);
     const first = watches[0];
     assert(first !== undefined);
@@ -215,7 +221,13 @@ it("keeps twelve watches on one response while commands and other watches contin
 
     for (const frame of changed) {
       assert(!frame.done);
-      expect(decodeOutput("sessions.watch", frame.value).map((row) => row.id)).toEqual([session]);
+      const { kind, order, items } = decodeOutput("sessions.watch", frame.value);
+
+      expect({ kind, order, ids: items.map((row) => row.id) }).toEqual({
+        kind: "delta",
+        order: { runs: [-1, 1], items: [session] },
+        ids: [session],
+      });
     }
 
     expect([channels, open]).toEqual([1, 1]);

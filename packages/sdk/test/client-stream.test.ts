@@ -1,6 +1,12 @@
 import { asId, isJson, isJsonObject } from "@nyte-ai/schema";
 import type { HostView, Json, SessionView } from "@nyte-ai/schema";
-import { CANCEL_PATH, CHANNEL_PATH, createTransport, STREAM_HEADER } from "@nyte-ai/protocol";
+import {
+  CANCEL_PATH,
+  CHANNEL_PATH,
+  createTransport,
+  parseJson,
+  STREAM_HEADER,
+} from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { createSendJournal, journalLoop } from "../src/journal.ts";
 import { createLink, createRows } from "../src/rows.ts";
@@ -280,5 +286,106 @@ describe("client streaming", () => {
     expect(right).toEqual(left);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(closed).toBe(1);
+  });
+
+  it("sends a session list's changed rows and rebuilds it through additions, renames, moves, removals and a reconnect", async () => {
+    const host = await open();
+    const watches = new Set<string>();
+    const sent = new Map<string, string>();
+
+    host.intercept(async (request, next) => {
+      const id = request.headers.get(STREAM_HEADER);
+
+      if (readOperation(request) === "sessions.watch" && id !== null) watches.add(id);
+      const response = await next(request);
+
+      if (readOperation(request) !== CHANNEL_PATH || response.body === null) return response;
+
+      return new Response(
+        tapped(response.body, (chunk, stream) => {
+          if (watches.has(stream)) sent.set(stream, (sent.get(stream) ?? "") + chunk);
+        }),
+        response,
+      );
+    });
+
+    const connection = await client(host);
+    host.fake.reply(text("One."), text("Two."), text("Three."), text("Again."), text("Four."));
+    const watching = connection.sessions.watch()[Symbol.asyncIterator]();
+
+    const shown = async (): Promise<readonly (string | null)[]> => {
+      for (;;) {
+        const next = await watching.next();
+        assert(next.done !== true);
+
+        if (JSON.stringify(next.value) === JSON.stringify((await connection.sessions.list()).items))
+          return next.value.map((row) => row.name);
+      }
+    };
+
+    const frames = (): readonly Json[] =>
+      [...sent.values()].flatMap((text) =>
+        text
+          .split("\n\n")
+          .flatMap((block) => (block.startsWith("data: ") ? [parseJson(block.slice(6))] : [])),
+      );
+
+    const start = async (name: string) => {
+      const { session, receipt } = await connection.sessions.start({ name, content: name });
+      await receipt.settled();
+
+      return session;
+    };
+
+    expect(await shown()).toEqual([]);
+    const alpha = await start("Alpha");
+    const beta = await start("Beta");
+    await start("Gamma");
+    expect(await shown()).toEqual(["Gamma", "Beta", "Alpha"]);
+
+    const before = frames().length;
+    await beta.update({ name: "Beta two" });
+    expect(await shown()).toEqual(["Gamma", "Beta two", "Alpha"]);
+
+    expect(frames().slice(before)).toEqual([
+      {
+        kind: "delta",
+        order: { runs: [0, 1, -1, 1, 2, 1], items: [beta.id] },
+        items: [expect.objectContaining({ id: beta.id, name: "Beta two" })],
+      },
+    ]);
+
+    const moving = frames().length;
+    await (await alpha.send("Again.")).settled();
+    expect(await shown()).toEqual(["Alpha", "Gamma", "Beta two"]);
+
+    expect([
+      ...new Set(
+        frames()
+          .slice(moving)
+          .flatMap((frame) =>
+            isJsonObject(frame) && Array.isArray(frame.items)
+              ? frame.items.map((row) => (isJsonObject(row) ? row.name : null))
+              : [frame],
+          ),
+      ),
+    ]).toEqual(["Alpha"]);
+
+    const removing = frames().length;
+    await beta.remove();
+    expect(await shown()).toEqual(["Alpha", "Gamma"]);
+    expect(frames().slice(removing)).toEqual([
+      { kind: "delta", order: { runs: [0, 2], items: [] }, items: [] },
+    ]);
+
+    host.listener.disconnectClients();
+    await start("Delta");
+    expect(await shown()).toEqual(["Delta", "Alpha", "Gamma"]);
+    expect(watches.size).toBe(2);
+    expect([...sent.values()].map((text) => text.match(/"kind":"(list|delta)"/)?.[1])).toEqual([
+      "list",
+      "list",
+    ]);
+    await watching.return?.();
   });
 });

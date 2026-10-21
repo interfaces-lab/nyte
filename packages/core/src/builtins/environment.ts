@@ -17,6 +17,8 @@ const SHELL_BYTES = 32 * 1024;
 
 const PROGRESS_BYTES = 4 * 1024;
 
+const PROGRESS_MS = 80;
+
 const FIRST_OUTPUT_MS = 1000;
 
 const MIME_TYPES = new Map([
@@ -374,41 +376,67 @@ function createShellOutput(progress: (tail: string) => void) {
   let dropped = 0;
   let code: number | null = null;
   let pending: Promise<IteratorResult<OutputFrame>> | null = null;
+  let published = Number.NEGATIVE_INFINITY;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const publish = (): void => {
+    clearTimeout(timer);
+    timer = undefined;
+    published = Date.now();
+    progress(decodeOutputTail(chunks, PROGRESS_BYTES));
+  };
+
+  const follow = async (frames: AsyncIterator<OutputFrame>, until: AbortSignal) => {
+    const detached = new Promise<null>((resolve) => {
+      if (until.aborted) resolve(null);
+      until.addEventListener("abort", () => resolve(null), { once: true });
+    });
+
+    for (;;) {
+      pending ??= frames.next();
+      const next = await Promise.race([pending, detached]);
+
+      if (next === null) return false;
+      pending = null;
+
+      if (next.done === true) return true;
+      const frame = next.value;
+
+      if (frame.kind === "exit") {
+        code = frame.code;
+
+        return true;
+      }
+
+      if (frame.kind === "gap") continue;
+      chunks.push(frame.data);
+      kept += frame.data.byteLength;
+
+      while (kept - (chunks[0]?.byteLength ?? 0) >= SHELL_BYTES && chunks.length > 1) {
+        const first = chunks.shift();
+        kept -= first?.byteLength ?? 0;
+        dropped += first?.byteLength ?? 0;
+      }
+
+      if (timer !== undefined) continue;
+      const wait = published + PROGRESS_MS - Date.now();
+
+      if (wait > 0) timer = setTimeout(publish, wait);
+      else publish();
+    }
+  };
 
   return {
     async read(frames: AsyncIterator<OutputFrame>, until: AbortSignal): Promise<boolean> {
-      const detached = new Promise<null>((resolve) => {
-        if (until.aborted) resolve(null);
-        until.addEventListener("abort", () => resolve(null), { once: true });
-      });
+      try {
+        const ended = await follow(frames, until);
 
-      for (;;) {
-        pending ??= frames.next();
-        const next = await Promise.race([pending, detached]);
+        if (timer !== undefined) publish();
 
-        if (next === null) return false;
-        pending = null;
-
-        if (next.done === true) return true;
-        const frame = next.value;
-
-        if (frame.kind === "exit") {
-          code = frame.code;
-
-          return true;
-        }
-
-        if (frame.kind === "gap") continue;
-        chunks.push(frame.data);
-        kept += frame.data.byteLength;
-
-        while (kept - (chunks[0]?.byteLength ?? 0) >= SHELL_BYTES && chunks.length > 1) {
-          const first = chunks.shift();
-          kept -= first?.byteLength ?? 0;
-          dropped += first?.byteLength ?? 0;
-        }
-
-        progress(decodeOutputTail(chunks, PROGRESS_BYTES));
+        return ended;
+      } finally {
+        clearTimeout(timer);
+        timer = undefined;
       }
     },
     code: () => code,
@@ -449,7 +477,9 @@ function decodeOutputTail(chunks: readonly Uint8Array[], limit: number): string 
     size += chunk.byteLength;
   }
 
-  const text = new TextDecoder().decode(joinBytes(tail).subarray(Math.max(0, size - limit)));
+  const text = new TextDecoder().decode(joinBytes(tail).subarray(Math.max(0, size - limit)), {
+    stream: true,
+  });
 
   const [, ...whole] = text.split("\n");
 

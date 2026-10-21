@@ -578,6 +578,9 @@ importers:
       typebox:
         specifier: ^1.4.2
         version: 1.4.2
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.1
     devDependencies:
       '@cfworker/json-schema':
         specifier: ^4.1.1
