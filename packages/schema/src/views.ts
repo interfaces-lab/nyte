@@ -10,7 +10,7 @@ import { PartStatusType, PartViewType } from "./parts.ts";
 import { BackgroundItemType, ExecutionType, RunEndType, WaitTargetType } from "./runs.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
-import { HeadInfoType, SessionCatalogViewType } from "./sessions.ts";
+import { HeadInfoType, SessionCatalogViewType, SessionInfoType } from "./sessions.ts";
 import { nullable } from "./wire/nullable.ts";
 import { ActivationType } from "./workspaces.ts";
 
@@ -175,6 +175,15 @@ export const ViewFrameType = Type.Union([
 
 /** One frame of a head's watch on the wire: the whole view first, then each later view as what changed since the frame before it, an absent field unchanged; a null `leadingPrompt` clears it. */
 export type ViewFrame = Decoded<typeof ViewFrameType>;
+
+export const SessionsFrameType = Type.Object({
+  kind: Type.Enum(["list", "delta"]),
+  order: viewSplice(idSchema<"session">()),
+  items: Type.Array(SessionInfoType),
+});
+
+/** One frame of `sessions.watch`: the list's session ids as the previous frame's ids spliced (a `list` splices from none and starts every stream), and the row of each id the splice takes; a row a client cannot read is left out. */
+export type SessionsFrame = Decoded<typeof SessionsFrameType>;
 
 export const ViewOptionsSchema: Schema<ViewOptions> = standard(ViewOptionsType);
 

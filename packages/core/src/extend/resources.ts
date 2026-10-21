@@ -1,6 +1,7 @@
 import { SdkError, standard } from "@nyte-ai/schema";
-import type { SessionId, ValidationIssue, WorkspaceId } from "@nyte-ai/schema";
+import type { FileEntryView, SessionId, ValidationIssue, WorkspaceId } from "@nyte-ai/schema";
 import { Type } from "typebox";
+import { isMap, isScalar, parseDocument } from "yaml";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Plugin, PluginApi } from "../contract/plugin.ts";
 import type { ExecutionEnv, FilesApi, Resources, ScanEntry } from "../contract/workspace.ts";
@@ -22,6 +23,10 @@ const CONTEXT_NAMES = ["AGENTS.override.md", "AGENTS.md", "CLAUDE.md"];
 const SKILL_DIRECTORIES = [".nyte/skills", ".agents/skills"];
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+
+const ABSOLUTE = /^(?:\/|[A-Za-z]:[\\/])/;
+
+const LINK_HOPS = 8;
 
 export const SKILL_PATHS = "skills.paths";
 
@@ -214,15 +219,15 @@ async function scan(
   const home = kernel.home;
 
   const [projectSkills, userSkills, pathSkills] = await Promise.all([
-    project === null ? [] : skillsIn(project, SKILL_DIRECTORIES, "project"),
-    user === null ? [] : skillsIn(user, SKILL_DIRECTORIES, "user"),
-    user === null ? [] : skillsAt(user, await skillPaths(kernel.store)),
+    project === null ? [] : skillsIn(project, SKILL_DIRECTORIES, "project", root),
+    user === null ? [] : skillsIn(user, SKILL_DIRECTORIES, "user", home),
+    user === null ? [] : skillsAt(user, await skillPaths(kernel.store), home),
   ]);
 
   const { kept: skills, dropped } = byName([
     ...projectSkills,
     ...[...userSkills, ...pathSkills].map((skill) =>
-      home === null || /^(?:\/|[A-Za-z]:[\\/])/.test(skill.location)
+      home === null || ABSOLUTE.test(skill.location)
         ? skill
         : { ...skill, location: join(home, skill.location) },
     ),
@@ -349,22 +354,41 @@ async function skillPaths(store: StoreConnection): Promise<readonly string[]> {
     : [];
 }
 
+/** Reads `<directory>/<name>/SKILL.md` for each directory or link to one directly under `directories`, never walking into a link. Entries that resolve to the same directory load once: a real directory before a link to it, otherwise the first in `directories` order. */
 async function skillsIn(
   files: FilesApi,
   directories: readonly string[],
   scope: Skill["scope"],
+  root: string | null,
 ): Promise<readonly Skill[]> {
   const listed = await Promise.all(
     directories.map(async (directory) =>
-      (await listDirectChildren(files, directory, "directory")).map((name) => ({
-        name,
-        location: `${directory}/${name}/SKILL.md`,
+      (await listDirectChildren(files, directory, ["directory", "symlink"])).map((entry) => ({
+        ...entry,
+        path: `${directory}/${entry.name}`,
       })),
     ),
   );
 
+  const candidates = listed
+    .flat()
+    .toSorted((left, right) => Number(left.kind === "symlink") - Number(right.kind === "symlink"));
+
+  const targets = await Promise.all(
+    candidates.map(async ({ kind, path }) =>
+      kind === "directory" ? resolvePath(root, path) : linkedDirectory(files, path, root),
+    ),
+  );
+
+  const loaded = new Set<string>();
+
   const read = await Promise.all(
-    listed.flat().map(async ({ name, location }) => {
+    candidates.map(async ({ name, path }, index) => {
+      const target = targets[index];
+
+      if (target === undefined || target === null || loaded.has(target)) return [];
+      loaded.add(target);
+      const location = `${path}/SKILL.md`;
       const content = await readText(files, location);
 
       return content === null ? [] : [parseSkillMetadata(content, name, location, scope)];
@@ -374,10 +398,55 @@ async function skillsIn(
   return read.flat();
 }
 
-async function skillsAt(files: FilesApi, paths: readonly string[]): Promise<readonly Skill[]> {
+/** Follows the link at `path` through `files` to the directory it names, or null when it is broken, names a file, or takes more than `LINK_HOPS` links (a cycle). */
+async function linkedDirectory(
+  files: FilesApi,
+  path: string,
+  root: string | null,
+): Promise<string | null> {
+  let at = resolvePath(root, path);
+
+  for (let hop = 0; hop < LINK_HOPS; hop += 1) {
+    const found = await files.stat(at).catch(() => null);
+
+    if (found?.kind === "directory") return at;
+
+    if (found?.kind !== "symlink" || found.target === undefined) return null;
+    const parent = at.slice(0, Math.max(at.lastIndexOf("/"), 0));
+    at = resolvePath(root, ABSOLUTE.test(found.target) ? found.target : join(parent, found.target));
+  }
+
+  return null;
+}
+
+/** Normalizes `path` against `root`: relative to it when inside it, else absolute (or relative when `root` is unknown). */
+function resolvePath(root: string | null, path: string): string {
+  const full = root === null || ABSOLUTE.test(path) ? path : join(root, path);
+  const absolute = full.startsWith("/");
+  const parts: string[] = [];
+
+  for (const part of full.split("/")) {
+    if (part === "" || part === "." || (part === ".." && absolute && parts.length === 0)) continue;
+
+    if (part === ".." && parts.length > 0 && parts.at(-1) !== "..") parts.pop();
+    else parts.push(part);
+  }
+
+  const normal = `${absolute ? "/" : ""}${parts.join("/")}`;
+
+  return root !== null && normal.startsWith(join(root, ""))
+    ? normal.slice(join(root, "").length)
+    : normal;
+}
+
+async function skillsAt(
+  files: FilesApi,
+  paths: readonly string[],
+  root: string | null,
+): Promise<readonly Skill[]> {
   const found = await Promise.all(
     userSkillPaths(paths).map(async (path): Promise<readonly Skill[]> => {
-      if (!path.endsWith(".md")) return skillsIn(files, [path], "path");
+      if (!path.endsWith(".md")) return skillsIn(files, [path], "path", root);
       const content = await readText(files, path);
       const name = path.split("/").at(-1)?.slice(0, -".md".length) ?? path;
 
@@ -389,9 +458,9 @@ async function skillsAt(files: FilesApi, paths: readonly string[]): Promise<read
 }
 
 async function promptsIn(files: FilesApi, scope: Prompt["scope"]): Promise<readonly Prompt[]> {
-  const names = await listDirectChildren(files, ".nyte/prompts", "file");
+  const entries = await listDirectChildren(files, ".nyte/prompts", ["file"]);
 
-  return names.flatMap((name) =>
+  return entries.flatMap(({ name }) =>
     name.endsWith(".md")
       ? [{ name: name.slice(0, -".md".length), location: `.nyte/prompts/${name}`, scope }]
       : [],
@@ -449,9 +518,9 @@ async function firstContext(
 async function listDirectChildren(
   files: FilesApi,
   directory: string,
-  kind: "file" | "directory",
-): Promise<readonly string[]> {
-  const names = new Set<string>();
+  kinds: readonly FileEntryView["kind"][],
+): Promise<readonly { readonly name: string; readonly kind: FileEntryView["kind"] }[]> {
+  const children = new Map<string, FileEntryView["kind"]>();
 
   for await (const frame of files.scan({ directory })) {
     if (frame.kind !== "entries") continue;
@@ -461,11 +530,14 @@ async function listDirectChildren(
         ? entry.path.slice(directory.length + 1)
         : entry.path;
 
-      if (entry.kind === kind && relative !== "" && !relative.includes("/")) names.add(relative);
+      if (kinds.includes(entry.kind) && relative !== "" && !relative.includes("/"))
+        children.set(relative, entry.kind);
     }
   }
 
-  return [...names].sort();
+  return [...children]
+    .map(([name, kind]) => ({ name, kind }))
+    .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
 }
 
 async function readText(files: FilesApi, path: string): Promise<string | null> {
@@ -478,11 +550,30 @@ async function readText(files: FilesApi, path: string): Promise<string | null> {
   return document?.kind === "text" ? document.contents : null;
 }
 
+/** Reads the frontmatter's scalar fields as YAML, or line by line (`key: value`, outer quotes dropped) when it is not valid YAML. */
 function frontmatter(content: string): ReadonlyMap<string, string> {
-  const fields = new Map<string, string>();
   const block = FRONTMATTER.exec(content)?.[1];
 
-  for (const line of block?.split(/\r?\n/) ?? []) {
+  if (block === undefined) return new Map();
+  const document = parseDocument(block);
+
+  if (document.errors.length > 0 || !isMap(document.contents)) return frontmatterLines(block);
+  const fields = new Map<string, string>();
+
+  for (const { key, value } of document.contents.items) {
+    if (!isScalar(key) || !isScalar(value)) continue;
+    const text = value.value === null ? "" : value.toString().trim();
+
+    if (text !== "") fields.set(String(key.value), text);
+  }
+
+  return fields;
+}
+
+function frontmatterLines(block: string): ReadonlyMap<string, string> {
+  const fields = new Map<string, string>();
+
+  for (const line of block.split(/\r?\n/)) {
     const pair = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line);
     const key = pair?.[1];
     const value = pair?.[2]?.trim();

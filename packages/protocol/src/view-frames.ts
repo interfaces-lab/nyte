@@ -1,12 +1,28 @@
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { SdkError } from "@nyte-ai/schema";
-import type { Message, SessionView, ViewAppend, ViewFrame, ViewSplice } from "@nyte-ai/schema";
+import type {
+  Message,
+  SessionId,
+  SessionInfo,
+  SessionsFrame,
+  SessionView,
+  ViewAppend,
+  ViewFrame,
+  ViewSplice,
+} from "@nyte-ai/schema";
 import { mapped } from "./streams.ts";
 
 type ViewDelta = Extract<ViewFrame, { readonly kind: "delta" }>;
 
 const TAKE = -1;
+
+type SessionRows = {
+  readonly ids: readonly SessionId[];
+  readonly list: readonly SessionInfo[];
+};
+
+const NO_SESSIONS: SessionRows = { ids: [], list: [] };
 
 const streamed = Compile(Type.Object({ markdown: Type.String() }));
 
@@ -45,6 +61,46 @@ export function applyViewFrame(view: SessionView | null, frame: ViewFrame): Sess
     heads: applySplice(view.heads, frame.heads),
     changes: applySplice(view.changes, frame.changes),
     catalog: frame.catalog ?? view.catalog,
+  };
+}
+
+/** Returns each list as the frame `sessions.watch` sends: the first a `list` spliced from none, each later one a `delta` from the list before it, its ids spliced by row identity and only the rows it takes. */
+export function sessionsFrames(
+  lists: AsyncIterable<readonly SessionInfo[]>,
+): AsyncIterable<SessionsFrame> {
+  let previous: readonly SessionInfo[] | null = null;
+
+  return mapped(lists, (list): SessionsFrame => {
+    const { runs, items } = splice(previous ?? [], list) ?? { runs: [0, list.length], items: [] };
+    const kind = previous === null ? "list" : "delta";
+    previous = list;
+
+    return { kind, order: { runs, items: items.map((info) => info.id) }, items };
+  });
+}
+
+/** Returns the list each `sessions.watch` frame describes: a `list` frame's ids, or a delta's spliced into the ids before it, each with the row the frame carries for it or else the row it had; a delta before any list, or one that does not fit, throws `SdkError("invalid")`. A row the frame could not read is left out. */
+export function sessionLists(
+  frames: AsyncIterable<SessionsFrame>,
+): AsyncIterable<readonly SessionInfo[]> {
+  return {
+    [Symbol.asyncIterator]() {
+      let shown: SessionRows | null = null;
+
+      return mapped(frames, (frame) => {
+        const before = frame.kind === "list" ? NO_SESSIONS : shown;
+
+        if (before === null) throw unfit("A sessions delta arrived before its list.");
+        const taken = new Set(frame.order.items);
+        const rows = new Map(frame.items.map((info) => [info.id, info]));
+        const kept = new Map(before.list.map((info) => [info.id, info]));
+        const ids = applySplice(before.ids, frame.order);
+        const list = ids.flatMap((id) => (taken.has(id) ? rows.get(id) : kept.get(id)) ?? []);
+        shown = { ids, list };
+
+        return list;
+      })[Symbol.asyncIterator]();
+    },
   };
 }
 

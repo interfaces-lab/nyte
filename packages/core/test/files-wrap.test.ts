@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { Json, SessionId, ToolOutcome } from "@nyte-ai/schema";
-import { assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { executeCall } from "../src/agent/tool-runner.ts";
 import { environmentPlugin } from "../src/builtins/environment.ts";
 import { EMPTY_SNAPSHOT } from "../src/engine/batches.ts";
@@ -457,5 +457,149 @@ describe("environment tools", () => {
         },
       ]),
     );
+  });
+});
+
+describe("shell progress", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function shell(signal?: AbortSignal) {
+    const { kernel, session, provider } = await sessionFiles({ plugins: [environmentPlugin] });
+    const call = await tools(kernel, session.id);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    provider.script = () => undefined;
+    const running = call("bash", { command: "pnpm build" }, signal);
+
+    const process = await vi.waitFor(() => {
+      const started = provider.processes[0];
+      assert(started !== undefined);
+
+      return started;
+    });
+
+    const start = Date.now();
+    const progress: [number, string | undefined][] = [];
+
+    kernel.bus.subscribe(session.id, (event) => {
+      if (event.kind === "patch" && "progress" in event && event.part === "call-1")
+        progress.push([Date.now() - start, event.progress.text]);
+    });
+
+    const at = (ms: number) => vi.advanceTimersByTimeAsync(start + ms - Date.now());
+
+    return { session, running, process, progress, at };
+  }
+
+  it("publishes the first output at once, then at most one tail per 80 ms while output keeps coming", async () => {
+    const { running, process, progress, at } = await shell();
+
+    process.emit("a\n");
+    await at(0);
+    process.emit("b\n");
+    process.emit("c\n");
+    await at(30);
+    process.emit("d\n");
+    await at(100);
+    process.emit("e\n");
+    await at(300);
+    process.exit(0);
+
+    expect(readText(await running)).toBe("a\nb\nc\nd\ne\n[exit code 0]");
+    expect(progress).toEqual([
+      [0, "a"],
+      [80, "a\nb\nc\nd"],
+      [160, "a\nb\nc\nd\ne"],
+    ]);
+  });
+
+  it("publishes sparse output as it arrives", async () => {
+    const { running, process, progress, at } = await shell();
+
+    process.emit("one\n");
+    await at(100);
+    process.emit("two\n");
+    await at(250);
+    process.emit("three\n");
+    await at(400);
+    process.exit(0);
+
+    expect(readText(await running)).toBe("one\ntwo\nthree\n[exit code 0]");
+    expect(progress).toEqual([
+      [0, "one"],
+      [100, "one\ntwo"],
+      [250, "one\ntwo\nthree"],
+    ]);
+  });
+
+  it("publishes pending output when the command exits between updates, and nothing after", async () => {
+    const { running, process, progress, at } = await shell();
+
+    process.emit("a\n");
+    await at(10);
+    process.emit("b\n");
+    await at(20);
+    process.exit(0);
+
+    expect(readText(await running)).toBe("a\nb\n[exit code 0]");
+    await at(200);
+    expect(progress).toEqual([
+      [0, "a"],
+      [20, "a\nb"],
+    ]);
+  });
+
+  it("publishes pending output when a stopped command ends, and nothing after the call settles", async () => {
+    const controller = new AbortController();
+    const { running, process, progress, at } = await shell(controller.signal);
+
+    process.emit("a\n");
+    await at(10);
+    process.emit("b\n");
+    await at(20);
+    controller.abort();
+
+    expect(await running).toEqual({ kind: "stopped" });
+    await at(200);
+    expect(progress).toEqual([
+      [0, "a"],
+      [20, "a\nb"],
+    ]);
+  });
+
+  it("stops publishing once the command moves to the background, though its output continues", async () => {
+    const { session, running, process, progress, at } = await shell();
+
+    process.emit("watching\n");
+    await at(10);
+    process.emit("changed\n");
+    await at(20);
+    await session.part(asId("call-1")).act("background", {});
+
+    expect(readText(await running)).toMatch(/^watching\nchanged\n\[running in the background/);
+    await at(30);
+    process.emit("later\n");
+    await at(300);
+    expect(progress).toEqual([
+      [0, "watching"],
+      [20, "watching\nchanged"],
+    ]);
+  });
+
+  it("shows a character split across chunks only once it is whole", async () => {
+    const { running, process, progress, at } = await shell();
+
+    process.emit(Uint8Array.of(0x61, 0xe2));
+    await at(10);
+    process.emit(Uint8Array.of(0x82, 0xac, 0x0a));
+    await at(100);
+    process.exit(0);
+
+    expect(readText(await running)).toBe("a\u20ac\n[exit code 0]");
+    expect(progress).toEqual([
+      [0, "a"],
+      [80, "a\u20ac"],
+    ]);
   });
 });

@@ -21,6 +21,7 @@ import {
 import { PromptOverrideType } from "../../plugins.ts";
 import { pagedSchema, ParentFilterType } from "../../primitives.ts";
 import { SessionInfoType } from "../../sessions.ts";
+import { SessionsFrameType } from "../../views.ts";
 import {
   AddOutcomeSchema,
   ForgetOutcomeSchema,
@@ -207,7 +208,7 @@ export const HOST_OPERATIONS = {
       parents: Type.Optional(ParentFilterType),
       limit: Type.Optional(Type.Number()),
     }),
-    output: wireSchema(Type.Array(SessionInfoType)),
+    output: wireSchema(SessionsFrameType),
   },
   "sessions.start": {
     ...PARTICIPANT,
