@@ -1,4 +1,5 @@
 import type { ScrollBoxRenderable } from "@opentui/core";
+import { useRenderer } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, Match, on, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
@@ -32,6 +33,8 @@ function AgentTranscript(props: {
   readonly dialog: InspectorDialog;
 }): JSX.Element {
   const app = useApp();
+  const renderer = useRenderer();
+  const cap = useRowCap();
   let previous: TranscriptModel | null = null;
   let port: ScrollPort | null = null;
 
@@ -87,7 +90,7 @@ function AgentTranscript(props: {
     ),
   );
 
-  return (
+  const transcript = (
     <Transcript
       model={model}
       attach={(handle) => {
@@ -103,6 +106,14 @@ function AgentTranscript(props: {
         app.dispatch({ kind: "dialog", command: { kind: "key", name: "chat.scroll.latest" } })
       }
     />
+  );
+
+  return renderer.screenMode === "split-footer" ? (
+    <box height={cap()} minHeight={1} flexShrink={0}>
+      {transcript}
+    </box>
+  ) : (
+    transcript
   );
 }
 
@@ -230,6 +241,7 @@ export function InspectorView(props: {
   readonly task: Task | null;
 }): JSX.Element {
   const { kit } = useApp();
+  const renderer = useRenderer();
   const theme = kit.theme;
 
   const hints = () =>
@@ -243,7 +255,13 @@ export function InspectorView(props: {
     ]);
 
   return (
-    <Panel title="Tasks" hints={hints()} fill={placement(props.dialog, props.task) === "screen"}>
+    <Panel
+      title="Tasks"
+      hints={hints()}
+      fill={
+        renderer.screenMode !== "split-footer" && placement(props.dialog, props.task) === "screen"
+      }
+    >
       <Show when={props.task} fallback={<Note text={`${props.dialog.task} · Loading…`} />}>
         {(task: Accessor<Task>) => {
           const mark = () => statusMark(taskStatus(task()));

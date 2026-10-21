@@ -695,7 +695,6 @@ const AnthropicMetadataSchema = Type.Object({ user_id: Type.String() });
  *   one. Every later declaration is deferred and only surfaced by its `tool_addition` block;
  *   removed tools stay declared and are withdrawn by `tool_removal`. The request-level list
  *   therefore only grows, keeping the cached prefix intact across tool changes.
- * - Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
  * - Thinking display defaults to "summarized" so Opus 4.7 and Mythos Preview behave like older
  *   Claude 4 models, whose API default is also "summarized".
  */
@@ -764,14 +763,6 @@ function buildParams(
     }
   } else if (initialSystemText) {
     params.system = [systemBlock(sanitizeSurrogates(initialSystemText), cacheControl)];
-  }
-
-  if (
-    options?.temperature !== undefined &&
-    !options?.thinkingEnabled &&
-    compat.supportsTemperature
-  ) {
-    params.temperature = options.temperature;
   }
 
   const toolCacheControl = compat.supportsCacheControlOnTools ? cacheControl : undefined;

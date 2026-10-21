@@ -9,6 +9,7 @@ import type {
   BetaContentBlockParam,
   BetaImageBlockParam,
   BetaMessageParam,
+  BetaSystemMessageParam,
   BetaTextBlockParam,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import type { ImageContent, Message, TextContent, Tool, ToolResultMessage } from "../types.ts";
@@ -151,7 +152,7 @@ export function convertMessages(
 
     if (msg.role === "system") {
       const text = renderSystemMessageUpdate(msg);
-      const blocks: BetaContentBlockParam[] = [];
+      const blocks: Exclude<BetaSystemMessageParam["content"], string | undefined> = [];
 
       if (text.length > 0) blocks.push({ type: "text", text: sanitizeSurrogates(text) });
 
@@ -322,7 +323,7 @@ export function convertMessages(
         ) {
           lastBlock.cache_control = cacheControl;
         }
-      } else {
+      } else if (typeof lastMessage.content === "string") {
         lastMessage.content = [
           {
             type: "text",

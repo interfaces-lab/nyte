@@ -159,7 +159,7 @@ export function Tray({
   const reducedMotion = useReducedMotion();
 
   return (
-    <AnimatePresence initial={false} mode="popLayout" anchorX="left" anchorY="bottom">
+    <AnimatePresence initial={false} mode="popLayout" anchorY="bottom">
       {open && (
         <motion.section
           ref={occludes}

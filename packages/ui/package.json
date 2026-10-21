@@ -234,28 +234,28 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
-    "@nivo/axes": "0.99.0",
-    "@nivo/bar": "0.99.0",
-    "@nivo/line": "0.99.0",
-    "@shadcn/react": "0.3.1",
-    "@stylexjs/stylex": "0.19.0",
-    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.16",
-    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.2.16",
-    "class-variance-authority": "0.7.1",
+    "@nivo/axes": "^0.99.0",
+    "@nivo/bar": "^0.99.0",
+    "@nivo/line": "^0.99.0",
+    "@shadcn/react": "^0.3.1",
+    "@stylexjs/stylex": "^0.19.1",
+    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.19",
+    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.2.19",
+    "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
-    "motion": "12.43.0"
+    "motion": "^14.5.0"
   },
   "devDependencies": {
-    "@stylexjs/unplugin": "0.19.0",
-    "@types/react": "19.3.0",
-    "@types/react-dom": "19.3.0",
+    "@stylexjs/unplugin": "^0.19.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "esbuild": "^0.28.2",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "typescript": "^7.0.2"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   }
 }

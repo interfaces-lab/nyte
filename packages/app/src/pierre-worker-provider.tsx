@@ -1,5 +1,4 @@
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import type { ThemedFileResult } from "@pierre/diffs";
 import { WorkerPoolContext } from "@pierre/diffs/react";
 import { WorkerPoolManager } from "@pierre/diffs/worker";
 import type {
@@ -11,7 +10,6 @@ import type {
 import PierreDiffWorkerUrl from "@pierre/diffs/worker/worker-portable.js?url";
 import { useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { bundledLanguages } from "shiki";
 
 const POOL_SIZE = Math.max(2, Math.min(6, Math.floor((navigator.hardwareConcurrency || 4) / 2)));
 
@@ -119,7 +117,10 @@ const poolOptions = {
   totalASTLRUCacheSize: 240,
 } satisfies WorkerPoolOptions;
 
-export const PIERRE_THEME = { light: "github-light", dark: "github-dark" } as const;
+export const PIERRE_HIGHLIGHTER_OPTIONS = {
+  theme: { light: "github-light", dark: "github-dark" },
+  preferredHighlighter: "highlights",
+} as const;
 
 export const PIERRE_TREE_CSS = `
 :host {
@@ -150,7 +151,7 @@ export const PIERRE_TOKEN_CSS = `
 `;
 
 const highlighterOptions = {
-  theme: PIERRE_THEME,
+  ...PIERRE_HIGHLIGHTER_OPTIONS,
   lineDiffType: "word",
 } satisfies WorkerInitializationRenderOptions;
 
@@ -199,64 +200,6 @@ function retain(): () => void {
     if (entry.surfaces === 0)
       entry.idle = window.setTimeout(() => releaseIdle(entry), POOL_IDLE_MS);
   };
-}
-
-type HighlightNode = ThemedFileResult["code"][number];
-
-const HTML_ESCAPES = new Map([
-  ["&", "&amp;"],
-  ["<", "&lt;"],
-  [">", "&gt;"],
-  ['"', "&quot;"],
-]);
-
-function escapeHtml(text: string): string {
-  return text.replaceAll(/[&<>"]/gu, (character) => HTML_ESCAPES.get(character) ?? character);
-}
-
-function tokenHtml(node: HighlightNode): string {
-  if (node.type === "text") return escapeHtml(node.value);
-
-  if (node.type !== "element") return "";
-
-  const children = node.children.map(tokenHtml).join("");
-
-  if (node.tagName !== "span") return children;
-
-  const style = node.properties.style;
-
-  return style === undefined || style === null
-    ? `<span>${children}</span>`
-    : `<span style="${escapeHtml(String(style))}">${children}</span>`;
-}
-
-export async function highlightCode(
-  code: string,
-  language: string,
-  cacheKey: string,
-): Promise<string | undefined> {
-  if (!Object.hasOwn(bundledLanguages, language)) return undefined;
-
-  const pool = sharedPool();
-  const release = retain();
-  const file = { name: "code-block", contents: code, lang: language, cacheKey: `code:${cacheKey}` };
-
-  try {
-    await pool.primeFileHighlightCache(file);
-
-    return pool
-      .getFileResultCache(file)
-      ?.result.code.map((line) => {
-        const html = tokenHtml(line);
-
-        return html === "\n" ? "" : html;
-      })
-      .join("\n");
-  } catch {
-    return undefined;
-  } finally {
-    release();
-  }
 }
 
 export function PierreWorkerProvider({ children }: { readonly children: ReactNode }): ReactElement {

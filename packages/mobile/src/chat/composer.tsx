@@ -8,7 +8,7 @@ import {
   useColorScheme,
   useWindowDimensions,
 } from "react-native";
-import type { NativeSyntheticEvent, TextInputSelectionChangeEventData } from "react-native";
+import type { TextInputInstance } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -78,7 +78,7 @@ export const Composer = memo(function Composer({
   const insets = useSafeAreaInsets();
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const inputLineHeight = INPUT_LINE_HEIGHT * fontScale;
-  const fieldRef = useRef<TextInput>(null);
+  const fieldRef = useRef<TextInputInstance>(null);
   const selectionOnCommit = useRef<{ draft: string; caret: number } | undefined>(undefined);
 
   useLayoutEffect(() => {
@@ -291,9 +291,7 @@ export const Composer = memo(function Composer({
                   );
                   setDraft(text);
                 }}
-                onSelectionChange={(
-                  event: NativeSyntheticEvent<TextInputSelectionChangeEventData>,
-                ) => {
+                onSelectionChange={(event) => {
                   setCaret(event.nativeEvent.selection.end);
                 }}
                 onFocus={() => setFocused(true)}

@@ -1,4 +1,4 @@
-import type { ContentBlock, ToolCallContent, Usage } from "@agentclientprotocol/sdk";
+import type { ContentBlock, ToolCallContent, Usage } from "@agentclientprotocol/sdk/unstable";
 import { calculateCost } from "@nyte-ai/ai";
 import type {
   Api,

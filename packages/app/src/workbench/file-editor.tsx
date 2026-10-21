@@ -22,7 +22,7 @@ import { diffStyles } from "../conversation/diff.stylex.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
 import {
-  PIERRE_THEME,
+  PIERRE_HIGHLIGHTER_OPTIONS,
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "../pierre-worker-provider.tsx";
@@ -285,7 +285,7 @@ export function TextFileEditor({
 
   const viewOptions = useMemo(
     () => ({
-      theme: PIERRE_THEME,
+      ...PIERRE_HIGHLIGHTER_OPTIONS,
       themeType: theme,
       unsafeCSS: EDITOR_CSS,
       disableFileHeader: true,

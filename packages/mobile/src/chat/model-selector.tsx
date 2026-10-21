@@ -3,6 +3,7 @@ import { LegendList } from "@legendapp/list/react-native";
 import { SymbolView } from "expo-symbols";
 import { useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, TextInput, View } from "react-native";
+import type { TextInputInstance } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { css, html } from "react-strict-dom";
 import { EmptyState } from "../ui/empty-state.tsx";
@@ -66,7 +67,7 @@ function SheetBody({
 }: Parameters<typeof ModelPickerSheet>[0]) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const searchRef = useRef<TextInput>(null);
+  const searchRef = useRef<TextInputInstance>(null);
   const [query, setQuery] = useState("");
   const [seenOpen, setSeenOpen] = useState(open);
 

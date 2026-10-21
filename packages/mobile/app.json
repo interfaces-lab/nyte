@@ -26,7 +26,6 @@
       "expo-dev-client",
       "expo-secure-store",
       ["@clerk/expo", { "appleSignIn": false }],
-      "./plugins/with-scene-lifecycle.cjs",
       [
         "expo-media-library",
         {

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
+import { restoreDesktopAssets } from "./assets.mjs";
 import packageMetadata from "../package.json" with { type: "json" };
 import { artifacts } from "./artifacts.mjs";
 import {
@@ -27,6 +28,24 @@ const shouldPackage = packageIndex !== -1;
 
 const builderArgs = shouldPackage ? args.slice(packageIndex + 1) : [];
 
+const assetsIndex = args.findIndex((argument) => argument === "--assets");
+
+const assets = assetsIndex === -1 ? undefined : args[assetsIndex + 1];
+
+if (assetsIndex !== -1) {
+  if (
+    !shouldPackage ||
+    assets === undefined ||
+    assets.startsWith("-") ||
+    assetsIndex + 1 >= packageIndex
+  ) {
+    failure("Use --assets <directory> before --package.");
+    process.exit(2);
+  }
+
+  await restoreDesktopAssets(assets);
+}
+
 const turboStream = process.env.TURBO_HASH !== undefined && process.env.TURBO_IS_TUI === undefined;
 
 const live = process.stdout.isTTY === true && !turboStream;
@@ -35,7 +54,7 @@ const githubActions = process.env.GITHUB_ACTIONS === "true";
 
 let panel;
 
-const compiled = shouldPackage && process.env.TURBO_HASH !== undefined;
+const compiled = assets === undefined && shouldPackage && process.env.TURBO_HASH !== undefined;
 
 const stages = [
   { title: "Electron", run: () => pnpm("exec", "install-electron") },
@@ -63,10 +82,12 @@ if (!compiled) {
 const bundlesCli = process.platform !== "win32";
 
 if (shouldPackage && !compiled) {
-  stages.push(
-    { title: "Canvas shell", tail: true, run: () => pnpm("--dir", "../canvas", "build") },
-    { title: "Web app", tail: true, run: () => pnpm("--dir", "../app", "build") },
-  );
+  if (assets === undefined) {
+    stages.push(
+      { title: "Canvas shell", tail: true, run: () => pnpm("--dir", "../canvas", "build") },
+      { title: "Web app", tail: true, run: () => pnpm("--dir", "../app", "build") },
+    );
+  }
 
   if (bundlesCli)
     stages.push({ title: "nyte CLI", tail: true, run: () => pnpm("--dir", "../tui", "build") });

@@ -81,8 +81,8 @@ function rememberHighlight(value: HighlightedCode): void {
 }
 
 async function requestHighlight(code: string, language: string): Promise<HighlightResult> {
-  const html = await loadDeferred("code").then(
-    (runtime) => runtime.highlightCode(code, language, highlightKey(code, language)),
+  const html = await loadDeferred("highlight").then(
+    (runtime) => runtime.highlightCode(code, language),
     () => undefined,
   );
 

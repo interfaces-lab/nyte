@@ -94,6 +94,7 @@ const HELP_LABEL_WIDTH = 29;
 
 const HELP_COMMANDS: readonly AlignedRow[] = [
   { label: "nyte", detail: "open the full-screen TUI" },
+  { label: "nyte --minimal", detail: "open compact interactive terminal mode" },
   { label: "nyte --resume [<session-id>]", detail: "resume the latest or specified session" },
   { label: "nyte login [<provider>]", detail: "sign in; choose a provider when omitted" },
   { label: "nyte logout [<provider>]", detail: "remove stored credentials; choose when omitted" },
@@ -110,6 +111,7 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
 ];
 
 const HELP_FLAGS: readonly AlignedRow[] = [
+  { label: "--minimal", detail: "experimental; requires terminal stdin and stdout" },
   { label: "--provider <id>", detail: "override the saved provider" },
   { label: "--model <id>", detail: "override the saved model" },
   { label: "--session <session-id>", detail: "target a session; mutually exclusive with --resume" },

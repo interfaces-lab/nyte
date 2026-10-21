@@ -105,14 +105,24 @@ export function pasteMessage(event: PasteEvent): {
 }
 
 /** The composer's text area. It syncs mention markers only once a draft has had one: reading extmarks wraps the editor's edit methods. */
-export function Composer(props: { readonly markers: readonly MarkerSpan[] }): JSX.Element {
+export function Composer(props: {
+  readonly markers: readonly MarkerSpan[];
+  readonly compact?: boolean;
+}): JSX.Element {
   const app = useApp();
   const renderer = useRenderer();
   const dimensions = useTerminalDimensions();
   const [focused, setFocused] = createSignal(false);
   let terminalFocused = true;
   const theme = () => app.kit.theme();
-  const tiny = () => dimensions().height <= 3;
+
+  const terminalHeight = () => {
+    const { height } = dimensions();
+
+    return renderer.screenMode === "split-footer" ? renderer.terminalHeight : height;
+  };
+
+  const tiny = () => terminalHeight() <= 3;
   let area: TextareaRenderable | undefined;
   let attachment: { readonly style: SyntaxStyle; readonly id: number } | null = null;
   let reported: DraftChanged | null = null;
@@ -265,7 +275,7 @@ export function Composer(props: { readonly markers: readonly MarkerSpan[] }): JS
         id="input-box"
         flexDirection="row"
         flexShrink={0}
-        border={tiny() ? [] : ["top", "right", "left"]}
+        border={props.compact || tiny() ? [] : ["top", "right", "left"]}
         borderStyle="rounded"
         borderColor={focused() ? theme().promptBorderFocused : theme().promptBorder}
         paddingLeft={1}
@@ -291,7 +301,7 @@ export function Composer(props: { readonly markers: readonly MarkerSpan[] }): JS
           minHeight={1}
           maxHeight={Math.max(
             1,
-            Math.min(MAX_COMPOSER_ROWS, Math.floor((dimensions().height * 2) / 3) - 2),
+            Math.min(MAX_COMPOSER_ROWS, Math.floor((terminalHeight() * 2) / 3) - 2),
           )}
           wrapMode="word"
           placeholder={app.screen().placeholder}
@@ -320,7 +330,7 @@ export function Composer(props: { readonly markers: readonly MarkerSpan[] }): JS
           }}
         />
       </box>
-      <Show when={!tiny()}>
+      <Show when={!props.compact && !tiny()}>
         <Footer focused={focused()} />
       </Show>
     </box>

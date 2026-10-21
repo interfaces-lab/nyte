@@ -10,8 +10,8 @@
  * every line where it was, so the files comment on the module's first line
  * maps a runtime position back to its file and line.
  */
-import { init, parse } from "es-module-lexer";
-import type { ImportSpecifier } from "es-module-lexer";
+import { init, parse } from "es-module-lexer/minimal";
+import type { ImportSpecifier } from "es-module-lexer/minimal";
 import { transform } from "sucrase";
 import {
   CANVAS_CODE_LIMIT,
@@ -435,7 +435,7 @@ export async function compileCanvas(
   }
 
   if (errors.length > 0) return failed(errors);
-  await init;
+  await init();
   const externals = new Set<string>();
   const units = sources.flatMap(([name = "", text = ""]) => {
     const unit = checkFile(name, text, names, errors, externals);

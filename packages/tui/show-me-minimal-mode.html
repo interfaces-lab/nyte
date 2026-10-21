@@ -1,0 +1,999 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nyte minimal mode</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page: #ffffff;
+        --background: #ffffff;
+        --terminal: #f5f5f5;
+        --foreground: #0a0a0a;
+        --user: #404040;
+        --dim: #6f6f6f;
+        --muted: #a3a3a3;
+        --border: #d4d4d4;
+        --hover: #ededed;
+        --accent: #025a93;
+        --ok: #016641;
+        --error: #d32a35;
+        --warning: #876a0e;
+        --add: #0d6629;
+        --remove: #ce0427;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      [data-theme="dark"] {
+        color-scheme: dark;
+        --page: #0a0a0a;
+        --background: #0a0a0a;
+        --terminal: #171717;
+        --foreground: #fafafa;
+        --user: #d4d4d4;
+        --dim: #828282;
+        --muted: #525252;
+        --border: #2c2c2c;
+        --hover: #262626;
+        --accent: #009fff;
+        --ok: #07c480;
+        --error: #ff2e3f;
+        --warning: #ffca00;
+        --add: #5ecc71;
+        --remove: #ff6762;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--foreground);
+        font: 15px/1.6 var(--sans);
+      }
+      main {
+        max-width: 1080px;
+        margin-inline: auto;
+        padding: 48px 32px 40px;
+      }
+      button,
+      textarea {
+        font: inherit;
+      }
+      button {
+        color: inherit;
+        cursor: pointer;
+      }
+      button,
+      a {
+        -webkit-tap-highlight-color: transparent;
+      }
+      button:focus-visible,
+      a:focus-visible,
+      textarea:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 4px;
+      }
+      a {
+        color: var(--accent);
+        text-underline-offset: 3px;
+      }
+      code,
+      kbd {
+        font-family: var(--mono);
+        font-size: 0.9em;
+      }
+      .eyebrow {
+        margin: 0 0 12px;
+        color: var(--dim);
+        font: 12px/1.6 var(--mono);
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 24px;
+        margin-bottom: 32px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 32px;
+        line-height: 1.25;
+        font-weight: 600;
+        letter-spacing: -0.035em;
+      }
+      .intro {
+        margin: 0;
+        color: var(--dim);
+      }
+      .launch {
+        flex-shrink: 0;
+        text-align: right;
+      }
+      .launch code {
+        display: block;
+        padding: 9px 14px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 13px;
+      }
+      .launch small {
+        display: block;
+        color: var(--dim);
+        font-size: 11px;
+        margin-top: 4px;
+      }
+      .controls {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .states {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      .state,
+      .theme {
+        border: 0;
+        background: transparent;
+        border-radius: 5px;
+        padding: 7px 12px;
+        font-size: 13px;
+        min-height: 36px;
+      }
+      .state[aria-pressed="true"] {
+        background: var(--terminal);
+        font-weight: 600;
+      }
+      .theme {
+        color: var(--dim);
+        white-space: nowrap;
+      }
+      .terminal {
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--background);
+        font: 13px/1.8 var(--mono);
+      }
+      .terminal-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 9px 20px;
+        border-bottom: 1px solid var(--border);
+        background: var(--terminal);
+        font-size: 11px;
+        color: var(--dim);
+      }
+      .terminal-title strong {
+        font-weight: 500;
+        color: var(--user);
+      }
+      .viewport {
+        padding: 24px 24px 20px;
+        min-height: 470px;
+      }
+      .shell {
+        color: var(--dim);
+      }
+      .shell-command {
+        color: var(--foreground);
+      }
+      .prompt-symbol {
+        display: inline-block;
+        width: 2ch;
+        flex: 0 0 2ch;
+        color: var(--accent);
+      }
+      .session {
+        color: var(--dim);
+        margin-top: 18px;
+      }
+      .conversation {
+        margin-top: 24px;
+      }
+      .message {
+        display: flex;
+        gap: 0;
+        margin-bottom: 18px;
+      }
+      .message p {
+        margin: 0;
+      }
+      .message-content {
+        min-width: 0;
+      }
+      .tools {
+        color: var(--dim);
+        margin: 0 0 18px 2ch;
+      }
+      .tool {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .tool-mark {
+        color: var(--ok);
+      }
+      .plain-action {
+        border: 0;
+        padding: 0;
+        background: transparent;
+        color: var(--dim);
+        font: inherit;
+        text-decoration: underline;
+        text-decoration-color: var(--muted);
+        text-underline-offset: 3px;
+      }
+      .tool .plain-action {
+        margin-left: auto;
+      }
+      .result {
+        margin: 0 0 20px 2ch;
+        max-width: 70ch;
+      }
+      .result p {
+        margin: 0 0 10px;
+      }
+      .result p:last-child {
+        margin-bottom: 0;
+      }
+      .change-summary {
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .add {
+        color: var(--add);
+      }
+      .remove {
+        color: var(--remove);
+      }
+      .live {
+        margin-top: 24px;
+      }
+      .activity {
+        color: var(--dim);
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+      }
+      .activity .hint {
+        margin-left: auto;
+      }
+      .spinner {
+        color: var(--accent);
+        display: inline-block;
+      }
+      .composer {
+        display: flex;
+        align-items: flex-start;
+        padding-block: 4px;
+      }
+      textarea {
+        padding: 0;
+        margin: 0;
+        resize: none;
+        width: 100%;
+        border: 0;
+        border-radius: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--foreground);
+        line-height: 1.8;
+        height: 24px;
+        max-height: 144px;
+        overflow-y: auto;
+      }
+      textarea::placeholder {
+        color: var(--dim);
+        opacity: 1;
+      }
+      textarea:focus-visible {
+        outline-offset: 2px;
+      }
+      .metadata {
+        color: var(--dim);
+        font-size: 11px;
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        margin-left: 2ch;
+        margin-top: 4px;
+      }
+      .metadata .commands {
+        white-space: nowrap;
+      }
+      .notice {
+        color: var(--dim);
+        margin-left: 2ch;
+        font-size: 12px;
+      }
+      .panel {
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+      }
+      .panel-heading {
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+      .panel-content {
+        margin-left: 2ch;
+      }
+      .panel p {
+        margin: 0 0 8px;
+      }
+      .panel pre {
+        margin: 4px 0 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font: inherit;
+        color: var(--user);
+      }
+      .panel-actions {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+      .panel-actions button {
+        font: inherit;
+        color: var(--user);
+        border: 0;
+        padding: 4px 0;
+        background: transparent;
+      }
+      .panel-actions button:first-child {
+        color: var(--accent);
+      }
+      .warning {
+        color: var(--warning);
+      }
+      .error {
+        color: var(--error);
+      }
+      #tree-rows {
+        max-height: 8lh;
+        overflow-y: auto;
+      }
+      .tree-row {
+        display: block;
+        width: 100%;
+        text-align: left;
+        white-space: pre;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        border: 0;
+        padding: 2px 0;
+        background: transparent;
+        color: var(--foreground);
+        font: inherit;
+      }
+      .tree-row[aria-selected="true"] {
+        background: var(--terminal);
+        color: var(--accent);
+      }
+      .tree-row .branch {
+        color: var(--warning);
+      }
+      .tree-confirm {
+        margin-top: 12px;
+        border-top: 1px solid var(--border);
+        padding-top: 12px;
+      }
+      .tree-confirm p {
+        margin: 0 0 6px;
+      }
+      .tree-filter {
+        width: 100%;
+        border: 0;
+        border-bottom: 1px solid var(--border);
+        color: var(--foreground);
+        background: transparent;
+        font: inherit;
+        padding: 4px 0;
+        margin-bottom: 8px;
+      }
+      .tree-filter:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .prototype-note {
+        color: var(--dim);
+        font-size: 11px;
+        margin: 10px 0 0;
+      }
+      .description {
+        min-height: 50px;
+        margin: 20px 0 28px;
+        max-width: 80ch;
+        color: var(--user);
+        font-size: 14px;
+      }
+      .description strong {
+        font-weight: 600;
+        color: var(--foreground);
+      }
+      .principles {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 28px;
+        border-top: 1px solid var(--border);
+        padding-top: 24px;
+      }
+      h2 {
+        font-size: 14px;
+        margin: 0 0 8px;
+        font-weight: 600;
+      }
+      .principles p {
+        font-size: 13px;
+        color: var(--dim);
+        margin: 0;
+      }
+      details {
+        border-top: 1px solid var(--border);
+        margin-top: 28px;
+        padding-top: 18px;
+        font-size: 13px;
+      }
+      summary {
+        cursor: pointer;
+        color: var(--user);
+        width: fit-content;
+      }
+      .architecture {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 32px;
+        margin-top: 20px;
+      }
+      .architecture pre {
+        font: 12px/1.9 var(--mono);
+        white-space: pre-wrap;
+        margin: 0;
+      }
+      .architecture p {
+        margin: 0;
+        color: var(--dim);
+      }
+      .sources {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 6px 18px;
+        margin-top: 24px;
+        font-size: 11px;
+        color: var(--dim);
+      }
+      .sources a {
+        color: var(--dim);
+      }
+      @media (hover: hover) {
+        .state:hover,
+        .theme:hover {
+          background: var(--hover);
+        }
+        .plain-action:hover {
+          color: var(--foreground);
+        }
+      }
+      @media (max-width: 680px) {
+        main {
+          padding: 28px 16px;
+        }
+        header {
+          align-items: flex-start;
+          gap: 20px;
+          flex-direction: column;
+          margin-bottom: 24px;
+        }
+        h1 {
+          font-size: 28px;
+        }
+        .launch {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          text-align: left;
+        }
+        .launch code {
+          padding: 5px 9px;
+        }
+        .launch small {
+          margin: 0;
+        }
+        .controls {
+          align-items: flex-start;
+        }
+        .states {
+          gap: 2px;
+        }
+        .state {
+          padding-inline: 8px;
+          min-height: 40px;
+          font-size: 12px;
+        }
+        .theme {
+          padding-inline: 6px;
+          font-size: 12px;
+          min-height: 40px;
+        }
+        .terminal-title {
+          padding-inline: 14px;
+        }
+        .terminal-title .sample-label {
+          display: none;
+        }
+        .viewport {
+          padding: 18px 14px;
+          min-height: 470px;
+        }
+        .terminal {
+          font-size: 12px;
+        }
+        .tool .plain-action {
+          margin-left: 0;
+        }
+        .metadata {
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .principles,
+        .architecture {
+          grid-template-columns: 1fr;
+          gap: 20px;
+        }
+        .description {
+          min-height: 90px;
+          margin-bottom: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">nyte / terminal concept</p>
+      <header>
+        <div>
+          <h1>Minimal mode</h1>
+          <p class="intro">Terminal scrollback, with a small live prompt.</p>
+        </div>
+        <div class="launch"><code>nyte --minimal</code><small>Proposed flag</small></div>
+      </header>
+      <div class="controls">
+        <div class="states" role="group" aria-label="Preview state">
+          <button class="state" data-state="ready" aria-pressed="false">Start</button>
+          <button class="state" data-state="working" aria-pressed="false">Working</button>
+          <button class="state" data-state="done" aria-pressed="true">Done</button>
+          <button class="state" data-state="question" aria-pressed="false">Question</button>
+          <button class="state" data-state="error" aria-pressed="false">Error</button>
+          <button class="state" data-state="tree" aria-pressed="false">Tree</button>
+        </div>
+        <button class="theme" id="theme" aria-pressed="false">Dark preview</button>
+      </div>
+      <section class="terminal" aria-label="Minimal terminal preview">
+        <div class="terminal-title">
+          <strong>~/Developer/nyte</strong><span class="sample-label">Illustrative transcript</span>
+        </div>
+        <div class="viewport">
+          <div class="shell">~/Developer/nyte <span aria-hidden="true">·</span> main</div>
+          <div class="shell-command"><span class="prompt-symbol">❯</span>nyte --minimal</div>
+          <div class="session">nyte <span aria-hidden="true">·</span> /help for commands</div>
+          <div id="history"></div>
+          <div class="live" id="live">
+            <div id="prompt-view"></div>
+            <section class="panel" id="tree-view" role="dialog" aria-label="Chat tree" hidden>
+              <div class="panel-heading">
+                <span>Chat tree · <span id="active-branch">main</span></span>
+                <button class="plain-action" data-action="tree-close">esc back</button>
+              </div>
+              <div class="panel-content">
+                <input
+                  class="tree-filter"
+                  id="tree-filter"
+                  aria-label="Filter chat tree"
+                  placeholder="Filter tree…"
+                />
+                <div role="listbox" aria-label="Chat branches" id="tree-rows"></div>
+                <div class="notice" id="tree-notice" hidden></div>
+                <div class="tree-confirm" id="tree-confirm" hidden>
+                  <p>Summarize the branch you are leaving?</p>
+                  <div class="panel-actions">
+                    <button data-action="branch-keep">No summary</button>
+                    <button data-action="branch-summary">Summarize</button>
+                    <button data-action="branch-cancel">Cancel</button>
+                  </div>
+                </div>
+              </div>
+              <div class="metadata"><span>↑↓ move · enter select · esc back</span></div>
+            </section>
+          </div>
+        </div>
+      </section>
+      <p class="prototype-note">
+        Visual prototype. Sample output, no model connected. The flag is not implemented.
+      </p>
+      <p class="description" id="description" aria-live="polite"></p>
+      <section class="principles" aria-label="Mode behavior">
+        <div>
+          <h2>Your terminal owns history</h2>
+          <p>
+            Normal scroll, selection, search and tmux copy mode. Output stays visible after you
+            quit.
+          </p>
+        </div>
+        <div>
+          <h2>Two lines when idle</h2>
+          <p>
+            A borderless prompt and quiet model metadata. Activity, queued messages and background
+            counts appear only when needed.
+          </p>
+        </div>
+        <div>
+          <h2>Details when you ask</h2>
+          <p>
+            Summarize successful tools. Keep failures visible. Tree, tools and pickers use the same
+            inline dialog below the conversation.
+          </p>
+        </div>
+      </section>
+      <details>
+        <summary>How it fits the existing TUI</summary>
+        <div class="architecture">
+          <pre>
+Shared host + session model
+  ├─ Full TUI → scrollable transcript
+  └─ Minimal → terminal scrollback
+               + live footer</pre>
+          <p>
+            The installed OpenTUI already exposes <code>screenMode: "split-footer"</code>,
+            <code>footerHeight</code> and scrollback surfaces. Keep the existing session behavior
+            and keyboard meanings. Add a rendering mode, not another agent loop. Terminal output
+            cannot expand in place, so <kbd>Ctrl+O</kbd> opens details instead of rewriting old
+            rows. All dialogs share the live prompt slot; the transcript stays visible.
+          </p>
+        </div>
+      </details>
+      <footer class="sources">
+        <span>References</span>
+        <a
+          href="https://github.com/anomalyco/opencode/blob/863ea413649484b5761cd0c5c0e54c559a5c8b52/packages/tui/src/mini/runtime.lifecycle.ts#L156-L177"
+          >OpenCode mini</a
+        >
+        <a
+          href="https://github.com/vercel-labs/fx/blob/038d1d3722bfc6d6a9b4df8a78e7147837fe0b5c/src/ui/render_engine/frame_layout.zig#L254-L292"
+          >fx inline layout</a
+        >
+        <span>Palette from <code>packages/tui/src/lib/theme.ts</code></span>
+      </footer>
+    </main>
+    <script>
+      const history = document.getElementById("history");
+      const promptView = document.getElementById("prompt-view");
+      const description = document.getElementById("description");
+      const stateButtons = document.querySelectorAll("[data-state]");
+      const themeButton = document.getElementById("theme");
+      let currentState = "done";
+      let inspectionOpen = false;
+      let draft = "";
+      let treeOpen = false;
+      let selectedBranch = "main";
+      let activeBranch = "main";
+      const treeView = document.getElementById("tree-view");
+      const treeRows = document.getElementById("tree-rows");
+      const treeFilter = document.getElementById("tree-filter");
+      const treeConfirm = document.getElementById("tree-confirm");
+      const treeNotice = document.getElementById("tree-notice");
+
+      const prompt = `<div class="message"><span class="prompt-symbol">❯</span><p>Tighten the spacing in the composer.</p></div>`;
+      const opening = `<div class="result"><p>I'll check how the prompt is laid out.</p></div>`;
+      const readTool = `<div class="tools"><div class="tool"><span class="tool-mark">✓</span><span>Read src/ui/composer/composer.tsx</span></div></div>`;
+      const successTools = `<div class="tools"><div class="tool"><span class="tool-mark">✓</span><span>Read 2 files · edited 1 file · tests passed</span><button class="plain-action" data-action="inspect">ctrl+o details</button></div></div>`;
+      const answer = `<div class="result"><p>Reduced the space around the prompt.<br>Multiline input still expands as you type.</p><p class="change-summary">src/ui/composer/composer.tsx <span class="add">+8</span> <span class="remove">−12</span></p></div>`;
+      const descriptions = {
+        ready:
+          "<strong>Start where your shell left off.</strong> No welcome screen or animation. The prompt starts below the launch command and grows with the conversation.",
+        working:
+          "<strong>Keep live work out of the history.</strong> Update one activity row while a tool runs. Commit its summary when it finishes. Enter steers; Ctrl+Enter queues; Esc stops, just like the full TUI.",
+        done: "<strong>The answer gets the space.</strong> Successful tools leave one compact summary. Ctrl+O opens their output and diffs in a temporary view without changing the terminal's history.",
+        question:
+          "<strong>Questions still get a proper interface.</strong> The live prompt temporarily becomes a small choice list. The conversation stays above it, and your draft returns after answering.",
+        error:
+          "<strong>Minimal does not mean silent.</strong> Keep the failed command and useful error text in the transcript. Leave the prompt ready for a follow-up.",
+      };
+
+      function composer(placeholder = "Ask anything…") {
+        return `<div class="composer"><span class="prompt-symbol">❯</span><textarea rows="1" aria-label="Preview message" placeholder="${placeholder}" spellcheck="false"></textarea></div><div class="metadata"><span>GPT-5.6 · high</span><span class="commands"><button class="plain-action" data-action="tree-open">/tree</button> · / commands</span></div><div class="notice" id="input-notice" hidden></div>`;
+      }
+
+      function detailPanel() {
+        return `<div class="panel" aria-label="Tool details"><div class="panel-heading"><span>Tool details · last turn</span><button class="plain-action" data-action="close">esc close</button></div><div class="panel-content"><p><span class="tool-mark">✓</span> Read 2 files</p><p><span class="tool-mark">✓</span> Edit src/ui/composer/composer.tsx</p><pre><span class="remove">−        marginLeft={1}
+−        marginRight={1}</span>
+<span class="add">+        marginLeft={0}
++        marginRight={0}</span></pre><p><span class="tool-mark">✓</span> pnpm --dir packages/tui test</p><pre>All tests passed.</pre></div></div>`;
+      }
+
+      function renderLive() {
+        if (inspectionOpen) {
+          promptView.innerHTML = detailPanel();
+          promptView.querySelector("button").focus({ preventScroll: true });
+          return;
+        }
+        if (currentState === "question") {
+          promptView.innerHTML = `<div class="panel" aria-label="Question"><div class="panel-heading"><span>Also remove the extra space around pasted text?</span><span class="warning">Needs your answer</span></div><div class="panel-content"><div class="panel-actions"><button data-action="answer-yes">❯ Yes, both</button><button data-action="answer-no">Only the prompt</button></div></div></div>`;
+          return;
+        }
+        const activity =
+          currentState === "working"
+            ? `<div class="activity"><span class="spinner" aria-hidden="true">⠋</span><span>Running package tests · 4s</span><button class="plain-action hint" data-action="stop">esc stop</button></div>`
+            : "";
+        promptView.innerHTML =
+          activity +
+          composer(currentState === "working" ? "Steer the current run…" : "Ask anything…");
+        const input = promptView.querySelector("textarea");
+        input.value = draft;
+        resizeInput(input);
+        input.addEventListener("input", () => {
+          draft = input.value;
+          resizeInput(input);
+        });
+        input.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" || event.shiftKey) return;
+          event.preventDefault();
+          if (input.value.trim() === "/tree") {
+            event.stopPropagation();
+            draft = "";
+            input.value = "";
+            setTreeOpen(true);
+            return;
+          }
+          const notice = document.getElementById("input-notice");
+          notice.textContent = "Preview only. No message was sent.";
+          notice.hidden = false;
+        });
+      }
+
+      function resizeInput(input) {
+        input.style.height = "24px";
+        input.style.height = `${Math.min(144, input.scrollHeight)}px`;
+      }
+
+      function renderTreeRows() {
+        const query = treeFilter.value.trim().toLowerCase();
+        const root = `<div class="tree-row">user: Tighten the spacing in the composer.</div><div class="tree-row">└─ assistant: I'll check how the prompt is laid out.</div>`;
+        const branches = [
+          { id: "main", prefix: "   ├─ ", text: "Reduced the space around the prompt." },
+          { id: "experiment", prefix: "   └─ ", text: "Removed the prompt frame." },
+        ];
+        treeRows.innerHTML =
+          root +
+          branches
+            .filter((branch) => `${branch.id} ${branch.text}`.toLowerCase().includes(query))
+            .map(
+              (branch) =>
+                `<button class="tree-row" role="option" data-action="tree-select" data-branch="${branch.id}" aria-selected="${selectedBranch === branch.id}">${branch.prefix}<span class="branch">[${branch.id}]</span> ${activeBranch === branch.id ? "• " : ""}assistant: ${branch.text}</button>`,
+            )
+            .join("");
+        document.getElementById("active-branch").textContent = activeBranch;
+      }
+
+      function setTreeOpen(open) {
+        treeOpen = open;
+        promptView.hidden = open;
+        treeView.hidden = !open;
+        treeConfirm.hidden = true;
+        treeNotice.hidden = true;
+        for (const button of stateButtons)
+          button.setAttribute(
+            "aria-pressed",
+            String(button.dataset.state === (open ? "tree" : currentState)),
+          );
+        if (open) {
+          if (inspectionOpen) {
+            inspectionOpen = false;
+            renderLive();
+          }
+          selectedBranch = activeBranch;
+          treeFilter.value = "";
+          renderTreeRows();
+          description.innerHTML =
+            "<strong>Same inline dialog, now showing the tree.</strong> The conversation stays visible above it. Filter and select a branch here; Esc restores your draft. A long tree scrolls inside the dialog, never takes over the screen.";
+          treeFilter.focus({ preventScroll: true });
+          return;
+        }
+        description.innerHTML = descriptions[currentState];
+        promptView.querySelector("textarea")?.focus({ preventScroll: true });
+      }
+
+      function chooseBranch(branch) {
+        selectedBranch = branch;
+        renderTreeRows();
+        if (branch === activeBranch) {
+          treeNotice.textContent = "Already at that point in the chat.";
+          treeNotice.hidden = false;
+          return;
+        }
+        treeNotice.hidden = true;
+        treeConfirm.hidden = false;
+        treeConfirm.querySelector("button").focus({ preventScroll: true });
+      }
+
+      function switchBranch(summarize) {
+        activeBranch = selectedBranch;
+        const label =
+          activeBranch === "main"
+            ? "Reduced the space around the prompt."
+            : "Removed the prompt frame.";
+        history.className = "conversation";
+        history.insertAdjacentHTML(
+          "beforeend",
+          `<div class="panel"><div class="session">↳ Switched to [${activeBranch}]${summarize ? " · previous branch summarized" : ""}</div><div class="result"><p>${label}</p></div></div>`,
+        );
+        currentState = "done";
+        inspectionOpen = false;
+        renderLive();
+        setTreeOpen(false);
+        description.innerHTML =
+          "<strong>Continue from the selected branch.</strong> The transition is explicit in scrollback. Earlier output stays visible; it is not the active branch's context. Your draft is preserved.";
+      }
+
+      treeFilter.addEventListener("input", renderTreeRows);
+
+      function renderState(state) {
+        if (state === "tree") {
+          setTreeOpen(true);
+          return;
+        }
+        if (treeOpen) setTreeOpen(false);
+        currentState = state;
+        activeBranch = "main";
+        inspectionOpen = false;
+        for (const button of stateButtons)
+          button.setAttribute("aria-pressed", String(button.dataset.state === state));
+        description.innerHTML = descriptions[state];
+        const content = {
+          ready: "",
+          working: prompt + opening + readTool,
+          done: prompt + successTools + answer,
+          question: prompt + opening + readTool,
+          error:
+            prompt +
+            readTool +
+            `<div class="tools"><div class="tool error">× pnpm --dir packages/tui test</div><div class="error">FAIL single-line composer height<br>Expected 1 row, received 2.</div></div><div class="result"><p>The spacing change broke the single-line composer test.<br>I haven't fixed it yet.</p></div>`,
+        };
+        history.className = state === "ready" ? "" : "conversation";
+        history.innerHTML = content[state];
+        renderLive();
+      }
+
+      for (const button of stateButtons)
+        button.addEventListener("click", () => renderState(button.dataset.state));
+      themeButton.addEventListener("click", () => {
+        const dark = document.documentElement.dataset.theme !== "dark";
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        themeButton.textContent = dark ? "Light preview" : "Dark preview";
+        themeButton.setAttribute("aria-pressed", String(dark));
+      });
+      document.addEventListener("click", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const button = event.target.closest("[data-action]");
+        if (!button) return;
+        switch (button.dataset.action) {
+          case "tree-open":
+            setTreeOpen(true);
+            break;
+          case "tree-close":
+            setTreeOpen(false);
+            break;
+          case "tree-select":
+            chooseBranch(button.dataset.branch);
+            break;
+          case "branch-keep":
+            switchBranch(false);
+            break;
+          case "branch-summary":
+            switchBranch(true);
+            break;
+          case "branch-cancel":
+            treeConfirm.hidden = true;
+            treeFilter.focus({ preventScroll: true });
+            break;
+          case "inspect":
+            if (treeOpen) setTreeOpen(false);
+            inspectionOpen = true;
+            renderLive();
+            break;
+          case "close":
+            inspectionOpen = false;
+            renderLive();
+            promptView.querySelector("textarea")?.focus({ preventScroll: true });
+            break;
+          case "stop":
+            currentState = "ready";
+            history.insertAdjacentHTML("beforeend", `<div class="tools">Stopped.</div>`);
+            for (const stateButton of stateButtons)
+              stateButton.setAttribute("aria-pressed", "false");
+            description.innerHTML =
+              "<strong>Stopped.</strong> The transcript stays put. Your draft is still here.";
+            renderLive();
+            break;
+          case "answer-yes":
+          case "answer-no": {
+            const choice = button.dataset.action === "answer-yes" ? "Yes, both" : "Only the prompt";
+            history.insertAdjacentHTML(
+              "beforeend",
+              `<div class="message"><span class="prompt-symbol">❯</span><p>${choice}</p></div><div class="result">${choice === "Yes, both" ? "I'll tighten the spacing around the prompt and pasted text." : "I'll change only the prompt spacing."}</div>`,
+            );
+            currentState = "ready";
+            for (const stateButton of stateButtons)
+              stateButton.setAttribute("aria-pressed", "false");
+            description.innerHTML =
+              "<strong>Back to the prompt.</strong> Your answer joins the transcript. The choice list disappears and your draft returns.";
+            renderLive();
+            break;
+          }
+        }
+      });
+      document.addEventListener("keydown", (event) => {
+        if (treeOpen) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            if (!treeConfirm.hidden) {
+              treeConfirm.hidden = true;
+              treeFilter.focus({ preventScroll: true });
+              return;
+            }
+            setTreeOpen(false);
+          } else if (treeConfirm.hidden && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+            event.preventDefault();
+            const options = [...treeRows.querySelectorAll('[role="option"]')];
+            const index = options.findIndex((option) => option.dataset.branch === selectedBranch);
+            const next =
+              options[
+                Math.max(
+                  0,
+                  Math.min(options.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)),
+                )
+              ];
+            if (next) {
+              selectedBranch = next.dataset.branch;
+              renderTreeRows();
+              treeRows.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true });
+            }
+          } else if (treeConfirm.hidden && event.key === "Enter") {
+            event.preventDefault();
+            chooseBranch(selectedBranch);
+          }
+          return;
+        }
+        if (event.ctrlKey && event.key.toLowerCase() === "o" && currentState === "done") {
+          event.preventDefault();
+          inspectionOpen = !inspectionOpen;
+          renderLive();
+        }
+        if (event.key === "Escape" && inspectionOpen) {
+          event.preventDefault();
+          inspectionOpen = false;
+          renderLive();
+          promptView.querySelector("textarea")?.focus({ preventScroll: true });
+        } else if (event.key === "Escape" && currentState === "working") {
+          promptView.querySelector('[data-action="stop"]')?.click();
+        }
+      });
+      renderState("done");
+      if (location.hash === "#tree") setTreeOpen(true);
+    </script>
+  </body>
+</html>

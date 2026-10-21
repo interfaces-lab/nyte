@@ -10,7 +10,10 @@ import { parsePatchFiles } from "@pierre/diffs";
 import { useMemo, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { diffStyles } from "@nyte-ai/app/conversation/diff.stylex.ts";
-import { PIERRE_THEME, PIERRE_TOKEN_CSS } from "@nyte-ai/app/pierre-worker-provider.tsx";
+import {
+  PIERRE_HIGHLIGHTER_OPTIONS,
+  PIERRE_TOKEN_CSS,
+} from "@nyte-ai/app/pierre-worker-provider.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -77,7 +80,7 @@ export function usePierreOptions(layout: "unified" | "split") {
   return useMemo(
     () =>
       ({
-        theme: PIERRE_THEME,
+        ...PIERRE_HIGHLIGHTER_OPTIONS,
         themeType: theme,
         diffStyle: layout,
         diffIndicators: "classic",
