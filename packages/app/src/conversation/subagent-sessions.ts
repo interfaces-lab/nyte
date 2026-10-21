@@ -32,19 +32,19 @@ export function subagentSessions(
   };
 }
 
-function sameValue(left: unknown, right: unknown): boolean {
-  return Object.is(left, right) || JSON.stringify(left) === JSON.stringify(right);
-}
-
 /**
- * Reads one selection of the listed children and re-renders only when its value changes. Each
- * update brings every child as a new object, so selections compare by value.
+ * Reads one selection of the listed children and re-renders only when it changes. The list keeps
+ * an unchanged child as the same object, so a selected child compares by reference; a selection
+ * derived into a fresh value passes `isEqual`.
  */
-export function useSubagentChildren<S>(select: (children: readonly SessionInfo[]) => S): S {
+export function useSubagentChildren<S>(
+  select: (children: readonly SessionInfo[]) => S,
+  isEqual?: (previous: S, next: S) => boolean,
+): S {
   return useWatchSelect(
     useContext(SubagentSessionsContext)?.children,
     (state) => select(state.value ?? NO_CHILDREN),
-    sameValue,
+    isEqual,
   );
 }
 

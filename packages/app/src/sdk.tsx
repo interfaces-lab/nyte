@@ -458,8 +458,31 @@ export function findListedSession(session: SessionId): SessionInfo | undefined {
 }
 
 export const childrenWatch = watchFamily(
-  (current, session: SessionId): AsyncIterable<readonly SessionInfo[]> =>
-    current.sessions.watch({ parents: { kind: "children", session } }),
+  (current, session: SessionId): AsyncIterable<readonly SessionInfo[]> => {
+    const rows = current.sessions.watch({ parents: { kind: "children", session } });
+
+    return {
+      [Symbol.asyncIterator]() {
+        const iterator = rows[Symbol.asyncIterator]();
+
+        return {
+          async next() {
+            const next = await iterator.next();
+            const shown = childrenWatch(session).value ?? [];
+
+            return next.done === true
+              ? next
+              : { done: false, value: keepItems(shown, next.value, (child) => child.id) };
+          },
+          async return() {
+            await iterator.return?.();
+
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+  },
 );
 
 const OPENING_TAIL = 40;

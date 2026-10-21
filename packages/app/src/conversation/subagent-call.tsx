@@ -286,14 +286,18 @@ export function SubagentGroupView({
   readonly cwd: string | undefined;
 }): ReactElement {
   useCommitCount("render:agent-group");
-  const indicators = useSubagentChildren((children) =>
-    messages.map((message) => {
-      const child = children.find((candidate) => candidate.call === message.state.call);
+  const indicators = useSubagentChildren(
+    (children) =>
+      messages.map((message) => {
+        const child = children.find((candidate) => candidate.call === message.state.call);
 
-      return child === undefined
-        ? callStatus(toolStatus(message)).indicator
-        : sessionStatus(child, false).indicator;
-    }),
+        return child === undefined
+          ? callStatus(toolStatus(message)).indicator
+          : sessionStatus(child, false).indicator;
+      }),
+    (previous, next) =>
+      previous.length === next.length &&
+      previous.every((indicator, index) => indicator === next[index]),
   );
 
   const total = messages.length;
