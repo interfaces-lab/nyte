@@ -38,7 +38,12 @@ const STAGED = new Map<Specimen, Stage>(
 
 const COUNT = STAGED.size;
 
-const SUBAGENT_CONTEXT = { children: SUBAGENTS, open: () => {} };
+const SUBAGENT_STATE = { value: SUBAGENTS, error: undefined };
+
+const SUBAGENT_CONTEXT = {
+  children: { subscribeByFrame: () => () => undefined, getState: () => SUBAGENT_STATE },
+  open: () => {},
+};
 
 const BRANCH_MODEL: BranchModelPicker = {
   catalog: modelCatalog,
