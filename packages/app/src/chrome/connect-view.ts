@@ -17,11 +17,10 @@ interface LinkedStanding extends ConnectionStanding {
   readonly note: string | undefined;
 }
 
-export function useConnectView(connect: ConnectBridge, active: boolean) {
+export function useConnectView(connect: ConnectBridge) {
   return useQuery({
     queryKey: keys.connect,
     queryFn: () => connect.state(),
-    enabled: active,
     staleTime: 0,
     refetchOnWindowFocus: "always",
     refetchOnMount: "always",

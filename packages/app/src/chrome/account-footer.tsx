@@ -67,7 +67,7 @@ function NyteGroup({
   readonly connect: ConnectBridge;
   readonly onOpenProfile: () => void;
 }): ReactElement | null {
-  const view = useConnectView(connect, true).data;
+  const view = useConnectView(connect).data;
   const signIn = useConnectAction(() => connect.openAccount(), "Couldn’t sign in");
 
   if (view === undefined || view.kind === "unavailable" || view.account.kind === "unavailable")

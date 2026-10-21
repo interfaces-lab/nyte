@@ -127,7 +127,7 @@ function Group({ label, children }: { readonly label: string; readonly children:
 }
 
 function AccountGroup({ connect }: { readonly connect: ConnectBridge }): ReactElement | null {
-  const state = useConnectView(connect, true);
+  const state = useConnectView(connect);
   const signIn = useConnectAction(() => connect.openAccount(), "Couldn’t sign in");
   const signOut = useConnectAction(() => connect.signOut(), "Couldn’t sign out");
   const view = state.data;
@@ -518,7 +518,7 @@ function MacGroup({
   readonly connect: ConnectBridge;
   readonly onOpenEnvironments: () => void;
 }): ReactElement {
-  const view = useConnectView(connect, true).data;
+  const view = useConnectView(connect).data;
   const [trayOpen, setTrayOpen] = useState(false);
   const name = nyte.machineName ?? "This Mac";
 
