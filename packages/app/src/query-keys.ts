@@ -18,6 +18,8 @@ export const keys = {
   remoteAccess: ["remote-access"] as const,
   connect: ["remote-access", "connect"] as const,
   session: (sessionId: SessionId) => ["session", sessionId] as const,
+  sessionConfiguration: (sessionId: SessionId, lastActivityAt: number) =>
+    ["session", sessionId, "configuration", lastActivityAt] as const,
   gitChanges: (
     workspace: WorkspaceId | undefined,
     scope: GitScope | undefined,

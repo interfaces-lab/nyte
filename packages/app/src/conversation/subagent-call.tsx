@@ -28,9 +28,9 @@ import {
   useChildSessions,
   useSession,
   useSessionActivity,
-  useSessionChoice,
   useWorkspaces,
 } from "../queries.ts";
+import { useChildChoice } from "../session-configuration.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import { modelDisplayName, modelIcon, THINKING_LABELS } from "./model-picker-state.ts";
 import { activityStyles } from "./activity.stylex.ts";
@@ -114,7 +114,7 @@ type SubagentSubject =
 
 function SubagentModel({ session }: { readonly session: SessionInfo }): ReactElement | null {
   const catalog = useCatalog();
-  const choice = useSessionChoice(session.id);
+  const choice = useChildChoice(session);
   const name = modelDisplayName(catalog.data, choice?.model);
 
   if (name === undefined) return null;
@@ -525,7 +525,7 @@ const citationStyles = create({
 
 function CitationModel({ session }: { readonly session: SessionInfo }): ReactElement | null {
   const catalog = useCatalog();
-  const choice = useSessionChoice(session.id);
+  const choice = useChildChoice(session);
   const model = choice?.model;
   const thinkingLevel = choice?.thinking;
   const name = modelDisplayName(catalog.data, model);
