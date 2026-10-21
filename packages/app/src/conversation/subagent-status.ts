@@ -1,4 +1,4 @@
-import type { Message, SessionInfo, SessionView } from "@nyte-ai/sdk";
+import type { SessionInfo, SessionView } from "@nyte-ai/sdk";
 import {
   mainHead,
   showsTool,
@@ -6,7 +6,7 @@ import {
   toolStatus,
   toolVerbs,
 } from "@nyte-ai/plugin/client/presentation";
-import type { ToolMessage, ToolStatus } from "@nyte-ai/plugin/client/presentation";
+import type { ToolStatus } from "@nyte-ai/plugin/client/presentation";
 import { countWork } from "../work-counts.ts";
 
 export interface SubagentStatus {
@@ -72,25 +72,14 @@ export function sessionStatus(session: SessionInfo, unread: boolean): SubagentSt
   }
 }
 
-const runningTools = new WeakMap<Message, ToolMessage | null>();
-
-/** The message as a running tool call, decided once per message: a view delta keeps the messages it did not change. */
-function runningTool(message: Message): ToolMessage | null {
-  const known = runningTools.get(message);
-
-  if (known !== undefined) return known;
-  const tool = showsTool(message) && toolStatus(message).tense === "running" ? message : null;
-  runningTools.set(message, tool);
-
-  return tool;
-}
-
 export function subagentActivity(
   view: SessionView | undefined,
   cwd: string | undefined,
 ): string | undefined {
   countWork("select:activity");
-  const call = view?.messages.findLast((message) => runningTool(message) !== null);
+  const call = view?.messages.findLast(
+    (message) => showsTool(message) && toolStatus(message).tense === "running",
+  );
 
   if (call !== undefined && showsTool(call)) {
     const toolClass = call.state.class;
