@@ -10,6 +10,7 @@ import type {
 } from "@nyte-ai/schema";
 import { dev, followTrace, traced, watchStore } from "@nyte-ai/core";
 import type { Connection, Head, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
+import { sessionLists } from "@nyte-ai/protocol";
 import type { Transport } from "@nyte-ai/protocol";
 import { createHeadViews, watchHead, watchHost, withUnsent } from "./watch.ts";
 import type { HeadViews } from "./watch.ts";
@@ -63,7 +64,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     principal: context.principal,
     credential: context.credential,
     sessions: {
-      watch: (input) => rows.watch("sessions.watch", input ?? {}),
+      watch: (input) => sessionLists(rows.watch("sessions.watch", input ?? {})),
       async start(input) {
         const id = input.id ?? asId<"session">(crypto.randomUUID());
         followTrace(id, id);

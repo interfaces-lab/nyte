@@ -1,7 +1,14 @@
 import { asId, asSeq, SdkError } from "@nyte-ai/schema";
-import type { Message, SessionView, ViewFrame } from "@nyte-ai/schema";
+import type { Message, SessionInfo, SessionView, ViewFrame } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { applyViewFrame, decodeOutput, encodeOutput, viewFrames } from "../src/index.ts";
+import {
+  applyViewFrame,
+  decodeOutput,
+  encodeOutput,
+  sessionLists,
+  sessionsFrames,
+  viewFrames,
+} from "../src/index.ts";
 
 const turn = asId<"turn">("t1");
 
@@ -211,25 +218,128 @@ describe("view frames", () => {
 
     expect(view.messages).toEqual([part]);
   });
+});
 
-  it("skips a directory entry it cannot read and keeps the rest", () => {
-    const session = {
-      id: "s1",
-      name: null,
-      parent: null,
-      call: null,
-      workspace: "w1",
-      pinned: false,
-      archived: false,
-      activation: { kind: "active" },
-      heads: [],
-      createdAt: 1,
-      lastActivityAt: 1,
-    };
+function info(id: string, name: string, lastActivityAt = 1): SessionInfo {
+  return {
+    id: asId(id),
+    name,
+    parent: null,
+    call: null,
+    workspace: asId("w1"),
+    pinned: false,
+    archived: false,
+    activation: { kind: "active" },
+    heads: [],
+    createdAt: 1,
+    lastActivityAt,
+  };
+}
 
-    const newer = { ...session, id: "s2", activation: { kind: "hibernating" } };
+async function listed(
+  lists: readonly (readonly SessionInfo[])[],
+): Promise<{ readonly frames: readonly unknown[]; readonly shown: readonly SessionInfo[][] }> {
+  const frames: unknown[] = [];
 
-    expect(decodeOutput("sessions.watch", [newer, session])).toEqual([session]);
+  for await (const frame of sessionsFrames(
+    (async function* () {
+      yield* lists;
+    })(),
+  ))
+    frames.push(JSON.parse(JSON.stringify(encodeOutput("sessions.watch", frame))));
+
+  return { frames, shown: await rebuilt(frames) };
+}
+
+async function rebuilt(frames: readonly unknown[]): Promise<SessionInfo[][]> {
+  const shown: SessionInfo[][] = [];
+
+  for await (const list of sessionLists(
+    (async function* () {
+      for (const frame of frames) yield decodeOutput("sessions.watch", frame);
+    })(),
+  ))
+    shown.push([...list]);
+
+  return shown;
+}
+
+describe("sessions frames", () => {
+  it("sends the first list whole and each later one as its order and changed rows, which a client rebuilds through updates, moves, additions and removals", async () => {
+    const a = info("a", "Alpha");
+    const b = info("b", "Beta");
+    const c = info("c", "Gamma");
+    const renamed = info("b", "Beta two", 2);
+    const d = info("d", "Delta", 3);
+    const lists = [
+      [a, b, c],
+      [a, renamed, c],
+      [c, a, renamed],
+      [d, c, a, renamed],
+      [d, a, renamed],
+    ];
+
+    const { frames, shown } = await listed(lists);
+
+    expect(shown.map((list) => list.map((row) => `${row.id}:${row.name}`))).toEqual([
+      ["a:Alpha", "b:Beta", "c:Gamma"],
+      ["a:Alpha", "b:Beta two", "c:Gamma"],
+      ["c:Gamma", "a:Alpha", "b:Beta two"],
+      ["d:Delta", "c:Gamma", "a:Alpha", "b:Beta two"],
+      ["d:Delta", "a:Alpha", "b:Beta two"],
+    ]);
+    expect(shown).toEqual(lists);
+    expect(frames).toEqual([
+      { kind: "list", order: { runs: [-1, 3], items: ["a", "b", "c"] }, items: [a, b, c] },
+      { kind: "delta", order: { runs: [0, 1, -1, 1, 2, 1], items: ["b"] }, items: [renamed] },
+      { kind: "delta", order: { runs: [2, 1, 0, 2], items: [] }, items: [] },
+      { kind: "delta", order: { runs: [-1, 1, 0, 3], items: ["d"] }, items: [d] },
+      { kind: "delta", order: { runs: [0, 1, 2, 2], items: [] }, items: [] },
+    ]);
+  });
+
+  it("starts over at a list frame, as a reopened watch sends after a reconnect", async () => {
+    const a = info("a", "Alpha");
+    const before = await listed([[a], [a, info("b", "Beta")]]);
+    const after = await listed([[info("c", "Gamma"), a]]);
+
+    const shown = await rebuilt([...before.frames, ...after.frames]);
+
+    expect(shown.map((list) => list.map((row) => row.id))).toEqual([["a"], ["a", "b"], ["c", "a"]]);
+  });
+
+  it("leaves out a row it cannot read and keeps every later frame's positions", async () => {
+    const session = info("s1", "Readable");
+    const newer = { ...info("s2", "Newer"), activation: { kind: "hibernating" } };
+
+    const shown = await rebuilt([
+      { kind: "list", order: { runs: [-1, 2], items: ["s2", "s1"] }, items: [newer, session] },
+      {
+        kind: "delta",
+        order: { runs: [-1, 1, 0, 2], items: ["s3"] },
+        items: [info("s3", "Third")],
+      },
+      {
+        kind: "delta",
+        order: { runs: [0, 1, -1, 1, 2, 1], items: ["s2"] },
+        items: [info("s2", "Readable again")],
+      },
+    ]);
+
+    expect(shown.map((list) => list.map((row) => `${row.id}:${row.name}`))).toEqual([
+      ["s1:Readable"],
+      ["s3:Third", "s1:Readable"],
+      ["s3:Third", "s2:Readable again", "s1:Readable"],
+    ]);
+  });
+
+  it("refuses a delta before any list and one that does not fit the list before it", async () => {
+    const delta = { kind: "delta", order: { runs: [0, 2], items: [] }, items: [] };
+
+    await expect(rebuilt([delta])).rejects.toThrow("A sessions delta arrived before its list.");
+    await expect(
+      rebuilt([{ kind: "list", order: { runs: [-1, 1], items: ["a"] }, items: [] }, delta]),
+    ).rejects.toThrow("A view delta does not fit the view before it.");
   });
 });
 

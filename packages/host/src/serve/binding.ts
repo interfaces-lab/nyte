@@ -30,7 +30,7 @@ import type {
   Receipt,
 } from "@nyte-ai/core";
 import type { ServerHost } from "@nyte-ai/core/server";
-import { mapped, viewFrames } from "@nyte-ai/protocol";
+import { mapped, sessionsFrames, viewFrames } from "@nyte-ai/protocol";
 import type {
   ByteName,
   CallName,
@@ -103,7 +103,7 @@ const attempts = new WeakMap<ServerHost, Map<string, Attempt>>();
 
 const holds = new WeakMap<ServerHost, Map<string, Page[]>>();
 
-/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms; `head.move`, `files.batch` and `browser.open` go through the server port's wire operations with their wire id (§40o, §40x). `head.watch` sends the head's view from the host's fold whole, then each later view as its changes (`viewFrames`), the core watch marking the principal's seen tip (§40a, §54a). Authority is the caller's gate: the server checks each row's before binding. */
+/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms; `head.move`, `files.batch` and `browser.open` go through the server port's wire operations with their wire id (§40o, §40x). `head.watch` sends the head's view from the host's fold whole, then each later view as its changes (`viewFrames`), the core watch marking the principal's seen tip (§40a, §54a); `sessions.watch` sends the list whole, then each later list as its order and changed rows (`sessionsFrames`). Authority is the caller's gate: the server checks each row's before binding. */
 export function bindConnection(connection: Connection, options: BindingOptions): Binding {
   const { wire } = options.server;
   const { principal } = connection;
@@ -257,7 +257,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "workspaces.add": ({ target, options }) => connection.workspaces.add(target, options),
     "workspaces.forget": ({ id }) => connection.workspaces.forget(id),
 
-    "sessions.watch": async (input) => connection.sessions.watch(input),
+    "sessions.watch": async (input) => sessionsFrames(connection.sessions.watch(input)),
     "sessions.start": async (input) => {
       const { session, receipt } = await connection.sessions.start(input);
 

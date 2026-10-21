@@ -161,8 +161,8 @@ export const operations = {
   ),
   "sessions.watch output": operation(
     OPERATIONS["sessions.watch"].output,
-    [sessionInfo],
-    [{ id: session }],
+    { kind: "delta", order: { runs: [0, 2, -1, 1], items: [session] }, items: [sessionInfo] },
+    { kind: "delta", order: { runs: [0, 2] }, items: [] },
   ),
   "sessions.start input": operation(
     OPERATIONS["sessions.start"].input,
