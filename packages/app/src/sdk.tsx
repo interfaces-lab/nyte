@@ -16,6 +16,7 @@ import type {
 import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { startupReadsReleased } from "./startup.ts";
+import { countWork } from "./work-counts.ts";
 
 export interface HostEndpoint {
   readonly url: string;
@@ -430,7 +431,10 @@ export const sessionWatch = watchFamily(
           async next() {
             const next = await iterator.next();
 
-            if (next.done === true || !first) return next;
+            if (next.done === true) return next;
+            countWork(`publish:view:${session}`);
+
+            if (!first) return next;
             first = false;
             const shown = sessionWatch(session).value;
 

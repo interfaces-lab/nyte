@@ -17,6 +17,7 @@ import { ChangesFooter, TurnItemView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./turn-view.tsx";
 import { estimateRowSize } from "./transcript-rows.ts";
 import type { TranscriptProjector } from "./transcript-rows.ts";
+import { countWork, useCommitCount } from "../work-counts.ts";
 
 type EditUserMessage = (
   message: UserMessage,
@@ -69,7 +70,12 @@ const TranscriptRowView = memo(function TranscriptRowView({
   onOpenChanges,
   onRetry,
 }: RowContext & { readonly rowKey: string }): ReactElement | null {
-  const row = useWatchSelect(store, (state) => projector.row(state, rowKey));
+  useCommitCount("render:transcript-row");
+  const row = useWatchSelect(store, (state) => {
+    countWork("select:row");
+
+    return projector.row(state, rowKey);
+  });
 
   if (row === undefined) return null;
 

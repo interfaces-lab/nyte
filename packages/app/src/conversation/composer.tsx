@@ -44,6 +44,7 @@ import { composerStyles } from "./composer.stylex.ts";
 import { markerStyles } from "./activity.stylex.ts";
 import { TranscriptButton, useTranscriptControls, useTranscriptDock } from "./transcript.tsx";
 import { QuestionDockContext, useQuestionDock } from "./tray/questions-state.ts";
+import { useCommitCount } from "../work-counts.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 
@@ -94,6 +95,7 @@ export function Composer({
   };
   floatingMount?: HTMLDivElement | null;
 }): ReactElement {
+  useCommitCount("render:composer");
   const runningMessage = useSetting(preferences.runningMessage);
   const catalog = useCatalog(sessionId);
   const choice = useSessionChoice(sessionId);

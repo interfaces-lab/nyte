@@ -7,6 +7,7 @@ import {
   toolVerbs,
 } from "@nyte-ai/plugin/client/presentation";
 import type { ToolStatus } from "@nyte-ai/plugin/client/presentation";
+import { countWork } from "../work-counts.ts";
 
 export interface SubagentStatus {
   readonly indicator: "running" | "attention" | "failed" | "unread" | "done";
@@ -75,6 +76,7 @@ export function subagentActivity(
   view: SessionView | undefined,
   cwd: string | undefined,
 ): string | undefined {
+  countWork("select:activity");
   const call = view?.messages.findLast(
     (message) => showsTool(message) && toolStatus(message).tense === "running",
   );

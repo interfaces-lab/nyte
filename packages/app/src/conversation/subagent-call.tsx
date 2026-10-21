@@ -45,6 +45,7 @@ import {
 import { callStatus, sessionStatus } from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
+import { useCommitCount } from "../work-counts.ts";
 
 type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 
@@ -162,6 +163,7 @@ function SubagentRow({
   readonly open: (() => void) | undefined;
   readonly xstyle: StyleXStyles;
 }): ReactElement {
+  useCommitCount("render:agent-row");
   const status =
     subject.kind === "session"
       ? sessionStatus(subject.session, sessionHasUnreadCompletion(subject.session))
@@ -253,6 +255,7 @@ export function SubagentCallView({
   readonly message: ToolMessage;
   readonly cwd: string | undefined;
 }): ReactElement {
+  useCommitCount("render:agent-call");
   const child = useCalledChild(message.state.call);
   const tray = useOpenSubagentTray();
   const open = child === undefined || tray === undefined ? undefined : () => tray(child.id);
@@ -282,6 +285,7 @@ export function SubagentGroupView({
   readonly messages: readonly ToolMessage[];
   readonly cwd: string | undefined;
 }): ReactElement {
+  useCommitCount("render:agent-group");
   const children = useSubagentChildren();
 
   const indicators = messages.map((message) => {

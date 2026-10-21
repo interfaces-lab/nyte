@@ -45,6 +45,7 @@ import { SubagentTray, type SubagentTrayView } from "../conversation/tray/agents
 import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
 import { useReleaseStartupReads } from "../startup.ts";
+import { useCommitCount } from "../work-counts.ts";
 
 const EMPTY_CHILDREN: readonly SessionInfo[] = [];
 
@@ -176,6 +177,7 @@ function ComposerPaging({ column }: { readonly column: HTMLElement | null }): nu
 }
 
 export function SessionConversation(conversation: SessionConversationProps): ReactElement {
+  useCommitCount("render:conversation");
   const { paneId, presentation, sessionId } = conversation;
   const host = useHostState();
   const paneActions = usePaneActions();

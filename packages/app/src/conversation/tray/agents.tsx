@@ -15,6 +15,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { subagentTrayState } from "../agent-status.ts";
 import type { SubagentTrayState } from "../agent-status.ts";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
+import { useCommitCount } from "../../work-counts.ts";
 
 export type SubagentTrayView =
   | { readonly kind: "closed" }
@@ -65,6 +66,7 @@ export function SubagentTray({
   readonly viewport: HTMLElement | null;
   readonly detail: ReactNode;
 }): ReactElement | null {
+  useCommitCount("render:agents-tray");
   const { root, ref, availableHeight } = useTrayRoot(viewport);
   const trayId = useId();
   const [stopCandidates, setStopCandidates] = useState<readonly SessionId[]>();
