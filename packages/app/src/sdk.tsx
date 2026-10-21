@@ -93,35 +93,51 @@ const MAX_REOPEN_MS = 30_000;
 
 const HIDDEN_FLUSH_MS = 100;
 
-const unnotified = new Set<() => void>();
+const queued = new Set<() => void>();
+
+let scheduled:
+  | { readonly frame: number; readonly timer: ReturnType<typeof setTimeout> }
+  | undefined;
+
+function cancelFlush(): void {
+  if (scheduled === undefined) return;
+  cancelAnimationFrame(scheduled.frame);
+  clearTimeout(scheduled.timer);
+  scheduled = undefined;
+}
+
+function flushQueued(): void {
+  cancelFlush();
+  const notices = [...queued];
+  queued.clear();
+
+  for (const notice of notices) notice();
+}
 
 /**
- * Tells React about every store that streamed a value since the last frame in one batch on the
- * next frame, so it renders once per frame however many deltas arrive. A timer flushes while a
- * hidden window pauses frames; without frames (Node) it notifies at once.
+ * Queues a store's React notice for one flush on the next frame, so React renders once per frame
+ * however many deltas arrive. A timer flushes while a hidden window pauses frames; without frames
+ * (Node) it notifies at once.
  */
-function notifyByFrame(notify: () => void): void {
+function notifyByFrame(notice: () => void): void {
   if (typeof requestAnimationFrame !== "function") {
-    notify();
+    notice();
 
     return;
   }
 
-  if (unnotified.size === 0) {
-    const flush = (): void => {
-      cancelAnimationFrame(frame);
-      clearTimeout(timer);
-      const notices = [...unnotified];
-      unnotified.clear();
+  queued.add(notice);
+  scheduled ??= {
+    frame: requestAnimationFrame(flushQueued),
+    timer: setTimeout(flushQueued, HIDDEN_FLUSH_MS),
+  };
+}
 
-      for (const notice of notices) notice();
-    };
+/** Drops a notice its store delivered sooner, and the scheduled flush once nothing is queued. */
+function withdrawNotice(notice: () => void): void {
+  queued.delete(notice);
 
-    const frame = requestAnimationFrame(flush);
-    const timer = setTimeout(flush, HIDDEN_FLUSH_MS);
-  }
-
-  unnotified.add(notify);
+  if (queued.size === 0) cancelFlush();
 }
 
 function notifyAll(listeners: ReadonlySet<() => void>): void {
@@ -279,7 +295,7 @@ export class WatchStore<T> {
   }
 
   private readonly render = (): void => {
-    unnotified.delete(this.render);
+    withdrawNotice(this.render);
     countWork("notify");
     notifyAll(this.renders);
   };
