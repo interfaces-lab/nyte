@@ -108,12 +108,12 @@ export const composerStyles = create({
   },
   preComposerPills: {
     display: "flex",
-    flexDirection: { default: "row", ":has([data-slot='tray'])": "column" },
+    flexDirection: { default: "row", ":has([data-slot='tray'] > :not([inert]))": "column" },
     flexWrap: "wrap",
-    alignItems: { default: "center", ":has([data-slot='tray'])": "stretch" },
+    alignItems: { default: "center", ":has([data-slot='tray'] > :not([inert]))": "stretch" },
     columnGap: space.s1,
     rowGap: tray.gap,
-    width: { default: "fit-content", ":has([data-slot='tray'])": "100%" },
+    width: { default: "fit-content", ":has([data-slot='tray'] > :not([inert]))": "100%" },
     maxWidth: "100%",
     minHeight: {
       default: 0,
@@ -126,7 +126,7 @@ export const composerStyles = create({
     },
     paddingBottom: {
       default: 0,
-      ":has([data-slot='tray']):has([data-scroll-shown='true'])": `calc(${button.heightSm} + ${tray.gap})`,
+      ":has([data-slot='tray'] > :not([inert])):has([data-scroll-shown='true'])": `calc(${button.heightSm} + ${tray.gap})`,
     },
     pointerEvents: "auto",
   },
