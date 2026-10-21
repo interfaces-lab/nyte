@@ -102,7 +102,7 @@ function LinkSteps({
   readonly connect: ConnectBridge;
   readonly onClose: () => void;
 }): ReactElement {
-  const state = useConnectView(connect, true);
+  const state = useConnectView(connect);
   const link = useConnectAction(() => connect.link(), "Couldn’t link this Mac");
   const cancel = useConnectAction(() => connect.cancel(), "Couldn’t stop linking");
 

@@ -518,6 +518,24 @@ export function ChangesCard({
   );
 }
 
+export function ChangesFooter({
+  state,
+  files,
+  onOpenChanges,
+}: {
+  readonly state: "pending" | "ready";
+  readonly files: SessionView["changes"];
+  readonly onOpenChanges: (path: string | null) => void;
+}): ReactElement {
+  return (
+    <div {...props(turnStyles.changesFooter(CHANGES_VISIBLE_FILES))}>
+      {state === "ready" && files.length > 0 && (
+        <ChangesCard files={files} onOpenChanges={onOpenChanges} />
+      )}
+    </div>
+  );
+}
+
 function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
   const sessionId = useTranscriptScope()?.sessionId;
 

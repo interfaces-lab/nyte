@@ -33,7 +33,7 @@ export type TurnItemRow =
       readonly messages: readonly StepMessage[];
       readonly added: number;
       readonly removed: number;
-      readonly trailing: boolean;
+      readonly running: boolean;
     })
   | (RowLayout & { readonly kind: "agents"; readonly messages: readonly ToolMessage[] })
   | (RowLayout & { readonly kind: "response"; readonly messages: readonly TextMessage[] })
@@ -57,10 +57,12 @@ export type TranscriptRow =
   | (RowLayout & { readonly kind: "retry"; readonly message: string })
   | (RowLayout & {
       readonly kind: "live";
+      readonly working: boolean;
       readonly settledWork: boolean;
     })
   | (RowLayout & {
       readonly kind: "changes";
+      readonly state: "pending" | "ready";
       readonly files: SessionView["changes"];
     });
 
@@ -108,9 +110,19 @@ function sticksToTop(message: Message): boolean {
   );
 }
 
+/** A prompt joining a running run lands in that run's turn, so only a prompt that opens its own turn takes the footer. */
+function opensTurn(message: UserMessage): boolean {
+  const { status } = message;
+
+  return (
+    status.kind !== "pending" ||
+    (status.schedule.kind !== "joined" && status.schedule.kind !== "attached")
+  );
+}
+
 function turnRows(
   turn: TurnMessages,
-  place: { readonly group: string; readonly leads: boolean; readonly last: boolean },
+  place: { readonly group: string; readonly leads: boolean; readonly working: boolean },
 ) {
   const rows: (TurnItemRow | EarlierRow)[] = [];
   const { state } = turn.info;
@@ -162,7 +174,7 @@ function turnRows(
           messages: item.messages,
           added: ends ? turn.info.summary.added : 0,
           removed: ends ? turn.info.summary.removed : 0,
-          trailing: ends && place.last,
+          running: ends && place.working,
         });
         break;
       case "agents":
@@ -208,6 +220,7 @@ export function transcriptRows({
   turns,
   changes,
   prompts,
+  running,
   held,
   retrying,
 }: {
@@ -216,6 +229,7 @@ export function transcriptRows({
   readonly turns: readonly TurnMessages[];
   readonly changes: SessionView["changes"];
   readonly prompts: readonly UserMessage[];
+  readonly running: boolean;
   readonly held: boolean;
   readonly retrying: string | undefined;
 }): TranscriptRow[] {
@@ -226,27 +240,34 @@ export function transcriptRows({
 
   if (failed) rows.push({ kind: "error", key: "row:error", ...OUTSIDE });
   const last = turns.at(-1);
+
+  const working =
+    running ||
+    prompts.some(
+      (message) => !held || (message.source.kind !== "child" && message.source.kind !== "job"),
+    );
+
   let group: string | null = null;
   let leads = true;
   let settledWork = false;
+  let owner: string | undefined;
 
   for (const turn of turns) {
     if (group === null || turn.info.prompt !== null) {
       group = turn.info.id;
       leads = true;
+      owner = turn.info.prompt ?? turn.info.id;
     }
 
-    const own = turnRows(turn, { group, leads, last: turn === last });
+    const own = turnRows(turn, { group, leads, working: working && turn === last });
     rows.push(...own.rows);
     settledWork = own.settledWork;
 
     if (own.rows.length > 0) leads = false;
   }
 
-  if (changes.length > 0)
-    rows.push({ kind: "changes", key: "row:changes", ...OUTSIDE, files: changes });
-
-  for (const message of prompts)
+  for (const message of prompts) {
+    if (opensTurn(message)) owner = message.id;
     rows.push({
       kind: "prompt",
       key: `prompt:${message.id}`,
@@ -256,11 +277,21 @@ export function transcriptRows({
       message,
       held,
     });
+  }
 
   if (retrying !== undefined)
     rows.push({ kind: "retry", key: "row:retry", ...OUTSIDE, message: retrying });
 
-  rows.push({ kind: "live", key: "row:live", ...OUTSIDE, settledWork });
+  rows.push({ kind: "live", key: "row:live", ...OUTSIDE, working, settledWork });
+
+  if (owner !== undefined)
+    rows.push({
+      kind: "changes",
+      key: `changes:${owner}`,
+      ...OUTSIDE,
+      state: working ? "pending" : "ready",
+      files: changes,
+    });
 
   return rows;
 }
@@ -296,6 +327,21 @@ function rowMessages(row: TranscriptRow): readonly Message[] {
   }
 }
 
+/** A row whose fields and messages are the ones its previous projection carried keeps that row, so its view skips rendering. */
+function sameRow(known: TranscriptRow, row: TranscriptRow): boolean {
+  const fields = new Map<string, unknown>(Object.entries(known));
+  const entries: readonly [string, unknown][] = Object.entries(row);
+  const messages = rowMessages(known);
+  const next = rowMessages(row);
+
+  return (
+    entries.length === fields.size &&
+    entries.every(([field, value]) => field === "messages" || value === fields.get(field)) &&
+    next.length === messages.length &&
+    next.every((message, index) => message === messages[index])
+  );
+}
+
 function project(state: SessionState, previous: Projection | undefined): Projection {
   const view = state.value;
   const fresh = conversationMessages(view);
@@ -317,8 +363,13 @@ function project(state: SessionState, previous: Projection | undefined): Project
     turns: view === undefined ? [] : conversationTurns(view),
     changes: view?.changes ?? [],
     prompts: messages.prompts,
+    running: messages.running,
     held: messages.held,
     retrying: runState(view).retrying,
+  }).map((row) => {
+    const known = previous?.rows.get(row.key);
+
+    return known !== undefined && sameRow(known, row) ? known : row;
   });
 
   const layouts = rows.map(({ key, scrollAnchor, group, leads, sticky }) => ({
@@ -477,7 +528,7 @@ const PROSE_LINE_HEIGHT = 24;
 
 const PROSE_CHARS_PER_LINE = 90;
 
-const CHANGES_CARD_BASE_ESTIMATE = 50;
+const CHANGES_CARD_BASE_ESTIMATE = 56;
 
 const CHANGES_CARD_ROW_ESTIMATE = 30;
 
@@ -534,10 +585,7 @@ function rowEstimate(
     }
 
     case "changes":
-      return (
-        CHANGES_CARD_BASE_ESTIMATE +
-        CHANGES_CARD_ROW_ESTIMATE * Math.min(row.files.length, CHANGES_VISIBLE_FILES)
-      );
+      return CHANGES_CARD_BASE_ESTIMATE + CHANGES_CARD_ROW_ESTIMATE * CHANGES_VISIBLE_FILES;
     default: {
       const _exhaustive: never = row;
 

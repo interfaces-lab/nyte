@@ -162,7 +162,7 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
 
   return (
     <>
-      <NyteConnection connect={nyte.host.connect} active={active} />
+      <NyteConnection connect={nyte.host.connect} />
       <div {...props(settingsPatterns.sectionHeader)}>
         <h2 {...props(settingsPatterns.sectionTitle)}>Manual setup</h2>
       </div>

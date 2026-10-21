@@ -1,6 +1,6 @@
 {
   "name": "nyte-ai",
-  "version": "0.0.20",
+  "version": "0.0.22",
   "private": false,
   "description": "Installs the nyte command: downloads, verifies and runs the native Nyte terminal client",
   "keywords": [

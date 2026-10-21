@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { glyph, layer, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, layer, media, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -113,6 +113,9 @@ export const turnStyles = create({
     backgroundColor: role.bgElevated,
     color: role.contentPrimary,
   },
+  changesFooter: (files: number) => ({
+    minHeight: `calc(2px + 2 * ${space.s2} + max(${type.leadingLg}, ${button.heightSm} - 2 * ${space.s0_5}) + ${String(files)} * (${space.s0_5} + ${row.heightMd}))`,
+  }),
   changesHeader: {
     display: "flex",
     alignItems: "center",

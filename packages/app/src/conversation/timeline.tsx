@@ -13,7 +13,7 @@ import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
 import { SubagentReportLine } from "./subagent-call.tsx";
 import { TranscriptContent, useTranscriptScope } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
-import { ChangesCard, TurnItemView } from "./turn-view.tsx";
+import { ChangesFooter, TurnItemView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./turn-view.tsx";
 import { estimateRowSize } from "./transcript-rows.ts";
 import type { TranscriptProjector } from "./transcript-rows.ts";
@@ -27,7 +27,7 @@ type EditUserMessage = (
 interface RowContext {
   readonly store: WatchStore<SessionView>;
   readonly projector: TranscriptProjector;
-  readonly working: boolean;
+  readonly navigating: boolean;
   readonly density: ToolCallDensity;
   readonly cwd: string | undefined;
   readonly branchModel: BranchModelPicker;
@@ -61,7 +61,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
   rowKey,
   store,
   projector,
-  working,
+  navigating,
   density,
   cwd,
   branchModel,
@@ -93,7 +93,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
       return (
         <TurnItemView
           row={row}
-          running={row.kind === "step" && row.trailing && working}
+          running={row.kind === "step" && row.running}
           density={density}
           cwd={cwd}
           onEditUser={onEditUser}
@@ -103,7 +103,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
     case "earlier":
       return <EarlierSteps />;
     case "changes":
-      return working ? null : <ChangesCard files={row.files} onOpenChanges={onOpenChanges} />;
+      return <ChangesFooter state={row.state} files={row.files} onOpenChanges={onOpenChanges} />;
 
     case "prompt": {
       const { source } = row.message;
@@ -126,7 +126,12 @@ const TranscriptRowView = memo(function TranscriptRowView({
       );
     case "live":
       return (
-        <LiveTurn working={working} settledWork={row.settledWork} density={density} cwd={cwd} />
+        <LiveTurn
+          working={row.working || navigating}
+          settledWork={row.settledWork}
+          density={density}
+          cwd={cwd}
+        />
       );
     default: {
       const _exhaustive: never = row;
@@ -140,7 +145,7 @@ export function Timeline({
   store,
   projector,
   ready,
-  working,
+  navigating,
   cwd,
   branchModel,
   onEditUser,
@@ -174,7 +179,7 @@ export function Timeline({
           rowKey={key}
           store={store}
           projector={projector}
-          working={working}
+          navigating={navigating}
           density={density}
           cwd={cwd}
           branchModel={branchModel}
@@ -194,7 +199,7 @@ export function Timeline({
       projector,
       rows,
       store,
-      working,
+      navigating,
     ],
   );
 

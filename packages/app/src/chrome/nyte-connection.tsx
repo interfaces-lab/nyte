@@ -109,13 +109,11 @@ function LinkedConnection({
 
 export function NyteConnection({
   connect,
-  active,
 }: {
   readonly connect: ConnectBridge;
-  readonly active: boolean;
 }): ReactElement | null {
   const [trayOpen, setTrayOpen] = useState(false);
-  const state = useConnectView(connect, active);
+  const state = useConnectView(connect);
   const view = state.data;
 
   if (view === undefined) {

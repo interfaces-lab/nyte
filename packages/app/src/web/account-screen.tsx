@@ -290,6 +290,30 @@ function AccountFlow({
     };
   });
 
+  useMountEffect(() => {
+    const listening = new AbortController();
+
+    const relist = (): void => {
+      if (
+        document.visibilityState === "hidden" ||
+        ownerId === undefined ||
+        busy.current ||
+        adopted.current ||
+        active.current !== undefined
+      )
+        return;
+      work.current?.abort();
+      const controller = new AbortController();
+      work.current = controller;
+      void refresh(controller.signal);
+    };
+
+    window.addEventListener("focus", relist, { signal: listening.signal });
+    document.addEventListener("visibilitychange", relist, { signal: listening.signal });
+
+    return () => listening.abort();
+  });
+
   const pick = async ({
     environment,
     role,

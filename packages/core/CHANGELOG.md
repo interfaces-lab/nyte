@@ -1,5 +1,22 @@
 # @nyte-ai/core
 
+## 0.0.22
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @nyte-ai/ai@0.0.22
+  - @nyte-ai/schema@0.0.22
+
+## 0.0.21
+
+### Patch Changes
+
+- [#6](https://github.com/interfaces-lab/nyte/pull/6) [`d8467fb`](https://github.com/interfaces-lab/nyte/commit/d8467fbc7275dad7c1853da9fc4cc0e291e2466d) Thanks [@Itsnotaka](https://github.com/Itsnotaka)! - Closing a host waits for its MCP servers to exit, and an MCP server's tool-call timeout no longer cuts its startup short. Shutting down a driver no longer leaves a turn running that nothing can stop. When a lease drops only devices this host already refused, other devices' requests keep going. Closing a host under Bun releases its database files at once, so Windows can delete them. On Windows, an `@` mention of a file reads as the file's name in the composer.
+- Updated dependencies [[`d8467fb`](https://github.com/interfaces-lab/nyte/commit/d8467fbc7275dad7c1853da9fc4cc0e291e2466d)]:
+  - @nyte-ai/schema@0.0.21
+  - @nyte-ai/ai@0.0.21
+
 ## 0.0.20
 
 ### Patch Changes
