@@ -17,7 +17,7 @@ import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
 import { rounded, type ArtNode, type Link, type Point } from "./hub-art";
 import type { Slot } from "./scenes";
-import { BOARD, Falloff, Glyph, Strip, ink, reduced, seeded } from "./strip";
+import { BOARD, Falloff, Glyph, Strip, ink, seeded } from "./strip";
 
 interface HubStripInput {
   readonly nodes: readonly ArtNode[];
@@ -700,6 +700,8 @@ const ripple = keyframes({
   from: { transform: "scale(1)", opacity: 0.7 },
   to: { transform: "scale(8)", opacity: 0 },
 });
+
+const reduced = "@media (prefers-reduced-motion: reduce)";
 
 const styles = create({
   dimmed: { opacity: 0.25 },

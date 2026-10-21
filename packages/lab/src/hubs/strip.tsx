@@ -125,7 +125,7 @@ export function Strip({
 
 const breathe = keyframes({ "0%, 100%": { opacity: 1 }, "50%": { opacity: 0.4 } });
 
-export const reduced = "@media (prefers-reduced-motion: reduce)";
+const reduced = "@media (prefers-reduced-motion: reduce)";
 
 const styles = create({
   strip: {

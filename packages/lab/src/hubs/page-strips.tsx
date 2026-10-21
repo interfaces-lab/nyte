@@ -11,7 +11,7 @@ import type { IconName } from "@nyte-ai/ui/icon";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 import { rounded } from "./hub-art";
-import { BOARD, Falloff, Glyph, Strip, ink, reduced, seeded } from "./strip";
+import { BOARD, Falloff, Glyph, Strip, ink, seeded } from "./strip";
 import { AdvancedStrip, BrowserStrip, EditorStrip, TerminalStrip } from "./tool-strips";
 
 /** One well of paint in its own hue: the custom ramp reads the hue where its class lands. */
@@ -559,6 +559,8 @@ const ripple = keyframes({
 });
 
 const spinOnce = keyframes({ from: { strokeDashoffset: 0 }, to: { strokeDashoffset: -40 } });
+
+const reduced = "@media (prefers-reduced-motion: reduce)";
 
 const appearance = create({
   swoosh: { opacity: 0.5 },
