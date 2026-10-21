@@ -1,5 +1,11 @@
 # @nyte-ai/desktop
 
+## 0.0.23
+
+### Patch Changes
+
+- [#11](https://github.com/interfaces-lab/nyte/pull/11) [`ad65018`](https://github.com/interfaces-lab/nyte/commit/ad65018b1c7b03bae110c3cb6b013c38a5b113dd) Thanks [@Itsnotaka](https://github.com/Itsnotaka)! - A chat does far less rendering work while several agents run. An agent's update redraws only its own card instead of the whole conversation and composer, and streamed output reaches the screen at most once a frame. A lone agent's card keeps its spinner when a second agent joins, the Agents tray shows its frame before the agent's transcript loads, and closing a tray no longer makes the Agents pill jump.
+
 ## 0.0.22
 
 ### Patch Changes

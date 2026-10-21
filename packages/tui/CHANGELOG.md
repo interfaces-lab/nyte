@@ -1,5 +1,17 @@
 # @nyte-ai/tui
 
+## 0.0.23
+
+### Patch Changes
+
+- Updated dependencies [[`b52f54a`](https://github.com/interfaces-lab/nyte/commit/b52f54aeb7dc5cd035d08306d07899b9f6085249)]:
+  - @nyte-ai/schema@0.0.23
+  - @nyte-ai/sdk@0.0.23
+  - @nyte-ai/ai@0.0.23
+  - @nyte-ai/connect@0.0.0
+  - @nyte-ai/plugin@0.0.23
+  - @nyte-ai/canvas@0.0.0
+
 ## 0.0.22
 
 ### Patch Changes

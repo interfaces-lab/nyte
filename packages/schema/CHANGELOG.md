@@ -1,5 +1,11 @@
 # @nyte-ai/schema
 
+## 0.0.23
+
+### Patch Changes
+
+- [#12](https://github.com/interfaces-lab/nyte/pull/12) [`b52f54a`](https://github.com/interfaces-lab/nyte/commit/b52f54aeb7dc5cd035d08306d07899b9f6085249) Thanks [@Itsnotaka](https://github.com/Itsnotaka)! - Skills whose `description` is a folded or literal YAML block (`>` or `|`) now show their text instead of the symbol, and skill directories that are symlinks are discovered; links that are broken, point at a file or loop are skipped, and two links to one directory load it once. A running command's preview now updates at most every 80 ms while output streams, instead of on every chunk, and still shows the first output and the final tail at once. The session list sends only the rows that changed after its first frame, so `sessions.watch` on the wire is now a frame that clients read through the SDK. The iOS inbox's relative times stop updating while the inbox is hidden or the app is in the background, and refresh as soon as you return.
+
 ## 0.0.22
 
 No changes in this release.
