@@ -1,6 +1,7 @@
 import type { Execution, SessionInfo, ToolClass, TurnInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
+import type { WatchSource } from "../src/sdk.tsx";
 import type { TurnMessages } from "../src/view-helpers.ts";
 
 export const USAGE = {
@@ -39,6 +40,14 @@ export function sessionRow(
     lastActivityAt: 2,
     ...change,
   };
+}
+
+export function listedChildren(
+  children: readonly SessionInfo[],
+): WatchSource<readonly SessionInfo[]> {
+  const state = { value: children, error: undefined };
+
+  return { subscribe: () => () => undefined, getState: () => state };
 }
 
 export function settledTool(id: string, toolClass: ToolClass, text = ""): ToolMessage {

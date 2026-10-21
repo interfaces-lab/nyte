@@ -12,7 +12,7 @@ import { SubagentCitation } from "./subagent-call.tsx";
 import { SubagentSessionsProvider } from "./subagent-sessions.ts";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
-import { sessionRow } from "../../test/view-fixtures.ts";
+import { listedChildren, sessionRow } from "../../test/view-fixtures.ts";
 
 declare global {
   interface Window {
@@ -53,7 +53,9 @@ function Stage(): ReactElement {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-        <SubagentSessionsProvider value={{ children: [child], open: () => undefined }}>
+        <SubagentSessionsProvider
+          value={{ children: listedChildren([child]), open: () => undefined }}
+        >
           <p>
             The login fix runs in <SubagentCitation session={child.id} label="Fix login" />.
           </p>

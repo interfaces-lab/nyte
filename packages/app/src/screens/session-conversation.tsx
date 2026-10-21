@@ -6,7 +6,7 @@ import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { Revision, SessionId, SessionInfo, UserContent } from "@nyte-ai/sdk";
+import type { Revision, SessionId, UserContent } from "@nyte-ai/sdk";
 import { Composer } from "../conversation/composer.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "../conversation/turn-view.tsx";
@@ -22,14 +22,19 @@ import {
 import type { PaneId } from "../layout/pane-layout.ts";
 import {
   useCatalog,
-  useChildSessions,
   useSessionActions,
   useHostState,
   useRenameSession,
   useSession,
   useSessionChoice,
 } from "../queries.ts";
-import { connection, loadEarlierMessages, sessionWatch, useWatchSelect } from "../sdk.tsx";
+import {
+  childrenWatch,
+  connection,
+  loadEarlierMessages,
+  sessionWatch,
+  useWatchSelect,
+} from "../sdk.tsx";
 import type { DesktopModelOption } from "../catalog.ts";
 
 import { BackgroundWork } from "../conversation/tray/terminals.tsx";
@@ -42,12 +47,11 @@ import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
 import { openJobTerminal } from "../workbench/terminal-store.ts";
 import { SubagentTray, type SubagentTrayView } from "../conversation/tray/agents.tsx";
-import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
+import { subagentSessions, SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
 import { useReleaseStartupReads } from "../startup.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { useCommitCount } from "../work-counts.ts";
-
-const EMPTY_CHILDREN: readonly SessionInfo[] = [];
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 
@@ -184,7 +188,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const { layout } = usePaneControllerSnapshot();
   const sessionName = useSession(sessionId, (session) => session.name).data;
   const catalog = useCatalog(sessionId);
-  const children = useChildSessions(sessionId);
   const renameSession = useRenameSession();
   const sessionActions = useSessionActions();
   const [draftName, setDraftName] = useState<string | undefined>();
@@ -224,6 +227,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   useLayoutEffect(() => {
     if (activation !== undefined && presentation === "full") observeActivation(activation);
   }, [activation, presentation]);
+  useMountEffect(() => childrenWatch(sessionId).subscribe(() => undefined));
   const parentRunning = messages.running;
 
   const working =
@@ -286,7 +290,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     [sessionId, store],
   );
 
-  const childSessions = children.data ?? EMPTY_CHILDREN;
   const forwardSubagentTray = presentation === "tray" ? conversation.onOpenSubagentTray : undefined;
 
   const openSubagentTray = useCallback(
@@ -302,9 +305,9 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     [forwardSubagentTray],
   );
 
-  const subagentSessions = useMemo(
-    () => ({ children: childSessions, open: openSubagentTray }),
-    [childSessions, openSubagentTray],
+  const subagents = useMemo(
+    () => subagentSessions(sessionId, openSubagentTray),
+    [openSubagentTray, sessionId],
   );
 
   const openChanges = useCallback(
@@ -344,7 +347,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   );
 
   return (
-    <SubagentSessionsProvider value={subagentSessions}>
+    <SubagentSessionsProvider value={subagents}>
       <div
         {...props(
           sessionScreenStyles.screen,
@@ -428,7 +431,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                         <QuestionTray disabled={failed || navigating} viewport={scroll} />
                         <SubagentTray
                           parentSessionId={sessionId}
-                          agents={childSessions}
                           view={subagentTray}
                           onViewChange={setTrayView}
                           onExpand={(childSessionId) => {

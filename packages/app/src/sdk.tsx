@@ -299,12 +299,14 @@ export function useWatch<T>(
   return { value: state.value, error: state.error, retry: store?.retry ?? noRetry };
 }
 
+export type WatchSource<T> = Pick<WatchStore<T>, "subscribe" | "getState">;
+
 /**
  * Reads one selection of a watch and re-renders only when it changes. Without `isEqual` a
  * change is a new reference, so a selection derived into a fresh object needs `isEqual`.
  */
 export function useWatchSelect<T, S>(
-  store: WatchStore<T> | undefined,
+  store: WatchSource<T> | undefined,
   select: (state: WatchState<T>) => S,
   isEqual?: (previous: S, next: S) => boolean,
 ): S {
