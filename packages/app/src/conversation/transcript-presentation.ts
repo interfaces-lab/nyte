@@ -47,10 +47,7 @@ export function displayTranscriptParts(messages: readonly Message[]): Transcript
   let agents: ToolMessage[] = [];
 
   const flushAgents = (): void => {
-    const [only] = agents;
-
-    if (only !== undefined && agents.length === 1) display.push({ kind: "part", message: only });
-    else if (only !== undefined) display.push({ kind: "agents", messages: agents });
+    if (agents.length > 0) display.push({ kind: "agents", messages: agents });
     agents = [];
   };
 

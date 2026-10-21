@@ -69,7 +69,7 @@ test("a create call finds its child by the call that made it", () => {
           held: false,
           retrying: undefined,
         }).map((row) =>
-          row.kind === "part" ? (
+          row.kind === "agents" ? (
             <TurnItemView
               key={row.key}
               row={row}
@@ -85,6 +85,7 @@ test("a create call finds its child by the call that made it", () => {
 
   client.clear();
   expect(html.match(/>Completed</g)?.length).toBe(1);
+  expect(html).not.toContain("agents completed");
 });
 
 test("a running create call whose child is not listed yet is starting up", () => {

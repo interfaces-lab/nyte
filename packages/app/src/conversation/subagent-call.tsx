@@ -320,12 +320,14 @@ export function SubagentGroupView({
 
   return (
     <div {...props(subagentCallStyles.root)}>
-      <div {...props(toolLineStyles.line)}>
-        <span {...props(toolLineStyles.action, running > 0 && activityStyles.shimmer)}>
-          {title}
-        </span>
-        {detail !== undefined && <span {...props(toolLineStyles.outcome)}>{detail}</span>}
-      </div>
+      {total > 1 && (
+        <div {...props(toolLineStyles.line)}>
+          <span {...props(toolLineStyles.action, running > 0 && activityStyles.shimmer)}>
+            {title}
+          </span>
+          {detail !== undefined && <span {...props(toolLineStyles.outcome)}>{detail}</span>}
+        </div>
+      )}
       {messages.map((message) => {
         const toolClass = message.state.class;
 
