@@ -10,7 +10,7 @@
       "ignoreBinaries": ["wrangler"],
     },
     "packages/app": {
-      "entry": ["lint/*.js", "lint/fixtures/*.{ts,tsx}"],
+      "entry": ["lint/*.js", "lint/fixtures/*.{ts,tsx}", "src/router-register.ts"],
       "ignoreBinaries": ["electron-vite"],
     },
     "packages/bench": {

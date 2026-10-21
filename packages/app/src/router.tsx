@@ -479,9 +479,3 @@ function currentRouteSession(router: AppRouter): SessionId | undefined {
 
   return undefined;
 }
-
-declare module "@tanstack/react-router" {
-  interface Register {
-    router: AppRouter;
-  }
-}
