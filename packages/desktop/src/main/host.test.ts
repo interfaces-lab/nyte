@@ -16,11 +16,13 @@ const opened: TestDesktop[] = [];
 
 const connections: Connection[] = [];
 
-afterEach(async () => {
+async function closeOpened(): Promise<void> {
   for (const connection of connections.splice(0)) await connection.close();
 
   for (const desktop of opened.splice(0)) await desktop.close();
-});
+}
+
+afterEach(closeOpened);
 
 async function desktop(...input: Parameters<typeof testDesktop>): Promise<TestDesktop> {
   const made = await testDesktop(...input);
@@ -272,6 +274,7 @@ test("a key login over the loopback listener connects the provider, and the reop
     assert.equal(await credential(again), "configured");
     assert.equal(reads, written);
   } finally {
+    await closeOpened();
     await store.close();
     await rm(home, { recursive: true, force: true });
   }
