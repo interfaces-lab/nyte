@@ -1,5 +1,11 @@
 # @nyte-ai/desktop
 
+## 0.0.22
+
+### Patch Changes
+
+- [#8](https://github.com/interfaces-lab/nyte/pull/8) [`e24b1e8`](https://github.com/interfaces-lab/nyte/commit/e24b1e8c93964f762ce13c9d8b88068d1ae0616a) Thanks [@Itsnotaka](https://github.com/Itsnotaka)! - Signing in to a Nyte account through the browser no longer reloads the desktop window and drops the link it was finishing. Settings → Environments shows a link or sign-in as soon as it happens, even while Nyte is in the background, and the hosted web app's desktop list refreshes when you return to its tab.
+
 ## 0.0.21
 
 ### Patch Changes

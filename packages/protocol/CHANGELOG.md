@@ -1,5 +1,13 @@
 # @nyte-ai/protocol
 
+## 0.0.22
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @nyte-ai/core@0.0.22
+  - @nyte-ai/schema@0.0.22
+
 ## 0.0.21
 
 ### Patch Changes
