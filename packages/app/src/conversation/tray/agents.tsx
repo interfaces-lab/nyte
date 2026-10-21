@@ -8,13 +8,14 @@ import type { ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { StatusDot } from "../../components/ui.tsx";
 import { Button } from "@nyte-ai/ui/button";
-import { useSession } from "../../queries.ts";
+import { useChildSessions, useSession } from "../../queries.ts";
 import { connection } from "../../sdk.tsx";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { subagentTrayState } from "../agent-status.ts";
 import type { SubagentTrayState } from "../agent-status.ts";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
+import { useCommitCount } from "../../work-counts.ts";
 
 export type SubagentTrayView =
   | { readonly kind: "closed" }
@@ -42,13 +43,14 @@ const styles = create({
   detailBody: { display: "flex", flex: 1, minHeight: 0, overflow: "clip" },
 });
 
+const NO_AGENTS: readonly SessionInfo[] = [];
+
 function agentTitle(agent: SessionInfo | undefined, sessionId: SessionId): string {
   return agent?.name ?? sessionId;
 }
 
 export function SubagentTray({
   parentSessionId,
-  agents,
   view,
   onViewChange,
   onExpand,
@@ -57,7 +59,6 @@ export function SubagentTray({
   detail,
 }: {
   readonly parentSessionId: SessionId;
-  readonly agents: readonly SessionInfo[];
   readonly view: SubagentTrayView;
   readonly onViewChange: (view: SubagentTrayView) => void;
   readonly onExpand: (sessionId: SessionId) => void;
@@ -65,6 +66,8 @@ export function SubagentTray({
   readonly viewport: HTMLElement | null;
   readonly detail: ReactNode;
 }): ReactElement | null {
+  useCommitCount("render:agents-tray");
+  const agents = useChildSessions(parentSessionId).data ?? NO_AGENTS;
   const { root, ref, availableHeight } = useTrayRoot(viewport);
   const trayId = useId();
   const [stopCandidates, setStopCandidates] = useState<readonly SessionId[]>();

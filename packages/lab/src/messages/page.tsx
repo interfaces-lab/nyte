@@ -38,7 +38,12 @@ const STAGED = new Map<Specimen, Stage>(
 
 const COUNT = STAGED.size;
 
-const SUBAGENT_CONTEXT = { children: SUBAGENTS, open: () => {} };
+const SUBAGENT_STATE = { value: SUBAGENTS, error: undefined };
+
+const SUBAGENT_CONTEXT = {
+  children: { subscribeByFrame: () => () => undefined, getState: () => SUBAGENT_STATE },
+  open: () => {},
+};
 
 const BRANCH_MODEL: BranchModelPicker = {
   catalog: modelCatalog,
@@ -82,7 +87,7 @@ function RowView({
       return (
         <TurnItemView
           row={row}
-          running={row.kind === "step" && row.trailing && working}
+          running={row.kind === "step" && row.running}
           density={density}
           cwd={CWD}
           onEditUser={editUser}

@@ -5,7 +5,7 @@ import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { EditCallView } from "./edit-call.tsx";
 import { ShellCallView } from "./shell-call.tsx";
-import { SubagentCallView, SubagentLineView } from "./subagent-call.tsx";
+import { SubagentLineView } from "./subagent-call.tsx";
 import { ToolLineView } from "./tool-line.tsx";
 import { excerptText, outputExcerpt } from "./tool-output.tsx";
 
@@ -23,9 +23,7 @@ export const ToolCallView = memo(function ToolCallView({
 
   switch (toolClass.kind) {
     case "delegate":
-      return toolClass.role === "task" || toolClass.role === "create" ? (
-        <SubagentCallView title={toolClass.title ?? "Subagent"} message={message} cwd={cwd} />
-      ) : (
+      return (
         <SubagentLineView
           toolClass={toolClass}
           message={message}

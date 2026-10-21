@@ -520,7 +520,11 @@ const STEP_GROUP_ESTIMATE = {
   detailed: 240,
 } as const satisfies Record<ToolCallDensity, number>;
 
-const AGENTS_ESTIMATE = 64;
+const AGENTS_BASE_ESTIMATE = 8;
+
+const AGENTS_HEADER_ESTIMATE = 24;
+
+const AGENTS_ROW_ESTIMATE = 62;
 
 const PROSE_BASE_ESTIMATE = 40;
 
@@ -572,7 +576,11 @@ function rowEstimate(
     case "step":
       return STEP_GROUP_ESTIMATE[density];
     case "agents":
-      return AGENTS_ESTIMATE;
+      return (
+        AGENTS_BASE_ESTIMATE +
+        (row.messages.length > 1 ? AGENTS_HEADER_ESTIMATE : 0) +
+        AGENTS_ROW_ESTIMATE * row.messages.length
+      );
     case "response": {
       const prose = row.messages.reduce(
         (length, message) => length + message.state.markdown.length,

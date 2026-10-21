@@ -24,6 +24,7 @@ export function TurnRows({
     turns: [turn],
     changes: [],
     prompts: [],
+    running,
     held: false,
     retrying: undefined,
   }).flatMap((row): readonly TurnItemRow[] => {
@@ -47,7 +48,7 @@ export function TurnRows({
         <TurnItemView
           key={row.key}
           row={row}
-          running={row.kind === "step" && row.trailing && running}
+          running={row.kind === "step" && row.running}
           density={density}
           cwd={cwd}
         />

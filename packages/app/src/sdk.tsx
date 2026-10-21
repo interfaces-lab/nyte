@@ -16,6 +16,7 @@ import type {
 import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { startupReadsReleased } from "./startup.ts";
+import { countWork } from "./work-counts.ts";
 
 export interface HostEndpoint {
   readonly url: string;
@@ -90,9 +91,63 @@ const FIRST_REOPEN_MS = 1_000;
 
 const MAX_REOPEN_MS = 30_000;
 
+const HIDDEN_FLUSH_MS = 100;
+
+const queued = new Set<() => void>();
+
+let scheduled:
+  | { readonly frame: number; readonly timer: ReturnType<typeof setTimeout> }
+  | undefined;
+
+function cancelFlush(): void {
+  if (scheduled === undefined) return;
+  cancelAnimationFrame(scheduled.frame);
+  clearTimeout(scheduled.timer);
+  scheduled = undefined;
+}
+
+function flushQueued(): void {
+  cancelFlush();
+  const notices = [...queued];
+  queued.clear();
+
+  for (const notice of notices) notice();
+}
+
+/**
+ * Queues a store's React notice for one flush on the next frame, so React renders once per frame
+ * however many deltas arrive. A timer flushes while a hidden window pauses frames; without frames
+ * (Node) it notifies at once.
+ */
+function notifyByFrame(notice: () => void): void {
+  if (typeof requestAnimationFrame !== "function") {
+    notice();
+
+    return;
+  }
+
+  queued.add(notice);
+  scheduled ??= {
+    frame: requestAnimationFrame(flushQueued),
+    timer: setTimeout(flushQueued, HIDDEN_FLUSH_MS),
+  };
+}
+
+/** Drops a notice its store delivered sooner, and the scheduled flush once nothing is queued. */
+function withdrawNotice(notice: () => void): void {
+  queued.delete(notice);
+
+  if (queued.size === 0) cancelFlush();
+}
+
+function notifyAll(listeners: ReadonlySet<() => void>): void {
+  for (const listener of Array.from(listeners)) listener();
+}
+
 export class WatchStore<T> {
   private state: WatchState<T> = UNSTARTED;
   private readonly listeners = new Set<() => void>();
+  private readonly renders = new Set<() => void>();
   private stop: (() => void) | undefined;
   private failures = 0;
   private readonly open: () => AsyncIterable<T> | Promise<AsyncIterable<T>>;
@@ -115,7 +170,7 @@ export class WatchStore<T> {
   }
 
   get active(): boolean {
-    return this.listeners.size > 0;
+    return this.listeners.size > 0 || this.renders.size > 0;
   }
 
   dispose(): void {
@@ -129,23 +184,14 @@ export class WatchStore<T> {
     this.stop = undefined;
     this.publish({ value: this.state.value, error: undefined });
 
-    if (this.listeners.size > 0) this.stop = this.start();
+    if (this.active) this.stop = this.start();
   };
 
-  subscribe = (listener: () => void): (() => void) => {
-    this.listeners.add(listener);
-    this.stop ??= this.start();
+  /** Hears every value as it arrives. */
+  subscribe = (listener: () => void): (() => void) => this.listen(this.listeners, listener);
 
-    return () => {
-      this.listeners.delete(listener);
-      queueMicrotask(() => {
-        if (this.listeners.size !== 0) return;
-        this.stop?.();
-        this.stop = undefined;
-        this.idle();
-      });
-    };
-  };
+  /** Like `subscribe`, but hears streamed values at most once a frame, for React to render. */
+  subscribeByFrame = (listener: () => void): (() => void) => this.listen(this.renders, listener);
 
   getState = (): WatchState<T> => this.state;
 
@@ -180,6 +226,21 @@ export class WatchStore<T> {
     });
   }
 
+  private listen(listeners: Set<() => void>, listener: () => void): () => void {
+    listeners.add(listener);
+    this.stop ??= this.start();
+
+    return () => {
+      listeners.delete(listener);
+      queueMicrotask(() => {
+        if (this.active) return;
+        this.stop?.();
+        this.stop = undefined;
+        this.idle();
+      });
+    };
+  }
+
   private start(): () => void {
     let stopped = false;
     let iterator: AsyncIterator<T> | undefined;
@@ -197,7 +258,12 @@ export class WatchStore<T> {
 
           if (stopped || next.done === true) return;
           this.failures = 0;
-          this.publish({ value: next.value, error: undefined });
+          const streaming = this.state.value !== undefined && this.state.error === undefined;
+          this.state = { value: next.value, error: undefined };
+          notifyAll(this.listeners);
+
+          if (streaming) notifyByFrame(this.render);
+          else this.render();
         }
       } catch (cause) {
         if (stopped) return;
@@ -224,9 +290,15 @@ export class WatchStore<T> {
 
   private publish(state: WatchState<T>): void {
     this.state = state;
-
-    for (const listener of Array.from(this.listeners)) listener();
+    notifyAll(this.listeners);
+    this.render();
   }
+
+  private readonly render = (): void => {
+    withdrawNotice(this.render);
+    countWork("notify");
+    notifyAll(this.renders);
+  };
 }
 
 const registries = new Set<{ clear(): void }>();
@@ -290,7 +362,7 @@ export function useWatch<T>(
   store: WatchStore<T> | undefined,
 ): WatchState<T> & { readonly retry: () => void } {
   const state = useSyncExternalStore(
-    store?.subscribe ?? nothing,
+    store?.subscribeByFrame ?? nothing,
     store?.getState ?? unstarted,
     store?.getState ?? unstarted,
   );
@@ -298,18 +370,26 @@ export function useWatch<T>(
   return { value: state.value, error: state.error, retry: store?.retry ?? noRetry };
 }
 
+export type WatchSource<T> = Pick<WatchStore<T>, "subscribeByFrame" | "getState">;
+
 /**
  * Reads one selection of a watch and re-renders only when it changes. Without `isEqual` a
  * change is a new reference, so a selection derived into a fresh object needs `isEqual`.
  */
 export function useWatchSelect<T, S>(
-  store: WatchStore<T> | undefined,
+  store: WatchSource<T> | undefined,
   select: (state: WatchState<T>) => S,
   isEqual?: (previous: S, next: S) => boolean,
 ): S {
   const read: () => WatchState<T> = store?.getState ?? unstarted;
 
-  return useSyncExternalStoreWithSelector(store?.subscribe ?? nothing, read, read, select, isEqual);
+  return useSyncExternalStoreWithSelector(
+    store?.subscribeByFrame ?? nothing,
+    read,
+    read,
+    select,
+    isEqual,
+  );
 }
 
 export function hostChanged(cause: unknown): boolean {
@@ -430,7 +510,10 @@ export const sessionWatch = watchFamily(
           async next() {
             const next = await iterator.next();
 
-            if (next.done === true || !first) return next;
+            if (next.done === true) return next;
+            countWork(`publish:view:${session}`);
+
+            if (!first) return next;
             first = false;
             const shown = sessionWatch(session).value;
 

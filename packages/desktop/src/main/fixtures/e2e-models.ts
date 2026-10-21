@@ -10,7 +10,7 @@ import {
   testModel,
   titleReply,
 } from "@nyte-ai/bench";
-import type { Reply, Request, Script } from "@nyte-ai/bench";
+import type { Block, Reply, Request, Script } from "@nyte-ai/bench";
 import { contentText, getCurrentTools } from "@nyte-ai/schema/model";
 import type { ModelRef } from "@nyte-ai/schema";
 import { restaurantReplies, restaurantSkill } from "@nyte-ai/app/e2e/scenario-u-fixture";
@@ -64,6 +64,8 @@ function paragraphs(count: number): string {
   ).join("\n\n");
 }
 
+export const SWARM_AGENTS = 5;
+
 export function scriptedReply(text: string): Reply {
   const [command = "", argument] = text.trim().split(/\s+/, 2);
 
@@ -98,6 +100,20 @@ export function scriptedReply(text: string): Reply {
           },
         ],
       };
+    case "/swarm":
+      return {
+        content: Array.from({ length: SWARM_AGENTS }, (_, index): Block => ({
+          type: "toolCall",
+          id: `agent-survey-${String(index + 1)}`,
+          name: "create",
+          arguments: {
+            title: `Survey part ${String(index + 1)}`,
+            prompt: `Survey part ${String(index + 1)}.`,
+          },
+          deltas: 4,
+        })),
+        timing: { deltaMs: 150 },
+      };
     case "/long": {
       const count = Number.parseInt(argument ?? "", 10);
 
@@ -112,6 +128,37 @@ export function scriptedReply(text: string): Reply {
         ? { content: [{ type: "text", text: "An agent reported back." }] }
         : { content: [{ type: "text", text: `Echo: ${text}` }] };
   }
+}
+
+const SURVEY_ROUNDS = 8;
+
+/** A `/swarm` agent: each round streams its notes and reads a file, so it commits every round as a working agent does; then it answers. */
+function surveyReply(request: Request): Reply | undefined {
+  const prompt = request.context.messages
+    .flatMap((message) => (message.role === "user" ? [contentText(message.content, "")] : []))
+    .find((text) => text.startsWith("Survey part "));
+
+  if (prompt === undefined) return undefined;
+  const round = request.context.messages.filter((message) => message.role === "toolResult").length;
+  const timing = { deltaMs: 25 };
+
+  if (round >= SURVEY_ROUNDS)
+    return { content: [{ type: "text", text: paragraphs(4) }], tokens: 80, timing };
+
+  return {
+    content: [
+      { type: "thinking", thinking: `Planning step ${String(round + 1)} of ${prompt}` },
+      { type: "text", text: paragraphs(2) },
+      {
+        type: "toolCall",
+        id: `survey-read-${String(round + 1)}`,
+        name: "read",
+        arguments: { path: `survey/step-${String(round + 1)}.md` },
+      },
+    ],
+    tokens: 60,
+    timing,
+  };
 }
 
 function ciChat(request: Request): boolean {
@@ -175,6 +222,9 @@ export function e2eModels() {
       const pick = restaurant(request);
 
       if (pick !== null) return pick;
+      const survey = surveyReply(request);
+
+      if (survey !== undefined) return survey;
       const text = lastUserText(request);
 
       if (request.context.messages.at(-1)?.role === "toolResult")

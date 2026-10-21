@@ -8,7 +8,7 @@ import { SubagentCallView } from "./subagent-call.tsx";
 import { SubagentSessionsProvider } from "./subagent-sessions.ts";
 import { transcriptRows } from "./transcript-rows.ts";
 import { TurnItemView } from "./turn-view.tsx";
-import { endedTurn, sessionRow, settledTool } from "../../test/view-fixtures.ts";
+import { endedTurn, listedChildren, sessionRow, settledTool } from "../../test/view-fixtures.ts";
 
 vi.hoisted(() => {
   const query = { matches: false, addEventListener: () => {}, removeEventListener: () => {} };
@@ -56,7 +56,9 @@ test("a create call finds its child by the call that made it", () => {
 
   const html = renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <SubagentSessionsProvider value={{ children: [childSession], open: () => {} }}>
+      <SubagentSessionsProvider
+        value={{ children: listedChildren([childSession]), open: () => {} }}
+      >
         {transcriptRows({
           loading: false,
           failed: false,
@@ -67,7 +69,7 @@ test("a create call finds its child by the call that made it", () => {
           held: false,
           retrying: undefined,
         }).map((row) =>
-          row.kind === "part" ? (
+          row.kind === "agents" ? (
             <TurnItemView
               key={row.key}
               row={row}
@@ -83,6 +85,7 @@ test("a create call finds its child by the call that made it", () => {
 
   client.clear();
   expect(html.match(/>Completed</g)?.length).toBe(1);
+  expect(html).not.toContain("agents completed");
 });
 
 test("a running create call whose child is not listed yet is starting up", () => {
@@ -90,7 +93,7 @@ test("a running create call whose child is not listed yet is starting up", () =>
 
   const html = renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <SubagentSessionsProvider value={{ children: [], open: () => {} }}>
+      <SubagentSessionsProvider value={{ children: listedChildren([]), open: () => {} }}>
         <SubagentCallView
           title="Map the workbench"
           message={{

@@ -48,6 +48,7 @@ export function stage(scene: Scene): Stage {
     turns: scene.turns,
     changes,
     prompts,
+    running,
     held: scene.execution?.kind === "idle" && scene.execution.lastRun?.end.kind !== "completed",
     retrying: scene.execution?.kind === "retrying" ? scene.execution.reason : undefined,
   });
@@ -96,7 +97,7 @@ function rowLines(row: TranscriptRow, working: boolean): readonly string[] {
         .join(", ");
 
       const [first] = row.messages;
-      const running = row.trailing && working;
+      const { running } = row;
 
       const lone = row.messages.length === 1 && first !== undefined && showsTool(first) && !running;
 

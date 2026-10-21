@@ -45,6 +45,7 @@ import {
 import { callStatus, sessionStatus } from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
+import { useCommitCount } from "../work-counts.ts";
 
 type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 
@@ -162,6 +163,7 @@ function SubagentRow({
   readonly open: (() => void) | undefined;
   readonly xstyle: StyleXStyles;
 }): ReactElement {
+  useCommitCount("render:agent-row");
   const status =
     subject.kind === "session"
       ? sessionStatus(subject.session, sessionHasUnreadCompletion(subject.session))
@@ -253,6 +255,7 @@ export function SubagentCallView({
   readonly message: ToolMessage;
   readonly cwd: string | undefined;
 }): ReactElement {
+  useCommitCount("render:agent-call");
   const child = useCalledChild(message.state.call);
   const tray = useOpenSubagentTray();
   const open = child === undefined || tray === undefined ? undefined : () => tray(child.id);
@@ -282,15 +285,20 @@ export function SubagentGroupView({
   readonly messages: readonly ToolMessage[];
   readonly cwd: string | undefined;
 }): ReactElement {
-  const children = useSubagentChildren();
+  useCommitCount("render:agent-group");
+  const indicators = useSubagentChildren(
+    (children) =>
+      messages.map((message) => {
+        const child = children.find((candidate) => candidate.call === message.state.call);
 
-  const indicators = messages.map((message) => {
-    const child = children.find((candidate) => candidate.call === message.state.call);
-
-    return child === undefined
-      ? callStatus(toolStatus(message)).indicator
-      : sessionStatus(child, false).indicator;
-  });
+        return child === undefined
+          ? callStatus(toolStatus(message)).indicator
+          : sessionStatus(child, false).indicator;
+      }),
+    (previous, next) =>
+      previous.length === next.length &&
+      previous.every((indicator, index) => indicator === next[index]),
+  );
 
   const total = messages.length;
 
@@ -316,12 +324,14 @@ export function SubagentGroupView({
 
   return (
     <div {...props(subagentCallStyles.root)}>
-      <div {...props(toolLineStyles.line)}>
-        <span {...props(toolLineStyles.action, running > 0 && activityStyles.shimmer)}>
-          {title}
-        </span>
-        {detail !== undefined && <span {...props(toolLineStyles.outcome)}>{detail}</span>}
-      </div>
+      {total > 1 && (
+        <div {...props(toolLineStyles.line)}>
+          <span {...props(toolLineStyles.action, running > 0 && activityStyles.shimmer)}>
+            {title}
+          </span>
+          {detail !== undefined && <span {...props(toolLineStyles.outcome)}>{detail}</span>}
+        </div>
+      )}
       {messages.map((message) => {
         const toolClass = message.state.class;
 

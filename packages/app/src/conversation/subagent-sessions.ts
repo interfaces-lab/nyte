@@ -1,8 +1,10 @@
 import { createContext, useContext } from "react";
 import type { CallId, SessionId, SessionInfo } from "@nyte-ai/sdk";
+import { childrenWatch, useWatchSelect } from "../sdk.tsx";
+import type { WatchSource } from "../sdk.tsx";
 
 interface SubagentSessions {
-  readonly children: readonly SessionInfo[];
+  readonly children: WatchSource<readonly SessionInfo[]>;
   readonly open: (sessionId: SessionId) => void;
 }
 
@@ -10,18 +12,50 @@ const SubagentSessionsContext = createContext<SubagentSessions | undefined>(unde
 
 export const SubagentSessionsProvider = SubagentSessionsContext.Provider;
 
-export function useChildSession(session: SessionId | undefined): SessionInfo | undefined {
-  const children = useContext(SubagentSessionsContext)?.children;
+const NO_CHILDREN: readonly SessionInfo[] = [];
 
-  return session === undefined ? undefined : children?.find((child) => child.id === session);
+/**
+ * The context a conversation gives its agent cards: its child list and how to open a child.
+ * Each subscribe and read goes to the family's current store, as a hidden conversation keeps
+ * this context while the family may replace the idle store it held.
+ */
+export function subagentSessions(
+  parent: SessionId,
+  open: (sessionId: SessionId) => void,
+): SubagentSessions {
+  return {
+    children: {
+      subscribeByFrame: (listener) => childrenWatch(parent).subscribeByFrame(listener),
+      getState: () => childrenWatch(parent).getState(),
+    },
+    open,
+  };
+}
+
+/**
+ * Reads one selection of the listed children and re-renders only when it changes. A session list
+ * update keeps an unchanged child as the same object, so a selected child compares by reference;
+ * a selection derived into a fresh value passes `isEqual`.
+ */
+export function useSubagentChildren<S>(
+  select: (children: readonly SessionInfo[]) => S,
+  isEqual?: (previous: S, next: S) => boolean,
+): S {
+  return useWatchSelect(
+    useContext(SubagentSessionsContext)?.children,
+    (state) => select(state.value ?? NO_CHILDREN),
+    isEqual,
+  );
+}
+
+export function useChildSession(session: SessionId | undefined): SessionInfo | undefined {
+  return useSubagentChildren((children) =>
+    session === undefined ? undefined : children.find((child) => child.id === session),
+  );
 }
 
 export function useCalledChild(call: CallId): SessionInfo | undefined {
-  return useContext(SubagentSessionsContext)?.children.find((child) => child.call === call);
-}
-
-export function useSubagentChildren(): readonly SessionInfo[] {
-  return useContext(SubagentSessionsContext)?.children ?? [];
+  return useSubagentChildren((children) => children.find((child) => child.call === call));
 }
 
 export function useOpenSubagentTray(): ((sessionId: SessionId) => void) | undefined {
