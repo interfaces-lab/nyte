@@ -23,7 +23,7 @@ test("agent cards read their parent's current child list after a hidden conversa
   const subagents = subagentSessions(parent, () => undefined);
 
   const held = childrenWatch(parent);
-  const leave = subagents.children.subscribe(() => undefined);
+  const leave = subagents.children.subscribeByFrame(() => undefined);
   await held.first();
   leave();
   await settle();
@@ -34,7 +34,7 @@ test("agent cards read their parent's current child list after a hidden conversa
   assert.notEqual(childrenWatch(parent), held);
   assert.equal(held.value, undefined);
 
-  const hold = subagents.children.subscribe(() => undefined);
+  const hold = subagents.children.subscribeByFrame(() => undefined);
   await childrenWatch(parent).first();
 
   function ChildName(): ReactElement {

@@ -25,7 +25,7 @@ export function subagentSessions(
 ): SubagentSessions {
   return {
     children: {
-      subscribe: (listener) => childrenWatch(parent).subscribe(listener),
+      subscribeByFrame: (listener) => childrenWatch(parent).subscribeByFrame(listener),
       getState: () => childrenWatch(parent).getState(),
     },
     open,

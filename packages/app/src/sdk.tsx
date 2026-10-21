@@ -96,8 +96,8 @@ const HIDDEN_FLUSH_MS = 100;
 const unnotified = new Set<() => void>();
 
 /**
- * Notifies every store that streamed a value since the last frame in one batch on the next
- * frame, so React renders once per frame however many deltas arrive. A timer flushes while a
+ * Tells React about every store that streamed a value since the last frame in one batch on the
+ * next frame, so it renders once per frame however many deltas arrive. A timer flushes while a
  * hidden window pauses frames; without frames (Node) it notifies at once.
  */
 function notifyByFrame(notify: () => void): void {
@@ -124,9 +124,14 @@ function notifyByFrame(notify: () => void): void {
   unnotified.add(notify);
 }
 
+function notifyAll(listeners: ReadonlySet<() => void>): void {
+  for (const listener of Array.from(listeners)) listener();
+}
+
 export class WatchStore<T> {
   private state: WatchState<T> = UNSTARTED;
   private readonly listeners = new Set<() => void>();
+  private readonly renders = new Set<() => void>();
   private stop: (() => void) | undefined;
   private failures = 0;
   private readonly open: () => AsyncIterable<T> | Promise<AsyncIterable<T>>;
@@ -149,7 +154,7 @@ export class WatchStore<T> {
   }
 
   get active(): boolean {
-    return this.listeners.size > 0;
+    return this.listeners.size > 0 || this.renders.size > 0;
   }
 
   dispose(): void {
@@ -163,23 +168,14 @@ export class WatchStore<T> {
     this.stop = undefined;
     this.publish({ value: this.state.value, error: undefined });
 
-    if (this.listeners.size > 0) this.stop = this.start();
+    if (this.active) this.stop = this.start();
   };
 
-  subscribe = (listener: () => void): (() => void) => {
-    this.listeners.add(listener);
-    this.stop ??= this.start();
+  /** Hears every value as it arrives. */
+  subscribe = (listener: () => void): (() => void) => this.listen(this.listeners, listener);
 
-    return () => {
-      this.listeners.delete(listener);
-      queueMicrotask(() => {
-        if (this.listeners.size !== 0) return;
-        this.stop?.();
-        this.stop = undefined;
-        this.idle();
-      });
-    };
-  };
+  /** Like `subscribe`, but hears streamed values at most once a frame, for React to render. */
+  subscribeByFrame = (listener: () => void): (() => void) => this.listen(this.renders, listener);
 
   getState = (): WatchState<T> => this.state;
 
@@ -214,6 +210,21 @@ export class WatchStore<T> {
     });
   }
 
+  private listen(listeners: Set<() => void>, listener: () => void): () => void {
+    listeners.add(listener);
+    this.stop ??= this.start();
+
+    return () => {
+      listeners.delete(listener);
+      queueMicrotask(() => {
+        if (this.active) return;
+        this.stop?.();
+        this.stop = undefined;
+        this.idle();
+      });
+    };
+  }
+
   private start(): () => void {
     let stopped = false;
     let iterator: AsyncIterator<T> | undefined;
@@ -231,11 +242,12 @@ export class WatchStore<T> {
 
           if (stopped || next.done === true) return;
           this.failures = 0;
-          const settled = this.state.value !== undefined && this.state.error === undefined;
+          const streaming = this.state.value !== undefined && this.state.error === undefined;
           this.state = { value: next.value, error: undefined };
+          notifyAll(this.listeners);
 
-          if (settled) notifyByFrame(this.notify);
-          else this.notify();
+          if (streaming) notifyByFrame(this.render);
+          else this.render();
         }
       } catch (cause) {
         if (stopped) return;
@@ -262,14 +274,14 @@ export class WatchStore<T> {
 
   private publish(state: WatchState<T>): void {
     this.state = state;
-    this.notify();
+    notifyAll(this.listeners);
+    this.render();
   }
 
-  private readonly notify = (): void => {
-    unnotified.delete(this.notify);
+  private readonly render = (): void => {
+    unnotified.delete(this.render);
     countWork("notify");
-
-    for (const listener of Array.from(this.listeners)) listener();
+    notifyAll(this.renders);
   };
 }
 
@@ -334,7 +346,7 @@ export function useWatch<T>(
   store: WatchStore<T> | undefined,
 ): WatchState<T> & { readonly retry: () => void } {
   const state = useSyncExternalStore(
-    store?.subscribe ?? nothing,
+    store?.subscribeByFrame ?? nothing,
     store?.getState ?? unstarted,
     store?.getState ?? unstarted,
   );
@@ -342,7 +354,7 @@ export function useWatch<T>(
   return { value: state.value, error: state.error, retry: store?.retry ?? noRetry };
 }
 
-export type WatchSource<T> = Pick<WatchStore<T>, "subscribe" | "getState">;
+export type WatchSource<T> = Pick<WatchStore<T>, "subscribeByFrame" | "getState">;
 
 /**
  * Reads one selection of a watch and re-renders only when it changes. Without `isEqual` a
@@ -355,7 +367,13 @@ export function useWatchSelect<T, S>(
 ): S {
   const read: () => WatchState<T> = store?.getState ?? unstarted;
 
-  return useSyncExternalStoreWithSelector(store?.subscribe ?? nothing, read, read, select, isEqual);
+  return useSyncExternalStoreWithSelector(
+    store?.subscribeByFrame ?? nothing,
+    read,
+    read,
+    select,
+    isEqual,
+  );
 }
 
 export function hostChanged(cause: unknown): boolean {

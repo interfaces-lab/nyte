@@ -47,7 +47,7 @@ export function listedChildren(
 ): WatchSource<readonly SessionInfo[]> {
   const state = { value: children, error: undefined };
 
-  return { subscribe: () => () => undefined, getState: () => state };
+  return { subscribeByFrame: () => () => undefined, getState: () => state };
 }
 
 export function settledTool(id: string, toolClass: ToolClass, text = ""): ToolMessage {
