@@ -176,7 +176,11 @@ jobs:
       - run: pnpm --dir packages/canvas build
       - run: pnpm --dir packages/app build
       - name: Run web e2e against the built app
-        run: pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts ${{ matrix.leg.args }}
+        env:
+          LEG: ${{ matrix.leg.name }}
+        run: |
+          if [ "$LEG" = timed ]; then export NYTE_WATERFALL_DIR="$PWD/packages/app/e2e/test-results/waterfall"; fi
+          pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts ${{ matrix.leg.args }}
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
