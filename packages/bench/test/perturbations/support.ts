@@ -20,7 +20,8 @@ export async function folder(): Promise<string> {
 }
 
 export async function removeFolders(): Promise<void> {
-  for (const made of folders.splice(0)) await rm(made, { recursive: true, force: true });
+  for (const made of folders.splice(0))
+    await rm(made, { recursive: true, force: true, maxRetries: 10 });
 }
 
 export async function start(host: Host, prompt: string) {

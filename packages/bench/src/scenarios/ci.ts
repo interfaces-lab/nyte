@@ -207,6 +207,6 @@ export async function ciRepo(root?: string): Promise<CiRepo> {
     root: repo,
     bin,
     path: [bin, process.env.PATH ?? ""].join(delimiter),
-    [Symbol.asyncDispose]: () => rm(parent, { recursive: true, force: true }),
+    [Symbol.asyncDispose]: () => rm(parent, { recursive: true, force: true, maxRetries: 10 }),
   };
 }

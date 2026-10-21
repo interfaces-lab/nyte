@@ -211,7 +211,7 @@ export async function simulate(input: {
 
   const dispose = async (): Promise<void> => {
     await stop();
-    await rm(folder, { recursive: true, force: true });
+    await rm(folder, { recursive: true, force: true, maxRetries: 10 });
   };
 
   return {
