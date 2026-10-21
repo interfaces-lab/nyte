@@ -123,7 +123,7 @@ test("an @./ path is offered as its file, and the file's text rides with the mes
   await tui.frame((frame) => frame.includes("The note arrived."));
 
   expect(JSON.stringify(fixture.requests[0]?.context.messages)).toContain(
-    String.raw`notes/mention.md\">\nMention body\n\n</file>`,
+    JSON.stringify(`${join("notes", "mention.md")}">\nMention body\n\n</file>`).slice(1, -1),
   );
 });
 
