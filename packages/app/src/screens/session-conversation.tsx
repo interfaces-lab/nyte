@@ -403,7 +403,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                 store={store}
                 projector={projector}
                 ready={ready}
-                working={working}
+                navigating={navigating}
                 cwd={cwd}
                 branchModel={branchModel}
                 onEditUser={editUserMessage}
