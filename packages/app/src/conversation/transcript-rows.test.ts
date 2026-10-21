@@ -71,6 +71,7 @@ test("a window cut after its turn's prompt leads that turn with the prompt and a
     "earlier:t",
     "response:a3",
     "row:live",
+    "changes:p",
   ]);
   expect(projector.row(cut, "prompt:p")).toMatchObject({
     kind: "part",
@@ -84,11 +85,13 @@ test("a window cut after its turn's prompt leads that turn with the prompt and a
     "earlier:t",
     "response:a2",
     "row:live",
+    "changes:p",
   ]);
   expect(keys([prompt, answer("a1"), answer("a2"), ...body], null)).toEqual([
     "prompt:p",
     "response:a1",
     "row:live",
+    "changes:p",
   ]);
 });
 
@@ -97,11 +100,16 @@ test("a leading prompt that arrives beside unchanged messages redraws the turn w
   const bare = { value: view(body, null), error: undefined };
   const led = { value: { ...bare.value, leadingPrompt: prompt }, error: undefined };
 
-  expect(projector.rows(bare).map((row) => row.key)).toEqual(["response:a3", "row:live"]);
+  expect(projector.rows(bare).map((row) => row.key)).toEqual([
+    "response:a3",
+    "row:live",
+    "changes:p",
+  ]);
   expect(projector.rows(led).map((row) => row.key)).toEqual([
     "prompt:p",
     "earlier:t",
     "response:a3",
     "row:live",
+    "changes:p",
   ]);
 });

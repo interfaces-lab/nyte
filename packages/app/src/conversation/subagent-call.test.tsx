@@ -63,6 +63,7 @@ test("a create call finds its child by the call that made it", () => {
           turns: [turn],
           changes: [],
           prompts: [],
+          running: false,
           held: false,
           retrying: undefined,
         }).map((row) =>
