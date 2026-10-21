@@ -1,6 +1,6 @@
 # Desktop E2E
 
-Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwright.config.ts`. Its catalog is the offline `Scripted` model: `/hold` streams until stopped, `/error` refuses, `/think` answers with reasoning, `/markdown` answers a showcase, `/long <n>` answers n paragraphs, `/swarm` starts five agents that each stream a long answer, anything else `Echo: <text>`. Each spec file is a chapter that launches one window over its own copy of a seeded home and walks one surface. `stores/` has its own `stores/playwright.config.ts`, so this config skips it.
+Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwright.config.ts`. Its catalog is the offline `Scripted` model: `/hold` streams until stopped, `/error` refuses, `/think` answers with reasoning, `/markdown` answers a showcase, `/long <n>` answers n paragraphs, `/swarm` starts five agents that each stream notes and read a file for eight rounds before answering, anything else `Echo: <text>`. Each spec file is a chapter that launches one window over its own copy of a seeded home and walks one surface. `stores/` has its own `stores/playwright.config.ts`, so this config skips it.
 
 ## Chapters
 
@@ -16,7 +16,7 @@ Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwrig
 | `markdown.spec.ts` | Headings, lists, code blocks, tables in an answer |
 | `subagents.spec.ts` | Two background agents: one block, a line per report, the parent wakes |
 | `transcript.spec.ts` | A 36-turn chat: virtualised window, scroll to top and back |
-| `subagent-load.spec.ts` | Only with `NYTE_PERF_DIR`: typing while five agents stream, scrolled away and back; writes a Chromium trace, per-key latency, long frames and row churn to that directory |
+| `subagent-load.spec.ts` | Only with `NYTE_PERF_DIR`: typing while five agents stream, the agents row evicted and remounted; fails over 50 ms p95 or 100 ms worst keydown-to-paint, and writes the Chromium trace and `summary.json` (latency, long tasks, layouts, row churn, renderer work counts) to that directory |
 | `workbench.spec.ts` | The panel, Files, Changes, Terminal, Browser tabs, Expand, closing tabs |
 | `browser.spec.ts` | The integrated browser against a local HTTP server |
 | `remote-access.spec.ts` | Pairing a Chromium page with the desktop over Remote access |

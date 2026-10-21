@@ -124,20 +124,41 @@ export function scriptedReply(text: string): Reply {
     }
 
     default:
-      if (text.startsWith("Survey part "))
-        return {
-          content: [
-            { type: "thinking", thinking: "Reading the area before writing it up." },
-            { type: "text", text: paragraphs(16) },
-          ],
-          tokens: 320,
-          timing: { deltaMs: 25 },
-        };
-
       return text.startsWith("Child ")
         ? { content: [{ type: "text", text: "An agent reported back." }] }
         : { content: [{ type: "text", text: `Echo: ${text}` }] };
   }
+}
+
+const SURVEY_ROUNDS = 8;
+
+/** A `/swarm` agent: each round streams its notes and reads a file, so it commits every round as a working agent does; then it answers. */
+function surveyReply(request: Request): Reply | undefined {
+  const prompt = request.context.messages
+    .flatMap((message) => (message.role === "user" ? [contentText(message.content, "")] : []))
+    .find((text) => text.startsWith("Survey part "));
+
+  if (prompt === undefined) return undefined;
+  const round = request.context.messages.filter((message) => message.role === "toolResult").length;
+  const timing = { deltaMs: 25 };
+
+  if (round >= SURVEY_ROUNDS)
+    return { content: [{ type: "text", text: paragraphs(4) }], tokens: 80, timing };
+
+  return {
+    content: [
+      { type: "thinking", thinking: `Planning step ${String(round + 1)} of ${prompt}` },
+      { type: "text", text: paragraphs(2) },
+      {
+        type: "toolCall",
+        id: `survey-read-${String(round + 1)}`,
+        name: "read",
+        arguments: { path: `survey/step-${String(round + 1)}.md` },
+      },
+    ],
+    tokens: 60,
+    timing,
+  };
 }
 
 function ciChat(request: Request): boolean {
@@ -201,6 +222,9 @@ export function e2eModels() {
       const pick = restaurant(request);
 
       if (pick !== null) return pick;
+      const survey = surveyReply(request);
+
+      if (survey !== undefined) return survey;
       const text = lastUserText(request);
 
       if (request.context.messages.at(-1)?.role === "toolResult")
