@@ -91,6 +91,39 @@ const FIRST_REOPEN_MS = 1_000;
 
 const MAX_REOPEN_MS = 30_000;
 
+const HIDDEN_FLUSH_MS = 100;
+
+const unnotified = new Set<() => void>();
+
+/**
+ * Notifies every store that streamed a value since the last frame in one batch on the next
+ * frame, so React renders once per frame however many deltas arrive. A timer flushes while a
+ * hidden window pauses frames; without frames (Node) it notifies at once.
+ */
+function notifyByFrame(notify: () => void): void {
+  if (typeof requestAnimationFrame !== "function") {
+    notify();
+
+    return;
+  }
+
+  if (unnotified.size === 0) {
+    const flush = (): void => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+      const notices = [...unnotified];
+      unnotified.clear();
+
+      for (const notice of notices) notice();
+    };
+
+    const frame = requestAnimationFrame(flush);
+    const timer = setTimeout(flush, HIDDEN_FLUSH_MS);
+  }
+
+  unnotified.add(notify);
+}
+
 export class WatchStore<T> {
   private state: WatchState<T> = UNSTARTED;
   private readonly listeners = new Set<() => void>();
@@ -198,7 +231,11 @@ export class WatchStore<T> {
 
           if (stopped || next.done === true) return;
           this.failures = 0;
-          this.publish({ value: next.value, error: undefined });
+          const settled = this.state.value !== undefined && this.state.error === undefined;
+          this.state = { value: next.value, error: undefined };
+
+          if (settled) notifyByFrame(this.notify);
+          else this.notify();
         }
       } catch (cause) {
         if (stopped) return;
@@ -225,9 +262,15 @@ export class WatchStore<T> {
 
   private publish(state: WatchState<T>): void {
     this.state = state;
+    this.notify();
+  }
+
+  private readonly notify = (): void => {
+    unnotified.delete(this.notify);
+    countWork("notify");
 
     for (const listener of Array.from(this.listeners)) listener();
-  }
+  };
 }
 
 const registries = new Set<{ clear(): void }>();
