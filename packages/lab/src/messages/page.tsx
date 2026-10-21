@@ -87,7 +87,7 @@ function RowView({
       return (
         <TurnItemView
           row={row}
-          running={row.kind === "step" && row.trailing && working}
+          running={row.kind === "step" && row.running}
           density={density}
           cwd={CWD}
           onEditUser={editUser}
