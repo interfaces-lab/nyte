@@ -335,11 +335,17 @@ export class ServingSession {
     this.lapsed = undefined;
     clearTimeout(this.expiryTimer);
     this.expiryTimer = setTimeout(() => this.expire(lease), expiresAt - now);
-    const dropped = previous !== undefined && [...previous.devices].some((id) => !devices.has(id));
 
-    if (dropped) this.disconnectClients();
+    const removed =
+      previous === undefined ? [] : [...previous.devices].filter((id) => !devices.has(id));
 
-    if (previous === undefined || dropped || [...devices].some((id) => !previous.devices.has(id)))
+    if (removed.some((id) => !trust.denied.has(id))) this.disconnectClients();
+
+    if (
+      previous === undefined ||
+      removed.length > 0 ||
+      [...devices].some((id) => !previous.devices.has(id))
+    )
       owner.changed();
 
     this.pruneInactive(lease);
@@ -362,7 +368,6 @@ export class ServingSession {
     );
 
     if (inactive.size === 0) return;
-    this.disconnectClients();
     void store
       .change((file) =>
         file.link?.environment.id === this.environmentId
