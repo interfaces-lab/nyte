@@ -115,6 +115,7 @@ export function sqliteStore(input: { readonly path: string } | { readonly memory
 function closeDatabase(database: DatabaseSync): void {
   if ("bun" in process.versions) {
     const empty = new DatabaseSync(":memory:");
+    empty.exec("CREATE TABLE closed (id INTEGER)");
     database.deserialize(empty.serialize());
     empty.close();
   }
