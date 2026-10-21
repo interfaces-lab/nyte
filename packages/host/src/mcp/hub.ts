@@ -104,7 +104,17 @@ function hub(input: {
   const contents = new Map<string, McpFileContents>();
   const watched = new Map<string, Disposer>();
   const userPath = join(input.home, ".nyte", "mcp.json");
+  const retiring = new Set<Promise<void>>();
   let closed = false;
+
+  const retire = (client: McpClient | null): Promise<void> => {
+    if (client === null) return Promise.resolve();
+    const done = client.close().catch(() => undefined);
+    retiring.add(done);
+    void done.then(() => retiring.delete(done));
+
+    return done;
+  };
 
   const notify = (pool: Pool): void => {
     for (const listener of pool.listeners) listener();
@@ -149,6 +159,7 @@ function hub(input: {
     } | null = null;
 
     let client: McpClient | null = null;
+    let opening: McpClient | null = null;
     let stderr: () => string | null = () => null;
     let challenge: OAuthChallenge | null = null;
     let ended = false;
@@ -184,7 +195,7 @@ function hub(input: {
     const drop = (message: string): void => {
       const previous = client;
       client = null;
-      void previous?.close().catch(() => undefined);
+      void retire(previous);
 
       if (ended) return;
       set({ kind: "failed", message, stderr: stderr() });
@@ -197,11 +208,7 @@ function hub(input: {
 
       if (ended) return;
 
-      const next = new TracingMcpClient({
-        name: "nyte",
-        version: "0.1.0",
-        requestTimeoutMs: link.entry.timeoutMs,
-      });
+      const next = new TracingMcpClient({ name: "nyte", version: "0.1.0" });
 
       next.onClose(() => {
         if (client === next) drop(`The connection to ${entry.name} closed.`);
@@ -229,10 +236,11 @@ function hub(input: {
           transport instanceof StdioTransport && transport.stderr !== ""
             ? transport.stderr.slice(-STDERR_TAIL)
             : null;
+        opening = next;
         await next.connect(transport);
 
         if (ended) {
-          await next.close();
+          await retire(next);
 
           return;
         }
@@ -261,7 +269,7 @@ function hub(input: {
         await refresh();
       } catch (error) {
         if (client === next) client = null;
-        await next.close().catch(() => undefined);
+        await retire(next);
 
         if (ended) return;
 
@@ -321,7 +329,7 @@ function hub(input: {
         clearTimeout(timer);
         const previous = client;
         client = null;
-        await previous?.close().catch(() => undefined);
+        await Promise.all([retire(previous), retire(opening)]);
       },
     };
 
@@ -788,6 +796,7 @@ function hub(input: {
 
       for (const pool of live) shut(pool);
       await Promise.all(links.map((link) => link.close()));
+      await Promise.all(retiring);
     },
   };
 }
