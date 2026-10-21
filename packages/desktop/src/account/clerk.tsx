@@ -13,6 +13,8 @@ const bridge = window.nyteAccount;
 
 const redirectUrl = new URL(window.location.pathname, window.location.href).href;
 
+const stayOnPage = (): undefined => undefined;
+
 function formatAccountLabel(user: User): string {
   return (
     user.primaryEmailAddress?.emailAddress ?? user.primaryPhoneNumber?.phoneNumber ?? "Nyte account"
@@ -150,7 +152,13 @@ function Provider({
   readonly children: ReactNode;
 }): ReactElement {
   return (
-    <ClerkProvider publishableKey={publishableKey} telemetry={false} appearance={accountAppearance}>
+    <ClerkProvider
+      publishableKey={publishableKey}
+      telemetry={false}
+      appearance={accountAppearance}
+      routerPush={stayOnPage}
+      routerReplace={stayOnPage}
+    >
       <Account onPrompt={onPrompt} />
       {children}
     </ClerkProvider>
