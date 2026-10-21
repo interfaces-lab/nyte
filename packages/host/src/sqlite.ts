@@ -98,7 +98,8 @@ export function sqliteStore(input: { readonly path: string } | { readonly memory
       closing ??= (async () => {
         await opening?.catch(() => undefined);
         await workers?.close();
-        database?.close();
+
+        if (database !== null) closeDatabase(database);
         workers = null;
         database = null;
         opening = null;
@@ -109,6 +110,16 @@ export function sqliteStore(input: { readonly path: string } | { readonly memory
       return closing;
     },
   };
+}
+
+function closeDatabase(database: DatabaseSync): void {
+  if ("bun" in process.versions) {
+    const empty = new DatabaseSync(":memory:");
+    database.deserialize(empty.serialize());
+    empty.close();
+  }
+
+  database.close();
 }
 
 function hasTable(database: DatabaseSync, name: string): boolean {
