@@ -33,9 +33,9 @@ export function subagentSessions(
 }
 
 /**
- * Reads one selection of the listed children and re-renders only when it changes. The list keeps
- * an unchanged child as the same object, so a selected child compares by reference; a selection
- * derived into a fresh value passes `isEqual`.
+ * Reads one selection of the listed children and re-renders only when it changes. A session list
+ * update keeps an unchanged child as the same object, so a selected child compares by reference;
+ * a selection derived into a fresh value passes `isEqual`.
  */
 export function useSubagentChildren<S>(
   select: (children: readonly SessionInfo[]) => S,
