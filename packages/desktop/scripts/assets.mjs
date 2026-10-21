@@ -1,11 +1,11 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { cp, lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-const root = fileURLToPath(new URL("../../../", import.meta.url));
+const root = await realpath(fileURLToPath(new URL("../../../", import.meta.url)));
 
 const outputs = ["packages/canvas/dist", "packages/app/dist"];
 
@@ -42,8 +42,9 @@ async function sourceIdentity() {
   };
 }
 
-function externalDirectory(directory) {
-  const absolute = resolve(directory);
+async function externalDirectory(directory) {
+  const resolved = resolve(directory);
+  const absolute = join(await realpath(dirname(resolved)), basename(resolved));
   const path = relative(root, absolute);
 
   if (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path))
@@ -94,7 +95,7 @@ async function inventory(directory) {
 }
 
 async function buildDesktopAssets(directory) {
-  const destination = externalDirectory(directory);
+  const destination = await externalDirectory(directory);
   const identity = await sourceIdentity();
   await mkdir(destination);
 
@@ -104,6 +105,7 @@ async function buildDesktopAssets(directory) {
       ["--dir", `packages/${name}`, "build"],
       {
         cwd: root,
+        env: { ...process.env, NODE_ENV: "production" },
         stdio: "inherit",
         shell: process.platform === "win32",
       },
@@ -136,7 +138,11 @@ async function buildDesktopAssets(directory) {
 }
 
 export async function restoreDesktopAssets(directory) {
-  const source = externalDirectory(directory);
+  const source = await externalDirectory(directory);
+
+  if (!(await lstat(source)).isDirectory())
+    throw new Error("The desktop asset bundle must be a regular directory.");
+
   const manifest = JSON.parse(await readFile(join(source, "manifest.json"), "utf8"));
   const expected = { ...(await sourceIdentity()), files: await inventory(source) };
 
@@ -151,7 +157,7 @@ export async function restoreDesktopAssets(directory) {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   const [command, directory, ...extra] = process.argv.slice(2);
 
   if (command === "--help") {
