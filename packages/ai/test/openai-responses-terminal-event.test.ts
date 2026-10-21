@@ -199,7 +199,7 @@ describe("OpenAI Responses terminal event handling", () => {
     async (type) => {
       const usage = {
         input_tokens: 100,
-        input_tokens_details: { cached_tokens: 30 },
+        input_tokens_details: { cached_tokens: 30, cache_write_tokens: 0 },
         output_tokens: 50,
         output_tokens_details: { reasoning_tokens: 20 },
         total_tokens: 150,

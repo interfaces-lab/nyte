@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, release/**]
   schedule:
     - cron: "0 7 * * *"
   workflow_dispatch:
@@ -51,6 +51,7 @@ jobs:
       filter: ${{ steps.scope.outputs.filter }}
       web: ${{ steps.scope.outputs.web }}
       desktop: ${{ steps.scope.outputs.desktop }}
+      unit_matrix: ${{ steps.scope.outputs.unit_matrix }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -64,6 +65,7 @@ jobs:
         id: scope
         env:
           EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
           turbo="npx --yes turbo@$(node -p 'require("./package.json").devDependencies.turbo.replace(/^\^/, "")')"
           filter=""
@@ -76,21 +78,22 @@ jobs:
             console.error(`${packages.count} packages: ${[...names].join(" ")}`);
             console.log(`web=${names.has("@nyte-ai/app")}`);
             console.log(`desktop=${names.has("@nyte-ai/desktop")}`);
+            const include = [
+              { os: "linux", runner: "blacksmith-8vcpu-ubuntu-2404" },
+              { os: "windows", runner: "blacksmith-4vcpu-windows-2025" },
+            ];
+            if (process.env.EVENT !== "pull_request" && (process.env.REF === "refs/heads/main" || process.env.REF.startsWith("refs/heads/release/"))) {
+              include.push({ os: "macos", runner: "blacksmith-6vcpu-macos-15" });
+            }
+            console.log(`unit_matrix=${JSON.stringify({ include })}`);
           ' >> "$GITHUB_OUTPUT"
 
   unit:
     name: unit (${{ matrix.os }})
-    needs: affected
+    needs: [affected, verify]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: linux
-            runner: blacksmith-8vcpu-ubuntu-2404
-          - os: macos
-            runner: blacksmith-6vcpu-macos-15
-          - os: windows
-            runner: blacksmith-4vcpu-windows-2025
+      matrix: ${{ fromJSON(needs.affected.outputs.unit_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
@@ -147,7 +150,7 @@ jobs:
 
   e2e-web:
     name: e2e web (${{ matrix.leg.name }})
-    needs: affected
+    needs: [affected, verify]
     if: needs.affected.outputs.web == 'true'
     strategy:
       fail-fast: false
@@ -192,7 +195,7 @@ jobs:
 
   e2e-desktop:
     name: e2e desktop (${{ matrix.shard }})
-    needs: affected
+    needs: [affected, verify]
     if: needs.affected.outputs.desktop == 'true'
     strategy:
       fail-fast: false

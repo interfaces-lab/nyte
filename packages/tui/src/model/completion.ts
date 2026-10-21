@@ -184,7 +184,7 @@ export function mentionSuggestions(
   const seen = new Set(prefixed.map((file) => file.path));
 
   const fuzzy = fuzzysort
-    .go(query, files, { keys: ["display", "label"], limit: MAX_MENTIONS })
+    .go(query, files, { keys: ["display", "label"], limit: MAX_MENTIONS, threshold: 0 })
     .flatMap((result) => (seen.has(result.obj.path) ? [] : [result.obj]));
 
   return [...prefixed, ...fuzzy].slice(0, MAX_MENTIONS);

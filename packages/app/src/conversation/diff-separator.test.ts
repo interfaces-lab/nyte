@@ -20,6 +20,8 @@ function fileDiff(name = "app.ts"): FileDiffMetadata {
     isPartial: true,
     deletionLines: [],
     additionLines: [],
+    deletionCharacterCount: 0,
+    additionCharacterCount: 0,
   };
 }
 

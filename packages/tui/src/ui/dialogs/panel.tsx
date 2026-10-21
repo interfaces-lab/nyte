@@ -1,5 +1,5 @@
 import { TextAttributes } from "@opentui/core";
-import { useTerminalDimensions } from "@opentui/solid";
+import { useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { createMemo, Show } from "solid-js";
 import type { Accessor } from "solid-js";
@@ -17,9 +17,17 @@ export function useBodyWidth(): () => number {
 }
 
 export function useRowCap(): () => number {
+  const renderer = useRenderer();
   const dimensions = useTerminalDimensions();
 
-  return () => Math.max(1, Math.floor(dimensions().height / 2) - 6);
+  return () => {
+    const { height } = dimensions();
+
+    const terminalHeight =
+      renderer.screenMode === "split-footer" ? renderer.terminalHeight : height;
+
+    return Math.max(1, Math.floor(terminalHeight / 2) - 6);
+  };
 }
 
 export function cut(text: string, width: number): string {

@@ -10,7 +10,7 @@ import {
   NYTE_TOOL_PREFIX,
 } from "./translate.ts";
 
-type MessageParam = SDKUserMessage["message"];
+type MessageParam = Exclude<SDKUserMessage["message"], { role: "system" }>;
 
 export type ContentBlock = Exclude<MessageParam["content"], string>[number];
 

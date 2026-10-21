@@ -29,8 +29,10 @@ On every push to `main`, `.github/workflows/changesets.yml` does one of two thin
 Merging the version pull request ships the release. `release.yml` then:
 
 1. Checks that every package in the fixed group is at the release version, then runs format, lint,
-   typecheck, build, tests, `sdk:check`, `sdk:pack` and `sdk:verify`.
-2. Builds, signs and notarizes the `nyte` binaries, and builds the desktop app.
+   typecheck, build, tests, `sdk:check`, `sdk:pack` and `sdk:verify` on Linux. It exports the web
+   and canvas builds for reuse by every desktop target.
+2. Builds, signs and notarizes the `nyte` binaries, and builds the desktop app. Mac workers only
+   handle native compilation, packaging and Apple signing, not the shared frontend builds.
 3. Uploads both to a draft GitHub release `v<version>`.
 4. Publishes the SDK packages to npm with `pnpm -r publish`, in dependency order, with provenance.
 5. Pushes the `v<version>` tag and publishes the GitHub release. A version with a `-` becomes a
@@ -40,6 +42,12 @@ Merging the version pull request ships the release. `release.yml` then:
 Versions with a `-` publish to the npm `next` dist-tag, the rest to `latest`. `pnpm -r publish`
 skips versions npm already has, so a failed run resumes from where it stopped. To resume or
 rerun one, start **Release** by hand with the version, from `main` or from its tag.
+
+For a Mac desktop build without Actions or publication, use the
+[Linux-to-Mac build command](scripts/README.md#delegate-a-mac-desktop-build).
+Routine CI runs macOS unit tests only on `main` and `release/**`, after Linux verification
+passes. Pull requests keep Linux and Windows tests; **Test on one OS** remains available
+for explicit native checks.
 
 ### Prereleases
 

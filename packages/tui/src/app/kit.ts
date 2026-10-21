@@ -92,7 +92,11 @@ function syntaxPair(theme: CliTheme, owner: NativeResourceOwner): SyntaxPair {
   return { normal: syntaxStyle(theme, false, owner), subtle: syntaxStyle(theme, true, owner) };
 }
 
-function syntaxStyle(theme: CliTheme, subtle: boolean, owner: NativeResourceOwner): SyntaxStyle {
+export function syntaxStyle(
+  theme: CliTheme,
+  subtle: boolean,
+  owner: NativeResourceOwner,
+): SyntaxStyle {
   const color = (value: string): string => (subtle ? theme.dim : value);
 
   return SyntaxStyle.fromStyles(

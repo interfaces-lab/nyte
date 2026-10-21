@@ -243,7 +243,7 @@ callback must be allowed under Native applications in the Clerk dashboard:
 
 ## Development
 
-Local builds use Expo SDK 57 and Xcode 27's iOS 27 SDK. Select Xcode for the current
+Local builds use Expo SDK 58 and Xcode 27's iOS 27 SDK. Select Xcode for the current
 terminal without changing the system setting:
 
 ```sh
@@ -304,7 +304,6 @@ SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" pod install
 
 | Piece | Why it is there |
 | --- | --- |
-| `plugins/with-scene-lifecycle.cjs` and `NyteSceneDelegate.swift` | The iOS 27 SDK requires a single-window scene delegate, and Expo 57 still generates the older app lifecycle ([Expo issue 46664](https://github.com/expo/expo/issues/46664)). The adapter forwards lifecycle and link events through Expo. Remove both once a stable Expo template includes `ExpoAppSceneDelegate`. |
 | `modules/nyte-photo-access` | A local Expo module that presents the limited-library picker and resolves when it closes, a callback the installed Expo API lacks. Autolinking picks it up from `modules/`; no shared dependency is patched. |
 | `expo-media-library` with `preventAutomaticLimitedAccessAlert` | The photo panel has its own access control, so iOS's automatic limited-access reminder is off. Photo permission is requested only after an explicit Photos action. |
 | `@use-voltra/ios-client@2.3.2` pnpm patch | Backports [Voltra's distinct pod module fix](https://github.com/callstackincubator/voltra/pull/330): the app uses `VoltraRuntime` and the extension `VoltraWidgetRuntime`, so an archive doesn't produce two `Metadata.appintents`. Remove it when a Voltra release includes the fix. |

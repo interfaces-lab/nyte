@@ -1,4 +1,4 @@
-import type { ContentBlock } from "@agentclientprotocol/sdk";
+import type { ContentBlock } from "@agentclientprotocol/sdk/unstable";
 import type { ImageContent, Message, TextContent, UserMessage } from "@nyte-ai/ai";
 import { MIRROR_TOOL } from "./translate.ts";
 

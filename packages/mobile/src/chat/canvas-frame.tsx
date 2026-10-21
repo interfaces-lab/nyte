@@ -35,7 +35,7 @@ const EVERY_ORIGIN = ["*"];
 
 const STOPPED = "This canvas stopped responding.";
 
-function inject(view: WebView | null, message: ShellBound): void {
+function inject(view: WebView<unknown> | null, message: ShellBound): void {
   view?.injectJavaScript(shellScript(message));
 }
 
@@ -48,7 +48,7 @@ export function CanvasFrame({
 }) {
   const theme = useTheme();
   const scheme = useColorScheme() === "dark" ? "dark" : "light";
-  const webView = useRef<WebView>(null);
+  const webView = useRef<WebView<unknown>>(null);
   const crashed = useRef(false);
   const reported = useRef<string>(undefined);
   const [generation, setGeneration] = useState(0);
@@ -138,7 +138,7 @@ export function CanvasFrame({
         <Notice>{shown.message}</Notice>
       ) : (
         <View style={{ height: frame.height }}>
-          <WebView
+          <WebView<unknown>
             key={generation}
             ref={webView}
             source={{ html: shell.html }}

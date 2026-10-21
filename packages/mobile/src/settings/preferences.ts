@@ -58,7 +58,7 @@ export function useAppearance() {
 
   return {
     ...setting,
-    select: (value: AppearancePreference) => {
+    select: (value: typeof setting.value) => {
       setting.select(value);
       Appearance.setColorScheme(value);
     },

@@ -297,12 +297,12 @@ export function createClient(
   }
 
   const client = new PiAnthropic({
-    apiKey: apiKey ?? null,
+    apiKey: null,
     authToken: null,
     baseURL: model.baseUrl,
     dangerouslyAllowBrowser: true,
     fetch,
-    defaultHeaders,
+    defaultHeaders: mergeAnthropicHeaders({ "x-api-key": apiKey ?? null }, defaultHeaders),
   });
 
   return { client, isOAuthToken: false };

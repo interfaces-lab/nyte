@@ -46,6 +46,7 @@ export function Transcript(props: TranscriptProps): JSX.Element {
   const app = useApp();
   const { kit } = app;
   const renderer = useRenderer();
+  const inline = renderer.screenMode === "split-footer";
   const anchors = new Map<string, BoxRenderable>();
   const [hovered, setHovered] = createSignal(false);
   let box: ScrollBoxRenderable | undefined;
@@ -220,10 +221,10 @@ export function Transcript(props: TranscriptProps): JSX.Element {
           scrollY
           flexGrow={1}
           minHeight={0}
-          paddingTop={1}
+          paddingTop={inline ? 0 : 1}
           paddingLeft={1}
           paddingRight={1}
-          paddingBottom={TRANSCRIPT_BOTTOM_PADDING}
+          paddingBottom={inline ? 0 : TRANSCRIPT_BOTTOM_PADDING}
           scrollAcceleration={acceleration()}
           onPaste={(event) => {
             if (props.onPaste === undefined) return;

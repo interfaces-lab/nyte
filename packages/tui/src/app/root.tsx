@@ -1,7 +1,9 @@
+import { useRenderer } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { ErrorBoundary, onCleanup } from "solid-js";
 import { themeFor } from "../lib/theme.ts";
 import type { CliTheme } from "../lib/theme.ts";
+import { MiniScreen } from "../mini/screen.tsx";
 import { ErrorScreen } from "../ui/chrome/error-screen.tsx";
 import { Screen } from "../ui/screen.tsx";
 import { AppProvider } from "./context.tsx";
@@ -18,12 +20,14 @@ interface RootProps {
 }
 
 export function Root(props: RootProps): JSX.Element {
+  const renderer = useRenderer();
+
   return (
     <ErrorBoundary fallback={drawFallen(props)}>
       <AppProvider
         app={{ screen: props.store.screen, dispatch: props.store.dispatch, kit: props.kit }}
       >
-        <Screen />
+        {renderer.screenMode === "split-footer" ? <MiniScreen /> : <Screen />}
       </AppProvider>
     </ErrorBoundary>
   );

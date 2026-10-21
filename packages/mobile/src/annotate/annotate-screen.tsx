@@ -13,6 +13,7 @@ import {
   View,
   type ImageStyle,
   type TextStyle,
+  type ViewInstance,
   type ViewStyle,
 } from "react-native";
 import { captureRef } from "react-native-view-shot";
@@ -168,7 +169,7 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
   const [selected, setSelected] = useState<number | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
-  const canvasRef = useRef<View>(null);
+  const canvasRef = useRef<ViewInstance>(null);
 
   const points = marks.flatMap((mark) => (mark.kind === "point" ? [mark.point] : []));
   const strokes = marks.flatMap((mark) => (mark.kind === "stroke" ? [mark.points] : []));

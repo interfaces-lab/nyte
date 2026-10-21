@@ -3,6 +3,37 @@
 Nyte's terminal host uses core's SDK for sessions and jobs. Terminal rendering and keyboard
 interaction live here; job execution, cancellation, and recovery live in core.
 
+## Minimal mode (POC)
+
+```sh
+NYTE_RELOAD=off pnpm dev:tui --minimal
+# Or build without replacing your installed nyte:
+pnpm --dir packages/tui build
+./packages/tui/dist/nyte --minimal
+```
+
+`--minimal` also works with `--resume` and `--session`. It requires an interactive
+terminal and cannot be combined with print, JSON or quiet mode.
+
+The prompt follows terminal output instead of taking over the screen. Tree, model,
+question, trust and task dialogs use the same bounded inline area. Esc returns to
+the saved draft. Ctrl+O toggles a bounded transcript pane for tool output.
+
+The implementation lives in `src/mini/`:
+
+- `screen.tsx`: the live footer, shared composer and shared dialogs.
+- `transcript.ts`: orders settled entries and the unfinished suffix.
+- `scrollback.ts`: appends settled entries to native scrollback without rewriting it.
+
+This shares `mountApp`, the reducer, effects, plugins and keymap with the existing
+TUI. A separate SDK-driven frontend would isolate the layout but duplicate the
+interactive controller, including question handling and tree navigation.
+
+POC limits: streaming stays in the live footer until each message settles. Successful
+tools show compact headings; failures retain their output. Committed output does not
+repaint on theme changes. Resume and development remounts replay the loaded history
+tail, not the entire session. Images and custom plugin parts use a text fallback.
+
 ## CLI session targets
 
 `nyte -p --session <session-id> <prompt>` sends a prompt to that exact session.
