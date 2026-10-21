@@ -196,6 +196,19 @@ async function connected(connection: RelayConnection): Promise<void> {
   await vi.waitFor(() => assert.deepEqual(connection.status(), { kind: "connected" }));
 }
 
+async function stalled(relay: RelayServer, message: string): Promise<number> {
+  await vi.waitFor(
+    async () => {
+      const before = relay.uploaded;
+      await sleep(200);
+      assert.ok(before > RELAY_WINDOW_BYTES && relay.uploaded === before, message);
+    },
+    { timeout: 10_000 },
+  );
+
+  return relay.uploaded;
+}
+
 test("a relayed request reaches only the listener's port, and only allowlisted headers and statuses cross", async () => {
   const { local, relay, open } = await harness();
   const connection = open();
@@ -278,11 +291,10 @@ test("request bytes are credited only as the local socket takes them", async () 
   });
 
   await vi.waitFor(() => assert.ok(relay.uploaded >= RELAY_WINDOW_BYTES));
-  await sleep(300);
-  const stalled = relay.uploaded;
+  const stall = await stalled(relay, "the upload stalls once the local socket stops taking bytes");
   await sleep(200);
-  assert.equal(relay.uploaded, stalled, "credit came back for bytes the server never read");
-  assert.ok(stalled < body.byteLength);
+  assert.equal(relay.uploaded, stall, "credit came back for bytes the server never read");
+  assert.ok(stall < body.byteLength);
 
   local.uploadGate.resolve();
   const response = await answered;
@@ -412,14 +424,7 @@ test("a frame that breaks the contract closes the socket, and it comes back with
           path: "/files.upload",
           body: new Uint8Array(RELAY_BODY_LIMIT_BYTES),
         });
-        await vi.waitFor(async () => {
-          const before = relay.uploaded;
-          await sleep(200);
-          assert.ok(
-            before > 0 && relay.uploaded === before,
-            "stalled on credit: less than a chunk of room is left",
-          );
-        });
+        await stalled(relay, "stalled on credit: less than a chunk of room is left");
         relay.send(
           JSON.stringify({
             t: "data",

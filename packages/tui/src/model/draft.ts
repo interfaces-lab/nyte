@@ -181,7 +181,12 @@ function sameImage(
 }
 
 function baseName(path: string): string {
-  return path.replace(/\/+$/u, "").split("/").at(-1) ?? path;
+  return (
+    path
+      .replace(/[\\/]+$/u, "")
+      .split(/[\\/]/u)
+      .at(-1) ?? path
+  );
 }
 
 function uniqueMarker(parts: DraftParts, base: string): string {

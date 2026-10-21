@@ -36,7 +36,12 @@ const HINT_ORDER: readonly { readonly command: ChatCommand; readonly tier: Hint[
 ];
 
 function basename(path: string): string {
-  return path.replace(/\/+$/u, "").split("/").at(-1) ?? path;
+  return (
+    path
+      .replace(/[\\/]+$/u, "")
+      .split(/[\\/]/u)
+      .at(-1) ?? path
+  );
 }
 
 export function footerFor(state: State, queued: number): FooterModel {

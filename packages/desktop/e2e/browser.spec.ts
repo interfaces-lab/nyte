@@ -288,7 +288,7 @@ test("the integrated browser journey", async ({ desktop }) => {
   await test.step("find and advance through page matches", async () => {
     const addressField = panel.getByRole("combobox", { name: "Address", exact: true });
     await addressField.click();
-    await addressField.press("Meta+f");
+    await addressField.press("ControlOrMeta+f");
     const findBar = panel.getByRole("search", { name: "Find in page" });
     const query = findBar.getByRole("textbox", { name: "Find in page" });
     await query.fill("needle");

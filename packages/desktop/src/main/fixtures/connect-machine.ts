@@ -478,10 +478,14 @@ export async function fixture(): Promise<Fixture> {
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const DROP_DELAY_MS = 50;
+
+export const releaseDropped = () => sleep(DROP_DELAY_MS);
+
 const FAST: Partial<ConnectTiming> = {
   heartbeatMs: 150,
   retryMs: 100,
-  dropDelayMs: 50,
+  dropDelayMs: DROP_DELAY_MS,
   relay: { retryMinMs: 20, retryMaxMs: 100 },
 };
 

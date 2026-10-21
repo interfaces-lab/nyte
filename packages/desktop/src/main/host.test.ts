@@ -16,11 +16,13 @@ const opened: TestDesktop[] = [];
 
 const connections: Connection[] = [];
 
-afterEach(async () => {
+async function closeOpened(): Promise<void> {
   for (const connection of connections.splice(0)) await connection.close();
 
   for (const desktop of opened.splice(0)) await desktop.close();
-});
+}
+
+afterEach(closeOpened);
 
 async function desktop(...input: Parameters<typeof testDesktop>): Promise<TestDesktop> {
   const made = await testDesktop(...input);
@@ -262,7 +264,9 @@ test("a key login over the loopback listener connects the provider, and the reop
     await first.close();
     const written = reads;
     assert.ok(written > 0);
-    assert.equal((await stat(join(home, ".nyte", "secret.key"))).mode & 0o777, 0o600);
+
+    if (process.platform !== "win32")
+      assert.equal((await stat(join(home, ".nyte", "secret.key"))).mode & 0o777, 0o600);
 
     const second = await desktop({ home, models: models() });
     const again = await connectLocal(second);
@@ -270,6 +274,7 @@ test("a key login over the loopback listener connects the provider, and the reop
     assert.equal(await credential(again), "configured");
     assert.equal(reads, written);
   } finally {
+    await closeOpened();
     await store.close();
     await rm(home, { recursive: true, force: true });
   }

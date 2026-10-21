@@ -51,7 +51,10 @@ test("cancel, disable, and quit win over work still in flight", async () => {
   const gate = Promise.withResolvers<void>();
   broker.linkGate = gate.promise;
   const inFlight = host.call(1, "host.connect.link", undefined);
-  await vi.waitFor(() => assert.equal(broker.count(`POST ${BROKER_ROUTES.environments}`), 1));
+  await vi.waitFor(() => {
+    assert.equal(broker.count(`POST ${BROKER_ROUTES.environments}`), 1);
+    assert.ok(broker.env, "the broker holds the link at its gate");
+  });
   await host.call(1, "host.connect.cancel", undefined);
   gate.resolve();
   assert.equal(
@@ -390,7 +393,10 @@ test("a cancelled link keeps its key on disk, and a restart resumes the same env
   const gate = Promise.withResolvers<void>();
   broker.linkGate = gate.promise;
   const inFlight = first.host.call(1, "host.connect.link", undefined);
-  await vi.waitFor(() => assert.equal(broker.count(`POST ${BROKER_ROUTES.environments}`), 1));
+  await vi.waitFor(() => {
+    assert.equal(broker.count(`POST ${BROKER_ROUTES.environments}`), 1);
+    assert.ok(broker.env, "the broker holds the link at its gate");
+  });
   const pending = JSON.parse(await stored(setup)).linkKey;
   assert.ok(Value.Check(PrivateJwk, pending.key));
   assert.equal(await keyThumbprint(pending.key), broker.env?.thumbprint);

@@ -18,6 +18,7 @@ import {
   info,
   watch,
   forget,
+  releaseDropped,
   relayGone,
   stored,
   denied,
@@ -165,6 +166,7 @@ test("a phone releases only itself, even before a lease lists it, without being 
   assert.equal(await forget(setup, undefined), 401);
   assert.equal(await forget(setup, randomBytes(32).toString("base64url")), 403);
   assert.equal(await forget(setup, token), 204);
+  await releaseDropped();
   assert.equal(await forget(setup, token), 403);
 
   const after = await linked(desktop_.host);
@@ -217,6 +219,7 @@ test("a local revoke refuses at once, stays queued while the broker is offline, 
   assert.equal(await streaming, "ended");
   assert.deepEqual(await info(setup, phone.token), denied);
   assert.equal(await forget(setup, released.token), 204);
+  await releaseDropped();
   assert.deepEqual(await queued(), [
     [phone.deviceId, "revoke"],
     [released.deviceId, "release"],

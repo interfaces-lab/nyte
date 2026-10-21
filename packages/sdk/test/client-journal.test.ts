@@ -487,7 +487,10 @@ it("leaves a send the host admitted but never answered to the clipped prompt tha
 
   const clipped = await until(
     connection.session(session.id).watch({ tail: 2 }),
-    (view) => view.execution.kind === "idle" && view.leadingPrompt !== null,
+    (view) =>
+      view.execution.kind === "idle" &&
+      view.leadingPrompt !== null &&
+      view.messages.every((message) => message.kind === "part"),
   );
 
   expect(clipped.leadingPrompt).toMatchObject({ content: "Clipped.", status: { kind: "landed" } });

@@ -39,7 +39,7 @@ Use Address and Token opens the existing manual form. Manual and `/pair#host=<ad
 
 ### Security headers
 
-`public/vercel.json` carries the SPA rewrite, CSP, HSTS, MIME sniffing protection, frame denial, referrer policy, and permissions restrictions. `vercel.json` links to it so Vercel reads the headers as project configuration. Use `packages/app` as the Vercel root directory, the Vite preset, `pnpm build`, and `dist` as the output directory. Keep the Clerk Frontend API hostname in `script-src`, `img-src`, and `frame-src` aligned with the publishable key. The defaults allow Clerk development hosts and `clerk.nyte.sh`, plus `accounts.nyte.sh` for its account portal.
+`vercel.json` carries the SPA rewrite, CSP, HSTS, MIME sniffing protection, frame denial, referrer policy, and permissions restrictions. Keep it a regular file: Git stores a symlink as its target path, which Vercel rejects as an invalid `vercel.json`. Use `packages/app` as the Vercel root directory, the Vite preset, `pnpm build`, and `dist` as the output directory. Keep the Clerk Frontend API hostname in `script-src`, `img-src`, and `frame-src` aligned with the publishable key. The defaults allow Clerk development hosts and `clerk.nyte.sh`, plus `accounts.nyte.sh` for its account portal.
 
 Scripts are limited to the app, Clerk, and Clerk's Turnstile and fraud-protection hosts. Inline scripts and JavaScript eval are blocked. `'wasm-unsafe-eval'` permits Ghostty and Shiki's WebAssembly, not JavaScript eval. Workers allow first-party URLs and blobs. Fonts allow bundled files and Clerk's embedded data fonts. Styles allow `'unsafe-inline'` because Clerk injects CSS-in-JS and Nyte applies runtime theme variables and layout styles.
 

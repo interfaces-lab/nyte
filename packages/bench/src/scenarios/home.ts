@@ -59,7 +59,7 @@ export async function scenarioHome(input: {
     home,
     traceFile,
     skills,
-    [Symbol.asyncDispose]: () => rm(home, { recursive: true, force: true }),
+    [Symbol.asyncDispose]: () => rm(home, { recursive: true, force: true, maxRetries: 10 }),
   };
 }
 

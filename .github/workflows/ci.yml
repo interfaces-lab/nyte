@@ -176,7 +176,11 @@ jobs:
       - run: pnpm --dir packages/canvas build
       - run: pnpm --dir packages/app build
       - name: Run web e2e against the built app
-        run: pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts ${{ matrix.leg.args }}
+        env:
+          LEG: ${{ matrix.leg.name }}
+        run: |
+          if [ "$LEG" = timed ]; then export NYTE_WATERFALL_DIR="$PWD/packages/app/e2e/test-results/waterfall"; fi
+          pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts ${{ matrix.leg.args }}
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -210,11 +214,11 @@ jobs:
         with:
           bun-version: latest
       - run: pnpm install --frozen-lockfile
-      - name: Install Electron system dependencies
+      - name: Install Electron system dependencies and Chromium
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
-          pnpm --dir packages/app exec playwright install-deps chromium
+          pnpm --dir packages/desktop exec playwright install --with-deps chromium
           if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi

@@ -140,15 +140,20 @@ test("a device the broker activates after a lease was snapshotted gets in on a l
     ),
   );
   const held = Promise.withResolvers<void>();
-  broker.holdNextLease = held.promise;
-  const before = broker.count(lease);
-  await vi.waitFor(() =>
+  let before = 0;
+  await vi.waitFor(() => {
+    assert.equal(broker.leases.length, broker.count(lease), "no lease is in flight");
+    before = broker.count(lease);
+    broker.holdNextLease = held.promise;
+  });
+  await vi.waitFor(() => {
     assert.equal(
       broker.count(lease),
       before + 1,
       "the next answer is snapshotted without the device and held in flight",
-    ),
-  );
+    );
+    assert.equal(broker.holdNextLease, undefined);
+  });
 
   broker.active.add(grant.deviceId);
   broker.policy += 1;

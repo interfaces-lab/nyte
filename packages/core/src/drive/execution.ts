@@ -454,10 +454,9 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       for (const retry of retries) clearTimeout(retry);
       retries.clear();
       const state = kernel.executionState;
-      const aborted = state.closing;
-      state.closing = new AbortController();
-      aborted.abort();
+      state.closing.abort();
       await Promise.all(inflight.values());
+      state.closing = new AbortController();
       await covering.then(
         (owned) => owned.close(),
         () => undefined,

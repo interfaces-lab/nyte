@@ -122,7 +122,7 @@ async function share(host: Host): Promise<
     drop: () => sockets.at(-1)?.close(),
     [Symbol.asyncDispose]: async () => {
       await runtime.close();
-      await rm(home, { recursive: true, force: true });
+      await rm(home, { recursive: true, force: true, maxRetries: 10 });
     },
   };
 }

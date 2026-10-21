@@ -21,7 +21,11 @@ const everySchedule = buildView((v) =>
   v
     .turn("t1", (t) => t.user("hi").tool("bash", { running: true }), { run: "r1" })
     .pending("asked for later", { schedule: { kind: "next-turn", reason: "requested" } })
-    .pending("when idle", { schedule: { kind: "next-turn", reason: "idle" } })
+    .pending(
+      "when idle",
+      { schedule: { kind: "next-turn", reason: "idle" } },
+      { delivery: "queue" },
+    )
     .pending("after the run", { schedule: { kind: "next-turn", reason: "run-ended" } })
     .pending("on the new model", { schedule: { kind: "next-turn", reason: "configuration" } })
     .pending("ride along", { schedule: { kind: "attached" } })

@@ -140,7 +140,7 @@ test.skipIf(!built)(
         );
       }
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      await rm(directory, { recursive: true, force: true, maxRetries: 10 });
     }
   },
 );

@@ -1,6 +1,6 @@
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
-import { chatPane, openChat } from "./ui.ts";
+import { chatPane, openChat, primaryKey } from "./ui.ts";
 import type { Locator, Page } from "@playwright/test";
 
 test.use({ chapter: "workbench" });
@@ -76,7 +76,9 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(files.getByRole("combobox", { name: "Go to file" })).toBeVisible();
     const start = files.getByRole("region", { name: "Start" });
     await expect(start.getByRole("button", { name: "Show Explorer" })).toBeVisible();
-    await expect(start.getByRole("button", { name: "Search in Files ⌘ F" })).toBeVisible();
+    await expect(
+      start.getByRole("button", { name: `Search in Files ${primaryKey} F` }),
+    ).toBeVisible();
   });
 
   await test.step("Changes reports that the home folder is not a repository", async () => {

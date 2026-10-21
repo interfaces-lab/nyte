@@ -9,7 +9,7 @@ import { useContext, type ReactElement } from "react";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { rounded } from "./hub-art";
-import { BOARD, Falloff, Strip, ink, reduced, seeded } from "./strip";
+import { BOARD, Falloff, Strip, ink, seeded } from "./strip";
 
 type Token = "key" | "name" | "text" | "punct";
 
@@ -732,6 +732,8 @@ const sweep = keyframes({
   from: { transform: "translateX(0)" },
   to: { transform: "translateX(440px)" },
 });
+
+const reduced = "@media (prefers-reduced-motion: reduce)";
 
 const editor = create({
   tab: { fill: role.bgMuted, stroke: role.borderPrimary, strokeWidth: 1 },

@@ -36,7 +36,8 @@ beforeAll(() => enableTracing());
 afterEach(async () => {
   clearSpans();
 
-  for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true });
+  for (const folder of folders.splice(0))
+    await rm(folder, { recursive: true, force: true, maxRetries: 10 });
 });
 
 async function folder(): Promise<string> {

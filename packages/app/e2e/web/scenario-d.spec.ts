@@ -56,6 +56,10 @@ async function dismissNotifications(page: Page): Promise<void> {
 }
 
 async function captureFrame(page: Page): Promise<{ aria: string; image: Buffer }> {
+  await expect(
+    changes(page).getByRole("code").locator("[style*='--diffs-token-light']").first(),
+  ).toBeVisible();
+
   return {
     aria: `${await messages(page).ariaSnapshot()}\n${await changes(page).ariaSnapshot()}`,
     image: await page
