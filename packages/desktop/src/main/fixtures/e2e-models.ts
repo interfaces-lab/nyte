@@ -10,7 +10,7 @@ import {
   testModel,
   titleReply,
 } from "@nyte-ai/bench";
-import type { Reply, Request, Script } from "@nyte-ai/bench";
+import type { Block, Reply, Request, Script } from "@nyte-ai/bench";
 import { contentText, getCurrentTools } from "@nyte-ai/schema/model";
 import type { ModelRef } from "@nyte-ai/schema";
 import { restaurantReplies, restaurantSkill } from "@nyte-ai/app/e2e/scenario-u-fixture";
@@ -64,6 +64,8 @@ function paragraphs(count: number): string {
   ).join("\n\n");
 }
 
+export const SWARM_AGENTS = 5;
+
 export function scriptedReply(text: string): Reply {
   const [command = "", argument] = text.trim().split(/\s+/, 2);
 
@@ -98,6 +100,20 @@ export function scriptedReply(text: string): Reply {
           },
         ],
       };
+    case "/swarm":
+      return {
+        content: Array.from({ length: SWARM_AGENTS }, (_, index): Block => ({
+          type: "toolCall",
+          id: `agent-survey-${String(index + 1)}`,
+          name: "create",
+          arguments: {
+            title: `Survey part ${String(index + 1)}`,
+            prompt: `Survey part ${String(index + 1)}.`,
+          },
+          deltas: 4,
+        })),
+        timing: { deltaMs: 150 },
+      };
     case "/long": {
       const count = Number.parseInt(argument ?? "", 10);
 
@@ -108,6 +124,16 @@ export function scriptedReply(text: string): Reply {
     }
 
     default:
+      if (text.startsWith("Survey part "))
+        return {
+          content: [
+            { type: "thinking", thinking: "Reading the area before writing it up." },
+            { type: "text", text: paragraphs(16) },
+          ],
+          tokens: 320,
+          timing: { deltaMs: 25 },
+        };
+
       return text.startsWith("Child ")
         ? { content: [{ type: "text", text: "An agent reported back." }] }
         : { content: [{ type: "text", text: `Echo: ${text}` }] };
