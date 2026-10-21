@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { useCallback, useRef, useState } from "react";
-import { RefreshControl, ScrollView, View } from "react-native";
+import { AppState, RefreshControl, ScrollView, View } from "react-native";
 import type { SearchBarCommands } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
@@ -25,6 +25,7 @@ import { GlassButton } from "../ui/glass-button.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
 import { SessionRowsSkeleton } from "../ui/skeleton.tsx";
 import { FilterGrid } from "./filter-grid.tsx";
+import { tickWhileForeground } from "./inbox-clock.ts";
 import { AccountButton } from "./account-button.tsx";
 import { useDateSections, useFilterCards, useTwoLinePreview } from "../settings/preferences.ts";
 import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
@@ -154,19 +155,13 @@ export function InboxScreen() {
   useWorkLiveActivitySync(working, attention);
 
   useFocusEffect(
-    useCallback(() => {
-      setNow(Date.now());
-    }, []),
+    useCallback(
+      () => tickWhileForeground({ appState: AppState, tick: () => setNow(Date.now()) }),
+      [],
+    ),
   );
 
-  useMountEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 10_000);
-
-    return () => {
-      clearInterval(timer);
-      clearTimeout(searchTimer.current);
-    };
-  });
+  useMountEffect(() => () => clearTimeout(searchTimer.current));
 
   return (
     <View style={{ flex: 1 }}>
