@@ -96,6 +96,7 @@ export const ServiceTierSchema = Type.Union([
   Type.Literal("scale"),
   Type.Literal("priority"),
   Type.Literal("fast"),
+  Type.Literal("ultrafast"),
   Type.Null(),
 ]);
 

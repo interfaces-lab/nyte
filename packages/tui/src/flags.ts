@@ -10,6 +10,7 @@ export type ResumeTarget =
 
 export interface RunFlags {
   readonly resume: ResumeTarget;
+  readonly minimal: boolean;
   readonly print: boolean;
   readonly json: boolean;
   readonly quiet: boolean;
@@ -29,6 +30,7 @@ export function parseFlags(args: readonly string[]): RunFlags {
     options: {
       resume: { type: "boolean", short: "c" },
       session: { type: "string" },
+      minimal: { type: "boolean" },
       print: { type: "boolean", short: "p" },
       json: { type: "boolean" },
       quiet: { type: "boolean", short: "q" },
@@ -47,6 +49,13 @@ export function parseFlags(args: readonly string[]): RunFlags {
 
     if (seen.has(token.name)) throw new Error(`Provide --${token.name} only once.`);
     seen.add(token.name);
+  }
+
+  if (
+    values.minimal === true &&
+    (values.print === true || values.json === true || values.quiet === true)
+  ) {
+    throw new Error("--minimal cannot be combined with --print/-p, --json, or --quiet/-q.");
   }
 
   if (values.session !== undefined && values.resume === true) {
@@ -70,6 +79,7 @@ export function parseFlags(args: readonly string[]): RunFlags {
         : values.resume === true
           ? { kind: "latest" }
           : { kind: "new" },
+    minimal: values.minimal ?? false,
     print: values.print ?? false,
     json: values.json ?? false,
     quiet: values.quiet ?? false,

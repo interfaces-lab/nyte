@@ -4,6 +4,7 @@ import process from "node:process";
 import { asId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import { CliRenderer, NativeSession } from "@opentui/core";
+import type { CliRendererConfig } from "@opentui/core";
 import type { BootOptions } from "../effects/boot.ts";
 import { installProcessHooks, openCrashLog } from "../effects/crash.ts";
 import { createHandle, filesPort, settingsPort, shellPort } from "../effects/local-ports.ts";
@@ -47,6 +48,18 @@ export async function runTui(flags: RunFlags): Promise<number> {
   registerSyntaxParsers();
   const native = new NativeSession(process.stdout);
 
+  const display = flags.minimal
+    ? ({
+        screenMode: "split-footer",
+        footerHeight: 2,
+        externalOutputMode: "capture-stdout",
+        consoleMode: "disabled",
+        useMouse: false,
+        enableMouseMovement: false,
+        clearOnShutdown: false,
+      } satisfies CliRendererConfig)
+    : { enableMouseMovement: true, clearOnShutdown: true };
+
   const renderer = new CliRenderer(
     process.stdin,
     process.stdout,
@@ -57,8 +70,7 @@ export async function runTui(flags: RunFlags): Promise<number> {
       nativeSession: native,
       exitOnCtrlC: false,
       autoFocus: false,
-      enableMouseMovement: true,
-      clearOnShutdown: true,
+      ...display,
       openConsoleOnError: false,
     },
   );
@@ -140,8 +152,16 @@ export async function runTui(flags: RunFlags): Promise<number> {
   unwatchTerminal();
   await cleanup("Clipboard", () => terminal.dispose());
   await cleanup("Terminal", async () => {
-    renderer.destroy();
-    await renderer.closed;
+    try {
+      if (!renderer.isDestroyed && renderer.screenMode === "split-footer") {
+        await renderer.idle();
+        renderer.externalOutputMode = "passthrough";
+        renderer.screenMode = "main-screen";
+      }
+    } finally {
+      renderer.destroy();
+      await renderer.closed;
+    }
   });
   unhook();
   process.stdout.write(exitText({ ...exit, failures }));

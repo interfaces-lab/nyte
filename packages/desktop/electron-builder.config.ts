@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { signApp } from "@electron/osx-sign";
+import { sign } from "@electron/osx-sign";
 import { Arch } from "electron-builder";
 import type { AfterPackContext, Configuration, MacConfiguration } from "electron-builder";
 import { ACCOUNT_SCHEMES } from "./src/account/scheme.ts";
@@ -102,7 +102,7 @@ const mac = {
   entitlementsInherit: "build/entitlements.mac.plist",
   extraResources: CLI,
   sign: (options) =>
-    signApp({
+    sign({
       ...options,
       optionsForFile: (file) => {
         const defaults = options.optionsForFile?.(file) ?? {};

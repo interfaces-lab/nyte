@@ -121,33 +121,33 @@
     "build:package": "bun ../../scripts/sdk-packages.mjs build host"
   },
   "dependencies": {
-    "@earendil-works/pi-mcp": "1.3.0",
-    "@lydell/node-pty": "1.2.0-beta.15",
+    "@earendil-works/pi-mcp": "^1.3.0",
+    "@lydell/node-pty": "^1.2.0-beta.15",
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "@silvia-odwyer/photon": "0.3.3",
-    "fflate": "0.8.3",
-    "ignore": "7.0.9",
-    "pg": "8.23.0",
-    "typebox": "1.3.36"
+    "@silvia-odwyer/photon": "^0.3.3",
+    "fflate": "^0.8.3",
+    "ignore": "^7.0.13",
+    "pg": "^8.23.1",
+    "typebox": "^1.4.2"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite": "^0.5.11",
     "@nyte-ai/canvas": "workspace:*",
     "@types/node": "^26.6.5",
-    "@types/pg": "8.23.1",
-    "fast-check": "4.10.2",
-    "nitro": "3.0.260903-beta",
+    "@types/pg": "^8.23.1",
+    "fast-check": "^4.10.2",
+    "nitro": "^3.0.260903-beta",
     "typescript": "6.0.3",
     "vitest": "^5.0.5",
-    "workflow": "4.8.8"
+    "workflow": "^5.2.3"
   },
   "peerDependencies": {
-    "nitro": "3.0.260903-beta",
-    "workflow": "4.8.8"
+    "nitro": "^3.0.260903-beta",
+    "workflow": "^5.2.3"
   },
   "peerDependenciesMeta": {
     "nitro": {

@@ -5,8 +5,8 @@ import {
   ndJsonStream,
   PROTOCOL_VERSION,
   RequestError,
-} from "@agentclientprotocol/sdk";
-import type { ClientConnection, InitializeResponse } from "@agentclientprotocol/sdk";
+} from "@agentclientprotocol/sdk/unstable";
+import type { ClientConnection, InitializeResponse } from "@agentclientprotocol/sdk/unstable";
 import { processEnvironment } from "@nyte-ai/core";
 import type { ExecutionEnv, Job } from "@nyte-ai/core";
 import manifest from "../../package.json" with { type: "json" };

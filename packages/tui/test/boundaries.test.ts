@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 
 const SRC = join(resolve(import.meta.dir, ".."), "src");
 
-const DIRS = ["app", "model", "effects", "ui", "lib", "services"] as const;
+const DIRS = ["app", "model", "effects", "ui", "mini", "lib", "services"] as const;
 
 interface Import {
   readonly file: string;
@@ -77,8 +77,8 @@ test("model imports only lib, model, fuzzysort and @nyte-ai types (question and 
   expect(offending.map(describe)).toEqual([]);
 });
 
-test("ui imports no effects or services, and the SDK only as types", () => {
-  const offending = all(["ui"]).filter(
+test("ui and mini import no effects or services, and the SDK only as types", () => {
+  const offending = all(["ui", "mini"]).filter(
     (entry) =>
       entry.target?.startsWith("effects/") === true ||
       entry.target?.startsWith("services/") === true ||

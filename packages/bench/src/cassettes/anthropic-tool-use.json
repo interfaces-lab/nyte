@@ -16,7 +16,7 @@
         "headers": {
           "accept": "application/json",
           "anthropic-beta": "interleaved-thinking-2025-05-14",
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": "2026-10-21",
           "content-type": "application/json",
           "x-api-key": "[REDACTED]"
         },
@@ -76,7 +76,7 @@
         "headers": {
           "accept": "application/json",
           "anthropic-beta": "interleaved-thinking-2025-05-14",
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": "2026-10-21",
           "content-type": "application/json",
           "x-api-key": "[REDACTED]"
         },
@@ -156,7 +156,7 @@
         "headers": {
           "accept": "application/json",
           "anthropic-beta": "interleaved-thinking-2025-05-14",
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": "2026-10-21",
           "content-type": "application/json",
           "x-api-key": "[REDACTED]"
         },

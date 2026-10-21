@@ -12,7 +12,7 @@ TextShimmer inherits font metrics. Put typography overrides on its parent when t
 
 <!-- STYLEX-CAPS:START -->
 
-[StyleX v0.19.0 CSS Support]|Use CSS-native solutions. Don't build JS workarounds for supported features.
+[StyleX v0.19.1 CSS Support]|Use CSS-native solutions. Don't build JS workarounds for supported features.
 |AT-RULES: @media, (hover: hover), (prefers-reduced-motion), (prefers-color-scheme), (scripting), @supports, @container, @container (+named), @starting-style, @starting-style (transform), @scope — YES
 |AT-RULES: @layer, @property (explicit) — NO (compiles but invalid CSS output)
 |PSEUDO-CLS: :hover, :focus, :focus-visible, :focus-within, :active, :disabled, :first-child, :last-child, :nth-child(), :where(), :is(), :has(), :not(), :placeholder-shown, :checked, :empty, :modal, :user-valid, :user-invalid — YES

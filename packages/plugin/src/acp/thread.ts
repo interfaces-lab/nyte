@@ -8,7 +8,7 @@ import type {
   ToolCallContent,
   ToolCallStatus,
   ToolCallUpdate,
-} from "@agentclientprotocol/sdk";
+} from "@agentclientprotocol/sdk/unstable";
 import { posix } from "node:path";
 import { createAssistantMessageEventStream } from "@nyte-ai/ai";
 import type { Api, AssistantMessageEventStream, Model, StopReason } from "@nyte-ai/ai";

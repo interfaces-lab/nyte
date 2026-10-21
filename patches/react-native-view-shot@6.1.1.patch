@@ -1,0 +1,23 @@
+diff --git a/src/index.tsx b/src/index.tsx
+--- a/src/index.tsx
++++ b/src/index.tsx
+@@ -1,5 +1,5 @@
+ import React, {
+-  ReactNode,
++  type ReactNode,
+   useRef,
+   useCallback,
+   useEffect,
+@@ -10,9 +10,9 @@ import {
+   View,
+   Platform,
+   findNodeHandle,
+-  StyleProp,
+-  ViewStyle,
+-  LayoutChangeEvent,
++  type StyleProp,
++  type ViewStyle,
++  type LayoutChangeEvent,
+ } from "react-native";
+ import RNViewShot from "./RNViewShot";
+ 

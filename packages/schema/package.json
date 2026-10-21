@@ -44,11 +44,11 @@
     "build:package": "bun ../../scripts/sdk-packages.mjs build schema"
   },
   "dependencies": {
-    "@standard-schema/spec": "1.1.0",
-    "typebox": "1.3.36"
+    "@standard-schema/spec": "^1.1.0",
+    "typebox": "^1.4.2"
   },
   "devDependencies": {
-    "@cfworker/json-schema": "4.1.1",
+    "@cfworker/json-schema": "^4.1.1",
     "@types/node": "^26.6.5",
     "typescript": "6.0.3",
     "vitest": "^5.0.5"

@@ -19,7 +19,7 @@
     "@nyte-ai/host": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "typebox": "1.3.36"
+    "typebox": "^1.4.2"
   },
   "devDependencies": {
     "@nyte-ai/connect": "workspace:*",

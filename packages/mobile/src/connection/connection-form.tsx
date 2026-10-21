@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ActivityIndicator, Keyboard, Text, TextInput, View } from "react-native";
+import type { TextInputInstance } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useCameraDevice, useCameraPermission } from "react-native-vision-camera";
@@ -65,9 +66,9 @@ export function ConnectionForm({
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<ConnectStage>({ kind: "idle" });
   const attempt = useRef<AbortController>(undefined);
-  const nameInput = useRef<TextInput>(null);
-  const addressInput = useRef<TextInput>(null);
-  const tokenInput = useRef<TextInput>(null);
+  const nameInput = useRef<TextInputInstance>(null);
+  const addressInput = useRef<TextInputInstance>(null);
+  const tokenInput = useRef<TextInputInstance>(null);
   const complete = name.trim().length > 0 && url.trim().length > 0 && token.trim().length > 0;
   useMountEffect(() => () => {
     attempt.current?.abort();

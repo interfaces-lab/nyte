@@ -1,6 +1,6 @@
 import { createContext, use, useRef, useState } from "react";
 import type { ComponentProps } from "react";
-import type { View } from "react-native";
+import type { ViewInstance } from "react-native";
 import { css, html } from "react-strict-dom";
 import {
   KeyboardAwareLegendList,
@@ -21,7 +21,7 @@ export function useMessageScrollerProvider({
   scrollPreviousItemPeek: number;
 }) {
   const listRef = useRef<LegendListRef>(null);
-  const composerRef = useRef<View>(null);
+  const composerRef = useRef<ViewInstance>(null);
   const anchorScrollPending = useRef(false);
   const [following, setFollowing] = useState(true);
   const [end, setEnd] = useState(false);

@@ -1,5 +1,5 @@
 import { TextAttributes } from "@opentui/core";
-import { useTerminalDimensions } from "@opentui/solid";
+import { useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { useApp } from "../../app/context.tsx";
@@ -28,9 +28,19 @@ const EMPTY: Readonly<Record<CompletionModel["token"]["trigger"], string>> = {
 
 export function CompletionMenu(props: { readonly model: CompletionModel }): JSX.Element {
   const app = useApp();
+  const renderer = useRenderer();
   const dimensions = useTerminalDimensions();
   const theme = () => app.kit.theme();
-  const visible = () => Math.max(1, Math.min(MAX_ROWS, dimensions().height - CHROME_ROWS));
+
+  const visible = () => {
+    const { height } = dimensions();
+
+    const terminalHeight =
+      renderer.screenMode === "split-footer" ? renderer.terminalHeight : height;
+
+    return Math.max(1, Math.min(MAX_ROWS, terminalHeight - CHROME_ROWS));
+  };
+
   const width = () => Math.max(1, dimensions().width - CHROME_COLUMNS);
 
   const window = createMemo(() => {

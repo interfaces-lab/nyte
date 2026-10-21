@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { View, useColorScheme, type ViewStyle } from "react-native";
+import { View, useColorScheme, type ViewInstance, type ViewStyle } from "react-native";
 import { GlassView, isLiquidGlassAvailable, type GlassViewProps } from "expo-glass-effect";
 import Animated from "react-native-reanimated";
 import { controls, useTheme } from "../theme.ts";
@@ -13,7 +13,7 @@ type GlassSurfaceProps = GlassViewProps;
  * Liquid Glass with a flat fallback. Do not animate opacity on this view or on
  * an ancestor: that suppresses the material (expo/expo#41024). Size is fine.
  */
-export const GlassSurface = forwardRef<View, GlassSurfaceProps>(function GlassSurface(
+export const GlassSurface = forwardRef<ViewInstance, GlassSurfaceProps>(function GlassSurface(
   { style, isInteractive, glassEffectStyle, tintColor, colorScheme, ...rest },
   ref,
 ) {

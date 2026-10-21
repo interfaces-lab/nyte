@@ -23,8 +23,8 @@
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "jose": "6.2.12",
-    "typebox": "1.3.36"
+    "jose": "^6.2.13",
+    "typebox": "^1.4.2"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

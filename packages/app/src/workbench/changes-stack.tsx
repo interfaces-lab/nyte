@@ -19,7 +19,11 @@ import {
   adaptDiffExpanders,
 } from "../conversation/diff-view.tsx";
 import { diffStyles } from "../conversation/diff.stylex.ts";
-import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
+import {
+  PIERRE_HIGHLIGHTER_OPTIONS,
+  PIERRE_TOKEN_CSS,
+  PierreWorkerProvider,
+} from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
 import { nyte } from "../nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
@@ -196,6 +200,7 @@ export function ChangesStack({
   const options = useMemo(
     () =>
       ({
+        ...PIERRE_HIGHLIGHTER_OPTIONS,
         themeType: theme,
         diffStyle: layout,
         overflow: wordWrap ? "wrap" : "scroll",
@@ -360,7 +365,7 @@ export function ChangesStack({
             if (source !== undefined) onExpand(source.path);
           }}
           renderCustomHeader={renderHeader}
-          renderAnnotation={(annotation) => (
+          renderAnnotation={(...[annotation]) => (
             <div {...props(text.sm, styles.notice)}>{annotation.metadata}</div>
           )}
           onScroll={(top, instance) => {

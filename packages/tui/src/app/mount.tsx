@@ -13,6 +13,7 @@ import { ignoredSettingsText } from "../services/settings.ts";
 import type { HostPort, PluginsPort, Ports } from "../effects/ports.ts";
 import { createRunner } from "../effects/runner.ts";
 import { exitStatus } from "../lifecycle.ts";
+import { installMiniScrollback } from "../mini/scrollback.ts";
 import { followRemote } from "../local-host.ts";
 import type { Msg } from "../model/msg.ts";
 import { followedSession, initialState } from "../model/state.ts";
@@ -251,6 +252,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     renderer.off(CliRenderEvents.SELECTION, onSelection);
     renderer.root.onMouseDown = undefined;
     uninstallKeymap();
+    mini?.dispose();
     unmount?.();
 
     for (const child of renderer.root.getChildren()) {
@@ -274,6 +276,12 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   renderer.once(CliRenderEvents.DESTROY, destroyed);
 
   const drawn = options.kit?.(root.kit) ?? root.kit;
+
+  const mini =
+    renderer.screenMode === "split-footer"
+      ? installMiniScrollback({ renderer, store, kit: drawn })
+      : null;
+
   const present = new Set(renderer.root.getChildren());
   engine.attach(renderer);
 
@@ -341,6 +349,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
       (closed ??= (async () => {
         controller.abort();
         await store.runner.dispose();
+        await mini?.close();
         release();
         const host = await opening.catch(() => null);
         await host?.close();
@@ -424,8 +433,8 @@ function terminalFacts(renderer: CliRenderer): TerminalFacts {
   const selection = renderer.getSelection();
 
   return {
-    width: renderer.width,
-    height: renderer.height,
+    width: renderer.terminalWidth,
+    height: renderer.terminalHeight,
     theme: renderer.themeMode,
     selection: renderer.hasSelection,
     dragging: selection?.isDragging ?? false,

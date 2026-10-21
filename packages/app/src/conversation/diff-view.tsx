@@ -9,7 +9,7 @@ import { memo, useMemo } from "react";
 import type { ReactElement } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import {
-  PIERRE_THEME,
+  PIERRE_HIGHLIGHTER_OPTIONS,
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "../pierre-worker-provider.tsx";
@@ -250,7 +250,7 @@ function onPostRender(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase
 
 const PATCH_OPTIONS = {
   onPostRender,
-  theme: PIERRE_THEME,
+  ...PIERRE_HIGHLIGHTER_OPTIONS,
   diffIndicators: "classic",
   disableFileHeader: true,
   lineDiffType: "word",

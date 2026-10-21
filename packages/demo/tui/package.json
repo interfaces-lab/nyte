@@ -13,7 +13,7 @@
     "@nyte-ai/sdk": "workspace:*",
     "@opentui/core": "^0.6.6",
     "@opentui/solid": "^0.6.6",
-    "solid-js": "1.9.12"
+    "solid-js": "^1.9.17"
   },
   "devDependencies": {
     "@types/bun": "^1.4.3",

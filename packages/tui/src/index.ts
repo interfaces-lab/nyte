@@ -444,6 +444,12 @@ async function main(): Promise<PrintOutcome | undefined> {
 
   let flags = parseFlags(invocationArgs);
 
+  if (flags.minimal && (!process.stdin.isTTY || !process.stdout.isTTY)) {
+    throw new Error(
+      "--minimal requires an interactive terminal on stdin and stdout. Run `nyte --minimal` in a terminal without pipes or redirects.",
+    );
+  }
+
   if (wantsPrint(flags, Boolean(process.stdout.isTTY), Boolean(process.stdin.isTTY))) {
     if (flags.rest.length === 0) {
       const stdin = await readStdin(signal);
