@@ -47,7 +47,7 @@ function ReviewRoute(): ReactElement {
 
         if (picked !== undefined)
           void navigate({
-            search: (current) => ({ ...current, view: picked.value }),
+            search: (current: Static<typeof ReviewSearch>) => ({ ...current, view: picked.value }),
             replace: true,
           });
       }}

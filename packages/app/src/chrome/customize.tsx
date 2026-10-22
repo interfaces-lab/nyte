@@ -7,6 +7,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { revealLabel } from "../components/context-menu.ts";
+import type { ShellSearch } from "../shell/search.ts";
 import { nyte } from "../nyte.ts";
 import { useApplyPluginSetting, usePluginSettingsProjection } from "../queries.ts";
 import { hostWatch, sessionWatch, useWatchSelect } from "../sdk.tsx";
@@ -468,7 +469,10 @@ export function CustomizeSurface({
   };
 
   const show = (next: string): void =>
-    void navigate({ to: ".", search: (previous) => ({ ...previous, customize: next }) });
+    void navigate({
+      to: ".",
+      search: (previous: ShellSearch) => ({ ...previous, customize: next }),
+    });
 
   const openId = section?.startsWith(PLUGIN_SECTION)
     ? section.slice(PLUGIN_SECTION.length)

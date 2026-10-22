@@ -12,7 +12,7 @@ export function useChromeTab<Value extends string>(
   return [
     value,
     (next) => {
-      void navigate({ to: ".", search: (previous) => ({ ...previous, [key]: next }) });
+      void navigate({ to: ".", search: (previous: ShellSearch) => ({ ...previous, [key]: next }) });
     },
   ];
 }

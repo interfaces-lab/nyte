@@ -44,7 +44,7 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
   const openSection = useMatch({
     from: "/settings/$section",
     shouldThrow: false,
-    select: (match) => match.params.section,
+    select: (match): SettingsSection => match.params.section,
   });
 
   const settingsOpen = openSection !== undefined;

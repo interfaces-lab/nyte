@@ -2,11 +2,11 @@ import { props } from "@stylexjs/stylex";
 import { useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { SETTINGS_PAGES, type PageInfo } from "./pages.ts";
+import { SETTINGS_PAGES, type PageInfo, type SettingsSection } from "./pages.ts";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 
 export function SettingsSurface(): ReactElement {
-  const { section } = useParams({ from: "/settings/$section" });
+  const section: SettingsSection = useParams({ from: "/settings/$section" }).section;
   const page: PageInfo = SETTINGS_PAGES[section];
   const { title, Page, Actions } = page;
 
