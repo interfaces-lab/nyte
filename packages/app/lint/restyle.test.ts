@@ -71,7 +71,13 @@ afterAll(() => {
 
 test("reports only properties outside each component's contract", () => {
   expect(new Set(violations.map((entry) => entry.line))).toEqual(
-    new Set([findLine(">Padded<"), findLine(">Typed<"), findLine(">Paint<")]),
+    new Set([
+      findLine(">Padded<"),
+      findLine(">Typed<"),
+      findLine(">Paint<"),
+      findLine(">Classed<"),
+      findLine(">Inline<"),
+    ]),
   );
 });
 
@@ -89,4 +95,11 @@ test("reads shared text styles and leaves component hooks, host parts, and bare 
   expect(message(">Hooks<")).toBe("");
   expect(message(`variant="bare"`)).toBe("");
   expect(message(">Host<")).toBe("");
+});
+
+test("rejects className and style, which would skip the contract", () => {
+  expect(message(">Classed<")).toContain("<Button> takes no className");
+  expect(message(">Inline<")).toContain("<Button> takes no style");
+  expect(message(">Inline<")).toContain("Place it through xstyle, which takes");
+  expect(message(">HostClassed<")).toBe("");
 });

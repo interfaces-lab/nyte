@@ -54,11 +54,8 @@ export function FontFamilySelect<T extends string>({
       }}
       onInputValueChange={setSearch}
     >
-      <AutocompleteTrigger
-        aria-label={label}
-        style={selected?.fontFamily === undefined ? undefined : { fontFamily: selected.fontFamily }}
-      >
-        {selected?.label ?? value}
+      <AutocompleteTrigger aria-label={label}>
+        <span style={{ fontFamily: selected?.fontFamily }}>{selected?.label ?? value}</span>
       </AutocompleteTrigger>
       <AutocompleteContent align="end" collisionAvoidance={FONT_SELECT_COLLISION}>
         <AutocompleteInput aria-label="Search fonts" placeholder="Search fonts" />
@@ -74,16 +71,8 @@ export function FontFamilySelect<T extends string>({
               )}
               <AutocompleteCollection>
                 {(option: FontOption<T>) => (
-                  <AutocompleteItem
-                    key={option.value}
-                    value={option}
-                    style={
-                      option.fontFamily === undefined
-                        ? undefined
-                        : { fontFamily: option.fontFamily }
-                    }
-                  >
-                    {option.label}
+                  <AutocompleteItem key={option.value} value={option}>
+                    <span style={{ fontFamily: option.fontFamily }}>{option.label}</span>
                   </AutocompleteItem>
                 )}
               </AutocompleteCollection>

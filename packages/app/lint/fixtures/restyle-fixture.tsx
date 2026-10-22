@@ -27,6 +27,9 @@ export function Fixture({ wide }: { readonly wide: boolean }) {
         Bare
       </Row>
       <Dialog.Trigger xstyle={styles.anything}>Host</Dialog.Trigger>
+      <Button className="p-4">Classed</Button>
+      <Button style={{ padding: 13 }}>Inline</Button>
+      <Dialog.Trigger className="p-4">HostClassed</Dialog.Trigger>
     </>
   );
 }

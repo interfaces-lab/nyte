@@ -10,6 +10,9 @@
  * arrays and conditionals of them, and the shared `text.*` and `srOnly`. A
  * style imported from another file is left to the type. Custom properties are
  * the caller's own unless the component declares them, like `--_btn-height`.
+ *
+ * `className` and `style` would bypass the contract, so StyleX hosts may not
+ * pass them to a component. Tailwind hosts such as docs are not in scope.
  */
 
 import { readFileSync } from "node:fs";
@@ -152,6 +155,8 @@ const advice = (component, contract, concerns) => {
   );
 };
 
+const BYPASSES = new Set(["className", "style"]);
+
 const noRestyle = {
   meta: { docs: { description: "Keep xstyle on @nyte-ai/ui components to their contract." } },
   create(context) {
@@ -290,12 +295,34 @@ const noRestyle = {
         styles.set(node.id.name, entries);
       },
       JSXAttribute(node) {
-        if (node.name.name !== "xstyle" || node.value?.type !== "JSXExpressionContainer") return;
+        const attribute = node.name.name;
+
+        if (attribute !== "xstyle" && !BYPASSES.has(attribute)) return;
         const element = elementName(node.parent.name);
         const imported = element && components.get(element.local);
 
         if (!imported) return;
         const component = element.part ? `${imported}.${element.part}` : imported;
+
+        if (BYPASSES.has(attribute)) {
+          const contract = restyleContracts[component];
+
+          if (contract?.allow === "host") return;
+
+          context.report({
+            node,
+            message:
+              `<${component}> takes no ${attribute}: it would skip the xstyle contract. ` +
+              (contract
+                ? `Place it through xstyle, which takes ${list([...contract.allow, ...(contract.also ?? [])])}; ` +
+                  `choose its look with its props, or style a wrapper element you own.`
+                : `Choose its look with its props, or style a wrapper element you own.`),
+          });
+
+          return;
+        }
+
+        if (node.value?.type !== "JSXExpressionContainer") return;
 
         const variant = node.parent.attributes.find(
           (attribute) => attribute.type === "JSXAttribute" && attribute.name.name === "variant",
