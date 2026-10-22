@@ -1,0 +1,26 @@
+{
+  "name": "@nyte-ai/example-cloudflare",
+  "version": "0.0.23",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo .wrangler",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsrs --noEmit",
+    "test": "vitest --run"
+  },
+  "dependencies": {
+    "@nyte-ai/ai": "workspace:*",
+    "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/host": "workspace:*",
+    "@nyte-ai/protocol": "workspace:*",
+    "@nyte-ai/schema": "workspace:*",
+    "typebox": "^1.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "6.0.3",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.151.3"
+  }
+}

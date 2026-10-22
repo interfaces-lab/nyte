@@ -150,7 +150,7 @@ export function CloudConnection(): ReactElement {
         <ConnectionRow
           glyph={<Icon name="cloud" size={16} />}
           title="Not connected"
-          detail="Deploy packages/demo/server, then paste its URL and token."
+          detail="Deploy a Nyte host, then paste its URL and token."
           expansion={form}
         />
       ) : (

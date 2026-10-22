@@ -1,0 +1,25 @@
+{
+  "name": "@nyte-ai/example-vercel",
+  "version": "0.0.23",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo .output .vercel",
+    "typecheck": "tsrs --noEmit",
+    "test": "vitest --run"
+  },
+  "dependencies": {
+    "@nyte-ai/ai": "workspace:*",
+    "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/host": "workspace:*",
+    "@nyte-ai/protocol": "workspace:*",
+    "@nyte-ai/schema": "workspace:*",
+    "nitro": "^3.0.260903-beta",
+    "workflow": "^5.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

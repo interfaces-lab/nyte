@@ -21,7 +21,7 @@ To start a client yourself, run `pnpm dev:tui` or `pnpm dev:desktop`. The docume
 | [schema](packages/schema) | Shared data schemas |
 | [core](packages/core/README.md) | Durable sessions, execution, storage, and session views |
 | [protocol](packages/protocol/README.md) | Wire operations, schemas, and SSE framing |
-| [host](packages/host/README.md) | Node host, listener, stores, local workspace, and deploy templates |
+| [host](packages/host/README.md) | Node host, listener, stores, and local workspace |
 | [sdk](packages/sdk) | `sdk.open` and `sdk.connect`: the one surface every client uses |
 | [plugin](packages/plugin) | Plugin contracts (`/core`, `/client`), supplied plugins, and renderers |
 | [cli](packages/cli/README.md) | npm distribution and installer for the Nyte binary |
@@ -31,7 +31,7 @@ To start a client yourself, run `pnpm dev:tui` or `pnpm dev:desktop`. The docume
 | [mobile](packages/mobile/README.md) | Native iOS companion for a remote host |
 | [ui](packages/ui/README.md) | Shared UI components and design tokens |
 | [docs](packages/docs/README.md) | Documentation website and design system reference |
-| [demo](packages/demo) | Website and server deployment examples |
+| [examples](packages/examples) | Small programs built on the SDK |
 
 Read the affected package's README for details. Read root and ancestor `AGENTS.md` files before editing. Package instructions currently live in [core](packages/core/AGENTS.md), [desktop](packages/desktop/AGENTS.md), [tui](packages/tui/AGENTS.md), [mobile](packages/mobile/AGENTS.md), and [docs](packages/docs/AGENTS.md).
 

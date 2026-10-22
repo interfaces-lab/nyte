@@ -1,7 +1,7 @@
 import { decodeError } from "@nyte-ai/protocol";
 import { describe, expect, it } from "vitest";
-import { answerRepair } from "../src/deploy/vercel/server/utils/repair.ts";
-import { stepFrom } from "../src/deploy/vercel/server/utils/step.ts";
+import { answerRepair } from "../server/utils/repair.ts";
+import { stepFrom } from "../server/utils/step.ts";
 
 const SECRET = "a-cron-secret";
 

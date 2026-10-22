@@ -1,5 +1,5 @@
 {
-  "name": "@nyte-ai/demo-tui",
+  "name": "@nyte-ai/example-tui-chat",
   "version": "0.0.0",
   "private": true,
   "type": "module",

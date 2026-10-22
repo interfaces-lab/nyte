@@ -159,12 +159,7 @@ writeFileSync(
         outDir: dist,
         paths,
       },
-      include: [
-        join(cwd, "src/**/*.ts"),
-        join(cwd, "src/**/*.tsx"),
-        join(cwd, "examples/**/*.ts"),
-        join(cwd, "examples/**/*.tsx"),
-      ],
+      include: [join(cwd, "src/**/*.ts"), join(cwd, "src/**/*.tsx")],
       exclude: [join(cwd, "node_modules"), dist, join(cwd, "test")],
     },
     null,
@@ -182,7 +177,7 @@ try {
 }
 
 const result = await build({
-  entrypoints: globSync(["src/**/*.ts", "src/**/*.tsx", "examples/**/*.ts", "examples/**/*.tsx"], {
+  entrypoints: globSync(["src/**/*.ts", "src/**/*.tsx"], {
     cwd,
     exclude: ["**/*.d.ts"],
   }).map((file) => join(cwd, file)),
@@ -197,7 +192,7 @@ const result = await build({
 
 if (!result.success) throw new AggregateError(result.logs, `Failed to build ${manifest.name}`);
 
-for (const file of globSync(["src/**/LICENSE", "examples/**/LICENSE"], { cwd })) {
+for (const file of globSync(["src/**/LICENSE"], { cwd })) {
   mkdirSync(dirname(join(dist, file)), { recursive: true });
   copyFileSync(join(cwd, file), join(dist, file));
 }

@@ -9,7 +9,7 @@ import { credentialStore } from "@nyte-ai/host/credentials";
 import { seedSigner } from "@nyte-ai/host/identity";
 import { listenFetch } from "@nyte-ai/host/listen-fetch";
 import { sandboxProvider } from "@nyte-ai/host/providers";
-import manifest from "../../../../../package.json" with { type: "json" };
+import manifest from "../../package.json" with { type: "json" };
 import { answerRepair } from "./repair.ts";
 
 type Served = {

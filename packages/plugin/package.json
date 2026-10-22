@@ -23,7 +23,6 @@
     "./core/canvas": "./src/canvas/canvas.ts",
     "./core/canvas-compile": "./src/canvas/canvas-compile.ts",
     "./core/canvas-preview": "./src/canvas/canvas-preview.ts",
-    "./core/claude-code": "./examples/claude-code/index.ts",
     "./core/claude-code-sdk": "./src/claude-code-sdk/index.ts",
     "./core/codemode": "./src/codemode.ts",
     "./core/codemode-runtime": "./src/codemode-runtime.ts",
@@ -80,10 +79,6 @@
       "./core/canvas-preview": {
         "types": "./dist/src/canvas/canvas-preview.d.ts",
         "import": "./dist/src/canvas/canvas-preview.js"
-      },
-      "./core/claude-code": {
-        "types": "./dist/examples/claude-code/index.d.ts",
-        "import": "./dist/examples/claude-code/index.js"
       },
       "./core/claude-code-sdk": {
         "types": "./dist/src/claude-code-sdk/index.d.ts",

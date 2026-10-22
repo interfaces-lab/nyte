@@ -31,9 +31,7 @@
     "./store-usage": "./src/store-usage.ts",
     "./usage-service": "./src/usage-service.ts",
     "./usage-scan": "./src/usage-scan.ts",
-    "./usage-worker": "./src/usage-worker.ts",
-    "./deploy/cloudflare": "./src/deploy/cloudflare/worker.ts",
-    "./deploy/vercel": "./src/deploy/vercel/nitro.config.ts"
+    "./usage-worker": "./src/usage-worker.ts"
   },
   "publishConfig": {
     "exports": {
@@ -100,14 +98,6 @@
       "./usage-worker": {
         "types": "./dist/src/usage-worker.d.ts",
         "import": "./dist/src/usage-worker.js"
-      },
-      "./deploy/cloudflare": {
-        "types": "./dist/src/deploy/cloudflare/worker.d.ts",
-        "import": "./dist/src/deploy/cloudflare/worker.js"
-      },
-      "./deploy/vercel": {
-        "types": "./dist/src/deploy/vercel/nitro.config.d.ts",
-        "import": "./dist/src/deploy/vercel/nitro.config.js"
       }
     },
     "access": "public",
@@ -115,7 +105,7 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "typecheck": "tsrs --noEmit && tsrs --noEmit -p src/deploy/vercel",
+    "typecheck": "tsrs --noEmit",
     "test": "vitest --run",
     "check:store": "node scripts/check-store.ts",
     "build:package": "bun ../../scripts/sdk-packages.mjs build host"
@@ -140,22 +130,8 @@
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
     "fast-check": "^4.10.2",
-    "nitro": "^3.0.260903-beta",
     "typescript": "6.0.3",
-    "vitest": "^5.0.5",
-    "workflow": "^5.2.3"
-  },
-  "peerDependencies": {
-    "nitro": "^3.0.260903-beta",
-    "workflow": "^5.2.3"
-  },
-  "peerDependenciesMeta": {
-    "nitro": {
-      "optional": true
-    },
-    "workflow": {
-      "optional": true
-    }
+    "vitest": "^5.0.5"
   },
   "engines": {
     "node": ">=26.4.0"

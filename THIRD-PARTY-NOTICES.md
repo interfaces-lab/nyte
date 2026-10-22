@@ -45,39 +45,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## pi-claude-code (`earendil-works/pi-claude-code`)
-
-- Repository: https://github.com/earendil-works/pi-claude-code
-- What: the Claude Code CLI provider, single-turn relay, transcript replay,
-  process reuse, and billing guards in `packages/plugin/examples/claude-code`
-  are adapted from commit `70abb65186592ca788b29b3db22c3160d629c41f`.
-
-License: MIT, with the following notice:
-
-```text
-MIT License
-
-Copyright (c) 2026 Armin Ronacher
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
 ## pi (`earendil-works/pi`)
 
 - Repository: https://github.com/earendil-works/pi
@@ -345,8 +312,8 @@ Copyright 2025 OpenAI
   front of the queue (`packages/tui/src/model/interactions.ts`) is its
   `onEmptySubmit`. The rename
   plugin's context construction, prompt, model fallback, and output cleanup
-  (`packages/plugin/examples/rename.ts`) port OpenCode v2. The web-search
-  plugin set (`packages/plugin/examples/web-search/`) ports its Exa, Firecrawl,
+  (`packages/plugin/src/rename.ts`) port OpenCode v2. The web-search
+  plugin set (`packages/plugin/src/web-search.ts`) ports its Exa, Firecrawl,
   Parallel, and Tavily adapters, its stateless MCP `tools/call` transport and
   response bounds, its result and error vocabulary, and its arrangement of one
   plugin per provider from OpenCode v2.
@@ -429,9 +396,6 @@ SOFTWARE.
   bypass, and connection tuning in `packages/host/src/sqlite*.ts` are adapted
   from `bf8ffe81a63c82d3de5fbaa9991fd5f30034a452`.
 - Homepage: https://t3.codes
-- What: the demo desktop app (`packages/demo/desktop`) follows T3 Code's
-  control-surface shape — agents in a sidebar, a conversation workspace, a
-  shared composer, and settings behind a dialog.
 
 License: MIT, with the following notice:
 

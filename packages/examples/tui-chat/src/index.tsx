@@ -2,9 +2,9 @@
  * The smallest Nyte chat in a terminal: one new session in this folder, its
  * messages above, an input below. The first Enter starts the session with that
  * message and later ones send to it. Esc stops the run, Ctrl+C quits.
- * Sign in first with `nyte login`; this demo reuses that login. Run it with
- * `pnpm --dir packages/demo/tui start` (Bun reads the Solid preload from this
- * package's bunfig.toml).
+ * Sign in first with `nyte login`; this example reuses that login. Run it with
+ * `pnpm --dir packages/examples/tui-chat start` (Bun reads the Solid preload
+ * from this package's bunfig.toml).
  */
 import { isPart, text, tool } from "@nyte-ai/plugin/client";
 import { sdk } from "@nyte-ai/sdk";

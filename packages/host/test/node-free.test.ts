@@ -12,7 +12,6 @@ const ENTRIES = [
   "src/providers.ts",
   "src/credentials.ts",
   "src/identity.ts",
-  "src/deploy/cloudflare/worker.ts",
 ];
 
 const SPECIFIER = /^(?:import|export)\s(?!type\s)[^;]*?from\s+"([^"]+)"|^import\s+"([^"]+)"/gm;

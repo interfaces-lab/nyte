@@ -1,9 +1,9 @@
 import { asId } from "@nyte-ai/schema";
 import type { AdvanceReport, HeadName, RepairPage, SessionId } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
-import type { DurableObjectSql, SqlValue } from "../src/durable-object.ts";
-import { NyteHost, pass, scheduleFrom } from "../src/deploy/cloudflare/worker.ts";
-import type { PassHost } from "../src/deploy/cloudflare/worker.ts";
+import type { DurableObjectSql, SqlValue } from "@nyte-ai/host/durable-object";
+import { NyteHost, pass, scheduleFrom } from "../worker.ts";
+import type { PassHost } from "../worker.ts";
 import { doSqlStub } from "./do-sql-stub.ts";
 
 const main: HeadName = asId("main");

@@ -6,7 +6,7 @@
 
 Nyte is a durable runtime for agent conversations, with terminal and desktop clients.
 
-The clients embed the host, keep sessions in SQLite, and run agents in process. The same kernel serves remote clients via `host.listen` (`@nyte-ai/host`, PostgreSQL) and runs on Cloudflare Durable Objects and Vercel (`@nyte-ai/host/deploy/*`). Clients connect through `@nyte-ai/sdk`. Each step reads all durable state, so any host can take over between steps.
+The clients embed the host, keep sessions in SQLite, and run agents in process. The same kernel serves remote clients via `host.listen` (`@nyte-ai/host`, PostgreSQL) and runs on Cloudflare Durable Objects and Vercel ([`packages/examples`](packages/examples)). Clients connect through `@nyte-ai/sdk`. Each step reads all durable state, so any host can take over between steps.
 
 ## Install
 

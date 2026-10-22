@@ -13,7 +13,7 @@ import type { DurableObjectSql, SqlValue } from "@nyte-ai/host/durable-object";
 import { seedSigner } from "@nyte-ai/host/identity";
 import { listenFetch } from "@nyte-ai/host/listen-fetch";
 import { chatOnlyProvider } from "@nyte-ai/host/providers";
-import manifest from "../../../package.json" with { type: "json" };
+import manifest from "./package.json" with { type: "json" };
 
 Settings.Set({ useAcceleration: false });
 

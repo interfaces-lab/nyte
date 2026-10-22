@@ -62,7 +62,10 @@
       "ignoreDependencies": ["use-sync-external-store"],
     },
     "packages/host": {
-      "entry": ["scripts/*.ts", "src/deploy/vercel/server/{routes,workflows}/**/*.ts"],
+      "entry": ["scripts/*.ts"],
+    },
+    "packages/examples/vercel": {
+      "entry": ["server/{routes,workflows}/**/*.ts"],
     },
     "packages/lab": {
       "entry": ["src/devtools.ts", "video/src/index.ts"],

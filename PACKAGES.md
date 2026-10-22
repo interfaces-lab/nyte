@@ -16,7 +16,7 @@ third-party assets or dependencies.
 | `nyte-ai` | Existing CLI launcher, published through the app release workflow |
 | `@nyte-ai/ai` | Models, providers, credentials, and streaming |
 | `@nyte-ai/core` | Agent kernel, sessions, storage, and plugin contracts |
-| `@nyte-ai/host` | Node host, listener, stores, local workspace, and deploy templates |
+| `@nyte-ai/host` | Node host, listener, stores, and local workspace |
 | `@nyte-ai/sdk` | `sdk.open` and `sdk.connect`, one surface in process and over the wire |
 | `@nyte-ai/plugin` | Plugin contracts, supplied plugins, MCP, codemode, and renderers |
 | `@nyte-ai/protocol` | SDK wire operations and schemas |
@@ -37,7 +37,7 @@ peers, for its renderers.
 | `connect`, `connect-worker` | Product connection services |
 | `bench` | Test fixtures: scripted models, cassettes, scenarios, and the host simulation |
 | `ui` | Component library awaiting a separate release |
-| `docs`, `lab`, `demo`, `demo/website`, `demo/server/*` | Site, experiments, and examples |
+| `docs`, `lab`, `examples/*` | Site, experiments, and examples |
 
 Use `@nyte-ai/sdk` when building a custom web app: `sdk.open` and `host.listen`
 serve it, and `sdk.connect` reaches it from the browser.

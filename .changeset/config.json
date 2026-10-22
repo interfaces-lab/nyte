@@ -1,6 +1,11 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "interfaces-lab/nyte" }],
+  "changelog": [
+    "@changesets/changelog-github",
+    {
+      "repo": "interfaces-lab/nyte"
+    }
+  ],
   "commit": false,
   "access": "public",
   "baseBranch": "main",
@@ -16,22 +21,25 @@
       "nyte-ai",
       "@nyte-ai/tui",
       "@nyte-ai/desktop",
-      "@nyte-ai/ios"
+      "@nyte-ai/ios",
+      "@nyte-ai/example-cloudflare",
+      "@nyte-ai/example-vercel"
     ]
   ],
-  "privatePackages": { "version": true, "tag": false },
+  "privatePackages": {
+    "version": true,
+    "tag": false
+  },
   "ignore": [
     "@nyte-ai/app",
     "@nyte-ai/bench",
     "@nyte-ai/canvas",
     "@nyte-ai/connect",
     "@nyte-ai/connect-worker",
-    "@nyte-ai/demo-tui",
-    "@nyte-ai/demo-website",
     "@nyte-ai/lab",
     "@nyte-ai/service",
     "@nyte-ai/ui",
     "@nyte-ai/web",
-    "demo"
+    "@nyte-ai/example-tui-chat"
   ]
 }
