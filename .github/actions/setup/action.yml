@@ -13,10 +13,23 @@ runs:
   using: composite
   steps:
     - uses: pnpm/action-setup@v6
+    # On Linux one sticky disk holds the store and the virtual store: pnpm hardlinks only
+    # within one filesystem, and a warm virtual store makes install a relink.
+    - if: runner.os == 'Linux'
+      uses: useblacksmith/stickydisk@v1
+      with:
+        key: ${{ github.repository }}-pnpm-${{ runner.arch }}
+        path: ~/pnpm
+        commit: on-change
+    - if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        echo "pnpm_config_store_dir=$HOME/pnpm/store" >> "$GITHUB_ENV"
+        echo "pnpm_config_virtual_store_dir=$HOME/pnpm/virtual" >> "$GITHUB_ENV"
     - uses: actions/setup-node@v7
       with:
         node-version: 26
-        cache: pnpm
+        cache: ${{ runner.os != 'Linux' && 'pnpm' || '' }}
     - if: inputs.bun == 'true'
       uses: oven-sh/setup-bun@v2
       with:
