@@ -4,9 +4,13 @@ import { fakeModels, open, until } from "./fake-models.ts";
 
 it("names an unnamed session from its first message, then from a title request, and a later run asks nothing", async () => {
   const fake = fakeModels();
+  const title = Promise.withResolvers<void>();
 
   fake.reply(
-    { content: [{ type: "text", text: "\nTimeout for flaky fetch\nignored" }] },
+    {
+      after: title.promise,
+      content: [{ type: "text", text: "\nTimeout for flaky fetch\nignored" }],
+    },
     { content: [{ type: "text", text: "Use a 30 s timeout." }] },
     { content: [{ type: "text", text: "Done." }] },
   );
@@ -19,6 +23,7 @@ it("names an unnamed session from its first message, then from a title request, 
   expect(await until(async () => (await session.info()).name ?? undefined)).toBe(
     "Why does fetch time out?",
   );
+  title.resolve();
   await started.settled();
 
   expect(

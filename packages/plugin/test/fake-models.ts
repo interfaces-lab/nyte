@@ -22,6 +22,7 @@ export type Block =
 export interface Reply {
   readonly content?: readonly Block[];
   readonly error?: string;
+  readonly after?: Promise<void>;
 }
 
 export interface Request {
@@ -196,7 +197,7 @@ function streamReply(model: Model<Api>, reply: Reply): AssistantMessageEventStre
   };
 
   void (async () => {
-    await Promise.resolve();
+    await (reply.after ?? Promise.resolve());
     stream.push({ type: "start", partial: message });
 
     for (const [index, block] of (reply.content ?? []).entries()) {
