@@ -242,6 +242,8 @@ function MacGroup({
     account.queryClient,
   );
   const [connecting, setConnecting] = useState<string>();
+  const [editing, setEditing] = useState(false);
+  const [removing, setRemoving] = useState<string>();
   const [problem, setProblem] = useState<{ copy: AccountCopy; environment: EnvironmentSummary }>();
   const attempt = useRef<AbortController>(undefined);
   useMountEffect(() => () => {
@@ -282,6 +284,36 @@ function MacGroup({
       void environments.refetch();
   }
 
+  async function remove(environment: EnvironmentSummary) {
+    setRemoving(environment.id);
+
+    try {
+      await broker.removeEnvironment({ environmentId: environment.id });
+      toast.show(`Removed ${environment.name}`);
+    } catch (cause) {
+      const copy =
+        cause instanceof BrokerError
+          ? brokerCopy(cause.failure)
+          : { title: "Couldn't remove it", body: "Try again." };
+
+      toast.error(`Couldn't remove ${environment.name}`, copy.body);
+    }
+
+    setRemoving(undefined);
+    void environments.refetch();
+  }
+
+  function confirmRemove(environment: EnvironmentSummary) {
+    Alert.alert(
+      `Remove ${environment.name}?`,
+      "It leaves your Nyte account, and every phone connected to it loses access. To add it back, link it again from that computer.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => void remove(environment) },
+      ],
+    );
+  }
+
   function cancel() {
     attempt.current?.abort();
     attempt.current = undefined;
@@ -295,11 +327,27 @@ function MacGroup({
         ? brokerCopy(environments.error.failure)
         : { title: "Couldn't load your computers", body: "Try again.", action: "retry" };
   const shown = problem?.copy ?? listProblem;
-  const macs = environments.data?.environments;
+  const connectedId = current?.reconnect ? undefined : currentId;
+  const macs = environments.data?.environments.filter(
+    (environment) => environment.id !== connectedId,
+  );
+  const editable = macs !== undefined && macs.length > 0 && connecting === undefined;
+  const inEdit = editing && editable;
 
   return (
     <>
-      <SectionHeader label="Your computers" />
+      <html.div style={styles.headerRow}>
+        <html.div style={styles.grow}>
+          <SectionHeader label={connectedId === undefined ? "Your computers" : "Other computers"} />
+        </html.div>
+        {editable ? (
+          <html.button onClick={() => setEditing(!inEdit)} style={styles.headerAction}>
+            <html.span style={[textStyles.secondary, styles.accent, inEdit && styles.bold]}>
+              {inEdit ? "Done" : "Edit"}
+            </html.span>
+          </html.button>
+        ) : null}
+      </html.div>
       <Group>
         {environments.isPending ? (
           <GroupRow>
@@ -311,7 +359,11 @@ function MacGroup({
           <GroupRow>
             <IconTile name="laptopcomputer" />
             <html.div style={styles.rowText}>
-              <html.span style={textStyles.body}>No computers on this account yet</html.span>
+              <html.span style={textStyles.body}>
+                {connectedId === undefined
+                  ? "No computers on this account yet"
+                  : "No other computers on this account"}
+              </html.span>
               <html.span style={[textStyles.caption, styles.start]}>
                 On a Mac, open {SHARE_LOCATION} and choose Link This Mac… On a server, run nyte
                 account.
@@ -322,15 +374,22 @@ function MacGroup({
         {(macs ?? []).map((environment) => {
           const active = connecting === environment.id;
           const isCurrent = environment.id === currentId;
+          const leaving = removing === environment.id;
           const locked =
-            (connecting !== undefined && !active) || (isCurrent && !current?.reconnect);
+            (connecting !== undefined && !active) || (removing !== undefined && !leaving);
 
           return (
             <GroupRow
               key={environment.id}
-              busy={active}
-              disabled={connecting !== undefined && !active}
-              onClick={locked ? undefined : () => void connect(environment, false)}
+              busy={active || leaving}
+              disabled={locked}
+              onClick={
+                locked
+                  ? undefined
+                  : inEdit
+                    ? () => confirmRemove(environment)
+                    : () => void connect(environment, false)
+              }
             >
               <IconTile
                 name="laptopcomputer"
@@ -341,18 +400,24 @@ function MacGroup({
                 <html.span style={textStyles.caption}>
                   {active
                     ? "Connecting…"
-                    : isCurrent
-                      ? current?.reconnect
+                    : leaving
+                      ? "Removing…"
+                      : isCurrent
                         ? "Tap to reconnect"
-                        : "Connected"
-                      : environment.online
-                        ? "Online"
-                        : "Offline"}
+                        : environment.online
+                          ? "Online"
+                          : "Offline"}
                 </html.span>
               </html.div>
-              {active ? (
+              {active || leaving ? (
                 <ActivityIndicator color={theme.muted} />
-              ) : isCurrent && !current?.reconnect ? null : (
+              ) : inEdit ? (
+                <SymbolView
+                  name="minus.circle.fill"
+                  size={controls.icon}
+                  tintColor={theme.danger}
+                />
+              ) : (
                 <SymbolView
                   name="chevron.right"
                   size={controls.iconXs}
@@ -503,25 +568,18 @@ function SheetBody({
   return (
     <html.div style={styles.sheet}>
       <html.div style={styles.header}>
-        <html.h1 style={[textStyles.title, styles.heading]}>Nyte Connect</html.h1>
-        <GlassButton label="Close Nyte Connect" systemImage="xmark" onPress={onClose} iconOnly />
+        <IconTile name="laptopcomputer" color={theme.foreground} />
+        <html.div style={styles.rowText}>
+          <html.h1 style={[textStyles.headline, styles.heading]}>{connection.name}</html.h1>
+          <html.span style={textStyles.caption}>
+            {current.saved.kind === "managed"
+              ? "Connected through your Nyte account"
+              : `Connected · ${displayAddress(connection)}`}
+          </html.span>
+        </html.div>
+        <GlassButton label="Close" systemImage="xmark" onPress={onClose} iconOnly />
       </html.div>
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}>
-        <SectionHeader label="Connected" first />
-        <Group>
-          <GroupRow>
-            <IconTile name="laptopcomputer" color={theme.foreground} />
-            <html.div style={styles.rowText}>
-              <html.span style={[textStyles.body, styles.clamp]}>{connection.name}</html.span>
-              <html.span style={textStyles.caption}>
-                {current.saved.kind === "managed"
-                  ? "Through your Nyte account"
-                  : displayAddress(connection)}
-              </html.span>
-            </html.div>
-          </GroupRow>
-        </Group>
-        <html.div style={styles.gap} />
         {account === undefined ? (
           <Group>
             <GroupRow onClick={onManual}>
@@ -568,7 +626,18 @@ const styles = css.create({
   }),
   avatarImage: (size: number) => ({ width: size, height: size, objectFit: "cover" }),
   inset: { paddingInline: list.gutter },
-  gap: { height: list.sectionGap },
+  headerRow: { display: "flex", flexDirection: "row", alignItems: "flex-end" },
+  headerAction: {
+    display: "flex",
+    alignItems: "flex-end",
+    minHeight: controls.touchTarget,
+    paddingInline: list.gutter,
+    paddingBottom: list.headerGap,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    opacity: { default: 1, ":active": controls.pressedOpacity },
+  },
+  bold: { fontWeight: 600 },
   header: {
     display: "flex",
     flexDirection: "row",
@@ -576,7 +645,7 @@ const styles = css.create({
     padding: spacing.gutter,
     gap: spacing.md,
   },
-  heading: { flexGrow: 1, margin: 0 },
+  heading: { margin: 0, lineClamp: 1, textAlign: "start" },
   text: { margin: 0 },
   grow: { flexGrow: 1, flexShrink: 1, textAlign: "start" },
   start: { textAlign: "start" },
@@ -604,6 +673,7 @@ const styles = css.create({
     display: "flex",
     alignItems: "center",
     alignSelf: "flex-start",
+    flexShrink: 0,
     minHeight: controls.metaTarget,
     padding: 0,
     borderWidth: 0,

@@ -9,6 +9,7 @@
     "platforms": ["ios"],
     "ios": {
       "bundleIdentifier": "dev.nyte.ios",
+      "deploymentTarget": "17.0",
       "supportsTablet": false,
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Connect to the Nyte host on your Mac, over your local network or tailnet.",
