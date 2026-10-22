@@ -266,6 +266,17 @@ export function TerminalPanel({
                 void restart(tab);
               }}
             />
+            {tab.kind === "job" && tab.stream.kind === "failed" && (
+              <div
+                role="alert"
+                {...props(text.sm, intent.danger, terminalStyles.state, terminalStyles.failure)}
+              >
+                <span>{tab.stream.message}</span>
+                <Button variant="outline" onClick={() => terminalActions.retryStream(tab.id)}>
+                  Reconnect
+                </Button>
+              </div>
+            )}
             {(tab.kind === "job"
               ? tab.rendering.kind !== "failed"
               : tab.state.kind !== "failed") && <TerminalCanvas id={tab.id} visible={visible} />}

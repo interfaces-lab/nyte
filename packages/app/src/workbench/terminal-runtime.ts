@@ -326,6 +326,11 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   const view = { element, terminal, commands, fit: fitVisible };
   views.set(id, view);
   attachTerminalOutput(id, {
+    reset() {
+      terminal.clearSelection();
+      terminal.write("\u001bc\u001b[?25l");
+      mirrorOutput();
+    },
     write(value) {
       terminal.write(commandOutput ? value + "\u001b[?25l" : value);
 

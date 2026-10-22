@@ -134,6 +134,9 @@ function sink() {
     get contents() {
       return contents;
     },
+    reset() {
+      contents = "";
+    },
     write(data: string) {
       contents += data;
     },

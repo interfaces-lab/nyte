@@ -29,6 +29,11 @@ type TerminalRenderingState =
   | { readonly kind: "ready" }
   | { readonly kind: "failed"; readonly message: string };
 
+type TerminalStreamState =
+  | { readonly kind: "connecting" }
+  | { readonly kind: "connected" }
+  | { readonly kind: "failed"; readonly message: string };
+
 interface TerminalTabFields {
   readonly id: WorkbenchTabId;
   readonly title: string;
@@ -46,11 +51,13 @@ interface JobTerminalTab extends TerminalTabFields {
   readonly jobId: JobView["id"];
   readonly state: JobTerminalState;
   readonly rendering: TerminalRenderingState;
+  readonly stream: TerminalStreamState;
 }
 
 export type TerminalTab = ShellTerminalTab | JobTerminalTab;
 
 export interface TerminalOutput {
+  reset(): void;
   write(data: string): void;
   update(tab: TerminalTab): void;
   dispose(): void;
@@ -120,6 +127,10 @@ function updateShell(id: WorkbenchTabId, state: ShellTerminalState): void {
   update(id, (tab) => (tab.kind === "job" ? tab : { ...tab, state }));
 }
 
+function updateStream(id: WorkbenchTabId, stream: TerminalStreamState): void {
+  update(id, (tab) => (tab.kind === "job" ? { ...tab, stream } : tab));
+}
+
 function getSnapshot(): TerminalSnapshot {
   return snapshot;
 }
@@ -187,10 +198,19 @@ function shellTab(id: WorkbenchTabId): ShellTerminalTab | undefined {
 
 async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
   const decoder = new TextDecoder();
+  let replay = getTerminal(id)?.kind === "job";
 
   try {
     for await (const frame of feed.job.output()) {
       if (feeds.get(id) !== feed) return;
+
+      if (replay) {
+        replay = false;
+        feed.printed.length = 0;
+        feed.length = 0;
+        queued.delete(id);
+        output.get(id)?.reset();
+      }
 
       if (frame.kind === "bytes") print(id, decoder.decode(frame.data, { stream: true }));
       else if (frame.kind === "gap") print(id, "\r\n\u001b[2m[output skipped]\u001b[0m\r\n");
@@ -198,8 +218,11 @@ async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
         updateShell(id, { kind: "exited", exitCode: frame.code });
     }
   } catch (cause: unknown) {
-    if (feeds.get(id) === feed && shellTab(id) !== undefined)
-      updateShell(id, { kind: "failed", message: errorMessage(cause) });
+    if (feeds.get(id) !== feed) return;
+    const message = errorMessage(cause);
+
+    if (shellTab(id) === undefined) updateStream(id, { kind: "failed", message });
+    else updateShell(id, { kind: "failed", message });
   }
 }
 
@@ -447,10 +470,49 @@ function syncJobs(sessionId: SessionId, jobs: readonly JobView[]): void {
   if (changed) publish(tabs);
 }
 
-function remove(id: WorkbenchTabId): void {
+function disposeOutput(id: WorkbenchTabId): void {
   output.get(id)?.dispose();
   output.delete(id);
   queued.delete(id);
+}
+
+function followJob(tab: JobTerminalTab): void {
+  const { id, sessionId, jobId } = tab;
+  const previous = feeds.get(id);
+
+  const pending = Promise.resolve()
+    .then(async () => {
+      await previous?.job.close();
+      const connection = await connected();
+      const { workspace } = await connection.session(sessionId).info();
+
+      if (creating.get(id) !== pending) return;
+
+      const feed: Feed = {
+        job: connection.workspace(workspace).job(jobId),
+        workspace,
+        printed: [...(previous?.printed ?? [])],
+        length: previous?.length ?? 0,
+      };
+
+      feeds.set(id, feed);
+      updateStream(id, { kind: "connected" });
+      void follow(id, feed);
+    })
+    .catch((cause: unknown) => {
+      if (creating.get(id) === pending)
+        updateStream(id, { kind: "failed", message: errorMessage(cause) });
+    })
+    .finally(() => {
+      if (creating.get(id) === pending) creating.delete(id);
+    });
+
+  creating.set(id, pending);
+}
+
+function remove(id: WorkbenchTabId): void {
+  disposeOutput(id);
+  creating.delete(id);
   typedAhead.delete(id);
   feeds.delete(id);
   forgetSaved(id);
@@ -510,34 +572,20 @@ export const terminalActions = {
       return;
     }
 
-    publish(
-      new Map(snapshot.tabs).set(id, {
-        id,
-        title: job.command,
-        cwd: "",
-        kind: "job",
-        sessionId,
-        jobId: job.id,
-        state: job.state,
-        rendering: { kind: "ready" },
-      }),
-    );
+    const tab: JobTerminalTab = {
+      id,
+      title: job.command,
+      cwd: "",
+      kind: "job",
+      sessionId,
+      jobId: job.id,
+      state: job.state,
+      rendering: { kind: "ready" },
+      stream: { kind: "connecting" },
+    };
 
-    void (async () => {
-      const connection = await connected();
-      const { workspace } = await connection.session(sessionId).info();
-
-      const feed: Feed = {
-        job: connection.workspace(workspace).job(job.id),
-        workspace,
-        printed: [],
-        length: 0,
-      };
-
-      if (getTerminal(id) === undefined) return;
-      feeds.set(id, feed);
-      await follow(id, feed);
-    })().catch((cause: unknown) => terminalActions.fail(id, errorMessage(cause)));
+    publish(new Map(snapshot.tabs).set(id, tab));
+    followJob(tab);
   },
   syncJobs,
   write(id: WorkbenchTabId, data: string): Promise<void> {
@@ -601,7 +649,21 @@ export const terminalActions = {
     void feed?.job.stop().catch(() => undefined);
   },
   retryRender(id: WorkbenchTabId): void {
-    update(id, (tab) => (tab.kind === "shell" ? tab : { ...tab, rendering: { kind: "ready" } }));
+    const tab = getTerminal(id);
+
+    if (tab?.kind !== "job" || tab.rendering.kind !== "failed") return;
+    disposeOutput(id);
+    queued.set(id, [...(feeds.get(id)?.printed ?? [])]);
+    update(id, (current) =>
+      current.kind === "shell" ? current : { ...current, rendering: { kind: "ready" } },
+    );
+  },
+  retryStream(id: WorkbenchTabId): void {
+    const tab = getTerminal(id);
+
+    if (tab?.kind !== "job" || tab.stream.kind !== "failed") return;
+    updateStream(id, { kind: "connecting" });
+    followJob(tab);
   },
   async close(id: WorkbenchTabId): Promise<void> {
     const tab = getTerminal(id);
@@ -610,10 +672,11 @@ export const terminalActions = {
       await creating.get(id);
       const feed = feeds.get(id);
       await feed?.job.stop();
-      await feed?.job.close();
     }
 
+    const feed = feeds.get(id);
     remove(id);
+    await feed?.job.close();
   },
 };
 
