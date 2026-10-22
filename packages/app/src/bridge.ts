@@ -174,7 +174,7 @@ export type ServerConnectOutcome =
   | { readonly kind: "connected"; readonly baseUrl: string; readonly version: string }
   | { readonly kind: "failed"; readonly message: string };
 
-export type RemoteReach = "local" | "tailnet" | RemoteAccessPluginId;
+export type RemoteReach = "tailnet" | RemoteAccessPluginId;
 
 export type RemoteAccessPluginId = "cloudflare";
 
@@ -239,7 +239,7 @@ export type RemoteAccessState =
     }
   | {
       readonly kind: "serving";
-      readonly reach: "local" | "tailnet";
+      readonly reach: "tailnet";
       readonly address: string;
       readonly token: string;
       readonly pairingUrl: string;

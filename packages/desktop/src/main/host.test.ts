@@ -96,11 +96,11 @@ test("the desktop's settings reach main from the host view", async () => {
 
 test("connecting a server proves the token, pins the host that answered and remembers both", async () => {
   const server = await desktop();
-  const remote = await server.host.call(1, "host.remote.start", { reach: "local" });
+  const remote = await server.host.call(1, "host.remote.start", { reach: "tailnet" });
   const made = await desktop();
 
   if (remote.kind !== "serving" || remote.reach === "cloudflare")
-    throw new Error("Remote access did not start on loopback");
+    throw new Error("Remote access did not start over the tailnet");
 
   assert.deepEqual(
     await made.host.call(1, "host.server.connect", {

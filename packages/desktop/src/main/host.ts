@@ -66,6 +66,7 @@ export interface DesktopHostDependencies {
   readonly usageScan?: UsageScanReader;
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
+  readonly serveTailnet?: typeof serveTailnet;
   readonly keepAwake?: (awake: boolean) => void;
   readonly settingsChanged?: (settings: DesktopSettings) => void;
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
@@ -87,7 +88,7 @@ interface Opened {
 type ActiveRemote =
   | {
       readonly kind: "token";
-      readonly reach: "local" | "tailnet";
+      readonly reach: "tailnet";
       readonly listener: Listener;
       readonly address: string;
       readonly token: string;
@@ -805,7 +806,7 @@ export class DesktopHost {
   async #serve(reach: RemoteReach): Promise<ActiveRemote> {
     const { host } = await this.#opened;
 
-    if (reach === "local" || reach === "tailnet") {
+    if (reach === "tailnet") {
       const token = newToken();
 
       const listener = await host.listen({
@@ -814,13 +815,10 @@ export class DesktopHost {
         origins: APP_ORIGINS,
       });
 
-      const local = listenerAddress(listener);
-
-      if (reach === "local")
-        return { kind: "token", reach, listener, address: local, token, unexpose: async () => {} };
-
       try {
-        const served = await serveTailnet(Number(new URL(local).port));
+        const served = await (this.#deps.serveTailnet ?? serveTailnet)(
+          Number(new URL(listenerAddress(listener)).port),
+        );
 
         return {
           kind: "token",

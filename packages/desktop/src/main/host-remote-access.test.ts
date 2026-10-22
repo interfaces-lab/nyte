@@ -22,10 +22,10 @@ async function serving(): Promise<{
 }> {
   const made = await testDesktop();
   opened.push(made);
-  const state = await made.host.call(1, "host.remote.start", { reach: "local" });
+  const state = await made.host.call(1, "host.remote.start", { reach: "tailnet" });
 
   if (state.kind !== "serving" || state.reach === "cloudflare")
-    throw new Error("Remote access did not start on loopback");
+    throw new Error("Remote access did not start over the tailnet");
 
   return { made, address: state.address, token: state.token };
 }
@@ -58,7 +58,7 @@ test("the pairing link carries the address and token in its fragment only", asyn
   const { made, address, token } = await serving();
   const state = await made.host.call(1, "host.remote.state", undefined);
 
-  if (state.kind !== "serving" || state.reach !== "local")
+  if (state.kind !== "serving" || state.reach !== "tailnet")
     throw new Error("Remote access is not serving a pairing link");
   const link = new URL(state.pairingUrl);
 

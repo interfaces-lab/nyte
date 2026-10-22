@@ -56,12 +56,12 @@ test("a browser paired through Remote access shares the desktop's chats until it
   const { page } = desktop;
   await openRemoteAccess(page);
 
-  const thisMacOnly = page
+  const overTailscale = page
     .locator("div")
-    .filter({ hasText: /^This Mac only/u, hasNotText: "Over Tailscale" });
+    .filter({ hasText: /^Over Tailscale/u, hasNotText: "Over Cloudflare Tunnel" });
 
-  await thisMacOnly.getByRole("button", { name: "Start", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Remote access: This Mac only" })).toBeVisible();
+  await overTailscale.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Remote access: Over Tailscale" })).toBeVisible();
 
   await page.getByRole("tab", { name: "Address and Token" }).click();
   await page.getByRole("button", { name: "Reveal token" }).click();
@@ -104,9 +104,9 @@ test("a browser paired through Remote access shares the desktop's chats until it
   expect(status).toBe(200);
   await expect(chatRow(page, CREATED)).toBeVisible();
 
-  await page.getByRole("button", { name: "Remote access: This Mac only" }).click();
+  await page.getByRole("button", { name: "Remote access: Over Tailscale" }).click();
   await page.getByRole("menuitem", { name: "Stop Remote Access" }).click();
-  await expect(thisMacOnly.getByRole("button", { name: "Start", exact: true })).toBeEnabled();
+  await expect(overTailscale.getByRole("button", { name: "Start", exact: true })).toBeEnabled();
 
   await chatRow(remote, FIXTURES.alpha).click();
   await expect(remote.getByRole("dialog", { name: "Couldn't open folder" })).toContainText(

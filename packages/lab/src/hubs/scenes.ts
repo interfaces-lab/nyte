@@ -52,7 +52,7 @@ export interface Scene {
   readonly working: (count: number) => Copy;
   readonly partial: (count: number) => Copy;
   readonly ready: Copy;
-  readonly sources: readonly [Source, Source, Source, Source];
+  readonly sources: readonly Source[];
 }
 
 export function plural(count: number, word: Plural): string {
@@ -239,17 +239,6 @@ export const SCENES: readonly Scene[] = [
       body: "Every route is open. Stop any of them from its row",
     },
     sources: [
-      {
-        id: "local",
-        title: "This Mac only",
-        detail: "localhost · this Mac's browsers",
-        icon: "computer",
-        slot: "north-west",
-        steps: ["Starting server", "Issuing token"],
-        seconds: 1.8,
-        amount: 1,
-        result: "localhost:4317",
-      },
       {
         id: "tailnet",
         title: "Over Tailscale",

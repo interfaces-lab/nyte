@@ -15,14 +15,18 @@ import {
   stylex,
 } from "@nyte-ai/app/vite";
 
-const offlineModels: Plugin = {
-  name: "nyte:e2e-models",
+const E2E_FIXTURES = new Map([
+  [resolve("src/main/models.ts"), resolve("src/main/fixtures/e2e-models.ts")],
+  [resolve("src/main/tailnet.ts"), resolve("src/main/fixtures/e2e-tailnet.ts")],
+]);
+
+const e2eFixtures: Plugin = {
+  name: "nyte:e2e-fixtures",
   enforce: "pre",
   resolveId(source, importer) {
-    if (importer === undefined || resolve(importer, "..", source) !== resolve("src/main/models.ts"))
-      return null;
+    if (importer === undefined) return null;
 
-    return resolve("src/main/fixtures/e2e-models.ts");
+    return E2E_FIXTURES.get(resolve(importer, "..", source)) ?? null;
   },
 };
 
@@ -86,7 +90,7 @@ const config = (mode: string): UserConfig => ({
       ),
     },
     plugins: [
-      ...(mode === "e2e" ? [offlineModels] : []),
+      ...(mode === "e2e" ? [e2eFixtures] : []),
       {
         name: "nyte:codemode-wasm",
         async generateBundle() {

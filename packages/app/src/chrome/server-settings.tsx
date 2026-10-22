@@ -27,7 +27,7 @@ import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { CopyButton, shareStyles } from "./remote-share.tsx";
 import { TunnelRow, TunnelServingPanel, tunnelStatus } from "./remote-tunnel.tsx";
 
-type TokenServing = Extract<RemoteAccessState, { kind: "serving"; reach: "local" | "tailnet" }>;
+type TokenServing = Extract<RemoteAccessState, { kind: "serving"; reach: "tailnet" }>;
 
 function servedTargetLabel(target: ServedTarget): string {
   return target.kind === "home" ? "Home" : target.workspace.name;
@@ -112,9 +112,8 @@ function ServingPanel({ state }: { state: TokenServing }) {
           </span>
         </div>
         <span {...props(text.sm, styles.deviceCodeNote)}>
-          {state.reach === "tailnet"
-            ? "Reachable from your signed-in Tailscale devices on any network, and from nothing else. The token is new each time and never written to disk."
-            : "Only this Mac can reach this address, so a physical phone can't. The token is new each time and never written to disk."}
+          Reachable from your signed-in Tailscale devices on any network, and from nothing else. The
+          token is new each time and never written to disk.
         </span>
       </Tabs.Panel>
     </Tabs.Root>
@@ -170,22 +169,6 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
         {state === undefined ? null : state.kind === "off" ? (
           <>
             <ConnectionRow
-              glyph={<Icon name="computer" size={16} />}
-              title="This Mac only"
-              detail="Serves the selected folder. Switching folders here afterwards doesn't move it; a connected client can."
-              control={
-                <Button
-                  variant="outline"
-
-                  loading={start.isPending && start.variables === "local"}
-                  disabled={pending && start.variables !== "local"}
-                  onClick={() => start.mutate("local")}
-                >
-                  Start
-                </Button>
-              }
-            />
-            <ConnectionRow
               glyph={<Icon name="devices" size={16} />}
               title="Over Tailscale"
               detail={tailnetDetail(state.tailnet)}
@@ -233,14 +216,14 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
           />
         ) : (
           <ConnectionRow
-            glyph={<Icon name={state.reach === "tailnet" ? "devices" : "computer"} size={16} />}
+            glyph={<Icon name="devices" size={16} />}
             title={`Serving ${servedTargetLabel(state.target)}`}
             detail={state.target.kind === "home" ? undefined : state.target.workspace.path}
             control={
               <ConnectionMenu
                 label="Remote access"
                 tone="on"
-                status={state.reach === "tailnet" ? "Over Tailscale" : "This Mac only"}
+                status="Over Tailscale"
                 loading={stop.isPending}
                 disabled={start.isPending}
               >

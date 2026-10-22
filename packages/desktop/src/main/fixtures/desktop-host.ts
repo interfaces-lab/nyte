@@ -38,6 +38,10 @@ export async function testDesktop(
     models: fake.models,
     emitHostEvent: (event) => events.push(event),
     agent: agent ?? unusedBrowserAgent(),
+    serveTailnet: async (port) => ({
+      address: `http://127.0.0.1:${String(port)}`,
+      stop: async () => {},
+    }),
     ...dependencies,
   });
 

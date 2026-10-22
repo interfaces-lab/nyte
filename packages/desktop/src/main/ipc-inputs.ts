@@ -85,7 +85,7 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.remote.state": compile(noInput),
   "host.remote.start": compile(
     strict({
-      reach: Type.Enum(["local", "tailnet", "cloudflare"]),
+      reach: Type.Enum(["tailnet", "cloudflare"]),
     }),
   ),
   "host.remote.stop": compile(noInput),
