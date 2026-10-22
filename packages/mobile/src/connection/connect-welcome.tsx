@@ -94,7 +94,7 @@ export function ConnectWelcome({
             />
             <html.button onClick={() => onManual("direct")} style={styles.textButton}>
               <html.span style={[textStyles.secondary, styles.actionLabel]}>
-                Use a local address or QR code
+                Use an address or QR code
               </html.span>
             </html.button>
           </html.div>

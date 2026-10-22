@@ -160,7 +160,7 @@ function signInNotice(ending: SignInEnding): AccountCopy | undefined {
     case "unregisteredApp":
       return {
         title: "Sign-in unavailable",
-        body: "This version of Nyte hasn't been registered for sign-in. Connect with Tailscale or a local address.",
+        body: "This version of Nyte hasn't been registered for sign-in. Connect with Tailscale or a QR code.",
         action: undefined,
       };
     case "failed":
@@ -314,7 +314,7 @@ function MacGroup({
               <html.span style={textStyles.body}>No computers on this account yet</html.span>
               <html.span style={[textStyles.caption, styles.start]}>
                 On a Mac, open {SHARE_LOCATION} and choose Link This Mac… On a server, run nyte
-                account login, then nyte serve --account.
+                account.
               </html.span>
             </html.div>
           </GroupRow>

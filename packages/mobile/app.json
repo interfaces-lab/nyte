@@ -11,9 +11,6 @@
       "bundleIdentifier": "dev.nyte.ios",
       "supportsTablet": false,
       "infoPlist": {
-        "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true
-        },
         "NSLocalNetworkUsageDescription": "Connect to the Nyte host on your Mac, over your local network or tailnet.",
         "NSCameraUsageDescription": "Take a photo to attach to a Nyte message.",
         "NSMicrophoneUsageDescription": "Use the microphone to dictate a Nyte task.",

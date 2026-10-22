@@ -50,7 +50,7 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
     case "idle":
       return {
         title: "Connect a computer",
-        body: `On your Mac, open ${SHARE_LOCATION} and start sharing, or run nyte serve on another computer. Enter the address and token it shows.`,
+        body: `On your Mac, open ${SHARE_LOCATION} and start sharing. Enter the address and token it shows.`,
         retry: undefined,
       };
     case "verifying":
@@ -64,7 +64,7 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
     case "refused":
       return {
         title: "Token refused",
-        body: `The host didn't accept this token. Scan a new code from ${SHARE_LOCATION} on your Mac, or use the current token from nyte serve.`,
+        body: `The host didn't accept this token. Scan a new code from ${SHARE_LOCATION} on your Mac.`,
         retry: "Try again",
       };
     case "silent":
@@ -76,7 +76,7 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
     case "wrongServer":
       return {
         title: "Not a Nyte server",
-        body: `${stage.address} answered, but not as Nyte. Check you copied the whole address, including its port.`,
+        body: `${stage.address} answered, but not as Nyte. Check you copied the whole address.`,
         retry: undefined,
       };
     case "notSaved":

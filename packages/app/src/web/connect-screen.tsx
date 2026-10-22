@@ -123,7 +123,7 @@ export function ConnectScreen({
             type="url"
             autoComplete="off"
             spellCheck={false}
-            placeholder="http://100.64.0.1:52000"
+            placeholder="https://<name>.ts.net"
             value={address}
             readOnly={pending}
             aria-invalid={failure !== undefined}

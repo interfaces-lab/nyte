@@ -44,31 +44,6 @@ export interface ManagedPolicy {
 }
 
 /**
- * Plain HTTP is allowed only toward loopback, private IPv4 ranges, and the
- * Tailscale range, checked numerically. 100.64.0.0/10 is shared address space
- * rather than a private network, so it is accepted for a narrower reason than
- * the others: reaching one means the device is already inside an authenticated
- * tailnet, and the host binds that address alone.
- */
-function allowsPlainHttp(hostname: string): boolean {
-  if (hostname === "localhost" || hostname === "[::1]" || hostname.endsWith(".local")) return true;
-
-  if (hostname.endsWith(".ts.net")) return true;
-  const octets = hostname.split(".").map(Number);
-
-  if (octets.length !== 4) return false;
-
-  if (!octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) return false;
-  const [a, b] = octets;
-
-  if (a === undefined || b === undefined) return false;
-
-  if (a === 100 && b >= 64 && b <= 127) return true;
-
-  return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
-}
-
-/**
  * Decode a connection saved as JSON, then apply the same checks as a typed
  * one. A manual connection keeps the shape it has always been saved in.
  *
@@ -124,11 +99,16 @@ export function parseConnection(value: Connection): Connection {
   try {
     url = new URL(value.url.trim());
   } catch {
-    throw new Error("Enter the full address, including http:// or https://.");
+    throw new Error("Enter the full address, starting with https://.");
   }
 
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && allowsPlainHttp(url.hostname))) {
-    throw new Error("Use HTTPS, or HTTP with the computer's local or Tailscale address.");
+  const loopback =
+    url.hostname === "localhost" ||
+    url.hostname === "[::1]" ||
+    /^127(\.\d{1,3}){3}$/u.test(url.hostname);
+
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
+    throw new Error("Use the HTTPS address Nyte shows on your computer.");
   }
 
   if (url.username || url.password || url.search || url.hash)
@@ -179,7 +159,7 @@ export function describeHostError(cause: unknown): string {
   switch (cause.code) {
     case "unauthenticated":
     case "denied":
-      return `The host refused the token. Scan a new code from ${SHARE_LOCATION}, or use the current token from nyte serve.`;
+      return `The host refused the token. Scan a new code from ${SHARE_LOCATION}.`;
     case "unknown":
       return "This conversation is no longer available.";
     case "unavailable":

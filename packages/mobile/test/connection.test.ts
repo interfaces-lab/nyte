@@ -20,37 +20,30 @@ describe("parseConnection", () => {
     expect(displayAddress(connection)).toBe("127.0.0.1:53211");
   });
 
-  it("allows plain HTTP only for numeric private ranges, not look-alike hostnames", () => {
+  it("allows plain HTTP only to loopback, not to LAN or Tailscale addresses", () => {
     const token = "abcdefghijklmnop";
-    expect(parseConnection({ name: "m", url: "http://192.168.1.20:8787", token }).url).toBe(
+    expect(parseConnection({ name: "m", url: "http://localhost:8787", token }).url).toBe(
+      "http://localhost:8787",
+    );
+    expect(parseConnection({ name: "m", url: "http://[::1]:8787", token }).url).toBe(
+      "http://[::1]:8787",
+    );
+    for (const url of [
       "http://192.168.1.20:8787",
-    );
-    expect(() => parseConnection({ name: "m", url: "http://10.example.com", token })).toThrow(
-      /HTTPS/,
-    );
-    expect(() => parseConnection({ name: "m", url: "http://172.32.0.1", token })).toThrow(/HTTPS/);
-    expect(() => parseConnection({ name: "m", url: "127.0.0.1:8787", token })).toThrow(/http:\/\//);
-    expect(parseConnection({ name: "m", url: "https://mac.example", token }).url).toBe(
-      "https://mac.example",
-    );
-  });
-
-  it("accepts the Tailscale range 100.64.0.0/10 over plain HTTP but not the public space either side", () => {
-    const token = "abcdefghijklmnop";
-    expect(parseConnection({ name: "m", url: "http://100.126.254.2:8787", token }).url).toBe(
+      "http://10.0.0.2",
+      "http://172.16.0.1",
+      "http://mac.local:8787",
       "http://100.126.254.2:8787",
+      "http://mac.tail1234.ts.net",
+      "http://127.example.com",
+    ]) {
+      expect(() => parseConnection({ name: "m", url, token })).toThrow(/HTTPS/);
+    }
+    expect(() => parseConnection({ name: "m", url: "127.0.0.1:8787", token })).toThrow(
+      /https:\/\//,
     );
-    expect(parseConnection({ name: "m", url: "http://100.64.0.1:1", token }).url).toBe(
-      "http://100.64.0.1:1",
-    );
-    expect(parseConnection({ name: "m", url: "http://100.127.255.254:1", token }).url).toBe(
-      "http://100.127.255.254:1",
-    );
-    expect(() => parseConnection({ name: "m", url: "http://100.63.255.255:1", token })).toThrow(
-      /HTTPS/,
-    );
-    expect(() => parseConnection({ name: "m", url: "http://100.128.0.1:1", token })).toThrow(
-      /HTTPS/,
+    expect(parseConnection({ name: "m", url: "https://mac.tail1234.ts.net", token }).url).toBe(
+      "https://mac.tail1234.ts.net",
     );
   });
 
@@ -80,10 +73,10 @@ describe("parseConnection", () => {
 
 describe("parseConnectionPayload", () => {
   it("reads the pairing link a desktop QR code carries", () => {
-    const link = `nyte://connect?name=${encodeURIComponent("Kim's Mac")}&url=${encodeURIComponent("http://192.168.1.20:8787")}&token=abcdefghijklmnop`;
+    const link = `nyte://connect?name=${encodeURIComponent("Kim's Mac")}&url=${encodeURIComponent("https://mac.tail1234.ts.net")}&token=abcdefghijklmnop`;
     expect(parseConnectionPayload(` ${link} `)).toEqual({
       name: "Kim's Mac",
-      url: "http://192.168.1.20:8787",
+      url: "https://mac.tail1234.ts.net",
       token: "abcdefghijklmnop",
     });
   });

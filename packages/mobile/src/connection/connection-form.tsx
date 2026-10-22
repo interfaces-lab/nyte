@@ -221,8 +221,8 @@ export function ConnectionForm({
             {mode.kind === "connect" ? (
               <html.p style={[textStyles.body, styles.lead]}>
                 {method === "tailscale"
-                  ? "Turn on Tailscale on your iPhone and the computer, then enter its Tailscale address and Nyte device token."
-                  : `In the desktop app, copy these from ${SHARE_LOCATION}. For nyte serve, use the address and token it prints.`}
+                  ? "Turn on Tailscale on your iPhone and the computer, then enter the address and device token Nyte shows there."
+                  : `In the desktop app, copy these from ${SHARE_LOCATION}.`}
               </html.p>
             ) : null}
             {canScan && !busy ? (
@@ -267,9 +267,7 @@ export function ConnectionForm({
                   onChangeText={setUrl}
                   editable={!busy}
                   style={inputStyle(theme)}
-                  placeholder={
-                    method === "tailscale" ? "http://100.x.y.z:port" : "http://127.0.0.1:port"
-                  }
+                  placeholder={method === "tailscale" ? "https://<name>.ts.net" : "https://"}
                   placeholderTextColor={theme.muted}
                   keyboardType="url"
                   autoCapitalize="none"

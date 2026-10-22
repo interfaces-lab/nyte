@@ -1,7 +1,7 @@
 # @nyte-ai/ios
 
-Nyte's iOS app. It controls a running Nyte host: the desktop app, or `nyte serve`
-on another computer. The host owns sessions, folders, model credentials, and tool
+Nyte's iOS app. It controls a running Nyte host: the desktop app, or `nyte` on
+another computer linked with `nyte account`. The host owns sessions, folders, model credentials, and tool
 execution, and keeps working after the app closes. The app reads the host through
 `@nyte-ai/client` and `@nyte-ai/protocol`, including the Node-free
 `SessionObserver` that holds transcript state and recovers a dropped watch.
@@ -26,7 +26,7 @@ This README covers how the app works, how to build it, and how it is published.
   retrying the same content with the same delivery choice reuses that key and the
   host accepts it once. Changing the delivery choice drops the saved key (see
   [Known gaps](#known-gaps)). A new chat keeps its session id across retries, and
-  a new chat on a `nyte serve` host keeps a durable start record (see
+  a new chat on a terminal host keeps a durable start record (see
   [Folders](#folders)).
 - **Composer.** Return inserts a newline. The model button and native thinking
   menu stay visible above the input, with 44pt touch targets. The mic
@@ -60,8 +60,8 @@ done before the host accepts it.
 | Path | How it connects |
 | --- | --- |
 | Nyte account | Sign in with the account the host is linked to and pick the computer. The phone enrolls itself while the host has sharing on. The host has no approval step, and the app shows none. |
-| Tailscale | **Connect with Tailscale**, then the host's tailnet address and token, or **Scan QR code**. |
-| Local address or QR code | The same form for any other reachable address. A `127.0.0.1` share reaches only the iOS Simulator on the same Mac. |
+| Tailscale | **Connect with Tailscale**, then the host's `https://<name>.ts.net` address and token, or **Scan QR code**. |
+| Address or QR code | The same form for any other HTTPS address. A development `http://127.0.0.1` address reaches only the iOS Simulator on the same Mac. |
 
 The welcome screen offers all three. A build without account configuration shows
 **Sign in to Nyte** disabled with "Account sign-in is unavailable in this build."
@@ -80,15 +80,14 @@ as a typed one. The scan button appears only on a device with a camera.
 
 ### Address policy
 
-Plain HTTP is allowed for loopback, private IPv4, the Tailscale `100.64.0.0/10`
-range, and `.ts.net` names, checked numerically. Everything else must be HTTPS. The
-Tailscale range is shared address space, not a private network; it is allowed
-because reaching it means the phone is already inside an authenticated tailnet.
+Every address must be HTTPS. Plain HTTP is allowed only to loopback (`localhost`,
+`127.0.0.0/8`, `[::1]`), for development and the Simulator. LAN, `.local`, and
+Tailscale addresses over plain HTTP are refused; Nyte hands out HTTPS for all of
+them (`tailscale serve`, Cloudflare, the account relay).
 
-App Transport Security cannot express this policy. Its exception domains are names,
-and `NSAllowsLocalNetworking` does not cover a tailnet address. So
-`NSAllowsArbitraryLoads` is on in `app.json`, and `parseConnection` is the real
-gate. The token is stored in the Keychain and masked in the form. Autofill is off,
+`parseConnection` enforces this. App Transport Security backs it up: only the
+development variant sets `NSAllowsArbitraryLoads` (in `app.config.ts`), so preview
+and production builds refuse plain HTTP natively. The token is stored in the Keychain and masked in the form. Autofill is off,
 but iOS may still offer to save it in Passwords. No provider credentials or
 deployment secrets belong in the bundle.
 
@@ -100,7 +99,7 @@ has no WebCrypto Ed25519. The first proven key is pinned per route: a typed or
 scanned address, or an account's broker, owner, and environment. Once a route has a
 pin, its host must prove that key; a different key or none is refused as
 **Different host** until the user taps **Pair as New Host**. A pin outlives
-disconnects and sign-outs. A `nyte serve` host that names no identity is refused as
+disconnects and sign-outs. A terminal host that names no identity is refused as
 **Host not verified**.
 
 The check runs before a connection is saved or adopted, when a saved connection is
@@ -114,7 +113,7 @@ apart from another host at the same address.
 A desktop host has a current folder. The folder menu offers Home and recent
 folders through `workspace.select`.
 
-A `nyte serve` host has a registry. The folder menu lists only folders that host
+A terminal host has a registry. The folder menu lists only folders that host
 already trusts, and the choice belongs to this phone and host. The app connects as
 a controller and has no screen for adding folders. The first message starts the
 chat through `environment.start`. Before sending, the app writes the whole start
@@ -161,7 +160,7 @@ lives in the Keychain through `@clerk/expo/token-cache`. Each broker call gets a
 fresh standard session JWT, `getToken({ skipCache: true })`, with no template. The
 Clerk instance must add an `aud` claim equal to the broker origin, which the broker
 checks. If Clerk refuses the app's bundle (`resource_missmatch`), the panel shows
-**Sign-in unavailable** and points to Tailscale or a local address.
+**Sign-in unavailable** and points to Tailscale or a QR code.
 
 ### Enrollment
 
@@ -614,7 +613,7 @@ a production Hermes bundle for iOS without a dev server.
 
 Not yet verified: a native build of this package, account sign-in with Clerk on
 these identities, a packaged
-`nyte serve` binary, real camera capture, microphone recognition, and performance on
+`nyte` binary, real camera capture, microphone recognition, and performance on
 a device.
 
 Before relying on a build, check on a device:

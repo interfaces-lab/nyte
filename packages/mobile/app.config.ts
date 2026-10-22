@@ -57,6 +57,20 @@ function runtimeVersion(variant: AppVariant): ExpoConfig["runtimeVersion"] {
 }
 
 /**
+ * Release builds reach hosts over HTTPS only, so App Transport Security stays at
+ * its default. A development build loads its bundle from Metro and may reach a
+ * host on this Mac, both over plain HTTP.
+ */
+function infoPlist(
+  variant: AppVariant,
+  base: NonNullable<ExpoConfig["ios"]>["infoPlist"],
+): NonNullable<ExpoConfig["ios"]>["infoPlist"] {
+  return variant === "development"
+    ? { ...base, NSAppTransportSecurity: { NSAllowsArbitraryLoads: true } }
+    : base;
+}
+
+/**
  * The app.json plugins this config replaces per variant. Voltra's app group follows the variant's
  * bundle identifier, because a shared group would let two variants read each other's Live Activity
  * state. Its push support lets APNs update the Live Activity while the app is suspended; nothing sends
@@ -77,7 +91,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: config.slug ?? "nyte-ios",
     scheme: variant.scheme,
     runtimeVersion: runtimeVersion(variantName),
-    ios: { ...config.ios, bundleIdentifier },
+    ios: {
+      ...config.ios,
+      bundleIdentifier,
+      infoPlist: infoPlist(variantName, config.ios?.infoPlist),
+    },
     extra: withoutGeneratedExtensions(config.extra),
     plugins: [
       ...basePlugins.filter(

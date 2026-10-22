@@ -13,24 +13,6 @@ const ConnectionSchema = Type.Object(
   { additionalProperties: false },
 );
 
-function allowsPlainHttp(hostname: string): boolean {
-  if (hostname === "localhost" || hostname === "[::1]" || hostname.endsWith(".local")) return true;
-
-  if (hostname.endsWith(".ts.net")) return true;
-  const octets = hostname.split(".").map(Number);
-
-  if (octets.length !== 4) return false;
-
-  if (!octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) return false;
-  const [a, b] = octets;
-
-  if (a === undefined || b === undefined) return false;
-
-  if (a === 100 && b >= 64 && b <= 127) return true;
-
-  return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
-}
-
 export function parseConnection(value: Connection): Connection {
   const token = value.token.trim();
 
@@ -40,11 +22,7 @@ export function parseConnection(value: Connection): Connection {
   try {
     url = new URL(value.url.trim());
   } catch {
-    throw new Error("Enter the full address, including http:// or https://.");
-  }
-
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && allowsPlainHttp(url.hostname))) {
-    throw new Error("Use HTTPS, or HTTP with your Mac's local or Tailscale address.");
+    throw new Error("Enter the full address, starting with https://.");
   }
 
   const loopback =
@@ -52,10 +30,8 @@ export function parseConnection(value: Connection): Connection {
     url.hostname === "[::1]" ||
     /^127(\.\d{1,3}){3}$/u.test(url.hostname);
 
-  if (url.protocol === "http:" && location.protocol === "https:" && !loopback) {
-    throw new Error(
-      "This page is served over HTTPS, so it needs an HTTPS address, such as one from Tailscale HTTPS.",
-    );
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
+    throw new Error("Use the HTTPS address Nyte shows on your computer.");
   }
 
   if (url.username || url.password || url.search || url.hash)
