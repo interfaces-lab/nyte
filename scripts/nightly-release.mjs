@@ -36,7 +36,7 @@ if (command === "resolve" && version === undefined) {
   if (!nightly.test(version)) throw new Error(`Invalid nightly version: ${version}`);
   const [group] = JSON.parse(readFileSync(join(root, ".changeset/config.json"), "utf8")).fixed;
 
-  const manifests = globSync("packages/*/package.json", { cwd: root }).map((file) => ({
+  const manifests = globSync(["packages/*/package.json", "packages/examples/*/package.json"], { cwd: root }).map((file) => ({
     file: join(root, file),
     manifest: JSON.parse(readFileSync(join(root, file), "utf8")),
   }));

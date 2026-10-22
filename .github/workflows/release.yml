@@ -72,7 +72,7 @@ jobs:
           const { globSync, readFileSync } = require("node:fs");
           const [group] = JSON.parse(readFileSync(".changeset/config.json", "utf8")).fixed;
           const versions = new Map(
-            globSync("packages/*/package.json")
+            globSync(["packages/*/package.json", "packages/examples/*/package.json"])
               .map((file) => JSON.parse(readFileSync(file, "utf8")))
               .map((manifest) => [manifest.name, manifest.version]),
           );
