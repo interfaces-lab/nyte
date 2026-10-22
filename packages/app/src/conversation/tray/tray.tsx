@@ -86,7 +86,8 @@ export function TrayPill({
     <div {...props(trayParts.pills)}>
       <Button
         ref={ref}
-        variant="chip"
+        variant="outline"
+        pill
         size="sm"
         aria-description={label}
         aria-controls={controls}

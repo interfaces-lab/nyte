@@ -1,7 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { media, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
-import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const messageScrollerStyles = create({
   viewport: {
@@ -50,27 +48,5 @@ export const messageScrollerStyles = create({
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: "ease-in-out",
-  },
-  buttonControl: {
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: {
-      default: role.borderSecondaryTranslucent,
-      ":hover": { [media.hover]: role.borderPrimaryTranslucent },
-    },
-    backgroundColor: role.bgElevated,
-    backgroundImage: {
-      default: "none",
-      ":hover": { [media.hover]: "none" },
-      ":active": "none",
-    },
-    boxShadow: "none",
-    transitionProperty: "border-color",
-    transitionDuration: {
-      default: motion.durationFast,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motion.easeOut,
   },
 });

@@ -1,6 +1,6 @@
 ---
 title: Button
-description: "Buttons and links with six looks, six sizes, and joined actions"
+description: "Buttons and links with six variants, six sizes, pill shapes, and joined actions"
 ---
 
 ```ts title="Import"
@@ -19,6 +19,7 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 - `Button` defaults to `type="button"`. Pass `type="submit"` to submit a form.
 - In a popup trigger's `render`, put the text inside the `Button`, as in
   `<Popover.Trigger render={<Button>Open</Button>} />`.
+- Add `pill` to a variant for fully rounded ends and pill padding.
 - Give every `ButtonGroup` part the same size. `SplitButton.MenuTrigger` needs a label that names
   the action and its target.
 
@@ -54,7 +55,7 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 <Button size="2xs" iconOnly icon="x" aria-label="Remove" />
 ```
 
-### Glyph, pill, chip, and disabled
+### Icons, pill shapes, and disabled
 
 <Preview>
   <ButtonStatesDemo />
@@ -62,8 +63,9 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 
 ```tsx
 <Button variant="outline" icon="refresh">Refresh</Button>
-<Button variant="pill">Pill</Button>
-<Button variant="chip">Chip</Button>
+<Button variant="ghost" pill>Ghost pill</Button>
+<Button variant="outline" pill>Outline pill</Button>
+<Button variant="solid" pill>Solid pill</Button>
 <Button variant="outline" disabled disabledReason="No changes to save">Save Changes</Button>
 ```
 
@@ -106,19 +108,20 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 `Button` takes every Base UI `Button` prop. `className` and `style` take plain values, not functions
 of state. `ButtonLink` takes native `<a>` attributes.
 
-| Prop                 | Type                                                                       | Default                                       | Description                                            |
-| -------------------- | -------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
-| `variant`            | `"ghost" \| "pill" \| "chip" \| "outline" \| "solid" \| "plain" \| "text"` | `"ghost"`                                     |                                                        |
-| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"`             | `"primary"` for `text`, otherwise `"neutral"` |                                                        |
-| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                            | `"md"`                                        | 16, 20, 24, 28, 32, or 36px tall.                      |
-| `iconOnly`           | `boolean`                                                                  | `false`                                       | Square control.                                        |
-| `icon`               | `IconName`                                                                 |                                               | Leading or standalone glyph.                           |
-| `children`           | `ReactNode`                                                                |                                               | Required for visible-text controls.                    |
-| `xstyle`             | `ButtonLayout`                                                             |                                               | Position, inset, margin, flex, grid, order, and width. |
-| `className`, `style` | See [Theming](/design/theming)                                             |                                               | Applied to the control.                                |
-| `loading`            | `boolean`                                                                  | `false`                                       | Button only. Disables activation but stays focusable.  |
-| `disabledReason`     | `string`                                                                   |                                               | Button only. Shown as the `title` while `disabled`.    |
-| `href`               | `string`                                                                   | Required for ButtonLink                       |                                                        |
+| Prop                 | Type                                                               | Default                                       | Description                                            |
+| -------------------- | ------------------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------ |
+| `variant`            | `"ghost" \| "outline" \| "solid" \| "plain" \| "text" \| "inline"` | `"ghost"`                                     |                                                        |
+| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"`     | `"primary"` for `text`, otherwise `"neutral"` |                                                        |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                    | `"md"`                                        | 16, 20, 24, 28, 32, or 36px tall.                      |
+| `iconOnly`           | `boolean`                                                          | `false`                                       | Square control.                                        |
+| `pill`               | `boolean`                                                          | `false`                                       | Fully rounded ends with pill padding.                  |
+| `icon`               | `IconName`                                                         |                                               | Leading or standalone glyph.                           |
+| `children`           | `ReactNode`                                                        |                                               | Required for visible-text controls.                    |
+| `xstyle`             | `ButtonLayout`                                                     |                                               | Position, inset, margin, flex, grid, order, and width. |
+| `className`, `style` | See [Theming](/design/theming)                                     |                                               | Applied to the control.                                |
+| `loading`            | `boolean`                                                          | `false`                                       | Button only. Disables activation but stays focusable.  |
+| `disabledReason`     | `string`                                                           |                                               | Button only. Shown as the `title` while `disabled`.    |
+| `href`               | `string`                                                           | Required for ButtonLink                       |                                                        |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 

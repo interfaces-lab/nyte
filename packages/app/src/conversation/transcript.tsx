@@ -660,7 +660,6 @@ export const TranscriptContent = memo(function TranscriptContent({
 
 export function TranscriptButton(): ReactElement | null {
   const transcript = useContext(TranscriptContext);
-  const scrollButton = props(messageScrollerStyles.buttonControl);
 
   if (transcript === null) return null;
 
@@ -675,11 +674,11 @@ export function TranscriptButton(): ReactElement | null {
         <TooltipTrigger
           render={
             <Button
+              variant="outline"
+              pill
               iconOnly
               aria-label="Scroll to bottom"
               tabIndex={-1}
-              className={scrollButton.className}
-              style={scrollButton.style}
               onClick={(event) => {
                 event.currentTarget.blur();
                 transcript.controlsRef.current?.end();

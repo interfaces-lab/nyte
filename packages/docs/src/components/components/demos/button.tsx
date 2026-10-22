@@ -41,8 +41,15 @@ export function ButtonStatesDemo() {
       <Button variant="outline" icon="refresh">
         Refresh
       </Button>
-      <Button variant="pill">Pill</Button>
-      <Button variant="chip">Chip</Button>
+      <Button variant="ghost" pill>
+        Ghost pill
+      </Button>
+      <Button variant="outline" pill>
+        Outline pill
+      </Button>
+      <Button variant="solid" pill>
+        Solid pill
+      </Button>
       <Button variant="outline" disabled disabledReason="No changes to save">
         Save Changes
       </Button>

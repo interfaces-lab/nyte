@@ -160,17 +160,34 @@ export async function run(): Promise<string> {
     flushSync(() =>
       root.render(
         <TooltipProvider>
-          {(["ghost", "pill", "outline", "solid", "plain", "text"] as const).flatMap((variant) =>
+          {(
+            [
+              { variant: "ghost", pill: false },
+              { variant: "ghost", pill: true },
+              { variant: "outline", pill: false },
+              { variant: "outline", pill: true },
+              { variant: "solid", pill: false },
+              { variant: "plain", pill: false },
+              { variant: "text", pill: false },
+            ] as const
+          ).flatMap(({ variant, pill }) =>
             (["2xs", "xs", "sm", "md", "lg", "xl"] as const).map((size) => (
-              <Sample key={`${variant}:${size}`}>
-                <Button variant={variant} size={size}>
+              <Sample key={`${variant}:${pill}:${size}`}>
+                <Button variant={variant} pill={pill} size={size}>
                   Save
                 </Button>
-                <Button variant={variant} size={size} iconOnly icon="plus" aria-label="Add" />
-                <ButtonLink variant={variant} size={size} href="#">
+                <Button
+                  variant={variant}
+                  pill={pill}
+                  size={size}
+                  iconOnly
+                  icon="plus"
+                  aria-label="Add"
+                />
+                <ButtonLink variant={variant} pill={pill} size={size} href="#">
                   View
                 </ButtonLink>
-                <Toggle size={size} iconOnly icon="plus" aria-label="Pin" />
+                <Toggle pill={pill} size={size} iconOnly icon="plus" aria-label="Pin" />
               </Sample>
             )),
           )}

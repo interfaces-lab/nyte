@@ -517,7 +517,8 @@ export function Composer({
                   )}
                   <Button
                     size="sm"
-                    variant="chip"
+                    variant="outline"
+                    pill
                     onClick={() => {
                       focusAfterMove.current = true;
                       workbenchController.actions.showChat({ view: workbenchViewKey(cwd) });

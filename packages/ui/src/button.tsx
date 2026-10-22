@@ -106,6 +106,7 @@ const control = create({
     },
   },
   joinedIcon: { width: `max(var(--_btn-height), ${target.min})` },
+  pill: { borderRadius: radius.pill },
   dimmed: { opacity: { default: null, "[data-disabled]:not([aria-busy='true'])": 0.5 } },
 });
 
@@ -178,12 +179,6 @@ const ghostFill = {
 
 const buttonVariants = create({
   ghost: { backgroundColor: ghostFill },
-  pill: { borderRadius: radius.pill, backgroundColor: ghostFill },
-  chip: {
-    borderRadius: radius.pill,
-    backgroundColor: role.bgElevated,
-    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
-  },
   outline: {
     backgroundColor: role.bgElevated,
     boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
@@ -276,7 +271,7 @@ type ButtonTone = "neutral" | keyof typeof intent;
 
 export type ButtonSize = keyof typeof buttonSizes;
 
-export type ButtonSizing = { readonly size?: ButtonSize } & (
+export type ButtonSizing = { readonly size?: ButtonSize; readonly pill?: boolean } & (
   | { readonly iconOnly?: false; readonly children: ReactNode; readonly "aria-label"?: never }
   | { readonly iconOnly: true; readonly children?: ReactNode; readonly "aria-label": string }
 );
@@ -312,6 +307,7 @@ export function buttonGlyphSize(size: ButtonSize, iconOnly: boolean): number {
 type ButtonStyleOptions = ButtonAppearance & {
   readonly iconOnly?: boolean;
   readonly joined?: boolean;
+  readonly pill?: boolean;
   readonly xstyle?: XStyle;
 };
 
@@ -333,6 +329,7 @@ export function buttonStyle<State>(
   {
     iconOnly = false,
     joined = false,
+    pill = false,
     tone = variant === "text" ? "primary" : "neutral",
     xstyle,
     className,
@@ -346,9 +343,10 @@ export function buttonStyle<State>(
       tone !== "neutral" && intent[tone],
       control.base,
       buttonSizes[size],
-      (variant === "pill" || variant === "chip") && pillSizes[size],
+      pill && pillSizes[size],
       iconOnly && control.iconOnly,
       buttonVariants[variant],
+      pill && control.pill,
       joined && control.joined,
       joined && iconOnly && control.joinedIcon,
       size === "2xs" ? focus.ringInset : focus.ring,
@@ -396,6 +394,7 @@ export function Button({
   variant = "ghost",
   size = "md",
   iconOnly = false,
+  pill = false,
   icon,
   tone,
   xstyle,
@@ -417,7 +416,7 @@ export function Button({
       focusableWhenDisabled={showReason || loading}
       {...rest}
       disabled={disabled || loading}
-      {...buttonStyle(variant, size, { iconOnly, joined, tone, xstyle, className, style })}
+      {...buttonStyle(variant, size, { iconOnly, joined, pill, tone, xstyle, className, style })}
     >
       <ButtonContent icon={icon} size={size} iconOnly={iconOnly} loading={loading}>
         {children}
@@ -479,6 +478,7 @@ export function ButtonLink({
   variant = "ghost",
   size = "md",
   iconOnly = false,
+  pill = false,
   icon,
   tone,
   xstyle,
@@ -498,7 +498,7 @@ export function ButtonLink({
     <a
       title={tooltipTitle(iconOnly, rest["aria-label"])}
       {...rest}
-      {...buttonStyle(variant, size, { iconOnly, joined, tone, xstyle, className, style })}
+      {...buttonStyle(variant, size, { iconOnly, joined, pill, tone, xstyle, className, style })}
     >
       <ButtonContent icon={icon} size={size} iconOnly={iconOnly}>
         {children}

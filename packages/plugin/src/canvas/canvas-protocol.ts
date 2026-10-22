@@ -196,7 +196,7 @@ export const KIT = {
   PieChart:
     "{ data: { id: string, value: number, label?: string, tint?: Tint }[], height?: number = 240, donut?: boolean, valueFormat?: (value: number) => string, legend?: boolean }",
   Button:
-    '{ variant?: "solid" | "outline" | "ghost" | "pill" | "chip", size?: "2xs" | "xs" | "sm" | "md" | "lg" | "xl", tone?: "neutral" | "primary" | "success" | "warning" | "danger", loading?: boolean, disabled?: boolean, onClick, children }',
+    '{ variant?: "solid" | "outline" | "ghost", pill?: boolean, size?: "2xs" | "xs" | "sm" | "md" | "lg" | "xl", tone?: "neutral" | "primary" | "success" | "warning" | "danger", loading?: boolean, disabled?: boolean, onClick, children }',
   Tabs: "Tabs.Root { value?, defaultValue?, onValueChange? } > Tabs.List { children: Tabs.Tab { value, children }[] } + Tabs.Panel { value, children }",
   Select:
     "Select { value?, defaultValue?, onValueChange? } > SelectTrigger { children: <SelectValue /> } + SelectContent { children: SelectItem[] }",

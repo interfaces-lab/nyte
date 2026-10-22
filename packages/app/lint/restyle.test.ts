@@ -80,7 +80,7 @@ test("names the owned concern, the rejected properties, and the way out", () => 
 
   expect(padded).toContain("<Button> owns its spacing and colours");
   expect(padded).toContain("paddingInline and backgroundColor (from styles.padded)");
-  expect(padded).toContain("Choose its look with variant, size, tone, and iconOnly");
+  expect(padded).toContain("Choose its look with variant, size, tone, iconOnly, and pill");
   expect(padded).toContain("packages/ui/src/button.tsx");
 });
 

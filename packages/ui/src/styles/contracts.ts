@@ -129,7 +129,7 @@ const heading = (file: string) =>
 
 const button = {
   file: "packages/ui/src/button.tsx",
-  options: ["variant", "size", "tone", "iconOnly"],
+  options: ["variant", "size", "tone", "iconOnly", "pill"],
   allow: ["layout", "width", "inset"],
   also: ["borderRadius"],
 } as const;
