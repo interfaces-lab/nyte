@@ -4,6 +4,12 @@ import { pathToFileURL } from "node:url";
 import { Lexer, walkTokens } from "marked";
 import type { Token } from "marked";
 
+const LOCATION = /:\d+(?::\d+)?$/u;
+
+const NOT_A_PATH = /[\s*?()[\]{}<>|"'`$#\\]/u;
+
+const SCHEME = /^[a-z][\w+.-]*:/iu;
+
 /**
  * Rewrites each inline-code file path in `markdown`, such as `src/app.ts:42`,
  * as a link to that file under `root`. A terminal then opens the file the
@@ -20,64 +26,18 @@ export function linkFilePaths(markdown: string, root: string): string {
 
 /** The file URL a code span names, or `null` when it doesn't read as a file path. */
 function readFileTarget(code: string, root: string): string | null {
-  let end = code.length;
-  let position = end;
+  const path = code.replace(LOCATION, "");
+  const name = path.slice(path.lastIndexOf("/") + 1);
 
-  for (let field = 0; field < 2; field += 1) {
-    const start = position;
-
-    while (position > 0) {
-      const digit = code.charCodeAt(position - 1);
-
-      if (digit < 48 || digit > 57) break;
-      position -= 1;
-    }
-
-    if (position === start || code[position - 1] !== ":") break;
-    position -= 1;
-    end = position;
-  }
-
-  const path = code.slice(0, end);
-
-  if (path.startsWith("//")) return null;
-
-  let slash = false;
-  let dot = false;
-  let named = false;
-  let scheme = false;
-
-  for (let index = 0; index < path.length; index += 1) {
-    const character = path.charAt(index);
-
-    if (
-      character.trim() === "" ||
-      "*?()[]{}<>|\"'`$#\\".includes(character) ||
-      (character === ":" && scheme)
-    )
-      return null;
-
-    const letter =
-      (character >= "a" && character <= "z") ||
-      (character >= "A" && character <= "Z") ||
-      character === "K" ||
-      character === "ſ";
-
-    scheme =
-      index === 0
-        ? letter
-        : scheme &&
-          (letter || (character >= "0" && character <= "9") || "_+.-".includes(character));
-
-    if (character === "/") {
-      slash = true;
-      dot = false;
-      named = false;
-    } else if (character === ".") dot = true;
-    else named = true;
-  }
-
-  if (!slash || !dot || !named) return null;
+  if (
+    !path.includes("/") ||
+    path.startsWith("//") ||
+    NOT_A_PATH.test(path) ||
+    SCHEME.test(path) ||
+    !name.includes(".") ||
+    !/[^.]/u.test(name)
+  )
+    return null;
 
   return pathToFileURL(path.startsWith("~/") ? join(homedir(), path.slice(2)) : resolve(root, path))
     .href;
