@@ -20,14 +20,19 @@ const NOTES = ["First note", "Second note"];
 
 const FOLLOWING_DRAFT = "Typing while five agents stream ";
 
+const DETAIL_DRAFT = "with an agent chat open ";
+
 const READING_DRAFT = "keeps every keystroke where it lands.";
 
 const KEY_DELAY_MS = 35;
 
-/** Event Timing spans a keydown from its timestamp to the paint after it, rounded to 8 ms; three frames at 60 Hz is the p95 budget, six the worst key. */
-const KEY_P95_BUDGET_MS = 50;
+const KEY_P99_BUDGET_MS = 50;
 
 const KEY_MAX_BUDGET_MS = 100;
+
+const RENDER_P99_BUDGET_MS = 16.67;
+
+const MIN_RENDER_SAMPLES = 100;
 
 /** Each streaming agent's view publishes every delta (25 ms), so one typing phase sees far more than this per agent. */
 const STREAMING_PUBLICATIONS = 10;
@@ -49,8 +54,19 @@ const TRACE_CATEGORIES = [
 
 interface Probe {
   readonly mounts: Record<string, number>;
+  readonly frameIntervalsMs: number[];
   rowResizes: number;
   scrolls: number;
+  detail?: {
+    frames: number;
+    textChanges: number;
+    maxParentDrift: number;
+    blankFrames: number;
+    maxOverlap: number;
+    running: boolean;
+    frame: number;
+    timer: number;
+  };
 }
 
 declare global {
@@ -65,7 +81,7 @@ type Counts = Readonly<Record<string, number>>;
 function percentile(values: readonly number[], fraction: number): number {
   const sorted = values.toSorted((first, second) => first - second);
 
-  return sorted[Math.min(sorted.length - 1, Math.floor(fraction * sorted.length))] ?? 0;
+  return sorted[Math.max(0, Math.ceil(fraction * sorted.length) - 1)] ?? 0;
 }
 
 function difference(before: Counts, after: Counts): Counts {
@@ -80,14 +96,26 @@ function readCounts(page: Page): Promise<Counts> {
 
 async function installProbe(log: Locator): Promise<void> {
   await log.evaluate((viewport) => {
-    const probe: Probe = { mounts: {}, rowResizes: 0, scrolls: 0 };
+    const probe: Probe = { mounts: {}, frameIntervalsMs: [], rowResizes: 0, scrolls: 0 };
     window.nyteProbe = probe;
+    let previous: number | undefined;
+
+    const frame = (time: number): void => {
+      if (previous !== undefined) probe.frameIntervalsMs.push(time - previous);
+      previous = time;
+      requestAnimationFrame(frame);
+    };
+
+    requestAnimationFrame(frame);
+
     const scrolled = (): void => {
       probe.scrolls += 1;
     };
+
     viewport.addEventListener("scroll", scrolled, { passive: true });
 
     const seen = new WeakSet<Element>();
+
     const resized = new ResizeObserver((entries) => {
       for (const entry of entries) {
         if (seen.has(entry.target)) probe.rowResizes += 1;
@@ -125,6 +153,7 @@ async function startTrace(page: Page): Promise<(path: string) => Promise<void>> 
     const complete = new Promise<string | undefined>((resolve) =>
       session.once("Tracing.tracingComplete", (event) => resolve(event.stream)),
     );
+
     await session.send("Tracing.end");
     const stream = await complete;
 
@@ -166,7 +195,7 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
   if (output === undefined) return;
   test.setTimeout(240_000);
   const { page } = desktop;
-  const log = messages(page);
+  const log = messages(page).first();
   const field = composer(page);
   const groupRow = log.locator("[data-row-key^='agents:']");
   const pill = chatPane(page).getByRole("button", { name: "Agents", exact: true });
@@ -208,6 +237,7 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
   }
 
   let following: Counts = {};
+  let detail: Counts = {};
   let reading: Counts = {};
 
   await test.step("typing while following: every agent streams, the end stays in view", async () => {
@@ -221,8 +251,129 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
     const streaming = Object.entries(following).filter(
       ([name, count]) => name.startsWith("publish:view:") && count >= STREAMING_PUBLICATIONS,
     );
+
     expect(streaming.length).toBeGreaterThanOrEqual(SWARM_AGENTS);
     await expect.poll(() => distanceFromEnd(log)).toBeLessThanOrEqual(1);
+  });
+
+  await test.step("typing with a child chat open: its output advances and both transcripts hold", async () => {
+    await groupRow.getByRole("button", { name: /^Survey part 1\b/u }).click();
+    const expand = chatPane(page).getByRole("button", { name: "Open as full chat" });
+    await expect(expand).toBeVisible();
+    const tray = chatPane(page).locator("[data-slot='tray']");
+    const child = tray.getByRole("region", { name: "Messages", exact: true });
+    await expect(child.getByRole("paragraph").last()).toBeInViewport();
+    await field.click();
+    await field.press("End");
+    await expect.poll(() => distanceFromEnd(log)).toBeLessThanOrEqual(1);
+    const anchor = await groupRow.elementHandle();
+
+    if (anchor === null) throw new Error("The parent agents row is missing");
+
+    await child.evaluate((viewport, anchor) => {
+      const probe = window.nyteProbe;
+
+      if (probe === undefined) throw new Error("The probe was not installed");
+
+      const detail = {
+        frames: 0,
+        textChanges: 0,
+        maxParentDrift: 0,
+        blankFrames: 0,
+        maxOverlap: 0,
+        running: true,
+        frame: 0,
+        timer: 0,
+      };
+
+      probe.detail = detail;
+      const parentTop = anchor.getBoundingClientRect().top;
+      let text = viewport.textContent;
+
+      const sample = (): void => {
+        detail.frame = requestAnimationFrame(() => {
+          detail.timer = window.setTimeout(() => {
+            if (!detail.running) return;
+            detail.frames += 1;
+            detail.maxParentDrift = Math.max(
+              detail.maxParentDrift,
+              Math.abs(anchor.getBoundingClientRect().top - parentTop),
+            );
+            const box = viewport.getBoundingClientRect();
+
+            const rows = [...viewport.querySelectorAll<HTMLElement>("[data-row-key]")]
+              .map((row) => ({
+                text: row.textContent?.trim() ?? "",
+                box: row.getBoundingClientRect(),
+              }))
+              .filter(
+                (row) => row.text !== "" && row.box.bottom > box.top && row.box.top < box.bottom,
+              );
+
+            if (rows.length === 0) detail.blankFrames += 1;
+
+            for (let index = 1; index < rows.length; index += 1) {
+              const previous = rows[index - 1];
+              const row = rows[index];
+
+              if (previous !== undefined && row !== undefined)
+                detail.maxOverlap = Math.max(detail.maxOverlap, previous.box.bottom - row.box.top);
+            }
+
+            if (viewport.textContent !== text) detail.textChanges += 1;
+            text = viewport.textContent;
+            sample();
+          }, 0);
+        });
+      };
+
+      sample();
+    }, anchor);
+    await anchor.dispose();
+    cleanup.defer(() =>
+      page.evaluate(() => {
+        const detail = window.nyteProbe?.detail;
+
+        if (detail === undefined) return;
+        detail.running = false;
+        cancelAnimationFrame(detail.frame);
+        clearTimeout(detail.timer);
+      }),
+    );
+    const before = await readCounts(page);
+    await typeMarked(page, field, DETAIL_DRAFT);
+    detail = difference(before, await readCounts(page));
+
+    const frames = await page.evaluate(() => {
+      const detail = window.nyteProbe?.detail;
+
+      if (detail === undefined) throw new Error("The child frame probe is missing");
+      detail.running = false;
+      cancelAnimationFrame(detail.frame);
+      clearTimeout(detail.timer);
+
+      return detail;
+    });
+
+    await testInfo.attach("child-chat-frames", {
+      body: JSON.stringify(frames, null, 2),
+      contentType: "application/json",
+    });
+    expect(frames.frames).toBeGreaterThan(1);
+    expect(frames.textChanges).toBeGreaterThan(0);
+    expect(frames.maxParentDrift).toBeLessThanOrEqual(1);
+    expect(frames.blankFrames).toBe(0);
+    expect(frames.maxOverlap).toBeLessThanOrEqual(1);
+    expect(
+      Object.entries(detail).filter(
+        ([name, count]) => name.startsWith("publish:view:") && count >= STREAMING_PUBLICATIONS,
+      ).length,
+    ).toBeGreaterThanOrEqual(SWARM_AGENTS);
+    await expect(field).toHaveText(`${FOLLOWING_DRAFT}${DETAIL_DRAFT}`);
+    await expect(field).toBeFocused();
+    await chatPane(page).getByRole("button", { name: "Close agents" }).click();
+    await expect(expand).toBeHidden();
+    await expect(field).toBeFocused();
   });
 
   const top = log.getByText("Paragraph 1 of 60.", { exact: false });
@@ -267,7 +418,7 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
   });
 
   await test.step("the draft, focus and caret survive the run", async () => {
-    await expect(field).toHaveText(`${FOLLOWING_DRAFT}${READING_DRAFT}`);
+    await expect(field).toHaveText(`${FOLLOWING_DRAFT}${DETAIL_DRAFT}${READING_DRAFT}`);
     await expect(field).toBeFocused();
 
     const caret = await field.evaluate((editor) => {
@@ -280,7 +431,8 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
 
       return range.toString().length;
     });
-    expect(caret).toBe(FOLLOWING_DRAFT.length + READING_DRAFT.length);
+
+    expect(caret).toBe(FOLLOWING_DRAFT.length + DETAIL_DRAFT.length + READING_DRAFT.length);
   });
 
   const totals = difference(start, await readCounts(page));
@@ -289,14 +441,26 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
 
   if (probe === undefined) throw new Error("The probe was not installed");
   const trace = await readInputTrace(tracePath, MARKS);
-  const typed = FOLLOWING_DRAFT.length + READING_DRAFT.length;
+  const typed = FOLLOWING_DRAFT.length + DETAIL_DRAFT.length + READING_DRAFT.length;
 
   const summary = {
     keys: { typed, measured: trace.keydownMs.length },
     inputToPaintMs: {
       p50: percentile(trace.keydownMs, 0.5),
       p95: percentile(trace.keydownMs, 0.95),
+      p99: percentile(trace.keydownMs, 0.99),
       max: Math.max(0, ...trace.keydownMs),
+    },
+    renderingMs: {
+      samples: trace.renderingMs.length,
+      p99: percentile(trace.renderingMs, 0.99),
+      max: Math.max(...trace.renderingMs),
+    },
+    frameCadenceMs: {
+      samples: probe.frameIntervalsMs.length,
+      p50: percentile(probe.frameIntervalsMs, 0.5),
+      p99: percentile(probe.frameIntervalsMs, 0.99),
+      max: Math.max(...probe.frameIntervalsMs),
     },
     longTasks: trace.longTasks,
     layouts: trace.layouts,
@@ -305,7 +469,8 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
     rowMounts: probe.mounts,
     rowResizes: probe.rowResizes,
     scrollEvents: probe.scrolls,
-    work: { following, reading, totals },
+    childFrames: probe.detail,
+    work: { following, detail, reading, totals },
   };
 
   await writeFile(join(output, "summary.json"), JSON.stringify(summary, null, 2));
@@ -315,6 +480,17 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
   });
 
   expect(trace.keydownMs.length).toBeGreaterThanOrEqual(Math.floor(typed * 0.9));
-  expect(summary.inputToPaintMs.p95).toBeLessThanOrEqual(KEY_P95_BUDGET_MS);
+  expect(summary.inputToPaintMs.p99).toBeLessThanOrEqual(KEY_P99_BUDGET_MS);
   expect(summary.inputToPaintMs.max).toBeLessThanOrEqual(KEY_MAX_BUDGET_MS);
+  expect(summary.renderingMs.samples).toBeGreaterThanOrEqual(MIN_RENDER_SAMPLES);
+  expect(summary.renderingMs.p99).toBeLessThanOrEqual(RENDER_P99_BUDGET_MS);
+  if (process.env.NYTE_E2E_60FPS === "1")
+    expect(summary.frameCadenceMs.p50, "The renderer must actually run at 60Hz").toBeCloseTo(
+      1000 / 60,
+      0,
+    );
+  expect(
+    trace.longTasks.filter((task) => task.startMs >= 0),
+    "No renderer task may take 50ms after typing starts, through all-agent completion",
+  ).toEqual([]);
 });

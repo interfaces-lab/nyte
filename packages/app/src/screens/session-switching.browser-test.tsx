@@ -202,20 +202,6 @@ function leadingPrompt(view: SessionView, start: number): SessionView["leadingPr
   return prompt?.kind === "user" ? prompt : null;
 }
 
-function tailed(view: SessionView, tail: number | undefined): SessionView {
-  if (tail === undefined) return view;
-  const start = Math.max(0, view.messages.length - tail);
-  const messages = view.messages.slice(start);
-  const first = view.turns.findIndex((turn) => turn.id === messages[0]?.turn);
-
-  return {
-    ...view,
-    messages,
-    leadingPrompt: leadingPrompt(view, start),
-    turns: view.turns.slice(Math.max(0, first)),
-  };
-}
-
 installConnection(
   scriptedConnection({
     sessions: NAMES.map((name) => sessionRow(name, { name })),
@@ -229,7 +215,26 @@ installConnection(
         watch: async function* (options) {
           await roundTrip();
 
-          for await (const view of entry.stream.watch()) yield tailed(view, options?.tail);
+          const initial = entry.view(entry.live);
+
+          const start = Math.max(
+            0,
+            initial.messages.length - (options?.tail ?? initial.messages.length),
+          );
+
+          const first = initial.turns.findIndex(
+            (turn) => turn.id === initial.messages[start]?.turn,
+          );
+
+          const turns = initial.turns.slice(Math.max(0, first));
+
+          for await (const view of entry.stream.watch())
+            yield {
+              ...view,
+              messages: view.messages.slice(start),
+              leadingPrompt: leadingPrompt(view, start),
+              turns,
+            };
         },
         history: async ({ before, limit }) => {
           await roundTrip();

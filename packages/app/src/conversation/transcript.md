@@ -1,6 +1,6 @@
 # Transcript movement
 
-How the chat transcript moves. `transcript.tsx` implements these rules, and the Electron harness checks them every frame. A change to how the transcript scrolls changes this file first.
+How the chat transcript moves. `transcript-mode.ts` decides the mode from rules 1–8, `transcript.tsx` moves the view, and the Electron harness checks them every frame. A change to how the transcript scrolls changes this file first.
 
 ## Modes
 
@@ -48,6 +48,8 @@ Only the reader moves Reading back to Following, through rules 3 and 4. Saving o
 
 19. A row keeps its identity, its DOM, and its position through every change to its content. That covers a prompt or steered message joining its turn, a continuation folding into the previous row, a commit replacing live parts, and streamed text arriving.
 
+The latest turn owns one summary row keyed by its prompt. It reserves the height of a full Files Changed card while pending, so the card appearing, or no changes at all, never changes its height. A new normal prompt replaces the previous turn's summary reservation.
+
 ## Restore and resize
 
 20. Each pane remembers each session's position. A session left at the end reopens at the end. Otherwise it reopens with the same anchor row at the same offset within it.
@@ -55,7 +57,7 @@ Only the reader moves Reading back to Following, through rules 3 and 4. Saving o
 
 ## Always
 
-22. Rows never overlap on a painted frame.
+22. Rows never overlap or leave the visible range unrendered on a painted frame. Scroll adjustments and the rows they reveal commit together.
 23. The transcript's extent is never less than the last row's bottom on a painted frame.
 24. Remounting paints the same picture. If a reload changes what the reader sees, one of these rules was broken.
 

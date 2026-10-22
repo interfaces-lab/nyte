@@ -1,13 +1,8 @@
-import type { SessionInfo, SessionView } from "@nyte-ai/sdk";
-import {
-  mainHead,
-  showsTool,
-  toolDetail,
-  toolStatus,
-  toolVerbs,
-} from "@nyte-ai/plugin/client/presentation";
+import type { SessionInfo } from "@nyte-ai/sdk";
+import { mainHead, toolDetail, toolVerbs } from "@nyte-ai/plugin/client/presentation";
 import type { ToolStatus } from "@nyte-ai/plugin/client/presentation";
 import { countWork } from "../work-counts.ts";
+import type { SessionActivity } from "./session-activity.ts";
 
 export interface SubagentStatus {
   readonly indicator: "running" | "attention" | "failed" | "unread" | "done";
@@ -73,29 +68,28 @@ export function sessionStatus(session: SessionInfo, unread: boolean): SubagentSt
 }
 
 export function subagentActivity(
-  view: SessionView | undefined,
+  activity: SessionActivity | undefined,
   cwd: string | undefined,
 ): string | undefined {
   countWork("select:activity");
-  const call = view?.messages.findLast(
-    (message) => showsTool(message) && toolStatus(message).tense === "running",
-  );
+  switch (activity?.kind) {
+    case "tool": {
+      const verb = toolVerbs(activity.toolClass).running;
+      const detail = toolDetail(activity.toolClass, cwd)?.text;
 
-  if (call !== undefined && showsTool(call)) {
-    const toolClass = call.state.class;
-    const verb = toolVerbs(toolClass).running;
-    const detail = toolDetail(toolClass, cwd)?.text;
+      return detail === undefined ? verb : `${verb} ${detail}`;
+    }
+    case "thinking":
+      return "Thinking";
+    case "writing":
+      return "Writing a response";
+    case "idle":
+    case undefined:
+      return undefined;
+    default: {
+      const exhaustive: never = activity;
 
-    return detail === undefined ? verb : `${verb} ${detail}`;
+      return exhaustive;
+    }
   }
-
-  const streaming = view?.messages.findLast(
-    (message) => message.kind === "part" && message.status.kind === "live",
-  );
-
-  if (streaming?.kind !== "part") return undefined;
-
-  if (streaming.partKind === "thinking") return "Thinking";
-
-  return streaming.partKind === "text" ? "Writing a response" : undefined;
 }

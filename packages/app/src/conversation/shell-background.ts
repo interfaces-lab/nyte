@@ -24,23 +24,32 @@ export async function moveToBackground(sessionId: SessionId, part: PartId): Prom
   }
 }
 
-export function findForegroundJobs(view: SessionView | undefined): ReadonlyMap<string, PartId> {
+export function findForegroundJobs(
+  view: Pick<SessionView, "messages" | "background"> | undefined,
+): ReadonlyMap<string, PartId> {
+  const jobs = (view?.background ?? []).flatMap((item) =>
+    item.kind === "job" && item.state === "working" && item.startedBy !== null
+      ? [[item.id, item.startedBy] as const]
+      : [],
+  );
+
+  if (jobs.length === 0) return new Map<string, PartId>();
   const running = new Map(
     (view?.messages ?? []).flatMap((message) =>
-      showsTool(message) && message.state.phase === "running" && message.status.kind === "live"
+      message.kind === "part" &&
+      message.status.kind === "live" &&
+      showsTool(message) &&
+      message.state.phase === "running"
         ? [[message.state.call, message.part] as const]
         : [],
     ),
   );
 
   return new Map(
-    (view?.background ?? []).flatMap((item) => {
-      const part =
-        item.kind === "job" && item.state === "working" && item.startedBy !== null
-          ? running.get(item.startedBy)
-          : undefined;
+    jobs.flatMap(([id, startedBy]) => {
+      const part = running.get(startedBy);
 
-      return part === undefined ? [] : [[item.id, part] as const];
+      return part === undefined ? [] : [[id, part] as const];
     }),
   );
 }

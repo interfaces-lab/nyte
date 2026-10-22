@@ -33,7 +33,6 @@ interface RowContext {
   readonly cwd: string | undefined;
   readonly branchModel: BranchModelPicker;
   readonly onEditUser: EditUserMessage;
-  readonly onOpenChanges: (path: string | null) => void;
   readonly onRetry: () => void;
 }
 
@@ -67,10 +66,10 @@ const TranscriptRowView = memo(function TranscriptRowView({
   cwd,
   branchModel,
   onEditUser,
-  onOpenChanges,
   onRetry,
 }: RowContext & { readonly rowKey: string }): ReactElement | null {
   useCommitCount("render:transcript-row");
+
   const row = useWatchSelect(store, (state) => {
     countWork("select:row");
 
@@ -109,7 +108,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
     case "earlier":
       return <EarlierSteps />;
     case "changes":
-      return <ChangesFooter state={row.state} files={row.files} onOpenChanges={onOpenChanges} />;
+      return <ChangesFooter state={navigating ? "pending" : row.state} files={row.files} />;
 
     case "prompt": {
       const { source } = row.message;
@@ -155,7 +154,6 @@ export function Timeline({
   cwd,
   branchModel,
   onEditUser,
-  onOpenChanges,
   onRetry,
 }: Omit<RowContext, "density"> & { readonly ready: boolean }): ReactElement {
   const density = useSetting(preferences.toolCalls);
@@ -190,23 +188,11 @@ export function Timeline({
           cwd={cwd}
           branchModel={branchModel}
           onEditUser={onEditUser}
-          onOpenChanges={onOpenChanges}
           onRetry={onRetry}
         />
       );
     },
-    [
-      branchModel,
-      cwd,
-      density,
-      onEditUser,
-      onOpenChanges,
-      onRetry,
-      projector,
-      rows,
-      store,
-      navigating,
-    ],
+    [branchModel, cwd, density, onEditUser, onRetry, projector, rows, store, navigating],
   );
 
   return (

@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { useMentionFiles, usePluginCatalog } from "../queries.ts";
 import { Prose } from "./prose.tsx";
+import { useReferenceOpener } from "./reference-opener.tsx";
 import { SubagentGroupView, SubagentReportLine } from "./subagent-call.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import { ComposerFrame } from "./composer-frame.tsx";
@@ -521,16 +522,19 @@ export function ChangesCard({
 export function ChangesFooter({
   state,
   files,
-  onOpenChanges,
 }: {
   readonly state: "pending" | "ready";
   readonly files: SessionView["changes"];
-  readonly onOpenChanges: (path: string | null) => void;
 }): ReactElement {
+  const opener = useReferenceOpener();
+
   return (
     <div {...props(turnStyles.changesFooter(CHANGES_VISIBLE_FILES))}>
       {state === "ready" && files.length > 0 && (
-        <ChangesCard files={files} onOpenChanges={onOpenChanges} />
+        <ChangesCard
+          files={files}
+          onOpenChanges={(path) => opener?.({ kind: "changes", path })?.()}
+        />
       )}
     </div>
   );

@@ -320,27 +320,27 @@ function useRootSessions(): readonly SessionInfo[] | undefined {
   }, [roots, projection, recorded]);
 }
 
-const NO_SESSIONS: ReadonlySet<SessionId> = new Set();
-
 export function useWorkingSessionIds(): ReadonlySet<SessionId> {
-  const all = useWatch(sessionsWatch("all")).value;
+  return useWatchSelect(
+    sessionsWatch("all"),
+    ({ value: all = [] }) => {
+      const parents = new Map(all.map((session) => [session.id, session.parent]));
+      const working = new Set<SessionId>();
 
-  return useMemo(() => {
-    if (all === undefined) return NO_SESSIONS;
-    const parents = new Map(all.map((session) => [session.id, session.parent]));
-    const working = new Set<SessionId>();
+      for (const session of all) {
+        if (session.heads.every((head) => head.execution.kind === "idle")) continue;
 
-    for (const session of all) {
-      if (session.heads.every((head) => head.execution.kind === "idle")) continue;
-
-      for (let parent = session.parent; parent !== null; parent = parents.get(parent) ?? null) {
-        if (working.has(parent)) break;
-        working.add(parent);
+        for (let parent = session.parent; parent !== null; parent = parents.get(parent) ?? null) {
+          if (working.has(parent)) break;
+          working.add(parent);
+        }
       }
-    }
 
-    return working;
-  }, [all]);
+      return working;
+    },
+    (previous, next) =>
+      previous.size === next.size && [...previous].every((sessionId) => next.has(sessionId)),
+  );
 }
 
 export function useWorkspaceSessions(): {
@@ -428,7 +428,7 @@ export function useSessionActivity(
   cwd: string | undefined,
 ): string | undefined {
   return useWatchSelect(sessionId === undefined ? undefined : sessionWatch(sessionId), (state) =>
-    subagentActivity(state.value, cwd),
+    subagentActivity(state.value?.activity, cwd),
   );
 }
 

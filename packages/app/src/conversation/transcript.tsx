@@ -1,5 +1,10 @@
 import { props } from "@stylexjs/stylex";
-import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
+import {
+  defaultRangeExtractor,
+  elementScroll,
+  observeElementOffset,
+  useVirtualizer,
+} from "@tanstack/react-virtual";
 import type { Range, VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
@@ -23,11 +28,14 @@ import { usePaneViewStateStore } from "../layout/pane-context.tsx";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { ScrollViewState } from "../layout/session-view-state.ts";
 import { messageScrollerStyles } from "./transcript.stylex.ts";
+import { initialMode, nextMode } from "./transcript-mode.ts";
+import type { TranscriptMode } from "./transcript-mode.ts";
 import type { RowLayout } from "./transcript-rows.ts";
 import {
+  distanceFromEnd,
   navigates,
   scrollsWithin,
-  showScrollButton,
+  syncScrollButton,
   syncSticky,
   topIn,
   TRANSCRIPT_PADDING_END,
@@ -41,8 +49,6 @@ const HISTORY_LEAD_SCREENS = 3;
 type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>;
 
 const VIEWPORT_GUESS = 800;
-
-const SCROLL_EDGE_THRESHOLD = 60;
 
 const MEASURED_TRANSCRIPTS = 16;
 
@@ -97,12 +103,6 @@ function stretchSpans(instance: TranscriptVirtualizer, ends: ReadonlyMap<number,
     fill.style.height = extent;
     span.style.marginBottom = `-${extent}`;
   }
-}
-
-interface Anchor {
-  readonly key: string;
-  readonly element: Element | undefined;
-  readonly top: number;
 }
 
 interface TranscriptControls {
@@ -228,14 +228,7 @@ export const TranscriptContent = memo(function TranscriptContent({
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [dockHeight, setDockHeight] = useState(0);
 
-  const [held, setHeld] = useState<Anchor | null>(
-    initialPosition.kind === "end"
-      ? null
-      : { key: initialPosition.key, element: undefined, top: initialPosition.offset },
-  );
-
-  const heldRef = useRef(held);
-  const opening = useRef(initialPosition.kind === "end");
+  const mode = useRef<TranscriptMode>(initialMode(initialPosition));
   const content = useRef<HTMLDivElement>(null);
   const scrollport = useRef<HTMLDivElement | null>(null);
 
@@ -275,15 +268,29 @@ export const TranscriptContent = memo(function TranscriptContent({
 
   const getItemKey = useCallback((index: number) => rows[index]?.key ?? String(index), [rows]);
 
-  const correct = (instance: TranscriptVirtualizer): void => {
-    const anchor = heldRef.current;
+  const settle = (instance: TranscriptVirtualizer): void => {
     const scroll = instance.scrollElement;
+    const current = mode.current;
+
+    if (scroll === null) return;
+
+    if (current.kind === "following") {
+      if (distanceFromEnd(scroll) > 1) instance.scrollToEnd();
+      else if (current.opening && ready) mode.current = nextMode(current, { kind: "opened" });
+
+      return;
+    }
+
+    const { anchor } = current;
     const row = anchor === null ? undefined : instance.elementsCache.get(anchor.key);
 
-    if (anchor === null || scroll === null || row === undefined) return;
+    if (anchor === null || row === undefined) return;
 
     if (anchor.element !== undefined && !anchor.element.isConnected) {
-      heldRef.current = { ...anchor, element: undefined, top: topIn(scroll, row) };
+      mode.current = nextMode(current, {
+        kind: "held",
+        anchor: { key: anchor.key, element: undefined, top: topIn(scroll, row) },
+      });
 
       return;
     }
@@ -293,7 +300,6 @@ export const TranscriptContent = memo(function TranscriptContent({
     if (Math.abs(drift) > 0.5) instance.scrollToOffset(scroll.scrollTop + drift);
   };
 
-  const atEnd = useRef(initialPosition.kind === "end");
   const historyLoading = useRef(false);
 
   const loadHistory = (instance: TranscriptVirtualizer): void => {
@@ -302,7 +308,7 @@ export const TranscriptContent = memo(function TranscriptContent({
     if (
       loadEarlier === undefined ||
       historyLoading.current ||
-      opening.current ||
+      (mode.current.kind === "following" && mode.current.opening) ||
       scroll === null ||
       scroll.scrollTop >= scroll.clientHeight * HISTORY_LEAD_SCREENS
     )
@@ -317,21 +323,15 @@ export const TranscriptContent = memo(function TranscriptContent({
       });
   };
 
-  const present = (instance: TranscriptVirtualizer, left = instance.getDistanceFromEnd()): void => {
+  const present = (instance: TranscriptVirtualizer): void => {
     const scroll = instance.scrollElement;
 
     if (scroll === null || content.current === null) return;
-    correct(instance);
+    settle(instance);
     stretchSpans(instance, sticky.ends);
 
-    if (opening.current && heldRef.current === null) {
-      if (left <= 1) opening.current = false;
-      else instance.scrollToEnd();
-    }
-
-    atEnd.current = heldRef.current === null && left <= 1;
     syncSticky(scroll, content.current);
-    showScrollButton(dock, left > SCROLL_EDGE_THRESHOLD);
+    queueMicrotask(() => syncScrollButton(scroll, dock));
     loadHistory(instance);
   };
 
@@ -339,6 +339,23 @@ export const TranscriptContent = memo(function TranscriptContent({
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: rows.length,
     getScrollElement: () => viewport,
+    observeElementOffset: (instance, onOffset) =>
+      observeElementOffset(instance, (offset, scrolling) => {
+        const scroll = instance.scrollElement;
+
+        if (scroll !== null)
+          mode.current = nextMode(mode.current, {
+            kind: "scrolled",
+            atEnd: scroll.scrollHeight - scroll.clientHeight - offset <= 1,
+          });
+        flushSync(() => onOffset(offset, scrolling));
+      }),
+    scrollToFn: (offset, options, instance) => {
+      elementScroll(offset, options, instance);
+      const scroll = instance.scrollElement;
+
+      if (scroll !== null) queueMicrotask(() => syncScrollButton(scroll, dock));
+    },
     estimateSize,
     getItemKey,
     initialOffset,
@@ -348,29 +365,58 @@ export const TranscriptContent = memo(function TranscriptContent({
     paddingStart: TRANSCRIPT_PADDING_START,
     paddingEnd: TRANSCRIPT_PADDING_END + dockHeight,
     anchorTo: "end",
-    scrollEndThreshold: held === null ? 1 : -1,
+    scrollEndThreshold: -1,
     directDomUpdates: true,
     directDomUpdatesMode: "position",
     useFlushSync: false,
     onChange: (instance) => present(instance),
   });
 
-  useLayoutEffect(() => {
-    heldRef.current = held;
-  }, [held]);
+  const measureRow = useCallback(
+    (node: HTMLDivElement | null): void => {
+      virtualizer.measureElement(node);
+
+      if (node === null) return;
+      const index = virtualizer.indexFromElement(node);
+      const key = virtualizer.options.getItemKey(index);
+
+      if (!virtualizer.itemSizeCache.has(key))
+        virtualizer.resizeItem(
+          index,
+          virtualizer.options.measureElement(node, undefined, virtualizer),
+        );
+    },
+    [virtualizer],
+  );
+
+  const attachContent = useCallback(
+    (element: HTMLDivElement | null): void => {
+      content.current = element;
+      virtualizer.containerRef(element);
+    },
+    [virtualizer],
+  );
 
   const virtualRows = virtualizer.getVirtualItems();
+  const settleRows = useEffectEvent((): void => settle(virtualizer));
 
   useLayoutEffect(() => {
     const scroll = virtualizer.scrollElement;
     stretchSpans(virtualizer, sticky.ends);
 
-    if (scroll !== null && content.current !== null) syncSticky(scroll, content.current);
-  }, [sticky, virtualRows, virtualizer]);
+    if (scroll !== null && content.current !== null) {
+      settleRows();
+      syncSticky(scroll, content.current);
+      queueMicrotask(() => syncScrollButton(scroll, dock));
+    }
+  }, [dock, dockHeight, ready, sticky, virtualRows, virtualizer]);
 
   useLayoutEffect(() => {
     virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
-      const fold = (instance.scrollOffset ?? 0) + instance.scrollAdjustments;
+      const current = mode.current;
+
+      if (current.kind === "reading" && current.anchor !== null) return false;
+      const fold = instance.scrollOffset ?? 0;
 
       return instance.itemSizeCache.has(item.key) ? item.end <= fold : item.start < fold;
     };
@@ -392,10 +438,10 @@ export const TranscriptContent = memo(function TranscriptContent({
 
       if (key === undefined || scroll === null) return;
       virtualizer.cancelScroll();
-      opening.current = false;
-      const anchor = { key, element, top: topIn(scroll, element) };
-      heldRef.current = anchor;
-      flushSync(() => setHeld(anchor));
+      mode.current = nextMode(mode.current, {
+        kind: "held",
+        anchor: { key, element, top: topIn(scroll, element) },
+      });
     },
     [virtualizer],
   );
@@ -416,44 +462,32 @@ export const TranscriptContent = memo(function TranscriptContent({
   }, []);
 
   const release = useCallback((): void => {
+    const scroll = virtualizer.scrollElement;
     virtualizer.cancelScroll();
-    opening.current = false;
-
-    if (heldRef.current === null) return;
-    heldRef.current = null;
-    setHeld(null);
+    mode.current = nextMode(mode.current, {
+      kind: "released",
+      atEnd: scroll !== null && distanceFromEnd(scroll) <= 1,
+    });
   }, [virtualizer]);
 
-  const restoreHeld = useEffectEvent((): void => {
-    const anchor = heldRef.current;
+  const restoreAnchor = useEffectEvent((): void => {
+    const anchor = mode.current.kind === "reading" ? mode.current.anchor : null;
 
-    if (anchor === null) {
-      if (!atEnd.current) return;
-      opening.current = true;
-      virtualizer.scrollToEnd();
-
-      return;
-    }
-
+    if (anchor === null || anchor.element !== undefined) return;
     const index = indexes.get(anchor.key);
 
-    if (anchor.element === undefined && index !== undefined) {
-      virtualizer.scrollToIndex(index, { align: "start" });
-    }
+    if (index !== undefined) virtualizer.scrollToIndex(index, { align: "start" });
   });
 
   useLayoutEffect(() => {
-    if (ready) restoreHeld();
+    if (ready) restoreAnchor();
   }, [ready]);
-
-  useLayoutEffect(() => {
-    if (atEnd.current) virtualizer.scrollToEnd();
-  }, [dockHeight, rows, virtualizer]);
 
   useLayoutEffect(
     () => () => {
       const scroll = scrollport.current;
-      const anchor = heldRef.current;
+      const current = mode.current;
+      const anchor = current.kind === "reading" ? current.anchor : null;
       const rows = [...virtualizer.elementsCache.entries()];
 
       const top =
@@ -471,11 +505,8 @@ export const TranscriptContent = memo(function TranscriptContent({
 
       const row = anchor === null ? top : (rows.find(([key]) => key === anchor.key) ?? top);
 
-      const atEnd =
-        scroll !== null && scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop <= 1;
-
       const position: ScrollViewState =
-        scroll !== null && row !== undefined && (anchor !== null || !atEnd)
+        scroll !== null && row !== undefined && current.kind === "reading"
           ? { kind: "anchor", key: String(row[0]), offset: topIn(scroll, row[1]) }
           : { kind: "end" };
 
@@ -499,7 +530,8 @@ export const TranscriptContent = memo(function TranscriptContent({
 
     controlsRef.current = {
       end: () => {
-        release();
+        virtualizer.cancelScroll();
+        mode.current = nextMode(mode.current, { kind: "ended" });
         virtualizer.scrollToEnd();
       },
       hold,
@@ -517,29 +549,16 @@ export const TranscriptContent = memo(function TranscriptContent({
 
   const holdRow = useEffectEvent(hold);
   const releaseHeld = useEffectEvent(release);
-  const presentRows = useEffectEvent((left?: number): void => present(virtualizer, left));
+  const presentRows = useEffectEvent((): void => present(virtualizer));
 
   useLayoutEffect(() => {
     const scroll = viewport;
 
     if (scroll === null) return undefined;
-    let height = scroll.clientHeight;
 
     const resize = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.target === dock) {
-          setDockHeight(entry.target.getBoundingClientRect().height);
-        } else if (entry.target === scroll) {
-          const shrunk = Math.max(0, height - scroll.clientHeight);
-          height = scroll.clientHeight;
-          const left = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop;
-
-          if (heldRef.current === null && left <= shrunk + 1) virtualizer.scrollToEnd();
-          presentRows(Math.min(left, shrunk + 1 >= left ? 0 : left));
-
-          return;
-        }
-      }
+      for (const entry of entries)
+        if (entry.target === dock) setDockHeight(entry.target.getBoundingClientRect().height);
 
       presentRows();
     });
@@ -571,7 +590,8 @@ export const TranscriptContent = memo(function TranscriptContent({
     const selected = (): void => {
       const selection = document.getSelection();
       const node = selection?.anchorNode;
-      const anchor = heldRef.current;
+      const current = mode.current;
+      const anchor = current.kind === "reading" ? current.anchor : null;
 
       const row = (node instanceof Element ? node : node?.parentElement)?.closest("[data-row-key]");
 
@@ -616,13 +636,7 @@ export const TranscriptContent = memo(function TranscriptContent({
       data-nyte-scrollport="balanced"
       {...props(messageScrollerStyles.viewport)}
     >
-      <div
-        ref={(element) => {
-          content.current = element;
-          virtualizer.containerRef(element);
-        }}
-        {...props(text.lg, messageScrollerStyles.content)}
-      >
+      <div ref={attachContent} {...props(text.lg, messageScrollerStyles.content)}>
         {virtualRows.map((virtualRow) => {
           const row = rows[virtualRow.index];
 
@@ -631,10 +645,9 @@ export const TranscriptContent = memo(function TranscriptContent({
           return (
             <div
               key={row.key}
-              ref={virtualizer.measureElement}
+              ref={measureRow}
               data-row-key={row.key}
               data-index={virtualRow.index}
-              data-nyte-scroll-anchor={row.scrollAnchor}
               {...props(
                 messageScrollerStyles.item,
                 !row.leads && messageScrollerStyles.itemWithin,

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { stylex } from "@nyte-ai/ui/stylex";
+import react from "@vitejs/plugin-react";
 import electron from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -44,41 +45,54 @@ export async function testRenderer(
   } = {},
 ): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "nyte-renderer-test-"));
+  const sixtyFrames = process.env.NYTE_E2E_60FPS === "1";
 
   try {
     await mkdir(join(directory, "profile"));
-    await build({
-      configFile: false,
-      base: "./",
-      resolve: { conditions: ["nyte-source", ...defaultClientConditions] },
-      logLevel: "silent",
-      esbuild: { jsxDev: false },
-      define: { "process.env.NODE_ENV": JSON.stringify("production") },
-      plugins: [
-        stylex.rollup({
-          devMode: "css-only",
-          lightningcssOptions: { targets: { chrome: ELECTRON_CHROMIUM } },
-        }),
-      ],
-      build: {
-        outDir: directory,
-        emptyOutDir: false,
-        lib: {
-          entry: fileURLToPath(entry),
-          name: "RendererTest",
-          formats: ["iife"],
-          fileName: () => "fixture.js",
-          cssFileName: "fixture",
+    const nodeEnvironment = process.env.NODE_ENV;
+
+    try {
+      process.env.NODE_ENV = "production";
+      await build({
+        configFile: false,
+        base: "./",
+        resolve: {
+          conditions: ["nyte-source", ...defaultClientConditions],
+          dedupe: ["react", "react-dom"],
         },
-      },
-    });
+        logLevel: "silent",
+        define: { "process.env.NODE_ENV": JSON.stringify("production") },
+        plugins: [
+          stylex.rollup({
+            devMode: "css-only",
+            lightningcssOptions: { targets: { chrome: ELECTRON_CHROMIUM } },
+          }),
+          react({ compiler: true }),
+        ],
+        build: {
+          outDir: directory,
+          emptyOutDir: false,
+          lib: {
+            entry: fileURLToPath(entry),
+            name: "RendererTest",
+            formats: ["iife"],
+            fileName: () => "fixture.js",
+            cssFileName: "fixture",
+          },
+        },
+      });
+    } finally {
+      if (nodeEnvironment === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = nodeEnvironment;
+    }
+
     const stylesheets: string[] = [];
 
     for await (const sheet of glob("**/*.css", { cwd: directory })) stylesheets.push(sheet);
     stylesheets.sort((first, second) => first.localeCompare(second));
     await writeFile(
       join(directory, "index.html"),
-      `<!doctype html><meta charset="utf-8">${stylesheets.map((sheet) => `<link rel="stylesheet" href="${sheet}">`).join("")}<body>
+      `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'">${stylesheets.map((sheet) => `<link rel="stylesheet" href="${sheet}">`).join("")}<body>
 <script>
 window.addEventListener("error", (event) => { window.fixtureFailure = event.error?.stack ?? event.message; });
 ${setup}
@@ -152,6 +166,12 @@ app.whenReady().then(async () => {
       await window.webContents.debugger.sendCommand("Input.dispatchMouseEvent", { ...point, type: "mouseReleased" });
       await window.webContents.executeJavaScript('document.dispatchEvent(new Event("renderer-mouse-clicked"))');
     });
+    if (${JSON.stringify(sixtyFrames)}) {
+      const intervals = await window.webContents.executeJavaScript('new Promise((resolve) => { const intervals = []; let previous; const sample = (time) => { if (previous !== undefined) intervals.push(time - previous); previous = time; if (intervals.length < 60) requestAnimationFrame(sample); else resolve(intervals); }; requestAnimationFrame(sample); })');
+      const median = intervals.toSorted((first, second) => first - second)[29];
+      if (${JSON.stringify(captures !== undefined)}) writeFileSync(${JSON.stringify(join(captures ?? directory, "cadence.json"))}, JSON.stringify({ intervalsMs: intervals, medianMs: median }, null, 2));
+      if (Math.abs(median - 1000 / 60) >= 0.5) throw new Error("Expected 60Hz from 60 native animation-frame intervals; median was " + median.toFixed(3) + "ms");
+    }
     const result = await window.webContents.executeJavaScript('(async () => { try { if (window.fixtureFailure) return window.fixtureFailure; const outcome = await RendererTest.run(); return window.fixtureFailure ?? outcome; } catch (error) { return error instanceof Error ? error.stack ?? error.message : String(error); } })()');
     writeFileSync(${JSON.stringify(join(directory, "result.txt"))}, result);
     app.exit(0);
@@ -166,11 +186,18 @@ app.whenReady().then(async () => {
       throw new Error("Expected the Electron executable path");
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
-    await execute(electron, [join(directory, "main.cjs")], {
-      env,
-      timeout: studio ? 0 : 40_000,
-      killSignal: "SIGKILL",
-    });
+    await execute(
+      electron,
+      [
+        join(directory, "main.cjs"),
+        ...(sixtyFrames ? ["--enable-features=ThrottleMainFrameTo60Hz"] : []),
+      ],
+      {
+        env,
+        timeout: studio ? 0 : 40_000,
+        killSignal: "SIGKILL",
+      },
+    );
 
     return await readFile(join(directory, "result.txt"), "utf8");
   } finally {

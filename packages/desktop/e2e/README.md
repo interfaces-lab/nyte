@@ -16,7 +16,8 @@ Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwrig
 | `markdown.spec.ts` | Headings, lists, code blocks, tables in an answer |
 | `subagents.spec.ts` | Two background agents: one block, a line per report, the parent wakes |
 | `transcript.spec.ts` | A 36-turn chat: virtualised window, scroll to top and back |
-| `subagent-load.spec.ts` | Only with `NYTE_PERF_DIR`: typing while five agents stream, the agents row evicted and remounted; fails over 50 ms p95 or 100 ms worst keydown-to-paint, and writes the Chromium trace and `summary.json` (latency, long tasks, layouts, row churn, renderer work counts) to that directory |
+| `chat-rendering.spec.ts` | Chat switching, native history scrolling, latest-turn footer handoff, and message edit/cancel/save; observes row coverage and identity through transitions and saves a video, screenshots and accessibility snapshots |
+| `subagent-load.spec.ts` | Only with `NYTE_PERF_DIR`: typing while five agents stream, a child chat open, and the agents row evicted/remounted. Gates keydown-to-paint p99 at 50 ms and maximum at 100 ms, whole-run render work p99 at 16.67 ms, and no renderer task over 50 ms after typing starts through completion. Saves trace, frame cadence, latency, row churn and work counts |
 | `workbench.spec.ts` | The panel, Files, Changes, Terminal, Browser tabs, Expand, closing tabs |
 | `browser.spec.ts` | The integrated browser against a local HTTP server |
 | `remote-access.spec.ts` | Pairing a Chromium page with the desktop over Remote access |
@@ -45,5 +46,13 @@ One chapter, against an existing build:
 ```sh
 pnpm --dir packages/desktop exec playwright test --config e2e/playwright.config.ts e2e/settings.spec.ts --reporter=list
 ```
+
+To test renderer scheduling at 60 Hz on a 120 Hz display:
+
+```sh
+NYTE_E2E_60FPS=1 NYTE_PERF_DIR=/tmp/nyte-perf-60 pnpm --dir packages/desktop exec playwright test --config e2e/playwright.config.ts e2e/subagent-load.spec.ts --workers=1 --retries=0 --reporter=list
+```
+
+`NYTE_E2E_60FPS` enables Chromium's `ThrottleMainFrameTo60Hz` for the test process. The workload independently records unmodified animation-frame timestamps and rejects a median cadence outside 60 Hz. On other refresh rates this feature may produce a different cadence, which must not count as a 60 Hz run. This does not enable macOS Low Power Mode, throttle the CPU or change the compositor/display refresh rate. The same flag applies to `chat-rendering.spec.ts`.
 
 Each chapter records a trace per test; after a failure, `test-results/<test>/error-context.md` holds the accessibility snapshot at the failing step. Results land in `e2e/test-results/` and `e2e/playwright-report/`.

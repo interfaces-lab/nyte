@@ -149,7 +149,12 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
 
   const application = await _electron.launch({
     executablePath: await electronExecutable(),
-    args: [root, "--use-mock-keychain", "--password-store=basic"],
+    args: [
+      root,
+      "--use-mock-keychain",
+      "--password-store=basic",
+      ...(process.env.NYTE_E2E_60FPS === "1" ? ["--enable-features=ThrottleMainFrameTo60Hz"] : []),
+    ],
     cwd: DESKTOP_ROOT,
     env: launchEnvironment(options),
     timeout: 30_000,

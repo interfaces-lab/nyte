@@ -16,13 +16,12 @@ import type { StepMessage, TranscriptSlot } from "./transcript-presentation.ts";
 
 export interface RowLayout {
   readonly key: string;
-  readonly scrollAnchor: boolean;
   readonly group: string | null;
   readonly leads: boolean;
   readonly sticky: boolean;
 }
 
-const OUTSIDE = { scrollAnchor: false, group: null, leads: true, sticky: false } as const;
+const OUTSIDE = { group: null, leads: true, sticky: false } as const;
 
 type Failure = Parameters<typeof failureNotice>[0];
 
@@ -82,6 +81,16 @@ function runState(view: SessionView | undefined) {
   };
 }
 
+/** A run is live, or a prompt waits to start one. A held run waits only for the reader's prompts. */
+function readWorking(running: boolean, held: boolean, prompts: readonly UserMessage[]): boolean {
+  return (
+    running ||
+    prompts.some(
+      (message) => !held || (message.source.kind !== "child" && message.source.kind !== "job"),
+    )
+  );
+}
+
 export function conversationMessages(view: SessionView | undefined) {
   const { running, held } = runState(view);
   const turns = new Set(view?.turns.map((turn) => turn.id));
@@ -97,6 +106,7 @@ export function conversationMessages(view: SessionView | undefined) {
   return {
     running,
     held,
+    working: readWorking(running, held, prompts),
     prompts: present(prompts),
     queued: present(waiting.filter((message) => message.status.kind === "pending")),
     unsent: present(waiting.filter((message) => message.status.kind === "unsent")),
@@ -142,7 +152,6 @@ function turnRows(
       rows.push({
         kind: "part",
         key: message.kind === "user" ? `prompt:${message.id}` : message.id,
-        scrollAnchor: message.kind === "user",
         ...at(),
         sticky: sticksToTop(message),
         message,
@@ -152,7 +161,6 @@ function turnRows(
         rows.push({
           kind: "earlier",
           key: `earlier:${turn.info.id}`,
-          scrollAnchor: false,
           ...at(),
           sticky: false,
         });
@@ -163,7 +171,7 @@ function turnRows(
 
     if (first === undefined) continue;
     const ends = index === display.length - 1;
-    const layout = { scrollAnchor: false, ...at(), sticky: false };
+    const layout = { ...at(), sticky: false };
 
     switch (item.kind) {
       case "step":
@@ -205,7 +213,6 @@ function turnRows(
     rows.push({
       kind: "failure",
       key: `failure:${turn.info.id}`,
-      scrollAnchor: false,
       ...at(),
       sticky: false,
       failure: state.end.failure,
@@ -240,13 +247,7 @@ export function transcriptRows({
 
   if (failed) rows.push({ kind: "error", key: "row:error", ...OUTSIDE });
   const last = turns.at(-1);
-
-  const working =
-    running ||
-    prompts.some(
-      (message) => !held || (message.source.kind !== "child" && message.source.kind !== "job"),
-    );
-
+  const working = readWorking(running, held, prompts);
   let group: string | null = null;
   let leads = true;
   let settledWork = false;
@@ -272,7 +273,6 @@ export function transcriptRows({
       kind: "prompt",
       key: `prompt:${message.id}`,
       ...OUTSIDE,
-      scrollAnchor: true,
       sticky: sticksToTop(message),
       message,
       held,
@@ -372,9 +372,8 @@ function project(state: SessionState, previous: Projection | undefined): Project
     return known !== undefined && sameRow(known, row) ? known : row;
   });
 
-  const layouts = rows.map(({ key, scrollAnchor, group, leads, sticky }) => ({
+  const layouts = rows.map(({ key, group, leads, sticky }) => ({
     key,
-    scrollAnchor,
     group,
     leads,
     sticky,
@@ -390,7 +389,6 @@ function project(state: SessionState, previous: Projection | undefined): Project
       return (
         other !== undefined &&
         layout.key === other.key &&
-        layout.scrollAnchor === other.scrollAnchor &&
         layout.group === other.group &&
         layout.leads === other.leads &&
         layout.sticky === other.sticky

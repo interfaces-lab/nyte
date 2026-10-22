@@ -479,7 +479,14 @@ export function ComposerFrame({
 
               if (event.key !== "Escape" || suggestionMenu.open || disabled) return;
 
-              if (editing !== undefined) return;
+              if (editing !== undefined) {
+                event.preventDefault();
+
+                if (submitting) return;
+                editing.onCancel();
+
+                return;
+              }
 
               if (onDismissTray?.()) {
                 event.preventDefault();

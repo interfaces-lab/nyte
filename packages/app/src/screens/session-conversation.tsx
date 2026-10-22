@@ -6,7 +6,7 @@ import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useCallback, useDeferredValue, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { Revision, SessionId, UserContent } from "@nyte-ai/sdk";
+import type { Revision, SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
 import { Composer } from "../conversation/composer.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "../conversation/turn-view.tsx";
@@ -35,6 +35,7 @@ import {
   sessionWatch,
   useWatchSelect,
 } from "../sdk.tsx";
+import type { WatchStore } from "../sdk.tsx";
 import type { DesktopModelOption } from "../catalog.ts";
 
 import { BackgroundWork } from "../conversation/tray/terminals.tsx";
@@ -116,6 +117,21 @@ async function applyMessageEdit({
 
       return _exhaustive;
     }
+  }
+}
+
+/** Waits until the watched view reaches the host's current sequence. A failed read ends the wait. */
+async function awaitCurrentView(
+  sessionId: SessionId,
+  store: WatchStore<SessionView>,
+): Promise<void> {
+  const { seq } = await connection().session(sessionId).view({ tail: 0 });
+
+  for (;;) {
+    const { value, error } = store.getState();
+
+    if (error !== undefined || (value !== undefined && value.seq >= seq)) return;
+    await store.next();
   }
 }
 
@@ -231,16 +247,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     if (activation !== undefined && presentation === "full") observeActivation(activation);
   }, [activation, presentation]);
   useMountEffect(() => childrenWatch(sessionId).subscribe(() => undefined));
-  const parentRunning = messages.running;
-
-  const working =
-    navigating ||
-    parentRunning ||
-    messages.prompts.some(
-      (message) =>
-        !messages.held || (message.source.kind !== "child" && message.source.kind !== "job"),
-    );
-
+  const working = navigating || messages.working;
   const cwd = host.data.workspace?.path;
 
   const loadEarlier = useCallback(() => loadEarlierMessages(sessionId, HISTORY_PAGE), [sessionId]);
@@ -288,7 +295,9 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
         revision: store.getState().value?.revision,
         content,
         choice: edit,
-      }).finally(() => setNavigating(false));
+      })
+        .then(() => awaitCurrentView(sessionId, store).catch(() => undefined))
+        .finally(() => setNavigating(false));
     },
     [sessionId, store],
   );
@@ -311,42 +320,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const subagents = useMemo(
     () => subagentSessions(sessionId, openSubagentTray),
     [openSubagentTray, sessionId],
-  );
-
-  const openChanges = useCallback(
-    (path: string | null): void => {
-      const viewKey = workbenchViewKey(cwd);
-
-      const id = workbenchController.actions.openTab({
-        view: viewKey,
-        tab: {
-          kind: "changes",
-          scope: { kind: "uncommitted" },
-          selectedPath: null,
-          pathRevealRevision: 0,
-          scrollTop: 0,
-        },
-        activate: true,
-      });
-
-      const tab = workbenchController
-        .getView(viewKey)
-        .tabs.find((candidate) => candidate.id === id);
-
-      if (tab?.kind !== "changes") return;
-      workbenchController.actions.updateTab({
-        view: viewKey,
-        id,
-        kind: "changes",
-        patch: {
-          scope: { kind: "thread" },
-          selectedPath: path,
-          pathRevealRevision: path === null ? tab.pathRevealRevision : tab.pathRevealRevision + 1,
-          scrollTop: 0,
-        },
-      });
-    },
-    [cwd],
   );
 
   return (
@@ -415,7 +388,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                 cwd={cwd}
                 branchModel={branchModel}
                 onEditUser={editUserMessage}
-                onOpenChanges={openChanges}
                 onRetry={store.retry}
               />
 

@@ -17,6 +17,8 @@ import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { startupReadsReleased } from "./startup.ts";
 import { countWork } from "./work-counts.ts";
+import { sessionActivityProjector } from "./conversation/session-activity.ts";
+import type { LoadedSessionView } from "./conversation/session-activity.ts";
 
 export interface HostEndpoint {
   readonly url: string;
@@ -498,11 +500,12 @@ function keepShown(shown: SessionView, next: SessionView): SessionView {
 }
 
 export const sessionWatch = watchFamily(
-  (current, session: SessionId): AsyncIterable<SessionView> => {
-    const kept: AsyncIterable<SessionView> = {
+  (current, session: SessionId): AsyncIterable<LoadedSessionView> => {
+    return {
       [Symbol.asyncIterator]() {
         const views = pagedViews(current.session(session), { tail: OPENING_TAIL });
-        const iterator = views[Symbol.asyncIterator]();
+        const iterator = tracePaints(views, session, nextFrame)[Symbol.asyncIterator]();
+        const activity = sessionActivityProjector();
         pagers.set(session, views);
         let first = true;
 
@@ -513,13 +516,16 @@ export const sessionWatch = watchFamily(
             if (next.done === true) return next;
             countWork(`publish:view:${session}`);
 
-            if (!first) return next;
-            first = false;
-            const shown = sessionWatch(session).value;
+            let view = next.value;
 
-            return shown === undefined
-              ? next
-              : { done: false, value: keepShown(shown, next.value) };
+            if (first) {
+              first = false;
+              const shown = sessionWatch(session).value;
+
+              if (shown !== undefined) view = keepShown(shown, view);
+            }
+
+            return { done: false, value: { ...view, activity: activity(view) } };
           },
           async return() {
             if (pagers.get(session) === views) pagers.delete(session);
@@ -530,8 +536,6 @@ export const sessionWatch = watchFamily(
         };
       },
     };
-
-    return tracePaints(kept, session, nextFrame);
   },
 );
 

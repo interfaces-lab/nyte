@@ -608,20 +608,27 @@ function sameTab(tab: WorkbenchTab, input: WorkbenchTabInput): boolean {
   }
 }
 
-function sameTabUpdate(tab: WorkbenchTab, input: WorkbenchTabUpdate): boolean {
+function patchTab(tab: WorkbenchTab, input: WorkbenchTabUpdate): WorkbenchTab {
   switch (input.kind) {
     case "changes":
-      return (
-        tab.kind === "changes" &&
-        sameChangesScope(tab.scope, input.patch.scope) &&
-        tab.selectedPath === input.patch.selectedPath &&
-        tab.pathRevealRevision === input.patch.pathRevealRevision &&
-        tab.scrollTop === input.patch.scrollTop
-      );
+      if (
+        tab.kind !== "changes" ||
+        (sameChangesScope(tab.scope, input.patch.scope) &&
+          tab.selectedPath === input.patch.selectedPath &&
+          tab.pathRevealRevision === input.patch.pathRevealRevision &&
+          tab.scrollTop === input.patch.scrollTop)
+      )
+        return tab;
+
+      return { id: tab.id, kind: "changes", ...input.patch };
     case "file":
-      return tab.kind === "file" && tab.preview === input.patch.preview;
+      return tab.kind !== "file" || tab.preview === input.patch.preview
+        ? tab
+        : { ...tab, preview: input.patch.preview };
     case "browser":
-      return tab.kind === "browser" && tab.url === input.patch.url;
+      return tab.kind !== "browser" || tab.url === input.patch.url
+        ? tab
+        : { id: tab.id, kind: "browser", ...input.patch };
     default: {
       const _exhaustive: never = input;
 
@@ -768,37 +775,26 @@ export function createWorkbenchController(
       });
     },
     updateTab(input) {
+      const pending = waiting.get(input.id);
+
+      if (pending?.view === input.view) {
+        waiting.set(input.id, { ...pending, tab: patchTab(pending.tab, input) });
+
+        return;
+      }
+
       update(input.view, (current) => {
         const tab = current.tabs.find((candidate) => candidate.id === input.id);
 
-        if (tab === undefined || tab.kind !== input.kind || sameTabUpdate(tab, input))
-          return current;
+        if (tab === undefined) return current;
+        const next = patchTab(tab, input);
 
-        const tabs = current.tabs.map((candidate): WorkbenchTab => {
-          if (candidate !== tab) return candidate;
+        if (next === tab) return current;
 
-          switch (input.kind) {
-            case "changes":
-              return candidate.kind === "changes"
-                ? { id: candidate.id, kind: "changes", ...input.patch }
-                : candidate;
-            case "file":
-              return candidate.kind === "file"
-                ? { ...candidate, preview: input.patch.preview }
-                : candidate;
-            case "browser":
-              return candidate.kind === "browser"
-                ? { id: candidate.id, kind: "browser", ...input.patch }
-                : candidate;
-            default: {
-              const _exhaustive: never = input;
-
-              return _exhaustive;
-            }
-          }
-        });
-
-        return { ...current, tabs };
+        return {
+          ...current,
+          tabs: current.tabs.map((candidate) => (candidate === tab ? next : candidate)),
+        };
       });
     },
     scrollTab({ view, id, scrollTop }) {

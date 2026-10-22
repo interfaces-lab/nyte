@@ -75,7 +75,6 @@ test("a window cut after its turn's prompt leads that turn with the prompt and a
   ]);
   expect(projector.row(cut, "prompt:p")).toMatchObject({
     kind: "part",
-    scrollAnchor: true,
     sticky: true,
     message: { content: "Fix the build." },
   });

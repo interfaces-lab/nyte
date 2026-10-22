@@ -24,18 +24,22 @@ export type TranscriptSlot =
   | { readonly kind: "part"; readonly message: Message };
 
 export function transcriptSlot(message: Message): TranscriptSlot {
-  if (showsTool(message) && message.state.class.kind === "delegate") {
-    const { role } = message.state.class;
+  if (showsTool(message)) {
+    if (message.state.class.kind === "delegate") {
+      const { role } = message.state.class;
 
-    if (role === "await") return { kind: "await" };
+      if (role === "await") return { kind: "await" };
 
-    if (role === "task" || role === "create") return { kind: "agents", message };
+      if (role === "task" || role === "create") return { kind: "agents", message };
+    }
+
+    return { kind: "step", message };
   }
 
   if (showsText(message))
     return /\S/u.test(message.state.markdown) ? { kind: "response", message } : { kind: "blank" };
 
-  if (showsTool(message) || showsThinking(message)) return { kind: "step", message };
+  if (showsThinking(message)) return { kind: "step", message };
 
   return { kind: "part", message };
 }

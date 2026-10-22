@@ -10,6 +10,10 @@ function setDataState(element: HTMLElement, name: string, active: boolean): void
   if (element.dataset[name] !== value) element.dataset[name] = value;
 }
 
+export function distanceFromEnd(viewport: HTMLElement): number {
+  return viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
+}
+
 export function topIn(viewport: HTMLElement, element: Element): number {
   return element.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
 }
@@ -55,7 +59,8 @@ export function navigates(event: KeyboardEvent): boolean {
   );
 }
 
-export function showScrollButton(dock: HTMLElement | null, shown: boolean): void {
+export function syncScrollButton(viewport: HTMLElement, dock: HTMLElement | null): void {
+  const shown = distanceFromEnd(viewport) > 60;
   const button = dock?.querySelector<HTMLElement>("[data-slot='scroll-to-bottom']");
 
   if (button === null || button === undefined) return;

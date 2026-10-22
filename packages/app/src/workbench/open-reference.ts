@@ -61,6 +61,31 @@ export function workbenchReferenceOpener(input: {
         return () => fileActions.open(viewKey, { path, line: source.start, preview: true });
       }
 
+      case "changes": {
+        const { path } = reference;
+
+        return () => {
+          const tab = workbenchController
+            .getView(viewKey)
+            .tabs.find((candidate) => candidate.kind === "changes");
+
+          const patch = {
+            scope: { kind: "thread" },
+            selectedPath: path,
+            pathRevealRevision: (tab?.pathRevealRevision ?? 0) + (path === null ? 0 : 1),
+            scrollTop: 0,
+          } as const;
+
+          const id = workbenchController.actions.openTab({
+            view: viewKey,
+            tab: { kind: "changes", ...patch },
+            activate: true,
+          });
+
+          workbenchController.actions.updateTab({ view: viewKey, id, kind: "changes", patch });
+        };
+      }
+
       case "mention":
       case "clipboard":
         return undefined;

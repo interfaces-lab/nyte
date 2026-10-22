@@ -109,7 +109,7 @@ export const composerStyles = create({
   preComposerPills: {
     display: "flex",
     flexDirection: { default: "row", ":has([data-slot='tray'] > :not([inert]))": "column" },
-    flexWrap: "wrap",
+    flexWrap: { default: "wrap", ":has([data-slot='tray'] > :not([inert]))": "nowrap" },
     alignItems: { default: "center", ":has([data-slot='tray'] > :not([inert]))": "stretch" },
     columnGap: space.s1,
     rowGap: tray.gap,

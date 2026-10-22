@@ -132,6 +132,36 @@ export function scriptedReply(text: string): Reply {
 
 const SURVEY_ROUNDS = 8;
 
+function renderReply(request: Request): Reply | undefined {
+  const first = request.context.messages.find((message) => message.role === "user");
+
+  if (first?.role !== "user" || contentText(first.content, "") !== "/render-change")
+    return undefined;
+  const title = titleReply(request);
+
+  if (title !== null) return { content: [{ type: "text", text: title }] };
+  const text = lastUserText(request);
+  const wrote = request.context.messages.at(-1)?.role === "toolResult";
+
+  if (text === "/render-change" && !wrote)
+    return {
+      content: [
+        {
+          type: "toolCall",
+          id: "render-write",
+          name: "write",
+          arguments: { path: "render-proof.txt", content: "render proof\n" },
+        },
+      ],
+    };
+
+  return {
+    content: [{ type: "text", text: wrote ? paragraphs(40) : `Echo: ${text}` }],
+    tokens: 48,
+    timing: { deltaMs: 40 },
+  };
+}
+
 /** A `/swarm` agent: each round streams its notes and reads a file, so it commits every round as a working agent does; then it answers. */
 function surveyReply(request: Request): Reply | undefined {
   const prompt = request.context.messages
@@ -216,6 +246,9 @@ export function e2eModels() {
     name: "E2E",
     models: [testModel(E2E_MODEL.id, { name: "Scripted", provider: E2E_PROVIDER })],
     fallback: (request): Reply => {
+      const rendering = renderReply(request);
+
+      if (rendering !== undefined) return rendering;
       const scripted = ci(request);
 
       if (scripted !== undefined) return scripted;

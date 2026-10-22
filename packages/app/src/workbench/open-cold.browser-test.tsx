@@ -60,6 +60,7 @@ function TerminalSlots(): ReactElement {
 declare global {
   interface Window {
     publishWorkbench: () => void;
+    readonly workbenchModuleUrl: string;
   }
 }
 
@@ -75,7 +76,7 @@ export async function run(): Promise<string> {
       copyTerminal,
       focusTerminal,
     });
-  Object.assign(deferredUrls, { workbench: "data:text/javascript,window.publishWorkbench();" });
+  Object.assign(deferredUrls, { workbench: window.workbenchModuleUrl });
 
   const container = document.createElement("div");
   document.body.append(container);

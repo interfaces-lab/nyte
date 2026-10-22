@@ -50,6 +50,7 @@ export interface LongTask {
 export interface InputTrace {
   /** Each keydown's Event Timing span, from its timestamp to the paint after it, inside the marked windows. */
   readonly keydownMs: readonly number[];
+  readonly renderingMs: readonly number[];
   readonly longTasks: readonly LongTask[];
   readonly layouts: number;
   readonly forcedLayouts: number;
@@ -70,7 +71,6 @@ function asyncId(event: TraceEvent): string {
   return event.id2?.local ?? event.id2?.global ?? event.id ?? "";
 }
 
-/** Reads a Chromium trace of the renderer: keydown latency inside the windows between each `start` and `end` mark, and the long tasks, layouts and style recalculations of the thread that handled those keys. */
 export async function readInputTrace(
   path: string,
   marks: { readonly start: string; readonly end: string },
@@ -110,7 +110,41 @@ export async function readInputTrace(
   if (main === undefined)
     throw new Error("The trace has no keydown Event Timing in the marked windows");
 
-  const thread = events.filter((event) => event.pid === main.pid && event.tid === main.tid);
+  const thread = events
+    .filter((event) => event.pid === main.pid && event.tid === main.tid)
+    .toSorted((first, second) => first.ts - second.ts);
+
+  const renderBegins = new Map<string, number[]>();
+  const renderingMs: number[] = [];
+
+  for (const event of thread) {
+    if (event.name !== "AnimationFrame::Render") continue;
+
+    if (event.ph === "X" && event.dur !== undefined) {
+      renderingMs.push(event.dur / 1_000);
+
+      continue;
+    }
+
+    const key = asyncId(event);
+
+    if (event.ph === "b" || event.ph === "B") {
+      const pending = renderBegins.get(key) ?? [];
+      pending.push(event.ts);
+      renderBegins.set(key, pending);
+    }
+
+    if (event.ph !== "e" && event.ph !== "E") continue;
+    const begin = renderBegins.get(key)?.pop();
+
+    if (begin !== undefined) renderingMs.push((event.ts - begin) / 1_000);
+  }
+
+  if (renderingMs.length === 0)
+    throw new Error(
+      "The trace has no complete AnimationFrame::Render phases on the renderer thread",
+    );
+
   const first = windows[0]?.start ?? 0;
   const last = windows.at(-1)?.end ?? 0;
   const span = thread.filter((event) => event.ts >= first && event.ts <= last);
@@ -155,6 +189,7 @@ export async function readInputTrace(
 
   return {
     keydownMs: keydowns.map((keydown) => keydown.durationMs),
+    renderingMs,
     longTasks,
     layouts: layouts.length,
     forcedLayouts: layouts.filter((event) => event.args?.beginData?.stackTrace !== undefined)

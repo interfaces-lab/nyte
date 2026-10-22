@@ -5,15 +5,7 @@ import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-rout
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
-import type {
-  Delivery,
-  Message,
-  ModelCatalogView,
-  RunView,
-  SessionView,
-  ToolClass,
-  TurnInfo,
-} from "@nyte-ai/sdk";
+import type { ModelCatalogView, SessionView } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
@@ -26,174 +18,21 @@ import { createAppRouter } from "../router.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
-import { USAGE, endedTurn, sessionRow, settledTool } from "../../test/view-fixtures.ts";
-
-const ID = asId<"session">("session-screen-render");
-
-const TURNS = 32;
-
-const TALL_PROMPT = 20;
-
-const liveRun: RunView = {
-  id: asId<"run">("live-run"),
-  head: asId<"head">("main"),
-  startedAt: 0,
-  attempt: 1,
-  configuration: {
-    kind: "exact",
-    model: { provider: "test", id: "test" },
-    thinking: "off",
-    agent: null,
-    settings: {},
-    settingsVersion: "1",
-  },
-  origin: { kind: "input", message: asId<"message">("prompt-32") },
-};
-
-const turnId = (index: number) => asId<"turn">(`turn-${String(index)}`);
-
-type UserMessage = Extract<Message, { readonly kind: "user" }>;
-
-function user(id: string, turn: number, text: string, delivery: Delivery = "queue"): UserMessage {
-  return {
-    id: asId<"message">(id),
-    turn: turnId(turn),
-    at: turn,
-    kind: "user",
-    content: text,
-    source: { kind: "user" },
-    delivery,
-    status: { kind: "landed", commit: asId<"commit">(id), run: null, replaced: null },
-    siblings: { index: 0, count: 1, ids: [] },
-  };
-}
-
-function prose(id: string, turn: number, markdown: string, live = false): Message {
-  return {
-    id: asId<"message">(id),
-    turn: turnId(turn),
-    at: turn,
-    kind: "part",
-    part: asId<"part">(id),
-    partKind: "text",
-    role: "answer",
-    state: { markdown, signature: null },
-    version: 1,
-    status: live
-      ? { kind: "live", run: liveRun.id }
-      : { kind: "settled", commit: asId<"commit">(id), endedAt: turn },
-  };
-}
-
-function tool(id: string, turn: number, toolClass: ToolClass): Message {
-  return { ...settledTool(id, toolClass, "ok"), turn: turnId(turn) };
-}
-
-const sentence = "The transcript holds its place while replies stream in below the reader. ";
-
-function paragraphs(seed: number): string {
-  return Array.from(
-    { length: 1 + (seed % 3) },
-    (_, index) =>
-      `Paragraph ${String(index + 1)} of turn ${String(seed)}. ${sentence.repeat(1 + ((seed + index) % 4))}`,
-  ).join("\n\n");
-}
-
-function prompt(index: number): UserMessage {
-  const lines = index === TALL_PROMPT ? 60 : 2;
-
-  return user(
-    `prompt-${String(index)}`,
-    index,
-    `Question ${String(index)}\n${"Line of the prompt\n".repeat(lines)}`,
-  );
-}
-
-function turnMessages(index: number): Message[] {
-  const file = `src/file-${String(index)}.ts`;
-  const messages: Message[] = [prompt(index)];
-
-  if (index % 2 === 1) {
-    messages.push(tool(`read-${String(index)}`, index, { kind: "read", path: file }));
-    messages.push(tool(`edit-${String(index)}`, index, { kind: "edit", path: file }));
-  }
-
-  messages.push(prose(`answer-${String(index)}`, index, paragraphs(index)));
-
-  if (index % 7 === 0) {
-    messages.push(user(`steer-${String(index)}`, index, `Steering note ${String(index)}`, "steer"));
-    messages.push(prose(`followup-${String(index)}`, index, `After steering ${String(index)}.`));
-  }
-
-  return messages;
-}
-
-const continuation = asId<"turn">("continuation-10");
-
-const ended: TurnInfo["state"] = { kind: "ended", end: { kind: "completed", usage: USAGE } };
-
-function view(
-  liveText: string,
-  extra: readonly Message[] = [],
-  extraTurns: readonly TurnInfo[] = [],
-): SessionView {
-  const messages: Message[] = [];
-  const turns: TurnInfo[] = [];
-
-  for (let index = 1; index <= TURNS; index += 1) {
-    const live = index === TURNS;
-
-    const own = live
-      ? [
-          prompt(index),
-          tool(`read-${String(index)}`, index, { kind: "shell", command: "pnpm test" }),
-          tool(`edit-${String(index)}`, index, { kind: "edit", path: "src/file.ts" }),
-          prose(`answer-${String(index)}`, index, "A short first answer."),
-          user(`steer-${String(index)}`, index, "Keep going, but shorter.", "steer"),
-          prose(`live-${String(index)}`, index, liveText, true),
-        ]
-      : turnMessages(index);
-
-    messages.push(...own);
-    turns.push(
-      endedTurn([], {
-        id: turnId(index),
-        prompt: asId<"message">(`prompt-${String(index)}`),
-        run: live ? liveRun.id : null,
-        state: live ? { kind: "working", activity: null } : ended,
-        steps: own.length,
-      }).info,
-    );
-
-    if (index === 10) {
-      const report = tool("report-10", 10, { kind: "shell", command: "git status" });
-      messages.push({ ...report, turn: continuation });
-      messages.push({
-        ...prose("report-text-10", 10, "Background report folded in."),
-        turn: continuation,
-      });
-      turns.push(endedTurn([], { id: continuation, prompt: null, steps: 2 }).info);
-    }
-  }
-
-  return {
-    revision: asId<"revision">("r1"),
-    seq: asSeq(1),
-    activation: { kind: "active" },
-    messages: [...messages, ...extra],
-    leadingPrompt: null,
-    parts: [],
-    turns: [...turns, ...extraTurns],
-    usage: USAGE,
-    execution: { kind: "live", run: liveRun, phase: "responding", stopping: false },
-    background: [],
-    configuration: { selected: liveRun.configuration, effective: liveRun.configuration },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
-    changes: [],
-    catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
-  };
-}
+import { COMPLETED, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
+import {
+  ID,
+  TURNS,
+  TALL_PROMPT,
+  liveRun,
+  turnId,
+  user,
+  prose,
+  sentence,
+  paragraphs,
+  ended,
+  view,
+} from "./session-screen-render.fixtures.ts";
+import type { UserMessage } from "./session-screen-render.fixtures.ts";
 
 let liveText = "Streaming";
 
@@ -205,21 +44,31 @@ const refuse = async (): Promise<never> => {
 
 const sends: string[] = [];
 
+const editLanding = Promise.withResolvers<Extract<UserMessage["status"], { kind: "landed" }>>();
+
+const editRead = Promise.withResolvers<SessionView>();
+
+const EDITED_MESSAGE = asId<"message">("footer-edited");
+
 installConnection(
   scriptedConnection({
     sessions: [sessionRow("session-screen-render", { name: "Transcript rules" })],
     views: new Map([[ID, stream]]),
     session: () => ({
-      send: async (content) => {
+      view: () => editRead.promise,
+      send: async (content, options) => {
         sends.push(JSON.stringify(content));
 
         return {
           id: asId<"receipt">("sent"),
-          message: asId<"message">("sent"),
+          message:
+            options?.replace === asId<"message">("footer-next")
+              ? EDITED_MESSAGE
+              : asId<"message">("sent"),
           status: refuse,
           settled: refuse,
           stop: refuse,
-          landed: refuse,
+          landed: () => editLanding.promise,
         };
       },
     }),
@@ -415,6 +264,14 @@ function checkFollowing(label: string): void {
   );
 }
 
+async function frames(label: string, verify: () => void): Promise<void> {
+  for (let frame = 0; frame < 4; frame += 1) {
+    await painted();
+    checkFrame(`${label} frame ${String(frame)}`);
+    verify();
+  }
+}
+
 async function streamFrames(count: number, verify: (label: string) => void): Promise<void> {
   for (let index = 0; index < count; index += 1) {
     liveText += `\n\nDelta ${String(index)}: ${sentence.repeat(1 + (index % 3))}`;
@@ -532,9 +389,14 @@ async function checkRules(): Promise<string> {
       editable.querySelector("[contenteditable='true']") !== null,
       "live deltas closed the edit",
     );
-    editable
-      .querySelector("[contenteditable='true']")
-      ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    editable.querySelector("[contenteditable='true']")?.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        keyCode: 27,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
     await until(
       () => editable.querySelector("[contenteditable='true']") === null,
       "the edit to close",
@@ -544,6 +406,7 @@ async function checkRules(): Promise<string> {
 
     step = "6, 11";
     await toEnd();
+    await wheelUntil(() => visible("[aria-expanded='false']").length > 0, -150);
     const trigger = first(visible("[aria-expanded='false']")[0], "a closed disclosure at the end");
     const triggerTop = measureTop(trigger);
     trigger.click();
@@ -885,6 +748,245 @@ async function checkRules(): Promise<string> {
         ),
       "an action message became editable or showed its instructions",
     );
+
+    step = "latest-turn footer";
+
+    let reservation: number | undefined;
+
+    const checkFooter = (footer: HTMLElement, cardVisible: boolean): void => {
+      const height = footer.getBoundingClientRect().height;
+      reservation ??= height;
+      expectRule("footer", footer.isConnected, "the reserved footer was replaced");
+      expectRule("footer", Math.abs(height - reservation) <= 0.5, "the footer changed height");
+      expectRule(
+        "footer",
+        (footer.querySelector("section") !== null) === cardVisible,
+        `the changes card should be ${cardVisible ? "visible" : "absent"}`,
+      );
+    };
+
+    const completed: SessionView = {
+      ...view(liveText, [landed], [endedTurn([], { id: landedTurn, prompt: landed.id }).info]),
+      execution: COMPLETED,
+      changes: Array.from({ length: 6 }, (_, index) => ({
+        path: index === 0 ? "src/footer.ts" : `src/footer-${String(index)}.ts`,
+        status: "modified",
+        added: 3,
+        removed: 1,
+      })),
+    };
+
+    const settled: SessionView = {
+      ...completed,
+      turns: completed.turns.map((turn) => ({ ...turn, state: ended })),
+      messages: completed.messages.map((message) =>
+        message.id === asId<"message">("live-32") ? prose("live-32", TURNS, liveText) : message,
+      ),
+    };
+
+    stream.push(settled);
+    await toEnd();
+    await until(
+      () => stage.log.querySelector("[data-row-key='changes:action-1'] section") !== null,
+      "the completed changes card",
+    );
+
+    const previousFooter = first(
+      stage.log.querySelector<HTMLElement>("[data-row-key='changes:action-1']"),
+      "the completed footer",
+    );
+
+    expectRule(
+      "footer",
+      previousFooter.textContent?.includes("footer.ts") === true,
+      "the completed card has no changed file",
+    );
+
+    const pendingNext: UserMessage = {
+      ...user("footer-next", TURNS + 1, "A new normal turn."),
+      turn: asId<"turn">("pending:footer-next"),
+      status: { kind: "pending", schedule: { kind: "next-turn", reason: "idle" }, covered: true },
+    };
+
+    stream.push({ ...settled, messages: [...settled.messages, pendingNext] });
+    let reserved: HTMLElement | undefined;
+    await frames("pending footer", () => {
+      const next = stage.log.querySelector<HTMLElement>("[data-row-key='changes:footer-next']");
+
+      if (next === null) return;
+      reserved ??= next;
+      checkFooter(reserved, false);
+      expectRule("footer", !previousFooter.isConnected, "the previous turn retained its card");
+    });
+    const nextFooter = first(reserved, "the next turn's pending footer");
+
+    const nextStatus = {
+      kind: "landed",
+      commit: asId<"commit">("footer-next"),
+      run: liveRun.id,
+      replaced: null,
+    } satisfies Extract<UserMessage["status"], { kind: "landed" }>;
+
+    const nextPrompt: UserMessage = {
+      ...pendingNext,
+      turn: turnId(TURNS + 1),
+      status: nextStatus,
+    };
+
+    const workingNext: SessionView = {
+      ...settled,
+      messages: [...settled.messages, nextPrompt],
+      turns: [
+        ...settled.turns,
+        endedTurn([], {
+          id: nextPrompt.turn,
+          prompt: nextPrompt.id,
+          run: liveRun.id,
+          state: { kind: "working", activity: null },
+        }).info,
+      ],
+      execution: {
+        kind: "live",
+        run: { ...liveRun, origin: { kind: "input", message: nextPrompt.id } },
+        phase: "responding",
+        stopping: false,
+      },
+    };
+
+    stream.push(workingNext);
+    await frames("landed footer", () => checkFooter(nextFooter, false));
+
+    const finishedNext: SessionView = {
+      ...workingNext,
+      execution: COMPLETED,
+      messages: [
+        ...workingNext.messages,
+        prose("footer-answer", TURNS + 1, "The next turn is complete."),
+      ],
+      turns: workingNext.turns.map((turn) => ({ ...turn, state: ended })),
+    };
+
+    stream.push(finishedNext);
+    await frames("completed footer", () => checkFooter(nextFooter, true));
+    expectRule(
+      "footer",
+      nextFooter.textContent?.includes("footer.ts") === true,
+      "completion did not fill the reserved footer",
+    );
+    stream.push({ ...finishedNext, changes: [] });
+    await frames("empty footer", () => checkFooter(nextFooter, false));
+
+    step = "edit submission before the host updates";
+    stream.push(finishedNext);
+    await toEnd();
+    await until(() => nextFooter.querySelector("section") !== null, "the card before editing");
+
+    const editRow = first(
+      stage.log.querySelector<HTMLElement>(
+        "[data-row-key='prompt:footer-next'] [data-sticky-user-message]",
+      ),
+      "the next turn's editable prompt",
+    );
+
+    await openEditor(editRow);
+    const sentBeforeEdit = sends.length;
+    first(
+      editRow.querySelector<HTMLButtonElement>("button[aria-label='Send message']"),
+      "the edit submit button",
+    ).click();
+    await frames("edit submitted", () => {
+      if (sends.length === sentBeforeEdit) return;
+      checkFooter(nextFooter, false);
+    });
+    expectRule(
+      "footer",
+      sends.length === sentBeforeEdit + 1,
+      "the edited prompt was not submitted",
+    );
+    expectRule(
+      "footer",
+      editRow.querySelector("[aria-busy='true']") !== null,
+      "the edit did not wait for its landing receipt",
+    );
+
+    const editedStatus = {
+      ...nextStatus,
+      commit: asId<"commit">("footer-edited"),
+      replaced: { previous: nextPrompt.id, stopped: null },
+    };
+
+    editLanding.resolve(editedStatus);
+    await frames("receipt before the fresh read", () => checkFooter(nextFooter, false));
+    editRead.resolve({
+      ...finishedNext,
+      seq: asSeq(3),
+      revision: asId<"revision">("fresh-edit-read"),
+      messages: [],
+      turns: [],
+      leadingPrompt: null,
+    });
+    await frames("fresh read before the watched view", () => checkFooter(nextFooter, false));
+    stream.push({ ...finishedNext, seq: asSeq(2), revision: asId<"revision">("unrelated-update") });
+    await frames("older unrelated view after the receipt", () => checkFooter(nextFooter, false));
+    expectRule(
+      "footer",
+      editRow.querySelector("[aria-busy='true']") !== null,
+      "the edit stopped waiting before the watched view reached the fresh read",
+    );
+
+    const supersededPrompt = user("footer-superseded", TURNS + 2, "Another actor moved the head.");
+
+    const supersededRun = {
+      ...liveRun,
+      id: asId<"run">("footer-superseded-run"),
+      origin: { kind: "input", message: supersededPrompt.id } as const,
+    };
+
+    const supersededView: SessionView = {
+      ...workingNext,
+      seq: asSeq(4),
+      revision: asId<"revision">("superseded-view"),
+      messages: workingNext.messages.map((message) =>
+        message.id === nextPrompt.id ? supersededPrompt : message,
+      ),
+      turns: workingNext.turns.map((turn) =>
+        turn.id === nextPrompt.turn
+          ? {
+              ...turn,
+              id: supersededPrompt.turn,
+              prompt: supersededPrompt.id,
+              run: supersededRun.id,
+            }
+          : turn,
+      ),
+      execution: {
+        kind: "live",
+        run: supersededRun,
+        phase: "responding",
+        stopping: false,
+      },
+    };
+
+    stream.push(supersededView);
+    let newerFooter: HTMLElement | undefined;
+    await frames("newer coalesced view acknowledged", () => {
+      const current = stage.log.querySelector<HTMLElement>(
+        `[data-row-key='changes:${supersededPrompt.id}']`,
+      );
+
+      if (current === null) return;
+      newerFooter ??= current;
+      checkFooter(newerFooter, false);
+      expectRule("footer", !nextFooter.isConnected, "the edit retained the replaced footer");
+    });
+    const acknowledged = first(newerFooter, "the newer turn's reserved footer");
+    stream.push({
+      ...supersededView,
+      seq: asSeq(5),
+      execution: COMPLETED,
+      turns: supersededView.turns.map((turn) => ({ ...turn, state: ended })),
+    });
+    await frames("newer turn completed", () => checkFooter(acknowledged, true));
 
     return failures.length === 0 ? "passed" : failures.join("\n");
   } finally {
