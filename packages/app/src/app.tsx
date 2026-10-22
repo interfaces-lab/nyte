@@ -47,6 +47,10 @@ function useHostEvents(router: AppRouter): void {
           queryClient.setQueryData(keys.updates, event.state);
 
           return;
+        case "update_channel_changed":
+          queryClient.setQueryData(keys.updateChannel, event.channel);
+
+          return;
         case "settings_changed":
           acceptHostSettings(event.settings);
 

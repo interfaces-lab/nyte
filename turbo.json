@@ -10,8 +10,13 @@
     },
     "@nyte-ai/tui#build": {
       "dependsOn": ["^build"],
-      "env": ["NYTE_CONNECT_ORIGIN"],
+      "env": ["NYTE_CONNECT_ORIGIN", "NYTE_RELEASE_VERSION"],
       "outputs": ["dist/nyte", "dist/nyte.exe", "dist/nyte.version"]
+    },
+    "@nyte-ai/desktop#build": {
+      "dependsOn": ["^build"],
+      "env": ["NYTE_RELEASE_VERSION"],
+      "outputs": ["out/**"]
     },
     "build:package": {
       "dependsOn": ["^build:package"],
@@ -25,10 +30,12 @@
     },
     "package": {
       "dependsOn": ["build"],
+      "env": ["NYTE_RELEASE_VERSION"],
       "cache": false
     },
     "@nyte-ai/desktop#package": {
       "dependsOn": ["build", "@nyte-ai/tui#build"],
+      "env": ["NYTE_RELEASE_VERSION"],
       "cache": false
     },
     "@nyte-ai/ai#models:generate": {

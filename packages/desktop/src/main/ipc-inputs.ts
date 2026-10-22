@@ -77,6 +77,8 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.closeWorkspace": compile(noInput),
   "host.updates.state": compile(noInput),
   "host.updates.check": compile(noInput),
+  "host.updates.channel": compile(noInput),
+  "host.updates.setChannel": compile(strict({ channel: Type.Enum(["stable", "nightly"]) })),
   "host.server.state": compile(noInput),
   "host.server.connect": compile(strict({ baseUrl: nonEmpty, token: nonEmpty })),
   "host.server.disconnect": compile(noInput),

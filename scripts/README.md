@@ -10,6 +10,26 @@ copies `packages/cli/docs`, writes `VERSION`, and creates the tarball and SHA-25
 file, then installs the built binary at `~/.nyte/bin/nyte`. CLI and TUI package versions must match.
 It never downloads or publishes.
 
+## Nightly releases
+
+Run **Nightly** in GitHub Actions to build the selected commit. The workflow derives
+a version such as `0.0.24-nightly.20261022.123` from the next patch, UTC date and run
+number. It publishes a GitHub prerelease and npm's `nightly` tag. Checked-in package
+versions stay unchanged, and stable installations keep following stable releases.
+
+In the desktop app, choose **Settings > General > Update channel > Nightly**.
+Nyte checks after startup and hourly, downloads updates in the background, and
+installs them when you quit. **Restart to Update** installs sooner. Choose **Stable**
+to return to stable releases. The setting applies to this installation.
+
+You can also download a nightly installer from GitHub Releases, or run
+`pnpm dlx nyte-ai@nightly` for the terminal client. Nightly terminal clients follow
+nightly updates. Run `nyte update <version>` with a stable version to return to stable.
+
+The workflow runs on demand. To package a nightly locally, set
+`NYTE_RELEASE_VERSION` to a nightly version before running the packaging command.
+This sets the desktop package, bundled CLI and release archive versions together.
+
 ## Delegate a Mac desktop build
 
 Run this from a Linux clone after committing and pushing the approved source:

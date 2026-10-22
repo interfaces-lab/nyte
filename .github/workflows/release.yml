@@ -26,9 +26,10 @@ concurrency:
 env:
   CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
   RELEASE_VERSION: ${{ inputs.version }}
+  NYTE_RELEASE_VERSION: ${{ inputs.version }}
   RELEASE_TAG: v${{ inputs.version }}
   PRERELEASE: ${{ contains(inputs.version, '-') }}
-  NPM_TAG: ${{ contains(inputs.version, '-') && 'next' || 'latest' }}
+  NPM_TAG: ${{ contains(inputs.version, '-nightly.') && 'nightly' || contains(inputs.version, '-') && 'next' || 'latest' }}
 
 jobs:
   verify:
@@ -61,7 +62,11 @@ jobs:
             exit 1
           fi
       - run: pnpm install --frozen-lockfile
+      - name: Verify nightly source versions
+        if: contains(inputs.version, '-nightly.')
+        run: node scripts/nightly-release.mjs prepare "$RELEASE_VERSION" --check
       - name: Verify release versions
+        if: ${{ !contains(inputs.version, '-nightly.') }}
         run: |
           node <<'NODE'
           const { globSync, readFileSync } = require("node:fs");
@@ -328,6 +333,9 @@ jobs:
         with:
           bun-version: latest
       - run: pnpm install --frozen-lockfile
+      - name: Prepare nightly package versions
+        if: contains(inputs.version, '-nightly.')
+        run: node scripts/nightly-release.mjs prepare "$RELEASE_VERSION"
       - name: Use the bootstrap npm token
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

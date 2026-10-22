@@ -411,6 +411,8 @@ export interface BrowserFocusMessage {
   readonly focused: boolean;
 }
 
+export type UpdateChannel = "stable" | "nightly";
+
 export type UpdateState =
   | { readonly kind: "idle" }
   | { readonly kind: "downloading"; readonly version: string; readonly percent: number }
@@ -420,6 +422,7 @@ export type UpdateState =
 
 export type HostEvent =
   | { kind: "update_changed"; state: UpdateState }
+  | { kind: "update_channel_changed"; channel: UpdateChannel }
   | { kind: "settings_changed"; settings: HostSettings }
   | { kind: "workspace_opened"; workspace: SelectedWorkspace }
   | { kind: "workspace_trust_required"; path: string }
@@ -510,6 +513,8 @@ export interface HostBridge {
   readonly updates?: {
     state(): Promise<UpdateState>;
     check(): Promise<void>;
+    channel(): Promise<UpdateChannel>;
+    setChannel(input: { readonly channel: UpdateChannel }): Promise<UpdateChannel>;
   };
   server: {
     state(): Promise<ServerState>;

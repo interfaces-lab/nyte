@@ -115,6 +115,8 @@ const bridge = {
     updates: {
       state: none("host.updates.state"),
       check: none("host.updates.check"),
+      channel: none("host.updates.channel"),
+      setChannel: object("host.updates.setChannel"),
     },
     server: {
       state: none("host.server.state"),

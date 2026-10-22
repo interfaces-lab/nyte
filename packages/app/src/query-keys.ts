@@ -5,6 +5,7 @@ export const keys = {
   clientOperations: ["client-operations"] as const,
   hostSettings: ["host-settings"] as const,
   updates: ["updates"] as const,
+  updateChannel: ["updates", "channel"] as const,
   workspaces: ["workspaces"] as const,
   workspaceCatalog: (workspace: WorkspaceId | undefined) =>
     ["workspaces", "catalog", workspace] as const,

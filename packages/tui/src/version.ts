@@ -1,6 +1,6 @@
 import process from "node:process";
 import { isJsonObject } from "@nyte-ai/schema";
-import { gt, valid } from "semver";
+import { gt, prerelease, valid } from "semver";
 import packageMetadata from "../package.json" with { type: "json" };
 import { toJson } from "./json.ts";
 
@@ -8,9 +8,14 @@ export const REPO = "interfaces-lab/nyte";
 
 const LATEST_RELEASE_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 
+const NIGHTLY_RELEASES_URL = `https://api.github.com/repos/${REPO}/releases?per_page=100`;
+
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
 
-export const VERSION = packageMetadata.version;
+declare const NYTE_BUILT_VERSION: string | undefined;
+
+export const VERSION =
+  typeof NYTE_BUILT_VERSION === "string" ? NYTE_BUILT_VERSION : packageMetadata.version;
 
 interface ReleaseInfo {
   /** Semver without the leading `v`. */
@@ -40,29 +45,44 @@ export async function fetchLatestRelease(
   fetchFn: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<ReleaseInfo | undefined> {
   try {
-    const response = await fetchFn(LATEST_RELEASE_URL, {
+    const nightly = prerelease(VERSION)?.[0] === "nightly";
+
+    const response = await fetchFn(nightly ? NIGHTLY_RELEASES_URL : LATEST_RELEASE_URL, {
       headers: githubHeaders(),
       signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) return undefined;
     const data = toJson(await response.json());
+    const releases = nightly ? (Array.isArray(data) ? data : []) : [data];
+    let latest: ReleaseInfo | undefined;
 
-    if (!isJsonObject(data)) return undefined;
-    const tag = data["tag_name"];
+    for (const release of releases) {
+      if (!isJsonObject(release) || release["draft"] === true) continue;
+      const tag = release["tag_name"];
 
-    if (typeof tag !== "string") return undefined;
-    const version = valid(tag.trim().replace(/^v/u, ""));
+      if (typeof tag !== "string") continue;
+      const version = valid(tag.trim().replace(/^v/u, ""));
 
-    if (version === null) return undefined;
-    const html = data["html_url"];
+      if (version === null) continue;
+      const channel = prerelease(version)?.[0];
 
-    const url =
-      typeof html === "string" && html.startsWith(`https://github.com/${REPO}/releases/`)
-        ? html
-        : RELEASES_URL;
+      if (nightly ? channel !== "nightly" : channel !== undefined) continue;
 
-    return { version, url };
+      if (latest !== undefined && !supersedes(version, latest.version)) continue;
+      const html = release["html_url"];
+
+      const url =
+        typeof html === "string" && html.startsWith(`https://github.com/${REPO}/releases/`)
+          ? html
+          : nightly
+            ? `https://github.com/${REPO}/releases/tag/v${version}`
+            : RELEASES_URL;
+
+      latest = { version, url };
+    }
+
+    return latest;
   } catch {
     return undefined;
   }

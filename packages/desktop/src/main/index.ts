@@ -260,7 +260,9 @@ function applyViewCommand(contents: Electron.WebContents, command: ViewCommand):
   }
 }
 
-let updates: ReturnType<typeof registerUpdates> | undefined;
+let updates: Awaited<ReturnType<typeof registerUpdates>> | undefined;
+
+const updatesReady = Promise.withResolvers<void>();
 
 let awakeBlocker: number | undefined;
 
@@ -340,6 +342,19 @@ const mainCalls: CallTable = {
   },
   "host.updates.state": async () => updates?.state() ?? { kind: "idle" },
   "host.updates.check": async () => updates?.click(),
+  "host.updates.channel": async () => {
+    await updatesReady.promise;
+
+    return updates?.channel() ?? "stable";
+  },
+  "host.updates.setChannel": async (_window, { channel }) => {
+    await updatesReady.promise;
+
+    if (updates === undefined)
+      throw new ExpectedHostError({ code: "unavailable", message: "Updates are not ready." });
+
+    return updates.setChannel(channel);
+  },
   "host.openExternal": async (_window, { url }) => void shell.openExternal(safeExternalUrl(url)),
   "host.confirmExternal": (window, { url }) => confirmExternal(safeExternalUrl(url), window),
   "host.revealPath": async (_window, { path }) => shell.showItemInFolder(path),
@@ -786,7 +801,6 @@ if (!hasSingleInstanceLock) {
 
     hostProcess = startHost();
     hostStarted.resolve(hostProcess);
-    createWindow();
     powerMonitor.on("resume", () => hostProcess?.resume());
 
     const menu = Menu.buildFromTemplate(
@@ -822,12 +836,16 @@ if (!hasSingleInstanceLock) {
     const updateItem = menu.getMenuItemById("check-for-updates");
 
     if (updateItem !== null)
-      updates = registerUpdates({
+      updates = await registerUpdates({
         publish: (state) => broadcast({ kind: "update_changed", state }),
+        publishChannel: (channel) => broadcast({ kind: "update_channel_changed", channel }),
         item: updateItem,
         activity: () => startedHost().activity(),
         beforeRelaunch: shutdown,
       });
+
+    updatesReady.resolve();
+    createWindow();
 
     const cli =
       app.isPackaged && process.platform !== "win32"
@@ -853,7 +871,9 @@ if (!hasSingleInstanceLock) {
   app.on("before-quit", (event) => {
     if (shutDown) return;
     event.preventDefault();
-    void shutdown().then(() => app.quit());
+    void shutdown().then(() => {
+      if (updates?.installOnQuit() !== true) app.quit();
+    });
   });
 
   app.on("window-all-closed", () => {

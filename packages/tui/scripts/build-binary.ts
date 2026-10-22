@@ -4,6 +4,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import solidPlugin from "@opentui/solid/bun-plugin";
+import { valid } from "semver";
 import { VERSION } from "../src/version.ts";
 import { codemodePlugin } from "./codemode-plugin.ts";
 import { BINARY_ENTRYPOINTS, binaryDefines } from "./defines.ts";
@@ -14,6 +15,8 @@ const destination = fileURLToPath(new URL("../dist/", import.meta.url));
 const packages = fileURLToPath(new URL("../../", import.meta.url));
 
 const name = process.platform === "win32" ? "nyte.exe" : "nyte";
+
+const version = process.env["NYTE_RELEASE_VERSION"] ?? VERSION;
 
 const started = performance.now();
 
@@ -28,6 +31,7 @@ function describe(cause: unknown): string {
 let directory: string | undefined;
 
 try {
+  if (valid(version) !== version) throw new Error(`Invalid release version: ${version}`);
   await mkdir(destination, { recursive: true });
   directory = await mkdtemp(join(destination, ".nyte-build-"));
   const executable = join(directory, name);
@@ -37,7 +41,7 @@ try {
     root: packages,
     target: "bun",
     plugins: [solidPlugin, codemodePlugin, photonPlugin],
-    define: binaryDefines(process.env),
+    define: { ...binaryDefines(process.env), NYTE_BUILT_VERSION: JSON.stringify(version) },
     format: "esm",
     bytecode: true,
     compile: { outfile: executable, autoloadBunfig: false, autoloadDotenv: false },
@@ -60,7 +64,7 @@ try {
   }
 
   await rename(executable, join(destination, name));
-  await writeFile(join(destination, "nyte.version"), `${VERSION}\n`);
+  await writeFile(join(destination, "nyte.version"), `${version}\n`);
   process.stdout.write(
     `Built packages/tui/dist/${name} in ${((performance.now() - started) / 1000).toFixed(1)}s\n`,
   );

@@ -50,6 +50,8 @@ import { defaultSecrets } from "./secrets.ts";
 import type { SecretsSource } from "./secrets.ts";
 import { sqliteStore, storePath } from "./sqlite.ts";
 
+declare const NYTE_BUILT_VERSION: string | undefined;
+
 const RELOAD_DEBOUNCE_MS = 250;
 
 const STORE_POLL_MS = 500;
@@ -441,7 +443,11 @@ async function settingsSeed(home: string): Promise<{
 }
 
 function hostDescription(): HostDescription {
-  return { name: hostname(), platform: process.platform, version: manifest.version };
+  return {
+    name: hostname(),
+    platform: process.platform,
+    version: typeof NYTE_BUILT_VERSION === "string" ? NYTE_BUILT_VERSION : manifest.version,
+  };
 }
 
 function settingsPath(home: string): string {

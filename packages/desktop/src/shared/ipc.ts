@@ -30,6 +30,8 @@ export const MAIN_OPERATION_PATHS = [
   "host.pickWorkspace",
   "host.updates.state",
   "host.updates.check",
+  "host.updates.channel",
+  "host.updates.setChannel",
   "host.openExternal",
   "host.confirmExternal",
   "host.revealPath",

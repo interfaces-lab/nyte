@@ -7,6 +7,7 @@ import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/deferred-entries.ts";
 import { PICKER_SCRIPT } from "./src/main/browser-picker-page.ts";
+import packageMetadata from "./package.json" with { type: "json" };
 import {
   deferredChunks,
   dropInlinedGhosttyWasm,
@@ -79,6 +80,11 @@ const renderer = {
 
 const config = (mode: string): UserConfig => ({
   main: {
+    define: {
+      NYTE_BUILT_VERSION: JSON.stringify(
+        process.env["NYTE_RELEASE_VERSION"] ?? packageMetadata.version,
+      ),
+    },
     plugins: [
       ...(mode === "e2e" ? [offlineModels] : []),
       {

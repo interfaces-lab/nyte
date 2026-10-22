@@ -125,6 +125,16 @@ export function createUpdateController({
 
   return {
     state: () => state,
+    reset: (): void => set({ kind: "idle" }),
+    installOnQuit: (): boolean => {
+      if (state.kind !== "ready") return false;
+      const version = state.version;
+      set({ kind: "installing", version });
+      log("quit-install-requested", { fromVersion: currentVersion, targetVersion: version });
+      updater.quitAndInstall(true, false);
+
+      return true;
+    },
     check: async (): Promise<void> => {
       await find();
     },

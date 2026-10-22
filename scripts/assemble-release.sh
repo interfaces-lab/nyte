@@ -16,10 +16,11 @@ repo=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 version=$(node -e '
 const cli = require(process.argv[1]);
 const tui = require(process.argv[2]);
-if (cli.version !== tui.version || !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(cli.version)) {
+const version = process.env.NYTE_RELEASE_VERSION ?? cli.version;
+if (cli.version !== tui.version || !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(version)) {
   throw new Error("CLI and TUI must have the same valid release version.");
 }
-process.stdout.write(cli.version);
+process.stdout.write(version);
 ' "${repo}/packages/cli/package.json" "${repo}/packages/tui/package.json")
 name="nyte-v${version}-${target}"
 mkdir -p "$output"

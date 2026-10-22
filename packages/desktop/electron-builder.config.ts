@@ -5,8 +5,13 @@ import { sign } from "@electron/osx-sign";
 import { Arch } from "electron-builder";
 import type { AfterPackContext, Configuration, MacConfiguration } from "electron-builder";
 import { ACCOUNT_SCHEMES } from "./src/account/scheme.ts";
+import packageMetadata from "./package.json" with { type: "json" };
 
 const updateTest = process.env["NYTE_UPDATE_TEST"] === "1";
+
+const version = process.env["NYTE_RELEASE_VERSION"] ?? packageMetadata.version;
+
+const nightly = version.includes("-nightly.");
 
 const productName = updateTest ? "Nyte Update Test" : "Nyte";
 
@@ -118,7 +123,7 @@ export default {
   appId: updateTest ? "ai.nyte.desktop.update-test" : "ai.nyte.desktop",
   productName,
   executableName: productName,
-  extraMetadata: { name: productName, productName },
+  extraMetadata: { name: productName, productName, version },
   artifactName: "Nyte-${version}-${os}-${arch}.${ext}",
   protocols: {
     name: productName,
@@ -126,7 +131,13 @@ export default {
   },
   publish: updateTest
     ? { provider: "generic", url: "http://localhost:8917" }
-    : { provider: "github", owner: "interfaces-lab", repo: "nyte", releaseType: "release" },
+    : {
+        provider: "github",
+        owner: "interfaces-lab",
+        repo: "nyte",
+        releaseType: nightly ? "prerelease" : "release",
+        channel: nightly ? "nightly" : "latest",
+      },
   directories: { output: "dist", buildResources: "build" },
   // Claude Code runs the user's installed `claude`, so the SDK's ~230 MB platform binaries stay out.
   files: ["out/**/*", "package.json", "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*"],
