@@ -1,5 +1,14 @@
 # @nyte-ai/plugin
 
+## 0.0.24
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @nyte-ai/ai@0.0.24
+  - @nyte-ai/core@0.0.24
+  - @nyte-ai/schema@0.0.24
+
 ## 0.0.23
 
 ### Patch Changes
