@@ -28,34 +28,10 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup
         with:
-          node-version: 26
-          cache: pnpm
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: pnpm install --frozen-lockfile
-      - name: Install Linux test dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ripgrep xvfb
-          pnpm --dir packages/app exec playwright install-deps chromium
-          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
-            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          fi
-      - name: Install macOS test dependencies
-        if: runner.os == 'macOS'
-        run: command -v rg || brew install ripgrep
-      - name: Install Windows test dependencies
-        if: runner.os == 'Windows'
-        run: command -v rg || choco install ripgrep -y --no-progress
-      - name: Configure git identity
-        run: |
-          git config --global user.email "ci@nyte.sh"
-          git config --global user.name "nyte-ci"
+          bun: "true"
+          test-dependencies: "true"
       - name: Run tests
         env:
           FILTER: ${{ inputs.filter }}
