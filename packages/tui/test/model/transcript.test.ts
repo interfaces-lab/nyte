@@ -96,7 +96,7 @@ describe("rows", () => {
     expect(deriveTranscript(view, [], LOCAL, null).rows.map((row) => row.key)).toEqual(["turn:t2"]);
   });
 
-  test("a steer is a prompt from its send, and a queued message is not", () => {
+  test("a steer is a pending prompt from its send until it joins the run", () => {
     const view = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go"))
@@ -107,10 +107,13 @@ describe("rows", () => {
     );
 
     const prompts = deriveTranscript(view, [], LOCAL, null).rows.flatMap((row) =>
-      row.kind === "prompt" ? [row.key] : [],
+      row.kind === "prompt" ? [[row.key, row.pending]] : [],
     );
 
-    expect(prompts).toEqual(["prompt:m1", "prompt:m2"]);
+    expect(prompts).toEqual([
+      ["prompt:m1", true],
+      ["prompt:m2", true],
+    ]);
   });
 
   test("a report that landed is a block of its turn, an action shows as its own block", () => {

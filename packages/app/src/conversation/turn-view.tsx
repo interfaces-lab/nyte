@@ -162,10 +162,12 @@ interface UserEditState extends BranchModelChoice {
 
 export function UserMessageView({
   content,
+  pending = false,
   onEdit,
   branchModel,
 }: {
   content: UserContent;
+  pending?: boolean;
   onEdit?: (content: UserContent, choice: BranchModelChoice) => Promise<void>;
   branchModel?: BranchModelPicker;
 }): ReactElement {
@@ -347,7 +349,12 @@ export function UserMessageView({
     );
 
   return (
-    <div ref={rowRef} data-sticky-user-message {...props(turnStyles.userRow)}>
+    <div
+      ref={rowRef}
+      data-sticky-user-message
+      title={pending ? "Lands at the next response" : undefined}
+      {...props(turnStyles.userRow, pending && turnStyles.userPending)}
+    >
       <Message align="end" {...props(messageStyles.end)}>
         {edit === undefined ? (
           <BubbleContent render={<Row variant="bare" xstyle={bubbleStyles.default} />}>
@@ -573,12 +580,14 @@ function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
 
 function TurnPartView({
   message,
+  pending,
   cwd,
   density,
   onEditUser,
   branchModel,
 }: {
   message: ViewMessage;
+  pending?: boolean;
   cwd: string | undefined;
   density: ToolCallDensity;
   onEditUser?: (
@@ -597,6 +606,7 @@ function TurnPartView({
     return (
       <UserMessageView
         content={message.source.kind === "action" ? message.source.label : message.content}
+        pending={pending}
         onEdit={
           onEditUser === undefined || message.source.kind === "action"
             ? undefined
@@ -653,7 +663,9 @@ export const TurnItemView = memo(function TurnItemView({
 }): ReactElement | null {
   switch (row.kind) {
     case "prompt":
-      return <TurnPartView message={row.message} cwd={cwd} density={density} />;
+      return (
+        <TurnPartView message={row.message} pending={row.pending} cwd={cwd} density={density} />
+      );
     case "part":
       return (
         <TurnPartView

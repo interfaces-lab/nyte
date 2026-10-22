@@ -40,7 +40,7 @@ export function RowView(props: {
       <Match when={prompt()}>
         {(row: Accessor<PromptRow>) => (
           <Column id={key} ref={props.anchor}>
-            <MessageView message={() => row().message} />
+            <MessageView message={() => row().message} pending={row().pending} />
           </Column>
         )}
       </Match>

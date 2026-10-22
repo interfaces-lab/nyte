@@ -70,17 +70,19 @@ test("steering: a message sent mid-run is a pending prompt from its send, never 
   const steer = "use tabs instead";
   const queued: string[] = [];
 
-  const steerPrompt = (): boolean =>
+  const pendingPrompt = (): boolean =>
     tui.store
       .screen()
-      .transcript.rows.some((row) => row.kind === "prompt" && row.message.content === steer);
+      .transcript.rows.some(
+        (row) => row.kind === "prompt" && row.pending && row.message.content === steer,
+      );
 
   await tui.send(steer);
   await tui.until(() => {
     if (tui.store.screen().queue.some((row) => row.text === steer)) queued.push(steer);
 
     return (
-      steerPrompt() &&
+      pendingPrompt() &&
       followedSession(tui.store.state())?.view?.messages.some(
         (message) =>
           message.kind === "user" &&
@@ -98,7 +100,7 @@ test("steering: a message sent mid-run is a pending prompt from its send, never 
   await tui.state((store) => store.screen().run.kind === "idle");
 
   expect(queued).toEqual([]);
-  expect(steerPrompt()).toBe(false);
+  expect(pendingPrompt()).toBe(false);
 });
 
 test("error, transient: a provider overload shows its retry", async () => {

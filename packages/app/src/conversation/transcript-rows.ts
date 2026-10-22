@@ -44,6 +44,7 @@ type EarlierRow = RowLayout & { readonly kind: "earlier" };
 export type PromptRow = RowLayout & {
   readonly kind: "prompt";
   readonly message: UserMessage;
+  readonly pending: boolean;
   readonly held: boolean;
 };
 
@@ -275,6 +276,7 @@ export function transcriptRows({
       ...OUTSIDE,
       sticky: sticksToTop(message),
       message,
+      pending: running,
       held,
     });
   }
