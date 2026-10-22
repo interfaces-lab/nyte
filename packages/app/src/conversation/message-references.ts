@@ -408,9 +408,11 @@ export function messageParts(text: string, options: DraftParseOptions): readonly
   let cursor = 0;
   const tokens = [...text.matchAll(DRAFT_TOKEN_PATTERN)];
   let tokenIndex = 0;
+  let lengthToken = nextLengthToken(text, cursor);
 
   while (cursor < text.length) {
-    const lengthToken = nextLengthToken(text, cursor);
+    if (lengthToken !== undefined && lengthToken.start < cursor)
+      lengthToken = nextLengthToken(text, cursor);
 
     while (tokenIndex < tokens.length && (tokens[tokenIndex]?.index ?? 0) < cursor) {
       tokenIndex += 1;

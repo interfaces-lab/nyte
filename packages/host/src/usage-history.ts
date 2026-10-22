@@ -159,7 +159,6 @@ async function* historyLines(path: string, start: number, signal: AbortSignal | 
       const chunk = pending.length === 0 ? read : Buffer.concat([pending, read]);
       let from = 0;
 
-      // oxlint-disable-next-line nyte-code/no-index-of -- a byte search keeps offsets exact, which decoded text cannot
       for (let newline = chunk.indexOf(0x0a); newline !== -1; newline = chunk.indexOf(0x0a, from)) {
         yield {
           text: chunk.toString("utf8", from, newline),

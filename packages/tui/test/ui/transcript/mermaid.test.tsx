@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { App } from "../../../src/app/context.tsx";
-import { splitMermaid } from "../../../src/ui/transcript/markdown.tsx";
+import { createMermaidSplitter } from "../../../src/ui/transcript/markdown.tsx";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
 import { frameShowing } from "../../fixture/render.tsx";
 import { buildState } from "../../fixture/state.ts";
@@ -29,7 +29,8 @@ function transcript(app: App) {
 }
 
 describe("mermaid", () => {
-  test("splitMermaid keeps prose around a fence and leaves other fences in the markdown", () => {
+  test("the splitter keeps prose around a fence and leaves other fences in the markdown", () => {
+    const splitMermaid = createMermaidSplitter();
     expect(splitMermaid(TEXT)).toEqual([
       { kind: "markdown", text: "Here is the flow:" },
       { kind: "mermaid", source: "graph TD\nStart --> Finish" },

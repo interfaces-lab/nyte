@@ -5,8 +5,15 @@ import { Markdown } from "./markdown.tsx";
 
 export function hasIncompleteHeadingPrefix(text: string): boolean {
   const line = text.slice(text.lastIndexOf("\n") + 1);
+  let index = 0;
 
-  return /^\s{0,3}#{1,6}\s*$/u.test(line);
+  while (index < 3 && index < line.length && line.charAt(index).trim() === "") index += 1;
+  const start = index;
+
+  while (index - start < 7 && line.charAt(index) === "#") index += 1;
+  const hashes = index - start;
+
+  return hashes >= 1 && hashes <= 6 && line.slice(index).trim() === "";
 }
 
 export function AssistantText(props: {

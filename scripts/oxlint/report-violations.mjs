@@ -14,7 +14,7 @@ const repository = fileURLToPath(new URL("../..", import.meta.url));
 
 const codeShapeRules = [
   "nyte-code(no-is-helper-names)",
-  "nyte-code(no-index-of)",
+  "unicorn(prefer-includes)",
   "typescript(no-explicit-any)",
   "typescript(consistent-type-assertions)",
   "nyte-code(declarative-comments)",

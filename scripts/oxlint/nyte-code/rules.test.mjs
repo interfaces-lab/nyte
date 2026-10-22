@@ -37,17 +37,28 @@ declare function isExternal(value: Entry): boolean;
 const open = entries.filter((isVisible) => isVisible);`,
   },
   {
-    rule: "nyte-code/no-index-of",
-    rejected: `const at = list.indexOf(item);
-const slash = text?.indexOf("/");
-const computed = list["indexOf"](item);
-const borrowed = Array.prototype.indexOf.call(list, item);`,
-    rejectedLines: [1, 2, 3, 4],
+    rule: "unicorn/prefer-includes",
+    rejected: `const present = list.indexOf(item) !== -1;
+const missing = text.indexOf(needle) === -1;
+const positive = text.indexOf(needle) >= 0;
+const found = text.indexOf(needle) > -1;
+const absent = text.indexOf(needle) < 0;
+const computed = list["indexOf"](item) !== -1;
+const optional = text?.indexOf(needle) !== -1;
+const later = text.indexOf(needle, from) !== -1;`,
+    rejectedLines: [1, 2, 3, 4, 5, 6, 7, 8],
     accepted: `const has = list.includes(item);
 const indexOf = 1;
 const shape = { indexOf: 1 };
 const last = list.lastIndexOf(item);
-const found = list.findIndex((entry) => entry === item);`,
+const found = list.findIndex((entry) => entry === item);
+const at = list.indexOf(item);
+const slash = text?.indexOf("/");
+const computed = list["indexOf"](item);
+const borrowed = Array.prototype.indexOf.call(list, item);
+const colon = line.indexOf(":");
+const field = colon === -1 ? line : line.slice(0, colon);
+const next = text.indexOf("\\n", from);`,
   },
   {
     rule: "nyte-code/no-one-off-boolean-helpers",
@@ -288,7 +299,7 @@ await test("code-shape rules reject their targets and accept the idioms around t
       const acceptedFile = join(fixtureDirectory, `${ruleName}.accepted.ts`);
       const config = {
         categories: { correctness: "off" },
-        plugins: ["typescript", "eslint"],
+        plugins: ["typescript", "eslint", "unicorn"],
         jsPlugins: [pluginPath],
         rules: { [rule]: repositoryConfig.rules[rule] ?? "error" },
       };

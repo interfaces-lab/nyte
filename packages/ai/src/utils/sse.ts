@@ -18,9 +18,10 @@ interface DecoderState {
   raw: string[];
 }
 
-const LINE_BREAK = /\r\n|\r|\n/;
-
-const FIELD = /^([^:]*):? ?(.*)$/s;
+interface LineBuffer {
+  fragments: string[];
+  pendingCr: boolean;
+}
 
 function flushEvent(state: DecoderState): ServerSentEvent | undefined {
   if (state.event === null && state.data.length === 0) return undefined;
@@ -45,7 +46,9 @@ function decodeLine(line: string, state: DecoderState): ServerSentEvent | undefi
 
   if (line.startsWith(":")) return undefined;
 
-  const [, field = "", value = ""] = FIELD.exec(line) ?? [];
+  const colon = line.indexOf(":");
+  const field = colon === -1 ? line : line.slice(0, colon);
+  const value = colon === -1 ? "" : line.slice(colon + (line[colon + 1] === " " ? 2 : 1));
 
   if (field === "event") state.event = value;
   else if (field === "data") state.data.push(value);
@@ -57,13 +60,42 @@ function decodeLine(line: string, state: DecoderState): ServerSentEvent | undefi
  * Splits complete lines off `buffer`. A trailing CR waits for the next chunk unless `final`,
  * because it may be the first half of a CRLF.
  */
-function* takeLines(buffer: { text: string }, final: boolean): Generator<string> {
-  for (let match = LINE_BREAK.exec(buffer.text); match; match = LINE_BREAK.exec(buffer.text)) {
-    if (!final && match[0] === "\r" && match.index === buffer.text.length - 1) return;
+function* takeLines(buffer: LineBuffer, chunk: string, final: boolean): Generator<string> {
+  let start = 0;
 
-    yield buffer.text.slice(0, match.index);
-    buffer.text = buffer.text.slice(match.index + match[0].length);
+  if (buffer.pendingCr) {
+    if (chunk.length === 0 && !final) return;
+    yield buffer.fragments.join("");
+    buffer.fragments = [];
+    buffer.pendingCr = false;
+    if (chunk.startsWith("\n")) start = 1;
   }
+
+  let cr = chunk.indexOf("\r", start);
+  let lf = chunk.indexOf("\n", start);
+
+  while (cr !== -1 || lf !== -1) {
+    const index = cr === -1 ? lf : lf === -1 ? cr : Math.min(cr, lf);
+    const isCr = index === cr;
+
+    buffer.fragments.push(chunk.slice(start, index));
+
+    if (!final && isCr && index === chunk.length - 1) {
+      buffer.pendingCr = true;
+
+      return;
+    }
+
+    yield buffer.fragments.join("");
+    buffer.fragments = [];
+    start = index + 1;
+
+    if (isCr && lf === start) start += 1;
+    if (cr !== -1 && cr < start) cr = chunk.indexOf("\r", start);
+    if (lf !== -1 && lf < start) lf = chunk.indexOf("\n", start);
+  }
+
+  if (start < chunk.length) buffer.fragments.push(chunk.slice(start));
 }
 
 /**
@@ -84,7 +116,7 @@ export async function* iterateServerSentEvents(
   signal?.addEventListener("abort", cancel, { once: true });
   const decoder = new TextDecoder();
   const state: DecoderState = { event: null, data: [], raw: [] };
-  const buffer = { text: "" };
+  const buffer: LineBuffer = { fragments: [], pendingCr: false };
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let idleTimedOut = false;
 
@@ -106,9 +138,9 @@ export async function* iterateServerSentEvents(
 
       if (idleTimedOut) throw new DOMException("SSE idle timeout", "TimeoutError");
 
-      buffer.text += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      const chunk = done ? decoder.decode() : decoder.decode(value, { stream: true });
 
-      for (const line of takeLines(buffer, done)) {
+      for (const line of takeLines(buffer, chunk, done)) {
         const event = decodeLine(line, state);
 
         if (event) yield event;
@@ -117,7 +149,8 @@ export async function* iterateServerSentEvents(
       if (done) break;
     }
 
-    const trailing = buffer.text.length > 0 ? decodeLine(buffer.text, state) : undefined;
+    const text = buffer.fragments.join("");
+    const trailing = text.length > 0 ? decodeLine(text, state) : undefined;
 
     if (trailing) yield trailing;
 
