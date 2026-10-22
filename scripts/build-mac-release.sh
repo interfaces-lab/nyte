@@ -23,7 +23,7 @@ if [[ ! "$host" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$ || ! "$remote_repo" =~ ^/[a-zA-
   echo "Use an SSH host alias and an absolute remote repository path without spaces." >&2
   exit 2
 fi
-if [[ -e "$output" ]]; then
+if [[ -e "$output" || -L "$output" ]]; then
   echo "Output already exists: $output. Choose a new directory." >&2
   exit 2
 fi
@@ -38,20 +38,26 @@ for name in NYTE_CONNECT_ORIGIN NYTE_CLERK_PUBLISHABLE_KEY NYTE_CLERK_FRONTEND_A
   fi
 done
 command -v sha256sum >/dev/null
+if [[ ! -d $(dirname -- "$output") ]]; then
+  echo "Create the output parent directory first: $(dirname -- "$output")" >&2
+  exit 2
+fi
 
 repo=$(git rev-parse --show-toplevel)
 commit=$(git -C "$repo" rev-parse --verify --end-of-options "${ref}^{commit}")
 git -C "$repo" cat-file -e "$commit:packages/desktop/scripts/assets.mjs"
-ssh_options=(-o BatchMode=yes -o ConnectTimeout=15)
+ssh_options=(-o BatchMode=yes -o ConnectTimeout=15 -o ForwardAgent=no)
 
 echo "Build commit $commit on Linux; package and sign on $host using $remote_repo."
 echo "Download release files to $output. Nothing will be published."
 ssh "${ssh_options[@]}" -- "$host" "bash -s -- '$remote_repo'" <<'REMOTE'
 set -euo pipefail
 [[ $(uname -sm) == "Darwin arm64" ]] || { echo "The release worker must be an Apple Silicon Mac." >&2; exit 1; }
+set -a
+source "$HOME/.config/nyte/release.env"
+set +a
 for tool in git node pnpm bun codesign xcrun; do command -v "$tool" >/dev/null; done
 git -C "$1" rev-parse --git-dir >/dev/null
-test -r "$HOME/.config/nyte/release.env"
 REMOTE
 
 work=$(mktemp -d)
@@ -104,7 +110,7 @@ git -C "$repo" fetch origin "$commit"
 git -C "$repo" worktree add --detach "$work/source" "$commit"
 cd "$work/source"
 pnpm install --frozen-lockfile
-node packages/desktop/scripts/build.mjs --assets "$work/assets" --package --publish never --mac --arm64
+NODE_ENV=production node packages/desktop/scripts/build.mjs --assets "$work/assets" --package --publish never --mac --arm64
 app=packages/desktop/dist/mac-arm64/Nyte.app
 codesign --verify --deep --strict "$app"
 xcrun stapler validate "$app"

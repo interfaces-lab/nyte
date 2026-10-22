@@ -52,7 +52,8 @@ On the Mac, create `~/.config/nyte/release.env` with mode `600`. Set the same th
 `NYTE_` account values, plus `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`,
 `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`. `APPLE_API_KEY` is the absolute path to the
 Mac's private `.p8` file. `CSC_LINK` can reference a local signing certificate. Keep
-these files outside the repository. Install Apple's command-line tools on the Mac.
+these files outside the repository. Set `PATH` there if the runtimes are not available
+to non-interactive SSH sessions. Install Apple's command-line tools on the Mac.
 
 The command builds the web app and canvas and runs their tests on Linux in a fresh
 worktree at the requested commit. It transfers only their output and a manifest. The

@@ -43,7 +43,10 @@ if (assetsIndex !== -1) {
     process.exit(2);
   }
 
-  await restoreDesktopAssets(assets);
+  await restoreDesktopAssets(assets).catch((error) => {
+    failure(error.message);
+    process.exit(1);
+  });
 }
 
 const turboStream = process.env.TURBO_HASH !== undefined && process.env.TURBO_IS_TUI === undefined;
