@@ -1,6 +1,6 @@
 # @nyte-ai/connect
 
-The contract for Nyte Connect, Nyte's account-based remote access. A host is a running Nyte that serves sessions: the desktop app, or `nyte serve` on a machine without a screen. Its operator links it to a Nyte account and turns sharing on. Any phone or browser signed in to the same account then lists the host, enrolls itself, and connects, with no approval step on the host. Users need no Tailscale, no shared network, no open port, and no Cloudflare account of their own. The operator (Nyte) runs one broker Worker, with a relay Durable Object per linked host, and one Clerk instance for everyone. The broker is served at `https://nyte-connect.daniel-fu90.workers.dev`; no DNS zone or custom domain is involved.
+The contract for Nyte Connect, Nyte's account-based remote access. A host is a running Nyte that serves sessions: the desktop app, or the `nyte` CLI on a machine without a screen. Its operator links it to a Nyte account and turns sharing on. Any phone or browser signed in to the same account then lists the host, enrolls itself, and connects, with no approval step on the host. Users need no Tailscale, no shared network, no open port, and no Cloudflare account of their own. The operator (Nyte) runs one broker Worker, with a relay Durable Object per linked host, and one Clerk instance for everyone. The broker is served at `https://nyte-connect.daniel-fu90.workers.dev`; no DNS zone or custom domain is involved.
 
 This package holds the wire contract. The broker lives in `packages/connect-worker`; its README and `wrangler.jsonc` are authoritative for binding names and broker internals. Nothing in this repository creates, deploys, or configures a live resource. Every step below is manual. The user steps are in the [remote access guide](../docs/content/docs/remote-access.mdx).
 
@@ -11,7 +11,7 @@ This package holds the wire contract. The broker lives in `packages/connect-work
 | `@nyte-ai/connect/relay` | broker, host | Relay frames, limits, close codes, the public path allowlist, and refusal envelopes. Node-free. The phone never imports it. |
 | `@nyte-ai/connect/enrollment` | web app, phone | A device secret and its digest, waiting for the host's lease to accept it, and the device's own release with its bearer. |
 | `@nyte-ai/connect/account-config` | web app, phone | Parses the public Clerk key and Connect origin; a build without both offers address-and-token connections only. |
-| `@nyte-ai/connect/host` | desktop, `nyte serve` | The Node side of a host: link, lease, and enrollment lifecycle, its private store, the broker client, the relay socket, and the enrollment routes. No Electron; the embedding supplies the account session and the listener. |
+| `@nyte-ai/connect/host` | desktop, `nyte` CLI | The Node side of a host: link, lease, and enrollment lifecycle, its private store, the broker client, the relay socket, and the enrollment routes. No Electron; the embedding supplies the account session and the listener. |
 
 ## How it fits together
 
@@ -81,7 +81,7 @@ const enrolled = await broker.enroll({ environmentId, request: { clientId, clien
 const baseUrl = relayAddress(connectOrigin, enrolled.environmentId);
 ```
 
-Keep the token, client id, and enrolled ids only in the tab's sessionStorage, so each tab has a separate client id. `ClientId` allows 16–64 base64url characters; `Name` allows 1–64 characters. Phones and browsers are clients only. They have no workspace and cannot edit files locally, become environments, act as relay targets, or pair with each other. A browser connects only to a linked host environment through that host's relay. Enrollment has no platform or device-kind field: `EnrollRequest`, `EnrollResponse`, `EnrollmentClaims`, and device records already support browsers unchanged. `DEVICE_TOKEN_BYTES` is 32. The token must contain 256 bits of CSPRNG output encoded as unpadded base64url, 43 characters matching `DeviceToken`. `digest` is SHA-256 of the UTF-8 **token string**, not the original random bytes, encoded as 43-character unpadded base64url matching `Base64Url32`. `base64Url` supplies the encoding without Node dependencies. `role` is optional and absent means `controller`. The host decides whether to honor `owner`; `nyte serve` honors it only with `--device-admin`.
+Keep the token, client id, and enrolled ids only in the tab's sessionStorage, so each tab has a separate client id. `ClientId` allows 16–64 base64url characters; `Name` allows 1–64 characters. Phones and browsers are clients only. They have no workspace and cannot edit files locally, become environments, act as relay targets, or pair with each other. A browser connects only to a linked host environment through that host's relay. Enrollment has no platform or device-kind field: `EnrollRequest`, `EnrollResponse`, `EnrollmentClaims`, and device records already support browsers unchanged. `DEVICE_TOKEN_BYTES` is 32. The token must contain 256 bits of CSPRNG output encoded as unpadded base64url, 43 characters matching `DeviceToken`. `digest` is SHA-256 of the UTF-8 **token string**, not the original random bytes, encoded as 43-character unpadded base64url matching `Base64Url32`. `base64Url` supplies the encoding without Node dependencies. `role` is optional and absent means `controller`. The host decides whether to honor `owner`.
 
 Use the relay address as the transport's `url` and `Authorization: Bearer <token>` in its headers; its fetch-based SSE sends that header, which native `EventSource` cannot. Send no cookies and set `credentials: "omit"` on relay fetches. The relay passes `X-Nyte-Host`, `X-Nyte-Credential`, `X-Nyte-Version` and `X-Nyte-Mime` back and exposes them to allowed origins. Refusals are the host's wire error, so the transport rethrows them as `SdkError`. Allow up to `ENROLLMENT_READINESS_SECONDS` for the host's lease to catch up without re-enrolling.
 
@@ -117,7 +117,7 @@ No zone, DNS record, tunnel, or Cloudflare API token is involved.
 
 All of these are public by design. A build missing any of them shows account remote access as unavailable; there is no built-in fallback. The connect origin must be a canonical `https://` origin; the broker client refuses anything else before it asks Clerk for a token.
 
-The CLI reads `NYTE_CONNECT_ORIGIN` at build time, and a value in the running process's environment overrides it. Without either, `nyte account` and `nyte serve --account` refuse. The release workflow fails the CLI build when the repository variable is unset.
+The CLI reads `NYTE_CONNECT_ORIGIN` at build time, and a value in the running process's environment overrides it. Without either, `nyte account` refuses. The release workflow fails the CLI build when the repository variable is unset.
 
 The iOS app needs a new native build for Clerk: `@clerk/expo` raises the deployment target to iOS 17 and brings `expo-auth-session` and `expo-web-browser`.
 

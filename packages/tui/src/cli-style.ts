@@ -103,7 +103,6 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
     label: "nyte update [version|--check|--models]",
     detail: "install nyte, check for an update, or refresh models",
   },
-  { label: "nyte serve [--port <n>] [--token <t>]", detail: "serve this folder over HTTP" },
   { label: "nyte account [status|unlink]", detail: "share this machine with your Nyte account" },
   { label: "nyte mcp <add|remove|list|login|logout>", detail: "manage MCP servers" },
   { label: "nyte --version", detail: "print the installed version" },
@@ -144,7 +143,7 @@ export function renderHelp(color: boolean = ansiEnabled()): string {
 }
 
 export function renderCommandHelp(
-  command: "login" | "logout" | "update" | "status" | "serve" | "account" | "mcp",
+  command: "login" | "logout" | "update" | "status" | "account" | "mcp",
 ): string {
   switch (command) {
     case "login":
@@ -177,13 +176,6 @@ export function renderCommandHelp(
         "List stored credential providers and methods without exposing values.",
         "--json emits a status record then a terminal result as JSONL on stdout.",
         "Example: nyte status --json",
-      ].join("\n");
-    case "serve":
-      return [
-        "Usage: nyte serve [--port <n>] [--token <t>]",
-        "Serve this folder's host over HTTP until interrupted. --port defaults to a free port.",
-        "Prints the address to stdout; without --token, prints a generated token to stderr.",
-        "Example: nyte serve --port 4100",
       ].join("\n");
     case "account":
       return [

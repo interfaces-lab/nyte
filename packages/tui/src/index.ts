@@ -14,16 +14,8 @@ import {
   statusGlyph,
   updateSeverity,
 } from "./cli-style.ts";
-import {
-  parseFlags,
-  parseServeArgs,
-  parseUpdateArgs,
-  readStdin,
-  resolveTuiResume,
-  wantsPrint,
-} from "./flags.ts";
+import { parseFlags, parseUpdateArgs, readStdin, resolveTuiResume, wantsPrint } from "./flags.ts";
 import type { RunFlags } from "./flags.ts";
-import { HostFailure, startHostThread } from "./hosting.ts";
 import { cliLoginDriver } from "./interaction.ts";
 import type { UpdateProgress } from "./update.ts";
 import { VERSION, checkForUpdate } from "./version.ts";
@@ -255,31 +247,6 @@ async function update(args: readonly string[]): Promise<void> {
   if (severity !== "ok") process.exitCode = 1;
 }
 
-async function serve(args: readonly string[]): Promise<void> {
-  const options = parseServeArgs(args);
-  const interrupted = untilInterrupted();
-  const token = options.token ?? crypto.randomUUID();
-
-  const host = await startHostThread({ kind: "serve", port: options.port, token }).catch(
-    (cause: unknown) => {
-      throw cause instanceof HostFailure && cause.reason === "port-in-use"
-        ? new Error(`${cause.message} Free it, or pass another --port.`)
-        : cause;
-    },
-  );
-
-  invocation.defer(() => host.stop());
-  output.write(`${host.address}\n`);
-
-  if (options.token === undefined) output.error(`token ${token}`);
-
-  const stopped = new Promise((done) =>
-    interrupted.addEventListener("abort", done, { once: true }),
-  );
-
-  if (!interrupted.aborted) await Promise.race([stopped, host.ended]);
-}
-
 async function status(): Promise<void> {
   const host = await openHost();
 
@@ -373,7 +340,6 @@ async function main(): Promise<PrintOutcome | undefined> {
     command === "logout" ||
     command === "status" ||
     command === "update" ||
-    command === "serve" ||
     command === "account" ||
     command === "mcp"
   ) {
@@ -403,12 +369,6 @@ async function main(): Promise<PrintOutcome | undefined> {
 
   if (command === "update") {
     await update(invocationArgs.slice(1));
-
-    return undefined;
-  }
-
-  if (command === "serve") {
-    await serve(invocationArgs.slice(1));
 
     return undefined;
   }

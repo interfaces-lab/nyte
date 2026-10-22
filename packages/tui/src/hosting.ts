@@ -8,26 +8,18 @@ import { compiled } from "./compiled.ts";
 const PortType = Type.Integer({ minimum: 0, maximum: 65_535 });
 
 const HostCommandType = Type.Object({
-  kind: Type.Union([Type.Literal("serve"), Type.Literal("local")]),
+  kind: Type.Literal("local"),
   port: PortType,
   token: Type.String(),
 });
 
-const HostFailureReasonType = Type.Union([Type.Literal("port-in-use"), Type.Literal("other")]);
-
 export type HostCommand = Static<typeof HostCommandType>;
-
-export type HostFailureReason = Static<typeof HostFailureReasonType>;
 
 const HostMessageType = Type.Union([HostCommandType, Type.Object({ kind: Type.Literal("stop") })]);
 
 const HostReportType = Type.Union([
   Type.Object({ kind: Type.Literal("listening"), address: Type.String() }),
-  Type.Object({
-    kind: Type.Literal("failed"),
-    reason: HostFailureReasonType,
-    message: Type.String(),
-  }),
+  Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
   Type.Object({ kind: Type.Literal("revoked") }),
   Type.Object({ kind: Type.Literal("closed") }),
 ]);
@@ -39,16 +31,6 @@ export type HostReport = Static<typeof HostReportType>;
 export const hostMessages = Compile(HostMessageType);
 
 const hostReports = Compile(HostReportType);
-
-export class HostFailure extends Error {
-  readonly reason: HostFailureReason;
-
-  constructor(reason: HostFailureReason, message: string) {
-    super(message);
-    this.name = "HostFailure";
-    this.reason = reason;
-  }
-}
 
 interface HostThread {
   readonly address: string;
@@ -96,7 +78,7 @@ function launch(command: HostCommand, revoked: () => void, failed: (cause: Error
 
         return;
       case "failed":
-        fail(new HostFailure(report.reason, report.message));
+        fail(new Error(report.message));
         void worker.terminate();
 
         return;

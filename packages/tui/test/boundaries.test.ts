@@ -109,7 +109,7 @@ test("no frame callbacks, and no raw keyInput listeners but the typeahead held b
   expect(offending).toEqual([]);
 });
 
-test("the CLI bundle loads no host, provider SDK or Babel; serve and service run reach them on the host thread", async () => {
+test("the CLI bundle loads no host, provider SDK or Babel; the local host reaches them on the host thread", async () => {
   const result = await Bun.build({
     entrypoints: [join(SRC, "index.ts")],
     target: "bun",
