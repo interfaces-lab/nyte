@@ -491,4 +491,8 @@ export interface ExecutionState {
   >;
   timer: ReturnType<typeof setInterval> | null;
   closing: AbortController;
+  /** Aborted by a pause, ending the model streams in flight; a resume replaces it. */
+  streams: AbortController;
+  /** Settles when the pause ends; null while the host is not paused. */
+  paused: PromiseWithResolvers<void> | null;
 }

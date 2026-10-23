@@ -17,6 +17,13 @@ export const desktopSettingsPlugin = {
         scope: "host",
       },
       {
+        id: "desktop.pauseOnSleep",
+        label: "Pause agents while asleep",
+        schema: standard(DESKTOP_SETTING_SCHEMAS.pauseOnSleep),
+        default: DEFAULT_DESKTOP_SETTINGS.pauseOnSleep,
+        scope: "host",
+      },
+      {
         id: "desktop.terminalShell",
         label: "Terminal shell",
         schema: standard(DESKTOP_SETTING_SCHEMAS.terminalShell),
@@ -53,6 +60,7 @@ export function desktopSettings(view: Pick<HostView, "settings">): DesktopSettin
     view.settings.find((setting) => setting.id === `desktop.${key}`)?.value;
 
   const keepAwake = value("keepAwake");
+  const pauseOnSleep = value("pauseOnSleep");
   const terminalShell = value("terminalShell");
   const blockAds = value("blockAds");
   const adblockAllowedHosts = value("adblockAllowedHosts");
@@ -62,6 +70,9 @@ export function desktopSettings(view: Pick<HostView, "settings">): DesktopSettin
     keepAwake: Value.Check(DESKTOP_SETTING_SCHEMAS.keepAwake, keepAwake)
       ? keepAwake
       : DEFAULT_DESKTOP_SETTINGS.keepAwake,
+    pauseOnSleep: Value.Check(DESKTOP_SETTING_SCHEMAS.pauseOnSleep, pauseOnSleep)
+      ? pauseOnSleep
+      : DEFAULT_DESKTOP_SETTINGS.pauseOnSleep,
     terminalShell: Value.Check(DESKTOP_SETTING_SCHEMAS.terminalShell, terminalShell)
       ? terminalShell
       : DEFAULT_DESKTOP_SETTINGS.terminalShell,

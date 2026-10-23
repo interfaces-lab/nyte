@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { CallId, HeadName, Json, RunId, SessionId, WaitTarget } from "@nyte-ai/schema";
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import { driveInProcess } from "../src/drive/execution.ts";
 import { runStep } from "../src/engine/durable.ts";
 import { endRun } from "../src/engine/runs.ts";
@@ -334,6 +334,52 @@ describe("coverage (§42a, §42t)", () => {
     expect(await step).toEqual({ kind: "idle" });
     expect(await kernel.store.refs.get(leaseRef(session.id, main))).toBeNull();
     await owned.close();
+  });
+
+  it("keeps a turn running when its lease lapsed while the host slept, and stops it once another holder took the lease", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+
+    try {
+      const { kernel, host, script } = await setup({ execution: { kind: "admit-only" } });
+      const { session } = await host.sessions.start({ content: "Go." });
+      const name = leaseRef(session.id, main);
+      const step = host.execution.advance({ session: session.id, head: main });
+      const turn = await script.started(1);
+      const claimed = await kernel.store.refs.get(name);
+
+      vi.setSystemTime(Date.now() + 60_000);
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      const renewed = await until(async () => {
+        const ref = await kernel.store.refs.get(name);
+
+        return turn.input.signal.aborted || ref?.revision !== claimed?.revision ? ref : undefined;
+      });
+
+      expect(turn.input.signal.aborted).toBe(false);
+      assert(renewed !== null);
+
+      await kernel.store.refs.set([
+        {
+          name,
+          target: await kernel.store.objects.put(
+            envelope(
+              "lease",
+              { holder: "elsewhere", instance: "elsewhere", expiresAt: Date.now() + 30_000 },
+              0,
+            ),
+          ),
+          expect: renewed.revision,
+        },
+      ]);
+      vi.setSystemTime(Date.now() + 60_000);
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(await step).toEqual({ kind: "fenced" });
+      expect(turn.input.signal.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

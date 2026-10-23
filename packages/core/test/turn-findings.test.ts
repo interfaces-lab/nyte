@@ -281,12 +281,12 @@ describe("turn findings (CORE-DIET D3)", () => {
     const end = await receipt.settled();
 
     assert(end.kind === "completed");
-    expect(end.usage).toMatchObject({ input: 7 + 100 + 200, output: 10 + 20 });
+    expect(end.usage).toMatchObject({ input: 7 + 100 + 7 + 200, output: 10 + 20 });
     expect(
       logged.flatMap((event) =>
         event.kind === "request" ? [`${event.step}:${event.usage.total}`] : [],
       ),
-    ).toEqual(["compaction:7", "assistant:110", "assistant:220"]);
+    ).toEqual(["compaction:7", "assistant:110", "compaction:7", "assistant:220"]);
   });
 
   it("charges and observes every request: overflow, summary, 503, 503, then a stop in the sleep (D6, audit)", async () => {

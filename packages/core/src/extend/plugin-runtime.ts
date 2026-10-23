@@ -75,6 +75,7 @@ const BUILT_IN: ReadonlySet<string> = new Set([
   "environment",
   "resources",
   "delegation",
+  "interruptions",
 ]);
 
 const RESERVED_IDS: readonly string[] = ["models", "settings"];

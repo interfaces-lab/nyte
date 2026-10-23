@@ -62,6 +62,7 @@ interface Step {
 interface Group {
   readonly commit: CommitId;
   readonly run: RunId | null;
+  readonly attempt: string | null;
   readonly model: ModelRef | null;
   readonly at: number;
   response: string | null;
@@ -85,6 +86,14 @@ const SUMMARISED =
 
 const ABANDONED =
   "The conversation moved back to an earlier point, abandoning a path. What that path did:";
+
+/**
+ * Follows a response a retry cut off and kept: it ends with no calls, and the run's next attempt
+ * goes on from it, so the model is asked to continue, between the two and before the request that
+ * continues it.
+ */
+const CONTINUE =
+  "The previous response was interrupted. Continue from where you left off without repeating completed content.";
 
 const projections = new WeakMap<object, CommitId>();
 
@@ -359,6 +368,9 @@ async function conversation(
       push(await toolResult(kernel, call.id, call.state, call.at, input.images), call.commit);
   };
 
+  const continueAfter = (cut: Group): void =>
+    push({ role: "user", content: CONTINUE, timestamp: cut.at }, cut.commit);
+
   const calls = steps.flatMap((step) => (step.part?.partKind === "tool" ? [step.part.id] : []));
 
   for (const step of steps) {
@@ -405,20 +417,35 @@ async function conversation(
       const blocks = await assistantBlocks(part, step.record.run);
       const call = blocks.call;
       const response = call === null ? null : parseResponseIndex(call.call, step.record.run);
+      const attempt = call === null ? parseAttempt(part.id, step.record.run) : null;
+
+      const cut =
+        group !== null &&
+        group.run === step.record.run &&
+        group.calls.length === 0 &&
+        group.attempt !== null &&
+        attempt !== null &&
+        attempt !== group.attempt
+          ? group
+          : null;
 
       if (
         group !== null &&
-        (group.run !== step.record.run ||
+        (cut !== null ||
+          group.run !== step.record.run ||
           (call === null && group.calls.length > 0) ||
           (call !== null && group.response !== null && response !== group.response))
       )
         await flush();
+
+      if (cut !== null) continueAfter(cut);
 
       if (blocks.content.length === 0) continue;
 
       group ??= {
         commit: step.commit,
         run: step.record.run,
+        attempt,
         model: step.model,
         at: step.record.at,
         response: null,
@@ -450,7 +477,17 @@ async function conversation(
       push({ role: "user", content: note, timestamp: step.record.at }, step.commit);
   }
 
+  const trailing = group;
   await flush();
+
+  if (
+    trailing !== null &&
+    input.run !== null &&
+    trailing.run === input.run &&
+    trailing.calls.length === 0
+  )
+    continueAfter(trailing);
+
   const answered = answers.at(-1);
 
   if (answered === undefined || answered.run === null) return messages;
@@ -807,6 +844,13 @@ function fencedExcerpt(text: string): string {
 
 function escapeAttribute(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+}
+
+/** The attempt a text or thinking part of `run` streamed in, from its id `<run>:a<attempt>:<index>`. */
+function parseAttempt(part: string, run: RunId | null): string | null {
+  if (run === null || !part.startsWith(`${run}:`)) return null;
+
+  return /^a(\d+):/.exec(part.slice(run.length + 1))?.[1] ?? null;
 }
 
 function parseResponseIndex(call: string, run: RunId | null): string | null {

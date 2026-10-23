@@ -187,7 +187,15 @@ describe("composeHost", () => {
         .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
-    ).toEqual(["system-prompt", "environment", "resources", "delegation", "chat-only", "extra"]);
+    ).toEqual([
+      "system-prompt",
+      "environment",
+      "resources",
+      "delegation",
+      "interruptions",
+      "chat-only",
+      "extra",
+    ]);
     expect(host.kernel.sessions.activation(session.id)).toEqual({ kind: "active" });
   });
 
@@ -228,7 +236,7 @@ describe("composeHost", () => {
     await views.return?.();
 
     const seeded = [
-      ...["system-prompt", "environment", "resources", "delegation"].map((id) => ({
+      ...["system-prompt", "environment", "resources", "delegation", "interruptions"].map((id) => ({
         id,
         source: "builtin",
         path: null,
