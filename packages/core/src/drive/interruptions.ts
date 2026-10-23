@@ -3,6 +3,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { RunRecord } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { headRef, runCallsPrefix, runRef } from "../store/refs.ts";
+import { withFold } from "../fold/reads.ts";
 import { liveRun, put } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
@@ -20,15 +21,23 @@ export function parkedFailure(record: RunRecord): Failure {
   };
 }
 
+/**
+ * Counts an interruption of the head's live run into the claim that takes it over: the previous
+ * holder's lease was still there (`foreign`), or a response it streamed was cut off, as when this
+ * host lost its own lease mid-stream.
+ */
 export async function interruption(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
+  foreign: boolean,
 ): Promise<readonly RefUpdate[]> {
   const live = await liveRun(kernel.store, session, head);
 
   if (live === null || kernel.executionState.driving.has(live.record.view.id)) return [];
   const run = live.record.view.id;
+
+  if (!foreign && !(await responseCut(kernel, session, run))) return [];
   const mark = await progressMark(kernel.store, session, head, run);
   const count = live.record.interrupted?.mark === mark ? live.record.interrupted.count + 1 : 1;
   dev("execution", "interrupted", { session, head, run, count });
@@ -40,6 +49,18 @@ export async function interruption(
       expect: live.ref.revision,
     },
   ];
+}
+
+/** Whether a response of the run was cut off: a text or thinking part is still live with no one driving the run, the parts `resumed` in turn.ts retries. */
+function responseCut(kernel: Kernel, session: SessionId, run: RunId): Promise<boolean> {
+  return withFold(kernel, session, (state) =>
+    [...state.parts.values()].some(
+      (part) =>
+        part.run === run &&
+        part.status.kind === "live" &&
+        (part.partKind === "text" || part.partKind === "thinking"),
+    ),
+  );
 }
 
 async function progressMark(

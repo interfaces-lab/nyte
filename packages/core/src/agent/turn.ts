@@ -127,7 +127,7 @@ const ABORTED: Failure = { class: "aborted", message: "The run was stopped." };
 
 const ORPHANED: Failure = {
   class: "runner",
-  message: "The host stopped while this response streamed.",
+  message: "The response was interrupted before it finished.",
 };
 
 export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
