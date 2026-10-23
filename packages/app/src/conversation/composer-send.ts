@@ -4,6 +4,8 @@ import type {
   ConfigurationPatch,
   Connection,
   Delivery,
+  MessageId,
+  ReceiptId,
   Session,
   SessionId,
   UserContent,
@@ -99,15 +101,68 @@ export function composerSendPlan(input: {
   };
 }
 
+/**
+ * Sends `content` in place of a message while it waits in the queue. `expect` is the history the
+ * queue was read from, so once the message has started, the host settles the send `stale` instead
+ * of editing the sent message and stopping its run.
+ */
+export async function reviseQueued(
+  session: Session,
+  message: MessageId,
+  content: UserContent,
+  options: { readonly id?: ReceiptId; readonly delivery: Delivery },
+): Promise<"revised" | "left"> {
+  const view = sessionWatch(session.id).value;
+  const waiting = view?.messages.find((shown) => shown.id === message);
+
+  if (
+    view === undefined ||
+    view.revision === null ||
+    waiting?.kind !== "user" ||
+    waiting.status.kind === "landed"
+  )
+    return "left";
+
+  const receipt = await session.send(content, {
+    ...options,
+    replace: message,
+    expect: view.revision,
+    running: "refuse",
+  });
+
+  const status = await receipt.status().catch(() => undefined);
+
+  if (status?.kind !== "settled") return "revised";
+
+  switch (status.outcome.kind) {
+    case "stale":
+    case "busy":
+    case "pending-input":
+    case "missing-target":
+    case "summary-failed":
+    case "withdrawn":
+      return "left";
+    case "completed":
+    case "stopped":
+    case "failed":
+      return "revised";
+    default: {
+      const _exhaustive: never = status.outcome;
+
+      return _exhaustive;
+    }
+  }
+}
+
 export async function sendComposerMessage(
   session: Session,
   plan: Extract<ComposerSendPlan, { kind: "message" }>,
   replacing?: UserMessage,
-): Promise<void> {
+): Promise<"sent" | "left"> {
   const id = asId<"receipt">(crypto.randomUUID());
   followTrace(session.id, id);
 
-  await traced("composer.submit", id, { session: session.id }, async () => {
+  return traced("composer.submit", id, { session: session.id }, async () => {
     const content = await uploadComposerContent(
       replacing === undefined
         ? plan.content
@@ -116,11 +171,18 @@ export async function sendComposerMessage(
 
     const draft = await admitDraft({ content, delivery: plan.delivery, session: session.id });
 
-    await session.send(draft.content, {
+    if (replacing === undefined) {
+      await session.send(draft.content, { id, delivery: draft.delivery });
+
+      return "sent";
+    }
+
+    const revised = await reviseQueued(session, replacing.id, draft.content, {
       id,
       delivery: draft.delivery,
-      ...(replacing !== undefined && { replace: replacing.id }),
     });
+
+    return revised === "revised" ? "sent" : "left";
   });
 }
 
@@ -151,7 +213,8 @@ type DeliveryOutcome =
   | { readonly kind: "empty" }
   | { readonly kind: "kept"; readonly message: string }
   | { readonly kind: "sent"; readonly note: string | undefined }
-  | { readonly kind: "refused"; readonly message: string };
+  | { readonly kind: "refused"; readonly message: string }
+  | { readonly kind: "left"; readonly message: string };
 
 interface ComposerDelivery {
   readonly sessionId: SessionId;
@@ -213,9 +276,12 @@ export async function deliverSubmission(input: ComposerDelivery): Promise<Delive
   }
 
   try {
-    await sendComposerMessage(session, plan, replacing);
-
-    return { kind: "sent", note: undefined };
+    return (await sendComposerMessage(session, plan, replacing)) === "sent"
+      ? { kind: "sent", note: undefined }
+      : {
+          kind: "left",
+          message: "That message was already sent. Your edit is back in the composer.",
+        };
   } catch (cause: unknown) {
     const failed =
       replacing === undefined ? "Couldn't send the message" : "Couldn't update the message";

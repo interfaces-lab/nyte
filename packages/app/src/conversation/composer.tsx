@@ -35,7 +35,7 @@ import { bindComposerFileDrop } from "./composer-file-drop.ts";
 import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerImageAttachment } from "./composer-files.ts";
 import { deliveryChoices, nextToSteer } from "./composer-keys.ts";
-import { deliverSubmission } from "./composer-send.ts";
+import { deliverSubmission, reviseQueued } from "./composer-send.ts";
 import { contentDraftText } from "./message-references.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { StatusDot } from "../components/ui.tsx";
@@ -307,6 +307,11 @@ export function Composer({
         refuse(outcome.message, { document, attachments: sentAttachments });
 
         return false;
+      case "left":
+        setPendingEdit(undefined);
+        refuse(outcome.message, { document, attachments: sentAttachments });
+
+        return false;
       case "sent":
         if (edit !== undefined) setPendingEdit(undefined);
 
@@ -351,12 +356,11 @@ export function Composer({
 
   const sendPendingNow = (item: UserMessage): void => {
     setRowAction(item.id, { kind: "sending" });
-    connection()
-      .session(sessionId)
-      .send(item.content, { replace: item.id, delivery: deliveryChoices.steer })
-      .catch((cause: unknown) =>
-        setRowAction(item.id, { kind: "failed", message: `Couldn't send: ${errorMessage(cause)}` }),
-      );
+    reviseQueued(connection().session(sessionId), item.id, item.content, {
+      delivery: deliveryChoices.steer,
+    }).catch((cause: unknown) =>
+      setRowAction(item.id, { kind: "failed", message: `Couldn't send: ${errorMessage(cause)}` }),
+    );
   };
 
   const nextQueued = nextToSteer(pending, deliveryChoices);
@@ -422,12 +426,11 @@ export function Composer({
   };
 
   const sendOutboxRowNow = (row: UserMessage): void => {
-    void connection()
-      .session(sessionId)
-      .send(row.content, { replace: row.id, delivery: deliveryChoices.steer })
-      .catch((cause: unknown) => {
-        setFeedback({ kind: "error", message: `Couldn't send: ${errorMessage(cause)}` });
-      });
+    void reviseQueued(connection().session(sessionId), row.id, row.content, {
+      delivery: deliveryChoices.steer,
+    }).catch((cause: unknown) => {
+      setFeedback({ kind: "error", message: `Couldn't send: ${errorMessage(cause)}` });
+    });
   };
 
   const returnToEditor = (): void => editorRef.current?.focus({ preventScroll: true });
