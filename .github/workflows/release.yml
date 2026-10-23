@@ -33,8 +33,8 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 45
     env:
       VITE_NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
       VITE_NYTE_CLERK_PUBLISHABLE_KEY: ${{ vars.NYTE_CLERK_PUBLISHABLE_KEY }}
@@ -129,11 +129,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
+          - runner: blacksmith-6vcpu-macos-15
             target: darwin-arm64
-          - runner: ubuntu-24.04
+          - runner: blacksmith-4vcpu-ubuntu-2404
             target: linux-x64
-          - runner: ubuntu-24.04-arm
+          - runner: blacksmith-4vcpu-ubuntu-2404-arm
             target: linux-arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
@@ -197,13 +197,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
+          - runner: blacksmith-6vcpu-macos-15
             target: mac-arm64
             args: --mac --arm64
-          - runner: ubuntu-24.04
+          - runner: blacksmith-4vcpu-ubuntu-2404
             target: linux-x64
             args: --linux
-          - runner: windows-2025
+          - runner: blacksmith-4vcpu-windows-2025
             target: windows-x64
             args: --win
     runs-on: ${{ matrix.runner }}
@@ -271,7 +271,7 @@ jobs:
 
   draft:
     needs: [tui, desktop]
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
     steps:
