@@ -84,6 +84,67 @@ test("keep awake holds while a head is live and lets go when its run ends", asyn
   await vi.waitFor(() => assert.deepEqual(awake, [true, false]));
 });
 
+test("a suspend ends the stream in flight and holds the chat until resume continues it", async () => {
+  const made = await desktop();
+  const connection = await connectLocal(made);
+
+  made.fake.reply(
+    { content: [{ type: "text", text: "A partial answer" }], hold: true },
+    { content: [{ type: "text", text: "l answer" }] },
+  );
+
+  const { session, receipt } = await connection.sessions.start({ name: "work", content: "Work" });
+
+  await vi.waitFor(async () =>
+    assert.ok(
+      (await session.view()).messages.some(
+        (message) => isPart(message, text) && message.state.markdown !== "",
+      ),
+    ),
+  );
+
+  made.host.suspend();
+  await vi.waitFor(() => assert.equal(made.fake.requests[0]?.options?.signal?.aborted, true));
+  await vi.waitFor(async () => assert.equal((await session.view()).execution.kind, "retrying"));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(made.fake.requests.length, 1);
+
+  made.host.resume();
+
+  assert.equal((await receipt.settled()).kind, "completed");
+  assert.equal(made.fake.requests.length, 2);
+  assert.deepEqual(
+    (await session.view()).messages.flatMap((message) =>
+      isPart(message, text) ? [message.state.markdown] : [],
+    ),
+    ["A partia", "l answer"],
+  );
+});
+
+test("with pause on sleep off, a suspend leaves the stream running", async () => {
+  const seen: boolean[] = [];
+  const made = await desktop({ settingsChanged: (settings) => seen.push(settings.pauseOnSleep) });
+  const connection = await connectLocal(made);
+
+  assert.deepEqual(await connection.settings.apply("desktop.pauseOnSleep", false), {
+    kind: "applied",
+  });
+  await vi.waitFor(() => assert.equal(seen.at(-1), false));
+  const finish = Promise.withResolvers<void>();
+  made.fake.reply({ content: [{ type: "text", text: "working" }], until: finish.promise });
+
+  const { receipt } = await connection.sessions.start({ name: "work", content: "Work" });
+  await vi.waitFor(() => assert.equal(made.fake.requests.length, 1));
+
+  made.host.suspend();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(made.fake.requests[0]?.options?.signal?.aborted, false);
+
+  finish.resolve();
+  assert.equal((await receipt.settled()).kind, "completed");
+  assert.equal(made.fake.requests.length, 1);
+});
+
 test("the desktop's settings reach main from the host view", async () => {
   const seen: boolean[] = [];
   const made = await desktop({ settingsChanged: (settings) => seen.push(settings.blockAds) });

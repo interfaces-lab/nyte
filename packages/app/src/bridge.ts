@@ -14,6 +14,7 @@ export interface HostSettings {
   readonly notifications: boolean;
   readonly unreadBadge: boolean;
   readonly keepAwake: boolean;
+  readonly pauseOnSleep: boolean;
   readonly terminalShell: string | null;
   readonly blockAds: boolean;
   readonly adblockAllowedHosts: readonly string[];

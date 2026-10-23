@@ -801,6 +801,7 @@ if (!hasSingleInstanceLock) {
 
     hostProcess = startHost();
     hostStarted.resolve(hostProcess);
+    powerMonitor.on("suspend", () => hostProcess?.suspend());
     powerMonitor.on("resume", () => hostProcess?.resume());
 
     const menu = Menu.buildFromTemplate(

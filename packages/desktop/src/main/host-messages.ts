@@ -44,6 +44,7 @@ export type MainMessage =
   | { readonly kind: "open"; readonly options: HostProcessOptions }
   | RpcMessage<MainAsk, MainAnswer>
   | { readonly kind: "release"; readonly window: HostWindow }
+  | { readonly kind: "suspend" }
   | { readonly kind: "resume" }
   | { readonly kind: "account"; readonly state: AccountState }
   | { readonly kind: "port" }

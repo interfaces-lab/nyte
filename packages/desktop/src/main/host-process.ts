@@ -118,6 +118,10 @@ export class HostProcess {
     this.#post({ kind: "release", window });
   }
 
+  suspend(): void {
+    this.#post({ kind: "suspend" });
+  }
+
   resume(): void {
     this.#post({ kind: "resume" });
   }
