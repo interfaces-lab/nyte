@@ -1,6 +1,9 @@
 packages:
   - packages/*
   - packages/examples/*
+catalog:
+  typescript: 6.0.3
+  "@typescript/native": npm:typescript@7.1.0-beta
 # The TUI bundle resolves @opentui/core's native module per libc, and a bundle
 # built for the wrong one cannot fall back at runtime. Installing both variants
 # for this machine's platform keeps the musl target buildable and lets

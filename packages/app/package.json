@@ -19,7 +19,7 @@
     "dev": "vite",
     "e2e": "pnpm --dir ../canvas build && pnpm build && playwright test --config e2e/playwright.config.ts",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e"
+    "typecheck": "tsrs --noEmit && tsrs --noEmit -p e2e"
   },
   "dependencies": {
     "@clerk/react": "^6.18.0",
@@ -65,7 +65,6 @@
     "@vitejs/plugin-react": "^6.1.2",
     "electron": "^45.0.0",
     "oxc-transform-react": "^0.155.0",
-    "typescript": "6.0.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
   }
