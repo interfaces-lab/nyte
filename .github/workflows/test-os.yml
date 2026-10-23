@@ -19,7 +19,7 @@ permissions:
 jobs:
   test:
     name: test (${{ inputs.os }}, ${{ inputs.filter }})
-    runs-on: ${{ inputs.os == 'linux' && 'blacksmith-8vcpu-ubuntu-2404' || inputs.os == 'windows' && 'blacksmith-4vcpu-windows-2025' || 'blacksmith-6vcpu-macos-15' }}
+    runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
     timeout-minutes: 45
     env:
       CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
