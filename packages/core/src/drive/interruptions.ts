@@ -63,7 +63,8 @@ function responseCut(kernel: Kernel, session: SessionId, run: RunId): Promise<bo
   );
 }
 
-async function progressMark(
+/** Where the head and the run's calls stand: an interruption at the same mark as the last made no progress in between. */
+export async function progressMark(
   store: StoreConnection,
   session: SessionId,
   head: HeadName,

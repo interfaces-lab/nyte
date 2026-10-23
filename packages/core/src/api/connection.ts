@@ -13,6 +13,7 @@ import type { Plugin } from "../contract/plugin.ts";
 import type { Head, Session } from "../contract/session.ts";
 import type { GitHubAccountApi, Workspace } from "../contract/workspace.ts";
 import { advance, cover, repair } from "../drive/execution.ts";
+import { pause, resume } from "../drive/pause.ts";
 import { createPrincipals, gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
 import { createSettingsApi } from "../extend/settings.ts";
@@ -214,6 +215,8 @@ export function createHost(
       cover: (coverage) => cover(kernel, coverage),
       advance: (step) => advance(kernel, step),
       repair: (page) => repair(kernel, page),
+      pause: () => pause(kernel),
+      resume: () => resume(kernel),
     },
   };
 }

@@ -776,6 +776,7 @@ describe("turn", () => {
     );
 
     await using host = await open(fake);
+    await host.settings.apply("continueInterrupted", false);
     const id = asId<"session">("chat");
     const logged = events(host.kernel, id);
     const { session, receipt: first } = await host.sessions.start({ id, content: "Go." });
@@ -808,7 +809,7 @@ describe("turn", () => {
     expect(fake.requests).toHaveLength(2);
   });
 
-  it("settles a response's parts only once it is done, so a retried attempt's parts all fail and none of its text is replayed", async () => {
+  it("with continueInterrupted off, settles a response's parts only once it is done, so a retried attempt's parts all fail and none of its text is replayed", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
     const fake = fakeModels();
 
@@ -824,6 +825,7 @@ describe("turn", () => {
     );
 
     await using host = await open(fake);
+    expect(await host.settings.apply("continueInterrupted", false)).toEqual({ kind: "applied" });
     const id = asId<"session">("chat");
     const logged = events(host.kernel, id);
     const { session, receipt: first } = await host.sessions.start({ id, content: "Go." });

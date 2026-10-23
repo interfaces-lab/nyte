@@ -74,6 +74,8 @@ export function createExecutionState(): ExecutionState {
     starting: new Map(),
     timer: null,
     closing: new AbortController(),
+    streams: new AbortController(),
+    paused: null,
   };
 }
 
