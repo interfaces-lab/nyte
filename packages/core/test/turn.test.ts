@@ -3,7 +3,14 @@ import { contentText } from "@nyte-ai/schema/model";
 import type { Infer, Message } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { isPart, text, thinking, tool } from "../src/index.ts";
-import { decodePartRecord, decodeRunRecord, memoryStore, partRef, runRef } from "../src/store.ts";
+import {
+  decodePartRecord,
+  decodeRunRecord,
+  leaseRef,
+  memoryStore,
+  partRef,
+  runRef,
+} from "../src/store.ts";
 import type { Plugin, Store, ToolDefinition } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import type { Reply } from "./fake-models.ts";
@@ -616,6 +623,77 @@ describe("turn", () => {
       expect.objectContaining({ kind: "ok", content: [{ kind: "text", text: "echo: two" }] }),
     ]);
     expect(fake.requests).toHaveLength(2);
+  });
+
+  it("fails a run whose response keeps getting cut off on the same host once the interruptions reach the cap, with no request after it", async () => {
+    const fake = fakeModels();
+    const shared = memoryStore();
+    let crashed = false;
+
+    const crashing: Store = {
+      ...shared,
+      async open() {
+        const backing = await shared.open();
+
+        return {
+          ...backing,
+          refs: {
+            ...backing.refs,
+            async set(updates) {
+              if (crashed) throw new Error("The host stopped.");
+
+              return backing.refs.set(updates);
+            },
+          },
+        };
+      },
+    };
+
+    const id = asId<"session">("chat");
+
+    for (let interrupted = 0; interrupted < 5; interrupted += 1) {
+      crashed = false;
+      fake.reply({ content: [{ type: "text", text: "A partial answer" }], hold: true });
+      const host = await open(fake, { store: crashing });
+
+      if (interrupted === 0) await host.sessions.start({ id, content: "Go." });
+
+      await until(async () =>
+        (await host.session(id).view()).messages.some(
+          (message) =>
+            isPart(message, text) &&
+            message.status.kind === "live" &&
+            message.state.markdown !== "" &&
+            message.id.includes(`:a${String(interrupted + 1)}:`),
+        )
+          ? true
+          : undefined,
+      );
+      crashed = true;
+      await host.close();
+      await (await shared.open()).refs.set([{ name: leaseRef(id, main), target: null }]);
+    }
+
+    crashed = false;
+    await using host = await open(fake, { store: crashing });
+
+    const ended = await until(async () => {
+      const { execution } = await host.session(id).view();
+
+      return execution.kind === "idle" && execution.lastRun !== null
+        ? execution.lastRun
+        : undefined;
+    });
+
+    expect(ended.end).toEqual({
+      kind: "failed",
+      failure: {
+        class: "runner",
+        message:
+          "Stopped after Nyte was interrupted 5 times while working on this, with no progress in between. Send a message to continue.",
+      },
+    });
+    expect(fake.requests).toHaveLength(5);
   });
 
   it("drops the calls a stopped run recorded but never opened, leaving no work owed", async () => {
