@@ -1,7 +1,7 @@
 # iOS companion
 
 - Read [README.md](README.md) and the root instructions.
-- Keep runtime and provider work in the host. Import remote data through `@nyte-ai/client` and `@nyte-ai/protocol`, including its Node-free session state; do not import `@nyte-ai/core` into Metro.
+- Keep runtime and provider work in the host. Import remote data through `@nyte-ai/sdk`, which hands you the host's `SessionView`, and shared presentation from `@nyte-ai/plugin/client/presentation`; draw the view and don't re-derive what the host already decided. Do not import `@nyte-ai/core` into Metro.
 - Use React Strict DOM's `css` and `html` for native styled elements. Use native libraries for keyboard, list, markdown, and system controls. Never emulate StyleX with a local wrapper.
 - Use native sheets through Expo UI or Expo Router. Prefer medium/large detents for short details. Preserve system swipe dismissal and wait for dismissal before pushing another screen.
 - Follow iOS Human Interface typography. Use semantic SwiftUI text styles and support Dynamic Type, including growing controls and 44pt minimum touch targets.
