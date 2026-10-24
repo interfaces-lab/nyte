@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { testRenderer } from "../../../test/renderer.ts";
 
 test(
-  "the question tray's label shares the title's edge and centres the chevron",
+  "the question tray lines its label up with the title and shows a failed answer or dismissal",
   { timeout: 60_000 },
   async () => {
     expect(
