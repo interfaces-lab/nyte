@@ -83,7 +83,7 @@ export function BlankConversation({
   const workspace = host.data.workspace;
   const catalog = useCatalog();
   const workspaceFiles = useMentionFiles(workspace !== undefined);
-  const workspaceCatalog = useWorkspaceCatalog();
+  const workspaceCatalog = useWorkspaceCatalog(workspace?.id);
   const actions = usePaneActions();
   useReleaseStartupReads(true);
   const viewStore = usePaneViewStateStore();

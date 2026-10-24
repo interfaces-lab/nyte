@@ -487,7 +487,7 @@ function ProviderRow({
         attempt?.deviceCode !== undefined ? (
           <DeviceCodePanel deviceCode={attempt.deviceCode} />
         ) : attempt?.browser !== undefined ? (
-          <BrowserSignInPanel provider={provider.id} browser={attempt.browser} />
+          <BrowserSignInPanel login={provider.id} browser={attempt.browser} />
         ) : keyFormOpen && apiKey !== undefined ? (
           <ApiKeyForm
             label="API key"

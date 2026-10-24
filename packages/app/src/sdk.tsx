@@ -7,6 +7,7 @@ import type {
   HostId,
   HostView,
   JobView,
+  McpView,
   PagedViews,
   SessionId,
   SessionInfo,
@@ -574,6 +575,10 @@ export async function loadEarlierMessages(session: SessionId, limit: number): Pr
 export const jobsWatch = watchFamily(
   (current, workspace: WorkspaceId): AsyncIterable<readonly JobView[]> =>
     current.workspace(workspace).jobs.watch(),
+);
+
+export const mcpWatch = watchFamily((current, workspace: WorkspaceId): AsyncIterable<McpView> =>
+  current.workspace(workspace).mcp.watch(),
 );
 
 export const gitStatusWatch = watchFamily(

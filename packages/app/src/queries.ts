@@ -606,10 +606,7 @@ export function useMentionFiles(enabled: boolean) {
   return useQuery(mentionFilesOptions(enabled));
 }
 
-export function useWorkspaceCatalog() {
-  const host = useHostState();
-  const workspace = host.data.workspace?.id;
-
+export function useWorkspaceCatalog(workspace: WorkspaceId | undefined) {
   return useQuery({
     queryKey: keys.workspaceCatalog(workspace),
     queryFn: async () => {
@@ -621,6 +618,19 @@ export function useWorkspaceCatalog() {
     staleTime: 10_000,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
+  });
+}
+
+export function useWorkspaceInfo(workspace: WorkspaceId | undefined) {
+  return useQuery({
+    queryKey: keys.workspaceInfo(workspace),
+    queryFn: async () => {
+      if (workspace === undefined) throw new Error("Open a workspace to read it");
+
+      return (await connected()).workspace(workspace).info();
+    },
+    enabled: workspace !== undefined,
+    staleTime: 60_000,
   });
 }
 

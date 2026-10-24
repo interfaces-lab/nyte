@@ -9,6 +9,7 @@ export const keys = {
   workspaces: ["workspaces"] as const,
   workspaceCatalog: (workspace: WorkspaceId | undefined) =>
     ["workspaces", "catalog", workspace] as const,
+  workspaceInfo: (workspace: WorkspaceId | undefined) => ["workspaces", "info", workspace] as const,
   firstFrameWorkspaces: ["first-frame", "workspaces"] as const,
   firstFrameRoots: ["first-frame", "roots"] as const,
   modelCatalog: (generation: string) => ["catalog", "models", generation] as const,

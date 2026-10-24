@@ -134,10 +134,10 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
 }
 
 export function BrowserSignInPanel({
-  provider,
+  login,
   browser,
 }: {
-  provider: string;
+  login: string;
   browser: BrowserSignIn;
 }): ReactElement {
   const host = linkHost(browser.url);
@@ -166,7 +166,7 @@ export function BrowserSignInPanel({
           {host === undefined ? "Open Sign-In Page" : `Open ${host}`}
         </ButtonLink>
       </div>
-      {acceptsCode && <AnswerForm answer={(code) => answerLogin(provider, code)} />}
+      {acceptsCode && <AnswerForm answer={(code) => answerLogin(login, code)} />}
       <span role="status" aria-live="polite" {...props(text.sm, styles.deviceCodeNote)}>
         {acceptsCode ? undefined : "Nyte connects on its own once you sign in."}
       </span>
