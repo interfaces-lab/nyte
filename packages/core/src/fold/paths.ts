@@ -175,7 +175,10 @@ function reflowTurns(draft: Draft, path: Path, from: number): void {
   }
 
   for (let position = from; position < path.messages.length; position += 1) {
-    const turn = draft.turns.get(path.messages[position].turn);
+    const message = path.messages[position];
+
+    if (message.kind === "user" && message.status.kind !== "landed") continue;
+    const turn = draft.turns.get(message.turn);
 
     if (turn === undefined || path.turnAt.has(turn.info.id)) continue;
     path.turnAt.set(turn.info.id, path.turns.length);

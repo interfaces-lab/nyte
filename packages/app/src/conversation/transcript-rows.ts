@@ -80,7 +80,6 @@ function runState(view: SessionView | undefined) {
   };
 }
 
-/** A run is live, or a prompt waits to start one. A held run waits only for the reader's prompts. */
 function readWorking(running: boolean, held: boolean, prompts: readonly UserMessage[]): boolean {
   return (
     running ||
