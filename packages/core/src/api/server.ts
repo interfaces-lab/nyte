@@ -2,6 +2,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { ServerHost } from "../contract/server.ts";
 import { driveInProcess } from "../drive/execution.ts";
 import { applyBatch, heldReceipt } from "../engine/batches.ts";
+import { leaseHold, releaseHold } from "../engine/holds.ts";
 import { move } from "../engine/move.ts";
 import { authenticateToken, redeemPairing } from "../engine/principals.ts";
 import { sendReceipt } from "../engine/receipts.ts";
@@ -33,6 +34,8 @@ export function createServerHost(kernel: Kernel): ServerHost {
     loaded: (plugin) => kernel.plugins.host.includes(plugin),
     wire: {
       move: (session, head, position, options) => move(kernel, session, head, position, options),
+      hold: (session, head, message) => leaseHold(kernel, session, head, message),
+      release: (session, head, message) => releaseHold(kernel, session, head, message),
       batch: (workspace, files, entries, id) =>
         applyBatch(kernel, { workspace }, files, entries, { id }),
       batchReceipt: (id) => heldReceipt(kernel, id),

@@ -82,6 +82,26 @@ export const MoveOutcomeType = Type.Union([
 
 export type MoveOutcome = Decoded<typeof MoveOutcomeType>;
 
+export const HoldLeaseType = Type.Union([
+  Type.Object({ kind: Type.Literal("held") }),
+  Type.Object({ kind: Type.Literal("sent") }),
+  Type.Object({ kind: Type.Literal("missing") }),
+]);
+
+export type HoldLease = Decoded<typeof HoldLeaseType>;
+
+export const ReviseOptionsType = Type.Object({ delivery: Type.Optional(DeliveryType) });
+
+export type ReviseOptions = Decoded<typeof ReviseOptionsType>;
+
+export const ReviseOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("revised") }),
+  Type.Object({ kind: Type.Literal("sent") }),
+  Type.Object({ kind: Type.Literal("missing") }),
+]);
+
+export type ReviseOutcome = Decoded<typeof ReviseOutcomeType>;
+
 export const MoveOptionsType = Type.Object({
   running: Type.Optional(Type.Enum(["refuse", "stop"])),
   abandoned: Type.Optional(ABANDONED),

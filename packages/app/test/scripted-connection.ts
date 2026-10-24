@@ -109,6 +109,8 @@ export function scriptedConnection(script: ConnectionScript = {}): {
 
         return refuse();
       },
+      revise: refuse,
+      hold: refuse,
       configure: refuse,
       view: async () => {
         const last = stream?.latest() ?? views?.at(-1);

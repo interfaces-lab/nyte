@@ -138,15 +138,21 @@ export async function readInbox(
   const ref = await store.refs.get(inboxRef(session, head));
 
   const record = (await load(store, ref, decodeInboxRecord))?.record;
+  const inbox = { ref, messages: record?.messages ?? [], pendingInput: record?.pendingInput ?? [] };
+  const hold = record?.hold;
 
-  return { ref, messages: record?.messages ?? [], pendingInput: record?.pendingInput ?? [] };
+  return hold === undefined || hold.until <= Date.now() ? inbox : { ...inbox, hold };
 }
 
 export function inboxWithout(inbox: Inbox, ids: readonly MessageId[]): InboxRecord {
-  return {
+  const kept = {
     messages: inbox.messages.filter((message) => !ids.includes(message)),
     pendingInput: inbox.pendingInput.filter((message) => !ids.includes(message)),
   };
+
+  const { hold } = inbox;
+
+  return hold === undefined || ids.includes(hold.message) ? kept : { ...kept, hold };
 }
 
 export async function liveRuns(
