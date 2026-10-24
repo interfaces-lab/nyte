@@ -202,6 +202,8 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
 
   if (due === null) return { kind: "idle" };
 
+  if (due.kind === "held") return { kind: "retry", until: due.until };
+
   const run = await newRun(
     kernel.store,
     session,
@@ -838,11 +840,16 @@ async function dueInputs(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
-): Promise<{
-  readonly origin: RunView["origin"];
-  readonly input: FoldInput;
-  readonly ids: readonly MessageId[];
-} | null> {
+): Promise<
+  | {
+      readonly kind: "start";
+      readonly origin: RunView["origin"];
+      readonly input: FoldInput;
+      readonly ids: readonly MessageId[];
+    }
+  | { readonly kind: "held"; readonly until: number }
+  | null
+> {
   const inbox = await readInbox(kernel.store, session, head);
 
   if (inbox.messages.length === 0) return null;
@@ -856,27 +863,35 @@ async function dueInputs(
   const { inputs, start } = read;
 
   if (start === null) return null;
+  const { hold } = inbox;
+
+  if (hold?.message === start.input.id) return { kind: "held", until: hold.until };
   const key = await objectId(start.input.configuration);
   const ids: MessageId[] = [];
 
   for (const input of inputs)
     if (
-      input === start.input ||
-      input.delivery === "attach" ||
-      (input.delivery === "steer" && (await objectId(input.configuration)) === key)
+      input.id !== hold?.message &&
+      (input === start.input ||
+        input.delivery === "attach" ||
+        (input.delivery === "steer" && (await objectId(input.configuration)) === key))
     )
       ids.push(input.id);
 
-  return { ...start, ids };
+  return { kind: "start", ...start, ids };
 }
 
 async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise<AdvanceReport> {
   const live = await liveRun(kernel.store, session, head);
 
-  if (live === null)
-    return (await dueInputs(kernel, session, head)) === null
-      ? { kind: "idle" }
-      : { kind: "continue" };
+  if (live === null) {
+    const due = await dueInputs(kernel, session, head);
+
+    if (due?.kind === "held") return { kind: "retry", until: due.until };
+
+    return due === null ? { kind: "idle" } : { kind: "continue" };
+  }
+
   const { record } = live;
   const run = record.view.id;
 

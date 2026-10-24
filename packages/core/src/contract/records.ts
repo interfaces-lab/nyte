@@ -97,6 +97,7 @@ export type CommitRecord = Static<typeof CommitRecordType>;
 const InboxRecordType = record({
   messages: list(idSchema<"message">()),
   pendingInput: list(idSchema<"message">()),
+  hold: Type.Optional(record({ message: idSchema<"message">(), until: Type.Number() })),
 });
 
 export type InboxRecord = Static<typeof InboxRecordType>;

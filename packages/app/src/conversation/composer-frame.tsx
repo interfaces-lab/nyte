@@ -6,6 +6,7 @@ import type { DragEvent, ReactElement, ReactNode } from "react";
 import type { CommandCompletion, Delivery } from "@nyte-ai/sdk";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
+import { Icon } from "@nyte-ai/ui/icon";
 import { nyte } from "../nyte.ts";
 import type { RunningMessagePreference } from "../preferences/index.ts";
 import { ImagePreview } from "./image-preview.tsx";
@@ -52,7 +53,7 @@ interface ComposerFrameProps {
     submission: ComposerSubmission,
     delivery: Delivery,
     document: ComposerDocumentState,
-  ) => boolean | Promise<boolean>;
+  ) => void | Promise<void>;
   placeholder: string;
   disabled?: boolean;
   busy?: boolean;
@@ -146,7 +147,7 @@ export function ComposerFrame({
   const hasSubmission = document.text.trim() !== "" || attachments.length > 0 || hasInstructionChip;
   const canSubmit = !disabled && !submitting && !attachmentBusy && hasSubmission;
   const messageEdit = editing?.kind === "message";
-  const collapsed = surface === "follow-up" && narrow && !focused && !messageEdit;
+  const collapsed = surface === "follow-up" && narrow && !focused && !messageEdit && !submitting;
 
   const geometry: ComposerGeometry =
     surface === "new-chat"
@@ -172,11 +173,9 @@ export function ComposerFrame({
 
   const sendTitle =
     editing?.kind === "queued"
-      ? busy
-        ? "Update and Interrupt (Enter)"
-        : editing.delivery === deliveryChoices.steer
-          ? `Update (Enter) · Queue Instead (${modifier}Enter)`
-          : `Update (Enter) · Steer Instead (${modifier}Enter)`
+      ? editing.delivery === deliveryChoices.steer
+        ? `Update (Enter) · Queue Instead (${modifier}Enter)`
+        : `Update (Enter) · Steer Instead (${modifier}Enter)`
       : editing?.kind === "message"
         ? "Send Edited Message (Enter)"
         : answering
@@ -259,10 +258,33 @@ export function ComposerFrame({
         ),
         currentDocument,
       ),
-    )
-      .then(() => undefined)
-      .finally(() => setSubmitting(false));
+    ).finally(() => setSubmitting(false));
   };
+
+  const editingIndicator =
+    editing?.kind !== "queued" || collapsed ? undefined : (
+      <div
+        {...props(
+          text.sm,
+          composerStyles.editingIndicator,
+          compact && composerStyles.editingIndicatorCompact,
+        )}
+      >
+        <Icon name="pencil" size={14} />
+        <span role="status" {...props(composerStyles.queuedText)}>
+          Editing queued message
+        </span>
+        <Button
+          size="xs"
+          iconOnly
+          icon="x"
+          aria-label="Cancel editing"
+          title="Cancel Editing (Esc)"
+          disabled={submitting}
+          onClick={editing.onCancel}
+        />
+      </div>
+    );
 
   const attachmentList =
     collapsed || attachments.length === 0 ? undefined : (
@@ -415,6 +437,7 @@ export function ComposerFrame({
           }}
         />
       )}
+      {editingIndicator}
       {attachmentList}
       {attachmentAlert}
       <div

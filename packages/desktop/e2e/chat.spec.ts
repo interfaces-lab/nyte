@@ -132,6 +132,47 @@ test("a steer sent during a response shows in the transcript, never in the queue
   await expect(messages(page).getByRole("paragraph").last()).toHaveText("Echo: Steer in");
 });
 
+test("a queued message waits in the queue until the response stops; a steer stays faded until the run takes it", async ({
+  desktop,
+}) => {
+  const { page } = desktop;
+  const log = messages(page);
+  const field = composer(page);
+  const queue = page.getByRole("region", { name: "Queued messages" });
+  const stop = chatPane(page).getByRole("button", { name: "Stop response" });
+  await openNewChat(page);
+  await send(page, "/hold");
+  await expect(log.getByRole("paragraph").last()).toContainText("Holding");
+  await field.fill("Queued while holding");
+  await field.press("ControlOrMeta+Enter");
+  const queued = queue.getByRole("listitem").filter({ hasText: "Queued while holding" });
+  await queued.hover();
+  await expect(queued.getByRole("button", { name: "Add to next response" })).toBeVisible();
+  await expect(queued).toBeVisible();
+  await expect(log.getByText("Queued while holding")).toHaveCount(0);
+  await stop.press("Enter");
+  await expect(
+    log.getByRole("paragraph").filter({ hasText: /^Queued while holding$/u }),
+  ).toBeVisible();
+  await expect(queue).toHaveCount(0);
+  await expect(log.getByRole("paragraph").last()).toHaveText("Echo: Queued while holding");
+  await expect(stop).toBeHidden();
+
+  await send(page, "/hold");
+  await expect(log.getByRole("paragraph").last()).toContainText("Holding");
+  await field.fill("Steer while holding");
+  await field.press("Enter");
+
+  const steer = log
+    .locator("[data-sticky-user-message]")
+    .filter({ hasText: "Steer while holding" });
+
+  await expect(steer).toHaveCSS("opacity", "0.6");
+  await stop.press("Enter");
+  await expect(log.getByRole("paragraph").last()).toHaveText("Echo: Steer while holding");
+  await expect(steer).toHaveCSS("opacity", "1");
+});
+
 test("a refused turn shows the provider's error", async ({ desktop }) => {
   const { page } = desktop;
   await openNewChat(page);

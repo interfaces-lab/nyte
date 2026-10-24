@@ -1,9 +1,13 @@
-import { create } from "@stylexjs/stylex";
+import { create, keyframes } from "@stylexjs/stylex";
 import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const CODE_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`;
+
+export const FADE_MS = 150;
+
+const chunkFadeIn = keyframes({ from: { opacity: 0 }, to: { opacity: 1 } });
 
 export const proseStyles = create({
   root: {
@@ -184,6 +188,12 @@ export const proseStyles = create({
     whiteSpace: "pre",
   },
   imageLabel: { color: role.contentSecondary },
+  chunk: {
+    animationName: chunkFadeIn,
+    animationDuration: `${FADE_MS}ms`,
+    animationTimingFunction: "linear",
+    animationFillMode: "backwards",
+  },
 });
 
 export const codeBlockStyles = create({

@@ -35,12 +35,19 @@ type DurableStepGroupPresentation =
       readonly removed: number;
     };
 
-function activityLabel(running: readonly ToolClass[]): string | undefined {
-  const newest = running.at(-1);
+export const PLANNING_DELAY_MS = 200;
 
-  if (newest === undefined) return undefined;
+export const SLOW_PLANNING_MS = 15_000;
 
-  switch (newest.kind) {
+export const PLANNING_LABEL = "Planning next moves";
+
+export type LiveStatus =
+  | { readonly kind: "tool"; readonly toolClass: ToolClass }
+  | { readonly kind: "thinking" }
+  | { readonly kind: "planning" };
+
+function activityLabel(toolClass: ToolClass): string {
+  switch (toolClass.kind) {
     case "read":
     case "list":
       return "Exploring";
@@ -49,11 +56,11 @@ function activityLabel(running: readonly ToolClass[]): string | undefined {
     case "edit":
       return "Editing";
     case "delegate":
-      return toolVerbs(newest).running;
+      return toolVerbs(toolClass).running;
     case "custom":
-      return toolTitle(newest, "running");
+      return toolTitle(toolClass, "running");
     default: {
-      const _exhaustive: never = newest;
+      const _exhaustive: never = toolClass;
 
       return _exhaustive;
     }
@@ -237,23 +244,43 @@ export function liveStepGroupPresentation({
 }: {
   readonly durable: DurableStepGroupPresentation;
   readonly messages: readonly StepMessage[];
-}) {
+}):
+  | Extract<DurableStepGroupPresentation, { readonly active: false }>
+  | {
+      readonly active: true;
+      readonly status: LiveStatus;
+      readonly summary: { readonly added: number; readonly removed: number };
+    } {
   if (!durable.active) return durable;
+  const toolClass = durable.runningClasses.at(-1);
   const newest = messages.at(-1);
-
-  const verb =
-    activityLabel(durable.runningClasses) ??
-    (newest !== undefined && showsThinking(newest) && newest.status.kind === "live"
-      ? "Thinking"
-      : "Working");
 
   return {
     active: true,
-    summary: {
-      verb,
-      detail: undefined,
-      added: durable.added,
-      removed: durable.removed,
-    },
+    status:
+      toolClass !== undefined
+        ? { kind: "tool", toolClass }
+        : newest !== undefined && showsThinking(newest) && newest.status.kind === "live"
+          ? { kind: "thinking" }
+          : { kind: "planning" },
+    summary: { added: durable.added, removed: durable.removed },
   };
+}
+
+export function liveStatusLabel(status: LiveStatus, planningMs: number): string | undefined {
+  switch (status.kind) {
+    case "tool":
+      return activityLabel(status.toolClass);
+    case "thinking":
+      return "Thinking";
+    case "planning":
+      if (planningMs < PLANNING_DELAY_MS) return undefined;
+
+      return planningMs < SLOW_PLANNING_MS ? PLANNING_LABEL : "Taking longer than expected…";
+    default: {
+      const _exhaustive: never = status;
+
+      return _exhaustive;
+    }
+  }
 }

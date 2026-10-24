@@ -108,7 +108,7 @@ function RowView({
         </StatusMarker>
       );
     case "live":
-      return <LiveTurn working={working} settledWork={settledWork} density={density} cwd={CWD} />;
+      return <LiveTurn working={working} settledWork={settledWork} />;
     default: {
       const _exhaustive: never = row;
 

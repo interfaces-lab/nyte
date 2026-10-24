@@ -1,6 +1,6 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
-import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
 import { showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
@@ -16,20 +16,22 @@ import { Prose } from "./prose.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
-import {
-  FOLLOW_INPUT_MS,
-  FOLLOW_RESUME_MS,
-  followOnScroll,
-  overflows,
-} from "./step-group-follow.ts";
+import { nextPin, PINNED } from "./step-group-pin.ts";
+import type { StepGroupPinEvent } from "./step-group-pin.ts";
 import { useStepGroupOpen } from "./step-group-open.ts";
 import { stepGroupContent } from "./step-group-content.ts";
 import {
   durableStepGroupPresentation,
+  liveStatusLabel,
   liveStepGroupPresentation,
+  PLANNING_LABEL,
 } from "./step-group-presentation.ts";
+import type { LiveStatus } from "./step-group-presentation.ts";
+import { usePlanningTime } from "./planning-time.ts";
 
 const STEP_LIMIT = 200;
+
+const LABEL_THROTTLE_MS = 200;
 
 const FOCUSABLE = "a[href], button, [tabindex]";
 
@@ -45,12 +47,14 @@ function StepLineView({
   density,
   thinkingOnly,
   titled,
+  live,
 }: {
   entry: StepLine;
   cwd: string | undefined;
   density: ToolCallDensity;
   thinkingOnly: boolean;
   titled: boolean;
+  live: boolean;
 }): ReactElement | null {
   const { message } = entry;
 
@@ -69,7 +73,46 @@ function StepLineView({
     );
   }
 
-  return <ThinkingLine text={entry.markdown} streaming={streaming} />;
+  return <ThinkingLine text={entry.markdown} streaming={streaming} live={live} />;
+}
+
+function useSteadyLabel(label: string | undefined): string {
+  const [shown, setShown] = useState(label ?? PLANNING_LABEL);
+  const changedAt = useRef<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const now = performance.now();
+    const changed = changedAt.current ?? now;
+    changedAt.current = changed;
+
+    if (label === undefined || label === shown) return undefined;
+
+    const show = (): void => {
+      changedAt.current = performance.now();
+      setShown(label);
+    };
+
+    const wait = changed + LABEL_THROTTLE_MS - now;
+
+    if (wait <= 0) {
+      show();
+
+      return undefined;
+    }
+
+    const timer = window.setTimeout(show, wait);
+
+    return () => window.clearTimeout(timer);
+  }, [label, shown]);
+
+  return shown;
+}
+
+function LiveStepVerb({ status }: { status: LiveStatus }): ReactElement {
+  const planningMs = usePlanningTime(status.kind === "planning");
+  const label = useSteadyLabel(liveStatusLabel(status, planningMs));
+
+  return <span {...props(stepGroupStyles.verb, activityStyles.shimmer)}>{label}</span>;
 }
 
 export function StepGroupView({
@@ -95,50 +138,44 @@ export function StepGroupView({
   const durationMs =
     first === undefined ? 0 : Math.max(0, (running ? now : (lastAt ?? first.at)) - first.at);
 
-  const durablePresentation = useMemo(
-    () => durableStepGroupPresentation({ messages, durationMs, added, removed, running }),
-    [added, durationMs, messages, removed, running],
-  );
+  const presentation = liveStepGroupPresentation({
+    durable: durableStepGroupPresentation({ messages, durationMs, added, removed, running }),
+    messages,
+  });
 
-  const presentation = useMemo(
-    () => liveStepGroupPresentation({ durable: durablePresentation, messages }),
-    [durablePresentation, messages],
-  );
-
-  const { active, summary } = presentation;
+  const active = presentation.active;
+  const summary = presentation.summary;
 
   const thinkingOnly = messages.every(showsThinking);
 
-  const entries = useMemo(
-    () =>
-      messages.reduce<StepLine[]>((merged, message) => {
-        const previous = merged.at(-1);
+  const entries = messages
+    .filter((message) => showsTool(message) || message.state.markdown.trim() !== "")
+    .reduce<StepLine[]>((merged, message) => {
+      const previous = merged.at(-1);
 
-        if (
-          !thinkingOnly &&
-          showsThinking(message) &&
-          previous !== undefined &&
-          showsThinking(previous.message)
-        ) {
-          merged[merged.length - 1] = {
-            ...previous,
-            message,
-            markdown: `${previous.markdown}\n\n${message.state.markdown}`,
-          };
-
-          return merged;
-        }
-
-        merged.push({
-          key: message.id,
+      if (
+        !thinkingOnly &&
+        showsThinking(message) &&
+        previous !== undefined &&
+        showsThinking(previous.message)
+      ) {
+        merged[merged.length - 1] = {
+          ...previous,
           message,
-          markdown: showsThinking(message) ? message.state.markdown : "",
-        });
+          markdown: `${previous.markdown}\n\n${message.state.markdown}`,
+        };
 
         return merged;
-      }, []),
-    [messages, thinkingOnly],
-  );
+      }
+
+      merged.push({
+        key: message.id,
+        message,
+        markdown: showsThinking(message) ? message.state.markdown : "",
+      });
+
+      return merged;
+    }, []);
 
   const [open, setOpen] = useStepGroupOpen(first?.id);
 
@@ -170,96 +207,75 @@ export function StepGroupView({
   const viewportRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const callsRef = useRef<HTMLDivElement>(null);
+  const pinRef = useRef(PINNED);
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
 
-    if (viewport === null || !preview) return undefined;
+    if (viewport === null || !preview) {
+      pinRef.current = PINNED;
 
-    let paused = false;
-    let held = false;
-    let input = Number.NEGATIVE_INFINITY;
-    let resumeTimer = 0;
-
-    const clearResume = (): void => {
-      if (resumeTimer === 0) return;
-      window.clearTimeout(resumeTimer);
-      resumeTimer = 0;
-    };
+      return undefined;
+    }
 
     const follow = (): void => {
-      clearResume();
-      paused = false;
-      viewport.scrollTop = viewport.scrollHeight;
+      viewport.toggleAttribute("data-overflow", viewport.scrollHeight > viewport.clientHeight);
+
+      if (pinRef.current.pinned) viewport.scrollTop = viewport.scrollHeight;
     };
 
-    const sync = (): void => {
-      viewport.toggleAttribute("data-overflow", overflows(viewport));
-
-      if (!paused) viewport.scrollTop = viewport.scrollHeight;
+    const record = (event: StepGroupPinEvent): void => {
+      pinRef.current = nextPin(pinRef.current, event);
     };
 
-    const onInput = (): void => {
-      input = performance.now();
-
-      if (!paused) return;
-      clearResume();
-      resumeTimer = window.setTimeout(follow, FOLLOW_RESUME_MS);
-    };
-
-    const onPress = (): void => {
-      held = true;
-    };
-
-    const onRelease = (): void => {
-      held = false;
-    };
-
-    const onScroll = (): void => {
-      const step = followOnScroll(viewport, held || performance.now() - input < FOLLOW_INPUT_MS);
-
-      if (step === undefined) {
-        sync();
-
-        return;
-      }
-
-      paused = step.paused;
-      clearResume();
-
-      if (step.resumeTimer === "arm") resumeTimer = window.setTimeout(follow, FOLLOW_RESUME_MS);
-    };
-
-    sync();
-    const observer = new ResizeObserver(sync);
+    const input = (event: Event): void => record({ kind: "input", at: event.timeStamp });
+    const lift = (): void => record({ kind: "pointer", down: false });
+    const listeners = new AbortController();
+    const options = { passive: true, signal: listeners.signal };
+    viewport.addEventListener("wheel", input, options);
+    viewport.addEventListener("touchmove", input, options);
+    viewport.addEventListener("keydown", input, options);
+    viewport.addEventListener(
+      "pointerdown",
+      () => record({ kind: "pointer", down: true }),
+      options,
+    );
+    window.addEventListener("pointerup", lift, options);
+    window.addEventListener("pointercancel", lift, options);
+    viewport.addEventListener(
+      "scroll",
+      (event) => {
+        record({
+          kind: "scrolled",
+          at: event.timeStamp,
+          scrollTop: viewport.scrollTop,
+          scrollHeight: viewport.scrollHeight,
+          clientHeight: viewport.clientHeight,
+        });
+        follow();
+      },
+      options,
+    );
+    follow();
+    const observer = new ResizeObserver(follow);
     observer.observe(viewport);
 
     for (const child of viewport.children) observer.observe(child);
-    viewport.addEventListener("scroll", onScroll, { passive: true });
-    viewport.addEventListener("wheel", onInput, { passive: true });
-    viewport.addEventListener("touchmove", onInput, { passive: true });
-    viewport.addEventListener("keydown", onInput);
-    viewport.addEventListener("pointerdown", onPress);
-    window.addEventListener("pointerup", onRelease);
-    window.addEventListener("pointercancel", onRelease);
 
     return () => {
-      clearResume();
+      listeners.abort();
       observer.disconnect();
-      viewport.removeEventListener("scroll", onScroll);
-      viewport.removeEventListener("wheel", onInput);
-      viewport.removeEventListener("touchmove", onInput);
-      viewport.removeEventListener("keydown", onInput);
-      viewport.removeEventListener("pointerdown", onPress);
-      window.removeEventListener("pointerup", onRelease);
-      window.removeEventListener("pointercancel", onRelease);
     };
   }, [preview]);
 
   const summaryLine = (
     <>
-      <span {...props(stepGroupStyles.verb, active && activityStyles.shimmer)}>{summary.verb}</span>
-      {summary.detail !== undefined && (
-        <span {...props(stepGroupStyles.summary)}>{summary.detail}</span>
+      {presentation.active ? (
+        <LiveStepVerb status={presentation.status} />
+      ) : (
+        <span {...props(stepGroupStyles.verb)}>{presentation.summary.verb}</span>
+      )}
+      {!presentation.active && presentation.summary.detail !== undefined && (
+        <span {...props(stepGroupStyles.summary)}>{presentation.summary.detail}</span>
       )}
       {(summary.added > 0 || summary.removed > 0) && (
         <span {...props(stepGroupStyles.stats)}>
@@ -337,6 +353,7 @@ export function StepGroupView({
                 density={density}
                 thinkingOnly={thinkingOnly}
                 titled={titled}
+                live={active}
               />
             ))}
           </div>

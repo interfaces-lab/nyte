@@ -26,7 +26,7 @@ import type { Part, PartDefinition } from "../contract/parts.ts";
 import { decodeSeenRecord, decodeSessionRecord } from "../contract/records.ts";
 import type { HeadRecord, RunRecord, SessionRecord } from "../contract/records.ts";
 import type { Head, Session, Sessions } from "../contract/session.ts";
-import { admitDeciding, sendNow } from "../engine/admission.ts";
+import { admitDeciding } from "../engine/admission.ts";
 import { refusalError, staticContributions } from "../engine/contributions.ts";
 import { recordAcquisition } from "../engine/durable.ts";
 import { stopRun } from "../engine/fence.ts";
@@ -146,7 +146,7 @@ export function activationSession(
   id: SessionId,
 ): Session {
   const head = (name: HeadName): Head => ({
-    ...headHandle(kernel, context, id, name, sendNow),
+    ...headHandle(kernel, context, id, name, true),
     configure: (patch) => configure(kernel, id, name, patch, true),
   });
 

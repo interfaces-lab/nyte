@@ -279,35 +279,35 @@ export function UserMessageView({
       );
   };
 
-  const save = async (submission: ComposerSubmission): Promise<boolean> => {
-    if (edit === undefined || edit.saving || onEdit === undefined) return false;
+  const save = async (submission: ComposerSubmission): Promise<void> => {
+    if (edit === undefined || edit.saving || onEdit === undefined) return;
     const draft = composerMessageContent(submission.parts, edit.attachments, edit.kept);
 
     if (composerContentEmpty(draft)) {
       setEdit({ ...edit, error: "A message cannot be empty." });
 
-      return false;
+      return;
     }
 
     setEdit({ ...edit, saving: true, error: undefined });
     const messages = rowRef.current?.closest<HTMLElement>('[role="region"]');
+    const choice = { model: edit.model, thinkingLevel: edit.thinkingLevel, fast: edit.fast };
 
-    try {
-      const next = await uploadComposerContent(draft);
-      await onEdit(next, {
-        model: edit.model,
-        thinkingLevel: edit.thinkingLevel,
-        fast: edit.fast,
-      });
-      setEdit(undefined);
-      messages?.focus({ preventScroll: true });
+    const failure = await uploadComposerContent(draft)
+      .then((next) => onEdit(next, choice))
+      .then(
+        () => undefined,
+        (cause: unknown) => errorMessage(cause),
+      );
 
-      return true;
-    } catch (cause: unknown) {
-      patchEdit((current) => ({ ...current, saving: false, error: errorMessage(cause) }));
+    if (failure !== undefined) {
+      patchEdit((current) => ({ ...current, saving: false, error: failure }));
 
-      return false;
+      return;
     }
+
+    setEdit(undefined);
+    messages?.focus({ preventScroll: true });
   };
 
   const modelPicker =

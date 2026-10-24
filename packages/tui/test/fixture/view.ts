@@ -212,24 +212,13 @@ export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionVie
       return view;
     },
     pending(text, status, options) {
-      const message = input(text, options, {
-        kind: "pending",
-        schedule: buildSchedule(status.schedule),
-        covered: status.covered ?? true,
-      });
-
-      messages.push(message);
-      turns.push({
-        id: message.turn,
-        run: null,
-        prompt: message.id,
-        state: { kind: "working", activity: null },
-        startedAt: message.at,
-        endedAt: null,
-        steps: 0,
-        thinkingOnly: false,
-        summary: EMPTY_SUMMARY,
-      });
+      messages.push(
+        input(text, options, {
+          kind: "pending",
+          schedule: buildSchedule(status.schedule),
+          covered: status.covered ?? true,
+        }),
+      );
 
       return view;
     },

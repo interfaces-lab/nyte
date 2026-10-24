@@ -260,6 +260,15 @@ export const composerStyles = create({
     borderRadius: "inherit",
   },
   fileInput: { display: "none" },
+  editingIndicator: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.s1_5,
+    marginInline: `${space.s3} ${space.s2_5}`,
+    paddingBlockStart: space.s1_5,
+    color: role.contentSecondary,
+  },
+  editingIndicatorCompact: { marginInline: space.s0_5 },
   attachments: {
     display: "flex",
     gap: space.s2,

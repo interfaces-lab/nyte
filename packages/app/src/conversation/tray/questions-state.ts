@@ -86,6 +86,12 @@ function fieldAnswers(field: FieldDraft): string[] {
   }
 }
 
+export type QuestionOutcome =
+  | { readonly kind: "blocked" }
+  | { readonly kind: "next" }
+  | { readonly kind: "sent" }
+  | { readonly kind: "failed" };
+
 export interface QuestionDock {
   readonly request: OpenQuestion;
   readonly field: QuestionInfo;
@@ -102,8 +108,8 @@ export interface QuestionDock {
   readonly select: (label: string) => void;
   readonly changeDocument: (document: ComposerDocumentState) => void;
   readonly jump: (index: number) => void;
-  readonly advance: (document?: ComposerDocumentState) => Promise<void>;
-  readonly dismiss: () => Promise<void>;
+  readonly advance: (document?: ComposerDocumentState) => Promise<QuestionOutcome>;
+  readonly dismiss: () => Promise<Exclude<QuestionOutcome, { readonly kind: "next" }>>;
 }
 
 export const QuestionDockContext = createContext<QuestionDock | undefined>(undefined);
@@ -257,6 +263,20 @@ export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined 
 
   const last = draft.current === draft.fields.length - 1;
 
+  const sendReply = (answers: QuestionAnswers | null) => {
+    submitting.current = true;
+
+    return reply
+      .mutateAsync({ sessionId: active.sessionId, request: active.request, answers })
+      .then(
+        () => ({ kind: "sent" }) as const,
+        () => ({ kind: "failed" }) as const,
+      )
+      .finally(() => {
+        submitting.current = false;
+      });
+  };
+
   return {
     request: active.request,
     field,
@@ -302,7 +322,7 @@ export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined 
         save({ ...draft, current });
     },
     advance: async (document) => {
-      if (blocked || submitting.current) return;
+      if (blocked || submitting.current) return { kind: "blocked" };
 
       const fields =
         document === undefined || document.text === displayed.text
@@ -316,37 +336,17 @@ export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined 
       if (!last) {
         save({ ...next, current: draft.current + 1 });
 
-        return;
+        return { kind: "next" };
       }
 
       save(next);
-      submitting.current = true;
 
-      return reply
-        .mutateAsync({
-          sessionId: active.sessionId,
-          request: active.request,
-          answers: fields.map(fieldAnswers),
-        })
-        .then(() => undefined)
-        .finally(() => {
-          submitting.current = false;
-        });
+      return sendReply(fields.map(fieldAnswers));
     },
     dismiss: async () => {
-      if (blocked || submitting.current) return;
-      submitting.current = true;
+      if (blocked || submitting.current) return { kind: "blocked" };
 
-      return reply
-        .mutateAsync({
-          sessionId: active.sessionId,
-          request: active.request,
-          answers: null,
-        })
-        .then(() => undefined)
-        .finally(() => {
-          submitting.current = false;
-        });
+      return sendReply(null);
     },
   };
 }

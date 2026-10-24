@@ -10,7 +10,6 @@ import type { MountWindow } from "./window.ts";
 
 export type RowKey = string;
 
-/** A message not yet in its turn; `pending` while a run is live, until the message joins it. */
 export interface PromptRow {
   readonly kind: "prompt";
   readonly key: RowKey;
@@ -156,8 +155,6 @@ function turnRows(view: SessionView): readonly Row[] {
   for (const message of view.leadingPrompt === null
     ? view.messages
     : [view.leadingPrompt, ...view.messages]) {
-    if (message.kind === "user" && message.status.kind !== "landed") continue;
-
     if (message.kind === "part" && message.partKind === "tool" && awaitsDelegate(message)) continue;
 
     if (message.turn !== current) {
