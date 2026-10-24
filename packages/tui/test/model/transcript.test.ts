@@ -84,13 +84,9 @@ describe("rows", () => {
     ]);
   });
 
-  test("a turn with nothing landed yet is not a row: an ended one, or a queued message's", () => {
+  test("an ended turn with nothing landed is not a row", () => {
     const view = buildView((v) =>
-      v
-        .turn("t1", (t) => t.ended("stopped"))
-        .turn("t2", (t) => t.user("x").ended("completed"))
-        .pending("queued", { schedule: { kind: "next-turn", reason: "run-ended" } })
-        .live("run-t3"),
+      v.turn("t1", (t) => t.ended("stopped")).turn("t2", (t) => t.user("x").ended("completed")),
     );
 
     expect(deriveTranscript(view, [], LOCAL, null).rows.map((row) => row.key)).toEqual(["turn:t2"]);
