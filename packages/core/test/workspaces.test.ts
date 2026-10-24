@@ -666,12 +666,15 @@ describe("activation (§37j–m)", () => {
 
     const fresh = createHost(kernelOver(kernel.store, provider, { plugins: [chatty] }), credential);
     await fresh.session(session.id).send("After.", { delivery: "attach" });
+    const view = await fresh.session(session.id).view();
 
     expect(
-      (await fresh.session(session.id).view()).messages.map((message) =>
-        message.kind === "user" ? message.content : message.kind,
-      ),
-    ).toEqual(["Hi.", "Hello from activate.", "Nudged.", "After."]);
+      view.messages.map((message) => (message.kind === "user" ? message.content : message.kind)),
+    ).toEqual(["Hi.", "Nudged."]);
+    expect(view.queue.map((message) => message.content)).toEqual([
+      "Hello from activate.",
+      "After.",
+    ]);
   });
 
   it("relocates a session: its environment, cwd and plugins follow the new workspace", async () => {

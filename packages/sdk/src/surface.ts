@@ -219,6 +219,7 @@ export type {
   PrincipalView,
   PromptOverride,
   ProviderUsage,
+  QueuedMessage,
   ReceiptId,
   Ref,
   RefUpdate,

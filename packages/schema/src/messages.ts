@@ -92,14 +92,26 @@ export const MessageSourceType = Type.Union([
 
 export type MessageSource = Decoded<typeof MessageSourceType>;
 
+const NextTurnScheduleType = Type.Object({
+  kind: Type.Literal("next-turn"),
+  reason: Type.Enum(["requested", "idle", "run-ended", "configuration"]),
+});
+
+const AttachedScheduleType = Type.Object({ kind: Type.Literal("attached") });
+
+const DecidingScheduleType = Type.Object({ kind: Type.Literal("deciding") });
+
 export const ScheduleType = Type.Union([
   Type.Object({ kind: Type.Literal("joined"), run: idSchema<"run">() }),
-  Type.Object({
-    kind: Type.Literal("next-turn"),
-    reason: Type.Enum(["requested", "idle", "run-ended", "configuration"]),
-  }),
-  Type.Object({ kind: Type.Literal("attached") }),
-  Type.Object({ kind: Type.Literal("deciding") }),
+  NextTurnScheduleType,
+  AttachedScheduleType,
+  DecidingScheduleType,
+]);
+
+export const WaitingScheduleType = Type.Union([
+  NextTurnScheduleType,
+  AttachedScheduleType,
+  DecidingScheduleType,
 ]);
 
 /** When an admitted input runs. `deciding` is a chat's first message, admitted with the chat while its before_send hooks decide it; nothing on its head runs until they do. */

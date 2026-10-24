@@ -25,7 +25,9 @@ async function startChat(
 }
 
 function userStatus(view: SessionView, id: MessageId): string | undefined {
-  const message = view.messages.find((candidate) => candidate.id === id);
+  const message =
+    view.queue.find((candidate) => candidate.id === id) ??
+    view.messages.find((candidate) => candidate.id === id);
 
   return message?.kind === "user" ? message.status.kind : undefined;
 }
@@ -69,7 +71,7 @@ test("send, withdraw and stop round trips with real views", async () => {
 
   const later = await session.send("later", { delivery: "queue" });
   const queued = await viewWhere(session, (view) => userStatus(view, later.message) === "pending");
-  expect(queued.messages.find((message) => message.id === later.message)).toMatchObject({
+  expect(queued.queue.find((message) => message.id === later.message)).toMatchObject({
     status: { kind: "pending", schedule: { kind: "next-turn" } },
   });
 
@@ -100,10 +102,10 @@ test("revise replaces a pending message in place and refuses one that landed", a
   expect(await session.revise(later.message, "sooner", { delivery: "queue" })).toBe("revised");
 
   const revised = await viewWhere(session, (view) =>
-    view.messages.some((message) => message.kind === "user" && message.content === "sooner"),
+    view.queue.some((message) => message.content === "sooner"),
   );
 
-  expect(revised.messages.filter((message) => message.kind === "user")).toHaveLength(2);
+  expect(revised.queue.map((message) => message.content)).toEqual(["sooner"]);
   expect(await session.revise(asId("never-sent"), "x", { delivery: "queue" })).toBe("gone");
 
   if (revised.execution.kind !== "live") throw new Error("expected a live run");

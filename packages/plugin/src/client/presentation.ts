@@ -10,7 +10,6 @@ import type {
   ToolClass,
   ToolPartState,
   UserContent,
-  UserStatus,
 } from "@nyte-ai/schema";
 
 /**
@@ -117,57 +116,6 @@ export function readRawPart(message: PartMessage): RawPart {
  */
 export function showsReport(message: UserMessage): message is ReportMessage {
   return message.source.kind === "child" || message.source.kind === "job";
-}
-
-type PendingStatus = Extract<UserStatus, { readonly kind: "pending" }>;
-
-/**
- * A message that waits in the queue: unsent, or pending for a later turn. A pending steer sent
- * while idle or joining the live run is never one.
- *
- * @category presentation
- */
-export type QueuedMessage = UserMessage & {
-  readonly status:
-    | Extract<UserStatus, { readonly kind: "unsent" }>
-    | (PendingStatus & {
-        readonly schedule: Exclude<PendingStatus["schedule"], { readonly kind: "joined" }>;
-      });
-};
-
-/**
- * Whether a message waits in the queue rather than showing in the transcript. A retrying send
- * always waits. Reports, joined steers and steers sent while idle stay in the transcript.
- * Other messages wait only while a run is active.
- *
- * @category presentation
- */
-export function waitsInQueue(message: UserMessage, running: boolean): message is QueuedMessage {
-  const { status } = message;
-
-  if (showsReport(message)) return false;
-
-  switch (status.kind) {
-    case "landed":
-      return false;
-    case "unsent":
-      return status.retrying !== null || (running && message.delivery !== "steer");
-    case "pending":
-      return (
-        running &&
-        status.schedule.kind !== "joined" &&
-        !(
-          message.delivery === "steer" &&
-          status.schedule.kind === "next-turn" &&
-          status.schedule.reason === "idle"
-        )
-      );
-    default: {
-      const _exhaustive: never = status;
-
-      return _exhaustive;
-    }
-  }
 }
 
 /**

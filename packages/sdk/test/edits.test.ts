@@ -213,11 +213,8 @@ describe("edits", () => {
     );
 
     expect(sent.map((result) => result.status)).toEqual(texts.map(() => "fulfilled"));
-    const pending = await host.view(session.id);
-    expect(
-      users(pending)
-        .filter((entry) => entry.startsWith("Send"))
-        .sort(),
-    ).toEqual(texts.map((entry) => `${entry}#pending`));
+    const { queue } = await host.view(session.id);
+    expect(queue.map((message) => message.content)).toEqual(expect.arrayContaining(texts));
+    expect(queue.map((message) => message.status.kind)).toEqual(texts.map(() => "pending"));
   });
 });

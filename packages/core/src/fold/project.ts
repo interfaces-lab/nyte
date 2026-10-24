@@ -1,9 +1,11 @@
 import type {
   CommitId,
+  Execution,
   HeadInfo,
   HeadName,
   Message,
   PrincipalId,
+  QueuedMessage,
   Revision,
   SessionView,
   TurnInfo,
@@ -28,6 +30,8 @@ const unreads = new WeakMap<
 const NOTHING_SEEN: ReadonlyMap<HeadName, CommitId | null> = new Map();
 
 const tails = new WeakMap<readonly Message[], Map<number, readonly Message[]>>();
+
+const queues = new WeakMap<readonly Message[], readonly QueuedMessage[]>();
 
 const absent = new WeakMap<ReadonlyMap<HeadName, FoldHead>, Map<HeadName, FoldHead>>();
 
@@ -54,7 +58,8 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
   )
     return cached;
 
-  const messages = readMessageTail(folded.messages, tail);
+  const execution = folded.info.execution;
+  const messages = readMessageTail(folded.messages, tail, execution);
   const turns = frozen(folded.turns);
   const path = state[INDEX].paths.get(head);
 
@@ -63,11 +68,13 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
     seq: state.seq,
     activation: state.activation,
     messages,
-    leadingPrompt: findLeadingPrompt(path, folded.messages.length - messages.length),
+    queue: readQueue(state, folded),
+    leadingPrompt: findLeadingPrompt(path, Math.max(0, folded.messages.length - tail)),
     parts: state.partViews,
     turns: readTurnWindow(turns, path, messages),
     usage: sumCompletedUsage(turns),
-    execution: folded.info.execution,
+    execution,
+    reportsHeld: holdsReports(execution),
     background: folded.background,
     configuration: folded.configuration,
     context: folded.context,
@@ -85,6 +92,10 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
 
 export function readSeenCommit(state: FoldState, head: HeadName): CommitId | null {
   return state.seen.get(state.principal)?.get(head) ?? null;
+}
+
+export function holdsReports(execution: Execution): boolean {
+  return execution.kind === "idle" && execution.lastRun?.end.kind !== "completed";
 }
 
 function headsFor(state: FoldState): readonly HeadInfo[] {
@@ -133,13 +144,54 @@ function absentHead(heads: ReadonlyMap<HeadName, FoldHead>, name: HeadName): Fol
   return head;
 }
 
-function readMessageTail(messages: readonly Message[], tail: number): readonly Message[] {
+function readMessageTail(
+  messages: readonly Message[],
+  tail: number,
+  execution: Execution,
+): readonly Message[] {
   const known = tails.get(messages) ?? new Map<number, readonly Message[]>();
-  const slice = reuse(known.get(tail) ?? [], messages.slice(Math.max(0, messages.length - tail)));
+
+  const slice = reuse(
+    known.get(tail) ?? [],
+    messages
+      .slice(Math.max(0, messages.length - tail))
+      .filter((message) => !belongsInQueue(message, execution)),
+  );
+
   known.set(tail, slice);
   tails.set(messages, known);
 
   return slice;
+}
+
+function readQueue(state: FoldState, folded: FoldHead): readonly QueuedMessage[] {
+  const queue = reuse(
+    queues.get(folded.messages) ?? [],
+    folded.pending.flatMap((id) => {
+      const message = state.messages.get(id);
+
+      return message !== undefined && belongsInQueue(message, folded.info.execution)
+        ? [message]
+        : [];
+    }),
+  );
+
+  queues.set(folded.messages, queue);
+
+  return queue;
+}
+
+function belongsInQueue(message: Message, execution: Execution): message is QueuedMessage {
+  if (message.kind !== "user" || message.status.kind !== "pending") return false;
+
+  if (message.source.kind === "child" || message.source.kind === "job") return false;
+  const schedule = message.status.schedule;
+
+  return (
+    schedule.kind === "attached" ||
+    (schedule.kind === "next-turn" &&
+      (schedule.reason !== "idle" || (execution.kind !== "idle" && message.delivery !== "steer")))
+  );
 }
 
 /** The prompt of the turn the message at `start` of `path` belongs to, when that prompt is on `path` before `start`; found through the path's indexes, never by walking its messages. */

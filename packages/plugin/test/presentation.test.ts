@@ -1,14 +1,5 @@
 import { asId } from "@nyte-ai/schema";
-import type {
-  Delivery,
-  Execution,
-  MessageSource,
-  PartStatus,
-  ToolClass,
-  ToolOutcome,
-  ToolPartState,
-  UserStatus,
-} from "@nyte-ai/schema";
+import type { Execution, PartStatus, ToolClass, ToolOutcome, ToolPartState } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
 import {
   completionTrigger,
@@ -17,9 +8,7 @@ import {
   toolOutput,
   toolStatus,
   toolTitle,
-  waitsInQueue,
 } from "../src/client/presentation.ts";
-import type { UserMessage } from "../src/client/presentation.ts";
 
 const READ: ToolClass = { kind: "read", path: "/repo/src/app.ts" };
 
@@ -150,79 +139,4 @@ it("finds the mention or command around the caret", () => {
     query: "src/ap",
   });
   expect(completionTrigger("plain words")).toBeUndefined();
-});
-
-function sent(
-  id: string,
-  delivery: Delivery,
-  status: UserStatus,
-  source: MessageSource = { kind: "user" },
-): UserMessage {
-  return {
-    id: asId(id),
-    turn: asId(`loose:${id}`),
-    at: 1,
-    kind: "user",
-    content: id,
-    source,
-    delivery,
-    status,
-    siblings: { index: 0, count: 1, ids: [] },
-  };
-}
-
-const sending: UserStatus = { kind: "unsent", attempts: 1, retrying: null };
-
-const retrying: UserStatus = {
-  kind: "unsent",
-  attempts: 2,
-  retrying: { at: 5, reason: "offline" },
-};
-
-const joined: UserStatus = {
-  kind: "pending",
-  schedule: { kind: "joined", run: asId("run") },
-  covered: true,
-};
-
-const idle: UserStatus = {
-  kind: "pending",
-  schedule: { kind: "next-turn", reason: "idle" },
-  covered: true,
-};
-
-const later: UserStatus = {
-  kind: "pending",
-  schedule: { kind: "next-turn", reason: "requested" },
-  covered: true,
-};
-
-it("keeps a steer out of the queue from its send until it joins the run", () => {
-  const messages = [
-    sent("steer sending", "steer", sending),
-    sent("steer joined", "steer", joined),
-    sent("steer idle", "steer", idle),
-    sent("steer changed model", "steer", {
-      kind: "pending",
-      schedule: { kind: "next-turn", reason: "configuration" },
-      covered: true,
-    }),
-    sent("steer retrying", "steer", retrying),
-    sent("queue sending", "queue", sending),
-    sent("queue idle", "queue", idle),
-    sent("queue later", "queue", later),
-    sent("report", "attach", later, { kind: "child", session: asId("child"), end: "completed" }),
-  ];
-
-  const queued = (busy: boolean) =>
-    messages.flatMap((message) => (waitsInQueue(message, busy) ? [message.id] : []));
-
-  expect(queued(true)).toEqual([
-    "steer changed model",
-    "steer retrying",
-    "queue sending",
-    "queue idle",
-    "queue later",
-  ]);
-  expect(queued(false)).toEqual(["steer retrying"]);
 });

@@ -160,6 +160,18 @@ export const sessionCases = {
       seq: asSeq(4),
       activation: { kind: "active" },
       messages: [partMessage],
+      queue: [
+        {
+          ...userMessage,
+          source: { kind: "user" },
+          delivery: "queue",
+          status: {
+            kind: "pending",
+            schedule: { kind: "next-turn", reason: "run-ended" },
+            covered: true,
+          },
+        },
+      ],
       leadingPrompt: userMessage,
       parts: [
         {
@@ -175,6 +187,7 @@ export const sessionCases = {
       turns: [turnInfo],
       usage,
       execution: { kind: "idle", lastRun: { id: run, end: { kind: "stopped" }, endedAt: 5 } },
+      reportsHeld: true,
       background: [background],
       configuration: { selected: null, effective: configuration },
       context: contextView,

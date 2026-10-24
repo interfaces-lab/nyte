@@ -90,6 +90,7 @@ function view(parts: readonly PartView[]): SessionView {
     seq: asSeq(1),
     activation: { kind: "active" },
     messages: [prompt],
+    queue: [],
     leadingPrompt: null,
     parts,
     turns: [
@@ -106,6 +107,7 @@ function view(parts: readonly PartView[]): SessionView {
       waiting === undefined
         ? { kind: "live", run: liveRun, phase: "executing", stopping: false }
         : { kind: "waiting", run: liveRun, on: { kind: "part", part: waiting.id } },
+    reportsHeld: false,
     background: [],
     configuration: { selected: liveRun.configuration, effective: liveRun.configuration },
     context: { tokens: 0, window: 1_000, lastRequest: null },

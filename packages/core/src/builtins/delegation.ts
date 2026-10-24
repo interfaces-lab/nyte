@@ -184,7 +184,7 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
     const child = await requireChildSession(invocation, args.session);
     const receipt = await sendOnce(invocation, child, args.prompt);
     const view = await child.view();
-    const message = view.messages.find((entry) => entry.id === receipt.message);
+    const message = [...view.messages, ...view.queue].find((entry) => entry.id === receipt.message);
 
     return reply(`Sent to subagent ${child.id}; ${scheduled(message)}.`);
   },
@@ -262,7 +262,7 @@ const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
     const state = execution === "idle" ? "idle" : execution === "waiting" ? "waiting" : "working";
 
     const transcript = fromEnd(
-      view.messages.flatMap(renderTranscriptMessage).join("\n\n"),
+      [...view.messages, ...view.queue].flatMap(renderTranscriptMessage).join("\n\n"),
       TRANSCRIPT_LIMIT,
     );
 

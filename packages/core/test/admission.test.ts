@@ -1,5 +1,5 @@
 import { asId } from "@nyte-ai/schema";
-import type { Authority, CommitId, Message } from "@nyte-ai/schema";
+import type { Authority, CommitId, Message, QueuedMessage } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { TOKEN } from "../src/server.ts";
 import { decodeInboxRecord, inboxRef, memoryStore } from "../src/store.ts";
@@ -18,6 +18,19 @@ import {
 
 async function message(session: Session, id: string): Promise<Message | undefined> {
   return (await session.view()).messages.find((current) => current.id === id);
+}
+
+async function findQueued(session: Session, id: string): Promise<QueuedMessage | undefined> {
+  return (await session.view()).queue.find((current) => current.id === id);
+}
+
+async function readPlacement(session: Session) {
+  const view = await session.view();
+
+  return {
+    messages: view.messages.map((current) => current.id),
+    queue: view.queue.map((current) => current.id),
+  };
 }
 
 describe("admission", () => {
@@ -66,20 +79,30 @@ describe("admission", () => {
     const turn = await script.started(1);
     const queued = await session.send("Second.", { delivery: "queue" });
 
-    expect(await message(session, queued.message)).toMatchObject({
+    expect(await findQueued(session, queued.message)).toMatchObject({
       status: { kind: "pending", schedule: { kind: "next-turn", reason: "run-ended" } },
+    });
+    expect(await readPlacement(session)).toEqual({
+      messages: [first.message],
+      queue: [queued.message],
     });
 
     turn.finish();
 
     expect(await step).toEqual({ kind: "continue" });
     expect(await queued.status()).toEqual({ kind: "pending" });
+    expect((await session.view()).execution.kind).toBe("idle");
+    expect((await readPlacement(session)).queue).toEqual([queued.message]);
 
     const next = host.execution.advance({ session: session.id, head: main });
     const second = await script.started(2);
 
     expect(second.input.run.origin).toEqual({ kind: "input", message: queued.message });
     expect(await queued.landed()).toMatchObject({ kind: "landed", run: second.input.run.id });
+    expect(await readPlacement(session)).toEqual({
+      messages: [first.message, queued.message],
+      queue: [],
+    });
 
     second.finish();
 
@@ -97,7 +120,7 @@ describe("admission", () => {
       kind: "idle",
     });
     expect(script.turns).toHaveLength(1);
-    expect(await message(session, attached.message)).toMatchObject({
+    expect(await findQueued(session, attached.message)).toMatchObject({
       status: { kind: "pending", schedule: { kind: "attached" } },
     });
 
@@ -143,7 +166,7 @@ describe("admission", () => {
     const turn = await script.started(1);
     const steer = await session.send("Also this.", { delivery: "steer" });
 
-    expect(await message(session, steer.message)).toMatchObject({
+    expect(await findQueued(session, steer.message)).toMatchObject({
       delivery: "queue",
       status: { kind: "pending", schedule: { kind: "next-turn", reason: "run-ended" } },
     });
@@ -194,7 +217,7 @@ describe("admission", () => {
     const again = await session.send("Once.", { id, delivery: "attach" });
 
     expect(again.id).toBe(first.id);
-    expect((await session.view()).messages.map((current) => current.id)).toEqual([session.id, id]);
+    expect(await readPlacement(session)).toEqual({ messages: [session.id], queue: [id] });
     await expect(session.send("Twice.", { id, delivery: "attach" })).rejects.toMatchObject({
       code: "invalid",
     });
@@ -253,12 +276,9 @@ describe("admission", () => {
 
     const view = await session.view();
 
-    expect(view.messages.map((current) => current.id)).toEqual([
-      session.id,
-      second.message,
-      first.message,
-    ]);
-    expect(view.messages[2]).toMatchObject({
+    expect(view.messages.map((current) => current.id)).toEqual([session.id]);
+    expect(view.queue.map((current) => current.id)).toEqual([second.message, first.message]);
+    expect(view.queue[1]).toMatchObject({
       kind: "user",
       content: "A, revised.",
       delivery: "attach",
