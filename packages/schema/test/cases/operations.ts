@@ -281,6 +281,32 @@ export const operations = {
     { kind: "busy", run },
     { kind: "busy" },
   ),
+  "head.revise input": operation(
+    OPERATIONS["head.revise"].input,
+    { ...headInput, message, content: userContent, options: { delivery: "queue" } },
+    { ...headInput, message, content: userContent, options: { delivery: "later" } },
+  ),
+  "head.revise output": operation(
+    OPERATIONS["head.revise"].output,
+    { kind: "revised" },
+    { kind: "edited" },
+  ),
+  "head.hold input": operation(
+    OPERATIONS["head.hold"].input,
+    { ...headInput, message },
+    { ...headInput, message: 1 },
+  ),
+  "head.hold output": operation(
+    OPERATIONS["head.hold"].output,
+    { kind: "held" },
+    { kind: "lapsed" },
+  ),
+  "head.release input": operation(
+    OPERATIONS["head.release"].input,
+    { ...headInput, message },
+    headInput,
+  ),
+  "head.release output": operation(OPERATIONS["head.release"].output, null, {}),
   "heads.create input": operation(
     OPERATIONS["heads.create"].input,
     { session, name: head, input: { from: { kind: "start" } } },

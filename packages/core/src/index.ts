@@ -74,7 +74,19 @@ export type {
   Transform,
 } from "./contract/plugin.ts";
 
-export type { Head, Receipt, Run, SendReceipt, Session, Sessions } from "./contract/session.ts";
+export type {
+  Head,
+  HeldMessage,
+  HoldOutcome,
+  Receipt,
+  ReleaseOutcome,
+  Run,
+  SendReceipt,
+  Session,
+  Sessions,
+} from "./contract/session.ts";
+
+export { holdMessage } from "./api/hold.ts";
 
 export type {
   FoldCheckpoint,

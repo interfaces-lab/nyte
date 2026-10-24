@@ -22,6 +22,8 @@ import type {
   RemoveHeadOutcome,
   RemoveSessionOutcome,
   RequestOptions,
+  ReviseOptions,
+  ReviseOutcome,
   Revision,
   RunEnd,
   RunId,
@@ -64,6 +66,26 @@ export interface SendReceipt extends Receipt<
     | Exclude<MoveOutcome, { readonly kind: "moved" }>
   >;
 }
+
+export type ReleaseOutcome = { readonly kind: "released" } | { readonly kind: "lapsing" };
+
+export interface HeldMessage {
+  readonly kind: "held";
+  readonly message: MessageId;
+  readonly lost: Promise<
+    { readonly kind: "sent" } | { readonly kind: "missing" } | { readonly kind: "lapsed" }
+  >;
+
+  save(content: UserContent, options?: ReviseOptions): Promise<ReviseOutcome>;
+
+  release(): Promise<ReleaseOutcome>;
+
+  [Symbol.asyncDispose](): Promise<void>;
+}
+
+export type HoldOutcome = HeldMessage | { readonly kind: "sent" } | { readonly kind: "missing" };
+
+export const HOLD_MS = 20_000;
 
 export interface Run {
   readonly id: RunId;
@@ -150,6 +172,10 @@ export interface Head {
   readonly name: HeadName;
 
   send(content: UserContent, options?: SendOptions): Promise<SendReceipt>;
+
+  revise(message: MessageId, content: UserContent, options?: ReviseOptions): Promise<ReviseOutcome>;
+
+  hold(message: MessageId): Promise<HoldOutcome>;
 
   /** A model switch without a level lands on the new model's `defaultThinking`. From a person's client, not a tool call or plugin, an accepted model becomes the default and an accepted level its model's `defaultThinking`. */
   configure(patch: ConfigurationPatch): Promise<ConfigureOutcome>;

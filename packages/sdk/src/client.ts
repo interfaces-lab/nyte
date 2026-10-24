@@ -8,7 +8,7 @@ import type {
   PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
-import { dev, followTrace, traced, watchStore } from "@nyte-ai/core";
+import { dev, followTrace, holdMessage, traced, watchStore } from "@nyte-ai/core";
 import type { Connection, Head, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
 import { sessionLists } from "@nyte-ai/protocol";
 import type { Transport } from "@nyte-ai/protocol";
@@ -188,6 +188,9 @@ function sessionHandle(bound: Bound, session: SessionId): Session {
 function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
   const { rows, journal } = bound;
 
+  const revise: Head["revise"] = (message, content, options) =>
+    rows.call("head.revise", { session, head, message, content, options });
+
   return {
     sessionId: session,
     name: head,
@@ -210,6 +213,15 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
 
       return sendReceipt(rows, session, sent.receipt, sent.message);
     },
+    revise,
+    hold: (message) =>
+      holdMessage(message, {
+        hold: () => rows.call("head.hold", { session, head, message }),
+        revise: (content, options) => revise(message, content, options),
+        async release() {
+          await rows.call("head.release", { session, head, message });
+        },
+      }),
     configure: (patch) => rows.call("head.configure", { session, head, patch }),
     async view(options) {
       const view = await rows.call("head.view", { session, head, options });

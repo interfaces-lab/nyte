@@ -121,6 +121,70 @@ The replaced messages stay in the session's tree. To leave a summary of them on 
 `abandoned: { summarize: {} }`; [Branch a conversation](/docs/sdk/guides/branch-a-conversation)
 covers history in more depth.
 
+## Revise a queued message
+
+```ts
+const queued = await session.send("Then add a regression test", { delivery: "queue" });
+
+await session.revise(queued.message, "Then add a regression test for the time zone");
+```
+
+`revise` changes a message while it waits in the queue. The message keeps its id and its place, and
+the session's `before_send` hooks check the new content as they check a send. Pass `{ delivery }` to
+change how it meets the run ahead of it.
+
+`revise` answers `revised` while the message is queued. Once the message has started, it answers
+`sent` and changes nothing, so its run keeps going. It answers `missing` when the message was
+withdrawn or isn't queued on this head. To change a message that already started, edit it with
+`send(content, { replace })`.
+
+## Hold a queued message while it's edited
+
+A queued message starts as soon as the run ahead of it ends, even if someone is halfway through
+editing it. `hold` keeps it waiting until the edit is saved:
+
+```ts
+const outcome = await session.hold(queued.message);
+
+if (outcome.kind === "held") {
+  await using held = outcome;
+
+  await held.save("Then add a regression test for the time zone");
+}
+```
+
+While the message is held, no run starts with it, and the messages queued behind it wait too. It
+doesn't join a running turn either. Other steers still reach the running turn.
+
+The SDK renews the hold until you let it go. `save` revises the message, then releases it, and
+answers like `revise`. `release` lets the message go unchanged. `await using` releases when the block
+ends, so an editor that throws or returns early doesn't leave the queue stuck. A `release` after
+`save` does nothing.
+
+A hold can also end without you. `held.lost` resolves `sent` if the message started anyway,
+`missing` if it was withdrawn, and `lapsed` if the SDK couldn't renew the hold before it ran out.
+After `save` or `release`, `lost` never resolves.
+
+`hold` answers `sent` when the message already started, and `missing` when it was withdrawn or isn't
+queued on this head. Withdrawing the message with `receipt.stop()` or `session.stop()` ends its hold
+too.
+
+Holds come with a few contracts. Code to them rather than around them:
+
+- A head holds one message at a time, so holding another message on it ends the first hold.
+  Release one before you take another.
+- `save` releases the hold itself, so don't call `release` while a save is in flight. A release
+  that reaches the host before the revise can let the message start with its old text.
+- `revise` and `save` act only while the message is still queued. Otherwise they answer `sent` or
+  `missing` and change nothing.
+- The SDK renews every 5 seconds. The first hold and each renewal last 20 seconds, measured on your
+  own clock from when the SDK sent them. When the last answered one runs out, `lost` resolves
+  `lapsed`, whether the renewals since failed or never came back. A renewal the host processes after
+  a release can hold the message again for up to 20 seconds.
+- `release` and `await using` don't fail, and they wait no longer than the hold has left. If the
+  host can't be reached, `release` answers `lapsing` instead of `released`, and the hold lapses
+  within 20 seconds.
+
 ## Stop everything
 
 ```ts

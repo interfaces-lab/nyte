@@ -4,10 +4,13 @@ import { ValidationIssueType } from "../../errors.ts";
 import {
   ConfigureOutcomeSchema,
   CreateHeadOutcomeSchema,
+  HoldLeaseType,
   MergeOutcomeSchema,
   MoveOptionsType,
   MoveOutcomeType,
   RemoveHeadOutcomeSchema,
+  ReviseOptionsType,
+  ReviseOutcomeType,
   SendOptionsType,
   TreeViewSchema,
 } from "../../heads.ts";
@@ -45,6 +48,8 @@ const HEAD = { ...SESSION, head: idSchema<"head">() };
 const PART = { ...SESSION, part: idSchema<"part">() };
 
 const NAMED_HEAD = { ...SESSION, name: idSchema<"head">() };
+
+const ON_MESSAGE = wireObject({ ...HEAD, message: idSchema<"message">() });
 
 const ON_RUN = wireObject({ ...SESSION, run: idSchema<"run">() });
 
@@ -177,6 +182,24 @@ export const SESSION_OPERATIONS = {
       ]),
     ),
   },
+  "head.revise": {
+    ...PARTICIPANT,
+    kind: "command",
+    input: wireObject({
+      ...HEAD,
+      message: idSchema<"message">(),
+      content: UserContentType,
+      options: Type.Optional(ReviseOptionsType),
+    }),
+    output: wireSchema(ReviseOutcomeType),
+  },
+  "head.hold": {
+    ...PARTICIPANT,
+    kind: "command",
+    input: ON_MESSAGE,
+    output: wireSchema(HoldLeaseType),
+  },
+  "head.release": { ...PARTICIPANT, kind: "command", input: ON_MESSAGE, output: NOTHING },
   "heads.create": {
     ...PARTICIPANT,
     kind: "command",

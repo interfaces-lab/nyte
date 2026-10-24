@@ -19,7 +19,8 @@ import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { CommitRecord, PartRecord, SessionRecord } from "../contract/records.ts";
 import type { Head } from "../contract/session.ts";
-import { send } from "../engine/admission.ts";
+import { reviseQueued, send, sendNow } from "../engine/admission.ts";
+import { leaseHold, releaseHold } from "../engine/holds.ts";
 import { move } from "../engine/move.ts";
 import { configure } from "../extend/settings.ts";
 import { commit } from "../fold/commit.ts";
@@ -47,6 +48,7 @@ import {
 } from "../store/session.ts";
 import { watchStore } from "../util/iterable.ts";
 import { extractUserText } from "../util/text.ts";
+import { holdMessage } from "./hold.ts";
 
 const PREVIEW = 80;
 
@@ -60,17 +62,28 @@ export function headHandle(
   context: ConnectionContext,
   session: SessionId,
   head: HeadName,
-  admit: typeof send = send,
+  activation = false,
 ): Head {
   const { principal } = context;
 
   const watch: Head["watch"] = (options) =>
     watchHead(kernel, { session, head, principal, options });
 
+  const revise: Head["revise"] = (message, content, options) =>
+    reviseQueued(kernel, { session, head, context, message, content, options }, activation);
+
   return {
     sessionId: session,
     name: head,
-    send: (content, options) => admit(kernel, { session, head, context, content, options }),
+    send: (content, options) =>
+      (activation ? sendNow : send)(kernel, { session, head, context, content, options }),
+    revise,
+    hold: (message) =>
+      holdMessage(message, {
+        hold: () => leaseHold(kernel, session, head, message),
+        revise: (content, options) => revise(message, content, options),
+        release: () => releaseHold(kernel, session, head, message),
+      }),
     async configure(patch) {
       const outcome = await configure(kernel, session, head, patch);
 
