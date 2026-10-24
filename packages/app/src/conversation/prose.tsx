@@ -12,9 +12,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
-import { defaultUrlTransform, Streamdown, useIsCodeFenceIncomplete } from "streamdown";
+import { Block, defaultUrlTransform, Streamdown, useIsCodeFenceIncomplete } from "streamdown";
 import type { Components, ExtraProps, StreamdownProps, UrlTransform } from "streamdown";
-import "streamdown/styles.css";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./external-link.ts";
 import { useQuery } from "@tanstack/react-query";
@@ -35,6 +34,8 @@ import { asId } from "@nyte-ai/schema";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { proseStyles } from "./prose.stylex.ts";
 import { SubagentCitation } from "./subagent-call.tsx";
+import { EnteringText, FadingBlock, Resumes } from "./chunk-fade.tsx";
+import { usePacedText } from "./paced-text.ts";
 
 const textNode = Type.Union([Type.String(), Type.Number(), Type.BigInt()]);
 
@@ -353,18 +354,25 @@ export const Prose = memo(function Prose({
     () => true,
   );
 
+  const reveal = usePacedText(markdown, streaming, !reducedMotion);
+  const revealing = streaming || reveal.holding;
+
   return (
     <div {...props(proseStyles.root)}>
-      <Streamdown
-        isAnimating={streaming}
-        animated={!reducedMotion}
-        components={markdownComponents}
-        rehypePlugins={rehypePlugins}
-        urlTransform={urlTransform}
-        skipHtml
-      >
-        {markdown}
-      </Streamdown>
+      <EnteringText value={!revealing ? "plain" : reveal.fresh ? "new" : "shown"}>
+        <Resumes value={reveal.resumes}>
+          <Streamdown
+            isAnimating={revealing}
+            BlockComponent={reducedMotion ? Block : FadingBlock}
+            components={markdownComponents}
+            rehypePlugins={rehypePlugins}
+            urlTransform={urlTransform}
+            skipHtml
+          >
+            {reveal.text}
+          </Streamdown>
+        </Resumes>
+      </EnteringText>
     </div>
   );
 });
