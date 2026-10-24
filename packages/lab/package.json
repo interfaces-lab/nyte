@@ -7,7 +7,7 @@
     "clean": "rm -rf node_modules .turbo dist .tanstack",
     "dev": "vite dev",
     "build": "vite build",
-    "typecheck": "tsrs --noEmit && tsrs --noEmit -p tsconfig.node.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "video": "remotion studio video/src/index.ts --public-dir video/public",
     "video:voice": "node video/voice.ts",
     "video:render": "remotion render video/src/index.ts nyte video/out/nyte.mp4 --public-dir video/public --crf=16",
@@ -48,7 +48,6 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "react-grab": "^0.2.0",
-    "typescript": "6.0.3",
     "vite": "^8.3.5"
   }
 }

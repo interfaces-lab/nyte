@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "clean": "rm -rf node_modules .turbo .output .vercel",
-    "typecheck": "tsrs --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest --run"
   },
   "dependencies": {
@@ -19,7 +19,6 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
-    "typescript": "6.0.3",
     "vitest": "^5.0.5"
   }
 }

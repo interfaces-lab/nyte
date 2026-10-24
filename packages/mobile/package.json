@@ -24,7 +24,7 @@
     "eas-build-post-install": "pnpm canvas:build",
     "submit": "eas submit --platform ios --profile production",
     "test": "vitest --run",
-    "typecheck": "pnpm icons:sync && pnpm canvas:build && tsrs --noEmit",
+    "typecheck": "pnpm icons:sync && pnpm canvas:build && tsc --noEmit",
     "icons:sync": "node scripts/sync-completion-icons.mjs"
   },
   "dependencies": {
@@ -87,7 +87,6 @@
     "babel-plugin-react-compiler": "^1.0.0",
     "babel-preset-expo": "^58.0.18",
     "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.19",
-    "typescript": "6.0.3",
     "vitest": "^5.0.5"
   },
   "enriched-markdown": {
@@ -112,12 +111,5 @@
       "typescript",
       "yaml"
     ]
-  },
-  "expo": {
-    "install": {
-      "exclude": [
-        "typescript"
-      ]
-    }
   }
 }

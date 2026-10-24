@@ -48,7 +48,7 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "typecheck": "tsrs --noEmit && tsrs --noEmit -p tsconfig.web.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest --run",
     "build:package": "bun ../../scripts/sdk-packages.mjs build sdk"
   },
@@ -61,7 +61,6 @@
   "devDependencies": {
     "@nyte-ai/bench": "workspace:*",
     "@types/node": "^26.6.5",
-    "typescript": "6.0.3",
     "vitest": "^5.0.5"
   },
   "engines": {

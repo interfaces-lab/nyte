@@ -20,7 +20,7 @@
     "build": "vite build && vite build -c vite.libraries.config.ts && node scripts/inline.mjs",
     "clean": "rm -rf node_modules .turbo dist",
     "test": "vitest --run",
-    "typecheck": "tsrs --noEmit && tsrs --noEmit -p test/fixtures"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test/fixtures"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -52,7 +52,6 @@
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.2",
-    "typescript": "6.0.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
   }

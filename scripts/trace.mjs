@@ -1,9 +1,8 @@
 /**
  * `pnpm trace <package> [tsconfig]` records where the type checker spends its time.
  *
- * tsrs cannot generate traces, so this runs the Go TypeScript 7 `tsc` that
- * @nyte-ai/app depends on with `--generateTrace`, writes the trace to the system temp
- * directory, and prints the slowest files and checks with their source positions.
+ * It runs the Go TypeScript 7 `tsc` from the root `@typescript/native` dependency
+ * with `--generateTrace`, writes the trace to the system temp directory, and prints the slowest files and checks with their source positions.
  * Open `trace.json` in https://ui.perfetto.dev for the full timeline; `types_N.json`
  * holds every type each checker created.
  *
@@ -29,9 +28,7 @@ const directory = resolve(root, target);
 const output = join(tmpdir(), "nyte-trace", basename(directory));
 
 const tsc = join(
-  dirname(
-    createRequire(join(root, "packages/app/package.json")).resolve("typescript/package.json"),
-  ),
+  dirname(createRequire(join(root, "package.json")).resolve("@typescript/native/package.json")),
   "bin/tsc",
 );
 

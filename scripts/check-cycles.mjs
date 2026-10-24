@@ -18,15 +18,15 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { ScriptKind, SyntaxKind } from "tsrs/unstable/ast";
+import { ScriptKind, SyntaxKind } from "@typescript/native/ast";
 import {
   isExportDeclaration,
   isExternalModuleReference,
   isImportDeclaration,
   isImportEqualsDeclaration,
   isNamedExports,
-} from "tsrs/unstable/ast/is";
-import { API } from "tsrs/unstable/sync";
+} from "@typescript/native/ast/is";
+import { API } from "@typescript/native/sync";
 
 const root = resolve(import.meta.dirname, "..");
 

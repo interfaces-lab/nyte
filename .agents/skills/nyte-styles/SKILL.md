@@ -34,7 +34,7 @@ Native code can't read CSS variables. `packages/ui/src/platform-colors.ts` is ge
 roles (`pnpm --dir packages/ui sync:tokens`) and gives mobile and the docs mobile host every role as
 hex per scheme and hue: `platformColors.light.contentInteractiveTertiary`,
 `platformScopes.dark.red.contentSecondary`. Renaming or deleting a role breaks those readers, so run
-`pnpm --dir packages/mobile exec tsrs --noEmit` after a role change.
+`pnpm --dir packages/mobile exec tsc --noEmit` after a role change.
 
 App-only structural measurements (sidebar width, titlebar height, prose measure) live in
 `packages/app/src/theme/tokens.stylex.ts` and `schema.stylex.ts`.
