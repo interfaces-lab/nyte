@@ -120,7 +120,6 @@ async function applyMessageEdit({
   }
 }
 
-/** Waits until the watched view reaches the host's current sequence. A failed read ends the wait. */
 async function awaitCurrentView(
   sessionId: SessionId,
   store: WatchStore<SessionView>,
@@ -214,11 +213,11 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     kind: "closed",
   });
 
-  const subagentTray: SubagentTrayView =
-    trayView.kind === "terminals" ? { kind: "closed" } : trayView;
+  const deferredTrayView = useDeferredValue(trayView);
+  const shownTrayView = trayView.kind === "detail" ? deferredTrayView : trayView;
 
-  const detailSessionId = subagentTray.kind === "detail" ? subagentTray.sessionId : undefined;
-  const shownDetailSessionId = useDeferredValue(detailSessionId);
+  const subagentTray: SubagentTrayView =
+    shownTrayView.kind === "terminals" ? { kind: "closed" } : shownTrayView;
 
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<ComposerEditorHandle | null>(null);
@@ -415,13 +414,12 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                           onRelease={() => composerRef.current?.focus({ preventScroll: true })}
                           viewport={scroll}
                           detail={
-                            detailSessionId !== undefined &&
-                            detailSessionId === shownDetailSessionId ? (
+                            subagentTray.kind === "detail" ? (
                               <SessionConversation
-                                key={detailSessionId}
+                                key={subagentTray.sessionId}
                                 presentation="tray"
                                 paneId={paneId}
-                                sessionId={detailSessionId}
+                                sessionId={subagentTray.sessionId}
                                 onOpenSubagentTray={openSubagentTray}
                               />
                             ) : null
@@ -429,7 +427,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                         />
                         <BackgroundWork
                           sessionId={sessionId}
-                          open={trayView.kind === "terminals"}
+                          open={shownTrayView.kind === "terminals"}
                           onOpenChange={(open) =>
                             setTrayView({ kind: open ? "terminals" : "closed" })
                           }
