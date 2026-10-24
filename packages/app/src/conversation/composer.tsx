@@ -42,6 +42,7 @@ import { StatusDot } from "../components/ui.tsx";
 import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
 import { composerStyles } from "./composer.stylex.ts";
 import { markerStyles } from "./activity.stylex.ts";
+import { PLANNING_LABEL } from "./step-group-presentation.ts";
 import { TranscriptButton, useTranscriptControls, useTranscriptDock } from "./transcript.tsx";
 import { QuestionDockContext, useQuestionDock } from "./tray/questions-state.ts";
 import { useCommitCount } from "../work-counts.ts";
@@ -643,7 +644,7 @@ export function Composer({
                     <span {...props(text.base, composerStyles.floatingStatus)}>
                       <StatusDot mark="working" />
                       <span {...props(composerStyles.floatingStatusText, markerStyles.shimmer)}>
-                        {activity ?? "Working"}
+                        {activity ?? PLANNING_LABEL}
                       </span>
                     </span>
                   )}

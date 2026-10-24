@@ -11,17 +11,19 @@ import { reasoningHeading } from "./reasoning-heading.ts";
 export function ThinkingLine({
   text: reasoning,
   streaming,
+  live = false,
 }: {
   text: string;
   streaming: boolean;
+  live?: boolean;
 }): ReactElement | null {
   const [open, setOpen] = useState<boolean | undefined>();
+  const [unfolded] = useState(live);
 
   if (reasoning.trim() === "" && !streaming) return null;
 
-  const { title, body } = streaming
-    ? { title: undefined, body: reasoning }
-    : reasoningHeading(reasoning);
+  const { title, body } =
+    streaming || unfolded ? { title: undefined, body: reasoning } : reasoningHeading(reasoning);
 
   const label = (
     <span {...props(stepGroupStyles.verb, streaming && activityStyles.shimmer)}>
@@ -30,6 +32,20 @@ export function ThinkingLine({
   );
 
   if (body.trim() === "") return <div {...props(stepGroupStyles.status)}>{label}</div>;
+
+  const prose = (
+    <div {...props(stepGroupStyles.calls, stepGroupStyles.thinking)}>
+      <Prose markdown={body} streaming={streaming} />
+    </div>
+  );
+
+  if (unfolded)
+    return (
+      <div aria-busy={streaming || undefined} {...props(stepGroupStyles.root)}>
+        <div {...props(stepGroupStyles.status)}>{label}</div>
+        {prose}
+      </div>
+    );
 
   return (
     <Collapsible.Root
@@ -42,11 +58,7 @@ export function ThinkingLine({
         {label}
         <Collapsible.Chevron xstyle={stepGroupStyles.chevron} />
       </Collapsible.Trigger>
-      <Collapsible.Panel>
-        <div {...props(stepGroupStyles.calls, stepGroupStyles.thinking)}>
-          <Prose markdown={body} streaming={streaming} />
-        </div>
-      </Collapsible.Panel>
+      <Collapsible.Panel>{prose}</Collapsible.Panel>
     </Collapsible.Root>
   );
 }
