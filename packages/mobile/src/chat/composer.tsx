@@ -374,7 +374,6 @@ const field = StyleSheet.create({
     borderCurve: "continuous",
     borderRadius: COMPOSER.height / 2,
     minWidth: 0,
-    overflow: "hidden",
   },
   attachments: {
     flexDirection: "row",

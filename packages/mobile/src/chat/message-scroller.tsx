@@ -10,6 +10,7 @@ import {
 import type { LegendListRef } from "@legendapp/list/react-native";
 import { spacing } from "../theme.ts";
 import { GlassButton } from "../ui/glass-button.tsx";
+import type { SendOutcome } from "./remote-chat.ts";
 
 export type MessageScrollerItem = { messageId: string; scrollAnchor: boolean };
 
@@ -49,17 +50,19 @@ export function useMessageScrollerProvider({
       setFollowing(true);
       void scrollMessageToEnd({ animated: false, closeKeyboard: false });
     },
-    anchorSend: async (sent: Promise<boolean>, readKey: () => string | undefined) => {
-      const accepted = await sent;
-      const key = readKey();
+    anchorSend: async (sending: Promise<SendOutcome>) => {
+      const outcome = await sending;
 
-      if (accepted && key !== undefined) {
+      if (outcome.kind !== "taken") return outcome;
+      setFollowing(true);
+      void outcome.answer.then((answer) => {
+        if (answer.kind !== "sent") return;
         anchorScrollPending.current = true;
-        setAnchorId(`submission:${key}`);
+        setAnchorId(`submission:${answer.message}`);
         setFollowing(true);
-      }
+      });
 
-      return accepted;
+      return outcome;
     },
     onAnchorReady: () => {
       if (!anchorScrollPending.current) return;

@@ -36,12 +36,12 @@ import type { PhotoAccess, RecentPhoto } from "../media/recent-photos.ts";
 import { controls, menu, overCamera, spacing, typography, useTheme } from "../theme.ts";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ATTACHMENT_MENU, useAttachmentMorph } from "./attachment-morph.ts";
-import { AttachmentGlass, type AttachmentFlight } from "./attachment-flight.ts";
+import type { AttachmentFlight } from "./attachment-flight.ts";
 import { AttachmentPhotoGrid } from "./attachment-photo-grid.tsx";
 import type { GlassViewProps } from "expo-glass-effect";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
-import { GlassSurface } from "./composer-glass.tsx";
+import { AnimatedGlass, GlassSurface } from "./composer-glass.tsx";
 
 const MENU_ITEMS = [
   { label: "Camera", symbol: "camera", mode: "camera" },
@@ -375,13 +375,13 @@ export function AttachmentsMenu({
               style={[styles.menu, containerStyle, flight.surfaceHidden && { opacity: 0 }]}
             >
               <View style={{ flex: 1, width: "100%" }}>
-                <AttachmentGlass
+                <AnimatedGlass
                   isInteractive
                   animatedProps={glassProps}
                   style={[StyleSheet.absoluteFill, radiusStyle]}
                 >
                   {body}
-                </AttachmentGlass>
+                </AnimatedGlass>
               </View>
             </Animated.View>
             {panelMounted && !flight.surfaceHidden ? (

@@ -10,6 +10,8 @@ import { controls, useTheme, radii, spacing, textStyles, tokens, typography } fr
 
 type WaitingSelectionProps = {
   question: OpenQuestion;
+  /** The subagent asking, when the question isn't this conversation's own. */
+  origin?: string;
   onReply: (answers: QuestionAnswers) => Promise<ActOutcome<unknown> | undefined>;
 };
 
@@ -22,11 +24,17 @@ type QuestionDraft = {
   custom: string;
 };
 
-export function WaitingSelection({ question, onReply }: WaitingSelectionProps): ReactElement {
-  return <SelectionForm key={question.part} question={question} onReply={onReply} />;
+export function WaitingSelection({
+  question,
+  origin,
+  onReply,
+}: WaitingSelectionProps): ReactElement {
+  return (
+    <SelectionForm key={question.part} question={question} origin={origin} onReply={onReply} />
+  );
 }
 
-function SelectionForm({ question, onReply }: WaitingSelectionProps): ReactElement {
+function SelectionForm({ question, origin, onReply }: WaitingSelectionProps): ReactElement {
   const theme = useTheme();
   const titleId = useId();
   const [index, setIndex] = useState(0);
@@ -120,7 +128,9 @@ function SelectionForm({ question, onReply }: WaitingSelectionProps): ReactEleme
     <html.div style={styles.wrap}>
       <html.div aria-labelledby={titleId} style={styles.card}>
         <html.div style={styles.header}>
-          <html.span style={textStyles.secondary}>{item.header}</html.span>
+          <html.span style={textStyles.secondary}>
+            {origin === undefined ? item.header : `${origin} is asking · ${item.header}`}
+          </html.span>
           {question.questions.length > 1 && (
             <html.span style={textStyles.secondary}>
               {index + 1} of {question.questions.length}

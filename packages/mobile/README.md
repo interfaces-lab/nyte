@@ -328,10 +328,6 @@ input) with their own activity identity and a stop control; they use sample data
 and start no host task. See Expo's
 [custom developer menu items](https://docs.expo.dev/versions/latest/sdk/dev-menu/#extending-the-dev-menu).
 
-On the welcome screen, **Preview the redesign** opens a sample transcript built from
-the real message and activity components. It needs no host and makes no network
-requests.
-
 ## Builds and variants
 
 `app.json` holds what every build shares. [`app.config.ts`](app.config.ts) layers
@@ -419,7 +415,7 @@ Route files only parse params and render the owning feature's screen.
 | `src/settings/` | Settings page and the device's display preferences |
 | `src/annotate/` | Photo markup: numbered points, drawn marks, and comments |
 | `src/media/` | Photo picking, recent photos, local JPEG preparation, annotation notes, and the attachment thumbnail |
-| `src/development/` | Developer menu shortcuts and the design preview |
+| `src/development/` | Developer menu shortcuts |
 | `src/ui/` | Shared glass buttons, groups, chips, toasts, skeletons, and empty states |
 | `src/theme.ts` | Light and dark tokens for native and React Strict DOM |
 | `modules/nyte-photo-access/` | Local Expo module for the limited-library picker |

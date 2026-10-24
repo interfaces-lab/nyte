@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { css, html } from "react-strict-dom";
-import { spacing, textStyles } from "../theme.ts";
+import { spacing, textStyles, tokens } from "../theme.ts";
 
 export function Message({
   align = "start",
@@ -12,8 +12,21 @@ export function Message({
   return <html.div style={[styles.message, align === "end" && styles.end]}>{children}</html.div>;
 }
 
-export function MessageFooter({ children }: { children: ReactNode }) {
-  return <html.span style={textStyles.caption}>{children}</html.span>;
+export function MessageFooter({
+  alert = false,
+  children,
+}: {
+  alert?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <html.span
+      role={alert ? "alert" : undefined}
+      style={[textStyles.caption, alert && styles.alert]}
+    >
+      {children}
+    </html.span>
+  );
 }
 
 const styles = css.create({
@@ -27,4 +40,5 @@ const styles = css.create({
   end: {
     alignItems: "flex-end",
   },
+  alert: { color: tokens.danger, textAlign: "end" },
 });
