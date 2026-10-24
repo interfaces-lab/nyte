@@ -75,7 +75,7 @@ function Harness({ streaming }: { streaming: boolean }): ReactElement {
         surface="follow-up"
         document={document}
         onDocumentChange={setDocument}
-        onSubmit={() => true}
+        onSubmit={() => undefined}
         placeholder="Type"
         suggestionCatalog={{
           status: "ready",

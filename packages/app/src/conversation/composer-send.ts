@@ -4,8 +4,8 @@ import type {
   ConfigurationPatch,
   Connection,
   Delivery,
-  MessageId,
-  ReceiptId,
+  ReviseOptions,
+  ReviseOutcome,
   Session,
   SessionId,
   UserContent,
@@ -101,88 +101,18 @@ export function composerSendPlan(input: {
   };
 }
 
-/**
- * Sends `content` in place of a message while it waits in the queue. `expect` is the history the
- * queue was read from, so once the message has started, the host settles the send `stale` instead
- * of editing the sent message and stopping its run.
- */
-export async function reviseQueued(
-  session: Session,
-  message: MessageId,
-  content: UserContent,
-  options: { readonly id?: ReceiptId; readonly delivery: Delivery },
-): Promise<"revised" | "left"> {
-  const view = sessionWatch(session.id).value;
-  const waiting = view?.messages.find((shown) => shown.id === message);
-
-  if (
-    view === undefined ||
-    view.revision === null ||
-    waiting?.kind !== "user" ||
-    waiting.status.kind === "landed"
-  )
-    return "left";
-
-  const receipt = await session.send(content, {
-    ...options,
-    replace: message,
-    expect: view.revision,
-    running: "refuse",
-  });
-
-  const status = await receipt.status().catch(() => undefined);
-
-  if (status?.kind !== "settled") return "revised";
-
-  switch (status.outcome.kind) {
-    case "stale":
-    case "busy":
-    case "pending-input":
-    case "missing-target":
-    case "summary-failed":
-    case "withdrawn":
-      return "left";
-    case "completed":
-    case "stopped":
-    case "failed":
-      return "revised";
-    default: {
-      const _exhaustive: never = status.outcome;
-
-      return _exhaustive;
-    }
-  }
-}
-
 export async function sendComposerMessage(
   session: Session,
   plan: Extract<ComposerSendPlan, { kind: "message" }>,
-  replacing?: UserMessage,
-): Promise<"sent" | "left"> {
+): Promise<void> {
   const id = asId<"receipt">(crypto.randomUUID());
   followTrace(session.id, id);
 
-  return traced("composer.submit", id, { session: session.id }, async () => {
-    const content = await uploadComposerContent(
-      replacing === undefined
-        ? plan.content
-        : { ...plan.content, files: messageFiles(replacing.content) },
-    );
-
+  await traced("composer.submit", id, { session: session.id }, async () => {
+    const content = await uploadComposerContent(plan.content);
     const draft = await admitDraft({ content, delivery: plan.delivery, session: session.id });
 
-    if (replacing === undefined) {
-      await session.send(draft.content, { id, delivery: draft.delivery });
-
-      return "sent";
-    }
-
-    const revised = await reviseQueued(session, replacing.id, draft.content, {
-      id,
-      delivery: draft.delivery,
-    });
-
-    return revised === "revised" ? "sent" : "left";
+    await session.send(draft.content, { id, delivery: draft.delivery });
   });
 }
 
@@ -213,56 +143,69 @@ type DeliveryOutcome =
   | { readonly kind: "empty" }
   | { readonly kind: "kept"; readonly message: string }
   | { readonly kind: "sent"; readonly note: string | undefined }
-  | { readonly kind: "refused"; readonly message: string }
-  | { readonly kind: "left"; readonly message: string };
+  | { readonly kind: "refused"; readonly message: string };
+
+type EditOutcome =
+  | Extract<DeliveryOutcome, { readonly kind: "empty" | "kept" | "refused" }>
+  | ReviseOutcome;
+
+type DraftCommands =
+  | { readonly kind: "loaded"; readonly commands: readonly CommandInfo[] }
+  | Extract<DeliveryOutcome, { readonly kind: "kept" }>;
 
 interface ComposerDelivery {
   readonly sessionId: SessionId;
   readonly submission: ComposerSubmission;
   readonly attachments: readonly { readonly content: ImageContent }[];
   readonly delivery: Delivery;
-  readonly replacing: UserMessage | undefined;
   readonly onLeave: () => void;
 }
 
-async function draftCommands(
-  sessionId: SessionId,
-  text: string,
-): Promise<readonly CommandInfo[] | undefined> {
-  if (!/^\/\S/.test(text.trim())) return NO_COMMANDS;
-  const store = sessionWatch(sessionId);
-  const view = store.value ?? (await store.next().catch(() => undefined));
+interface ComposerEdit {
+  readonly sessionId: SessionId;
+  readonly submission: ComposerSubmission;
+  readonly attachments: readonly { readonly content: ImageContent }[];
+  readonly delivery: Delivery;
+  readonly message: UserMessage;
+  readonly revise: (content: UserContent, options: ReviseOptions) => Promise<ReviseOutcome>;
+}
 
-  return view === undefined ? undefined : [...view.catalog.commands, COMPACT_COMMAND];
+async function draftCommands(sessionId: SessionId, text: string): Promise<DraftCommands> {
+  if (!/^\/\S/.test(text.trim())) return { kind: "loaded", commands: NO_COMMANDS };
+  const store = sessionWatch(sessionId);
+  const shown = store.value;
+
+  return (shown === undefined ? store.next() : Promise.resolve(shown)).then(
+    (view): DraftCommands => ({
+      kind: "loaded",
+      commands: [...view.catalog.commands, COMPACT_COMMAND],
+    }),
+    (cause: unknown): DraftCommands => ({
+      kind: "kept",
+      message: `Commands couldn't load: ${errorMessage(cause)}`,
+    }),
+  );
 }
 
 export async function deliverSubmission(input: ComposerDelivery): Promise<DeliveryOutcome> {
-  const { sessionId, submission, replacing } = input;
-  const commands = await draftCommands(sessionId, submission.text);
+  const { sessionId, submission } = input;
+  const loaded = await draftCommands(sessionId, submission.text);
 
-  if (commands === undefined)
-    return { kind: "kept", message: "Commands couldn't load. Try again." };
+  if (loaded.kind === "kept") return loaded;
 
   const plan = composerSendPlan({
     submission,
     attachments: input.attachments,
-    commands: replacing === undefined ? commands : NO_COMMANDS,
+    commands: loaded.commands,
     delivery: input.delivery,
   });
 
   if (plan.kind === "empty") return { kind: "empty" };
 
   const blocked =
-    plan.kind === "message" ? parsePluginCommand(submission.text, commands) : undefined;
+    plan.kind === "message" ? parsePluginCommand(submission.text, loaded.commands) : undefined;
 
-  if (blocked !== undefined)
-    return {
-      kind: "kept",
-      message:
-        replacing === undefined
-          ? `Send /${blocked.name} by itself.`
-          : "Commands can't run from a queued message.",
-    };
+  if (blocked !== undefined) return { kind: "kept", message: `Send /${blocked.name} by itself.` };
 
   const session = (await connected()).session(sessionId);
   input.onLeave();
@@ -276,17 +219,41 @@ export async function deliverSubmission(input: ComposerDelivery): Promise<Delive
   }
 
   try {
-    return (await sendComposerMessage(session, plan, replacing)) === "sent"
-      ? { kind: "sent", note: undefined }
-      : {
-          kind: "left",
-          message: "That message was already sent. Your edit is back in the composer.",
-        };
-  } catch (cause: unknown) {
-    const failed =
-      replacing === undefined ? "Couldn't send the message" : "Couldn't update the message";
+    await sendComposerMessage(session, plan);
 
-    return { kind: "refused", message: `${failed}: ${errorMessage(cause)}` };
+    return { kind: "sent", note: undefined };
+  } catch (cause: unknown) {
+    return { kind: "refused", message: `Couldn't send the message: ${errorMessage(cause)}` };
+  }
+}
+
+export async function deliverEdit(input: ComposerEdit): Promise<EditOutcome> {
+  const { sessionId, submission } = input;
+  const loaded = await draftCommands(sessionId, submission.text);
+
+  if (loaded.kind === "kept") return loaded;
+
+  if (parsePluginCommand(submission.text, loaded.commands) !== undefined)
+    return { kind: "kept", message: "Commands can't run from a queued message." };
+
+  if (submission.parts.length === 0 && input.attachments.length === 0) return { kind: "empty" };
+
+  const content = composerMessageContent(
+    submission.parts,
+    input.attachments,
+    messageFiles(input.message.content),
+  );
+
+  try {
+    const draft = await admitDraft({
+      content: await uploadComposerContent(content),
+      delivery: input.delivery,
+      session: sessionId,
+    });
+
+    return await input.revise(draft.content, { delivery: draft.delivery });
+  } catch (cause: unknown) {
+    return { kind: "refused", message: `Couldn't update the message: ${errorMessage(cause)}` };
   }
 }
 
