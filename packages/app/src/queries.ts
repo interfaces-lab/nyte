@@ -621,19 +621,6 @@ export function useWorkspaceCatalog(workspace: WorkspaceId | undefined) {
   });
 }
 
-export function useWorkspaceInfo(workspace: WorkspaceId | undefined) {
-  return useQuery({
-    queryKey: keys.workspaceInfo(workspace),
-    queryFn: async () => {
-      if (workspace === undefined) throw new Error("Open a workspace to read it");
-
-      return (await connected()).workspace(workspace).info();
-    },
-    enabled: workspace !== undefined,
-    staleTime: 60_000,
-  });
-}
-
 export function useWorkspaceFile(path: string | undefined) {
   return useQuery({
     queryKey: keys.workspaceFile(path ?? ""),

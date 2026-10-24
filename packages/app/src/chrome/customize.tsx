@@ -1,5 +1,6 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import type { ReactElement } from "react";
@@ -27,9 +28,9 @@ import {
   useHostState,
   usePluginSettingsProjection,
   useWorkspaceCatalog,
-  useWorkspaceInfo,
 } from "../queries.ts";
-import { hostWatch, mcpWatch, sessionWatch, useWatch, useWatchSelect } from "../sdk.tsx";
+import { keys } from "../query-keys.ts";
+import { connected, hostWatch, mcpWatch, sessionWatch, useWatch, useWatchSelect } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { settingsStyles as page } from "../settings/settings.stylex.ts";
 import { ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
@@ -489,8 +490,17 @@ export function CustomizeSurface({
   );
 
   const workspace = selected?.id ?? home;
-  const workspaceInfo = useWorkspaceInfo(selected === undefined ? workspace : undefined);
-  const target = workspaceInfo.data?.target;
+
+  const homeInfo = useQuery({
+    queryKey: keys.workspaceInfo(home),
+    queryFn:
+      selected !== undefined || home === undefined
+        ? skipToken
+        : async () => (await connected()).workspace(home).info(),
+    staleTime: 60_000,
+  });
+
+  const target = homeInfo.data?.target;
 
   const root =
     selected?.path ?? (target !== undefined && "path" in target ? target.path : undefined);
