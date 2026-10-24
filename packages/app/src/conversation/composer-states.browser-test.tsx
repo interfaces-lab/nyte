@@ -11,6 +11,7 @@ import type {
   Message,
   ModelCatalogView,
   PartView,
+  QueuedMessage,
   RunView,
   SessionView,
 } from "@nyte-ai/sdk";
@@ -102,7 +103,7 @@ const live = (stopping = false): Execution => ({
 
 function view(
   execution: Execution,
-  extra: readonly Message[] = [],
+  queue: readonly QueuedMessage[] = [],
   parts: readonly PartView[] = [],
 ): SessionView {
   const busy = execution.kind !== "idle";
@@ -111,7 +112,8 @@ function view(
     revision: asId<"revision">("r1"),
     seq: asSeq(1),
     activation: { kind: "active" },
-    messages: [prompt, reply, ...extra],
+    messages: [prompt, reply],
+    queue,
     leadingPrompt: null,
     parts,
     turns: [
@@ -125,6 +127,7 @@ function view(
     ],
     usage: USAGE,
     execution,
+    reportsHeld: false,
     background: [],
     configuration: { selected: liveRun.configuration, effective: liveRun.configuration },
     context: { tokens: 0, window: 1_000, lastRequest: null },
@@ -134,12 +137,27 @@ function view(
   };
 }
 
-const queued = (id: string, content: string): Message =>
-  user(id, content, {
+function queued(
+  id: string,
+  content: string,
+  status: QueuedMessage["status"] = {
     kind: "pending",
     schedule: { kind: "next-turn", reason: "requested" },
     covered: true,
-  });
+  },
+): QueuedMessage {
+  return {
+    id: asId<"message">(id),
+    turn: asId<"turn">(`loose:${id}`),
+    at: 1,
+    kind: "user",
+    content,
+    source: { kind: "user" },
+    delivery: "queue",
+    status,
+    siblings: { index: 0, count: 1, ids: [] },
+  };
+}
 
 const question: PartView = {
   id: asId<"part">("question"),
@@ -252,7 +270,7 @@ const STATES: readonly ComposerState[] = [
   {
     name: "unsent",
     view: view(COMPLETED, [
-      user("offline", "Push the branch.", {
+      queued("offline", "Push the branch.", {
         kind: "unsent",
         attempts: 2,
         retrying: { at: 0, reason: "offline" },

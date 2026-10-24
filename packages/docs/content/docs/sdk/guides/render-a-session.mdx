@@ -88,6 +88,26 @@ The built-in parts are `text` for answers, `thinking` for reasoning, and `tool` 
 tool part goes through `calling`, `running` and `settled`; once settled, `outcome.kind` is `ok`,
 `failed`, `interrupted`, `rejected` or `stopped`.
 
+## Draw the queue
+
+`view.queue` holds the messages waiting for a later run, oldest first. They are never in
+`messages`, so draw `messages` as the transcript and `queue` beside the composer, without working
+out which list a message belongs in.
+
+A `steer` sent while a run works stays in `messages` as `pending` until the run takes it at its
+next step. One the run can't take, because its model takes no messages mid-turn, the run is
+stopping or the send changes the configuration, waits in `queue` instead. A `queue` sent while a
+run works waits in `queue` and stays there after that run ends, until the next run takes it. An
+`attach` waits in `queue` for the next run. A `steer` or `queue` sent to an idle head opens the next
+turn, so it shows in `messages` at once. Reports from child sessions and jobs are never queued.
+
+A send that is still `unsent` waits in `queue` while it retries, or while a run is live and it isn't
+a `steer`. Otherwise it shows in `messages`.
+
+`view.reportsHeld` is `true` when the head is idle and its last run didn't complete, or it hasn't
+run yet. A report from a child session or a job then waits for the next prompt instead of starting
+a run, so you can tell the user why nothing is happening.
+
 ## Show what is running
 
 `view.execution` says what the head is doing right now:
@@ -150,10 +170,12 @@ showing. Iterate a `pagedViews` once.
 | --------------- | -------------------------------------------------------------------------- |
 | `revision`      | The head's current revision, for `expect` on edits and moves               |
 | `messages`      | User messages and parts, oldest first                                      |
+| `queue`         | Messages waiting for a later run, oldest first                             |
 | `turns`         | One entry per turn, with its state, step count and a summary of tool calls |
 | `parts`         | Every part with its placement, including modal ones outside the transcript |
 | `usage`         | Tokens and cost summed over every completed run in the head's history      |
 | `execution`     | Idle, live, waiting or retrying                                            |
+| `reportsHeld`   | Whether reports from children and jobs wait for the next prompt            |
 | `background`    | Child sessions, jobs and browser pages, with whether each is still working |
 | `configuration` | The `selected` configuration and the `effective` one after defaults        |
 | `context`       | Tokens in the model's context and the size of its window                   |

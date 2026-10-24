@@ -6,7 +6,7 @@ import { CLOSED, explicitMentionQuery, nextCompletion } from "../completion.ts";
 import { addPart } from "../draft.ts";
 import type { Fact } from "../msg.ts";
 import { currentQuestion, sameQuestion } from "../question.ts";
-import { chatFolder, followedSession, followedShells } from "../state.ts";
+import { chatFolder, followedSession, followedShells, rowStatus } from "../state.ts";
 import type { FollowedSession, Handback, ShellJob, State } from "../state.ts";
 import { andThen, insertText, setDraft, stay, withFacts, withLocal, withNotice } from "../step.ts";
 import type { MsgOf, SomeHandlers, Step } from "../step.ts";
@@ -359,16 +359,12 @@ function runEnded(before: SessionView | null, after: SessionView, next: State, n
 
 function editLanded(state: State, now: number): Step {
   const { editing } = state.local;
-  const view = followedSession(state)?.view;
+  const followed = followedSession(state);
 
-  if (editing === null || view === null || view === undefined) return stay(state);
+  if (editing === null || followed === null || followed.view === null) return stay(state);
+  const status = rowStatus(state, followed.id, editing.message);
 
-  const stillQueued = view.messages.some(
-    (message) =>
-      message.id === editing.message && message.kind === "user" && message.status.kind !== "landed",
-  );
-
-  if (stillQueued) return stay(state);
+  if (status === "pending" || status === "unsent") return stay(state);
 
   return stay(
     withNotice(

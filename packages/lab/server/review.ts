@@ -226,9 +226,9 @@ async function readHead(sdk: ReviewHost["sdk"], sessionId: SessionId, head: Head
     return message.at > (forkedAt ?? 0);
   });
 
-  const queued = view.messages.some(
-    (message) => message.kind === "user" && message.status.kind === "pending",
-  );
+  const queued =
+    view.queue.length > 0 ||
+    view.messages.some((message) => message.kind === "user" && message.status.kind === "pending");
 
   const end = view.execution.kind === "idle" ? view.execution.lastRun?.end : undefined;
   const settled = view.execution.kind === "idle" && end !== undefined && !queued;
@@ -603,9 +603,9 @@ class Reviews {
   async #authorState(author: AuthorRecord): Promise<Author> {
     const view = await this.#sdk.session(author.sessionId).view();
 
-    const queued = view.messages.some(
-      (message) => message.kind === "user" && message.status.kind === "pending",
-    );
+    const queued =
+      view.queue.length > 0 ||
+      view.messages.some((message) => message.kind === "user" && message.status.kind === "pending");
 
     const end = view.execution.kind === "idle" ? view.execution.lastRun?.end : undefined;
     const working = queued || view.execution.kind !== "idle";

@@ -69,11 +69,13 @@ function view(message: Message): SessionView {
     seq: asSeq(1),
     activation: { kind: "active" },
     messages: [message],
+    queue: [],
     leadingPrompt: null,
     parts: [],
     turns: [],
     usage: USAGE,
     execution: COMPLETED,
+    reportsHeld: false,
     background: [
       {
         kind: "job",

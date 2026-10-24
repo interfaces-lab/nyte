@@ -20,14 +20,19 @@ export function tracePaints(
 
   return {
     [Symbol.asyncIterator]() {
-      let shown: SessionView["messages"] | null = null;
+      let shown: SessionView | null = null;
 
       return mapped(views, (view) => {
-        if (view.messages === shown) return view;
-        const known = shown === null ? null : new Set(shown.map((message) => message.id));
+        if (view.messages === shown?.messages && view.queue === shown.queue) return view;
+
+        const known =
+          shown === null
+            ? null
+            : new Set([...shown.messages, ...shown.queue].map((message) => message.id));
+
         const followed = followedTrace(session);
 
-        for (const message of view.messages) {
+        for (const message of [...view.messages, ...view.queue]) {
           if (known === null ? message.id !== followed : known.has(message.id)) continue;
           const user = message.kind === "user";
 
@@ -39,7 +44,7 @@ export function tracePaints(
           void painted().then(() => ended());
         }
 
-        shown = view.messages;
+        shown = view;
 
         return view;
       })[Symbol.asyncIterator]();

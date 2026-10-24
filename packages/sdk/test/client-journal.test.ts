@@ -4,7 +4,7 @@ import { decodeInput } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { createSendJournal } from "../src/journal.ts";
 import { readOperation, until } from "./served.ts";
-import { client, closeOpened, open, settledChat, text, users } from "./connection.ts";
+import { client, closeOpened, open, queued, settledChat, text, users } from "./connection.ts";
 
 afterEach(closeOpened);
 
@@ -272,10 +272,11 @@ describe("client send journal", () => {
     const connection = await client(host, journal);
 
     const unsent = await until(connection.session(session.id).watch(), (view) =>
-      view.messages.some((message) => message.kind === "user" && message.status.kind === "unsent"),
+      view.queue.some((message) => message.status.kind === "unsent"),
     );
 
-    expect(users(unsent)).toEqual(["Hi.", "Journaled."]);
+    expect(users(unsent)).toEqual(["Hi."]);
+    expect(queued(unsent)).toEqual(["Journaled."]);
     down = false;
 
     const landed = await until(
@@ -374,7 +375,7 @@ describe("client send journal", () => {
     const first = await session.send("First.");
     await halfway.promise;
     const second = await session.send("Second.", { delivery: "queue" });
-    await until(session.watch(), (view) => users(view).includes("Second."));
+    await until(session.watch(), (view) => queued(view).includes("Second."));
     const views: SessionView[] = [];
     const watching = session.watch()[Symbol.asyncIterator]();
 
@@ -405,7 +406,10 @@ describe("client send journal", () => {
     await watching.return?.();
     await collected;
     expect(
-      views.filter((view) => users(view).filter((text) => text.startsWith("Second")).length > 1),
+      views.filter(
+        (view) =>
+          [...users(view), ...queued(view)].filter((text) => text.startsWith("Second")).length > 1,
+      ),
     ).toEqual([]);
     expect(
       settled.messages.filter(
@@ -443,13 +447,15 @@ describe("client send journal", () => {
 
     const unsent = await until(
       connection.session(session.id).watch(),
-      (view) => users(view).length === 3,
+      (view) => users(view).length + queued(view).length === 3,
     );
 
-    expect(users(unsent)).toEqual(["Hi.", "One.", "Two."]);
+    expect([...users(unsent), ...queued(unsent)].toSorted()).toEqual(["Hi.", "One.", "Two."]);
     expect(
-      unsent.messages.map((message) => message.kind === "user" && message.status.kind),
-    ).toEqual(["landed", false, "unsent", "unsent"]);
+      [...unsent.messages, ...unsent.queue].flatMap((message) =>
+        message.kind === "user" ? [message.status.kind] : [],
+      ),
+    ).toEqual(["landed", "unsent", "unsent"]);
     down = false;
     await until(
       connection.session(session.id).watch(),
