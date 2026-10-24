@@ -169,7 +169,7 @@ export function Tray({
           id={id}
           tabIndex={-1}
           aria-description={label}
-          initial={reducedMotion ? false : { opacity: 0, y: 4, scale: 0.99 }}
+          initial={reducedMotion ? false : { y: 4, scale: 0.99 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={
             reducedMotion
