@@ -78,10 +78,10 @@ export function SideChat({
       ),
     );
 
-  const send = async ({ text }: ComposerSubmission): Promise<boolean> => {
+  const send = async ({ text }: ComposerSubmission): Promise<void> => {
     const message = text.trim();
 
-    if (message === "" || running || closed) return false;
+    if (message === "" || running || closed) return;
 
     if (thread.kind === "demo") {
       const paths = review.files.map((file) => file.path);
@@ -104,12 +104,10 @@ export function SideChat({
           () => false,
         ))
       )
-        return false;
+        return;
     }
 
     local.setDraft({ text: "", selectionStart: 0, selectionEnd: 0 });
-
-    return true;
   };
 
   return (

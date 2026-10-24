@@ -7,16 +7,23 @@ import type { CSSProperties, ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type {
+  Delivery,
   Execution,
+  HeldMessage,
   Message,
+  MessageId,
   ModelCatalogView,
   PartView,
   QueuedMessage,
+  ReleaseOutcome,
+  ReviseOutcome,
   RunView,
   SessionView,
+  UserContent,
 } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../nyte.ts";
+import type { ComposerViewState } from "../layout/session-view-state.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
 import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
@@ -53,30 +60,17 @@ const turn = asId<"turn">("turn");
 const DRAFT =
   "Rename the session store to journal, keep the old export for one release, and update every caller in the desktop package before touching the docs.";
 
-function user(
-  id: string,
-  content: string,
-  status: Extract<Message, { readonly kind: "user" }>["status"],
-): Message {
-  return {
-    id: asId<"message">(id),
-    turn: status.kind === "landed" ? turn : asId<"turn">(`loose:${id}`),
-    at: 1,
-    kind: "user",
-    content,
-    source: { kind: "user" },
-    delivery: "queue",
-    status,
-    siblings: { index: 0, count: 1, ids: [] },
-  };
-}
-
-const prompt = user("prompt", "Where does the session store live?", {
-  kind: "landed",
-  commit: asId<"commit">("prompt"),
-  run: null,
-  replaced: null,
-});
+const prompt: Message = {
+  id: asId<"message">("prompt"),
+  turn,
+  at: 1,
+  kind: "user",
+  content: "Where does the session store live?",
+  source: { kind: "user" },
+  delivery: "queue",
+  status: { kind: "landed", commit: asId<"commit">("prompt"), run: null, replaced: null },
+  siblings: { index: 0, count: 1, ids: [] },
+};
 
 const reply: Message = {
   id: asId<"message">("reply"),
@@ -192,6 +186,7 @@ const question: PartView = {
 };
 
 interface Probe {
+  readonly layer: Layer;
   readonly region: HTMLElement;
   readonly editor: HTMLElement;
   readonly button: (name: string) => HTMLButtonElement | null;
@@ -204,7 +199,262 @@ interface ComposerState {
   readonly name: string;
   readonly view: SessionView | undefined;
   readonly draft?: string;
-  readonly check: (probe: Probe) => readonly string[];
+  readonly check: (probe: Probe) => readonly string[] | Promise<readonly string[]>;
+}
+
+const QUEUED_TEXT = "Then run the tests.";
+
+const KEPT_DRAFT = "Keep this draft.";
+
+let saveOutcome: ReviseOutcome["kind"] = "revised";
+
+const saves: { readonly content: UserContent; readonly delivery: Delivery | undefined }[] = [];
+
+const calls: string[] = [];
+
+const holdAnswers: ("sent" | "missing")[] = [];
+
+const saveGates: Promise<void>[] = [];
+
+let loseHold: (lost: Awaited<HeldMessage["lost"]>) => void = () => undefined;
+
+let stored: ComposerViewState | undefined;
+
+function heldMessage(message: MessageId): HeldMessage {
+  const lost = Promise.withResolvers<Awaited<HeldMessage["lost"]>>();
+  let released = false;
+
+  const release = async (): Promise<ReleaseOutcome> => {
+    if (!released) calls.push(`release ${message}`);
+    released = true;
+
+    return { kind: "released" };
+  };
+
+  loseHold = lost.resolve;
+
+  return {
+    kind: "held",
+    message,
+    lost: lost.promise,
+    save: async (content, options) => {
+      calls.push(`save ${message}`);
+      saves.push({ content, delivery: options?.delivery });
+      await saveGates.shift();
+      released = true;
+
+      return { kind: saveOutcome };
+    },
+    release,
+    async [Symbol.asyncDispose]() {
+      await release();
+    },
+  };
+}
+
+async function editQueuedMessage({
+  layer,
+  region,
+  editor,
+  button,
+}: Probe): Promise<readonly string[]> {
+  const failures: string[] = [];
+
+  const check = (ok: boolean, failure: string): void => {
+    if (!ok) failures.push(failure);
+  };
+
+  const editButton = (row: string) =>
+    region.querySelector<HTMLButtonElement>(
+      `[data-queue-row='${row}'] button[aria-label='Edit queued message']`,
+    );
+
+  const indicator = () => region.querySelector("[data-composer-frame] [role='status']");
+
+  const reads = (text: string) =>
+    until(
+      () => (editor.innerText === text ? true : null),
+      `the composer to read "${text}"`,
+      () => `; it reads "${editor.innerText}"`,
+    );
+
+  const press = (key: string): void => {
+    editor.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  };
+
+  const beginEdit = async (): Promise<void> => {
+    editButton("first")?.click();
+    await reads(QUEUED_TEXT);
+  };
+
+  const type = async (text: string): Promise<void> => {
+    const typed = `${editor.innerText}${text}`;
+    document.execCommand("insertText", false, text);
+    await reads(typed);
+  };
+
+  const called = (from: number, call: string, after: string) =>
+    until(() => (calls.slice(from).includes(call) ? true : null), `"${call}" after ${after}`);
+
+  const notice = () => region.querySelector("[role='alert']")?.textContent;
+
+  saveOutcome = "revised";
+  holdAnswers.length = 0;
+
+  let mark = calls.length;
+  await beginEdit();
+  await called(mark, "hold first", "Edit");
+  check(indicator()?.textContent === "Editing queued message", "no editing indicator");
+  check(
+    region.querySelector("[data-queue-row='first']")?.getAttribute("data-editing") === "true",
+    "the edited row is not marked",
+  );
+  check(
+    inert(editButton("second")) &&
+      editButton("second")?.title === "Finish editing the queued message first.",
+    "another row's Edit is open during an edit",
+  );
+  const sendTitle = button("Send message")?.title ?? "";
+  check(
+    sendTitle === "Update (Enter) · Steer Instead (Ctrl+Enter)",
+    `send button reads "${sendTitle}"`,
+  );
+
+  if (layer === "composer")
+    check(
+      stored?.draft === `${QUEUED_TEXT}\n${KEPT_DRAFT}`,
+      `the composer stores "${stored?.draft ?? ""}" while editing`,
+    );
+
+  mark = calls.length;
+  press("Escape");
+  await reads(KEPT_DRAFT);
+  check(indicator() === null, "the indicator outlives Esc");
+  await called(mark, "release first", "Esc");
+
+  await beginEdit();
+  mark = calls.length;
+  button("Cancel editing")?.click();
+  await reads(KEPT_DRAFT);
+  await called(mark, "release first", "Cancel editing");
+
+  await beginEdit();
+  await type(" Then lint.");
+  let finishSave: () => void = () => undefined;
+  saveGates.push(
+    new Promise<void>((resolve) => {
+      finishSave = resolve;
+    }),
+  );
+  press("Enter");
+  await until(
+    () => (button("Send message")?.getAttribute("aria-busy") === "true" ? true : null),
+    "the save to start",
+  );
+  document.execCommand("insertText", false, " Typed while saving.");
+
+  for (const target of [
+    region.querySelector("[data-composer-frame]"),
+    layer === "session" ? document.querySelector("[aria-label='Messages']") : null,
+  ]) {
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([137, 80, 78, 71])], "shot.png", { type: "image/png" }),
+    );
+    target?.dispatchEvent(
+      new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }),
+    );
+  }
+
+  await painted();
+  await painted();
+  await painted();
+  check(
+    editor.innerText === `${QUEUED_TEXT} Then lint.`,
+    `typing while saving changed the edit to "${editor.innerText}"`,
+  );
+  check(
+    region.querySelector("[aria-label='Image attachments']") === null,
+    "a file dropped while saving was attached",
+  );
+  finishSave();
+  await reads(KEPT_DRAFT);
+  check(document.activeElement === editor, "the composer lost focus after saving");
+  const saved = saves.at(-1);
+  check(
+    saved?.content === `${QUEUED_TEXT} Then lint.` && saved.delivery === "queue",
+    "saving did not revise the queued message",
+  );
+
+  saveOutcome = "sent";
+  const beforeSave = editor.innerText;
+  await beginEdit();
+  await type(" Then push.");
+  press("Enter");
+  await reads(`${QUEUED_TEXT} Then push.\n${beforeSave}`);
+  check(notice() === "That message was already sent.", "no notice that the save found it sent");
+
+  saveOutcome = "revised";
+  const beforeLost = editor.innerText;
+  await beginEdit();
+  await type(" Then deploy.");
+  loseHold({ kind: "sent" });
+  await reads(`${QUEUED_TEXT} Then deploy.\n${beforeLost}`);
+  check(notice() === "That message was already sent.", "no notice when the hold was lost");
+
+  const beforeImage = editor.innerText;
+  await beginEdit();
+  const transfer = new DataTransfer();
+  transfer.items.add(
+    new File([new Uint8Array([137, 80, 78, 71])], "shot.png", { type: "image/png" }),
+  );
+  region
+    .querySelector("[data-composer-frame]")
+    ?.dispatchEvent(
+      new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }),
+    );
+  await until(
+    () => region.querySelector("[aria-label='Image attachments']"),
+    "the dropped image to attach",
+  );
+  loseHold({ kind: "lapsed" });
+  await until(
+    () => (notice() === "Couldn't keep the message on hold." ? true : null),
+    "the lapsed notice",
+  );
+  check(
+    editor.innerText === `${QUEUED_TEXT}\n${beforeImage}` &&
+      region.querySelector("[aria-label='Image attachments']") !== null,
+    `an edit with an added image ended as "${editor.innerText}"`,
+  );
+
+  for (const [answer, shown] of [
+    ["missing", "That message is no longer queued."],
+    ["sent", "That message was already sent."],
+  ] as const) {
+    holdAnswers.push(answer);
+    const beforeHold = editor.innerText;
+    mark = calls.length;
+    editButton("first")?.click();
+    await called(mark, "hold first", "Edit");
+    await until(() => (notice() === shown ? true : null), `the notice "${shown}"`);
+    check(
+      editor.innerText === beforeHold && indicator() === null,
+      `an unchanged edit of a ${answer} message left "${editor.innerText}"`,
+    );
+  }
+
+  const sendNow = () =>
+    region.querySelector<HTMLButtonElement>(
+      "[data-queue-row='second'] button[aria-label='Add to next response']",
+    );
+
+  mark = calls.length;
+  sendNow()?.click();
+  await called(mark, "revise second", "Send now");
+  await until(sendNow, "the revised row to leave its sending state");
+
+  return failures;
 }
 
 const STATES: readonly ComposerState[] = [
@@ -268,6 +518,12 @@ const STATES: readonly ComposerState[] = [
     },
   },
   {
+    name: "queued-edit",
+    view: view(live(), [queued("first", QUEUED_TEXT), queued("second", "And open a PR.")]),
+    draft: KEPT_DRAFT,
+    check: editQueuedMessage,
+  },
+  {
     name: "unsent",
     view: view(COMPLETED, [
       queued("offline", "Push the branch.", {
@@ -276,12 +532,27 @@ const STATES: readonly ComposerState[] = [
         retrying: { at: 0, reason: "offline" },
       }),
     ]),
-    check: ({ region }) =>
-      Array.from(region.querySelectorAll("[role='alert']")).some(
-        (alert) => alert.textContent === "Couldn't send: offline. Retrying…",
-      )
-        ? []
-        : ["no retry alert"],
+    check: ({ region }) => {
+      const row = region.querySelector("[data-queue-row='offline']");
+
+      const buttons = Array.from(row?.querySelectorAll("button") ?? [], (button) =>
+        button.getAttribute("aria-label"),
+      ).join(", ");
+
+      const shortcuts = row?.getAttribute("aria-keyshortcuts") ?? "";
+
+      return [
+        ...(Array.from(region.querySelectorAll("[role='alert']")).some(
+          (alert) => alert.textContent === "Couldn't send: offline. Retrying…",
+        )
+          ? []
+          : ["no retry alert"]),
+        ...(buttons === "Remove queued message" ? [] : [`the unsent row offers "${buttons}"`]),
+        ...(shortcuts === "ArrowUp ArrowDown Escape Control+Delete"
+          ? []
+          : [`the unsent row advertises "${shortcuts}"`]),
+      ];
+    },
   },
   {
     name: "question",
@@ -330,6 +601,19 @@ installConnection(
     views: new Map(
       STATES.map((state) => [stateSession(state), state.view === undefined ? [] : [state.view]]),
     ),
+    session: () => ({
+      hold: async (message) => {
+        calls.push(`hold ${message}`);
+        const answer = holdAnswers.shift();
+
+        return answer === undefined ? heldMessage(message) : { kind: answer };
+      },
+      revise: async (message) => {
+        calls.push(`revise ${message}`);
+
+        return { kind: "revised" };
+      },
+    }),
   }).connection,
 );
 
@@ -356,6 +640,9 @@ function LoneComposer({ state }: { readonly state: ComposerState }): ReactElemen
       execution={sessionView?.execution}
       pending={messages.queued}
       unsent={messages.unsent}
+      onViewStateChange={(state) => {
+        stored = state;
+      }}
     />
   );
 }
@@ -407,7 +694,11 @@ function stageStyle(layer: Layer, width: Width): string {
 
 let renderFailure: unknown;
 
-async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
+async function until<T>(
+  read: () => T | null | undefined,
+  what: string,
+  seen: () => string = () => "",
+): Promise<T> {
   const deadline = performance.now() + 5_000;
 
   for (;;) {
@@ -416,7 +707,7 @@ async function until<T>(read: () => T | null | undefined, what: string): Promise
 
     if (value !== null && value !== undefined) return value;
 
-    if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
+    if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}${seen()}`);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
   }
 }
@@ -471,6 +762,7 @@ async function show(host: HTMLElement, state: ComposerState, layer: Layer, width
   await painted();
 
   const probe: Probe = {
+    layer,
     region,
     editor,
     button: (name) => region.querySelector<HTMLButtonElement>(`button[aria-label='${name}']`),
@@ -523,7 +815,10 @@ export async function run(): Promise<string> {
           try {
             const { stage, root, probe } = await show(host, state, layer, width);
 
-            for (const failure of [...layoutFailures(stage, probe.region), ...state.check(probe)])
+            for (const failure of [
+              ...layoutFailures(stage, probe.region),
+              ...(await state.check(probe)),
+            ])
               failures.push(`${label}: ${failure}`);
             flushSync(() => root.unmount());
           } catch (error) {
@@ -647,7 +942,7 @@ export function studio(): void {
         unmount = () => root.unmount();
 
         if (current !== generation) return unmount();
-        draw([...layoutFailures(stage, probe.region), ...state.check(probe)]);
+        draw([...layoutFailures(stage, probe.region), ...(await state.check(probe))]);
       } catch (error) {
         if (current === generation) draw([error instanceof Error ? error.message : String(error)]);
       }

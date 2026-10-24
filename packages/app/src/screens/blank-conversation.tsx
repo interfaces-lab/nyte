@@ -118,12 +118,12 @@ export function BlankConversation({
     submission: ComposerSubmission,
     delivery: Delivery,
     document: ComposerDocumentState,
-  ): boolean | Promise<boolean> => {
-    if (attachmentReads !== 0) return false;
+  ): void | Promise<void> => {
+    if (attachmentReads !== 0) return;
 
     const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
 
-    if (plan.kind !== "message") return false;
+    if (plan.kind !== "message") return;
     const draft = viewStore.readBlank(paneId);
 
     const waiting = viewStore.beginSend(paneId, {
@@ -133,9 +133,9 @@ export function BlankConversation({
       selectionEnd: document.selectionEnd,
     });
 
-    if (waiting === undefined) return false;
+    if (waiting === undefined) return;
 
-    return startDraft(viewStore, actions, draft.id, waiting, plan).then(() => true);
+    return startDraft(viewStore, actions, draft.id, waiting, plan);
   };
 
   const addFiles = useCallback(
