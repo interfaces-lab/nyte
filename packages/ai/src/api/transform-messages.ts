@@ -6,11 +6,14 @@ import type {
   Model,
   TextContent,
   ToolCall,
+  ToolResultMessage,
 } from "../types.ts";
 
 const NON_VISION_USER_IMAGE_PLACEHOLDER = "(image omitted: model does not support images)";
 
 const NON_VISION_TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";
+
+const ERROR_TOOL_IMAGE_PLACEHOLDER = "(image attached after the tool results)";
 
 function replaceImagesWithPlaceholder(
   content: (TextContent | ImageContent)[],
@@ -34,6 +37,26 @@ function replaceImagesWithPlaceholder(
   }
 
   return result;
+}
+
+/**
+ * Splits the images out of an error tool result, for APIs that reject anything but text in one
+ * (Anthropic). Send `content` as the tool result, then `caption` and `images` after all tool
+ * results of the turn, in the same user message. Undefined when the result needs no split.
+ */
+export function splitErrorToolResultImages(
+  msg: ToolResultMessage,
+): { content: TextContent[]; caption: string; images: ImageContent[] } | undefined {
+  if (!msg.isError) return undefined;
+  const images = msg.content.filter((block): block is ImageContent => block.type === "image");
+
+  if (images.length === 0) return undefined;
+
+  return {
+    content: replaceImagesWithPlaceholder(msg.content, ERROR_TOOL_IMAGE_PLACEHOLDER),
+    caption: `Images from the error result of tool call ${msg.toolCallId} (${msg.toolName}):`,
+    images,
+  };
 }
 
 function downgradeUnsupportedImages<TApi extends Api>(

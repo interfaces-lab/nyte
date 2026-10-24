@@ -25,11 +25,16 @@ import type {
   StreamOptions,
   TextContent,
   ThinkingContent,
+  Tool,
   ToolCall,
   TranscriptContext,
   Usage,
 } from "../types.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
+import {
+  appendAssistantMessageDiagnostic,
+  createAssistantMessageDiagnostic,
+} from "../utils/diagnostics.ts";
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseStreamingJson, parseToolCallArguments, repairJson } from "../utils/json-parse.ts";
@@ -72,7 +77,12 @@ import {
   createClient,
   shouldUseFineGrainedToolStreamingBeta,
 } from "./anthropic-client.ts";
-import { normalizeToolCallId, convertMessages, convertTools } from "./anthropic-convert.ts";
+import {
+  normalizeToolCallId,
+  convertMessages,
+  convertTools,
+  prefersStrictSampling,
+} from "./anthropic-convert.ts";
 
 function getCacheControl(
   model: Model<"anthropic-messages">,
@@ -356,9 +366,6 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
         isOAuth = created.isOAuthToken;
       }
 
-      const params = buildParams(model, normalizedContext, isOAuth, nativeToolChanges, options);
-      await options?.onPayload?.(params, model);
-
       const requestOptions: Anthropic.RequestOptions = {
         signal: options?.signal,
         maxRetries: 0,
@@ -380,14 +387,57 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
         }
       }
 
-      const response = await retryProviderRequest(
-        () => client.beta.messages.create({ ...params, stream: true }, requestOptions).asResponse(),
-        {
-          maxRetries: options?.maxRetries,
-          maxRetryDelayMs: options?.maxRetryDelayMs,
-          signal: options?.signal,
-        },
-      );
+      const send = async (disablePreferredStrictTools: boolean): Promise<Response> => {
+        const built = buildParams(
+          model,
+          normalizedContext,
+          isOAuth,
+          nativeToolChanges,
+          options,
+          disablePreferredStrictTools,
+        );
+        await options?.onPayload?.(built.params, model);
+
+        try {
+          return await retryProviderRequest(
+            () =>
+              client.beta.messages
+                .create({ ...built.params, stream: true }, requestOptions)
+                .asResponse(),
+            {
+              maxRetries: options?.maxRetries,
+              maxRetryDelayMs: options?.maxRetryDelayMs,
+              signal: options?.signal,
+            },
+          );
+        } catch (error) {
+          if (
+            disablePreferredStrictTools ||
+            !built.hasPreferredStrictTools ||
+            !(error instanceof Anthropic.APIError) ||
+            error.status !== 400 ||
+            error.type !== "invalid_request_error" ||
+            ![
+              "The compiled grammar is too large",
+              "Too many strict tools (",
+              "Schemas contains too many parameters with union types (",
+            ].some((message) => error.message.includes(message))
+          ) {
+            throw error;
+          }
+
+          appendAssistantMessageDiagnostic(
+            output,
+            createAssistantMessageDiagnostic("anthropic_strict_tools_fallback", error, {
+              reason: "strict_tool_limits_exceeded",
+            }),
+          );
+
+          return send(true);
+        }
+      };
+
+      const response = await send(false);
 
       const responseHeaders = headersToRecord(response.headers);
       await options?.onResponse?.({ status: response.status, headers: responseHeaders }, model);
@@ -697,16 +747,45 @@ const AnthropicMetadataSchema = Type.Object({ user_id: Type.String() });
  *   therefore only grows, keeping the cached prefix intact across tool changes.
  * - Thinking display defaults to "summarized" so Opus 4.7 and Mythos Preview behave like older
  *   Claude 4 models, whose API default is also "summarized".
+ * - `disablePreferredStrictTools` sends `prefer` tools non-strict, for the one resend after
+ *   Anthropic rejects the strict tool set for its grammar size, tool count, or union limits.
+ *   `hasPreferredStrictTools` says whether that resend would differ. A started stream is never
+ *   resent.
  */
 function buildParams(
   model: Model<"anthropic-messages">,
   context: TranscriptContext,
   isOAuthToken: boolean,
   nativeToolChanges: boolean,
-  options?: AnthropicOptions,
-): MessageCreateParamsStreaming {
+  options: AnthropicOptions | undefined,
+  disablePreferredStrictTools: boolean,
+): { params: MessageCreateParamsStreaming; hasPreferredStrictTools: boolean } {
   const cacheControl = getCacheControl(model, options?.cacheRetention, options?.env);
   const compat = getAnthropicCompat(model);
+  let hasPreferredStrictTools = false;
+
+  const toolDefinitions = (
+    tools: Tool[],
+    toolCacheControl?: BetaCacheControlEphemeral,
+    deferLoading = false,
+  ): BetaTool[] => {
+    const definitions = convertTools(
+      tools,
+      isOAuthToken,
+      compat.supportsEagerToolInputStreaming,
+      compat.supportsStrictTools,
+      toolCacheControl,
+      deferLoading,
+      disablePreferredStrictTools,
+    );
+
+    if (tools.some((tool, index) => prefersStrictSampling(tool) && definitions[index].strict)) {
+      hasPreferredStrictTools = true;
+    }
+
+    return definitions;
+  };
+
   const initialSystemMessage = getInitialSystemMessage(context.messages);
   const initialSystemText = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
   const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
@@ -775,38 +854,14 @@ function buildParams(
     );
 
     params.tools = [
-      ...convertTools(
-        initialTools,
-        isOAuthToken,
-        compat.supportsEagerToolInputStreaming,
-        compat.supportsStrictTools,
-        toolCacheControl,
-      ),
+      ...toolDefinitions(initialTools, toolCacheControl),
       DEFERRED_TOOL_PLACEHOLDER,
-      ...convertTools(
-        laterTools,
-        isOAuthToken,
-        compat.supportsEagerToolInputStreaming,
-        compat.supportsStrictTools,
-      ).map((tool) => ({ ...tool, defer_loading: true })),
+      ...toolDefinitions(laterTools, undefined, true),
     ];
   } else if (immediateTools.length > 0 || deferredTools.length > 0) {
     params.tools = [
-      ...convertTools(
-        immediateTools,
-        isOAuthToken,
-        compat.supportsEagerToolInputStreaming,
-        compat.supportsStrictTools,
-        toolCacheControl,
-      ),
-      ...convertTools(
-        deferredTools,
-        isOAuthToken,
-        compat.supportsEagerToolInputStreaming,
-        compat.supportsStrictTools,
-        undefined,
-        true,
-      ),
+      ...toolDefinitions(immediateTools, toolCacheControl),
+      ...toolDefinitions(deferredTools, undefined, true),
     ];
   }
 
@@ -858,7 +913,7 @@ function buildParams(
     params.fallbacks = allowedFallbackModels.map((fallback) => ({ model: fallback.model }));
   }
 
-  return params;
+  return { params, hasPreferredStrictTools };
 }
 
 interface StopReasonResult {

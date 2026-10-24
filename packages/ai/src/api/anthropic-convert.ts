@@ -21,6 +21,7 @@ import {
   type UnsupportedStrictSchemaKeywordCheck,
 } from "./constrained-sampling.ts";
 import { toClaudeCodeName } from "./claude-code.ts";
+import { splitErrorToolResultImages } from "./transform-messages.ts";
 
 const ANTHROPIC_IMAGE_MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 
@@ -120,12 +121,15 @@ function convertToolResult(
  * The transcript as Anthropic messages.
  *
  * - Anthropic requires `tool_result` immediately after `tool_use`, so system updates are held
- *   until the next assistant message or the end of the transcript.
+ *   until the next assistant message that is sent, or the end of the transcript. Holding past an
+ *   assistant message that converts to no blocks keeps the update from landing before a user
+ *   message, which Anthropic rejects.
  * - A thinking block whose signature is missing or empty, e.g. from an aborted stream, becomes
  *   plain text; models marked `allowEmptySignature` emit and accept empty signatures, so they
  *   keep the block.
  * - Consecutive tool results go into one user message, which the z.ai Anthropic endpoint needs;
- *   content displaced by tool references follows every `tool_result` block.
+ *   content displaced by tool references, and the images of error results (which Anthropic
+ *   rejects inside them), follow every `tool_result` block.
  * - The last user or system message carries `cache_control`, caching the conversation history.
  */
 export function convertMessages(
@@ -214,7 +218,6 @@ export function convertMessages(
         });
       }
     } else if (msg.role === "assistant") {
-      flushPendingSystemMessages();
       const blocks: BetaContentBlockParam[] = [];
 
       for (const block of msg.content) {
@@ -269,6 +272,7 @@ export function convertMessages(
       }
 
       if (blocks.length === 0) continue;
+      flushPendingSystemMessages();
       params.push({
         role: "assistant",
         content: blocks,
@@ -283,8 +287,10 @@ export function convertMessages(
 
         if (next.role !== "toolResult") break;
 
+        const split = splitErrorToolResultImages(next);
+
         const converted = convertToolResult(
-          next,
+          split ? { ...next, content: split.content } : next,
           isOAuthToken,
           deferredToolNames,
           loadedToolNames,
@@ -293,6 +299,13 @@ export function convertMessages(
 
         toolResults.push(converted.toolResult);
         siblingContent.push(...converted.siblingContent);
+
+        if (split) {
+          siblingContent.push(
+            { type: "text", text: split.caption },
+            ...split.images.map(convertImageBlock),
+          );
+        }
       }
 
       i = j - 1;
@@ -377,6 +390,19 @@ const rejectedByAnthropicStrictTools: UnsupportedStrictSchemaKeywordCheck = (key
   return false;
 };
 
+/** Whether the tool asks for strict sampling only where the provider can honor it. */
+export function prefersStrictSampling(tool: Tool): boolean {
+  const config = tool.constrainedSampling;
+
+  return (
+    config !== undefined &&
+    config !== false &&
+    config.type === "json_schema" &&
+    config.strict === "prefer"
+  );
+}
+
+/** `disablePreferredStrictTools` sends `prefer` tools non-strict; `require` tools stay strict. */
 export function convertTools(
   tools: Tool[],
   isOAuthToken: boolean,
@@ -384,15 +410,19 @@ export function convertTools(
   supportsStrictTools: boolean,
   cacheControl?: BetaCacheControlEphemeral,
   deferLoading = false,
+  disablePreferredStrictTools = false,
 ): BetaTool[] {
   if (!tools) return [];
 
   return tools.map((tool, index) => {
-    const strict = resolveJsonSchemaStrictSampling(
-      tool,
-      supportsStrictTools,
-      rejectedByAnthropicStrictTools,
-    );
+    const strict =
+      disablePreferredStrictTools && prefersStrictSampling(tool)
+        ? undefined
+        : resolveJsonSchemaStrictSampling(
+            tool,
+            supportsStrictTools,
+            rejectedByAnthropicStrictTools,
+          );
     const parameters = getJsonSchemaToolParameters(tool, strict);
 
     const legacyInputSchema = {
