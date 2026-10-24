@@ -1,9 +1,15 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Plugin, Resources } from "@nyte-ai/core";
+import { localProvider } from "@nyte-ai/host";
 import { question } from "@nyte-ai/plugin/core/question";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { asId } from "@nyte-ai/schema";
 import type { MessageId, SessionView } from "@nyte-ai/sdk";
 import { expect, test } from "bun:test";
 import { hostPort } from "../../src/effects/host-port.ts";
+import { parseFlags } from "../../src/flags.ts";
 import type { HostPort, SessionPort } from "../../src/effects/ports.ts";
 import { fallbackSelection } from "../../src/effects/session.ts";
 import { openTestHost, until } from "../fixture/host.ts";
@@ -154,6 +160,44 @@ test("answer settles a question part once; a different answer afterwards is refu
 
   expect(await session.answer(part.id, [["A"]])).toBe(true);
   expect(await session.answer(part.id, [["B"]]).catch(() => false)).toBe(false);
+});
+
+test("--no-context-files starts the run's sessions without the folder's AGENTS.md", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "nyte-tui-context-"));
+  await writeFile(join(folder, "AGENTS.md"), "Project rules.\n");
+  const seen = new Map<string, Resources["contextFiles"]>();
+
+  const probe: Plugin<"core"> = {
+    id: "probe",
+    activate: (api) => void seen.set(api.session.id, api.inputs.contextFiles),
+  };
+
+  try {
+    await using fixture = await openTestHost({
+      environment: { id: "local", environment: localProvider() },
+      workspace: { kind: "local", path: folder },
+      plugins: [probe],
+    });
+
+    fixture.reply({ content: [{ type: "text", text: "Hi." }] });
+    fixture.reply({ content: [{ type: "text", text: "Hi." }] });
+
+    const flags = parseFlags(["--no-context-files"]);
+
+    const without = await startChat(
+      hostPort(fixture.host, null, undefined, { contextFiles: flags.contextFiles }),
+      "hi",
+    );
+
+    const plain = await startChat(hostPort(fixture.host, null), "hi");
+
+    expect(await until(() => seen.get(without.session.id))).toEqual([]);
+    expect((await until(() => seen.get(plain.session.id)))?.map((file) => file.content)).toEqual([
+      "Project rules.\n",
+    ]);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });
 
 test("the host port lists the catalog, root sessions and tasks, and configures the head", async () => {

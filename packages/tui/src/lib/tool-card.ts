@@ -40,16 +40,7 @@ import {
 import type { Task, TaskStatus } from "./tasks.ts";
 import { displayWidth } from "./width.ts";
 
-type Role =
-  | "muted"
-  | "running"
-  | "warning"
-  | "ok"
-  | "error"
-  | "user"
-  | "foreground"
-  | "dim"
-  | "tool";
+type Role = "running" | "warning" | "ok" | "error" | "user" | "foreground" | "dim" | "tool";
 
 export interface HeadingChunk {
   readonly text: string;

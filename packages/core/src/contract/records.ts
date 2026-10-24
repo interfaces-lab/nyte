@@ -81,6 +81,8 @@ const SessionRecordType = record({
   lastActivityAt: Type.Number(),
   heads: list(HeadRecordType),
   prompt: nullable(typed<PromptOverride>()(PromptOverrideType)),
+  /** `false` when the chat started without context files (`Sessions.start`); absent loads them. */
+  contextFiles: Type.Optional(Type.Literal(false)),
 });
 
 export type SessionRecord = Static<typeof SessionRecordType>;

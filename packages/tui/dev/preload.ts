@@ -5,10 +5,14 @@ import process from "node:process";
 import { plugin } from "bun";
 import { ensureSolidTransformPlugin } from "@opentui/solid/bun-plugin";
 import { reloadingMount } from "./reload.ts";
+import { storyEntry } from "./stories/entry.ts";
 
 process.env["NYTE_DB"] ??= join(homedir(), ".nyte", "nyte-dev.db");
 
-if (process.env["NYTE_RELOAD"] !== "off")
+const story = process.env["NYTE_STORY"];
+
+if (story !== undefined) plugin(storyEntry(story));
+else if (process.env["NYTE_RELOAD"] !== "off")
   plugin({
     name: "nyte-reload",
     setup(build) {

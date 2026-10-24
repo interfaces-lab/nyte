@@ -951,8 +951,10 @@ The agent works in the folder you start the host from, and its tools run there w
 first. It isn't a sandbox. Pass `workspace: { kind: "local", path }` to `sdk.open` to pick another
 folder.
 
-The folder's own instructions and extensions, such as `AGENTS.md`, `CLAUDE.md`, `.nyte/skills`,
-`.agents/skills`, `.nyte/prompts` and `.nyte/plugins`, load only once you trust the folder:
+Context files (`AGENTS.md`, `CLAUDE.md`) load from the folder and its ancestors without trust;
+start a session with `contextFiles: false` to skip them. The folder's extensions, such as
+`.nyte/skills`, `.agents/skills`, `.nyte/prompts` and `.nyte/plugins`, load only once you trust
+the folder:
 
 ```ts
 const added = await host.workspaces.add({ kind: "local", path: process.cwd() });

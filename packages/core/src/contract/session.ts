@@ -158,6 +158,8 @@ export interface Sessions {
     readonly prompt?: PromptOverride;
     /** `worktree` runs the chat in a git worktree of its workspace on a new branch from HEAD, with the workspace's uncommitted changes copied in; the worktree becomes the chat's workspace, whose `isolation` names its branch. A workspace outside git, or whose provider has no worktrees, is refused with `SdkError("unavailable")`. Removing the chat removes the worktree, keeping its folder while it holds uncommitted changes and its branch once it has commits. */
     readonly isolation?: "worktree";
+    /** `false` reads no context files (`AGENTS.md`, `CLAUDE.md` and the like) for the chat: not the user's, the ancestors' or the folder's own. The chat keeps it for good, across reloads, resumes and other hosts. */
+    readonly contextFiles?: false;
     readonly content: UserContent;
   }): Promise<{ readonly session: Session; readonly receipt: SendReceipt }>;
 

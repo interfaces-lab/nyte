@@ -1,4 +1,5 @@
-import { writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -14,6 +15,15 @@ const BINARY =
   process.env["NYTE_BINARY"] ?? fileURLToPath(new URL("../dist/nyte", import.meta.url));
 
 const RESUME = /To resume previous session\nnyte --session=([^\n]+)\n$/u;
+
+const Listening = Type.Object({
+  type: Type.Literal("listening"),
+  url: Type.String(),
+  endpoint: Type.String(),
+  pid: Type.Integer(),
+});
+
+const HostFile = Type.Object({ url: Type.String(), token: Type.String(), pid: Type.Integer() });
 
 const PrintRecord = Type.Object({
   type: Type.String(),
@@ -270,3 +280,81 @@ test("SIGHUP ends the TUI within 2 s with 129 and prints the resume command", as
   expect(elapsed).toBeLessThan(EXIT_BUDGET_MS);
   expect(pty.output()).toMatch(RESUME);
 }, 30_000);
+
+test("nyte host serves clients that attach with --host-url from an empty HOME, and an attached TUI says when it stops", async () => {
+  await using service = await serveForBinary({ plugin: false });
+  await using client = await freshHome();
+  service.reply(
+    { content: [{ type: "text", text: "Printed by the attached host." }] },
+    { content: [{ type: "text", text: "Rendered from the attached host." }] },
+  );
+
+  const host = Bun.spawn([BINARY, "host", "--json"], {
+    cwd: service.cwd,
+    env: { ...service.env },
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const reader = host.stdout.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+
+  while (!buffered.includes("\n")) {
+    const chunk = await reader.read();
+
+    if (chunk.done) throw new Error(`nyte host closed stdout before listening: ${buffered}`);
+    buffered += decoder.decode(chunk.value, { stream: true });
+  }
+
+  const listening = Value.Parse(Listening, JSON.parse(buffered.slice(0, buffered.indexOf("\n"))));
+  const file = Value.Parse(HostFile, JSON.parse(await readFile(listening.endpoint, "utf8")));
+
+  expect(file).toMatchObject({ url: listening.url, pid: host.pid });
+  expect((await stat(listening.endpoint)).mode & 0o777).toBe(0o600);
+
+  const second = Bun.spawn([BINARY, "host"], {
+    env: { ...service.env },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  expect(await second.exited).toBe(1);
+  expect(await new Response(second.stderr).text()).toContain(`already running at ${listening.url}`);
+
+  const env = { ...client.env, NYTE_HOST_TOKEN: file.token };
+
+  const printed = Bun.spawn([BINARY, "-p", "--json", "--host-url", listening.url, "print it"], {
+    cwd: service.cwd,
+    env,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  expect(await printed.exited).toBe(0);
+  expect(records(await new Response(printed.stdout).text()).at(-1)).toMatchObject({
+    type: "result",
+    kind: "completed",
+  });
+
+  await using pty = await openPty({
+    binary: BINARY,
+    args: ["--host-url", listening.url],
+    cwd: service.cwd,
+    env,
+  });
+
+  await ready(pty);
+  pty.type("render it");
+  pty.press("chat.submit");
+  await pty.waitFor((screen) => screen.text.includes("Rendered from the attached host."));
+
+  host.kill("SIGTERM");
+  expect(await host.exited).toBe(0);
+  expect(existsSync(listening.endpoint)).toBe(false);
+  expect(await pty.exited()).toBe(1);
+  expect(pty.output()).toContain(`The Nyte host at ${listening.url} stopped.`);
+  expect(existsSync(join(client.nyteHome, "nyte.db"))).toBe(false);
+}, 60_000);

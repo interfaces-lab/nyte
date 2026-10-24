@@ -31,7 +31,7 @@ const manifests = globSync("packages/{*,demo/*,demo/server/*}/package.json", { c
 
 const byName = new Map(manifests.map((entry) => [entry.manifest.name, entry]));
 
-const [releaseGroup] = JSON.parse(readFileSync(join(root, ".changeset/config.json"), "utf8")).fixed;
+const { release } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 
 const packages = manifests.filter(
   ({ manifest }) => manifest.private === false && manifest.name !== "nyte-ai",
@@ -78,8 +78,8 @@ for (const { directory, manifest } of manifests) {
     throw new Error(`${manifest.name} must declare MIT, public npm access and provenance`);
   }
 
-  if (!releaseGroup.includes(manifest.name)) {
-    throw new Error(`${manifest.name} must be in the Changesets fixed group`);
+  if (!release.packages.includes(manifest.name)) {
+    throw new Error(`${manifest.name} must be in release.packages in the root package.json`);
   }
 
   if (manifest.repository?.directory !== directory) {

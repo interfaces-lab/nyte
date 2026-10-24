@@ -284,6 +284,8 @@ export interface EnvironmentProvider {
   readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;
   readonly browser?: (env: ExecutionEnv) => BrowserApi;
   readonly worktrees?: WorktreeProvider;
+  /** The real path of `path` (absolute, or relative to `env.cwd`) on the machine `env` runs on: every symlink resolved and each name spelled as the disk stores it, so a case-insensitive disk answers `AGENTS.md` with the `AGENTS.MD` it holds; null where nothing resolves. Without it, context files are told apart by the paths they were read at and no worktree shadows its repository's. */
+  readonly realpath?: (env: ExecutionEnv, path: string) => Promise<string | null>;
   destroy?(target: WorkspaceTarget): Promise<void>;
 }
 
@@ -616,7 +618,7 @@ export interface WorkspaceState {
   readonly patches: Map<string, PatchCache>;
   /** Each session's cached scan; drop entries through `dropScans`, which stops their watches. */
   readonly scans: Map<SessionId, ScanEntry>;
-  home: Promise<FilesApi | null> | null;
+  home: Promise<ExecutionEnv | null> | null;
   readonly batches: Map<ReceiptId, AbortController>;
   readonly held: Map<ReceiptId, HeldBatch>;
 }

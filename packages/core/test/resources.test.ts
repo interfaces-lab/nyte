@@ -107,6 +107,32 @@ describe("resources", () => {
     expect(await scanResources(kernel, session.id)).toBe(resources);
   });
 
+  it("reads no context files for a chat started with contextFiles false, after a reload and on another kernel too", async () => {
+    const { kernel, host, provider, workspace } = await world({
+      disk: seeded(),
+      home: "/home/ada",
+    });
+
+    const { session } = await host.sessions.start({
+      workspace,
+      contextFiles: false,
+      content: "Hi.",
+    });
+
+    const { session: other } = await host.sessions.start({ workspace, content: "Hi." });
+
+    expect((await scanResources(kernel, session.id)).contextFiles).toEqual([]);
+    expect((await scanResources(kernel, other.id)).contextFiles).toHaveLength(4);
+
+    dropScans(kernel);
+    await kernel.environments.detach(session.id);
+    expect((await scanResources(kernel, session.id)).contextFiles).toEqual([]);
+
+    const next = kernelOver(kernel.store, provider, { home: "/home/ada" });
+    expect((await scanResources(next, session.id)).contextFiles).toEqual([]);
+    expect((await scanResources(next, other.id)).contextFiles).toHaveLength(4);
+  });
+
   it("rejects a scan while the session's environment does not attach, never answering no resources (D 13)", async () => {
     const { kernel, host, provider, workspace } = await world({
       disk: seeded(),

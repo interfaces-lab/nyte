@@ -4,7 +4,13 @@ import { Type } from "typebox";
 import { isMap, isScalar, parseDocument } from "yaml";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Plugin, PluginApi } from "../contract/plugin.ts";
-import type { ExecutionEnv, FilesApi, Resources, ScanEntry } from "../contract/workspace.ts";
+import type {
+  EnvironmentProvider,
+  ExecutionEnv,
+  FilesApi,
+  Resources,
+  ScanEntry,
+} from "../contract/workspace.ts";
 import { classifyFileSupport, readWorkspace } from "../env/environment.ts";
 import { projectTrust, WORKSPACE_TRUST } from "../env/trust.ts";
 import { kvRef } from "../store/refs.ts";
@@ -18,7 +24,22 @@ type Prompt = Resources["prompts"][number];
 
 type ContextFile = Resources["contextFiles"][number];
 
-const CONTEXT_NAMES = ["AGENTS.override.md", "AGENTS.md", "CLAUDE.md"];
+const CONTEXT_NAMES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
+
+/** Resolves an absolute path to its real one on the machine some files are on, null where nothing resolves (`EnvironmentProvider.realpath`). */
+type RealPath = (path: string) => Promise<string | null>;
+
+/** Files on one machine, and its real paths where its provider resolves them. */
+type Reader = { readonly files: FilesApi; readonly real: RealPath | null };
+
+type FoundContext = ContextFile & {
+  /** The name in `CONTEXT_NAMES` it was read under. */
+  readonly name: string;
+  /** Its real path, which names the file however it was reached; the path it was read at where the machine resolves none. */
+  readonly real: string;
+  /** Its folder's real path joined with `name`, what `findShadowedContext` answers for a shadowed file. */
+  readonly entry: string;
+};
 
 const SKILL_DIRECTORIES = [".nyte/skills", ".agents/skills"];
 
@@ -34,7 +55,8 @@ const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
 /** Returns the session's resources, scanned once and cached until a skill file under a scanned skill directory or path moves, which drops the scan and reloads the session's plugins so the skill list follows the disk. */
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
-  const workspace = (await requireSession(kernel.store, session)).record.workspace;
+  const record = (await requireSession(kernel.store, session)).record;
+  const workspace = record.workspace;
   const table = kernel.workspaceState.scans;
   const cached = table.get(session);
 
@@ -44,15 +66,18 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
 
   const entry: ScanEntry = {
     workspace,
-    resources: scan(kernel, workspace, () => kernel.environments.attach(session)).then(
-      (resources) => {
-        const api = kernel.plugins.runtimes().get(session)?.api("resources");
+    resources: scan(
+      kernel,
+      workspace,
+      () => kernel.environments.attach(session),
+      record.contextFiles ?? true,
+    ).then((resources) => {
+      const api = kernel.plugins.runtimes().get(session)?.api("resources");
 
-        for (const issue of resourceIssues(resources)) api?.report(issue);
+      for (const issue of resourceIssues(resources)) api?.report(issue);
 
-        return resources;
-      },
-    ),
+      return resources;
+    }),
     stop: () => watching.abort(),
   };
 
@@ -103,7 +128,7 @@ export function dropScans(
 
 /** Scans the resources a new chat in `workspace` would read, before the chat exists, over the workspace's own attachment. */
 export function scanWorkspaceResources(kernel: Kernel, workspace: WorkspaceId): Promise<Resources> {
-  return scan(kernel, workspace, () => kernel.environments.attachWorkspace(workspace));
+  return scan(kernel, workspace, () => kernel.environments.attachWorkspace(workspace), true);
 }
 
 export function resourceIssues(resources: Resources): readonly ValidationIssue[] {
@@ -199,17 +224,16 @@ async function scan(
   kernel: Kernel,
   workspace: WorkspaceId,
   attach: () => Promise<ExecutionEnv>,
+  withContext: boolean,
 ): Promise<Resources> {
   const record = await readWorkspace(kernel.store, workspace);
-  const user = await userFiles(kernel);
+  const homeEnv = await attachHome(kernel);
+  const user = homeEnv?.files ?? null;
 
   const trusted = record !== null && (await projectTrust(kernel, record)) === true;
+  const provider = record === null ? undefined : kernel.environments.provider(record.target.kind);
 
-  const attached =
-    record !== null &&
-    classifyFileSupport(kernel.environments.provider(record.target.kind)) === "available"
-      ? attach()
-      : null;
+  const attached = classifyFileSupport(provider) === "available" ? attach() : null;
 
   const env =
     attached === null ? null : trusted ? await attached : await attached.catch(() => null);
@@ -240,27 +264,18 @@ async function scan(
     source: { plugin: "resources" },
   }));
 
-  const contextFiles: ContextFile[] = [];
-
-  if (user !== null && home !== null) {
-    const content = await readText(user, ".nyte/AGENTS.md");
-
-    if (content !== null)
-      contextFiles.push({ path: join(home, ".nyte/AGENTS.md"), scope: "user", content });
-  }
-
-  if (folder !== null && root !== null) contextFiles.push(...(await ancestorFiles(folder, root)));
-
-  if (folder !== null) {
-    const found = await firstContext(folder, (name) => name);
-
-    if (found !== null)
-      contextFiles.push({
-        path: root === null ? found.path : join(root, found.path),
-        scope: "project",
-        content: found.content,
-      });
-  }
+  const contextFiles = withContext
+    ? await findContextFiles(
+        homeEnv === null || home === null
+          ? null
+          : {
+              files: homeEnv.files,
+              real: realPaths(kernel.environments.provider("local"), homeEnv),
+              home,
+            },
+        env === null ? null : { files: env.files, real: realPaths(provider, env), root },
+      )
+    : [];
 
   const [userSystem, userAppend, projectSystem, projectAppend] = await Promise.all([
     user === null ? null : readText(user, ".nyte/SYSTEM.md"),
@@ -297,7 +312,7 @@ async function scan(
   return resources;
 }
 
-function userFiles(kernel: Kernel): Promise<FilesApi | null> {
+function attachHome(kernel: Kernel): Promise<ExecutionEnv | null> {
   const state = kernel.workspaceState;
 
   if (state.home !== null) return state.home;
@@ -305,7 +320,7 @@ function userFiles(kernel: Kernel): Promise<FilesApi | null> {
   const local = home === null ? undefined : kernel.environments.provider("local");
 
   if (home === null || local === undefined) return Promise.resolve(null);
-  const attached = local.attach({ kind: "local", path: home }).then((env) => env.files);
+  const attached = local.attach({ kind: "local", path: home });
   state.home = attached;
 
   attached.catch(() => {
@@ -483,36 +498,153 @@ function parseSkillMetadata(
   };
 }
 
-async function ancestorFiles(files: FilesApi, root: string): Promise<readonly ContextFile[]> {
+/** The context files a session reads, in order: the user's in `<home>/.nyte`, each ancestor's from the root down, then the folder's own, each folder's first of `CONTEXT_NAMES`. A file met again by another path (`~/.nyte` above a worktree in `~/.nyte/worktrees`, a symlink) keeps its first place and scope, and the main repository's file that a linked worktree nested in it shadows is left out. */
+async function findContextFiles(
+  user: (Reader & { readonly home: string }) | null,
+  folder: (Reader & { readonly root: string | null }) | null,
+): Promise<readonly ContextFile[]> {
+  const root = folder?.root ?? null;
+
+  const [own, ancestors, project, shadowed] = await Promise.all([
+    user === null ? null : findContext(user, join(user.home, ".nyte"), "user"),
+    folder === null || root === null ? [] : ancestorContexts(folder, root),
+    folder === null ? null : findContext(folder, root, "project"),
+    folder === null || root === null ? null : findShadowedContext(folder, root).catch(() => null),
+  ]);
+
+  const seen = new Set<string>();
+
+  return [own, ...ancestors, project].flatMap((found) => {
+    if (found === null || found.entry === shadowed || seen.has(found.real)) return [];
+    seen.add(found.real);
+
+    return [{ path: found.path, scope: found.scope, content: found.content }];
+  });
+}
+
+/** The ancestors' context files, root first; none where reading above the folder fails, as in a sandbox confined to its root. */
+async function ancestorContexts(reader: Reader, root: string): Promise<readonly FoundContext[]> {
   try {
     const found = await Promise.all(
-      listAncestorPaths(root).map(async (directory): Promise<readonly ContextFile[]> => {
-        const context = await firstContext(files, (name) => join(directory, name));
-
-        return context === null ? [] : [{ ...context, scope: "ancestor" }];
-      }),
+      listAncestorPaths(root).map((directory) => findContext(reader, directory, "ancestor")),
     );
 
-    return found.flat();
+    return found.filter((context) => context !== null);
   } catch {
     return [];
   }
 }
 
-async function firstContext(
-  files: FilesApi,
-  at: (name: string) => string,
-): Promise<{ readonly path: string; readonly content: string } | null> {
-  const read = await Promise.all(
-    CONTEXT_NAMES.map(async (name) => {
-      const path = at(name);
-      const content = await readText(files, path);
+/** The first of `CONTEXT_NAMES` that reads as text in `directory` (null: the files' root, read by relative path). Its path keeps `directory` as given and spells the name as the disk does: a case-insensitive disk reads `AGENTS.md` from an `AGENTS.MD`, whose real path has the name that exists. A link keeps its own name. */
+async function findContext(
+  reader: Reader,
+  directory: string | null,
+  scope: ContextFile["scope"],
+): Promise<FoundContext | null> {
+  const at = (name: string): string => (directory === null ? name : join(directory, name));
 
-      return content === null ? null : { path, content };
-    }),
+  const read = await Promise.all(
+    CONTEXT_NAMES.map(async (name) => ({ name, content: await readText(reader.files, at(name)) })),
   );
 
-  return read.find((context) => context !== null) ?? null;
+  const found = read.find(
+    (entry): entry is { readonly name: string; readonly content: string } => entry.content !== null,
+  );
+
+  if (found === undefined) return null;
+  const path = at(found.name);
+
+  if (reader.real === null || directory === null)
+    return { path, scope, content: found.content, name: found.name, real: path, entry: path };
+
+  const [real, realDirectory, entry] = await Promise.all([
+    reader.real(path),
+    reader.real(directory),
+    reader.files.stat(path),
+  ]);
+
+  return {
+    path: real === null || entry?.kind === "symlink" ? path : join(directory, fileName(real)),
+    scope,
+    content: found.content,
+    name: found.name,
+    real: real ?? path,
+    entry: join(realDirectory ?? directory, found.name),
+  };
+}
+
+/**
+ * pi's `findShadowedContextFile`: the main repository's context file that a linked worktree
+ * nested inside it shadows with its own, both covering one repository, or null. Nothing is
+ * shadowed for an ordinary repository, where the worktree and the main repository are one folder;
+ * a sibling worktree (`git worktree add ../feat`), whose main repository is no ancestor; a bare
+ * layout (`proj/.bare` + `proj/main`), where the common git directory's parent is the folder
+ * holding `.bare`, which checks nothing out; a submodule, whose git directory has no `commondir`
+ * and sits under `.git/modules`; or a machine without real paths. Compared as real paths: git
+ * writes `gitdir:` in that form while the folder may be reached through a symlink (macOS `/tmp` is
+ * `/private/tmp`).
+ */
+async function findShadowedContext(reader: Reader, root: string): Promise<string | null> {
+  const real = reader.real;
+
+  if (real === null) return null;
+  const git = await findGitPaths(reader.files, root);
+
+  if (git === null) return null;
+  const common = (await real(git.common)) ?? git.common;
+  const worktree = (await real(git.repository)) ?? git.repository;
+  const main = parentDirectory(common);
+
+  if (!worktree.startsWith(join(main, ""))) return null;
+  const mainGit = join(main, ".git");
+
+  if (((await real(mainGit)) ?? mainGit) !== common) return null;
+  const own = await findContext(reader, worktree, "ancestor");
+
+  return own === null ? null : join(main, own.name);
+}
+
+/** pi's `findGitPaths` through `files`: the nearest folder at or above `root` holding a `.git`, with its common git directory: a `.git` folder itself, or the `gitdir:` a `.git` file names, through that directory's `commondir` when it has one (a linked worktree's). Null when that git directory has no `HEAD`. */
+async function findGitPaths(
+  files: FilesApi,
+  root: string,
+): Promise<{ readonly repository: string; readonly common: string } | null> {
+  for (const directory of [root, ...listAncestorPaths(root).toReversed()]) {
+    const dotGit = join(directory, ".git");
+    const found = await files.stat(dotGit);
+
+    if (found === null) continue;
+    const text = found.kind === "directory" ? null : await readText(files, dotGit);
+
+    if (text === null) {
+      if (found.kind === "file") continue;
+
+      return (await files.stat(join(dotGit, "HEAD"))) === null
+        ? null
+        : { repository: directory, common: dotGit };
+    }
+
+    const named = text.trim();
+
+    if (!named.startsWith("gitdir: ")) continue;
+    const gitDir = absolutePath(directory, named.slice("gitdir: ".length).trim());
+
+    if ((await files.stat(join(gitDir, "HEAD"))) === null) return null;
+    const common = await readText(files, join(gitDir, "commondir"));
+
+    return {
+      repository: directory,
+      common: common === null ? gitDir : absolutePath(gitDir, common.trim()),
+    };
+  }
+
+  return null;
+}
+
+function realPaths(provider: EnvironmentProvider | undefined, env: ExecutionEnv): RealPath | null {
+  const realpath = provider?.realpath;
+
+  return realpath === undefined ? null : (path) => realpath(env, path);
 }
 
 async function listDirectChildren(
@@ -610,4 +742,16 @@ function listAncestorPaths(root: string): readonly string[] {
 
 function join(directory: string, name: string): string {
   return directory.endsWith("/") ? `${directory}${name}` : `${directory}/${name}`;
+}
+
+function absolutePath(base: string, path: string): string {
+  return resolvePath(null, ABSOLUTE.test(path) ? path : join(base, path));
+}
+
+function parentDirectory(path: string): string {
+  return path.slice(0, path.lastIndexOf("/")) || "/";
+}
+
+function fileName(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
 }

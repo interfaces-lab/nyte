@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { asId } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
 import { composeHost } from "@nyte-ai/core/server";
@@ -92,11 +92,9 @@ describe.skipIf(!hasGit)("localWorktrees", () => {
     const made = await worktrees.create(localEnv(root), { name: "session-1", title: "Fix login!" });
     const path = readPath(made.target);
 
-    expect(made.branch).toMatch(/^nyte\/fix-login-[0-9a-f]{8}$/);
+    expect(made.branch).toBe("fix-login");
     expect(made.base).toBe(head);
-    expect(path).toBe(
-      join(await realpath(home), ".nyte", "worktrees", "project", made.branch.slice(5)),
-    );
+    expect(path).toBe(join(await realpath(home), ".nyte", "worktrees", "project", "fix-login"));
     expect(sh(path, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe(made.branch);
     expect(await readFile(join(path, "a.txt"), "utf8")).toBe("one\ntwo\n");
     expect(await readFile(join(path, "fresh.txt"), "utf8")).toBe("fresh\n");
@@ -128,9 +126,34 @@ describe.skipIf(!hasGit)("localWorktrees", () => {
       },
     );
 
-    expect(made.branch).toMatch(/^nyte\/[0-9a-f]{8}$/);
-    expect(readPath(made.target)).toMatch(/[\\/]project[\\/][0-9a-f]{8}[\\/]app$/);
+    expect(made.branch).toBe("worktree");
+    expect(readPath(made.target)).toMatch(/[\\/]project[\\/]worktree[\\/]app$/);
     expect(await readFile(join(readPath(made.target), "main.ts"), "utf8")).toBe("export {};\n");
+  });
+
+  it("names a branch with at most three title words, and gives concurrent creates of a taken name two words and their own suffix", async () => {
+    const root = await repository();
+    const worktrees = localWorktrees({ home: await folder() });
+    const env = localEnv(root);
+    const title = "Fix the session recovery flow on restart";
+    sh(root, "branch", "session-recovery-flow");
+
+    const made = await Promise.all(
+      ["a", "b", "c"].map((name) => worktrees.create(env, { name, title })),
+    );
+
+    expect(made.map((worktree) => worktree.branch).sort()).toEqual([
+      "session-recovery-2",
+      "session-recovery-3",
+      "session-recovery-4",
+    ]);
+    expect(made.map((worktree) => basename(readPath(worktree.target)))).toEqual(
+      made.map((worktree) => worktree.branch),
+    );
+    expect(await worktrees.create(env, { name: "b", title })).toEqual(made[1]);
+    expect((await worktrees.create(env, { name: "d", title: "Fix login" })).branch).toBe(
+      "fix-login",
+    );
   });
 
   it("refuses a folder outside git and a repository with no commit", async () => {
@@ -257,7 +280,7 @@ describe.skipIf(!hasGit)("worktree isolation on a local host", () => {
     const path = readPath(workspace.target);
 
     expect(workspace.isolation).toMatchObject({ kind: "worktree", session: child.id });
-    expect(workspace.isolation.branch).toMatch(/^nyte\/note-writer-[0-9a-f]{8}$/);
+    expect(workspace.isolation.branch).toBe("note-writer");
     expect(await readFile(join(path, "note.txt"), "utf8")).toBe("from the subagent\n");
     expect(await readFile(join(path, "a.txt"), "utf8")).toBe("one\nuncommitted\n");
     expect(await stat(join(root, "note.txt")).catch(() => null)).toBeNull();

@@ -369,9 +369,11 @@ async function start(
     content: input.content,
   };
 
-  const digest = await objectId(
-    input.isolation === undefined ? described : { ...described, isolation: input.isolation },
-  );
+  const digest = await objectId({
+    ...described,
+    ...(input.isolation === undefined ? {} : { isolation: input.isolation }),
+    ...(input.contextFiles === undefined ? {} : { contextFiles: input.contextFiles }),
+  });
 
   const trace = (origin === null ? null : followedTrace(origin.session)) ?? receipt;
   followTrace(id, trace);
@@ -426,6 +428,7 @@ async function start(
         lastActivityAt: at,
         heads: [{ name: MAIN, stack: null, selected, lastRun: null }],
         prompt: input.prompt ?? null,
+        ...(input.contextFiles === undefined ? {} : { contextFiles: input.contextFiles }),
       };
 
       const outcome = await commit(kernel, [

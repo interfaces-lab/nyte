@@ -40,7 +40,7 @@ export interface Choice {
   } | null;
   readonly mark: {
     readonly glyph: string;
-    readonly tone: "muted" | "running" | "warning" | "ok" | "error";
+    readonly tone: "dim" | "running" | "warning" | "ok" | "error";
   } | null;
 }
 

@@ -2,8 +2,10 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { memoryStore } from "@nyte-ai/core/store";
-import type { Host, Store } from "@nyte-ai/core";
+import type { Host, Plugin, Store } from "@nyte-ai/core";
+import { standard } from "@nyte-ai/schema";
 import type { HostView } from "@nyte-ai/schema";
+import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { nyteProviders } from "@nyte-ai/ai";
 import { storedAccounts } from "./stored-accounts.ts";
@@ -454,7 +456,105 @@ describe("openHost", () => {
 
     expect(mended.plugins.some((row) => row.id === "hot")).toBe(true);
   });
+
+  it("re-applies a session's assigned plugin file across a host-wide reload, and refuses the session's work while the file is gone", async () => {
+    const home = await folder();
+    const dir = join(home, ".nyte", "plugins");
+    const guard = join(dir, "guarded", "guard.mjs");
+    await mkdir(join(dir, "guarded"), { recursive: true });
+    await writeFile(guard, guardFile("Denied by the guard."));
+    const fake = fakeModels();
+    let touched = 0;
+
+    const toucher: Plugin<"core"> = {
+      id: "toucher",
+      contribute: {
+        tools: [
+          {
+            name: "touch",
+            description: "Changes something.",
+            parameters: standard(Type.Object({})),
+            class: () => ({ kind: "custom", label: "touch" }),
+            replay: "safe",
+            async execute() {
+              touched += 1;
+
+              return { content: [{ kind: "text", text: "touched" }] };
+            },
+          },
+        ],
+      },
+    };
+
+    await using host = await openHost({
+      store: memoryStore(),
+      models: fake.models,
+      plugins: [chatOnly, toucher],
+      workspace: { kind: "chat-only", locator: null },
+      home,
+    });
+
+    fake.reply({ content: [{ type: "text", text: "ready" }] });
+    const { session, receipt } = await host.sessions.start({ content: "Hi." });
+    await receipt.settled();
+    await host.plugins.replace([chatOnly, toucher, { path: guard }], { session: session.id });
+    await writeFile(guard, guardFile("Denied by the edited guard."));
+
+    await rewriteUntil(
+      host,
+      { path: join(dir, "other.mjs"), contents: 'export default { id: "other" };\n' },
+      (view) => view.plugins.some((row) => row.id === "other"),
+    );
+
+    const touch = async (prompt: string) => {
+      fake.reply(
+        { content: [{ type: "toolCall", id: "call", name: "touch", arguments: {} }] },
+        { content: [{ type: "text", text: "done" }] },
+      );
+
+      expect(await (await session.send(prompt)).settled()).toMatchObject({ kind: "completed" });
+
+      return fake.requests
+        .flatMap((request) => request.context.messages)
+        .findLast((message) => message.role === "toolResult");
+    };
+
+    expect(await touch("Touch it.")).toMatchObject({
+      content: [{ type: "text", text: "The tool call was rejected: Denied by the edited guard." }],
+    });
+
+    await rm(guard);
+
+    await rewriteUntil(
+      host,
+      { path: join(dir, "another.mjs"), contents: 'export default { id: "another" };\n' },
+      (view) => view.plugins.some((row) => row.id === "another"),
+    );
+
+    await expect(session.send("Touch it again.")).rejects.toMatchObject({
+      code: "unavailable",
+      message: `The plugins assigned to this session did not load: No plugin file is at ${guard}.`,
+    });
+    expect((await session.info()).activation).toMatchObject({ kind: "failed" });
+
+    await writeFile(guard, guardFile("Denied by the restored guard."));
+
+    expect(await touch("Touch it once more.")).toMatchObject({
+      content: [
+        { type: "text", text: "The tool call was rejected: Denied by the restored guard." },
+      ],
+    });
+    expect(touched).toBe(0);
+  });
 });
+
+function guardFile(reason: string): string {
+  return `export default {
+  id: "guard",
+  hooks: { before_tool: { order: -1, run: () => ({ action: "reject", reason: ${JSON.stringify(reason)} }) } },
+};
+`;
+}
 
 async function rewriteUntil(
   host: Host,

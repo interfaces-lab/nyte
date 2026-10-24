@@ -13,9 +13,10 @@ It never downloads or publishes.
 ## Nightly releases
 
 Run **Nightly** in GitHub Actions to build the selected commit. The workflow derives
-a version such as `0.0.24-nightly.20261022.123` from the next patch, UTC date and run
-number. It publishes a GitHub prerelease and npm's `nightly` tag. Checked-in package
-versions stay unchanged, and stable installations keep following stable releases.
+a version such as `0.0.25-nightly.20261023.123` from the patch after the latest stable tag,
+the UTC date and the run number. It publishes a GitHub prerelease and npm's `nightly` tag.
+Checked-in package versions stay unchanged, and stable installations keep following stable
+releases.
 
 In the desktop app, choose **Settings > General > Update channel > Nightly**.
 Nyte checks after startup and hourly, downloads updates in the background, and
@@ -92,10 +93,12 @@ covers publishing.
 
 ## Release versions
 
-The release workflow requires every package in the Changesets fixed group to match the
-release version and installs dependencies from the frozen lockfile. TUI and desktop bundle
-their core and built-in plugins from that checkout; they do not load a separately upgraded
-core at runtime.
+`release.packages` in the root `package.json` lists the packages that share the release
+version. `scripts/release-version.mjs` resolves that version and writes it into each of them: a
+stable release commits it to `main` before it builds, and a prerelease or nightly writes it only
+at publish time. The workflow installs dependencies from the frozen lockfile. TUI and desktop
+bundle their core and built-in plugins from that checkout; they do not load a separately
+upgraded core at runtime.
 
 Pin the app release, not individual internal workspace packages. A plugin loaded from a user
 or project directory uses the running host's API. Update that plugin's source with the host

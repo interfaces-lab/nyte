@@ -15,6 +15,7 @@ export function hostPort(
   host: Connection,
   folder: string | null,
   painted: () => Promise<void> = () => Promise.resolve(),
+  starts: { readonly contextFiles?: false } = {},
 ): HostPort {
   return {
     session: (id) => sessionPort(host, host.session(id), painted),
@@ -40,6 +41,7 @@ export function hostPort(
             id: input.id,
             workspace: input.workspace,
             configuration: { model: input.selection.model, thinking: input.selection.effort },
+            contextFiles: starts.contextFiles,
             content: input.content,
           }),
         );

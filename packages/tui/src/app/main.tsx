@@ -14,7 +14,8 @@ import type { RunFlags } from "../flags.ts";
 import { exitStatus, exitWithin, onEnding, watchTerminal } from "../lifecycle.ts";
 import type { Ending } from "../lifecycle.ts";
 import { trustFolder } from "../run.ts";
-import { connectLocalHost } from "../local-host.ts";
+import { connectHost } from "../local-host.ts";
+import type { HostSource } from "../local-host.ts";
 import type { FailureReport } from "../model/state.ts";
 import { firstFramePort } from "../services/first-frame.ts";
 import { TUI_RENDERER_CONFIG } from "../services/rendering.ts";
@@ -23,8 +24,8 @@ import { createKeymap } from "./keyboard.ts";
 import { mountApp } from "./mount.tsx";
 import { holdTypeahead } from "./typeahead.ts";
 
-export async function runTui(flags: RunFlags): Promise<number> {
-  const connecting = connectLocalHost();
+export async function runTui(flags: RunFlags, source: HostSource): Promise<number> {
+  const connecting = connectHost(source);
   connecting.catch(() => undefined);
   const cwd = process.cwd();
   const home = process.env["NYTE_HOME"] ?? join(homedir(), ".nyte");
@@ -97,7 +98,12 @@ export async function runTui(flags: RunFlags): Promise<number> {
   const host = connecting.then(async (local) => {
     if (trust !== undefined) await trustFolder(local.connection, resume, cwd, trust);
 
-    return { connection: local.connection, endpoint: local.endpoint, folder: cwd };
+    return {
+      connection: local.connection,
+      endpoint: local.endpoint,
+      folder: cwd,
+      contextFiles: flags.contextFiles,
+    };
   });
 
   const app = await mountApp({

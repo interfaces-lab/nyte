@@ -21,7 +21,9 @@ import type { UpdateProgress } from "./update.ts";
 import { VERSION, checkForUpdate } from "./version.ts";
 import { describeUpdateOutcome, selfUpdate } from "./update.ts";
 import { addFolder, flagConfiguration, targetSession, trustFolder } from "./run.ts";
-import { connectLocalHost } from "./local-host.ts";
+import { hostCommand } from "./host-command.ts";
+import { connectHost } from "./local-host.ts";
+import type { HostSource } from "./local-host.ts";
 import { onEnding } from "./lifecycle.ts";
 import { printRun } from "./print.ts";
 import type { PrintOutcome } from "./print.ts";
@@ -57,11 +59,25 @@ function untilInterrupted(): AbortSignal {
   return interrupted.signal;
 }
 
-async function openHost(): Promise<Connection> {
-  const local = await connectLocalHost();
-  invocation.defer(() => local.close());
+async function openHost(source: HostSource = { kind: "local" }): Promise<Connection> {
+  const host = await connectHost(source);
+  invocation.defer(() => host.close());
 
-  return local.connection;
+  return host.connection;
+}
+
+/** `--host-url` attaches to that host with the token in `NYTE_HOST_TOKEN`, which leaves the environment so nothing this process starts inherits it. */
+function hostSource(flags: RunFlags): HostSource {
+  if (flags.hostUrl === undefined) return { kind: "local" };
+  const token = process.env["NYTE_HOST_TOKEN"];
+  delete process.env["NYTE_HOST_TOKEN"];
+
+  if (token === undefined || token === "")
+    throw new Error(
+      "--host-url needs the host's token in NYTE_HOST_TOKEN; `nyte host` writes both to ~/.nyte/host.json.",
+    );
+
+  return { kind: "attached", endpoint: { url: flags.hostUrl, token } };
 }
 
 function parseAuthArgs(command: "login" | "logout", args: readonly string[]) {
@@ -279,9 +295,9 @@ async function status(): Promise<void> {
   for (const row of alignedRows(rows, ansiEnabled())) console.log(row);
 }
 
-async function print(flags: RunFlags): Promise<PrintOutcome> {
+async function print(flags: RunFlags, source: HostSource): Promise<PrintOutcome> {
   signal.throwIfAborted();
-  const host = await openHost();
+  const host = await openHost(source);
   signal.throwIfAborted();
 
   if (availableModels(await host.models.list()).length === 0)
@@ -308,6 +324,7 @@ async function print(flags: RunFlags): Promise<PrintOutcome> {
       ? await host.sessions.start({
           workspace: await addFolder(host, process.cwd()),
           content,
+          contextFiles: flags.contextFiles,
           ...options,
         })
       : { session: resumed, receipt: await resumed.send(content, options) };
@@ -341,7 +358,8 @@ async function main(): Promise<PrintOutcome | undefined> {
     command === "status" ||
     command === "update" ||
     command === "account" ||
-    command === "mcp"
+    command === "mcp" ||
+    command === "host"
   ) {
     if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
       if (invocationArgs.length !== 2) throw new Error(`Use nyte ${command} --help on its own.`);
@@ -394,6 +412,12 @@ async function main(): Promise<PrintOutcome | undefined> {
     return undefined;
   }
 
+  if (command === "host") {
+    await hostCommand(invocationArgs.slice(1), untilInterrupted(), output);
+
+    return undefined;
+  }
+
   if (command === "service") {
     output.error(
       "The Nyte service is gone: every nyte and Nyte.app opens your chats itself, so there is nothing to start or stop.\n",
@@ -403,6 +427,7 @@ async function main(): Promise<PrintOutcome | undefined> {
   }
 
   let flags = parseFlags(invocationArgs);
+  const source = hostSource(flags);
 
   if (flags.minimal && (!process.stdin.isTTY || !process.stdout.isTTY)) {
     throw new Error(
@@ -425,7 +450,7 @@ async function main(): Promise<PrintOutcome | undefined> {
       flags = { ...flags, rest: [stdin] };
     }
 
-    return print(flags);
+    return print(flags, source);
   }
 
   if (!process.stdout.isTTY) {
@@ -438,7 +463,7 @@ async function main(): Promise<PrintOutcome | undefined> {
   signal.throwIfAborted();
   invocation.handoff();
 
-  return process.exit(await runTui(resolveTuiResume(flags)));
+  return process.exit(await runTui(resolveTuiResume(flags), source));
 }
 
 let outcome: PrintOutcome | undefined;

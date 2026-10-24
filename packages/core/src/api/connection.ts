@@ -1,5 +1,11 @@
 import { SdkError } from "@nyte-ai/schema";
-import type { Capability, CredentialSource, WorkspaceId } from "@nyte-ai/schema";
+import type {
+  Capability,
+  CredentialSource,
+  PluginReplacementReport,
+  SessionId,
+  WorkspaceId,
+} from "@nyte-ai/schema";
 import { ALL_AUTHORITY, LOCAL } from "../contract/host.ts";
 import type {
   Connection,
@@ -9,12 +15,12 @@ import type {
   PluginFile,
 } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
-import type { Plugin } from "../contract/plugin.ts";
 import type { Head, Session } from "../contract/session.ts";
 import type { GitHubAccountApi, Workspace } from "../contract/workspace.ts";
 import { advance, cover, repair } from "../drive/execution.ts";
 import { createPrincipals, gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
+import { loadPlugins } from "../extend/activation.ts";
 import { createSettingsApi } from "../extend/settings.ts";
 import {
   completeWorkspaceCommand,
@@ -177,8 +183,7 @@ export function createConnection(
     plugins: gated(
       "plugins",
       {
-        replace: async (plugins, scope) =>
-          kernel.plugins.replace(await kernel.plugins.load(listPluginPaths(plugins)), scope),
+        replace: (plugins, scope) => replaceFiles(kernel, plugins, scope),
         check: async (plugins) =>
           kernel.plugins.check(await kernel.plugins.load(listPluginPaths(plugins))),
       },
@@ -205,9 +210,8 @@ export function createHost(
   return {
     ...connection,
     plugins: {
-      replace: async (plugins, scope) =>
-        kernel.plugins.replace(await loaded(kernel, plugins), scope),
-      check: async (plugins) => kernel.plugins.check(await loaded(kernel, plugins)),
+      replace: (plugins, scope) => kernel.plugins.replace(plugins, scope),
+      check: async (plugins) => kernel.plugins.check(await loadPlugins(kernel, plugins)),
     },
     inspect: (session) => inspect(kernel.store, session),
     execution: {
@@ -218,17 +222,21 @@ export function createHost(
   };
 }
 
-function listPluginPaths(files: readonly PluginFile[]): readonly string[] {
-  return files.map((file) => file.path);
+/** Replaces plugins with files a client names: through the loader even with none, which a host without one refuses, and by path alone, so a client's object with an `id` can't pass for an inline plugin. */
+async function replaceFiles(
+  kernel: Kernel,
+  files: readonly PluginFile[],
+  scope?: { readonly session: SessionId },
+): Promise<PluginReplacementReport> {
+  const paths = listPluginPaths(files);
+  await kernel.plugins.load(paths);
+
+  return kernel.plugins.replace(
+    paths.map((path) => ({ path })),
+    scope,
+  );
 }
 
-async function loaded(
-  kernel: Kernel,
-  plugins: readonly (Plugin<"core"> | PluginFile)[],
-): Promise<readonly Plugin<"core">[]> {
-  const each = await Promise.all(
-    plugins.map(async (plugin) => ("id" in plugin ? [plugin] : kernel.plugins.load([plugin.path]))),
-  );
-
-  return each.flat();
+function listPluginPaths(files: readonly PluginFile[]): readonly string[] {
+  return files.map((file) => file.path);
 }

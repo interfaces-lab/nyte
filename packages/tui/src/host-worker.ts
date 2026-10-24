@@ -82,7 +82,7 @@ async function open(command: HostCommand): Promise<Opened> {
   try {
     const listener = await host.listen({
       transport: { kind: "http", hostname: "127.0.0.1", port: command.port },
-      auth: { kind: "token", token: command.token },
+      auth: { kind: "token", token: command.token, authority: new Set(command.authority) },
       before: sharing.routes(command.token),
     });
 
