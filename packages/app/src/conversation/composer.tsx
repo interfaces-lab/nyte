@@ -585,7 +585,7 @@ export function Composer({
               questions === undefined
                 ? backgroundWork?.onEscape
                 : () => {
-                    void questions.dismiss().catch(() => undefined);
+                    void questions.dismiss();
 
                     return true;
                   }
