@@ -3,6 +3,7 @@ import type {
   CommandOutcome,
   Configuration,
   ConfigurationPatch,
+  CommitId,
   ConfigureOutcome,
   CreateHeadOutcome,
   Cursor,
@@ -157,6 +158,8 @@ export interface Head {
   view(options?: ViewOptions): Promise<SessionView>;
 
   watch(options?: ViewOptions): AsyncIterable<SessionView>;
+
+  see(commit: CommitId): Promise<void>;
 
   /**
    * Calls `listener` each time the head's view changes, and returns the unsubscribe. The first

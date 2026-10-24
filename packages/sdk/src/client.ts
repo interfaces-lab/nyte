@@ -1,5 +1,6 @@
 import { asId, isJson, SdkError } from "@nyte-ai/schema";
 import type {
+  CommitId,
   CredentialSource,
   HeadName,
   HostId,
@@ -36,6 +37,7 @@ type Bound = {
   readonly rows: Rows;
   readonly journal: JournalLoop;
   readonly views: HeadViews;
+  readonly seen: Map<string, CommitId>;
 };
 
 const MAIN = asId<"head">("main");
@@ -48,6 +50,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     rows,
     journal: journalLoop(rows, context.journal),
     views: createHeadViews(rows),
+    seen: new Map(),
   };
 
   bound.journal.replay(context.journaled);
@@ -218,6 +221,13 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
       return withUnsent(view, journal.unsent(session, head));
     },
     watch: (options) => watchHead(bound.views, journal, { session, head, options }),
+    async see(commit) {
+      const key = JSON.stringify([session, head]);
+
+      if (bound.seen.get(key) === commit) return;
+      await rows.call("head.see", { session, head, commit });
+      bound.seen.set(key, commit);
+    },
     ...watchStore(() => watchHead(bound.views, journal, { session, head })),
     history: (input) => rows.call("head.history", { session, head, ...input }),
     tree: () => rows.call("head.tree", { session, head }),

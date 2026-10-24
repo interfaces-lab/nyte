@@ -1,6 +1,8 @@
 import { asId } from "@nyte-ai/schema";
+import type { SessionView } from "@nyte-ai/sdk";
 import { describe, expect, test } from "bun:test";
 import { deriveScreen } from "../../src/model/screen.ts";
+import type { Step } from "../../src/model/step.ts";
 import { followed, buildView } from "../fixture/view.ts";
 import type { ViewBuilder } from "../fixture/view.ts";
 import { blank, CATALOG, play, ready, S1, typed } from "./support.ts";
@@ -106,6 +108,70 @@ describe("views", () => {
     const state = ready(working);
 
     expect(play(state, { kind: "tasks", session: asId("s2"), tasks: [] }).state).toBe(state);
+  });
+});
+
+function atTip(view: SessionView, commit: string): SessionView {
+  return {
+    ...view,
+    heads: [
+      {
+        name: asId("main"),
+        tip: { kind: "commit", id: asId(commit) },
+        stack: null,
+        execution: view.execution,
+        unread: true,
+      },
+    ],
+  };
+}
+
+function marks(step: Step): Step["effects"] {
+  return step.effects.filter((effect) => effect.kind === "see");
+}
+
+describe("reading", () => {
+  test("the followed chat is marked read through each new tip it draws, once per tip", () => {
+    const first = play(ready(working), { kind: "view", session: S1, view: atTip(working, "c1") });
+
+    expect(marks(first)).toEqual([{ kind: "see", session: S1, commit: asId("c1") }]);
+
+    const same = play(first.state, { kind: "view", session: S1, view: atTip(stopped, "c1") });
+
+    expect(marks(same)).toEqual([]);
+    expect(
+      marks(play(same.state, { kind: "view", session: S1, view: atTip(stopped, "c2") })),
+    ).toEqual([{ kind: "see", session: S1, commit: asId("c2") }]);
+  });
+
+  test("while the terminal is in the background nothing is marked; focus marks the tip on screen", () => {
+    const away = play(
+      ready(working),
+      { kind: "terminal-focus", focused: false },
+      { kind: "view", session: S1, view: atTip(working, "c1") },
+      { kind: "view", session: S1, view: atTip(working, "c2") },
+    );
+
+    expect(marks(away)).toEqual([]);
+
+    const back = play(away.state, { kind: "terminal-focus", focused: true });
+
+    expect(marks(back)).toEqual([{ kind: "see", session: S1, commit: asId("c2") }]);
+    expect(marks(play(back.state, { kind: "terminal-focus", focused: true }))).toEqual([]);
+  });
+
+  test("a subagent the task list watches is never marked read", () => {
+    const view = atTip(working, "k1");
+    const child = followed(view, "child");
+
+    const listed = play(ready(atTip(working, "c1")), {
+      kind: "tasks",
+      session: S1,
+      tasks: [{ kind: "agent", id: child.id, info: child.info, view }],
+    });
+
+    expect(listed.state.facts.tasks).toHaveLength(1);
+    expect(marks(listed)).toEqual([]);
   });
 });
 

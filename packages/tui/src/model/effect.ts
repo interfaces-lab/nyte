@@ -1,4 +1,5 @@
 import type {
+  CommitId,
   Delivery,
   Json,
   MessageId,
@@ -32,6 +33,7 @@ export type Effect =
     }
   | { readonly kind: "follow"; readonly target: SessionId | "new"; readonly announce: boolean }
   | { readonly kind: "load-earlier"; readonly session: SessionId }
+  | { readonly kind: "see"; readonly session: SessionId; readonly commit: CommitId }
   | { readonly kind: "send"; readonly submission: Submission; readonly delivery: Delivery }
   | {
       readonly kind: "revise";

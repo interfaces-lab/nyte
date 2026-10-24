@@ -5,7 +5,14 @@ import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-rout
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
-import type { Message, ModelCatalogView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
+import type {
+  HeadInfo,
+  Message,
+  ModelCatalogView,
+  SessionId,
+  SessionInfo,
+  SessionView,
+} from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
@@ -13,7 +20,8 @@ import { PaneController } from "../layout/pane-controller.ts";
 import type { ScrollViewState } from "../layout/session-view-state.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
-import { installConnection, sessionWatch } from "../sdk.tsx";
+import { installConnection, sessionWatch, warmSession } from "../sdk.tsx";
+import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
 import { SessionScreen } from "./session-screen.tsx";
 import { createAppRouter } from "../router.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
@@ -25,7 +33,17 @@ const TURNS = 24;
 
 const [A, B, C, D] = ["warm-a", "warm-b", "warm-c", "warm-d"].map((id) => asId<"session">(id));
 
-function view(session: string): SessionView {
+function head(session: string, tip: number): HeadInfo {
+  return {
+    name: asId<"head">("main"),
+    tip: { kind: "commit", id: asId<"commit">(`${session}-tip-${String(tip)}`) },
+    stack: null,
+    execution: COMPLETED,
+    unread: true,
+  };
+}
+
+function view(session: string, tip = 1): SessionView {
   const messages: Message[] = [];
   const turns = [];
 
@@ -79,20 +97,39 @@ function view(session: string): SessionView {
     background: [],
     configuration: { selected: null, effective: null },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
+    heads: [head(session, tip)],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
 }
 
-const listed = viewStream<readonly SessionInfo[]>([A, B, C, D].map((id) => sessionRow(id)));
+const listed = viewStream<readonly SessionInfo[]>(
+  [A, B, C, D].map((id) => sessionRow(id, { heads: [head(id, 1)] })),
+);
+
+const streams = new Map([A, B, C, D].map((id) => [id, viewStream(view(id))] as const));
+
+const seen: string[] = [];
 
 installConnection(
   scriptedConnection({
     sessions: listed,
-    views: new Map([A, B, C, D].map((id) => [id, [view(id)]])),
+    views: streams,
+    session: () => ({
+      see: async (commit) => {
+        seen.push(commit);
+      },
+    }),
   }).connection,
 );
+
+async function moveTip(session: SessionId, tip: number): Promise<void> {
+  const moved = sessionWatch(session).next();
+  streams.get(session)?.push(view(session, tip));
+  await moved;
+  await painted();
+  await painted();
+}
 
 const catalog = {
   generation: asId<"catalog-generation">("initial"),
@@ -237,8 +274,17 @@ async function checkRules(): Promise<string> {
 
   try {
     const d = await show(container, D);
+    await until(() => seen.includes(`${D}-tip-1`), "the shown chat to be marked read");
+    warmSession(C);
+    await until(() => sessionWatch(C).value !== undefined, "warming an unread chat to open it");
+    await painted();
+    expectRule(!seen.includes(`${C}-tip-1`), "warming an unread chat marked it read");
     const a = await show(container, A);
     expectRule(!d.viewport.checkVisibility(), "a hidden session stays visible");
+    await moveTip(D, 2);
+    await moveTip(A, 2);
+    await until(() => seen.includes(`${A}-tip-2`), "the shown chat's new tip to be marked read");
+    expectRule(!seen.includes(`${D}-tip-2`), "a hidden chat was marked read through its new tip");
     await type(a.editor, "Draft for A");
     a.viewport.scrollTop = 600;
     await painted();
@@ -289,6 +335,17 @@ async function checkRules(): Promise<string> {
     await until(() => !b.viewport.isConnected, "the deleted hidden session to unmount");
     expectRule(!b.composer.isConnected, "a deleted hidden session kept its composer mounted");
     expectRule(a.viewport.isConnected, "deleting another session unmounted a hot one");
+
+    const workbench = workbenchViewKey(undefined);
+    workbenchController.actions.toggle({ view: workbench });
+    workbenchController.actions.toggleMaximized({ view: workbench });
+    await moveTip(C, 2);
+    expectRule(
+      !seen.includes(`${C}-tip-2`),
+      "a chat under the maximized workbench was marked read",
+    );
+    workbenchController.actions.showChat({ view: workbench });
+    await until(() => seen.includes(`${C}-tip-2`), "the chat shown over the workbench to be read");
 
     expectRule(consoleErrors.length === 0, `console errors:\n${consoleErrors.join("\n")}`);
 

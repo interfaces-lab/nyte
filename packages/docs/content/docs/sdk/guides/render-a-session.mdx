@@ -164,6 +164,22 @@ const loaded = await views.earlier(50);
 `earlier` resolves with how many messages it added, and `0` once the first message of the chat is
 showing. Iterate a `pagedViews` once.
 
+## Mark a chat read
+
+Each entry in `view.heads` has `unread`, which stays `true` until the connection's principal has
+read up to that head's tip. Watching or viewing a head never marks it read, so a preloaded preview
+or a background watch leaves the chat unread. Your client marks it while the chat is on screen in
+a window that has focus, with the tip of the view it drew:
+
+```ts
+const tip = view.heads.find((head) => head.name === session.name)?.tip;
+
+if (tip?.kind === "commit" && document.hasFocus()) await session.see(tip.id);
+```
+
+Call `see` again each time you draw a newer view. A commit at or before the one already marked
+changes nothing, and the SDK skips a call for the commit it last sent for that head.
+
 ## The rest of the view
 
 | Field           | What it holds                                                              |
@@ -179,6 +195,6 @@ showing. Iterate a `pagedViews` once.
 | `background`    | Child sessions, jobs and browser pages, with whether each is still working |
 | `configuration` | The `selected` configuration and the `effective` one after defaults        |
 | `context`       | Tokens in the model's context and the size of its window                   |
-| `heads`         | Every head in the session                                                  |
+| `heads`         | Every head in the session, with whether it is `unread`                     |
 | `changes`       | Files the session changed in its workspace                                 |
 | `catalog`       | The commands, settings, skills, agents and tools this session can use      |

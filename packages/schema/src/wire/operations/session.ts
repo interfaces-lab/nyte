@@ -139,6 +139,12 @@ export const SESSION_OPERATIONS = {
     input: wireObject({ ...HEAD, options: Type.Optional(ViewOptionsType) }),
     output: ViewFrameSchema,
   },
+  "head.see": {
+    ...PARTICIPANT,
+    kind: "command",
+    input: wireObject({ ...HEAD, commit: idSchema<"commit">() }),
+    output: NOTHING,
+  },
   "head.history": {
     ...PARTICIPANT,
     kind: "query",

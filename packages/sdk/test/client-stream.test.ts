@@ -118,7 +118,7 @@ describe("client streaming", () => {
                 ...[...chunk.matchAll(/^data: \{"kind":"(\w+)"/gm)].map((match) => match[1] ?? ""),
               ),
           cut !== "disconnect"
-            ? { after: 2, kind: cut, when: (id) => id === firstHead }
+            ? { after: 1, kind: cut, when: (id) => id === firstHead }
             : undefined,
         );
 

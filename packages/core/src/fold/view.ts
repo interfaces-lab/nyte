@@ -1,5 +1,4 @@
 import type {
-  CommitId,
   HeadName,
   HistoryPage,
   MessageId,
@@ -12,8 +11,7 @@ import { INDEX } from "../contract/fold.ts";
 import type { FoldState } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { closable, coalesce, DONE, latest } from "../util/iterable.ts";
-import { findLeadingPrompt, project, readSeenCommit } from "./project.ts";
-import { seenWriter } from "./seen.ts";
+import { findLeadingPrompt, project } from "./project.ts";
 
 export function watchHead(
   kernel: Kernel,
@@ -26,11 +24,9 @@ export function watchHead(
 ): AsyncIterable<SessionView> {
   return closable<SessionView>(() => {
     const hold = kernel.folds.acquire(input.session, input.principal);
-    const seen = seenWriter(kernel, input);
     let states: AsyncIterator<FoldState> | null = null;
     let closed = false;
     let shown: SessionView | null = null;
-    let marked: CommitId | null | undefined;
 
     return {
       async pull() {
@@ -47,18 +43,10 @@ export function watchHead(
           const next = await states.next();
 
           if (next.done || closed) return DONE;
-          const state = hold.state();
-          const view = project(state, input.head, input.options);
+          const view = project(hold.state(), input.head, input.options);
 
           if (view === shown) continue;
           shown = view;
-          const head = state.heads.get(input.head);
-          const tip = head?.info.tip.kind === "commit" ? head.info.tip.id : null;
-
-          if (head !== undefined && tip !== readSeenCommit(state, input.head) && tip !== marked) {
-            marked = tip;
-            seen.note(tip);
-          }
 
           return { done: false, value: view };
         }
@@ -67,8 +55,6 @@ export function watchHead(
         closed = true;
         void states?.return?.();
         hold.release();
-
-        return seen.flush();
       },
     };
   });
