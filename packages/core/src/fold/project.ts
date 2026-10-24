@@ -90,10 +90,6 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
   return view;
 }
 
-export function readSeenCommit(state: FoldState, head: HeadName): CommitId | null {
-  return state.seen.get(state.principal)?.get(head) ?? null;
-}
-
 export function holdsReports(execution: Execution): boolean {
   return execution.kind === "idle" && execution.lastRun?.end.kind !== "completed";
 }

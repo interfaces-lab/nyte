@@ -1,6 +1,6 @@
 import { asId, SdkError, standard } from "@nyte-ai/schema";
 import type { HeadName, Json } from "@nyte-ai/schema";
-import { definePart, dev } from "@nyte-ai/core";
+import { definePart } from "@nyte-ai/core";
 import { decodeSeenRecord, headRef, memoryStore, seenRef } from "@nyte-ai/core/store";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import { Type } from "typebox";
@@ -78,7 +78,7 @@ async function sent(handler: (request: Request) => Promise<Response>) {
 }
 
 describe("handler", () => {
-  it("creates, sends, settles, and streams the head's view whole first, marking its tip seen", async () => {
+  it("creates, sends, settles, and streams the head's view whole first, marking its tip seen only on head.see", async () => {
     const { handler, fake, host } = await served();
     fake.reply("Hello there.");
     const { session, receipt } = await sent(handler);
@@ -110,7 +110,13 @@ describe("handler", () => {
         : decodeSeenRecord(await host.kernel.store.objects.get(target))?.commit;
     };
 
-    await expect.poll(seen).toBe(ref?.target);
+    assert(tip?.kind === "commit");
+    expect(await seen()).toBeNull();
+    const see = await post(handler, "head.see", { session, head: main, commit: tip.id });
+
+    expect(see.status).toBe(200);
+    expect(decodeOutput("head.see", await see.json())).toBeNull();
+    expect(await seen()).toBe(tip.id);
   });
 
   it("sends the watched head's view with that head's revision, not another head's (§54a)", async () => {
@@ -128,41 +134,6 @@ describe("handler", () => {
     expect(view.revision).not.toBe(
       (await host.kernel.store.refs.get(headRef(session, main)))?.revision,
     );
-  });
-
-  it("writes a dev line when a seen mark fails, instead of swallowing it (ADV C 9)", async () => {
-    const store = changed((opened) => ({
-      ...opened,
-      refs: {
-        ...opened.refs,
-        set: async (updates) =>
-          updates.some((update) => update.events?.some((event) => event.kind === "seen"))
-            ? Promise.reject(new Error("The seen write was refused."))
-            : opened.refs.set(updates),
-      },
-    }));
-
-    const { handler, fake } = await served({ store });
-    const lines: string[] = [];
-    const sink = dev.sink;
-    dev.on((line) => {
-      lines.push(line);
-    });
-
-    try {
-      fake.reply("Seen.");
-      const { session, receipt } = await sent(handler);
-      await post(handler, "receipt.settled", { session, receipt });
-      await firstView(await post(handler, "head.watch", { session, head: main }));
-
-      await expect
-        .poll(() => lines.filter((line) => line.startsWith("DEV:watch seen failed")))
-        .toEqual([
-          `DEV:watch seen failed {"session":"${session}","head":"main","error":"Error: The seen write was refused."}`,
-        ]);
-    } finally {
-      dev.sink = sink;
-    }
   });
 
   it("closes a raw byte body and its provider reader when the request aborts (ADV G P5)", async () => {

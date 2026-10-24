@@ -213,10 +213,15 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
       store.dispatch({ kind: "copy-text", text });
   };
 
+  const onFocus = (): void => store.dispatch({ kind: "terminal-focus", focused: true });
+  const onBlur = (): void => store.dispatch({ kind: "terminal-focus", focused: false });
+
   renderer.on(CliRenderEvents.RESIZE, syncTerminal);
   renderer.on(CliRenderEvents.THEME_MODE, syncTerminal);
   renderer.on(CliRenderEvents.CAPABILITIES, syncTerminal);
   renderer.on(CliRenderEvents.SELECTION, onSelection);
+  renderer.on(CliRenderEvents.FOCUS, onFocus);
+  renderer.on(CliRenderEvents.BLUR, onBlur);
   options.hungUp.addEventListener("abort", hangUp);
 
   if (options.hungUp.aborted) hangUp();
@@ -250,6 +255,8 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     renderer.off(CliRenderEvents.THEME_MODE, syncTerminal);
     renderer.off(CliRenderEvents.CAPABILITIES, syncTerminal);
     renderer.off(CliRenderEvents.SELECTION, onSelection);
+    renderer.off(CliRenderEvents.FOCUS, onFocus);
+    renderer.off(CliRenderEvents.BLUR, onBlur);
     renderer.root.onMouseDown = undefined;
     uninstallKeymap();
     mini?.dispose();

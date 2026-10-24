@@ -8,6 +8,7 @@ import type {
   PrincipalId,
   RefUpdate,
   SessionId,
+  SessionView,
 } from "@nyte-ai/schema";
 import { assert, describe, expect, it, vi } from "vitest";
 import { createHostState, watchHost } from "../src/api/host.ts";
@@ -17,17 +18,10 @@ import { project } from "../src/fold/project.ts";
 import { watchHead } from "../src/fold/view.ts";
 import { publishSet } from "../src/fold/watch.ts";
 import { coalesce } from "../src/index.ts";
-import {
-  decodeSeenRecord,
-  envelope,
-  headRef,
-  inboxRef,
-  memoryStore,
-  seenRef,
-  sessionRef,
-} from "../src/store.ts";
+import { envelope, headRef, inboxRef, memoryStore, sessionRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { CommitRecord, SessionRecord } from "../src/store.ts";
+import { fakeModels, open } from "./fake-models.ts";
 
 const first: SessionId = asId("s1");
 
@@ -200,16 +194,10 @@ async function land(
   return id;
 }
 
-async function seenCommit(
-  kernel: Kernel,
-  session: SessionId,
-  principal: PrincipalId,
-): Promise<CommitId | null | undefined> {
-  const ref = await kernel.store.refs.get(seenRef(session, principal, main));
+function shownTip(view: SessionView): CommitId | null {
+  const tip = view.heads[0]?.tip;
 
-  return ref?.target
-    ? decodeSeenRecord(await kernel.store.objects.get(ref.target))?.commit
-    : undefined;
+  return tip?.kind === "commit" ? tip.id : null;
 }
 
 describe("watch", () => {
@@ -233,30 +221,51 @@ describe("watch", () => {
     expect((times[1] ?? 0) - (times[0] ?? 0)).toBeGreaterThanOrEqual(25);
   });
 
-  it("advances the principal's seen mark to each tip it yields", async () => {
-    const kernel = await createMemoryKernel();
-    await createSession(kernel, first, "triage", 1);
-    const c1 = await land(kernel, first, "m1", null);
+  it("leaves a watched head unread until the principal sees its tip, and never moves the mark back", async () => {
+    const fake = fakeModels();
+    fake.reply(
+      { content: [{ type: "text", text: "First." }] },
+      { content: [{ type: "text", text: "Second." }] },
+    );
+    await using host = await open(fake);
+    const { session, receipt } = await host.sessions.start({ content: "Hi." });
+    await receipt.settled();
+    const views = session.watch()[Symbol.asyncIterator]();
 
-    for await (const view of watchHead(kernel, { session: first, head: main, principal: ada })) {
-      expect(view.heads[0]).toMatchObject({ tip: { kind: "commit", id: c1 }, unread: true });
-      break;
-    }
+    const shown = async (accept: (view: SessionView) => boolean): Promise<SessionView> => {
+      for (;;) {
+        const next = await views.next();
+        assert(!next.done);
 
-    expect(await seenCommit(kernel, first, ada)).toBe(c1);
-    expect(await seenCommit(kernel, first, bob)).toBeUndefined();
-    expect((await sessionInfo(kernel, first, ada))?.heads[0]?.unread).toBe(false);
-    expect((await sessionInfo(kernel, first, bob))?.heads[0]?.unread).toBe(true);
+        if (accept(next.value)) return next.value;
+      }
+    };
 
-    const c2 = await land(kernel, first, "m2", c1);
+    const before = await shown((view) => view.execution.kind === "idle");
+    const older = shownTip(before);
 
-    for await (const view of watchHead(kernel, { session: first, head: main, principal: ada })) {
-      expect(view.messages.map((message) => message.id)).toEqual(["m1", "m2"]);
-      expect(view.revision).not.toBe("");
-      break;
-    }
+    expect(before.heads[0]?.unread).toBe(true);
+    await (await session.send("Again.")).settled();
 
-    expect(await seenCommit(kernel, first, ada)).toBe(c2);
+    const after = await shown((view) => view.execution.kind === "idle" && shownTip(view) !== older);
+
+    expect(after.heads[0]?.unread).toBe(true);
+    await views.return?.();
+    expect((await session.view()).heads[0]?.unread).toBe(true);
+    expect((await session.info()).heads[0]?.unread).toBe(true);
+
+    const tip = shownTip(after);
+    assert(older !== null && tip !== null);
+    await session.see(tip);
+
+    expect((await session.view()).heads[0]?.unread).toBe(false);
+    expect((await session.info()).heads[0]?.unread).toBe(false);
+    expect((await sessionInfo(host.kernel, session.id, ada))?.heads[0]?.unread).toBe(true);
+
+    await session.see(older);
+
+    expect((await session.view()).heads[0]?.unread).toBe(false);
+    expect((await session.info()).heads[0]?.unread).toBe(false);
   });
 
   it("shares one fold between watchers of the same session and principal", async () => {

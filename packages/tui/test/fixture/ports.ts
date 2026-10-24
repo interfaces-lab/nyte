@@ -39,6 +39,7 @@ export interface FakeSession extends SessionPort {
   watchTasks(): AsyncIterable<readonly Task[]>;
   readonly calls: {
     readonly send: { readonly content: UserContent; readonly delivery: string | undefined }[];
+    readonly see: string[];
     readonly withdraw: string[];
     readonly revise: { readonly message: string; readonly content: UserContent }[];
     readonly stopRun: string[];
@@ -139,6 +140,7 @@ function fakeSession(id: string): FakeSession {
 
   const calls: FakeSession["calls"] = {
     send: [],
+    see: [],
     withdraw: [],
     revise: [],
     stopRun: [],
@@ -162,6 +164,9 @@ function fakeSession(id: string): FakeSession {
     watchTasks: () => tasks,
     watch: () => views,
     earlier: async () => 0,
+    async see(commit) {
+      calls.see.push(commit);
+    },
     info: async () => buildSessionInfo(id),
     workspace: async () => ({ id: asId("workspace"), cwd: "/tmp/fake-workspace" }),
     async send(content, options) {

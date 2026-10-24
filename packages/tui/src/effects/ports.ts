@@ -2,6 +2,7 @@ import type {
   BlobId,
   CommandCompletion,
   CommandOutcome,
+  CommitId,
   ConfigureOutcome,
   GitHubAccountState,
   GitHubState,
@@ -121,6 +122,7 @@ export interface SessionPort {
   readonly id: SessionId;
   watch(): AsyncIterable<SessionView>;
   earlier(limit: number): Promise<number>;
+  see(commit: CommitId): Promise<void>;
   info(): Promise<SessionInfo>;
   workspace(): Promise<{ readonly id: WorkspaceId; readonly cwd: string | null }>;
   send(content: UserContent, options: SendOptions): Promise<{ readonly message: MessageId }>;

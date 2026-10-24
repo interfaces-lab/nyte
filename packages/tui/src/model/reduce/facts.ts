@@ -1,4 +1,4 @@
-import type { MessageId, SessionId, SessionView, WorkspaceId } from "@nyte-ai/sdk";
+import type { CommitId, MessageId, SessionId, SessionView, WorkspaceId } from "@nyte-ai/sdk";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { shortId } from "../../lib/format.ts";
 import { completingCommands } from "../commands.ts";
@@ -120,6 +120,11 @@ export const factHandlers = {
     ),
   "shell-job": (state, msg) => shellReported(state, msg.job),
   terminal: (state, msg) => stay(withFacts(state, { terminal: msg.terminal })),
+  "terminal-focus": (state, msg) => {
+    const next = withFacts(state, { focused: msg.focused });
+
+    return msg.focused && !state.facts.focused ? see(next) : stay(next);
+  },
   remote: (state, msg) => stay(withFacts(state, { remote: msg.remote })),
   "draft-changed": (state, msg, now) => draftChanged(state, msg, now),
   scrolled: (state, msg) => stay(scrolled(state, msg.atBottom)),
@@ -189,8 +194,24 @@ function viewArrived(state: State, session: FollowedSession, view: SessionView, 
   if (before === null) step = andThen(step, (current) => firstView(current, now));
   step = andThen(step, (current) => runEnded(before, view, current, now));
   step = andThen(step, (current) => editLanded(current, now));
+  step = andThen(step, (current) => landHandback(current, now));
 
-  return andThen(step, (current) => landHandback(current, now));
+  return drawnTip(view) === drawnTip(before) ? step : andThen(step, see);
+}
+
+function drawnTip(view: SessionView | null): CommitId | null {
+  const tip = view?.heads.find((head) => head.name === "main")?.tip;
+
+  return tip?.kind === "commit" ? tip.id : null;
+}
+
+function see(state: State): Step {
+  const session = followedSession(state);
+  const tip = drawnTip(session?.view ?? null);
+
+  if (!state.facts.focused || session === null || tip === null) return stay(state);
+
+  return { state, effects: [{ kind: "see", session: session.id, commit: tip }] };
 }
 
 function followedHead(

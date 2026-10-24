@@ -397,10 +397,7 @@ describe("client send journal", () => {
 
     const settled = await until(
       session.watch(),
-      (view) =>
-        view.execution.kind === "idle" &&
-        users(view).join() === "Hi.,First.,Second v2." &&
-        view.heads.every((head) => !head.unread),
+      (view) => view.execution.kind === "idle" && users(view).join() === "Hi.,First.,Second v2.",
     );
 
     await watching.return?.();

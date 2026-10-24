@@ -291,6 +291,7 @@ function sessionPort(
       return tracePaints(views, session.id, painted);
     },
     earlier: (limit) => views?.earlier(limit) ?? Promise.resolve(0),
+    see: (commit) => session.see(commit),
     info: () => session.info(),
     async workspace() {
       const workspace = await readWorkspace();

@@ -2,6 +2,7 @@ import { SdkError } from "@nyte-ai/sdk";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type {
   ActOutcome,
+  CommitId,
   Configuration,
   Connection,
   Delivery,
@@ -30,6 +31,8 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
 
   const state =
     watched.kind === "ready" ? watched.value : watched.kind === "failed" ? watched.last : undefined;
+
+  const tip = state?.heads.find((entry) => entry.name === head.name)?.tip;
 
   const submission = useRef<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
@@ -147,6 +150,8 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
 
   return {
     state,
+    tip: tip?.kind === "commit" ? tip.id : undefined,
+    see: (commit: CommitId) => head.see(commit),
     info: info.data,
     reloadInfo: info.refetch,
     configuration,

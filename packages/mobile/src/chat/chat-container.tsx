@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { Alert, Keyboard } from "react-native";
+import { Alert, AppState, Keyboard } from "react-native";
 import { css, html } from "react-strict-dom";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HeadName, SessionId } from "@nyte-ai/sdk";
@@ -19,12 +19,15 @@ import { ModelPickerSheet } from "./model-selector.tsx";
 import { ChatScreen } from "./chat-screen.tsx";
 import { indexDelegateNames } from "./delegate-names.ts";
 import { useChatDraft } from "./drafts.ts";
+import { seeWhileForeground } from "./seen.ts";
 
 export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const { client } = useHost();
   const insets = useSafeAreaInsets();
   const [head, setHead] = useState<HeadName>();
   const chat = useRemoteChat(client, sessionId, head);
+
+  useFocusEffect(() => seeWhileForeground({ appState: AppState, tip: chat.tip, see: chat.see }));
 
   const [children] = useWatch(
     useMemo(
