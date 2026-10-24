@@ -1,8 +1,12 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../theme/schema.stylex.ts";
-import type { ToolCallDensity } from "../preferences/index.ts";
-import { StepGroupView } from "./step-group.tsx";
+import { sessionWatch, useWatchSelect } from "../sdk.tsx";
+import { activityStyles } from "./activity.stylex.ts";
+import { usePlanningTime } from "./planning-time.ts";
+import { stepGroupStyles } from "./step-group.stylex.ts";
+import { liveStatusLabel, PLANNING_LABEL } from "./step-group-presentation.ts";
+import { useTranscriptScope } from "./transcript.tsx";
 
 export const liveTurnStyles = create({
   root: {
@@ -12,24 +16,41 @@ export const liveTurnStyles = create({
     width: "100%",
     minWidth: 0,
   },
+  waiting: { visibility: "hidden" },
 });
 
 export function LiveTurn({
   working,
   settledWork,
-  cwd,
-  density,
 }: {
   working: boolean;
   settledWork: boolean;
-  cwd: string | undefined;
-  density: ToolCallDensity;
 }): ReactElement | null {
   if (!working || settledWork) return null;
 
+  return <PlanningLine />;
+}
+
+function PlanningLine(): ReactElement {
+  const sessionId = useTranscriptScope()?.sessionId;
+  const store = sessionId === undefined ? undefined : sessionWatch(sessionId);
+  const planning = useWatchSelect(store, (state) => state.value?.activity.kind === "idle");
+  const newest = useWatchSelect(store, (state) => state.value?.messages.at(-1)?.id);
+  const planningMs = usePlanningTime(planning, newest);
+  const label = planning ? liveStatusLabel({ kind: "planning" }, planningMs) : undefined;
+
   return (
     <div {...props(liveTurnStyles.root)}>
-      <StepGroupView messages={[]} cwd={cwd} added={0} removed={0} running density={density} />
+      <div aria-busy {...props(stepGroupStyles.root, stepGroupStyles.status)}>
+        <span
+          {...props(
+            stepGroupStyles.verb,
+            label === undefined ? liveTurnStyles.waiting : activityStyles.shimmer,
+          )}
+        >
+          {label ?? PLANNING_LABEL}
+        </span>
+      </div>
     </div>
   );
 }
