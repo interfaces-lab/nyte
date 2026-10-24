@@ -102,7 +102,11 @@ export function HueScopes() {
 }
 
 const intents = [
-  { name: "primary", hue: "blue", use: "Filled actions, links, the current item" },
+  {
+    name: "primary",
+    hue: "blue",
+    use: "Filled actions, links, switches and checks, the current item",
+  },
   { name: "success", hue: "green", use: "Status text: done, passing" },
   { name: "warning", hue: "yellow", use: "Status text: needs attention" },
   { name: "danger", hue: "red", use: "Status text, destructive menu items and alert actions" },

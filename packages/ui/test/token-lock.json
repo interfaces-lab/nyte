@@ -423,10 +423,14 @@
     ],
     "ui/src/styles/theme.stylex.ts theme": [
       "--nyte-neutral-0",
+      "--nyte-neutral-10",
       "--nyte-neutral-100",
+      "--nyte-neutral-130",
       "--nyte-neutral-80",
       "--nyte-neutral-translucent-0",
+      "--nyte-neutral-translucent-10",
       "--nyte-neutral-translucent-100",
+      "--nyte-neutral-translucent-130",
       "--nyte-neutral-translucent-80",
       "--nyte-theme-0",
       "--nyte-theme-10",
@@ -511,6 +515,19 @@
       "--nyte-theme-translucent-70",
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
+    ],
+    "ui/src/styles/roles.stylex.ts accent": [
+      "--nyte-bg-control-selected",
+      "--nyte-bg-interactive-strong",
+      "--nyte-bg-scrim-translucent",
+      "--nyte-border-primary",
+      "--nyte-button-fill",
+      "--nyte-content-interactive-primary",
+      "--nyte-content-interactive-secondary",
+      "--nyte-content-interactive-tertiary",
+      "--nyte-content-primary",
+      "--nyte-content-tertiary",
+      "--nyte-scrollbar-thumb"
     ],
     "ui/src/styles/roles.stylex.ts roles": [
       "--nyte-bg-base",

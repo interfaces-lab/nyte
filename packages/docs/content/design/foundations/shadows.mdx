@@ -12,7 +12,8 @@ import { shadow } from "@nyte-ai/ui/styles/vars.stylex";
 ## Rules
 
 - The elevation shadows are inked in a warm near-black at 3 to 19 percent alpha, not neutral
-  grey, so they sit on the warm gray ramp.
+  grey, so they sit on the warm gray ramp. Dark mode doubles each alpha so the shadow still reads
+  on dark surfaces.
 - Height follows distance from the page: controls take `shadowSm`, popups `shadowLg`, modal
   popups and dialogs `shadowXl`.
 - `shadowMdOutline` adds a hairline that sits outside in light mode and inside in dark mode, where

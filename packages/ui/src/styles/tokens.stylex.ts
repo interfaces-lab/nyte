@@ -20,9 +20,12 @@ export const focusModality = defineVars({
 });
 
 export const elevation = defineVars({
-  "--nyte-shadow-sm": "0 4px 12px #42230308, 0 1px 2px #42230308",
-  "--nyte-shadow-lg": "0 20px 24px #2a1c0012, 0 5px 8px #42230308",
-  "--nyte-shadow-xl": "0 24px 72px -24px #1b150030, 0 8px 32px #2a1c0012",
+  "--nyte-shadow-sm":
+    "0 4px 12px light-dark(#42230308, #42230310), 0 1px 2px light-dark(#42230308, #42230310)",
+  "--nyte-shadow-lg":
+    "0 20px 24px light-dark(#2a1c0012, #2a1c0024), 0 5px 8px light-dark(#42230308, #42230310)",
+  "--nyte-shadow-xl":
+    "0 24px 72px -24px light-dark(#1b150030, #1b150060), 0 8px 32px light-dark(#2a1c0012, #2a1c0024)",
   "--nyte-shadow-workbench": "0 0 8px 2px #00000014",
 });
 
