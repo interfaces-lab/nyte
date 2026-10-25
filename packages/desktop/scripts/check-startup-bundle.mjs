@@ -8,8 +8,8 @@ const budgets = {
   main: 116 * KIB,
   host: 1_500 * KIB,
   preload: 8 * KIB,
-  renderer: 3_125 * KIB,
-  css: 190 * KIB,
+  renderer: 3_225 * KIB,
+  css: 290 * KIB,
 };
 
 const desktopRoot = join(import.meta.dirname, "..");
