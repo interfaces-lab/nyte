@@ -581,8 +581,10 @@ const neutral = (step: number) => ({
 export const theme = defineVars({
   ...ramp("gray"),
   ...neutral(0),
+  ...neutral(10),
   ...neutral(80),
   ...neutral(100),
+  ...neutral(130),
 });
 
 export const tint = defineVars({

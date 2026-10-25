@@ -58,4 +58,13 @@ Pass a scope to `props()` and every role inside reads that hue. `custom` takes i
 
 <IntentTable />
 
+The primary intent fills solid buttons with the hue itself rather than darkening it for a text
+label, so its solid buttons suit glyphs and short labels.
+
 The focus ring ignores scopes. It reads `appearance.focusRing`, a fixed blue.
+
+## High contrast
+
+When the OS asks for more contrast (`prefers-contrast: more`), text steps toward the ends of
+the ramp and hover and press states darken or lighten further. Surfaces and borders keep their
+steps.
