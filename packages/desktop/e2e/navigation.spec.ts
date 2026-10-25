@@ -79,7 +79,10 @@ test("the navigation journey", async ({ desktop }) => {
   await test.step("Customize lists the plugins", async () => {
     await sidebar(page).getByRole("button", { name: "Customize", exact: true }).click();
     await expect(chatTab(page, "Customize")).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("heading", { name: "Your plugins", level: 2 })).toBeVisible();
+    await expect(
+      page.getByRole("tablist", { name: "Customize" }).getByRole("tab", { name: /^Plugins/u }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("heading", { name: "Built in", level: 2 })).toBeVisible();
     await expect(page.getByRole("button", { name: "Open Plugins Folder" })).toBeVisible();
   });
 

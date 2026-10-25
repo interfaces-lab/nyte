@@ -606,10 +606,7 @@ export function useMentionFiles(enabled: boolean) {
   return useQuery(mentionFilesOptions(enabled));
 }
 
-export function useWorkspaceCatalog() {
-  const host = useHostState();
-  const workspace = host.data.workspace?.id;
-
+export function useWorkspaceCatalog(workspace: WorkspaceId | undefined) {
   return useQuery({
     queryKey: keys.workspaceCatalog(workspace),
     queryFn: async () => {

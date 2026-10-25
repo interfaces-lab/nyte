@@ -1,22 +1,52 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { ReactElement, ReactNode } from "react";
-import type { CommandInfo, HostView, Json, SessionId, SettingInfo, SkillInfo } from "@nyte-ai/sdk";
+import { useState } from "react";
+import type { ReactElement } from "react";
+import type {
+  CommandInfo,
+  HostView,
+  Json,
+  SessionId,
+  SettingInfo,
+  SkillInfo,
+  ToolInfo,
+} from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
+import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
-import { revealLabel } from "../components/context-menu.ts";
+import { Switch } from "@nyte-ai/ui/switch";
+import { Tabs } from "@nyte-ai/ui/tabs";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ShellSearch } from "../shell/search.ts";
 import { nyte } from "../nyte.ts";
-import { useApplyPluginSetting, usePluginSettingsProjection } from "../queries.ts";
-import { hostWatch, sessionWatch, useWatchSelect } from "../sdk.tsx";
+import {
+  useApplyPluginSetting,
+  useHostState,
+  usePluginSettingsProjection,
+  useWorkspaceCatalog,
+} from "../queries.ts";
+import { keys } from "../query-keys.ts";
+import { connected, hostWatch, mcpWatch, sessionWatch, useWatch, useWatchSelect } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
-import { SettingsRow, SettingsSwitchRow } from "../settings/rows.tsx";
 import { settingsStyles as page } from "../settings/settings.stylex.ts";
+import { ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
+import { McpServersTab, mcpNeedsAttention } from "./customize-mcp.tsx";
+import {
+  Chips,
+  Details,
+  ExpandButton,
+  Field,
+  ListLoading,
+  Notice,
+  PathActions,
+  Section,
+  Wide,
+} from "./customize-parts.tsx";
 import { customizeStyles as styles } from "./customize.stylex.ts";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
 
 interface Presentation {
   readonly name: string;
@@ -24,12 +54,12 @@ interface Presentation {
   readonly icon: IconName;
 }
 
-const BUILTINS = new Map<string, Presentation>([
+/** The plugins Nyte ships that people use directly; the others are internal and stay hidden unless they fail to load. */
+const SHIPPED = new Map<string, Presentation>([
   [
     "web-search",
     { name: "Web search", description: "Search the web and read pages", icon: "globe" },
   ],
-  ["mcp", { name: "MCP servers", description: "Tools from servers in mcp.json", icon: "mcp" }],
   [
     "codemode",
     {
@@ -51,32 +81,64 @@ const BUILTINS = new Map<string, Presentation>([
     { name: "Chat titles", description: "Names a chat from its first message", icon: "writing" },
   ],
   [
-    "openai/compaction",
+    "openai-compaction",
     {
       name: "Compaction",
       description: "Compacts long chats with OpenAI's native compaction",
       icon: "cube",
     },
   ],
+  [
+    "browser-tools",
+    {
+      name: "Browser",
+      description: "Opens, reads and drives pages in the Browser tab",
+      icon: "website",
+    },
+  ],
+  [
+    "canvas",
+    { name: "Canvas", description: "Draws interactive canvases in the chat", icon: "canvas-grid" },
+  ],
+  [
+    "claude-code-sdk",
+    {
+      name: "Claude Code",
+      description: "Use Claude Code as a model",
+      icon: "provider-claude-code",
+    },
+  ],
 ]);
 
-const PLUGIN_SECTION = "plugin:";
+const TABS = [
+  { id: "plugins", label: "Plugins" },
+  { id: "mcp", label: "MCP servers" },
+  { id: "skills", label: "Skills" },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
 
 type PluginInfo = HostView["plugins"][number];
 
-interface CustomizeInventory {
-  readonly plugins: readonly PluginInfo[];
-  readonly settings: readonly SettingInfo[];
-  readonly skills: readonly SkillInfo[];
-  readonly commands: readonly CommandInfo[];
-}
-
-interface PluginView extends Partial<Presentation> {
+interface PluginView {
   readonly info: PluginInfo;
   readonly name: string;
+  readonly description: string | undefined;
   readonly icon: IconName;
-  readonly off: boolean;
+  readonly shipped: boolean;
+  readonly failure: string | undefined;
+  readonly settings: readonly SettingInfo[];
+  readonly commands: readonly CommandInfo[];
+  readonly tools: readonly ToolInfo[];
 }
+
+interface SkillView {
+  readonly info: SkillInfo;
+  readonly path: string;
+  readonly project: boolean;
+}
+
+const ABSOLUTE = /^(?:[A-Za-z]:)?[\\/]/u;
 
 function loadFailure(plugin: PluginInfo): string | undefined {
   const errors = plugin.issues.filter((issue) => issue.severity === "error");
@@ -84,182 +146,59 @@ function loadFailure(plugin: PluginInfo): string | undefined {
   return errors.length === 0 ? undefined : errors.map((issue) => issue.message).join("\n");
 }
 
+function presentPlugin(
+  info: PluginInfo,
+  owned: {
+    readonly settings: readonly SettingInfo[];
+    readonly commands: readonly CommandInfo[];
+    readonly tools: readonly ToolInfo[];
+  },
+): PluginView | undefined {
+  const shipped = info.source === "builtin" || info.source === "inline";
+  const presentation = SHIPPED.get(info.id);
+  const failure = loadFailure(info);
+
+  if (shipped && presentation === undefined && failure === undefined) return undefined;
+  const owns = (owner: string): boolean => owner === info.id;
+
+  return {
+    info,
+    name:
+      presentation?.name ??
+      (info.id === info.path
+        ? info.id.slice(Math.max(info.id.lastIndexOf("/"), info.id.lastIndexOf("\\")) + 1)
+        : info.id),
+    description: presentation?.description,
+    icon: presentation?.icon ?? "box-3d",
+    shipped,
+    failure,
+    settings: owned.settings.filter((setting) => owns(setting.owner)),
+    commands: owned.commands.filter((command) => owns(command.owner)),
+    tools: owned.tools.filter((tool) => owns(tool.owner) && tool.exposure !== "hidden"),
+  };
+}
+
+function placeSkill(info: SkillInfo, root: string | undefined): SkillView {
+  if (ABSOLUTE.test(info.location))
+    return {
+      info,
+      path: info.location,
+      project: root !== undefined && info.location.startsWith(`${root}/`),
+    };
+
+  return {
+    info,
+    path: root === undefined ? info.location : `${root.replace(/[\\/]+$/u, "")}/${info.location}`,
+    project: true,
+  };
+}
+
+function matches(query: string, candidates: readonly string[]): boolean {
+  return query === "" || candidates.some((candidate) => candidate.toLowerCase().includes(query));
+}
+
 function choiceKey(value: Json): string {
   return JSON.stringify(value);
-}
-
-function present(plugin: PluginInfo, settings: readonly SettingInfo[]): PluginView | undefined {
-  const builtin = BUILTINS.get(plugin.id);
-
-  if (builtin === undefined && plugin.source === "builtin" && loadFailure(plugin) === undefined)
-    return undefined;
-
-  const toggles = settings.filter(
-    (setting) => setting.owner === plugin.id && typeof setting.value === "boolean",
-  );
-
-  const off = toggles.length > 0 && toggles.every((setting) => setting.value === false);
-
-  return { name: plugin.id, icon: "box-3d", ...builtin, info: plugin, off };
-}
-
-function parentPath(path: string): string {
-  return path.slice(0, Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")));
-}
-
-function Section({
-  title,
-  description,
-  children,
-}: {
-  readonly title: string;
-  readonly description?: string;
-  readonly children: ReactNode;
-}): ReactElement {
-  return (
-    <section {...props(settingsPatterns.section)}>
-      <div {...props(settingsPatterns.sectionHeader)}>
-        <h2 {...props(settingsPatterns.sectionTitle)}>{title}</h2>
-        {description !== undefined && (
-          <p {...props(settingsPatterns.sectionDescription)}>{description}</p>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function hasPage(plugin: PluginView, inventory: CustomizeInventory): boolean {
-  const owns = (owner: string): boolean => owner === plugin.info.id;
-
-  return (
-    loadFailure(plugin.info) !== undefined ||
-    plugin.info.path !== null ||
-    inventory.settings.some((setting) => owns(setting.owner)) ||
-    inventory.commands.some((command) => owns(command.owner))
-  );
-}
-
-function PluginRow({
-  plugin,
-  inventory,
-  onOpen,
-}: {
-  readonly plugin: PluginView;
-  readonly inventory: CustomizeInventory;
-  readonly onOpen: (plugin: PluginView) => void;
-}): ReactElement {
-  const detail =
-    loadFailure(plugin.info) !== undefined ? (
-      <ConnectionStatus tone="err">Couldn&rsquo;t load</ConnectionStatus>
-    ) : plugin.off ? (
-      <ConnectionStatus tone="off">Off</ConnectionStatus>
-    ) : (
-      plugin.description
-    );
-
-  return (
-    <ConnectionRow
-      glyph={<Icon name={plugin.icon} size={16} />}
-      title={plugin.name}
-      detail={detail}
-      control={
-        hasPage(plugin, inventory) ? (
-          <Button variant="outline" onClick={() => onOpen(plugin)}>
-            Manage
-          </Button>
-        ) : undefined
-      }
-    />
-  );
-}
-
-function Overview({
-  inventory,
-  onOpen,
-}: {
-  readonly inventory: CustomizeInventory;
-  readonly onOpen: (plugin: PluginView) => void;
-}): ReactElement {
-  const reveal = nyte.host.revealPath;
-  const openPluginsFolder = nyte.host.openPluginsFolder;
-  const plugins = inventory.plugins.flatMap((plugin) => present(plugin, inventory.settings) ?? []);
-  const yours = plugins.filter((plugin) => plugin.info.source !== "builtin");
-  const builtIn = plugins.filter((plugin) => plugin.info.source === "builtin");
-
-  return (
-    <>
-      {(yours.length > 0 || openPluginsFolder !== undefined) && (
-        <Section title="Your plugins">
-          <ConnectionList>
-            {yours.map((plugin) => (
-              <PluginRow
-                key={plugin.info.id}
-                plugin={plugin}
-                inventory={inventory}
-                onOpen={onOpen}
-              />
-            ))}
-            {openPluginsFolder !== undefined && (
-              <ConnectionRow
-                glyph={<Icon name="folder-add" size={16} />}
-                title="Add your own plugin"
-                control={
-                  <Button
-                    variant="outline"
-                    icon="folder-open"
-                    onClick={() => void openPluginsFolder()}
-                  >
-                    Open Plugins Folder
-                  </Button>
-                }
-              />
-            )}
-          </ConnectionList>
-        </Section>
-      )}
-
-      {builtIn.length > 0 && (
-        <Section title="Built in">
-          <ConnectionList>
-            {builtIn.map((plugin) => (
-              <PluginRow
-                key={plugin.info.id}
-                plugin={plugin}
-                inventory={inventory}
-                onOpen={onOpen}
-              />
-            ))}
-          </ConnectionList>
-        </Section>
-      )}
-
-      {inventory.skills.length > 0 && (
-        <Section title="Skills">
-          <ConnectionList>
-            {inventory.skills.map((skill) => (
-              <ConnectionRow
-                key={skill.location}
-                glyph={<Icon name="skills" size={16} />}
-                title={skill.name}
-                detail={skill.description}
-                control={
-                  reveal === undefined ? undefined : (
-                    <Button
-                      iconOnly
-                      icon="folder-open"
-                      aria-label={revealLabel(nyte.platform)}
-                      onClick={() => void reveal({ path: parentPath(skill.location) })}
-                    />
-                  )
-                }
-              />
-            ))}
-          </ConnectionList>
-        </Section>
-      )}
-    </>
-  );
 }
 
 function PluginSetting({
@@ -273,10 +212,10 @@ function PluginSetting({
 }): ReactElement {
   if (typeof setting.value === "boolean")
     return (
-      <SettingsSwitchRow
-        title={setting.label}
+      <Switch
+        label={setting.label}
+        checked={setting.value}
         disabled={disabled}
-        checked={setting.value === true}
         onCheckedChange={(checked) => onApply(checked)}
       />
     );
@@ -284,79 +223,54 @@ function PluginSetting({
   const choices = setting.choices ?? [];
 
   return (
-    <SettingsRow title={setting.label}>
-      <Select
-        items={choices.map((choice) => ({ value: choiceKey(choice.value), label: choice.label }))}
-        disabled={disabled || choices.length === 0}
-        value={choiceKey(setting.value)}
-        onValueChange={(key) => {
-          const choice = choices.find((candidate) => choiceKey(candidate.value) === key);
+    <Select
+      items={choices.map((choice) => ({ value: choiceKey(choice.value), label: choice.label }))}
+      disabled={disabled || choices.length === 0}
+      value={choiceKey(setting.value)}
+      onValueChange={(key) => {
+        const choice = choices.find((candidate) => choiceKey(candidate.value) === key);
 
-          if (choice !== undefined) onApply(choice.value);
-        }}
-      >
-        <SelectTrigger aria-label={setting.label}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {choices.map((choice) => (
-            <SelectItem
-              key={choiceKey(choice.value)}
-              value={choiceKey(choice.value)}
-              label={choice.label}
-            >
-              {choice.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </SettingsRow>
+        if (choice !== undefined) onApply(choice.value);
+      }}
+    >
+      <SelectTrigger aria-label={setting.label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {choices.map((choice) => (
+          <SelectItem
+            key={choiceKey(choice.value)}
+            value={choiceKey(choice.value)}
+            label={choice.label}
+          >
+            {choice.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
-function Detail({
+function PluginDetails({
   plugin,
-  inventory,
   sessionId,
-  onBack,
 }: {
   readonly plugin: PluginView;
-  readonly inventory: CustomizeInventory;
   readonly sessionId: SessionId | undefined;
-  readonly onBack: () => void;
 }): ReactElement {
   const apply = useApplyPluginSetting(sessionId);
-  const reveal = nyte.host.revealPath;
-  const { info } = plugin;
-  const settings = inventory.settings.filter((setting) => setting.owner === info.id);
-  const commands = inventory.commands.filter((command) => command.owner === info.id);
-  const failure = loadFailure(info);
-  const path = info.path;
+  const { failure, settings, commands, tools } = plugin;
+  const path = plugin.info.path;
+  const perChat = settings.some((setting) => setting.scope === "session");
 
   return (
-    <>
-      <Button variant="ghost" icon="arrow-left" xstyle={styles.back} onClick={onBack}>
-        Customize
-      </Button>
-
-      <div {...props(page.titleRow, styles.titleCopy)}>
-        <h1 {...props(settingsPatterns.pageTitle)}>{plugin.name}</h1>
-        {plugin.description !== undefined && (
-          <p {...props(settingsPatterns.sectionDescription)}>{plugin.description}</p>
-        )}
-      </div>
-
+    <Details>
       {failure !== undefined && (
-        <ConnectionList>
-          <ConnectionRow
-            glyph={
-              <span {...props(intent.danger, styles.failed)}>
-                <Icon name="circle-x" size={16} />
-              </span>
-            }
-            title="Couldn’t load this plugin"
-            detail="Nyte tries again when a file in its folder changes."
-            control={
+        <Wide>
+          <span {...props(styles.stack)}>
+            <span {...props(styles.note)}>Nyte tries again when a file in its folder changes.</span>
+            <pre {...props(text.sm, styles.trace)}>{failure}</pre>
+            <span {...props(styles.actions)}>
               <Button
                 variant="outline"
                 icon="copy"
@@ -364,77 +278,193 @@ function Detail({
               >
                 Copy Error
               </Button>
-            }
-            expansion={<pre {...props(text.sm, styles.trace)}>{failure}</pre>}
+            </span>
+          </span>
+        </Wide>
+      )}
+      {path !== null && (
+        <Field label="Location">
+          <PathActions path={path} />
+        </Field>
+      )}
+      {settings.map((setting) => (
+        <Field key={setting.id} label={setting.label}>
+          <PluginSetting
+            setting={setting}
+            disabled={(sessionId === undefined && setting.scope === "session") || apply.isPending}
+            onApply={(value) => apply.mutate({ id: setting.id, value })}
           />
-        </ConnectionList>
+        </Field>
+      ))}
+      {settings.length > 0 && (sessionId !== undefined || perChat) && (
+        <Wide>
+          <span {...props(text.sm, styles.note)}>
+            {sessionId === undefined ? "Open a chat to change per-chat settings." : "For this chat"}
+          </span>
+        </Wide>
       )}
-
-      {info.source !== "builtin" && (
-        <div {...props(settingsPatterns.group)}>
-          {path !== null && (
-            <SettingsRow title="Location" description={path} controlWidth="wide">
-              {reveal !== undefined && (
-                <Button variant="outline" icon="folder-open" onClick={() => void reveal({ path })}>
-                  {revealLabel(nyte.platform)}
-                </Button>
-              )}
-            </SettingsRow>
-          )}
-        </div>
+      {commands.length > 0 && (
+        <Field label={commands.length === 1 ? "Command" : "Commands"}>
+          <Chips
+            names={commands.map((command) => `/${command.name}`)}
+            label={`${plugin.name} commands`}
+          />
+        </Field>
       )}
+      {tools.length > 0 && (
+        <Field label={tools.length === 1 ? "Tool" : "Tools"}>
+          <Chips names={tools.map((tool) => tool.name)} label={`${plugin.name} tools`} />
+        </Field>
+      )}
+    </Details>
+  );
+}
 
-      {settings.length > 0 && (
-        <Section
-          title="Settings"
-          description={
-            sessionId === undefined
-              ? "Defaults for new chats. Open a chat to change them."
-              : "For this chat"
-          }
-        >
-          <div {...props(settingsPatterns.group)}>
-            {settings.map((setting) => (
-              <PluginSetting
-                key={setting.id}
-                setting={setting}
-                disabled={
-                  (sessionId === undefined && setting.scope === "session") || apply.isPending
-                }
-                onApply={(value) => apply.mutate({ id: setting.id, value })}
-              />
-            ))}
-          </div>
+function PluginRow({
+  plugin,
+  sessionId,
+}: {
+  readonly plugin: PluginView;
+  readonly sessionId: SessionId | undefined;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+
+  const expandable =
+    plugin.failure !== undefined ||
+    plugin.info.path !== null ||
+    plugin.settings.length > 0 ||
+    plugin.commands.length > 0 ||
+    plugin.tools.length > 0;
+
+  return (
+    <ConnectionRow
+      glyph={<Icon name={plugin.icon} size={16} />}
+      title={plugin.name}
+      detail={
+        plugin.failure !== undefined ? (
+          <ConnectionStatus tone="err">Couldn&rsquo;t load</ConnectionStatus>
+        ) : (
+          plugin.description
+        )
+      }
+      control={
+        expandable ? (
+          <ExpandButton name={plugin.name} open={open} onToggle={() => setOpen((was) => !was)} />
+        ) : undefined
+      }
+      expansion={open ? <PluginDetails plugin={plugin} sessionId={sessionId} /> : undefined}
+    />
+  );
+}
+
+function PluginsTab({
+  plugins,
+  term,
+  sessionId,
+}: {
+  readonly plugins: readonly PluginView[];
+  readonly term: string;
+  readonly sessionId: SessionId | undefined;
+}): ReactElement {
+  const openPluginsFolder = nyte.host.openPluginsFolder;
+  const builtIn = plugins.filter((plugin) => plugin.shipped);
+  const yours = plugins.filter((plugin) => !plugin.shipped);
+  const adding = term === "" ? openPluginsFolder : undefined;
+
+  if (plugins.length === 0 && term !== "")
+    return <Notice>No plugins match &ldquo;{term}&rdquo;</Notice>;
+
+  return (
+    <>
+      {builtIn.length > 0 && (
+        <Section title="Built in">
+          {builtIn.map((plugin) => (
+            <PluginRow key={plugin.info.id} plugin={plugin} sessionId={sessionId} />
+          ))}
         </Section>
       )}
-
-      {commands.length > 0 && (
-        <Section title="Commands">
-          <ConnectionList>
-            {commands.map((command) => (
-              <ConnectionRow
-                key={command.name}
-                glyph={<Icon name="command" size={16} />}
-                title={`/${command.name}`}
-                detail={command.description}
-              />
-            ))}
-          </ConnectionList>
+      {(yours.length > 0 || adding !== undefined) && (
+        <Section title="Yours">
+          {yours.map((plugin) => (
+            <PluginRow key={plugin.info.id} plugin={plugin} sessionId={sessionId} />
+          ))}
+          {adding !== undefined && (
+            <ConnectionRow
+              glyph={<Icon name="folder-add" size={16} />}
+              title="Add your own plugin"
+              control={
+                <Button variant="outline" icon="folder-open" onClick={() => void adding()}>
+                  Open Plugins Folder
+                </Button>
+              }
+            />
+          )}
         </Section>
       )}
     </>
   );
 }
 
-function InventoryLoading(): ReactElement {
+function SkillRow({ skill }: { readonly skill: SkillView }): ReactElement {
+  const [open, setOpen] = useState(false);
+
   return (
-    <div aria-busy="true" aria-label="Loading" {...props(settingsPatterns.group)}>
-      {["first", "second", "third"].map((key) => (
-        <div key={key} {...props(settingsPatterns.row)}>
-          <div {...props(styles.loadingLine)} />
-        </div>
-      ))}
-    </div>
+    <ConnectionRow
+      glyph={<Icon name="skills" size={16} />}
+      title={skill.info.name}
+      detail={skill.info.description === "" ? undefined : skill.info.description}
+      control={
+        <ExpandButton name={skill.info.name} open={open} onToggle={() => setOpen((was) => !was)} />
+      }
+      expansion={
+        open ? (
+          <Details>
+            <Field label="File">
+              <PathActions path={skill.path} />
+            </Field>
+          </Details>
+        ) : undefined
+      }
+    />
+  );
+}
+
+function SkillsTab({
+  skills,
+  term,
+}: {
+  readonly skills: readonly SkillView[];
+  readonly term: string;
+}): ReactElement {
+  const project = skills.filter((skill) => skill.project);
+  const yours = skills.filter((skill) => !skill.project);
+
+  if (skills.length === 0)
+    return term === "" ? (
+      <Notice>
+        No skills yet. Add a folder with a SKILL.md to .agents/skills here or in your home folder.
+      </Notice>
+    ) : (
+      <Notice>No skills match &ldquo;{term}&rdquo;</Notice>
+    );
+
+  return (
+    <>
+      {project.length > 0 && (
+        <Section title="This project" description="In .nyte/skills or .agents/skills">
+          {project.map((skill) => (
+            <SkillRow key={skill.info.location} skill={skill} />
+          ))}
+        </Section>
+      )}
+      {yours.length > 0 && (
+        <Section title="Yours" description="In ~/.nyte/skills or ~/.agents/skills">
+          {yours.map((skill) => (
+            <SkillRow key={skill.info.location} skill={skill} />
+          ))}
+        </Section>
+      )}
+    </>
   );
 }
 
@@ -445,68 +475,182 @@ export function CustomizeSurface({
 }): ReactElement {
   const section = useSearch({ from: "__root__", select: (search) => search.customize });
   const navigate = useNavigate();
+  const [search, setSearch] = useState("");
+  const term = search.trim();
+  const query = term.toLowerCase();
+  const tab = TABS.find((candidate) => candidate.id === section)?.id ?? "plugins";
   const projectSettings = usePluginSettingsProjection(sessionId);
-
-  const plugins = useWatchSelect(hostWatch("host"), (state) => state.value?.plugins);
+  const selected = useHostState().data.workspace;
+  const hostPlugins = useWatchSelect(hostWatch("host"), (state) => state.value?.plugins);
   const hostSettings = useWatchSelect(hostWatch("host"), (state) => state.value?.settings);
+
+  const home = useWatchSelect(
+    hostWatch("host"),
+    (state) => state.value?.defaultWorkspace ?? undefined,
+  );
+
+  const workspace = selected?.id ?? home;
+
+  const homeInfo = useQuery({
+    queryKey: keys.workspaceInfo(home),
+    queryFn:
+      selected !== undefined || home === undefined
+        ? skipToken
+        : async () => (await connected()).workspace(home).info(),
+    staleTime: 60_000,
+  });
+
+  const target = homeInfo.data?.target;
+
+  const root =
+    selected?.path ?? (target !== undefined && "path" in target ? target.path : undefined);
+
+  const workspaceCatalog = useWorkspaceCatalog(workspace);
+  const mcp = useWatch(workspace === undefined ? undefined : mcpWatch(workspace));
 
   const catalog = useWatchSelect(
     sessionId === undefined ? undefined : sessionWatch(sessionId),
     (state) => state.value?.catalog,
   );
 
-  const inventory = {
-    data:
-      plugins === undefined || hostSettings === undefined
-        ? undefined
-        : ({
-            plugins,
-            settings: projectSettings(catalog?.settings ?? hostSettings),
-            skills: catalog?.skills ?? [],
-            commands: catalog?.commands ?? [],
-          } satisfies CustomizeInventory),
-    isPending: plugins === undefined,
+  const owned = {
+    settings: projectSettings(catalog?.settings ?? hostSettings ?? []),
+    commands: catalog?.commands ?? workspaceCatalog.data?.commands ?? [],
+    tools: catalog?.tools ?? [],
   };
 
-  const show = (next: string): void =>
+  const plugins =
+    hostPlugins === undefined || hostSettings === undefined
+      ? undefined
+      : hostPlugins.flatMap((info) => presentPlugin(info, owned) ?? []);
+
+  const skills = workspaceCatalog.data?.skills.map((skill) => placeSkill(skill, root));
+
+  const shown = {
+    plugins: plugins?.filter((plugin) =>
+      matches(query, [
+        plugin.name,
+        plugin.info.id,
+        plugin.description ?? "",
+        ...plugin.commands.map((command) => command.name),
+        ...plugin.tools.map((tool) => tool.name),
+      ]),
+    ),
+    mcp: mcp.value?.servers.filter((server) =>
+      matches(query, [
+        server.name,
+        server.description ?? "",
+        ...(server.state.kind === "connected" ? server.state.tools.map((tool) => tool.name) : []),
+      ]),
+    ),
+    skills: skills?.filter((skill) => matches(query, [skill.info.name, skill.info.description])),
+  } satisfies Record<TabId, readonly unknown[] | undefined>;
+
+  const issues = term === "" ? (mcp.value?.issues ?? []) : [];
+
+  const attention = {
+    plugins: shown.plugins?.some((plugin) => plugin.failure !== undefined) ?? false,
+    mcp: issues.length > 0 || (shown.mcp?.some(mcpNeedsAttention) ?? false),
+    skills: false,
+  } satisfies Record<TabId, boolean>;
+
+  const show = (next: TabId): void =>
     void navigate({
       to: ".",
       search: (previous: ShellSearch) => ({ ...previous, customize: next }),
     });
 
-  const openId = section?.startsWith(PLUGIN_SECTION)
-    ? section.slice(PLUGIN_SECTION.length)
-    : undefined;
-
-  const openPlugin = inventory.data?.plugins.find((plugin) => plugin.id === openId);
-
-  const opened =
-    openPlugin === undefined || inventory.data === undefined
-      ? undefined
-      : present(openPlugin, inventory.data.settings);
-
   return (
     <div data-nyte-customize-surface {...props(page.content)}>
       <div {...props(page.contentInner)}>
-        {opened !== undefined && inventory.data !== undefined ? (
-          <Detail
-            key={opened.info.id}
-            plugin={opened}
-            inventory={inventory.data}
-            sessionId={sessionId}
-            onBack={() => show("plugins")}
-          />
-        ) : (
-          <>
-            {inventory.isPending && <InventoryLoading />}
-            {inventory.data !== undefined && (
-              <Overview
-                inventory={inventory.data}
-                onOpen={(plugin) => show(`${PLUGIN_SECTION}${plugin.info.id}`)}
+        <div {...props(styles.header)}>
+          <div {...props(page.titleRow)}>
+            <h1 {...props(settingsPatterns.pageTitle)}>Customize</h1>
+          </div>
+          <div {...props(styles.toolbar)}>
+            <Tabs.Root
+              variant="pill"
+              value={tab}
+              onValueChange={(value) => {
+                const next = TABS.find((candidate) => candidate.id === value);
+
+                if (next !== undefined) show(next.id);
+              }}
+            >
+              <Tabs.List aria-label="Customize">
+                {TABS.map((candidate) => {
+                  const count = shown[candidate.id]?.length;
+
+                  return (
+                    <Tabs.Tab key={candidate.id} value={candidate.id}>
+                      {candidate.label}
+                      {count !== undefined && <span {...props(styles.count)}>{count}</span>}
+                      {attention[candidate.id] && (
+                        <>
+                          <span aria-hidden="true" {...props(intent.warning, styles.attention)} />
+                          <span {...props(srOnly)}>, needs attention</span>
+                        </>
+                      )}
+                    </Tabs.Tab>
+                  );
+                })}
+              </Tabs.List>
+            </Tabs.Root>
+            <InputGroup variant="quiet" xstyle={styles.search}>
+              <span {...props(styles.searchIcon)}>
+                <Icon name="search" size={14} />
+              </span>
+              <Input
+                type="search"
+                aria-label="Search Customize"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Search"
+                value={search}
+                onValueChange={setSearch}
               />
-            )}
-          </>
-        )}
+            </InputGroup>
+          </div>
+        </div>
+
+        {tab === "plugins" &&
+          (shown.plugins === undefined ? (
+            <ListLoading />
+          ) : (
+            <PluginsTab plugins={shown.plugins} term={term} sessionId={sessionId} />
+          ))}
+
+        {tab === "mcp" &&
+          (workspace === undefined ? (
+            <Notice>Open a folder to see its MCP servers.</Notice>
+          ) : mcp.error !== undefined ? (
+            <Notice>
+              Couldn&rsquo;t load MCP servers.{" "}
+              <Button variant="outline" onClick={mcp.retry}>
+                Try Again
+              </Button>
+            </Notice>
+          ) : shown.mcp === undefined || mcp.value === undefined ? (
+            <ListLoading />
+          ) : (
+            <McpServersTab workspace={workspace} servers={shown.mcp} issues={issues} term={term} />
+          ))}
+
+        {tab === "skills" &&
+          (workspace === undefined ? (
+            <Notice>Open a folder to see its skills.</Notice>
+          ) : workspaceCatalog.isError ? (
+            <Notice>
+              Couldn&rsquo;t list this folder&rsquo;s skills.{" "}
+              <Button variant="outline" onClick={() => void workspaceCatalog.refetch()}>
+                Try Again
+              </Button>
+            </Notice>
+          ) : shown.skills === undefined ? (
+            <ListLoading />
+          ) : (
+            <SkillsTab skills={shown.skills} term={term} />
+          ))}
       </div>
     </div>
   );
