@@ -21,6 +21,8 @@ const PROGRESS_MS = 80;
 
 const FIRST_OUTPUT_MS = 1000;
 
+const FOREGROUND_TIMEOUT_MS = 2 * 60 * 1000;
+
 const MIME_TYPES = new Map([
   ["png", "image/png"],
   ["jpg", "image/jpeg"],
@@ -71,20 +73,29 @@ const listParameters = standard(
   }),
 );
 
-const bashParameters = standard(
-  Type.Object({
-    command: Type.String({ description: "The shell command to run." }),
-    description: Type.Optional(
-      Type.String({ description: "What the command does, in a few words, for the user." }),
-    ),
-    background: Type.Optional(
-      Type.Boolean({
-        description:
-          "Start the command and return a job id with its first output instead of waiting for it to exit. Use for servers, watchers, and other long-lived commands, without a trailing &. The command keeps running across turns, and you are told when it exits; read its output or stop it with the job tool. Do not use it to speed up ordinary commands.",
-      }),
-    ),
-  }),
-);
+/** The `bash` tool's parameters, for a plugin that rebuilds its schema (`bash-description` requires `description`). */
+export const bashProperties = {
+  command: Type.String({ description: "The shell command to run." }),
+  description: Type.Optional(
+    Type.String({ description: "What the command does, in a few words, for the user." }),
+  ),
+  background: Type.Optional(
+    Type.Boolean({
+      description:
+        "Start the command and return a job id with its first output instead of waiting for it to exit. Use for servers, watchers, and other long-lived commands, without a trailing &. The command keeps running across turns, and you are told when it exits; read its output or stop it with the job tool. Do not use it to speed up ordinary commands.",
+    }),
+  ),
+  timeout: Type.Optional(
+    Type.Integer({
+      minimum: 0,
+      // AbortSignal.timeout fires at once above a 32-bit signed delay.
+      maximum: 2_147_483_647,
+      description: `Milliseconds before a foreground command is stopped; 0 for no limit. Default ${FOREGROUND_TIMEOUT_MS}. Background commands have no limit.`,
+    }),
+  ),
+};
+
+const bashParameters = standard(Type.Object(bashProperties));
 
 const jobParameters = standard(
   Type.Object({
@@ -289,20 +300,36 @@ const bash: ToolDefinition<Infer<typeof bashParameters>> = {
     const shell = createShellOutput((tail) => invocation.progress({ text: tail }));
     const frames = running.output()[Symbol.asyncIterator]();
 
+    const background = args.background === true;
+    const timeout = args.timeout ?? FOREGROUND_TIMEOUT_MS;
+    const waited = background ? FIRST_OUTPUT_MS : timeout;
+
     try {
       const exited = await shell.read(
         frames,
-        args.background === true
-          ? AbortSignal.any([foreground.released, AbortSignal.timeout(FIRST_OUTPUT_MS)])
-          : foreground.released,
+        waited === 0
+          ? foreground.released
+          : AbortSignal.any([foreground.released, AbortSignal.timeout(waited)]),
       );
 
-      if (!exited && (foreground.released.aborted || foreground.release())) {
+      if (!exited && (foreground.released.aborted || (background && foreground.release()))) {
         await frames.return?.();
 
         return text(
           shell.render(
             `[running in the background as job ${running.id}: you are told when it exits; the job tool reads its output or stops it]`,
+          ),
+        );
+      }
+
+      if (!exited && !background) {
+        stop();
+        await shell.read(frames, new AbortController().signal);
+        await running.settled();
+
+        return text(
+          shell.render(
+            `[stopped after ${timeout / 1000} s; pass a larger timeout if it needs longer]`,
           ),
         );
       }
