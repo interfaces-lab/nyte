@@ -20,9 +20,8 @@ env:
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
-# GitHub-hosted runners are free for this public repository; Blacksmith bills per minute, so
-# only release builds use it. Pushes to main don't run CI: pull requests test what they
-# change, and the nightly run tests everything on main, on macOS as well.
+# Pushes to main don't run CI: pull requests test what they change, and the nightly run
+# tests everything on main, on macOS as well.
 jobs:
   check:
     runs-on: ubuntu-latest
