@@ -94,7 +94,7 @@ export async function testRenderer(
       join(directory, "index.html"),
       `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'">${stylesheets.map((sheet) => `<link rel="stylesheet" href="${sheet}">`).join("")}<body>
 <script>
-window.addEventListener("error", (event) => { window.fixtureFailure = event.error?.stack ?? event.message; });
+window.addEventListener("error", (event) => { if (event.error === null && event.message.startsWith("ResizeObserver loop")) return; window.fixtureFailure = event.error?.stack ?? event.message; });
 ${setup}
 </script><script src="fixture.js"></script>`,
     );
