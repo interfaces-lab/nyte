@@ -6,7 +6,7 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo .wrangler",
     "deploy": "wrangler deploy",
-    "typecheck": "tsrs --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest --run"
   },
   "dependencies": {
@@ -19,7 +19,6 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
-    "typescript": "6.0.3",
     "vitest": "^5.0.5",
     "wrangler": "^4.151.3"
   }

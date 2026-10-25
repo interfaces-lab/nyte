@@ -29,7 +29,7 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "typecheck": "tsrs --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest --run",
     "build:package": "bun ../../scripts/sdk-packages.mjs build protocol"
   },
@@ -41,7 +41,6 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
-    "typescript": "6.0.3",
     "vitest": "^5.0.5"
   },
   "engines": {
