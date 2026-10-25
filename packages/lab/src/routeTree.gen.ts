@@ -13,14 +13,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as HubsRouteImport } from './routes/hubs'
 import { Route as ProjectsRouteImport } from './routes/projects'
-import { Route as ReviewRouteImport } from './routes/review'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as StudioRouteImport } from './routes/studio'
 import { Route as TabsRouteImport } from './routes/tabs'
+import { Route as ProjectsExportSplatRouteImport } from './routes/projects-export.$'
 import { Route as VideoSplatRouteImport } from './routes/video.$'
-import { Route as CoreNyteSplatRouteImport } from './routes/core/nyte.$'
-import { Route as CoreReviewSplatRouteImport } from './routes/core/review.$'
-import { Route as CoreStudioSplatRouteImport } from './routes/core/studio.$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -42,19 +38,9 @@ const ProjectsRoute = ProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ReviewRoute = ReviewRouteImport.update({
-  id: '/review',
-  path: '/review',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const StudioRoute = StudioRouteImport.update({
-  id: '/studio',
-  path: '/studio',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TabsRoute = TabsRouteImport.update({
@@ -62,24 +48,14 @@ const TabsRoute = TabsRouteImport.update({
   path: '/tabs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectsExportSplatRoute = ProjectsExportSplatRouteImport.update({
+  id: '/projects-export/$',
+  path: '/projects-export/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VideoSplatRoute = VideoSplatRouteImport.update({
   id: '/video/$',
   path: '/video/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CoreNyteSplatRoute = CoreNyteSplatRouteImport.update({
-  id: '/core/nyte/$',
-  path: '/core/nyte/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CoreReviewSplatRoute = CoreReviewSplatRouteImport.update({
-  id: '/core/review/$',
-  path: '/core/review/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CoreStudioSplatRoute = CoreStudioSplatRouteImport.update({
-  id: '/core/studio/$',
-  path: '/core/studio/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -88,28 +64,20 @@ export interface FileRoutesByFullPath {
   '/changes': typeof ChangesRoute
   '/hubs': typeof HubsRoute
   '/projects': typeof ProjectsRoute
-  '/review': typeof ReviewRoute
   '/settings': typeof SettingsRoute
-  '/studio': typeof StudioRoute
   '/tabs': typeof TabsRoute
+  '/projects-export/$': typeof ProjectsExportSplatRoute
   '/video/$': typeof VideoSplatRoute
-  '/core/nyte/$': typeof CoreNyteSplatRoute
-  '/core/review/$': typeof CoreReviewSplatRoute
-  '/core/studio/$': typeof CoreStudioSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
   '/hubs': typeof HubsRoute
   '/projects': typeof ProjectsRoute
-  '/review': typeof ReviewRoute
   '/settings': typeof SettingsRoute
-  '/studio': typeof StudioRoute
   '/tabs': typeof TabsRoute
+  '/projects-export/$': typeof ProjectsExportSplatRoute
   '/video/$': typeof VideoSplatRoute
-  '/core/nyte/$': typeof CoreNyteSplatRoute
-  '/core/review/$': typeof CoreReviewSplatRoute
-  '/core/studio/$': typeof CoreStudioSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -117,14 +85,10 @@ export interface FileRoutesById {
   '/changes': typeof ChangesRoute
   '/hubs': typeof HubsRoute
   '/projects': typeof ProjectsRoute
-  '/review': typeof ReviewRoute
   '/settings': typeof SettingsRoute
-  '/studio': typeof StudioRoute
   '/tabs': typeof TabsRoute
+  '/projects-export/$': typeof ProjectsExportSplatRoute
   '/video/$': typeof VideoSplatRoute
-  '/core/nyte/$': typeof CoreNyteSplatRoute
-  '/core/review/$': typeof CoreReviewSplatRoute
-  '/core/studio/$': typeof CoreStudioSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -133,42 +97,30 @@ export interface FileRouteTypes {
     | '/changes'
     | '/hubs'
     | '/projects'
-    | '/review'
     | '/settings'
-    | '/studio'
     | '/tabs'
+    | '/projects-export/$'
     | '/video/$'
-    | '/core/nyte/$'
-    | '/core/review/$'
-    | '/core/studio/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/changes'
     | '/hubs'
     | '/projects'
-    | '/review'
     | '/settings'
-    | '/studio'
     | '/tabs'
+    | '/projects-export/$'
     | '/video/$'
-    | '/core/nyte/$'
-    | '/core/review/$'
-    | '/core/studio/$'
   id:
     | '__root__'
     | '/'
     | '/changes'
     | '/hubs'
     | '/projects'
-    | '/review'
     | '/settings'
-    | '/studio'
     | '/tabs'
+    | '/projects-export/$'
     | '/video/$'
-    | '/core/nyte/$'
-    | '/core/review/$'
-    | '/core/studio/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -176,14 +128,10 @@ export interface RootRouteChildren {
   ChangesRoute: typeof ChangesRoute
   HubsRoute: typeof HubsRoute
   ProjectsRoute: typeof ProjectsRoute
-  ReviewRoute: typeof ReviewRoute
   SettingsRoute: typeof SettingsRoute
-  StudioRoute: typeof StudioRoute
   TabsRoute: typeof TabsRoute
+  ProjectsExportSplatRoute: typeof ProjectsExportSplatRoute
   VideoSplatRoute: typeof VideoSplatRoute
-  CoreNyteSplatRoute: typeof CoreNyteSplatRoute
-  CoreReviewSplatRoute: typeof CoreReviewSplatRoute
-  CoreStudioSplatRoute: typeof CoreStudioSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -216,25 +164,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/review': {
-      id: '/review'
-      path: '/review'
-      fullPath: '/review'
-      preLoaderRoute: typeof ReviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings': {
       id: '/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/studio': {
-      id: '/studio'
-      path: '/studio'
-      fullPath: '/studio'
-      preLoaderRoute: typeof StudioRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tabs': {
@@ -244,32 +178,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TabsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects-export/$': {
+      id: '/projects-export/$'
+      path: '/projects-export/$'
+      fullPath: '/projects-export/$'
+      preLoaderRoute: typeof ProjectsExportSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/video/$': {
       id: '/video/$'
       path: '/video/$'
       fullPath: '/video/$'
       preLoaderRoute: typeof VideoSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/core/nyte/$': {
-      id: '/core/nyte/$'
-      path: '/core/nyte/$'
-      fullPath: '/core/nyte/$'
-      preLoaderRoute: typeof CoreNyteSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/core/review/$': {
-      id: '/core/review/$'
-      path: '/core/review/$'
-      fullPath: '/core/review/$'
-      preLoaderRoute: typeof CoreReviewSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/core/studio/$': {
-      id: '/core/studio/$'
-      path: '/core/studio/$'
-      fullPath: '/core/studio/$'
-      preLoaderRoute: typeof CoreStudioSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -280,14 +200,10 @@ const rootRouteChildren: RootRouteChildren = {
   ChangesRoute: ChangesRoute,
   HubsRoute: HubsRoute,
   ProjectsRoute: ProjectsRoute,
-  ReviewRoute: ReviewRoute,
   SettingsRoute: SettingsRoute,
-  StudioRoute: StudioRoute,
   TabsRoute: TabsRoute,
+  ProjectsExportSplatRoute: ProjectsExportSplatRoute,
   VideoSplatRoute: VideoSplatRoute,
-  CoreNyteSplatRoute: CoreNyteSplatRoute,
-  CoreReviewSplatRoute: CoreReviewSplatRoute,
-  CoreStudioSplatRoute: CoreStudioSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
