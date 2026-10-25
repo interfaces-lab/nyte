@@ -49,6 +49,7 @@ export function partHandle<K extends PartDefinition>(
         throw error;
       }
     },
+    watch: () => rows.watch("part.watch", { session, part: id }),
     async close() {
       await rows.call("part.close", { session, part: id });
     },

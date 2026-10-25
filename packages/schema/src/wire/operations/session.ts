@@ -18,7 +18,7 @@ import { idSchema } from "../../ids.ts";
 import { JsonType, JsonValueSchema } from "../../json.ts";
 import { PositionType, UserContentType } from "../../messages.ts";
 import { nullable } from "../nullable.ts";
-import { actOutcomeSchema, PlacementType } from "../../parts.ts";
+import { actOutcomeSchema, PartViewType, PlacementType } from "../../parts.ts";
 import { RunEndSchema, RunEndType, stopOutcomeSchema } from "../../runs.ts";
 import {
   CommandCompletionsSchema,
@@ -313,6 +313,12 @@ export const SESSION_OPERATIONS = {
     wait: true,
     input: ON_PART,
     output: wireSchema(nullable(Type.Object({ action: Type.String(), input: JsonType }))),
+  },
+  "part.watch": {
+    ...PARTICIPANT,
+    kind: "watch",
+    input: ON_PART,
+    output: wireSchema(nullable(PartViewType)),
   },
   "part.close": { ...PARTICIPANT, kind: "command", input: ON_PART, output: NOTHING },
 } as const satisfies OperationRows;

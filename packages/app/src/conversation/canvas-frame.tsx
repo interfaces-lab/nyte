@@ -1,8 +1,10 @@
 import { create, props } from "@stylexjs/stylex";
+import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { use, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
@@ -18,8 +20,8 @@ import type { Plugin } from "@nyte-ai/plugin/client";
 import { followedTrace, startSpan } from "@nyte-ai/sdk";
 import type { EndSpan } from "@nyte-ai/sdk";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { space } from "@nyte-ai/ui/styles/schema.stylex";
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { media, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { patchDigest } from "../workbench/changes-viewed.ts";
@@ -29,6 +31,7 @@ import { readCanvasTheme, subscribeCanvasTheme } from "./canvas-theme.ts";
 import type { CanvasTheme } from "./canvas-theme.ts";
 import { openConversationLink } from "./external-link.ts";
 import type { MentionFile } from "./message-references.ts";
+import { PartOrigin } from "./part-origin.ts";
 import { linkReference, useCitableFiles } from "./prose.tsx";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import type { ReferenceOpener } from "./reference-opener.tsx";
@@ -46,6 +49,26 @@ const styles = create({
     position: "relative",
     width: "100%",
     contain: "layout",
+    "--_canvas-open-opacity": {
+      default: 0,
+      ":hover": { [media.hover]: 1 },
+      ":focus-within": 1,
+      "@media (hover: none)": 1,
+    },
+  },
+  open: {
+    position: "absolute",
+    insetBlockStart: space.s1,
+    insetInlineEnd: space.s1,
+    zIndex: 1,
+    display: "flex",
+    opacity: "var(--_canvas-open-opacity)",
+    transitionProperty: "opacity",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
   },
   frame: {
     display: "block",
@@ -168,12 +191,16 @@ interface CanvasError {
   readonly message: string;
 }
 
+/** What drawing one canvas module takes: a part's current state, or one of its revisions. */
+export type DrawnCanvas = Pick<CanvasState, "runtime" | "code" | "title" | "height" | "error">;
+
 export function CanvasFrame({
   state,
   report,
 }: {
-  readonly state: CanvasState;
-  readonly report: (message: string) => void;
+  readonly state: DrawnCanvas;
+  /** Records an error the shell hit on the part; absent for a revision that is no longer the part's module. */
+  readonly report?: (message: string) => void;
 }): ReactElement {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const theme = useSyncExternalStore(subscribeCanvasTheme, readCanvasTheme, readCanvasTheme);
@@ -185,6 +212,7 @@ export function CanvasFrame({
   const shell = useRef({ initialized: false, reported: new Set<string>() });
   const painted = useRef<EndSpan>(undefined);
   const opener = useReferenceOpener();
+  const origin = use(PartOrigin);
   const files = useCitableFiles(opener !== undefined);
   const citable = files.data;
 
@@ -231,7 +259,7 @@ export function CanvasFrame({
             if (shell.current.reported.has(key)) break;
             shell.current.reported.add(key);
 
-            if (known !== effect.message) report(effect.message);
+            if (known !== effect.message) report?.(effect.message);
             break;
           }
         }
@@ -266,9 +294,33 @@ export function CanvasFrame({
   const height = canvasFrameHeight(state.height, tooNew ? undefined : reportedHeight);
   const failure = error?.code === code ? error.message : undefined;
 
+  const openBeside =
+    origin === undefined
+      ? undefined
+      : opener?.({ kind: "canvas", sessionId: origin.sessionId, part: origin.part, title });
+
   return (
     <figure aria-label={title} {...props(styles.figure)}>
       <div {...props(styles.box)} style={{ height }}>
+        {openBeside !== undefined && (
+          <span {...props(styles.open)}>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    iconOnly
+                    icon="split-right"
+                    aria-label={`Open ${title} beside chat`}
+                    onClick={openBeside}
+                  />
+                }
+              />
+              <TooltipContent>Open beside chat</TooltipContent>
+            </Tooltip>
+          </span>
+        )}
         {tooNew ? (
           <p {...props(styles.message)}>Update Nyte to see this canvas.</p>
         ) : (

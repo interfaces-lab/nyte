@@ -2,6 +2,8 @@ import type {
   HeadName,
   HistoryPage,
   MessageId,
+  PartId,
+  PartView,
   PrincipalId,
   SessionId,
   SessionView,
@@ -10,7 +12,9 @@ import type {
 import { INDEX } from "../contract/fold.ts";
 import type { FoldState } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
+import type { PartRecord } from "../contract/records.ts";
 import { closable, coalesce, DONE, latest } from "../util/iterable.ts";
+import { partView } from "./draft.ts";
 import { findLeadingPrompt, project } from "./project.ts";
 
 export function watchHead(
@@ -49,6 +53,53 @@ export function watchHead(
           shown = view;
 
           return { done: false, value: view };
+        }
+      },
+      close() {
+        closed = true;
+        void states?.return?.();
+        hold.release();
+      },
+    };
+  });
+}
+
+/** One part's view each time the fold changes it, from whatever head holds it; `null` while the session has no such part. */
+export function watchPart(
+  kernel: Kernel,
+  input: {
+    readonly session: SessionId;
+    readonly part: PartId;
+    readonly principal: PrincipalId;
+  },
+): AsyncIterable<PartView | null> {
+  return closable<PartView | null>(() => {
+    const hold = kernel.folds.acquire(input.session, input.principal);
+    let states: AsyncIterator<FoldState> | null = null;
+    let closed = false;
+    let shown: { readonly record: PartRecord | null } | null = null;
+
+    return {
+      async pull() {
+        if (states === null) {
+          await hold.ready();
+
+          if (closed) return DONE;
+          states = coalesce(latest(hold.state(), (push) => hold.subscribe(push)))[
+            Symbol.asyncIterator
+          ]();
+        }
+
+        for (;;) {
+          const next = await states.next();
+
+          if (next.done || closed) return DONE;
+          const record = hold.state().parts.get(input.part) ?? null;
+
+          if (shown !== null && shown.record === record) continue;
+          shown = { record };
+
+          return { done: false, value: record === null ? null : partView(record) };
         }
       },
       close() {

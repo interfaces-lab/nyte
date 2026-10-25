@@ -44,6 +44,7 @@ import type {
 } from "./controller";
 import { terminalActions, useTerminalRuntime } from "./terminal-store";
 import { BrowserPanel } from "./browser-panel";
+import { CanvasPanel } from "./canvas-panel.tsx";
 import { Deferred, loadDeferred } from "../deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
@@ -75,6 +76,7 @@ const tabIcons = {
   files: "file",
   changes: "git-branch",
   browser: "globe",
+  canvas: "canvas-grid",
   terminal: "console",
 } satisfies Record<WorkbenchTabKind, IconName>;
 
@@ -446,6 +448,22 @@ function PanelContent({
             >
               <PanelToggleIcon side="right" visible={sidebarVisible} />
             </Toggle>
+          }
+        />
+      );
+    case "canvas":
+      return (
+        <CanvasPanel
+          sessionId={tab.sessionId}
+          part={tab.part}
+          pinned={tab.pinned}
+          onPin={(pinned) =>
+            workbenchController.actions.updateTab({
+              view: viewKey,
+              id: tab.id,
+              kind: "canvas",
+              patch: { pinned },
+            })
           }
         />
       );

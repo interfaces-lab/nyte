@@ -9,6 +9,7 @@ import renderers from "@nyte-ai/plugin/client/transcript";
 import type { Placement, SessionId, SubmitDraft } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { canvasRenderers } from "./conversation/canvas-frame.tsx";
+import { PartOrigin } from "./conversation/part-origin.ts";
 import { RawPartView } from "./conversation/raw-part.tsx";
 import { connected, connection, sessionsWatch } from "./sdk.tsx";
 
@@ -111,5 +112,9 @@ export function drawPart(
   if (mounted === undefined) return null;
   const drawn = mounted.draw(connection().session(sessionId), message, placement);
 
-  return isValidElement(drawn) ? drawn : <RawPartView message={message} />;
+  return isValidElement(drawn) ? (
+    <PartOrigin value={{ sessionId, part: message.part }}>{drawn}</PartOrigin>
+  ) : (
+    <RawPartView message={message} />
+  );
 }

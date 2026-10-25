@@ -112,6 +112,9 @@ const scripted = scriptedConnection({
         return { kind: "ok", output: undefined };
       },
       answer: async () => null,
+      watch: async function* () {
+        yield* [];
+      },
       close: async () => undefined,
     }),
   }),
