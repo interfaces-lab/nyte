@@ -1,6 +1,9 @@
 name: Nightly
 
 on:
+  schedule:
+    # Avoid minute zero, when GitHub scheduled jobs are busiest.
+    - cron: "23 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -26,10 +29,17 @@ jobs:
           node-version: 26
       - id: nightly
         name: Resolve nightly version
-        run: node scripts/release-version.mjs resolve --nightly >> "$GITHUB_OUTPUT"
+        run: |
+          latest=$(git tag --list 'v*' --sort=-creatordate | head -n 1)
+          if [ "$GITHUB_EVENT_NAME" = schedule ] && [ -n "$latest" ] && [ "$(git rev-list -n 1 "$latest")" = "$(git rev-parse HEAD)" ]; then
+            echo "main has not moved since $latest; skipping."
+            exit 0
+          fi
+          node scripts/release-version.mjs resolve --nightly >> "$GITHUB_OUTPUT"
 
   release:
     needs: version
+    if: needs.version.outputs.version != ''
     permissions:
       contents: write
       id-token: write
