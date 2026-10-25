@@ -1,12 +1,20 @@
-import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
+import { mainHead, type UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { modelConfiguration } from "./model-configuration.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { useCallback, useDeferredValue, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ReactElement } from "react";
-import type { Revision, SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
+import type { CommitId, Revision, SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
 import { Composer } from "../conversation/composer.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "../conversation/turn-view.tsx";
@@ -45,7 +53,12 @@ import { ApprovalTray } from "../conversation/approval-tray.tsx";
 import { QuestionTray } from "../conversation/tray/questions.tsx";
 import { transcriptProjector } from "../conversation/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
+import {
+  workbenchController,
+  workbenchShowsChat,
+  workbenchViewKey,
+} from "../workbench/controller.ts";
+import type { WorkbenchViewKey } from "../workbench/controller.ts";
 import { openJobTerminal } from "../workbench/terminal-store.ts";
 import { SubagentTray, type SubagentTrayView } from "../conversation/tray/agents.tsx";
 import { subagentSessions, SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
@@ -192,6 +205,66 @@ function ComposerPaging({ column }: { readonly column: HTMLElement | null }): nu
 
     return () => column.removeEventListener("keydown", page);
   }, [column, controls]);
+
+  return null;
+}
+
+function subscribeAttention(notice: () => void): () => void {
+  window.addEventListener("focus", notice);
+  window.addEventListener("blur", notice);
+  document.addEventListener("visibilitychange", notice);
+
+  return () => {
+    window.removeEventListener("focus", notice);
+    window.removeEventListener("blur", notice);
+    document.removeEventListener("visibilitychange", notice);
+  };
+}
+
+function MarkSeen({
+  sessionId,
+  store,
+  viewKey,
+}: {
+  readonly sessionId: SessionId;
+  readonly store: WatchStore<SessionView>;
+  readonly viewKey: WorkbenchViewKey;
+}): ReactElement | null {
+  const tip = useWatchSelect(store, ({ value }) => {
+    const drawn = value === undefined ? undefined : mainHead(value)?.tip;
+
+    return drawn?.kind === "commit" ? drawn.id : undefined;
+  });
+
+  const looking = useSyncExternalStore(
+    subscribeAttention,
+    () => document.visibilityState === "visible" && document.hasFocus(),
+  );
+
+  const covered = useSyncExternalStore(workbenchController.subscribe, () => {
+    const view = workbenchController.getView(viewKey);
+
+    return view.expanded && view.layout.kind === "maximized" && !workbenchShowsChat(view.layout);
+  });
+
+  return tip === undefined || !looking || covered ? null : (
+    <SeeTip key={tip} sessionId={sessionId} tip={tip} />
+  );
+}
+
+function SeeTip({
+  sessionId,
+  tip,
+}: {
+  readonly sessionId: SessionId;
+  readonly tip: CommitId;
+}): null {
+  useMountEffect(() => {
+    void connection()
+      .session(sessionId)
+      .see(tip)
+      .catch(() => undefined);
+  });
 
   return null;
 }
@@ -378,6 +451,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
               viewportRef={setScroll}
               loadEarlier={loadEarlier}
             >
+              <MarkSeen sessionId={sessionId} store={store} viewKey={workbenchViewKey(cwd)} />
               {presentation === "full" && <ComposerPaging column={column} />}
               {presentation === "full" && <RunAnnouncer working={working} />}
               <Timeline

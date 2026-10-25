@@ -103,7 +103,6 @@ const attempts = new WeakMap<ServerHost, Map<string, Attempt>>();
 
 const holds = new WeakMap<ServerHost, Map<string, Page[]>>();
 
-/** Returns each row bound to the call it names: ids bind handles on the connection, handles returned become ids, `Set`s and `Map`s become their wire forms; `head.move`, `files.batch` and `browser.open` go through the server port's wire operations with their wire id (§40o, §40x). `head.watch` sends the head's view from the host's fold whole, then each later view as its changes (`viewFrames`), the core watch marking the principal's seen tip (§40a, §54a); `sessions.watch` sends the list whole, then each later list as its order and changed rows (`sessionsFrames`). Authority is the caller's gate: the server checks each row's before binding. */
 export function bindConnection(connection: Connection, options: BindingOptions): Binding {
   const { wire } = options.server;
   const { principal } = connection;
@@ -284,6 +283,11 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       await session(id).info();
 
       return viewFrames(session(id).head(head).watch(options));
+    },
+    "head.see": async ({ session: id, head, commit }) => {
+      await session(id).head(head).see(commit);
+
+      return null;
     },
     "head.history": ({ session: id, head, before, limit }) =>
       session(id).head(head).history({ before, limit }),

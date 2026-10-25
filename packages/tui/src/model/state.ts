@@ -43,6 +43,7 @@ export interface Facts {
   readonly shells: readonly ShellJob[];
   readonly workspace: WorkspaceFacts;
   readonly terminal: TerminalFacts;
+  readonly focused: boolean;
   readonly remote: RemoteFacts;
 }
 
@@ -296,6 +297,7 @@ export function initialState(bootstrap: Bootstrap): State {
       shells: [],
       workspace: { cwd: bootstrap.cwd, branch: null, dirty: false, mentions: null },
       terminal: bootstrap.terminal,
+      focused: true,
       remote: { kind: "off" },
     },
     local: {

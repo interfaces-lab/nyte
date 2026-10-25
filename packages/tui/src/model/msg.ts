@@ -188,6 +188,7 @@ export type Fact =
   | { readonly kind: "workspace"; readonly workspace: WorkspaceFacts }
   | { readonly kind: "shell-job"; readonly job: ShellJob }
   | { readonly kind: "terminal"; readonly terminal: TerminalFacts }
+  | { readonly kind: "terminal-focus"; readonly focused: boolean }
   | { readonly kind: "remote"; readonly remote: RemoteFacts }
   | {
       readonly kind: "draft-changed";

@@ -249,6 +249,7 @@ export const operations = {
     },
     { kind: "delta", seq: asSeq(12), messages: { runs: [0, 1] } },
   ),
+  "head.see input": operation(OPERATIONS["head.see"].input, { ...headInput, commit }, headInput),
   "head.history input": operation(
     OPERATIONS["head.history"].input,
     { ...headInput, before: message, limit: 20 },

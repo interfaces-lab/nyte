@@ -118,6 +118,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
         return last;
       },
       watch: () => stream?.watch() ?? replay(views ?? []),
+      see: async () => undefined,
       ...watchStore(() => stream?.watch() ?? replay(views ?? [])),
       history: refuse,
       tree: refuse,

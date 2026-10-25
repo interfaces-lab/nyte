@@ -24,6 +24,7 @@ import { move } from "../engine/move.ts";
 import { configure } from "../extend/settings.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
+import { advanceSeen } from "../fold/seen.ts";
 import { historyHead, viewHead, watchHead } from "../fold/view.ts";
 import { headRef, sessionRef } from "../store/refs.ts";
 import {
@@ -90,6 +91,7 @@ export function headHandle(
     },
     view: (options) => viewHead(kernel, { session, head, principal, options }),
     watch,
+    see: (tip) => advanceSeen(kernel, { session, head, principal, commit: tip }),
     ...watchStore(() => watch()),
     history: (input) =>
       historyHead(kernel, { session, head, principal, before: input.before, limit: input.limit }),

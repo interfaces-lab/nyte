@@ -155,6 +155,7 @@ export const RELAY_OPERATIONS = [
   "head.configure",
   "head.view",
   "head.watch",
+  "head.see",
   "head.history",
   "head.tree",
   "head.move",

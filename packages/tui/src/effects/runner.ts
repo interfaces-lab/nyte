@@ -170,6 +170,7 @@ const ROUTES: Routes = {
     effect.target === "new" ? openNew(context) : follow(effect.target, effect.announce, context),
   ),
   "load-earlier": host(loadEarlier),
+  see: host((effect, context) => context.ports.host.session(effect.session).see(effect.commit)),
   send: host((effect, context) => submit(effect.submission, effect.delivery, context)),
   revise: host(revise),
   withdraw: host(withdraw),
