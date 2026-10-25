@@ -85,7 +85,7 @@ import { createPartTable } from "./store/parts.ts";
 import { hostIdentityRef, kvRef } from "./store/refs.ts";
 import { readKv } from "./store/session.ts";
 import { dev } from "./util/dev-log.ts";
-import { sweepWorktrees } from "./env/worktrees.ts";
+import { cleanWorktrees, sweepWorktrees, worktreesPlugin } from "./env/worktrees.ts";
 
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
@@ -129,7 +129,10 @@ const BUILTINS: readonly Plugin<"core">[] = [
   resourcesPlugin,
   delegationPlugin,
   interruptionsPlugin,
+  worktreesPlugin,
 ];
+
+const CLEAN_WORKTREES_MS = 24 * 60 * 60 * 1000;
 
 export async function composeHost(options: ComposeOptions): Promise<ServedHost> {
   return (await composeServer(options)).host;
@@ -209,15 +212,22 @@ export async function composeServer(
 
   const unpoll = pollStore(kernel);
 
-  void sweepWorktrees(kernel).catch((error: unknown) =>
-    dev("worktrees", "sweep failed", { error: String(error) }),
-  );
+  const clean = (): void =>
+    void cleanWorktrees(kernel).catch((error: unknown) =>
+      dev("worktrees", "clean failed", { error: String(error) }),
+    );
+
+  void sweepWorktrees(kernel)
+    .catch((error: unknown) => dev("worktrees", "sweep failed", { error: String(error) }))
+    .then(clean);
+  const cleaning = setInterval(clean, CLEAN_WORKTREES_MS);
 
   const host = createHost(kernel, { credential: { kind: "token", token: "" } });
   let closing: Promise<void> | null = null;
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
+      clearInterval(cleaning);
       unpoll();
       await host.close();
       await release(kernel, driver);

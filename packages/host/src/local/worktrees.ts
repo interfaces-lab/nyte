@@ -57,6 +57,22 @@ const TYPE_WORDS = new Set([
   "update",
 ]);
 
+const REGENERABLE = new Set([
+  "node_modules",
+  ".turbo",
+  ".next",
+  ".nuxt",
+  ".svelte-kit",
+  ".vite",
+  ".parcel-cache",
+  "dist",
+  "build",
+  "coverage",
+  "target",
+  ".venv",
+  "__pycache__",
+]);
+
 /** How many names `create` tries before giving up: `<words>`, then `<two words>-2` up to this. */
 const MAX_ATTEMPTS = 100;
 
@@ -207,12 +223,12 @@ export function localWorktrees(options?: {
     root: string,
     parent: string,
     listed: readonly ListedWorktree[],
-    input: { readonly name: string; readonly title: string | null },
+    input: { readonly name: string; readonly title: string | null; readonly prefix?: string },
     head: string,
   ): Promise<string> => {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const branch = branchName(input.title, attempt);
-      const folder = join(parent, branch);
+      const branch = `${input.prefix ?? ""}${branchName(input.title, attempt)}`;
+      const folder = join(parent, branch.replaceAll("/", "-"));
 
       if (
         listed.some((worktree) => worktree.path === folder) ||
@@ -292,7 +308,7 @@ export function localWorktrees(options?: {
       const base =
         claimed === null ? head : ((await commitAt(repo.root, `refs/heads/${claimed}`)) ?? head);
 
-      const folder = join(realParent, branch);
+      const folder = join(realParent, branch.replaceAll("/", "-"));
       const tree = await workingTree(repo);
 
       await addWorktree(repo.root, { path: folder, branch }, options);
@@ -333,6 +349,35 @@ export function localWorktrees(options?: {
       await git(common, ["branch", "-D", worktree.branch]);
 
       return { folder: "removed", branch: "deleted" };
+    },
+    async clean(target) {
+      const path = "path" in target ? target.path : null;
+
+      if (path === null || (await stat(path).catch(() => null)) === null) return false;
+      const root = (await git(path, ["rev-parse", "--show-toplevel"])).trim();
+      const within = await realpath(folders).catch(() => null);
+
+      if (within === null || !root.startsWith(`${within}/`)) return false;
+
+      const status = await git(root, [
+        "status",
+        "--porcelain",
+        "--ignored=traditional",
+        "--untracked-files=normal",
+        "-z",
+      ]);
+
+      const regenerable = status
+        .split("\0")
+        .filter((entry) => entry.startsWith("!! ") && entry.endsWith("/"))
+        .map((entry) => entry.slice(3, -1))
+        .filter((folder) => REGENERABLE.has(basename(folder)));
+
+      await Promise.all(
+        regenerable.map((folder) => rm(join(root, folder), { recursive: true, force: true })),
+      );
+
+      return regenerable.length > 0;
     },
   };
 }

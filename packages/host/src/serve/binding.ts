@@ -255,6 +255,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "workspaces.inspect": ({ target }) => connection.workspaces.inspect(target),
     "workspaces.add": ({ target, options }) => connection.workspaces.add(target, options),
     "workspaces.forget": ({ id }) => connection.workspaces.forget(id),
+    "workspaces.cleanWorktrees": () => connection.workspaces.cleanWorktrees(),
 
     "sessions.watch": async (input) => sessionsFrames(connection.sessions.watch(input)),
     "sessions.start": async (input) => {

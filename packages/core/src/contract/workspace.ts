@@ -23,6 +23,7 @@ import type {
   FileVersion,
   ForgetOutcome,
   FormatOutcome,
+  WorktreeCleanup,
   GitCommitView,
   GitFileSides,
   GitOutcome,
@@ -268,10 +269,11 @@ export interface WorktreeProvider {
   /** Checks a new branch out from the HEAD of `env`'s repository in a folder of its own and copies `env`'s uncommitted changes, ignored files aside, into it. `name` keys it: a later call with the same name answers the worktree the first made. Throws `SdkError("unavailable")` outside a git repository or before its first commit. */
   create(
     env: ExecutionEnv,
-    input: { readonly name: string; readonly title: string | null },
+    input: { readonly name: string; readonly title: string | null; readonly prefix?: string },
   ): Promise<Worktree>;
   /** Removes the worktree's folder and deletes its branch, keeping the folder (and so the branch) while it holds uncommitted changes and the branch once it moved past `base`. A folder already gone counts as removed. */
   remove(worktree: Worktree): Promise<WorktreeRemoval>;
+  clean(target: WorkspaceTarget): Promise<boolean>;
 }
 
 export interface EnvironmentProvider {
@@ -530,6 +532,8 @@ export interface Workspaces {
   ): Promise<AddOutcome>;
 
   forget(id: WorkspaceId): Promise<ForgetOutcome>;
+
+  cleanWorktrees(): Promise<WorktreeCleanup>;
 }
 
 export interface Workspace {

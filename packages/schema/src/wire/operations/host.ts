@@ -28,6 +28,7 @@ import {
   WorkspaceInfoType,
   WorkspaceInspectionSchema,
   WorkspaceTargetType,
+  WorktreeCleanupSchema,
 } from "../../workspaces.ts";
 import { BYTES, NOTHING, SESSION, wireObject, wireSchema } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
@@ -200,6 +201,12 @@ export const HOST_OPERATIONS = {
     kind: "command",
     input: wireObject({ id: idSchema<"workspace">() }),
     output: ForgetOutcomeSchema,
+  },
+  "workspaces.cleanWorktrees": {
+    ...OWNER,
+    kind: "command",
+    input: NO_INPUT,
+    output: WorktreeCleanupSchema,
   },
   "sessions.watch": {
     ...PARTICIPANT,

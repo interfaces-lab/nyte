@@ -1,3 +1,4 @@
+import { inflateRawSync } from "node:zlib";
 import type { SessionView } from "@nyte-ai/schema";
 import { isPart, text as textPart } from "@nyte-ai/core";
 import type { Connection, Session } from "@nyte-ai/core";
@@ -90,7 +91,8 @@ export function tapped(
       }
 
       const frame = readStreamFrame(next.value);
-      const counted = frame.kind === "chunk" && (cut === undefined || cut.when(frame.stream));
+      const data = frame.kind === "chunk" || frame.kind === "deflated";
+      const counted = data && (cut === undefined || cut.when(frame.stream));
 
       if (cut !== undefined && counted && chunks >= cut.after) {
         if (cut.kind === "reset") controller.error(new TypeError("terminated"));
@@ -104,6 +106,9 @@ export function tapped(
 
       if (frame.kind === "chunk")
         seen(decoder.decode(Uint8Array.fromBase64(frame.data)), frame.stream);
+
+      if (frame.kind === "deflated")
+        seen(decoder.decode(inflateRawSync(Uint8Array.fromBase64(frame.data))), frame.stream);
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(next.value)}\n\n`));
     },
     cancel: () => frames.return(undefined).then(() => undefined),

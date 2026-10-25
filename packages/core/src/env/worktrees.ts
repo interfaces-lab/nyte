@@ -1,14 +1,48 @@
-import { asId, SdkError } from "@nyte-ai/schema";
-import type { PrincipalId, SessionId, WorkspaceId } from "@nyte-ai/schema";
+import { asId, SdkError, standard } from "@nyte-ai/schema";
+import type { PrincipalId, SessionId, WorkspaceId, WorktreeCleanup } from "@nyte-ai/schema";
+import { Type } from "typebox";
 import type { Kernel } from "../contract/kernel.ts";
+import type { Plugin, SettingDefinition } from "../contract/plugin.ts";
 import type { WorkspaceRecord } from "../contract/records.ts";
+import { readSetting } from "../extend/setting-layers.ts";
 import { commit } from "../fold/commit.ts";
 import { workspaceRef } from "../store/refs.ts";
-import { attempt, put, STALE } from "../store/session.ts";
+import { attempt, listSessionRecords, liveRuns, put, STALE } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
 import { readWorkspace, workspaceRecords } from "./environment.ts";
 import { byIdentity, changed, sessionsOn } from "./workspaces.ts";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const BRANCH_PREFIX: SettingDefinition<string> = {
+  id: "worktrees.branchPrefix",
+  label: "Branch prefix",
+  schema: standard(Type.String({ pattern: "^([A-Za-z0-9][A-Za-z0-9._/-]*)?$" })),
+  default: "",
+  scope: "host",
+};
+
+const IDLE_DAYS: SettingDefinition<number> = {
+  id: "worktrees.idleDays",
+  label: "Clean idle worktrees after days",
+  schema: standard(Type.Integer({ minimum: 0 })),
+  default: 7,
+  scope: "host",
+};
+
+const MAX_COUNT: SettingDefinition<number> = {
+  id: "worktrees.maxCount",
+  label: "Max worktrees",
+  schema: standard(Type.Integer({ minimum: 0 })),
+  default: 20,
+  scope: "host",
+};
+
+export const worktreesPlugin: Plugin<"core"> = {
+  id: "worktrees",
+  contribute: { settings: [BRANCH_PREFIX, IDLE_DAYS, MAX_COUNT] },
+};
 
 /**
  * Answers the workspace that isolates `session` in a git worktree of `source`,
@@ -45,6 +79,7 @@ export async function isolateWorkspace(
   const worktree = await worktrees.create(await kernel.environments.attachWorkspace(source.id), {
     name: input.session,
     title: input.title,
+    prefix: await readSetting(kernel.store, BRANCH_PREFIX, null),
   });
 
   const provider = kernel.environments.provider(worktree.target.kind);
@@ -156,4 +191,59 @@ export async function sweepWorktrees(kernel: Kernel): Promise<void> {
     if (session === undefined || now - record.createdAt < ORPHAN_MS) continue;
     await releaseWorktree(kernel, session, record.id);
   }
+}
+
+export async function cleanWorktrees(kernel: Kernel): Promise<WorktreeCleanup> {
+  const [idleDays, maxCount, records, sessions] = await Promise.all([
+    readSetting(kernel.store, IDLE_DAYS, null),
+    readSetting(kernel.store, MAX_COUNT, null),
+    workspaceRecords(kernel.store),
+    listSessionRecords(kernel.store),
+  ]);
+
+  const now = Date.now();
+
+  const ranked = records
+    .filter((record) => record.isolation !== null && record.isolation !== undefined)
+    .map((record) => {
+      const on = sessions.filter((session) => session.workspace === record.id);
+
+      return {
+        record,
+        sessions: on.map((session) => session.id),
+        usedAt: Math.max(record.createdAt, ...on.map((session) => session.lastActivityAt)),
+      };
+    })
+    .toSorted((a, b) => b.usedAt - a.usedAt);
+
+  const stale = ranked.filter(
+    (entry, index) =>
+      (idleDays > 0 && now - entry.usedAt >= idleDays * DAY_MS) ||
+      (maxCount > 0 && index >= maxCount),
+  );
+
+  let cleaned = 0;
+
+  for (const entry of stale) {
+    const runs = await Promise.all(
+      entry.sessions.map((session) => liveRuns(kernel.store, session)),
+    );
+
+    if (runs.some((live) => live.length > 0)) continue;
+
+    const deleted = await kernel.environments
+      .provider(entry.record.target.kind)
+      ?.worktrees?.clean(entry.record.target)
+      .catch((error: unknown) => {
+        dev("worktrees", "clean failed", { workspace: entry.record.id, error: String(error) });
+
+        return false;
+      });
+
+    if (deleted === true) cleaned += 1;
+  }
+
+  dev("worktrees", "cleaned", { cleaned, stale: stale.length });
+
+  return { cleaned };
 }

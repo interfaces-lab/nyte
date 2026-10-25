@@ -18,7 +18,7 @@ import { attempt, EMPTY_REVISION, MAIN, put, requireSession, STALE } from "../st
 import { check } from "../util/json-schema.ts";
 import { publishCatalog } from "./registry.ts";
 import { dropScans, SKILL_PATHS } from "./resources.ts";
-import { findSettingDefinition, readSettingLayers, settingInfos } from "./setting-layers.ts";
+import { findSettingDefinition, readSetting, settingInfos } from "./setting-layers.ts";
 
 export function createSettingsApi(kernel: Kernel): SettingsApi {
   return {
@@ -48,15 +48,7 @@ export function settingHandle<T>(
   const { session, signal } = input;
   const { id } = definition;
 
-  const get = async (): Promise<T> => {
-    for (const layer of await readSettingLayers(kernel.store, definition, session)) {
-      const checked = await check(definition.schema, layer.value);
-
-      if (checked.kind === "valid") return checked.value;
-    }
-
-    return definition.default;
-  };
+  const get = (): Promise<T> => readSetting(kernel.store, definition, session);
 
   return {
     get,

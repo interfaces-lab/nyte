@@ -138,6 +138,7 @@ export type {
   FileVersion,
   ForgetOutcome,
   FormatOutcome,
+  WorktreeCleanup,
   GitCommitId,
   GitOutcome,
   GitRefsView,

@@ -47,6 +47,7 @@ function repository(options?: {
 
               return { folder: folders.shift() ?? "removed", branch: "deleted" };
             },
+            clean: async () => false,
           },
   };
 

@@ -207,6 +207,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       inspect: refuse,
       add: refuse,
       forget: refuse,
+      cleanWorktrees: refuse,
     },
     session,
     workspace,

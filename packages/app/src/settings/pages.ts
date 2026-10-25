@@ -10,6 +10,7 @@ import { BrowserSettings } from "./browser.tsx";
 import { EditorSettings } from "./editor.tsx";
 import { GeneralSettings } from "./general.tsx";
 import { TerminalSettings } from "./terminal.tsx";
+import { SourceControlSettings } from "./source-control.tsx";
 import { available, settingsContext } from "./capability.ts";
 import type { Capability } from "./capability.ts";
 
@@ -141,6 +142,24 @@ export const SETTINGS_PAGES = {
     needs: [],
     keywords: ["shell", "scrollback", "cursor", "blink"],
     Page: TerminalSettings,
+  },
+  "source-control": {
+    icon: "git-branch",
+    title: "Source control",
+    group: "tools",
+    needs: [],
+    keywords: [
+      "git",
+      "branch",
+      "prefix",
+      "worktree",
+      "cleanup",
+      "disk",
+      "storage",
+      "node_modules",
+      "dependencies",
+    ],
+    Page: SourceControlSettings,
   },
   browser: {
     icon: "globe",

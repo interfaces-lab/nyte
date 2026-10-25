@@ -142,6 +142,7 @@ export const RELAY_OPERATIONS = [
   "workspaces.inspect",
   "workspaces.add",
   "workspaces.forget",
+  "workspaces.cleanWorktrees",
   "sessions.watch",
   "sessions.start",
   "sessions.list",

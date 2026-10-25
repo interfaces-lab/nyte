@@ -51,6 +51,10 @@ export const ForgetOutcomeType = Type.Union([
 
 export type ForgetOutcome = Decoded<typeof ForgetOutcomeType>;
 
+export const WorktreeCleanupType = Type.Object({ cleaned: Type.Number() });
+
+export type WorktreeCleanup = Decoded<typeof WorktreeCleanupType>;
+
 export const WorkspaceInspectionType = Type.Object({
   target: WorkspaceTargetType,
   identity: idSchema<"environment-identity">(),
@@ -99,6 +103,8 @@ export const ActivationSchema: Schema<Activation> = standard(ActivationType);
 export const AddOutcomeSchema: Schema<AddOutcome> = standard(AddOutcomeType);
 
 export const ForgetOutcomeSchema: Schema<ForgetOutcome> = standard(ForgetOutcomeType);
+
+export const WorktreeCleanupSchema: Schema<WorktreeCleanup> = standard(WorktreeCleanupType);
 
 export const WorkspaceInspectionSchema: Schema<WorkspaceInspection> = standard(
   withJson(WorkspaceInspectionType),

@@ -4,7 +4,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { SettingDefinition } from "../contract/plugin.ts";
 import { kvRef } from "../store/refs.ts";
 import { MAIN, readKv, readSession } from "../store/session.ts";
-import { convertJsonSchema } from "../util/json-schema.ts";
+import { check, convertJsonSchema } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 interface Defined {
@@ -81,6 +81,20 @@ export async function readSettingLayers(
     ...(own === undefined ? [] : [{ value: own, from: "session" } as const]),
     ...(host === undefined ? [] : [{ value: host, from: "host" } as const]),
   ];
+}
+
+export async function readSetting<T>(
+  store: StoreConnection,
+  definition: SettingDefinition<T>,
+  session: SessionId | null,
+): Promise<T> {
+  for (const layer of await readSettingLayers(store, definition, session)) {
+    const checked = await check(definition.schema, layer.value);
+
+    if (checked.kind === "valid") return checked.value;
+  }
+
+  return definition.default;
 }
 
 async function sessionValue(

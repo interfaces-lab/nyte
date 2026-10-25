@@ -193,6 +193,7 @@ describe("composeHost", () => {
       "resources",
       "delegation",
       "interruptions",
+      "worktrees",
       "chat-only",
       "extra",
     ]);
@@ -236,7 +237,14 @@ describe("composeHost", () => {
     await views.return?.();
 
     const seeded = [
-      ...["system-prompt", "environment", "resources", "delegation", "interruptions"].map((id) => ({
+      ...[
+        "system-prompt",
+        "environment",
+        "resources",
+        "delegation",
+        "interruptions",
+        "worktrees",
+      ].map((id) => ({
         id,
         source: "builtin",
         path: null,
