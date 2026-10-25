@@ -67,6 +67,7 @@ import {
   type ShelfHold,
 } from "./sidebar-view.ts";
 import { activateWorkspace } from "./use-show-session.ts";
+import { useNowMinute } from "../use-now-minute.ts";
 
 type SidebarConfirmation =
   | { readonly kind: "closed" }
@@ -156,6 +157,7 @@ export function Sidebar(): ReactElement {
   const forgetWorkspace = useForgetWorkspace();
   const { layout } = usePaneControllerSnapshot();
   const workingSessions = useWorkingSessionIds();
+  const now = useNowMinute();
   const page = useStagePage();
   const paletteOpen = useOverlays().search;
   const homeVisible = useSetting(preferences.homeVisible);
@@ -290,7 +292,7 @@ export function Sidebar(): ReactElement {
         path: workspaceGroup.workspacePath,
       };
 
-      return sessionsForView(workspaceGroup.sessions, view, "local", undefined, workingSessions)
+      return sessionsForView(workspaceGroup.sessions, view, "local", now, workingSessions)
         .flatMap((group) => group.sessions)
         .map((session) => ({ place, session }));
     })
@@ -318,7 +320,7 @@ export function Sidebar(): ReactElement {
                   [],
                 view,
                 "local",
-                undefined,
+                now,
                 workingSessions,
               ).flatMap((group) => group.sessions),
           activeSessionId,

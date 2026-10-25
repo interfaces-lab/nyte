@@ -271,7 +271,7 @@ function useSurfacePlacement(
     };
 
     const schedule = (): void => {
-      frame ??= requestAnimationFrame(measure);
+      if (frame === undefined) frame = requestAnimationFrame(measure);
     };
 
     const scrolled = (event: Event): void => {

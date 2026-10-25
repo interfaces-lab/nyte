@@ -4,15 +4,7 @@ import { modelConfiguration } from "./model-configuration.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import {
-  useCallback,
-  useDeferredValue,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useDeferredValue, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { CommitId, Revision, SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
 import { Composer } from "../conversation/composer.tsx";
@@ -296,13 +288,10 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const composerRef = useRef<ComposerEditorHandle | null>(null);
   const inputRef = presentation === "full" ? conversation.inputRef : undefined;
 
-  const attachComposer = useCallback(
-    (handle: ComposerEditorHandle | null): void => {
-      composerRef.current = handle;
-      inputRef?.(handle);
-    },
-    [inputRef],
-  );
+  const attachComposer = (handle: ComposerEditorHandle | null): void => {
+    composerRef.current = handle;
+    inputRef?.(handle);
+  };
 
   const store = sessionWatch(sessionId);
   const [projector] = useState(transcriptProjector);
@@ -322,7 +311,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const working = navigating || messages.working;
   const cwd = host.data.workspace?.path;
 
-  const loadEarlier = useCallback(() => loadEarlierMessages(sessionId, HISTORY_PAGE), [sessionId]);
+  const loadEarlier = () => loadEarlierMessages(sessionId, HISTORY_PAGE);
 
   const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
   const [column, setColumn] = useState<HTMLDivElement | null>(null);
@@ -332,16 +321,14 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const configuredModel = choice?.model;
   const thinkingLevel = choice?.thinking;
 
-  const branchModel = useMemo<BranchModelPicker>(() => {
-    const selected = selectedModelOption(modelOptions, configuredModel);
+  const selected = selectedModelOption(modelOptions, configuredModel);
 
-    return {
-      catalog: catalog.data,
-      model: selected?.option,
-      thinkingLevel,
-      fast: selected?.fast === true,
-    };
-  }, [catalog.data, configuredModel, modelOptions, thinkingLevel]);
+  const branchModel: BranchModelPicker = {
+    catalog: catalog.data,
+    model: selected?.option,
+    thinkingLevel,
+    fast: selected?.fast === true,
+  };
 
   const title = sessionName ?? "New chat";
 
@@ -357,42 +344,37 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     setDeletion({ kind: "open", sessionId });
   };
 
-  const editUserMessage = useCallback(
-    async (message: UserMessage, content: UserContent, edit: BranchModelChoice): Promise<void> => {
-      setNavigating(true);
+  const editUserMessage = async (
+    message: UserMessage,
+    content: UserContent,
+    edit: BranchModelChoice,
+  ): Promise<void> => {
+    setNavigating(true);
 
-      return applyMessageEdit({
-        sessionId,
-        message,
-        revision: store.getState().value?.revision,
-        content,
-        choice: edit,
-      })
-        .then(() => awaitCurrentView(sessionId, store).catch(() => undefined))
-        .finally(() => setNavigating(false));
-    },
-    [sessionId, store],
-  );
+    return applyMessageEdit({
+      sessionId,
+      message,
+      revision: store.getState().value?.revision,
+      content,
+      choice: edit,
+    })
+      .then(() => awaitCurrentView(sessionId, store).catch(() => undefined))
+      .finally(() => setNavigating(false));
+  };
 
   const forwardSubagentTray = presentation === "tray" ? conversation.onOpenSubagentTray : undefined;
 
-  const openSubagentTray = useCallback(
-    (childSessionId: SessionId): void => {
-      if (forwardSubagentTray !== undefined) {
-        forwardSubagentTray(childSessionId);
+  const openSubagentTray = (childSessionId: SessionId): void => {
+    if (forwardSubagentTray !== undefined) {
+      forwardSubagentTray(childSessionId);
 
-        return;
-      }
+      return;
+    }
 
-      setTrayView({ kind: "detail", sessionId: childSessionId });
-    },
-    [forwardSubagentTray],
-  );
+    setTrayView({ kind: "detail", sessionId: childSessionId });
+  };
 
-  const subagents = useMemo(
-    () => subagentSessions(sessionId, openSubagentTray),
-    [openSubagentTray, sessionId],
-  );
+  const subagents = subagentSessions(sessionId, openSubagentTray);
 
   return (
     <SubagentSessionsProvider value={subagents}>

@@ -6,6 +6,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { intent, surfaceTheme, type Tint } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
+// oxlint-disable-next-line no-restricted-imports -- the compiler widens deriveUsage/deriveTools to every later call that reads them, so a limits refetch would re-derive the report
 import { Fragment, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Deferred } from "../deferred.tsx";
@@ -285,10 +286,7 @@ function LimitsCard({
 }: {
   readonly limits: ReturnType<typeof useAccountLimits>;
 }): ReactElement | null {
-  const plans = useMemo(
-    () => limits.data?.map(deriveAccount).filter((plan) => plan !== null),
-    [limits.data],
-  );
+  const plans = limits.data?.map(deriveAccount).filter((plan) => plan !== null);
 
   if (plans !== undefined && plans.length === 0 && limits.error === null) return null;
 
@@ -471,7 +469,7 @@ export function UsageSettings(): ReactElement {
   const [openedAt] = useState(() => Date.now());
   const [range, setRange] = useUsageRange();
   const [axis, setAxis] = useChromeTab("usage", AXES);
-  const requested = useMemo(() => usageWindow(range, openedAt), [range, openedAt]);
+  const requested = usageWindow(range, openedAt);
 
   const {
     read,

@@ -22,6 +22,7 @@ import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
+import { useNowMinute } from "../use-now-minute.ts";
 import { sessionWatch, warmSession } from "../sdk.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { StatusGlyph } from "./status-glyph.tsx";
@@ -31,6 +32,11 @@ function sessionTitle(session: SessionInfo): string {
 }
 
 const WARM_DELAY_MS = 50;
+
+/** Reads the minute clock itself so only the label re-renders each minute. */
+function TimeAgo({ timestamp }: { readonly timestamp: number }): string {
+  return formatTimeAgo(timestamp, useNowMinute());
+}
 
 function openTarget(event: MouseEvent): OpenTarget {
   if (!windowTabs.strip) return "here";
@@ -76,7 +82,9 @@ export function DraftRow({
           <span role="img" aria-label="Draft" {...props(styles.draftDot)} />
         </Row.Leading>
         <Row.Label xstyle={styles.draftLabel}>{title}</Row.Label>
-        <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(draft.updatedAt)}</Row.Meta>
+        <Row.Meta xstyle={styles.rowMeta}>
+          <TimeAgo timestamp={draft.updatedAt} />
+        </Row.Meta>
       </Row.Primary>
       <Row.Actions
         placement="overlay"
@@ -247,7 +255,9 @@ export function SessionRow({
     <>
       <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
       {showUpdated && (
-        <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(session.lastActivityAt)}</Row.Meta>
+        <Row.Meta xstyle={styles.rowMeta}>
+          <TimeAgo timestamp={session.lastActivityAt} />
+        </Row.Meta>
       )}
     </>
   );

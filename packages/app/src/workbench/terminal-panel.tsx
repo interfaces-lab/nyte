@@ -5,7 +5,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- job query results sync into the terminal store
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { ADD_TO_CHAT_LABEL } from "../conversation/add-to-chat.ts";
 import { errorMessage } from "../errors";
@@ -46,10 +46,7 @@ const chatStyles = create({
 });
 
 function AddSelectionToChat({ id }: { readonly id: string }): ReactElement | null {
-  const subscribe = useCallback(
-    (listener: () => void) => subscribeTerminalSelection(id, listener),
-    [id],
-  );
+  const subscribe = (listener: () => void) => subscribeTerminalSelection(id, listener);
 
   const selected = useSyncExternalStore(subscribe, () => terminalHasSelection(id));
 
@@ -78,14 +75,11 @@ function TerminalCanvas({
   readonly id: string;
   readonly visible: boolean;
 }): ReactElement {
-  const attach = useCallback(
-    (element: HTMLDivElement | null) => {
-      if (element === null) return;
+  const attach = (element: HTMLDivElement | null) => {
+    if (element === null) return;
 
-      return mountTerminal(id, element, visible);
-    },
-    [id, visible],
-  );
+    return mountTerminal(id, element, visible);
+  };
 
   return <div ref={attach} {...props(terminalStyles.canvas)} />;
 }

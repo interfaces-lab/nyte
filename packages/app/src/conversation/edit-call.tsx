@@ -11,7 +11,7 @@ import { button, glyph, media, radius, space } from "@nyte-ai/ui/styles/schema.s
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { memo, useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReactElement } from "react";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Deferred } from "../deferred.tsx";
@@ -214,7 +214,7 @@ function Stats({
   );
 }
 
-export const EditCallView = memo(function EditCallView({
+export function EditCallView({
   message,
   toolClass,
   cwd,
@@ -229,7 +229,7 @@ export const EditCallView = memo(function EditCallView({
   const running = status.tense === "running";
   const opener = useReferenceOpener();
   const [open, setOpen] = useState(false);
-  const facts = useMemo(() => editPatch(message), [message]);
+  const facts = editPatch(message);
   const path = tidyPath(toolClass.path, cwd);
   const name = basename(path);
   const added = facts?.added ?? 0;
@@ -369,4 +369,4 @@ export const EditCallView = memo(function EditCallView({
       )}
     </Collapsible.Root>
   );
-});
+}

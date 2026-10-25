@@ -1,3 +1,4 @@
+import { useNowMinute } from "../use-now-minute.ts";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Button } from "@nyte-ai/ui/button";
@@ -326,11 +327,12 @@ export function FolderList({
   const { view, rail, reveal } = context;
   const { drafts: openDrafts, activeDraftId } = useDrafts();
   const drafts = context.showDrafts && open ? openDrafts : [];
+  const now = useNowMinute();
 
   if (sessions === undefined && drafts.length === 0) return null;
 
   const groups =
-    sessions === undefined ? [] : sessionsForView(sessions, view, "local", undefined, rail.working);
+    sessions === undefined ? [] : sessionsForView(sessions, view, "local", now, rail.working);
 
   const listedCount = groups.reduce((count, group) => count + group.sessions.length, drafts.length);
   const key = `local:${place.workspace ?? "home"}`;

@@ -3,15 +3,7 @@ import { keyOwner } from "../shell/focus-owner.ts";
 import { BlankConversation } from "./blank-conversation.tsx";
 import { SessionConversation } from "./session-conversation.tsx";
 import { props } from "@stylexjs/stylex";
-import {
-  Activity,
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { Activity, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement, RefObject } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { receiveChatExcerpts } from "../conversation/add-to-chat.ts";
@@ -132,17 +124,17 @@ export function PaneHost({
   const inputRef = useRef<ComposerEditorHandle | null>(null);
   const attachDropTarget = useSessionPaneDropTarget(pane.id);
 
-  const attachInput = useCallback((element: ComposerEditorHandle | null) => {
+  const attachInput = (element: ComposerEditorHandle | null) => {
     inputRef.current = element;
-  }, []);
+  };
 
   const host = useHostState();
   const workspacePath = host.data.workspace?.path;
 
-  const referenceOpener = useMemo(
-    () => workbenchReferenceOpener({ viewKey: workbenchViewKey(workspacePath), workspacePath }),
-    [workspacePath],
-  );
+  const referenceOpener = workbenchReferenceOpener({
+    viewKey: workbenchViewKey(workspacePath),
+    workspacePath,
+  });
 
   useLayoutEffect(() => {
     if (focusRequest.paneId !== pane.id || keyOwner()?.closest("[data-nyte-pane-id]") === null)

@@ -13,15 +13,14 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import {
   createContext,
-  memo,
-  useCallback,
   useContext,
   useEffectEvent,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
+// oxlint-disable-next-line no-restricted-imports -- useVirtualizer keeps TranscriptContent out of the compiler, so its virtualizer options stay memoized by hand
+import { useCallback, useMemo } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 import { usePaneViewStateStore } from "../layout/pane-context.tsx";
@@ -184,26 +183,23 @@ export function TranscriptProvider({
     page: (direction) => controlsRef.current?.page(direction),
   }));
 
-  const transcript = useMemo(
-    () => ({
-      paneId,
-      sessionId,
-      viewportRef,
-      loadEarlier,
-      viewStore,
-      initialPosition,
-      dock,
-      setDock,
-      controlsRef,
-      controls,
-    }),
-    [controls, dock, initialPosition, loadEarlier, paneId, sessionId, viewportRef, viewStore],
-  );
+  const transcript = {
+    paneId,
+    sessionId,
+    viewportRef,
+    loadEarlier,
+    viewStore,
+    initialPosition,
+    dock,
+    setDock,
+    controlsRef,
+    controls,
+  };
 
   return <TranscriptContext value={transcript}>{children}</TranscriptContext>;
 }
 
-export const TranscriptContent = memo(function TranscriptContent({
+export function TranscriptContent({
   rows,
   ready,
   estimateSize,
@@ -669,7 +665,7 @@ export const TranscriptContent = memo(function TranscriptContent({
       </div>
     </div>
   );
-});
+}
 
 export function TranscriptButton(): ReactElement | null {
   const transcript = useContext(TranscriptContext);

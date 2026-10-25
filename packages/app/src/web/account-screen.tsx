@@ -11,7 +11,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { AccountScope, accountAppearance } from "../account/appearance.tsx";
@@ -148,17 +148,13 @@ function AccountFlow({
   const clerk = useClerk();
   const { getToken } = useAuth();
 
-  const broker = useMemo(
-    () =>
-      createBrokerClient({
-        origin: config.origin,
-        sessionToken: () =>
-          clerk.user?.id === ownerId && clerk.session?.status === "active"
-            ? getToken({ skipCache: true })
-            : Promise.resolve(null),
-      }),
-    [clerk, config.origin, getToken, ownerId],
-  );
+  const broker = createBrokerClient({
+    origin: config.origin,
+    sessionToken: () =>
+      clerk.user?.id === ownerId && clerk.session?.status === "active"
+        ? getToken({ skipCache: true })
+        : Promise.resolve(null),
+  });
 
   const [manual, setManual] = useState(false);
   const [environments, setEnvironments] = useState<readonly EnvironmentSummary[]>();
@@ -350,11 +346,13 @@ function AccountFlow({
         signal: controller.signal,
       });
 
-      if (device !== undefined && !controller.signal.aborted) {
-        active.current = device;
-        setName(device.name);
-        forgetConnection();
-        adopt(accountConnection(device), controller.signal);
+      if (device !== undefined) {
+        if (!controller.signal.aborted) {
+          active.current = device;
+          setName(device.name);
+          forgetConnection();
+          adopt(accountConnection(device), controller.signal);
+        }
       }
     } catch (cause) {
       if (controller.signal.aborted) return;

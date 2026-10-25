@@ -1,4 +1,3 @@
-import { memo, useCallback } from "react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
@@ -6,11 +5,7 @@ import { useCatalog, useConfigureSession, useSessionChoice } from "../queries.ts
 import { ModelPicker, type ModelPickerChange } from "./model-picker.tsx";
 import { modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 
-export const SessionModelChip = memo(function SessionModelChip({
-  sessionId,
-}: {
-  sessionId: SessionId;
-}): ReactElement | null {
+export function SessionModelChip({ sessionId }: { sessionId: SessionId }): ReactElement | null {
   const catalog = useCatalog(sessionId);
   const choice = useSessionChoice(sessionId);
   const configure = useConfigureSession(sessionId);
@@ -19,34 +14,31 @@ export const SessionModelChip = memo(function SessionModelChip({
   const current = selected?.option;
   const thinkingLevel = choice?.thinking;
 
-  const handleChange = useCallback(
-    (change: ModelPickerChange) => {
-      switch (change.kind) {
-        case "model":
-          configure.mutate({
-            model: { provider: change.option.provider, id: change.option.id },
-            thinking: change.thinkingLevel,
-          });
+  const handleChange = (change: ModelPickerChange) => {
+    switch (change.kind) {
+      case "model":
+        configure.mutate({
+          model: { provider: change.option.provider, id: change.option.id },
+          thinking: change.thinkingLevel,
+        });
 
-          return;
-        case "thinking":
-          configure.mutate({ thinking: change.thinkingLevel });
+        return;
+      case "thinking":
+        configure.mutate({ thinking: change.thinkingLevel });
 
-          return;
-        case "fast":
-          if (current !== undefined)
-            configure.mutate({ model: modelRefFor(current, change.enabled) });
+        return;
+      case "fast":
+        if (current !== undefined)
+          configure.mutate({ model: modelRefFor(current, change.enabled) });
 
-          return;
-        default: {
-          const _exhaustive: never = change;
+        return;
+      default: {
+        const _exhaustive: never = change;
 
-          return _exhaustive;
-        }
+        return _exhaustive;
       }
-    },
-    [configure, current],
-  );
+    }
+  };
 
   return (
     <>
@@ -66,4 +58,4 @@ export const SessionModelChip = memo(function SessionModelChip({
       )}
     </>
   );
-});
+}

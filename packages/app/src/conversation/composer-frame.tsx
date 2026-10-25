@@ -1,7 +1,7 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import type { DragEvent, ReactElement, ReactNode } from "react";
 import type { CommandCompletion, Delivery } from "@nyte-ai/sdk";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
@@ -186,33 +186,32 @@ export function ComposerFrame({
               : `Steer (Enter) · Queue (${modifier}Enter)`
             : "Send Message (Enter)";
 
-  const resize = useCallback(
-    (text?: string): void => {
-      const area = areaRef.current?.readElement();
+  const resize = (text?: string): void => {
+    const area = areaRef.current?.readElement();
 
-      if (surface === "new-chat" || area === null || area === undefined) return;
+    if (surface === "new-chat" || area === null || area === undefined) return;
 
-      if ((text ?? area.textContent).length === 0) {
-        setEditorNeedsExpansion(false);
+    if ((text ?? area.textContent).length === 0) {
+      setEditorNeedsExpansion(false);
 
-        return;
-      }
+      return;
+    }
 
-      if (editorNeedsExpansion) return;
+    if (editorNeedsExpansion) return;
 
-      const typography = getComputedStyle(area);
+    const typography = getComputedStyle(area);
 
-      const contentHeight =
-        area.scrollHeight -
-        Number.parseFloat(typography.paddingTop) -
-        Number.parseFloat(typography.paddingBottom);
+    const contentHeight =
+      area.scrollHeight -
+      Number.parseFloat(typography.paddingTop) -
+      Number.parseFloat(typography.paddingBottom);
 
-      if (contentHeight > Number.parseFloat(typography.lineHeight) * 1.5) {
-        setEditorNeedsExpansion(true);
-      }
-    },
-    [surface, editorNeedsExpansion],
-  );
+    if (contentHeight > Number.parseFloat(typography.lineHeight) * 1.5) {
+      setEditorNeedsExpansion(true);
+    }
+  };
+
+  const resizeEditor = useEffectEvent((): void => resize());
 
   useLayoutEffect(() => {
     const area = areaRef.current?.readElement();
@@ -222,7 +221,7 @@ export function ComposerFrame({
 
     const measure = (): void => {
       setNarrow(frame.getBoundingClientRect().width < COMPACT_FRAME_WIDTH);
-      resize();
+      resizeEditor();
     };
 
     measure();
@@ -231,7 +230,7 @@ export function ComposerFrame({
     observer.observe(frame);
 
     return () => observer.disconnect();
-  }, [resize]);
+  }, [surface, editorNeedsExpansion]);
 
   const submit = async (action: SubmitAction): Promise<void> => {
     if (!canSubmit) return;

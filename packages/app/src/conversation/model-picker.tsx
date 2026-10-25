@@ -9,7 +9,7 @@ import {
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useNavigate } from "@tanstack/react-router";
-import { memo, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -100,7 +100,7 @@ interface ModelPickerProps {
   onChange: (change: ModelPickerChange) => void;
 }
 
-function ModelPickerView({
+export function ModelPicker({
   catalog,
   current,
   thinkingLevel,
@@ -118,10 +118,7 @@ function ModelPickerView({
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const groups = useMemo(
-    () => (catalog === undefined ? [] : pickerGroups(catalog, current, search)),
-    [catalog, current, search],
-  );
+  const groups = catalog === undefined ? [] : pickerGroups(catalog, current, search);
 
   const connected =
     catalog?.providers.some(
@@ -337,5 +334,3 @@ function ModelPickerView({
     </Menu>
   );
 }
-
-export const ModelPicker = memo(ModelPickerView);

@@ -6,10 +6,9 @@ import type { CodeViewHandle, CodeViewItem } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  useCallback,
+  useEffectEvent,
   useImperativeHandle,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -283,20 +282,17 @@ export function TextFileEditor({
   const saveFile = useSaveWorkspaceFile();
   const dirty = snapshot.contents !== snapshot.savedContents;
 
-  const viewOptions = useMemo(
-    () => ({
-      ...PIERRE_HIGHLIGHTER_OPTIONS,
-      themeType: theme,
-      unsafeCSS: EDITOR_CSS,
-      disableFileHeader: true,
-      layout: EDITOR_LAYOUT,
-      disableLineNumbers: !lineNumbers,
-      overflow: wordWrap ? ("wrap" as const) : ("scroll" as const),
-      onLineClick: (event: { readonly lineNumber: number }) =>
-        setClicked((current) => ({ ...current, line: event.lineNumber })),
-    }),
-    [lineNumbers, theme, wordWrap],
-  );
+  const viewOptions = {
+    ...PIERRE_HIGHLIGHTER_OPTIONS,
+    themeType: theme,
+    unsafeCSS: EDITOR_CSS,
+    disableFileHeader: true,
+    layout: EDITOR_LAYOUT,
+    disableLineNumbers: !lineNumbers,
+    overflow: wordWrap ? ("wrap" as const) : ("scroll" as const),
+    onLineClick: (event: { readonly lineNumber: number }) =>
+      setClicked((current) => ({ ...current, line: event.lineNumber })),
+  };
 
   const blame = useQuery({
     queryKey: ["files", "blame", file.path, snapshot.version],
@@ -391,48 +387,43 @@ export function TextFileEditor({
     if (editor !== undefined) replaceContents(editor, snapshot.contents);
   }, [file.path, snapshot.contents]);
 
-  const attachEditor = useCallback(
-    (
-      editor: Pick<Editor, "getFile" | "getText" | "applyEdits" | "focus" | "setSelections">,
-    ): void => {
-      if (editor.getFile() === undefined) return;
-      replaceContents(editor, buffer.getSnapshot().contents);
-      const target = navigation.current;
+  const attachEditor = (
+    editor: Pick<Editor, "getFile" | "getText" | "applyEdits" | "focus" | "setSelections">,
+  ): void => {
+    if (editor.getFile() === undefined) return;
+    replaceContents(editor, buffer.getSnapshot().contents);
+    const target = navigation.current;
 
-      if (
-        !target.active ||
-        target.line === undefined ||
-        appliedNavigation.current >= target.revision
-      )
-        return;
-      appliedNavigation.current = target.revision;
-      viewer.current?.scrollTo({
-        type: "line",
-        id: file.path,
-        lineNumber: target.line,
-        align: "center",
-      });
-      viewer.current?.setSelectedLines({
-        id: file.path,
-        range: { start: target.line, end: target.line },
-      });
-      editor.focus({
-        lineNumber: target.line,
-        character: (target.column ?? 1) - 1,
-        preventScroll: true,
-      });
+    if (!target.active || target.line === undefined || appliedNavigation.current >= target.revision)
+      return;
+    appliedNavigation.current = target.revision;
+    viewer.current?.scrollTo({
+      type: "line",
+      id: file.path,
+      lineNumber: target.line,
+      align: "center",
+    });
+    viewer.current?.setSelectedLines({
+      id: file.path,
+      range: { start: target.line, end: target.line },
+    });
+    editor.focus({
+      lineNumber: target.line,
+      character: (target.column ?? 1) - 1,
+      preventScroll: true,
+    });
 
-      if (target.column !== undefined && target.length !== undefined)
-        editor.setSelections([
-          {
-            start: { line: target.line - 1, character: target.column - 1 },
-            end: { line: target.line - 1, character: target.column - 1 + target.length },
-            direction: "forward",
-          },
-        ]);
-    },
-    [buffer, file.path],
-  );
+    if (target.column !== undefined && target.length !== undefined)
+      editor.setSelections([
+        {
+          start: { line: target.line - 1, character: target.column - 1 },
+          end: { line: target.line - 1, character: target.column - 1 + target.length },
+          direction: "forward",
+        },
+      ]);
+  };
+
+  const attachCurrentEditor = useEffectEvent(attachEditor);
 
   useLayoutEffect(() => {
     navigation.current = {
@@ -444,8 +435,8 @@ export function TextFileEditor({
     };
     const editor = viewer.current?.getEditor(file.path);
 
-    if (editor !== undefined) attachEditor(editor);
-  }, [active, attachEditor, file.column, file.length, file.line, file.path, navigationRevision]);
+    if (editor !== undefined) attachCurrentEditor(editor);
+  }, [active, file.column, file.length, file.line, file.path, navigationRevision]);
 
   const discard = async (): Promise<void> => {
     if (buffer.getSnapshot().status.kind === "saving")

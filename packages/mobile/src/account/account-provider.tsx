@@ -118,6 +118,35 @@ async function linked<T>(
   }
 }
 
+/** Removes the signed-out owner's Mac, releasing it through the broker when it belongs to `origin`. */
+async function forgetOwnedMac({
+  ownerId,
+  origin,
+  brokerFor,
+}: {
+  ownerId: string | null;
+  origin: string;
+  brokerFor: (ownerId: string) => BrokerClient;
+}): Promise<Released | undefined> {
+  if (ownerId === null) return undefined;
+
+  const removed = await connectionStore.remove({
+    match: (saved): saved is ManagedConnection =>
+      saved.kind === "managed" && saved.binding.ownerId === ownerId,
+    release: (saved) =>
+      releaseDevice({
+        saved,
+        broker: saved.binding.origin === origin ? brokerFor(ownerId) : undefined,
+        fetch,
+        timeoutMs: RELEASE_TIMEOUT_MS,
+      }),
+  });
+
+  return removed === undefined
+    ? undefined
+    : { name: removed.saved.connection.name, report: removed.released };
+}
+
 /** The account this phone acts for, and the signal that ends everything started for it. */
 type Epoch = { readonly ownerId: string | null; readonly controller: AbortController };
 
@@ -262,25 +291,7 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
     let released: Released | undefined;
 
     try {
-      const removed =
-        ownerId === null
-          ? undefined
-          : await connectionStore.remove({
-              match: (saved): saved is ManagedConnection =>
-                saved.kind === "managed" && saved.binding.ownerId === ownerId,
-              release: (saved) =>
-                releaseDevice({
-                  saved,
-                  broker: saved.binding.origin === config.origin ? brokerFor(ownerId) : undefined,
-                  fetch,
-                  timeoutMs: RELEASE_TIMEOUT_MS,
-                }),
-            });
-
-      released =
-        removed === undefined
-          ? undefined
-          : { name: removed.saved.connection.name, report: removed.released };
+      released = await forgetOwnedMac({ ownerId, origin: config.origin, brokerFor });
     } catch {
       return { kind: "notRemoved" };
     }

@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { router } from "expo-router";
 import {
   ActivityIndicator,
@@ -50,7 +50,7 @@ const INPUT_MAX_LINES = 6;
  * the draft, caret, and focus; the model, attachments, and submission each live in their own hook, and
  * the controls above the card and the action row inside it are their own components.
  */
-export const Composer = memo(function Composer({
+export function Composer({
   target,
   placeholder,
   gutters,
@@ -367,7 +367,7 @@ export const Composer = memo(function Composer({
       ) : null}
     </Animated.View>
   );
-});
+}
 
 const field = StyleSheet.create({
   card: {

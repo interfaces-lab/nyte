@@ -1,4 +1,3 @@
-import { memo } from "react";
 import type { ReactElement } from "react";
 import { toolOutput } from "@nyte-ai/plugin/client/presentation";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
@@ -9,7 +8,7 @@ import { SubagentLineView } from "./subagent-call.tsx";
 import { ToolLineView } from "./tool-line.tsx";
 import { excerptText, outputExcerpt } from "./tool-output.tsx";
 
-export const ToolCallView = memo(function ToolCallView({
+export function ToolCallView({
   message,
   cwd,
   density,
@@ -48,4 +47,4 @@ export const ToolCallView = memo(function ToolCallView({
       return _exhaustive;
     }
   }
-});
+}

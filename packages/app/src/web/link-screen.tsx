@@ -11,7 +11,7 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
-import { useId, useMemo, useState } from "react";
+import { useId, useState } from "react";
 import type { ReactElement } from "react";
 import { AccountScope, accountAppearance } from "../account/appearance.tsx";
 import { accountProblem } from "./account-copy.ts";
@@ -69,17 +69,11 @@ function LinkFlow({ config }: { readonly config: AccountConfig }): ReactElement 
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
 
-  const broker = useMemo(
-    () =>
-      createBrokerClient({
-        origin: config.origin,
-        sessionToken: () =>
-          clerk.session?.status === "active"
-            ? getToken({ skipCache: true })
-            : Promise.resolve(null),
-      }),
-    [clerk, config.origin, getToken],
-  );
+  const broker = createBrokerClient({
+    origin: config.origin,
+    sessionToken: () =>
+      clerk.session?.status === "active" ? getToken({ skipCache: true }) : Promise.resolve(null),
+  });
 
   const lookUp = async (): Promise<void> => {
     const userCode = normalizeUserCode(code);
@@ -93,40 +87,37 @@ function LinkFlow({ config }: { readonly config: AccountConfig }): ReactElement 
     setError(undefined);
     setPending(true);
 
-    try {
-      const lookup = await broker.lookupLinkTransaction({ userCode });
-      setStep({ kind: "review", lookup });
-    } catch (cause) {
-      setError(lookupProblem(cause));
-    } finally {
-      setPending(false);
-    }
+    return broker
+      .lookupLinkTransaction({ userCode })
+      .then((lookup) => setStep({ kind: "review", lookup }))
+      .catch((cause: unknown) => setError(lookupProblem(cause)))
+      .finally(() => setPending(false));
   };
 
   const decide = async (lookup: LinkTransactionLookup, decision: "approve" | "deny") => {
     setError(undefined);
     setPending(true);
 
-    try {
-      const status =
-        decision === "approve"
-          ? await broker.approveLinkTransaction({
-              transactionId: lookup.transactionId,
-              fingerprint: lookup.fingerprint,
-            })
-          : await broker.denyLinkTransaction({ transactionId: lookup.transactionId });
-      setStep({ kind: status.state === "approved" ? "approved" : "denied" });
-    } catch (cause) {
-      setError(
-        cause instanceof BrokerError &&
-          cause.failure.kind === "refused" &&
-          (cause.failure.code === "not_found" || cause.failure.code === "conflict")
-          ? "This request is no longer waiting. Start again in the terminal."
-          : accountProblem(cause),
-      );
-    } finally {
-      setPending(false);
-    }
+    const decided =
+      decision === "approve"
+        ? broker.approveLinkTransaction({
+            transactionId: lookup.transactionId,
+            fingerprint: lookup.fingerprint,
+          })
+        : broker.denyLinkTransaction({ transactionId: lookup.transactionId });
+
+    return decided
+      .then((status) => setStep({ kind: status.state === "approved" ? "approved" : "denied" }))
+      .catch((cause: unknown) =>
+        setError(
+          cause instanceof BrokerError &&
+            cause.failure.kind === "refused" &&
+            (cause.failure.code === "not_found" || cause.failure.code === "conflict")
+            ? "This request is no longer waiting. Start again in the terminal."
+            : accountProblem(cause),
+        ),
+      )
+      .finally(() => setPending(false));
   };
 
   const email = clerk.user?.primaryEmailAddress?.emailAddress ?? clerk.user?.id ?? "";

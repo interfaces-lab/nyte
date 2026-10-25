@@ -1,6 +1,8 @@
 import { props } from "@stylexjs/stylex";
 import type { SessionView, UserContent } from "@nyte-ai/sdk";
-import { memo, useCallback, useState } from "react";
+import { useState } from "react";
+// oxlint-disable-next-line no-restricted-imports -- TranscriptContent's uncompiled virtualizer calls renderRow on every scroll update, so each row needs its own memo boundary
+import { memo } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { preferences, useSetting } from "../preferences/index.ts";
@@ -153,40 +155,34 @@ export function Timeline({
   const uiFontSize = useSetting(preferences.uiFontSize);
   const rows = useWatchSelect(store, projector.rows);
 
-  const estimateSize = useCallback(
-    (index: number) => {
-      const state = store.getState();
-      const key = projector.rows(state)[index]?.key;
+  const estimateSize = (index: number): number => {
+    const state = store.getState();
+    const key = projector.rows(state)[index]?.key;
 
-      return estimateRowSize(
-        key === undefined ? undefined : projector.row(state, key),
-        density,
-        uiFontSize,
-      );
-    },
-    [density, projector, store, uiFontSize],
-  );
+    return estimateRowSize(
+      key === undefined ? undefined : projector.row(state, key),
+      density,
+      uiFontSize,
+    );
+  };
 
-  const renderRow = useCallback(
-    (index: number): ReactNode => {
-      const key = rows[index]?.key;
+  const renderRow = (index: number): ReactNode => {
+    const key = rows[index]?.key;
 
-      return key === undefined ? null : (
-        <TranscriptRowView
-          rowKey={key}
-          store={store}
-          projector={projector}
-          navigating={navigating}
-          density={density}
-          cwd={cwd}
-          branchModel={branchModel}
-          onEditUser={onEditUser}
-          onRetry={onRetry}
-        />
-      );
-    },
-    [branchModel, cwd, density, onEditUser, onRetry, projector, rows, store, navigating],
-  );
+    return key === undefined ? null : (
+      <TranscriptRowView
+        rowKey={key}
+        store={store}
+        projector={projector}
+        navigating={navigating}
+        density={density}
+        cwd={cwd}
+        branchModel={branchModel}
+        onEditUser={onEditUser}
+        onRetry={onRetry}
+      />
+    );
+  };
 
   return (
     <TranscriptContent

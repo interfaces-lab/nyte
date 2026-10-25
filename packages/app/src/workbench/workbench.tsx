@@ -1,6 +1,6 @@
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { props } from "@stylexjs/stylex";
-import { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
 import { clientCapabilities } from "../client-actions.ts";
 import type { ClientCapabilities } from "../client-actions.ts";
@@ -513,10 +513,8 @@ function WorkbenchViewHost({
   const panelWidth = maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
   const defaultWidth = clampWorkbenchWidthToBounds(workbenchDefaultWidth(stageWidth), bounds);
 
-  const resetWidth = useCallback(
-    () => workbenchController.actions.setWidth({ view: viewKey, width: defaultWidth }),
-    [defaultWidth, viewKey],
-  );
+  const resetWidth = () =>
+    workbenchController.actions.setWidth({ view: viewKey, width: defaultWidth });
 
   const beginResize = (event: PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return;

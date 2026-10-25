@@ -1,5 +1,5 @@
 import { Button } from "@nyte-ai/ui/button";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { terminalText } from "./terminal-text.ts";
 
@@ -46,10 +46,6 @@ function sizeLabel(characters: number): string {
     : `${String(Math.ceil(characters / 1024))} KB`;
 }
 
-function WholeOutput({ raw }: { readonly raw: string }): string {
-  return useMemo(() => terminalText(raw), [raw]);
-}
-
 export function ToolOutputText({
   raw,
   excerpt,
@@ -61,7 +57,7 @@ export function ToolOutputText({
 
   if (excerpt.hidden === 0) return excerpt.head;
 
-  if (whole) return <WholeOutput raw={raw} />;
+  if (whole) return terminalText(raw);
 
   return (
     <>

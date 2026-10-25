@@ -14,6 +14,7 @@ import { formatTimeAgo } from "../components/ui.tsx";
 import { CanvasFrame } from "../conversation/canvas-frame.tsx";
 import { connection, partWatch, useWatch } from "../sdk.tsx";
 import { useCanvasEditing } from "./canvas-activity.ts";
+import { useNowMinute } from "../use-now-minute.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const styles = create({
@@ -74,6 +75,7 @@ export function CanvasPanel({
 }): ReactElement {
   const watched = useWatch(partWatch(sessionId, part));
   const editing = useCanvasEditing(sessionId, part);
+  const now = useNowMinute();
   const view = watched.value;
 
   if (view === undefined)
@@ -112,7 +114,7 @@ export function CanvasPanel({
       .toReversed()
       .map((entry) => ({
         value: String(entry.number),
-        label: `r${String(entry.number)} · ${formatTimeAgo(entry.at)}`,
+        label: `r${String(entry.number)} · ${formatTimeAgo(entry.at, now)}`,
       })),
   ];
 

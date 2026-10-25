@@ -257,8 +257,8 @@ export function sessionsForNavigation(
 export function sessionsForView(
   sessions: readonly SessionInfo[],
   settings: SessionViewSettings,
-  environment: SessionEnvironment = "local",
-  now = Date.now(),
+  environment: SessionEnvironment,
+  now: number,
   working: ReadonlySet<SessionId> = NO_WORKING_SESSIONS,
 ): readonly SessionViewGroup[] {
   if (

@@ -20,7 +20,7 @@ import { toast } from "@nyte-ai/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMutation } from "@tanstack/react-query";
-import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { errorMessage } from "../errors.ts";
 import type { ToolCallDensity } from "../preferences/index.ts";
@@ -419,7 +419,7 @@ function OutputPreview({ output }: { readonly output: string }): ReactElement {
   );
 }
 
-export const ShellCallView = memo(function ShellCallView({
+export function ShellCallView({
   message,
   toolClass,
   cwd,
@@ -448,8 +448,8 @@ export const ShellCallView = memo(function ShellCallView({
   const durationMs =
     message.status.kind === "settled" ? message.status.endedAt - message.at : undefined;
 
-  const output = useMemo(() => terminalText(raw).trim(), [raw]);
-  const tokens = useMemo(() => shellTokens(toolClass.command), [toolClass.command]);
+  const output = terminalText(raw).trim();
+  const tokens = shellTokens(toolClass.command);
   const description = toolClass.description?.trim() ?? "";
 
   const label =
@@ -561,4 +561,4 @@ export const ShellCallView = memo(function ShellCallView({
       </Collapsible.Panel>
     </Collapsible.Root>
   );
-});
+}

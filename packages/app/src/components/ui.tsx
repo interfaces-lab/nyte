@@ -122,7 +122,7 @@ export function UnreadMark(): ReactElement {
   );
 }
 
-export function formatTimeAgo(timestamp: number, now = Date.now()): string {
+export function formatTimeAgo(timestamp: number, now: number): string {
   const elapsed = Math.max(0, now - timestamp);
   const minutes = Math.floor(elapsed / 60_000);
 

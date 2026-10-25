@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { createMMKV, useMMKVString } from "react-native-mmkv";
 import type { SessionId } from "@nyte-ai/sdk";
@@ -15,16 +14,13 @@ export function useChatDraft(sessionId?: SessionId): [string, Dispatch<SetStateA
   const key = JSON.stringify([scope, sessionId ?? "new"]);
   const [draft, save] = useMMKVString(key, drafts);
 
-  const setDraft = useCallback<Dispatch<SetStateAction<string>>>(
-    (next) => {
-      save((previous) => {
-        const value = typeof next === "function" ? next(previous ?? "") : next;
+  const setDraft: Dispatch<SetStateAction<string>> = (next) => {
+    save((previous) => {
+      const value = typeof next === "function" ? next(previous ?? "") : next;
 
-        return value === "" ? undefined : value;
-      });
-    },
-    [save],
-  );
+      return value === "" ? undefined : value;
+    });
+  };
 
   return [draft ?? "", setDraft];
 }

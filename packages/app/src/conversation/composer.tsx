@@ -1,6 +1,6 @@
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { useCallback, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import type { ReactElement, ReactNode } from "react";
 import type { Delivery, Execution, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
@@ -115,9 +115,8 @@ export function Composer({
   const catalog = useCatalog(sessionId);
   const choice = useSessionChoice(sessionId);
 
-  const steers =
-    selectedModelOption(catalog.data?.models ?? [], choice?.model)?.option.capabilities.steer !==
-    false;
+  const selectedModel = selectedModelOption(catalog.data?.models ?? [], choice?.model);
+  const steers = selectedModel?.option.capabilities.steer !== false;
 
   const runningMessagePreference = steers ? runningMessage : "queue";
   const attachTranscriptDock = useTranscriptDock();
@@ -153,20 +152,17 @@ export function Composer({
   const cwd = host.data.workspace?.path;
   const activity = useSessionActivity(floating ? sessionId : undefined, cwd);
 
-  const attachInlineSlot = useCallback(
-    (slot: HTMLDivElement | null): void => {
-      inlineSlot.current = slot;
+  const attachInlineSlot = (slot: HTMLDivElement | null): void => {
+    inlineSlot.current = slot;
 
-      if (slot === null) {
-        portalHost.remove();
+    if (slot === null) {
+      portalHost.remove();
 
-        return;
-      }
+      return;
+    }
 
-      slot.append(portalHost);
-    },
-    [portalHost],
-  );
+    slot.append(portalHost);
+  };
 
   useLayoutEffect(() => {
     const destination = floatingMount ?? inlineSlot.current;
@@ -272,13 +268,10 @@ export function Composer({
     };
   }, [holding, sessionId]);
 
-  const attachInput = useCallback(
-    (handle: ComposerEditorHandle | null) => {
-      editorRef.current = handle;
-      inputRef?.(handle);
-    },
-    [inputRef],
-  );
+  const attachInput = (handle: ComposerEditorHandle | null) => {
+    editorRef.current = handle;
+    inputRef?.(handle);
+  };
 
   const addFiles = async (files: readonly File[]): Promise<void> => {
     if (savingEdit) return;

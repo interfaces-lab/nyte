@@ -2,6 +2,7 @@ import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import type { OpenQuestion, QuestionAnswers, QuestionInfo } from "@nyte-ai/plugin/question/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import { useMutation } from "@tanstack/react-query";
+// oxlint-disable-next-line no-restricted-imports -- the child-session subscription must keep its identity; the compiler drops its memo because the waiting list is read after useSyncExternalStore
 import { createContext, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useChildSessions } from "../../queries.ts";
 import { connection, sessionWatch, useWatchSelect } from "../../sdk.tsx";
@@ -137,7 +138,6 @@ function observeQuestionViews(stores: readonly ReturnType<typeof sessionWatch>[]
 
 export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined {
   const parts = useWatchSelect(sessionWatch(sessionId), (state) => state.value?.parts);
-  const own = useMemo(() => openQuestions({ parts: parts ?? [] }), [parts]);
   const children = useChildSessions(sessionId);
 
   const watched = useMemo(
@@ -163,39 +163,7 @@ export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined 
     observation.snapshot,
   );
 
-  const requests = useMemo(
-    () => [
-      ...own.map((request) => ({ sessionId, request, origin: undefined })),
-      ...watched.flatMap(({ child }, index) =>
-        openQuestions(childViews[index]).map((request) => ({
-          sessionId: child.id,
-          request,
-          origin: child.name ?? "a subagent",
-        })),
-      ),
-    ],
-    [own, sessionId, watched, childViews],
-  );
-
   const [stored, setStored] = useState<readonly RequestDraft[]>([]);
-
-  const recent = stored.findLast((draft) =>
-    requests.some(
-      (request) => request.sessionId === draft.sessionId && request.request.part === draft.part,
-    ),
-  );
-
-  const active =
-    requests.find(
-      (request) => request.sessionId === recent?.sessionId && request.request.part === recent.part,
-    ) ?? requests[0];
-
-  const save = (next: RequestDraft): void => {
-    setStored((current) => [
-      ...current.filter((draft) => draft.sessionId !== next.sessionId || draft.part !== next.part),
-      next,
-    ]);
-  };
 
   const submitting = useRef(false);
 
@@ -214,6 +182,37 @@ export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined 
       return { sessionId: submission.sessionId, part: submission.request.part };
     },
   });
+
+  const own = openQuestions({ parts: parts ?? [] });
+
+  const requests = [
+    ...own.map((request) => ({ sessionId, request, origin: undefined })),
+    ...watched.flatMap(({ child }, index) =>
+      openQuestions(childViews[index]).map((request) => ({
+        sessionId: child.id,
+        request,
+        origin: child.name ?? "a subagent",
+      })),
+    ),
+  ];
+
+  const recent = stored.findLast((draft) =>
+    requests.some(
+      (request) => request.sessionId === draft.sessionId && request.request.part === draft.part,
+    ),
+  );
+
+  const active =
+    requests.find(
+      (request) => request.sessionId === recent?.sessionId && request.request.part === recent.part,
+    ) ?? requests[0];
+
+  const save = (next: RequestDraft): void => {
+    setStored((current) => [
+      ...current.filter((draft) => draft.sessionId !== next.sessionId || draft.part !== next.part),
+      next,
+    ]);
+  };
 
   if (active === undefined) return undefined;
 

@@ -1,5 +1,5 @@
 import type { Connection, SessionInfo } from "@nyte-ai/sdk";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { sessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import { describeHostError } from "../connection/connection.ts";
@@ -92,12 +92,9 @@ export function markTone(mark: SessionMark, theme: Theme) {
 export function useSessionList(client: Connection, search = "") {
   const [limit, setLimit] = useState(PAGE);
 
-  const [watched, restart] = useWatch(
-    useMemo(
-      () => ({ watch: () => client.sessions.watch({ parents: { kind: "roots" }, limit }) }),
-      [client, limit],
-    ),
-  );
+  const [watched, restart] = useWatch({
+    watch: () => client.sessions.watch({ parents: { kind: "roots" }, limit }),
+  });
 
   const needle = search.trim().toLocaleLowerCase();
 

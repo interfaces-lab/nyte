@@ -1,7 +1,7 @@
 import { glyph, input, media, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { hashKey } from "@tanstack/react-query";
-import { useId, useMemo, useState } from "react";
+import { useId, useState } from "react";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
@@ -239,24 +239,21 @@ export function WorkspaceSearch({
   const [include, setInclude] = useState("");
   const [exclude, setExclude] = useState("");
 
-  const input = useMemo(
-    () => ({
-      query,
-      caseSensitive,
-      wholeWord,
-      regex,
-      include: include
-        .split(";")
-        .map((pattern) => pattern.trim())
-        .filter(Boolean),
-      exclude: exclude
-        .split(";")
-        .map((pattern) => pattern.trim())
-        .filter(Boolean),
-      drafts,
-    }),
-    [query, caseSensitive, wholeWord, regex, include, exclude, drafts],
-  );
+  const input = {
+    query,
+    caseSensitive,
+    wholeWord,
+    regex,
+    include: include
+      .split(";")
+      .map((pattern) => pattern.trim())
+      .filter(Boolean),
+    exclude: exclude
+      .split(";")
+      .map((pattern) => pattern.trim())
+      .filter(Boolean),
+    drafts,
+  };
 
   const debouncedInput = useDebouncedValue(input, 250);
   const waiting = hashKey([input]) !== hashKey([debouncedInput]);

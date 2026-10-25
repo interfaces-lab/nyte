@@ -1,8 +1,8 @@
 import { props } from "@stylexjs/stylex";
-import type { EditorEvents } from "@tiptap/core";
+import type { Editor, EditorEvents } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
-import { useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
+import { useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, Ref } from "react";
 import type { MentionFile } from "./message-references.ts";
 import {
@@ -128,6 +128,23 @@ function caretBox(range: Range): CaretBox | undefined {
   return { x: rect.left, top: rect.top, height: rect.height };
 }
 
+function refreshReferences(editor: Editor, catalog: ReadonlyMap<string, MentionFile>): void {
+  const tr = refreshComposerReferences(editor.state.tr, catalog);
+
+  if (tr.docChanged) editor.view.dispatch(tr);
+}
+
+function restoreDocument(editor: Editor, document: ComposerDocumentState): void {
+  const view = editor.view;
+  const tr = restoreComposerDocument(editor.state.tr, document);
+  view.dispatch(view.hasFocus() ? tr.scrollIntoView() : tr);
+  view.updateState(clearComposerHistory(view.state));
+}
+
+function indexFilesByUrl(files: readonly MentionFile[]): ReadonlyMap<string, MentionFile> {
+  return new Map(files.map((file) => [file.url, file]));
+}
+
 export function ComposerEditor({
   ref,
   inputRef,
@@ -144,7 +161,7 @@ export function ComposerEditor({
   onFocusChange,
   onFilesSelected,
 }: ComposerEditorProps): ReactElement {
-  const catalog = useMemo(() => new Map(files.map((file) => [file.url, file])), [files]);
+  const catalog = indexFilesByUrl(files);
   const catalogRef = useRef(catalog);
 
   const editor = useComposerSurface({
@@ -159,64 +176,63 @@ export function ComposerEditor({
   const lastReferences = useRef<readonly MessageReference[]>([]);
   const onFilesSelectedRef = useRef(onFilesSelected);
 
-  const handle = useMemo<ComposerEditorHandle>(
-    () => ({
-      readElement: () => {
-        const root = editorRoot(editor);
+  const [handle] = useState((): ComposerEditorHandle => ({
+    readElement: () => {
+      const root = editorRoot(editor);
 
-        return root instanceof HTMLDivElement ? root : null;
-      },
-      focus: (options) => focusComposer(editor, options),
-      read: () => composerSubmission(editor.state.doc),
-      readDocument() {
-        const document = readComposerDocument(editor.state);
-        observed.current = document;
+      return root instanceof HTMLDivElement ? root : null;
+    },
+    focus: (options) => focusComposer(editor, options),
+    read() {
+      return composerSubmission(editor.state.doc);
+    },
+    readDocument() {
+      const document = readComposerDocument(editor.state);
+      observed.current = document;
 
-        return document;
-      },
-      replaceText(start, end, text) {
-        focusComposer(editor, { preventScroll: true });
-        editor.view.dispatch(
-          closeHistory(replaceComposerText(editor.state.tr, start, end, text)).scrollIntoView(),
+      return document;
+    },
+    replaceText(start, end, text) {
+      focusComposer(editor, { preventScroll: true });
+      editor.view.dispatch(
+        closeHistory(replaceComposerText(editor.state.tr, start, end, text)).scrollIntoView(),
+      );
+    },
+    insertReference(reference, start, end) {
+      focusComposer(editor, { preventScroll: true });
+      editor.view.dispatch(
+        closeHistory(
+          insertComposerReference(editor.state.tr, reference, start, end),
+        ).scrollIntoView(),
+      );
+    },
+    dropReferences(references, clientX, clientY) {
+      const view = editor.view;
+      const page = view.dom.ownerDocument;
+
+      const caret =
+        "caretPositionFromPoint" in page ? page.caretPositionFromPoint(clientX, clientY) : null;
+
+      focusComposer(editor, { preventScroll: true });
+      const tr = editor.state.tr;
+
+      if (
+        caret !== null &&
+        caret.offsetNode instanceof Text &&
+        caret.offsetNode.parentElement?.isContentEditable === true &&
+        view.dom.contains(caret.offsetNode)
+      )
+        tr.setSelection(
+          TextSelection.create(tr.doc, view.posAtDOM(caret.offsetNode, caret.offset)),
         );
-      },
-      insertReference(reference, start, end) {
-        focusComposer(editor, { preventScroll: true });
-        editor.view.dispatch(
-          closeHistory(
-            insertComposerReference(editor.state.tr, reference, start, end),
-          ).scrollIntoView(),
-        );
-      },
-      dropReferences(references, clientX, clientY) {
-        const view = editor.view;
-        const page = view.dom.ownerDocument;
 
-        const caret =
-          "caretPositionFromPoint" in page ? page.caretPositionFromPoint(clientX, clientY) : null;
-
-        focusComposer(editor, { preventScroll: true });
-        const tr = editor.state.tr;
-
-        if (
-          caret !== null &&
-          caret.offsetNode instanceof Text &&
-          caret.offsetNode.parentElement?.isContentEditable === true &&
-          view.dom.contains(caret.offsetNode)
-        )
-          tr.setSelection(
-            TextSelection.create(tr.doc, view.posAtDOM(caret.offsetNode, caret.offset)),
-          );
-
-        for (const reference of references) insertComposerReference(tr, reference);
-        view.dispatch(closeHistory(tr).scrollIntoView());
-      },
-      attachFiles(files) {
-        onFilesSelectedRef.current?.(files);
-      },
-    }),
-    [editor],
-  );
+      for (const reference of references) insertComposerReference(tr, reference);
+      view.dispatch(closeHistory(tr).scrollIntoView());
+    },
+    attachFiles(files) {
+      onFilesSelectedRef.current?.(files);
+    },
+  }));
 
   useImperativeHandle(ref, () => handle, [handle]);
   useImperativeHandle(inputRef, () => handle, [handle]);
@@ -322,19 +338,14 @@ export function ComposerEditor({
 
   useLayoutEffect(() => {
     catalogRef.current = catalog;
-    const tr = refreshComposerReferences(editor.state.tr, catalog);
-
-    if (tr.docChanged) editor.view.dispatch(tr);
+    refreshReferences(editor, catalog);
   }, [catalog, editor]);
 
   useLayoutEffect(() => {
     const current = observed.current;
 
     if (current !== undefined && sameComposerDocument(current, externalDocument)) return;
-    const view = editor.view;
-    const tr = restoreComposerDocument(editor.state.tr, externalDocument);
-    view.dispatch(view.hasFocus() ? tr.scrollIntoView() : tr);
-    view.updateState(clearComposerHistory(view.state));
+    restoreDocument(editor, externalDocument);
   }, [editor, externalDocument]);
 
   useLayoutEffect(() => {

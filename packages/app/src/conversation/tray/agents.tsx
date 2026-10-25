@@ -3,7 +3,7 @@ import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
-import { useId, useLayoutEffect, useMemo, useState } from "react";
+import { useId, useLayoutEffect, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { StatusDot } from "../../components/ui.tsx";
@@ -88,23 +88,17 @@ export function SubagentTray({
       Promise.all(sessionIds.map((sessionId) => connection().session(sessionId).stop())),
   });
 
-  const active = useMemo(
-    () =>
-      agents
-        .filter((agent) => subagentTrayState(agent) !== "inactive")
-        .toSorted((left, right) => {
-          const attention =
-            Number(subagentTrayState(left) !== "attention") -
-            Number(subagentTrayState(right) !== "attention");
+  const active = agents
+    .filter((agent) => subagentTrayState(agent) !== "inactive")
+    .toSorted((left, right) => {
+      const attention =
+        Number(subagentTrayState(left) !== "attention") -
+        Number(subagentTrayState(right) !== "attention");
 
-          return (
-            attention ||
-            right.lastActivityAt - left.lastActivityAt ||
-            left.id.localeCompare(right.id)
-          );
-        }),
-    [agents],
-  );
+      return (
+        attention || right.lastActivityAt - left.lastActivityAt || left.id.localeCompare(right.id)
+      );
+    });
 
   const running = active.filter((agent) => subagentTrayState(agent) === "working");
 

@@ -7,7 +7,7 @@ import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui
 import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { memo, useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import {
   customTool,
@@ -208,7 +208,7 @@ function fileUrl(path: string, cwd: string | undefined): string | undefined {
   return url.href;
 }
 
-export const ToolLineView = memo(function ToolLineView({
+export function ToolLineView({
   message,
   toolClass,
   cwd,
@@ -217,9 +217,11 @@ export const ToolLineView = memo(function ToolLineView({
   toolClass: LineToolClass;
   cwd: string | undefined;
 }): ReactElement {
+  const opener = useReferenceOpener();
+  const [expanded, setExpanded] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const status = toolStatus(message);
   const running = status.tense === "running";
-  const opener = useReferenceOpener();
   const { state } = message;
 
   const raw = running
@@ -228,10 +230,8 @@ export const ToolLineView = memo(function ToolLineView({
       : ""
     : toolOutput(state);
 
-  const excerpt = useMemo(() => outputExcerpt(raw.trimEnd()), [raw]);
+  const excerpt = outputExcerpt(raw.trimEnd());
   const copy = lineCopy(toolClass, cwd, status.tense);
-  const [expanded, setExpanded] = useState(false);
-  const [hovered, setHovered] = useState(false);
 
   const file =
     toolClass.kind === "read" && status.tone === "success"
@@ -333,4 +333,4 @@ export const ToolLineView = memo(function ToolLineView({
       </Collapsible.Panel>
     </Collapsible.Root>
   );
-});
+}

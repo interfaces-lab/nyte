@@ -2,6 +2,7 @@ import { openApprovals } from "@nyte-ai/plugin/approvals/schema";
 import type { ApprovalDecision, OpenApproval } from "@nyte-ai/plugin/approvals/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import { useMutation } from "@tanstack/react-query";
+// oxlint-disable-next-line no-restricted-imports -- the child-session subscription must keep its identity; the compiler drops its memo because the waiting list is read after useSyncExternalStore
 import { useMemo, useSyncExternalStore } from "react";
 import { useChildSessions } from "../queries.ts";
 import { connection, sessionWatch, useWatchSelect } from "../sdk.tsx";
@@ -61,11 +62,15 @@ export function useApprovalRequest(sessionId: SessionId): ApprovalRequest | unde
 
   if (own !== undefined) return { sessionId, approval: own, origin: undefined };
 
-  for (const [index, { child }] of waiting.entries()) {
+  for (const [index, waiter] of waiting.entries()) {
     const [first] = openApprovals(childViews[index]);
 
     if (first !== undefined)
-      return { sessionId: child.id, approval: first, origin: child.name ?? "a subagent" };
+      return {
+        sessionId: waiter.child.id,
+        approval: first,
+        origin: waiter.child.name ?? "a subagent",
+      };
   }
 
   return undefined;
