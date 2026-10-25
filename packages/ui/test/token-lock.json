@@ -582,7 +582,15 @@
       "--nyte-popup-material",
       "--nyte-scrollbar-thumb",
       "--nyte-shadow-md-outline",
-      "--nyte-sidebar-material"
+      "--nyte-sidebar-material",
+      "--nyte-surface-material",
+      "--nyte-window-wash"
+    ],
+    "ui/src/styles/roles.stylex.ts surfaceTint": [
+      "--nyte-bg-base",
+      "--nyte-bg-chrome",
+      "--nyte-bg-elevated",
+      "--nyte-bg-muted"
     ],
     "ui/src/styles/roles.stylex.ts tinted": [
       "--nyte-bg-control-selected",
@@ -878,7 +886,9 @@
       "layerPressed",
       "popupMaterial",
       "scrollbarThumb",
-      "sidebarMaterial"
+      "sidebarMaterial",
+      "surfaceMaterial",
+      "windowWash"
     ],
     "ui/src/styles/vars.stylex.ts shadow": [
       "shadowLg",

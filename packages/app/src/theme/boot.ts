@@ -33,14 +33,16 @@ function apply(): void {
   const root = document.documentElement;
   const uiFont = preferences.uiFont.get();
   const antialiased = preferences.fontSmoothing.get() === "antialiased";
-  const intensity = preferences.tintIntensity.get();
   applyDisplayMode(dark ? "dark" : "light");
   applyPointerCursors(preferences.pointerCursors.get());
   applyTransparency(preferences.reduceTransparency.get() || systemReducesTransparency());
   root.dataset.nyteCodeBlockWordWrap = preferences.codeBlockWordWrap.get() ? "true" : "false";
-  applyTint(intensity > 0);
+  applyTint();
   root.style.setProperty("--nyte-custom-hue", String(preferences.tintHue.get()));
-  root.style.setProperty("--nyte-custom-chroma-scale", String(intensity / 100));
+  root.style.setProperty(
+    "--nyte-custom-chroma-scale",
+    String(preferences.tintIntensity.get() / 100),
+  );
   nyte.host.setThemePreference(theme);
   root.style.setProperty("--nyte-font-family-sans", uiFontFamily(uiFont));
   root.style.setProperty("--nyte-font-family-mono", codeFontFamily(preferences.codeFont.get()));
@@ -64,3 +66,8 @@ colorSchemeQuery.addEventListener("change", () => {
 });
 
 subscribeSystemTransparency(() => withoutTransitions(apply));
+
+const platformPending = document.readyState === "loading";
+
+if (platformPending)
+  window.addEventListener("DOMContentLoaded", () => withoutTransitions(apply), { once: true });

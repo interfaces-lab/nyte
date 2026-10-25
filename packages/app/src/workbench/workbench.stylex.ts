@@ -11,14 +11,12 @@ export const workbenchStyles = create({
     minHeight: 0,
     height: "100%",
     flexShrink: 0,
-    backgroundColor: role.bgBase,
   },
   panel: {
     position: "relative",
     display: "flex",
     flexDirection: "column",
     minHeight: 0,
-    backgroundColor: role.bgBase,
   },
   toolbar: {
     display: "flex",
@@ -47,6 +45,7 @@ export const workbenchStyles = create({
     insetInlineEnd: 0,
     minWidth: 0,
     maxWidth: "100vw",
+    backgroundColor: role.bgBase,
     boxShadow: shadow.shadowWorkbench,
   },
   panelHidden: { display: "none" },

@@ -78,7 +78,6 @@ export const settingsStyles = create({
     minWidth: 0,
     minHeight: 0,
     overflowY: "auto",
-    backgroundColor: role.bgBase,
   },
   contentInner: {
     display: "flex",

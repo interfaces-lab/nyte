@@ -191,40 +191,54 @@ export async function run(): Promise<string> {
     for (const mode of ["light", "dark"] as const) {
       applyDisplayMode(mode);
 
-      for (const material of ["popupMaterial", "sidebarMaterial"] as const) {
+      for (const material of ["popupMaterial", "sidebarMaterial", "surfaceMaterial"] as const) {
         applyTransparency(true);
         const opaque = alpha(probe(host, role[material]));
         applyTransparency(false);
+        const withoutVibrancy = alpha(probe(host, role[material]));
+        html.dataset["platform"] = "darwin";
+        applyTransparency(false);
         const translucent = alpha(probe(host, role[material]));
+        delete html.dataset["platform"];
+        applyTransparency(false);
 
         if (opaque !== 1)
           failures.push(`${mode} ${material} with reduced transparency: alpha ${opaque}`);
 
-        if ((material === "popupMaterial" || mode === "dark") && translucent === 1)
-          failures.push(`${mode} ${material} without reduced transparency is opaque`);
+        if (withoutVibrancy !== 1)
+          failures.push(`${mode} ${material} outside the macOS shell: alpha ${withoutVibrancy}`);
+
+        if (translucent === 1)
+          failures.push(
+            `${mode} ${material} in the macOS shell without reduced transparency is opaque`,
+          );
       }
     }
 
     applyDisplayMode("light");
 
-    const strongAtHue = (parent: Element, hue: string) => {
+    const atHue = (parent: Element, value: string, hue: string) => {
       html.style.setProperty("--nyte-custom-hue", hue);
 
-      return probe(parent, role.bgInteractiveStrong);
+      return probe(parent, value);
     };
 
-    const scope = element("scope");
+    const moves = (parent: Element, value: string) =>
+      atHue(parent, value, "250") !== atHue(parent, value, "30");
 
-    if (strongAtHue(scope, "250") === strongAtHue(scope, "30"))
+    if (!moves(element("scope"), role.bgInteractiveStrong))
       failures.push("--nyte-custom-hue does not reach a tinted role inside a custom scope");
-    applyTint(true);
+    applyTint();
 
-    if (strongAtHue(host, "250") === strongAtHue(host, "30"))
-      failures.push("applyTint(true): --nyte-custom-hue does not reach a tinted role");
-    applyTint(false);
+    if (!moves(host, role.bgChrome))
+      failures.push("applyTint(): --nyte-custom-hue does not reach a background");
 
-    if (strongAtHue(host, "250") !== strongAtHue(host, "30"))
-      failures.push("applyTint(false): --nyte-custom-hue still moves an untinted role");
+    if (moves(host, role.contentPrimary))
+      failures.push("applyTint(): --nyte-custom-hue moves text");
+    html.style.setProperty("--nyte-custom-chroma-scale", "0");
+
+    if (moves(host, role.bgChrome))
+      failures.push("applyTint() at intensity 0: --nyte-custom-hue still moves a background");
     html.style.removeProperty("--nyte-custom-hue");
 
     const text = element("text");

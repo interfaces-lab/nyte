@@ -261,9 +261,8 @@ function apply(context: Partial<CanvasHostContext>): void {
 
   for (const [name, value] of Object.entries(context.styles.variables))
     document.documentElement.style.setProperty(name, value);
-  const chroma = context.styles.variables["--nyte-custom-chroma-scale"];
 
-  if (chroma !== undefined) applyTint(Number(chroma) > 0);
+  if (context.styles.variables["--nyte-custom-chroma-scale"] !== undefined) applyTint();
 }
 
 function receive(data: unknown): void {

@@ -27,8 +27,12 @@ export function applyPointerCursors(enabled: boolean): void {
   toggle(arrow, !enabled);
 }
 
+export function windowHasVibrancy(): boolean {
+  return document.documentElement.dataset["platform"] === "darwin";
+}
+
 export function applyTransparency(reduced: boolean): void {
-  toggle(opaque, reduced);
+  toggle(opaque, reduced || !windowHasVibrancy());
 }
 
 export function applyFocusModality(modality: "keyboard" | "pointer"): void {
@@ -38,7 +42,9 @@ export function applyFocusModality(modality: "keyboard" | "pointer"): void {
 let reduceTransparencyQuery: MediaQueryList | undefined;
 
 function transparencyQuery(): MediaQueryList {
-  return (reduceTransparencyQuery ??= window.matchMedia("(prefers-reduced-transparency: reduce)"));
+  return (reduceTransparencyQuery ??= window.matchMedia(
+    "(prefers-reduced-transparency: reduce), (prefers-contrast: more)",
+  ));
 }
 
 export function systemReducesTransparency(): boolean {

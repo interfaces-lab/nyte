@@ -1,6 +1,6 @@
 import { create, createTheme, props } from "@stylexjs/stylex";
 import type { CompiledStyles, StyleXArray } from "@stylexjs/stylex";
-import { surfaceTheme } from "./surface-theme.ts";
+import { surfaceTint } from "./styles/roles.stylex.ts";
 import { displayMode } from "./styles/tokens.stylex.ts";
 
 const scheme = create({
@@ -24,6 +24,6 @@ export function applyDisplayMode(mode: "light" | "dark"): void {
   document.documentElement.dataset["displayMode"] = mode;
 }
 
-export function applyTint(enabled: boolean): void {
-  toggle(surfaceTheme.custom, enabled);
+export function applyTint(): void {
+  toggle(surfaceTint, true);
 }
