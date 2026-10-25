@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import { createModels } from "@nyte-ai/ai/models";
 import { credentialStore, defaultSecrets, sqliteStore } from "@nyte-ai/host";
-import { fakeModels } from "@nyte-ai/bench";
+import { fakeModels, titleReply } from "@nyte-ai/bench";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import type { Connection } from "@nyte-ai/sdk";
 import type { HostEvent } from "@nyte-ai/app/bridge.ts";
@@ -74,7 +74,11 @@ test("keep awake holds while a head is live and lets go when its run ends", asyn
   const connection = await connectLocal(made);
   assert.deepEqual(await connection.settings.apply("desktop.keepAwake", true), { kind: "applied" });
   const finish = Promise.withResolvers<void>();
-  made.fake.reply({ content: [{ type: "text", text: "working" }], until: finish.promise });
+  const route = (request: Parameters<typeof titleReply>[0]) =>
+    titleReply(request) === null
+      ? { content: [{ type: "text" as const, text: "working" }], until: finish.promise }
+      : { content: [{ type: "text" as const, text: "Work" }] };
+  made.fake.reply(route, route);
 
   const { receipt } = await connection.sessions.start({ content: "Work" });
   await vi.waitFor(() => assert.deepEqual(awake, [true]));
