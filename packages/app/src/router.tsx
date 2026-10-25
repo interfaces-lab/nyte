@@ -60,8 +60,6 @@ const styles = create({
     width: "100%",
     height: "100%",
     backgroundColor: role.windowWash,
-  },
-  shellChrome: {
     backgroundImage: `linear-gradient(${role.sidebarMaterial}, ${role.sidebarMaterial})`,
   },
   stage: {
@@ -82,7 +80,7 @@ const styles = create({
     marginInlineEnd: shell.cardInset,
     marginBlockEnd: shell.cardInset,
     borderRadius: radius.card,
-    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}, 0 0 0 100vmax ${role.sidebarMaterial}`,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
   cardSidebarHidden: { marginInlineStart: shell.cardInset },
   loadError: {
@@ -212,7 +210,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   );
 
   return (
-    <div data-nyte-shell {...props(styles.shell, !strip && styles.shellChrome)}>
+    <div data-nyte-shell {...props(styles.shell)}>
       <Titlebar />
       <div {...props(styles.stage)}>
         <SessionDndProvider>
