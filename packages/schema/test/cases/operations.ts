@@ -154,6 +154,11 @@ export const operations = {
     { id: workspace },
     { id: 1 },
   ),
+  "workspaces.cleanWorktrees input": operation(
+    OPERATIONS["workspaces.cleanWorktrees"].input,
+    {},
+    1,
+  ),
   "sessions.watch input": operation(
     OPERATIONS["sessions.watch"].input,
     { parents: { kind: "roots" }, limit: 50 },

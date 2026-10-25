@@ -402,7 +402,7 @@ describe("environment tools", () => {
     });
   });
 
-  it("moves a running shell command to the background on its part's action, then reads and stops it with the job tool", async () => {
+  it("moves a running shell command to the background on its part's action, then reads and stops it with the job tool, which reports nothing more", async () => {
     const { kernel, host, workspace, session, provider } = await sessionFiles({
       plugins: [environmentPlugin],
     });
@@ -436,16 +436,13 @@ describe("environment tools", () => {
     expect(readText(await call("job", { id: job.id, action: "stop" }))).toBe(
       `Job ${job.id} ended (terminated) with code none:\nwatching`,
     );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
     expect(
-      await until(async () =>
-        (await session.view()).messages.find(
-          (message) => message.kind === "user" && message.source.kind === "job",
-        ),
+      (await session.view()).messages.filter(
+        (message) => message.kind === "user" && message.source.kind === "job",
       ),
-    ).toMatchObject({
-      content: "Job pnpm test (pnpm test) ended (terminated) with code none.\n\nwatching",
-      source: { kind: "job", job: job.id },
-    });
+    ).toEqual([]);
   });
 
   it("names the workspace root in the cwd prompt section", async () => {
