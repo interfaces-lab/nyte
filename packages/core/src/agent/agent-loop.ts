@@ -61,6 +61,8 @@ export interface LoopInput {
 export interface LoopConfig<P extends PreparedRequest = PreparedRequest> {
   readonly attempt: number;
   readonly retry: RetryPolicy;
+  /** Resolves once a request may start: at once, or when a pause ends or `signal` aborts. */
+  ready(signal: AbortSignal): Promise<void>;
   prepareRequest(request: LoopRequest, signal: AbortSignal): Promise<Prepared<P>>;
   stream(prepared: P, signal: AbortSignal): Promise<LoopResponse>;
   readonly tools: {
@@ -143,6 +145,7 @@ type Outcome =
       readonly usage: Usage;
     }
   | { readonly kind: "unfinished" }
+  | { readonly kind: "interrupted"; readonly usage: Usage }
   | { readonly kind: "stopped"; readonly usage: Usage };
 
 const STOPPED = { reason: "stopped", response: null } as const;
@@ -153,6 +156,12 @@ const CUT_OFF =
 const UNFINISHED: Failure = {
   class: "provider",
   message: "The response ended without a result.",
+};
+
+/** A stream that ended aborted without the loop's signal: a pause, not a stop or a provider failure, so retrying it spends no retry. */
+export const INTERRUPTED: Failure = {
+  class: "runner",
+  message: "The response was interrupted before it finished.",
 };
 
 export function agentLoop<P extends PreparedRequest>(
@@ -190,6 +199,7 @@ async function* run<P extends PreparedRequest>(
   for (;;) {
     const next = overflow === null ? attempt : attempt + 1;
     yield { type: "turn_start", attempt: next };
+    await config.ready(signal);
 
     if (signal.aborted)
       return yield* end({ reason: "stopped", response: overflow?.response ?? null });
@@ -219,6 +229,16 @@ async function* run<P extends PreparedRequest>(
         return yield* end({ reason: "stopped", response: { usage: outcome.usage, prepared } });
       case "unfinished":
         return yield* end({ reason: "failed", failure: UNFINISHED, response: null });
+      case "interrupted":
+        attempt += 1;
+        yield {
+          type: "turn_retry",
+          attempt,
+          until: Date.now(),
+          failure: INTERRUPTED,
+          response: { usage: outcome.usage, prepared },
+        };
+        continue;
       case "failed": {
         const { failure } = outcome;
         const response = { usage: outcome.usage, prepared };
@@ -320,7 +340,8 @@ async function* respond<P extends PreparedRequest>(
 
   const usage = prepared.usage(final);
 
-  if (final.stopReason === "aborted") return { kind: "stopped", usage };
+  if (final.stopReason === "aborted")
+    return signal.aborted ? { kind: "stopped", usage } : { kind: "interrupted", usage };
 
   if (final.stopReason === "error")
     return overflowsContext(final)

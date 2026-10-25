@@ -313,6 +313,10 @@ export interface Host extends Connection {
       readonly head: HeadName;
     }): Promise<AdvanceReport>;
     repair(input: { readonly cursor?: Cursor; readonly limit: number }): Promise<RepairPage>;
+    /** Ends this host's model streams in flight and holds back new requests until `resume`, as while the machine sleeps; runs stay live and continue on resume. Idempotent. */
+    pause(): void;
+    /** Lets paused runs request again. Idempotent. */
+    resume(): void;
   };
 }
 

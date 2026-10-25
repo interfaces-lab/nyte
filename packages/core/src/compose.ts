@@ -23,6 +23,7 @@ import { rerunAction } from "./api/part.ts";
 import { activationSession, sessionHandle } from "./api/session.ts";
 import { delegationPlugin } from "./builtins/delegation.ts";
 import { environmentPlugin } from "./builtins/environment.ts";
+import { interruptionsPlugin } from "./builtins/interruptions.ts";
 import { mcpPlugin } from "./builtins/mcp.ts";
 import { systemPromptPlugin } from "./builtins/system-prompt.ts";
 import type { SessionBus } from "./contract/fold.ts";
@@ -127,6 +128,7 @@ const BUILTINS: readonly Plugin<"core">[] = [
   environmentPlugin,
   resourcesPlugin,
   delegationPlugin,
+  interruptionsPlugin,
 ];
 
 export async function composeHost(options: ComposeOptions): Promise<ServedHost> {

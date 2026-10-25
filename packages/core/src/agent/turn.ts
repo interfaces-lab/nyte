@@ -6,7 +6,6 @@ import type {
   Failure,
   HeadName,
   Json,
-  PartId,
   Placement,
   RefUpdate,
   RunEnd,
@@ -17,6 +16,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { Models } from "@nyte-ai/ai";
 import type { AssistantMessage, AssistantMessageEvent } from "@nyte-ai/schema/model";
+import { CONTINUE_INTERRUPTED } from "../builtins/interruptions.ts";
 import { LOCAL, PARTICIPANT_AUTHORITY } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type {
@@ -26,8 +26,10 @@ import type {
   PluginRuntime,
   TurnDriver,
 } from "../contract/kernel.ts";
-import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
+import { decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord, RunRecord } from "../contract/records.ts";
+import { progressMark } from "../drive/interruptions.ts";
+import { unpaused } from "../drive/pause.ts";
 import { intendedCall } from "../engine/durable.ts";
 import { stopRequested } from "../engine/fence.ts";
 import { awaitMcpServers } from "../env/mcp.ts";
@@ -35,12 +37,10 @@ import { publishPatch } from "../engine/runs.ts";
 import { modelInfo, withLimits } from "../extend/models.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
-import { failedParts, settling } from "../store/parts.ts";
-import { callRef, partRef, runRef } from "../store/refs.ts";
-import { attempt, load, put, readRefExpectation, readTip, STALE } from "../store/session.ts";
-import type { Found } from "../store/session.ts";
+import { callRef, kvRef, partRef, runRef } from "../store/refs.ts";
+import { attempt, load, put, readKv, STALE } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { agentLoop } from "./agent-loop.ts";
+import { agentLoop, INTERRUPTED } from "./agent-loop.ts";
 import type {
   FailedResponse,
   LoopConfig,
@@ -50,29 +50,14 @@ import type {
   PreparedRequest,
 } from "./agent-loop.ts";
 import { compact, failLeftoverCompactions, readProviderCheckpoint } from "./compaction.ts";
+import { ABORTED, adopt, keepOpen, savedOpen, settledParts } from "./open-parts.ts";
+import type { OpenPart } from "./open-parts.ts";
 import { calculateUsage, charge, providerContext, requestEvent, RETRY_POLICY } from "./request.ts";
 import { executeCall } from "./tool-runner.ts";
 import type { ToolIntent } from "./tool-runner.ts";
 import { estimateTranscriptTokens, requestBody } from "./transcript.ts";
 import { followedTrace, startSpan, traced } from "../util/trace.ts";
 import { ZERO_USAGE } from "../util/usage.ts";
-
-type ThoughtSignature = {
-  readonly length: number;
-  readonly signature: string | null;
-  readonly redacted: boolean;
-};
-
-interface OpenPart {
-  readonly part: PartId;
-  readonly kind: "text" | "thinking";
-  markdown: string;
-  /** The version views show: the created version plus one per patch published, which the settled part's version must pass. */
-  version: number;
-  merged: number;
-  textSignature: string | null;
-  readonly thoughts: ThoughtSignature[];
-}
 
 interface AttemptState {
   readonly run: RunView;
@@ -121,13 +106,6 @@ const CALLER: ConnectionContext = {
   authority: PARTICIPANT_AUTHORITY,
   credential: { kind: "token", token: "" },
   origin: null,
-};
-
-const ABORTED: Failure = { class: "aborted", message: "The run was stopped." };
-
-const ORPHANED: Failure = {
-  class: "runner",
-  message: "The host stopped while this response streamed.",
 };
 
 export function createTurnDriver(kernel: Kernel, models: Models): TurnDriver {
@@ -184,6 +162,7 @@ async function turn(
   const config: LoopConfig<TurnRequest> = {
     attempt: state.attempt,
     retry: RETRY_POLICY,
+    ready: (waiting) => unpaused(kernel, waiting),
 
     async prepareRequest(asked) {
       const runtime = kernel.plugins.runtime(session);
@@ -296,7 +275,7 @@ async function turn(
       });
 
       const events = models.streamSimple(prepared.model, prepared.context, {
-        signal,
+        signal: AbortSignal.any([signal, kernel.executionState.streams.signal]),
         reasoning: thinkingLevel === "off" ? undefined : thinkingLevel,
         samplingParams: { ...prepared.request.options.sampling },
         headers: { ...prepared.request.options.headers },
@@ -425,14 +404,24 @@ async function turn(
     case "stopped": {
       const stopping = await stopRequested(kernel.store, session, run);
 
-      if (stopping || end.response !== null)
-        await failOpen(context, run, stopping ? state.opened : [], ABORTED, end.response);
+      await closeOpen(
+        context,
+        run,
+        () =>
+          stopping ? keepOpen(context, state.opened, ABORTED) : savedOpen(context, state.opened),
+        end.response,
+      );
 
       return STOPPED;
     }
 
     case "failed":
-      await failOpen(context, run, state.opened, end.failure, end.response);
+      await closeOpen(
+        context,
+        run,
+        () => keepOpen(context, state.opened, end.failure),
+        end.response,
+      );
 
       return { kind: "failed", failure: end.failure };
   }
@@ -578,12 +567,11 @@ async function resumed(context: Turn, run: RunView): Promise<AttemptState> {
   await failLeftoverCompactions(kernel, session, head, run.id);
 
   const orphans = await withFold(kernel, session, (state) =>
-    [...state.parts.values()].flatMap((part) =>
-      part.run === run.id &&
-      part.status.kind === "live" &&
-      (part.partKind === "text" || part.partKind === "thinking")
-        ? [part.id]
-        : [],
+    [...state.parts.values()].filter(
+      (part) =>
+        part.run === run.id &&
+        part.status.kind === "live" &&
+        (part.partKind === "text" || part.partKind === "thinking"),
     ),
   );
 
@@ -592,7 +580,14 @@ async function resumed(context: Turn, run: RunView): Promise<AttemptState> {
   const state =
     orphans.length === 0
       ? current
-      : await retry(context, current, ORPHANED, Date.now(), null, orphans);
+      : await retry(
+          context,
+          current,
+          INTERRUPTED,
+          Date.now(),
+          null,
+          await Promise.all(orphans.map(adopt)),
+        );
 
   const prefix = `${run.id}:a${state.attempt}:`;
 
@@ -669,56 +664,6 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   return opened;
 }
 
-/** The writes that settle a response's open parts on the head, each in its own commit; a part the stop fence already failed keeps its text. */
-async function settledParts(
-  context: Turn,
-  opened: readonly OpenPart[],
-): Promise<readonly RefUpdate[]> {
-  const { kernel, session, head } = context;
-
-  if (opened.length === 0) return [];
-
-  const [found, tip] = await Promise.all([
-    Promise.all(opened.map(async (entry) => ({ entry, found: await readPart(context, entry) }))),
-    readTip(kernel.store, session, head),
-  ]);
-
-  const at = Date.now();
-  const updates: RefUpdate[] = [];
-  let parent = tip.id;
-
-  for (const { entry, found: part } of found) {
-    if (part === null || part.record.status.kind === "settled") continue;
-
-    if (part.record.status.kind !== "live") {
-      updates.push(...(await keep(context, entry, part, ABORTED)));
-
-      continue;
-    }
-
-    const state = buildPartState(entry);
-    const version = Math.max(part.record.version, entry.version) + 1;
-
-    const landed = await settling(kernel.store, {
-      session,
-      head,
-      run: part.record.run,
-      parent,
-      expect: parent === tip.id ? readRefExpectation(tip.ref) : undefined,
-      record: { ...part.record, state, version },
-      revision: part.ref.revision,
-      logged: [{ head, kind: "part", part: entry.part, change: "updated", state, version }],
-      body: { kind: "part", part: entry.part },
-      at,
-    });
-
-    updates.push(...landed.updates);
-    parent = landed.landed;
-  }
-
-  return updates;
-}
-
 /** Response-scoped call ids: the provider's id, made unique within the response, under the run and the response's request count. */
 function assignCallIds(
   run: RunId,
@@ -741,88 +686,20 @@ function assignCallIds(
   );
 }
 
-function buildPartState(entry: OpenPart): Json {
-  if (entry.kind === "text") return { markdown: entry.markdown, signature: entry.textSignature };
-
-  return {
-    markdown: entry.markdown,
-    merged: entry.merged,
-    signature: entry.thoughts.some((thought) => thought.signature !== null || thought.redacted)
-      ? entry.thoughts.map((thought) => ({ ...thought }))
-      : null,
-  };
-}
-
-async function readPart(context: Turn, entry: OpenPart): Promise<Found<PartRecord> | null> {
-  const { kernel, session } = context;
-
-  return load(
-    kernel.store,
-    await kernel.store.refs.get(partRef(session, entry.part)),
-    decodePartRecord,
-  );
-}
-
-async function keep(
-  context: Turn,
-  entry: OpenPart,
-  found: Found<PartRecord>,
-  failure: Failure,
-): Promise<readonly RefUpdate[]> {
-  const { kernel, session, head } = context;
-  const { record } = found;
-  const name = partRef(session, entry.part);
-  const part = entry.part;
-  const state = buildPartState(entry);
-  const version = Math.max(record.version, entry.version) + 1;
-  const live = record.status.kind === "live" || record.status.kind === "waiting";
-  const status = live ? { kind: "failed", run: record.run, failure } : record.status;
-  const target = await put(kernel.store, "part", { ...record, state, version, status });
-
-  return [
-    {
-      name,
-      target,
-      expect: found.ref.revision,
-      events: [{ head, kind: "part", part, change: "updated", state, version }],
-    },
-    ...(live
-      ? [
-          {
-            name,
-            target,
-            events: [{ head, kind: "part", part, change: "failed", failure }],
-          } as const,
-        ]
-      : []),
-  ];
-}
-
-async function keepOpen(
-  context: Turn,
-  opened: readonly OpenPart[],
-  failure: Failure,
-): Promise<readonly RefUpdate[]> {
-  const kept = await Promise.all(
-    opened.map(async (entry) => {
-      const found = await readPart(context, entry);
-
-      return found === null || found.record.status.kind === "settled"
-        ? []
-        : keep(context, entry, found, failure);
-    }),
-  );
-
-  return kept.flat();
-}
-
+/**
+ * Moves the run to its next attempt. The parts the cut-off response left open, with the ones a
+ * previous driver left live (`adopted`), fail; with `continueInterrupted` on, its text that
+ * already streamed settles instead, and the transcript asks the model to continue from it.
+ * Thinking always fails: a thought cut off has no signature to replay it with. The text kept is
+ * no progress toward the restart cap, so the run's interruption mark moves past it.
+ */
 async function retry(
   context: Turn,
   state: AttemptState,
   failure: Failure,
   until: number,
   charged: FailedResponse<TurnRequest> | null,
-  extra: readonly PartId[] = [],
+  adopted: readonly OpenPart[] = [],
 ): Promise<AttemptState> {
   const { kernel, session, head } = context;
 
@@ -830,6 +707,16 @@ async function retry(
   const next = state.attempt + 1;
   const reason = failure.message;
   const run = state.run.id;
+  const cut = [...state.opened, ...adopted];
+
+  const continuing =
+    failure.class !== "context_window" &&
+    (await readKv(kernel.store, kvRef("host", "settings", CONTINUE_INTERRUPTED))) !== false;
+
+  const kept = continuing
+    ? cut.filter((entry) => entry.kind === "text" && entry.markdown.trim() !== "")
+    : [];
+
   let retried: RunView | null = null;
 
   await changeRun(context, run, async (record) => {
@@ -853,28 +740,45 @@ async function retry(
         ...request,
       ],
       updates: [
-        ...(await keepOpen(context, state.opened, failure)),
-        ...(await failedParts(kernel.store, session, head, extra, failure)),
+        ...(await settledParts(context, kept)),
+        ...(await keepOpen(
+          context,
+          cut.filter((entry) => !kept.includes(entry)),
+          failure,
+        )),
       ],
     };
   });
 
+  if (retried !== null && kept.length > 0)
+    await changeRun(context, run, async (record) =>
+      record.interrupted === undefined
+        ? null
+        : {
+            record: {
+              ...record,
+              interrupted: {
+                ...record.interrupted,
+                mark: await progressMark(kernel.store, session, head, run),
+              },
+            },
+            events: [],
+          },
+    );
+
   return retried === null ? state : fresh(retried, 0);
 }
 
-async function failOpen(
+async function closeOpen(
   context: Turn,
   run: RunId,
-  opened: readonly OpenPart[],
-  failure: Failure,
+  updates: () => Promise<readonly RefUpdate[]>,
   response: FailedResponse<TurnRequest> | null,
 ): Promise<void> {
   const { kernel, head } = context;
 
-  const updates = () => keepOpen(context, opened, failure);
-
   if (response === null)
-    return attempt(`Failing the parts of run ${run}`, async () => {
+    return attempt(`Closing the parts of run ${run}`, async () => {
       const failed = await updates();
 
       return failed.length === 0 || (await commit(kernel, failed)).kind === "set"

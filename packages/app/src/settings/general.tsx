@@ -165,6 +165,11 @@ export function GeneralSettings(): ReactElement {
           title="Keep awake while working"
           description="Stop the computer from sleeping while a chat is working. The display can still turn off"
         />
+        <SwitchRow
+          setting={hostSetting("pauseOnSleep")}
+          title="Pause agents while asleep"
+          description="Stop model requests while the computer sleeps. Chats continue when it wakes"
+        />
       </SettingsSection>
       {updates !== undefined && <UpdateChannelSettings updates={updates} />}
     </>

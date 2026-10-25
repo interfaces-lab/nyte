@@ -163,6 +163,7 @@ function scripted(
   const config: LoopConfig = {
     attempt: 1,
     retry: { enabled: true, maxRetries: 2, baseDelayMs: 1, maxAgentDelayMs: 5 },
+    ready: async () => undefined,
     async prepareRequest(request) {
       seen.requests.push(request);
 

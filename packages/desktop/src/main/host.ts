@@ -518,8 +518,22 @@ export class DesktopHost {
     this.#remoteChanged();
   }
 
+  /** The machine is going to sleep: with `pauseOnSleep` on, this host's runs stop requesting until `resume`. */
+  suspend(): void {
+    if (!this.#settings.pauseOnSleep) return;
+    void this.#opened.then(
+      (opened) => opened.host.execution.pause(),
+      () => undefined,
+    );
+  }
+
+  /** The machine woke. Resuming is a no-op unless a suspend paused the runs, so it ignores `pauseOnSleep`, which may have changed while asleep. */
   resume(): void {
     this.#connect.resume();
+    void this.#opened.then(
+      (opened) => opened.host.execution.resume(),
+      () => undefined,
+    );
   }
 
   accountChanged(): void {

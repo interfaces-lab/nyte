@@ -151,6 +151,10 @@ function open(options: HostProcessOptions): void {
           host.releaseWindow(data.window);
 
           return;
+        case "suspend":
+          host.suspend();
+
+          return;
         case "resume":
           host.resume();
 

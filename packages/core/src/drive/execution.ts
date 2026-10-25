@@ -74,6 +74,8 @@ export function createExecutionState(): ExecutionState {
     starting: new Map(),
     timer: null,
     closing: new AbortController(),
+    streams: new AbortController(),
+    paused: null,
   };
 }
 
@@ -544,7 +546,7 @@ async function claimNow(
     ...(holder?.kind === "dead"
       ? [{ name: holder.name, target: null, expect: holder.expect }]
       : []),
-    ...(foreign ? await interruption(kernel, session, head) : []),
+    ...(mine === undefined ? await interruption(kernel, session, head, foreign) : []),
   ]);
 
   dev("execution", "claim", { session, head, outcome: outcome.kind });
