@@ -114,7 +114,7 @@ async function checkArgumentCompletion(root: Root, client: QueryClient): Promise
           onDocumentChange={(next) => {
             draft = next;
           }}
-          onSubmit={() => true}
+          onSubmit={() => undefined}
           placeholder="Message"
           inputRef={(next) => {
             editorRef.current = next;
@@ -202,7 +202,7 @@ export async function run(): Promise<string> {
                 onDocumentChange={(next) => {
                   draft = next;
                 }}
-                onSubmit={() => true}
+                onSubmit={() => undefined}
                 placeholder="Message"
                 inputRef={(next) => {
                   editorRef.current = next;

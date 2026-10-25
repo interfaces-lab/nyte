@@ -4,16 +4,16 @@ import type {
   Configuration,
   ConfigurationPatch,
   Decision,
-  Delivery,
   HeadName,
   MessageId,
   MessageSource,
   PrincipalId,
   ReceiptId,
   RefUpdate,
+  ReviseOptions,
+  ReviseOutcome,
   RunId,
   RunView,
-  Schedule,
   SendOptions,
   SessionId,
   Submission,
@@ -46,9 +46,11 @@ import {
   toCommitObjectId,
   walkCommitPath,
 } from "../store/session.ts";
-import type { Inbox, MoveFailure, Tip } from "../store/session.ts";
+import type { MoveFailure, Tip } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
+import { admitted, buildMessage, pendingReceipt } from "./admission-writes.ts";
+import type { MessageRecord } from "./admission-writes.ts";
 import { holdSummary, summarizedMove } from "./branch-summary.ts";
 import { collectContributions, refusalError } from "./contributions.ts";
 import { fence, finishFence } from "./fence.ts";
@@ -56,7 +58,6 @@ import { freezeMentions } from "./mentions.ts";
 import { known, reserve, sendReceipt, settleReceipt } from "./receipts.ts";
 import { chooseSendSchedule, landed } from "./send-schedule.ts";
 import { followTrace, takeReceiptTrace, traced } from "../util/trace.ts";
-import type { StoreConnection } from "../contract/store.ts";
 
 interface Sending {
   readonly kernel: Kernel;
@@ -77,17 +78,19 @@ type SendInput = {
   readonly options?: SendOptions;
 };
 
-interface MessageRecord {
-  readonly id: MessageId;
-  readonly at: number;
+type ReviseInput = {
+  readonly session: SessionId;
+  readonly head: HeadName;
+  readonly context: ConnectionContext;
+  readonly message: MessageId;
   readonly content: UserContent;
-  readonly source: MessageSource;
-  readonly delivery: Delivery;
-  readonly schedule: Schedule;
-  readonly covered: boolean;
-  readonly configuration: Configuration;
-  readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null;
-  readonly position: number;
+  readonly options?: ReviseOptions;
+};
+
+interface Gated {
+  readonly previous: FoldInput | undefined;
+  readonly submission: Submission;
+  readonly configured: () => Promise<Configuration>;
 }
 
 const USER: MessageSource = { kind: "user" };
@@ -129,12 +132,7 @@ export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendRec
   const target = sending.options.replace;
 
   if (target === undefined) return admit(sending);
-
-  if (
-    (await withFold(kernel, input.session, (state) => state.inputs.get(target)))?.schedule.kind ===
-    "deciding"
-  )
-    throw new SdkError("invalid", `Message ${target} is still being decided.`);
+  await refuseDeciding(kernel, input.session, target);
 
   const keyed = {
     id: sending.options.id ?? asId<"receipt">(crypto.randomUUID()),
@@ -146,9 +144,65 @@ export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendRec
   if (replayed !== null) return replayed;
   const inbox = await readInbox(kernel.store, input.session, input.head);
 
-  return inbox.messages.includes(target)
-    ? revise(sending, target, keyed)
-    : edit(sending, target, keyed);
+  if (!inbox.messages.includes(target)) return edit(sending, target, keyed);
+  const gated = await gateRevision(sending, target);
+
+  return (
+    (await revise(sending, target, gated, keyed)) ??
+    editGated(sending, target, { ...keyed, ...gated })
+  );
+}
+
+export async function reviseQueued(
+  kernel: Kernel,
+  input: ReviseInput,
+  activation = false,
+): Promise<ReviseOutcome> {
+  const { session, head, message } = input;
+
+  if (!activation) await kernel.plugins.runtime(session).ready;
+  await refuseDeciding(kernel, session, message);
+
+  const sending = {
+    kernel,
+    session,
+    head,
+    context: input.context,
+    content: input.content,
+    options: input.options ?? {},
+    stop: null,
+  };
+
+  const queued = (await readInbox(kernel.store, session, head)).messages.includes(message);
+
+  if (
+    queued &&
+    (await revise(sending, message, await gateRevision(sending, message), null)) !== null
+  )
+    return { kind: "revised" };
+
+  return readDeparture(kernel, session, message);
+}
+
+export async function readDeparture(
+  kernel: Kernel,
+  session: SessionId,
+  message: MessageId,
+): Promise<{ readonly kind: "sent" } | { readonly kind: "missing" }> {
+  const landed = await withFold(
+    kernel,
+    session,
+    (state) => state.inputs.get(message)?.landed ?? null,
+  );
+
+  return landed === null ? { kind: "missing" } : { kind: "sent" };
+}
+
+async function refuseDeciding(kernel: Kernel, session: SessionId, message: MessageId) {
+  const input = await withFold(kernel, session, (state) => state.inputs.get(message));
+
+  if (input?.schedule.kind === "deciding")
+    throw new SdkError("invalid", `Message ${message} is still being decided.`);
 }
 
 export function selectRunStart(
@@ -189,7 +243,10 @@ export async function landing(
       readInbox(kernel.store, session, head),
     ]);
 
-    const due = inbox.messages.filter((message) => ids.includes(message));
+    const held = inbox.hold?.message;
+
+    if (start !== null && held !== undefined && ids.includes(held)) return [];
+    const due = inbox.messages.filter((message) => ids.includes(message) && message !== held);
 
     if (due.length === 0) return [];
 
@@ -336,9 +393,8 @@ async function admit(sending: Sending): Promise<SendReceipt> {
   });
 }
 
-async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promise<SendReceipt> {
-  const { kernel, session, head, options } = sending;
-  const { id, digest } = keyed;
+async function gateRevision(sending: Sending, target: MessageId) {
+  const { kernel, session, options } = sending;
   const previous = await withFold(kernel, session, (state) => state.inputs.get(target));
 
   const submission = await gate(sending, target, {
@@ -349,14 +405,22 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
     replace: target,
   });
 
-  const configured = async (): Promise<Configuration> =>
-    submission.configuration === null && previous !== undefined
-      ? previous.configuration
-      : resolve(sending, submission.configuration);
+  return {
+    previous,
+    submission,
+    configured: async () =>
+      submission.configuration === null && previous !== undefined
+        ? previous.configuration
+        : resolve(sending, submission.configuration),
+  };
+}
 
+async function revise(sending: Sending, target: MessageId, gated: Gated, keyed: Keyed | null) {
+  const { kernel, session, head, options } = sending;
+  const { previous, submission, configured } = gated;
   const covered = await coveredHere(kernel, session);
 
-  const revised = await attempt(`Revising ${target}`, async () => {
+  return attempt(`Revising ${target}`, async () => {
     const [inbox, run, configuration] = await Promise.all([
       readInbox(kernel.store, session, head),
       liveRun(kernel.store, session, head),
@@ -379,25 +443,20 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
       position,
     });
 
+    const update = await admitted(
+      kernel,
+      session,
+      head,
+      inbox,
+      [...rest.slice(0, position), target, ...rest.slice(position)],
+      message,
+    );
+
     const outcome = await commit(kernel, [
-      await admitted(
-        kernel,
-        session,
-        head,
-        inbox,
-        [...rest.slice(0, position), target, ...rest.slice(position)],
-        message,
-      ),
       {
-        name: receiptRef(session, id),
-        target: await put(kernel.store, "receipt", {
-          id: asId<"receipt">(target),
-          kind: "send",
-          digest,
-          outcome: null,
-        }),
-        expect: "absent",
+        ...update,
         events: [
+          ...(update.events ?? []),
           {
             head,
             kind: "input",
@@ -408,10 +467,24 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
           },
         ],
       },
+      ...(keyed === null
+        ? []
+        : [
+            {
+              name: receiptRef(session, keyed.id),
+              target: await put(kernel.store, "receipt", {
+                id: asId<"receipt">(target),
+                kind: "send",
+                digest: keyed.digest,
+                outcome: null,
+              }),
+              expect: "absent" as const,
+            },
+          ]),
     ]);
 
     if (outcome.kind === "stale")
-      return outcome.name === receiptRef(session, id)
+      return keyed !== null && outcome.name === receiptRef(session, keyed.id)
         ? ((await readReplayReceipt(kernel, session, keyed)) ?? STALE)
         : STALE;
 
@@ -420,8 +493,6 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
 
     return sendReceipt(kernel, session, asId<"receipt">(target));
   });
-
-  return revised ?? editGated(sending, target, { id, digest, submission, configured });
 }
 
 async function edit(sending: Sending, target: MessageId, keyed: Keyed): Promise<SendReceipt> {
@@ -724,21 +795,6 @@ export async function readmitDeciding(
   });
 }
 
-function buildMessage(
-  id: MessageId,
-  submission: Submission,
-  placed: Omit<MessageRecord, "id" | "at" | "content" | "source" | "delivery">,
-): MessageRecord {
-  return {
-    id,
-    at: Date.now(),
-    content: submission.content,
-    source: submission.source,
-    delivery: submission.delivery,
-    ...placed,
-  };
-}
-
 /** Tells this process an admitted message is in: a covered head wakes, and a wait on the user's input hears it. */
 async function announce(
   kernel: Kernel,
@@ -891,58 +947,6 @@ async function resolve(
   if (result.kind === "exact") return result;
 
   throw refusalError(result);
-}
-
-async function admitted(
-  kernel: Kernel,
-  session: SessionId,
-  head: HeadName,
-  inbox: Inbox,
-  messages: readonly MessageId[],
-  message: MessageRecord,
-): Promise<RefUpdate> {
-  const input = message.source.kind === "user" && message.delivery !== "attach";
-
-  const pendingInput = [
-    ...inbox.pendingInput.filter((id) => id !== message.id),
-    ...(input ? [message.id] : []),
-  ];
-
-  return {
-    name: inboxRef(session, head),
-    target: await put(kernel.store, "inbox", { messages, pendingInput }),
-    expect: readRefExpectation(inbox.ref),
-    events: [
-      {
-        head,
-        kind: "input",
-        message: message.id,
-        change: "admitted",
-        content: message.content,
-        source: message.source,
-        delivery: message.delivery,
-        schedule: message.schedule,
-        covered: message.covered,
-        configuration: message.configuration,
-        replaced: message.replaced,
-        requires: [...(kernel.presence?.member.capabilities ?? [])],
-      },
-    ],
-  };
-}
-
-async function pendingReceipt(
-  store: StoreConnection,
-  session: SessionId,
-  id: ReceiptId,
-  digest: string,
-  expect: RefUpdate["expect"],
-): Promise<RefUpdate> {
-  return {
-    name: receiptRef(session, id),
-    target: await put(store, "receipt", { id, kind: "send", digest, outcome: null }),
-    expect,
-  };
 }
 
 function hashSendRequest(sending: Sending): Promise<string> {

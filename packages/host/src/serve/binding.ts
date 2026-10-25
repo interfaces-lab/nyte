@@ -297,6 +297,14 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     }),
     "head.compact": ({ session: id, head, instructions }) =>
       session(id).head(head).compact({ instructions }),
+    "head.revise": ({ session: id, head, message, content, options }) =>
+      session(id).head(head).revise(message, content, options),
+    "head.hold": ({ session: id, head, message }) => wire.hold(id, head, message),
+    "head.release": async ({ session: id, head, message }) => {
+      await wire.release(id, head, message);
+
+      return null;
+    },
 
     "heads.create": ({ session: id, name, input }) => session(id).heads.create(name, input),
     "heads.merge": ({ session: id, name, options }) => session(id).heads.merge(name, options),

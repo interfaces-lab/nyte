@@ -712,10 +712,7 @@ describe("fold", () => {
     );
 
     expect(ids(project(pending, main))).toEqual(["m1", "m2"]);
-    expect(project(pending, main).turns.map((info) => info.id)).toEqual([
-      "pending:m1",
-      "pending:m2",
-    ]);
+    expect(project(pending, main).turns).toEqual([]);
     expect(project(pending, main).messages[1]).toMatchObject({
       turn: "pending:m2",
       status: { kind: "pending", schedule: { kind: "next-turn", reason: "idle" }, covered: true },
@@ -729,7 +726,7 @@ describe("fold", () => {
     });
 
     expect(ids(project(withdrawn, main))).toEqual(["m2"]);
-    expect(project(withdrawn, main).turns.map((info) => info.id)).toEqual(["pending:m2"]);
+    expect(project(withdrawn, main).turns).toEqual([]);
     expect(withdrawn.inputs.has(asId("m1"))).toBe(false);
 
     const superseded = play(withdrawn, admitted("m3"), {

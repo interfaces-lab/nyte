@@ -1,13 +1,11 @@
 import type { ScrollViewState } from "../layout/session-view-state.ts";
 
-/** A row by key, and optionally a control inside it, kept at `top` px below the scrollport's top. */
 export interface Anchor {
   readonly key: string;
   readonly element: Element | undefined;
   readonly top: number;
 }
 
-/** `transcript.md`'s two modes. Reading without an anchor leaves size changes to the virtualizer. */
 export type TranscriptMode =
   | { readonly kind: "following"; readonly opening: boolean }
   | { readonly kind: "reading"; readonly anchor: Anchor | null };

@@ -4,10 +4,12 @@ import type {
   Disposer,
   ExecutionCoverage,
   HeadName,
+  HoldLease,
   HostId,
   HostView,
   JobId,
   JobView,
+  MessageId,
   MoveOptions,
   MoveOutcome,
   Owned,
@@ -97,6 +99,10 @@ export interface WireHost {
     position: Position,
     options: MoveOptions & { readonly id?: ReceiptId },
   ): Promise<Receipt<MoveOutcome>>;
+
+  hold(session: SessionId, head: HeadName, message: MessageId): Promise<HoldLease>;
+
+  release(session: SessionId, head: HeadName, message: MessageId): Promise<void>;
 
   /** Applies a file batch to a workspace under the receipt id the client chose. */
   batch(

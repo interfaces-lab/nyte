@@ -30,7 +30,6 @@ interface ComposerQueueProps {
   readonly onSendNow: (message: UserMessage) => void;
   readonly onCancel: (message: UserMessage) => void;
   readonly onRemoveUnsent: (message: UserMessage) => void;
-  readonly onSendUnsentNow: (message: UserMessage) => void;
   readonly onEditBlocked: (reason: string) => void;
   readonly onReturn: () => void;
 }
@@ -69,7 +68,6 @@ export function ComposerQueue({
   onSendNow,
   onCancel,
   onRemoveUnsent,
-  onSendUnsentNow,
   onEditBlocked,
   onReturn,
 }: ComposerQueueProps): ReactElement | null {
@@ -83,7 +81,8 @@ export function ComposerQueue({
   const focusKey = active !== undefined && keys.includes(active) ? active : keys[0];
   const deleteKey = mac ? "Meta+Backspace" : "Control+Delete";
 
-  const description = `Enter sends now. Space or Right Arrow edits. ${mac ? "Command+Backspace" : "Ctrl+Delete"} removes. Escape returns to the composer.`;
+  const unsentDescription = `${mac ? "Command+Backspace" : "Ctrl+Delete"} removes. Escape returns to the composer.`;
+  const description = `Enter sends now. Space or Right Arrow edits. ${unsentDescription}`;
 
   const release = (button: Element): void => {
     if (button === document.activeElement) onReturn();
@@ -135,14 +134,13 @@ export function ComposerQueue({
       return;
     }
 
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (unsentRow || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
 
     if (event.key === "Enter") {
       event.preventDefault();
       onReturn();
 
-      if (unsentRow) onSendUnsentNow(item);
-      else if (item.delivery !== deliveryChoices.steer) onSendNow(item);
+      if (item.delivery !== deliveryChoices.steer) onSendNow(item);
 
       return;
     }
@@ -241,7 +239,6 @@ export function ComposerQueue({
           );
         })}
         {unsent.map((row) => {
-          const editingThis = editingId === row.id;
           const retrying = row.status.kind === "unsent" ? row.status.retrying : null;
 
           return (
@@ -250,11 +247,10 @@ export function ComposerQueue({
               key={row.id}
               data-queue-row={row.id}
               tabIndex={focusKey === row.id ? 0 : -1}
-              aria-keyshortcuts={`ArrowUp ArrowDown Enter Space ArrowRight Escape ${deleteKey}`}
-              aria-description={description}
+              aria-keyshortcuts={`ArrowUp ArrowDown Escape ${deleteKey}`}
+              aria-description={unsentDescription}
               onFocus={() => setActive(row.id)}
               onKeyDown={(event) => keyDown(event, row, true)}
-              data-editing={editingThis}
               data-error={retrying !== null}
               {...props(composerStyles.queueRow)}
             >
@@ -276,29 +272,17 @@ export function ComposerQueue({
                   </span>
                 )}
               </div>
-              {!editingThis && (
-                <div {...props(composerStyles.queueActions)}>
-                  {row.source.kind !== "action" && row.delivery !== deliveryChoices.steer && (
-                    <Button
-                      iconOnly
-                      icon="pencil"
-                      aria-label="Edit queued message"
-                      disabled={!canEdit}
-                      disabledReason={editBlocked}
-                      onClick={() => onEdit(row)}
-                    />
-                  )}
-                  <Button
-                    iconOnly
-                    icon="trash"
-                    aria-label="Remove queued message"
-                    onClick={(event) => {
-                      release(event.currentTarget);
-                      onRemoveUnsent(row);
-                    }}
-                  />
-                </div>
-              )}
+              <div {...props(composerStyles.queueActions)}>
+                <Button
+                  iconOnly
+                  icon="trash"
+                  aria-label="Remove queued message"
+                  onClick={(event) => {
+                    release(event.currentTarget);
+                    onRemoveUnsent(row);
+                  }}
+                />
+              </div>
             </div>
           );
         })}

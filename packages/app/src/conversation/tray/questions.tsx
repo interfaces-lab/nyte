@@ -92,7 +92,7 @@ function QuestionCard({
       onSubmit={(event) => {
         event.preventDefault();
 
-        if (!blocked) void dock.advance().catch(() => undefined);
+        if (!blocked) void dock.advance();
       }}
       onKeyDown={(event) => {
         if (event.defaultPrevented || blocked || event.repeat || event.nativeEvent.isComposing)
@@ -100,10 +100,10 @@ function QuestionCard({
 
         if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key === "Enter") {
           event.preventDefault();
-          void dock.advance().catch(() => undefined);
+          void dock.advance();
         } else if (event.key === "Escape") {
           event.preventDefault();
-          void dock.dismiss().catch(() => undefined);
+          void dock.dismiss();
         }
       }}
       xstyle={styles.cardHeight(availableHeight)}
@@ -178,11 +178,7 @@ function QuestionCard({
           ))}
         </QuestionnaireChoices>
         <div {...props(styles.footer)}>
-          <Button
-            size="sm"
-            disabled={blocked}
-            onClick={() => void dock.dismiss().catch(() => undefined)}
-          >
+          <Button size="sm" disabled={blocked} onClick={() => void dock.dismiss()}>
             Dismiss
           </Button>
           <div {...props(styles.actions)}>
@@ -200,7 +196,7 @@ function QuestionCard({
               size="sm"
               variant={dock.last ? "solid" : "outline"}
               type="button"
-              onClick={() => void dock.advance().catch(() => undefined)}
+              onClick={() => void dock.advance()}
               disabled={blocked}
               aria-keyshortcuts="Meta+Enter Control+Enter"
             >
