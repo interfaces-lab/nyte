@@ -9,7 +9,7 @@ import { serviceConnect } from "@nyte-ai/service";
 import open from "open";
 import { alignedRows, ansiEnabled } from "./cli-style.ts";
 import { connectLocalHost } from "./local-host.ts";
-import type { LocalSession } from "./local-host.ts";
+import type { HostSession } from "./local-host.ts";
 
 interface Output {
   readonly write: (text: string) => void;
@@ -43,7 +43,7 @@ export async function accountCommand(
   }
 }
 
-async function withLocal<T>(act: (local: LocalSession) => Promise<T>): Promise<T> {
+async function withLocal<T>(act: (local: HostSession) => Promise<T>): Promise<T> {
   const local = await connectLocalHost();
 
   try {
@@ -57,7 +57,7 @@ function share(signal: AbortSignal, output: Output): Promise<void> {
   return withLocal((local) => shareFrom(local, signal, output));
 }
 
-async function shareFrom(local: LocalSession, signal: AbortSignal, output: Output): Promise<void> {
+async function shareFrom(local: HostSession, signal: AbortSignal, output: Output): Promise<void> {
   const connect = serviceConnect(local.endpoint);
   const browser = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   let shownCode = "";
@@ -144,7 +144,7 @@ function unlink(output: Output): Promise<void> {
   return withLocal((local) => unlinkFrom(local, output));
 }
 
-async function unlinkFrom(local: LocalSession, output: Output): Promise<void> {
+async function unlinkFrom(local: HostSession, output: Output): Promise<void> {
   const connect = serviceConnect(local.endpoint);
   const before = await connect.view();
 

@@ -1,17 +1,33 @@
 name: Release
+run-name: Release ${{ inputs.version || inputs.bump }}
 
 on:
   workflow_call:
     inputs:
       version:
         type: string
-        required: true
+        default: ""
+      bump:
+        type: string
+        default: patch
+      release_notes:
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
+      bump:
+        description: Bump the latest stable v<x.y.z> tag, unless version is set
+        type: choice
+        options: [patch, minor, major]
+        default: patch
       version:
-        description: The version to release or resume, without the leading v
+        description: The version to release or resume, without the leading v; overrides bump
         type: string
-        required: true
+        required: false
+      release_notes:
+        description: Reviewed notes for the GitHub release and CHANGELOG.md; empty generates them
+        type: string
+        required: false
       skip_verify:
         description: Skip quality checks and tests for this release
         type: boolean
@@ -20,26 +36,98 @@ on:
 permissions:
   contents: read
 
+# Stable releases share one group, so two bumps never resolve the same version.
 concurrency:
-  group: release-${{ inputs.version }}
+  group: release-${{ contains(inputs.version, '-') && inputs.version || 'stable' }}
 
 env:
   CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
-  RELEASE_VERSION: ${{ inputs.version }}
-  NYTE_RELEASE_VERSION: ${{ inputs.version }}
-  RELEASE_TAG: v${{ inputs.version }}
-  PRERELEASE: ${{ contains(inputs.version, '-') }}
-  NPM_TAG: ${{ contains(inputs.version, '-nightly.') && 'nightly' || contains(inputs.version, '-') && 'next' || 'latest' }}
 
 jobs:
+  # A stable release builds, tags and publishes the `release: v<version>` commit, which carries the
+  # versions and the changelog entry. main is protected, so a GitHub App that may bypass its rules
+  # pushes that commit. Prereleases and nightlies release the commit the run started from.
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - id: app
+        if: ${{ !contains(inputs.version, '-') }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          token: ${{ steps.app.outputs.token || github.token }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - id: resolve
+        name: Resolve the release version
+        env:
+          VERSION: ${{ inputs.version }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          if [[ -n "$VERSION" ]]; then
+            node scripts/release-version.mjs resolve --version "$VERSION" | tee -a "$GITHUB_OUTPUT"
+          else
+            node scripts/release-version.mjs resolve --bump "${BUMP:-patch}" | tee -a "$GITHUB_OUTPUT"
+          fi
+      - id: commit
+        name: Find or make the release commit
+        env:
+          RELEASE_VERSION: ${{ steps.resolve.outputs.version }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            echo "sha=$GITHUB_SHA" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tag="v$RELEASE_VERSION"
+          subject="release: $tag [skip ci]"
+          # A rerun's checkout pins origin/main to the commit the run started from, before its release commit.
+          git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
+          sha=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)
+          if [[ -z "$sha" ]]; then
+            # awk reads to the end: exiting early would kill git log with SIGPIPE, and pipefail fails the step.
+            sha=$(git log origin/main --format='%H %s' | awk -v subject="$subject" '!found && substr($0, 42) == subject { print $1; found = 1 }')
+          fi
+          if [[ -z "$sha" ]]; then
+            node scripts/release-version.mjs prepare "$RELEASE_VERSION"
+            node scripts/release-version.mjs changelog "$RELEASE_VERSION"
+            user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+            git config user.name "${APP_SLUG}[bot]"
+            git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+            git commit --all --message "$subject"
+            if ! git push origin HEAD:main; then
+              echo "Pushing $subject to main failed; git says why above. If main moved past $GITHUB_SHA, start the release again." >&2
+              exit 1
+            fi
+            sha=$(git rev-parse HEAD)
+          fi
+          echo "sha=$sha" | tee -a "$GITHUB_OUTPUT"
+
   verify:
+    needs: version
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 45
     env:
+      RELEASE_VERSION: ${{ needs.version.outputs.version }}
+      NYTE_RELEASE_VERSION: ${{ needs.version.outputs.version }}
       VITE_NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
       VITE_NYTE_CLERK_PUBLISHABLE_KEY: ${{ vars.NYTE_CLERK_PUBLISHABLE_KEY }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.sha }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -62,25 +150,8 @@ jobs:
             exit 1
           fi
       - run: pnpm install --frozen-lockfile
-      - name: Verify nightly source versions
-        if: contains(inputs.version, '-nightly.')
-        run: node scripts/nightly-release.mjs prepare "$RELEASE_VERSION" --check
       - name: Verify release versions
-        if: ${{ !contains(inputs.version, '-nightly.') }}
-        run: |
-          node <<'NODE'
-          const { globSync, readFileSync } = require("node:fs");
-          const [group] = JSON.parse(readFileSync(".changeset/config.json", "utf8")).fixed;
-          const versions = new Map(
-            globSync(["packages/*/package.json", "packages/examples/*/package.json"])
-              .map((file) => JSON.parse(readFileSync(file, "utf8")))
-              .map((manifest) => [manifest.name, manifest.version]),
-          );
-          const behind = group.filter((name) => versions.get(name) !== process.env.RELEASE_VERSION);
-          if (behind.length > 0) {
-            throw new Error(`${behind.join(", ")} must be at ${process.env.RELEASE_VERSION}`);
-          }
-          NODE
+        run: node scripts/release-version.mjs prepare "$RELEASE_VERSION" --check
       - name: Verify release secrets
         env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -125,7 +196,7 @@ jobs:
           if-no-files-found: error
 
   tui:
-    needs: verify
+    needs: [version, verify]
     permissions:
       contents: read
       id-token: write
@@ -143,9 +214,12 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
+      NYTE_RELEASE_VERSION: ${{ needs.version.outputs.version }}
       NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.sha }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -202,7 +276,7 @@ jobs:
           if-no-files-found: error
 
   desktop:
-    needs: verify
+    needs: [version, verify]
     strategy:
       fail-fast: false
       matrix:
@@ -219,6 +293,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
+      NYTE_RELEASE_VERSION: ${{ needs.version.outputs.version }}
       NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
       CSC_LINK: ${{ matrix.target == 'mac-arm64' && secrets.CSC_LINK || '' }}
       CSC_KEY_PASSWORD: ${{ matrix.target == 'mac-arm64' && secrets.CSC_KEY_PASSWORD || '' }}
@@ -231,6 +306,8 @@ jobs:
       VITE_NYTE_CLERK_PUBLISHABLE_KEY: ${{ vars.NYTE_CLERK_PUBLISHABLE_KEY }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.sha }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -285,10 +362,14 @@ jobs:
           if-no-files-found: error
 
   draft:
-    needs: [tui, desktop]
+    needs: [version, tui, desktop]
     runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: v${{ needs.version.outputs.version }}
+      RELEASE_SHA: ${{ needs.version.outputs.sha }}
+      PRERELEASE: ${{ contains(needs.version.outputs.version, '-') }}
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -314,16 +395,24 @@ jobs:
           if [[ "$draft" == true ]]; then
             gh release delete "$RELEASE_TAG" --yes
           fi
-          gh release create "$RELEASE_TAG" "${files[@]}" --draft --prerelease="$PRERELEASE" --target "$GITHUB_SHA" --generate-notes --title "Nyte $RELEASE_TAG"
+          gh release create "$RELEASE_TAG" "${files[@]}" --draft --prerelease="$PRERELEASE" --target "$RELEASE_SHA" --generate-notes --title "Nyte $RELEASE_TAG"
 
   publish:
-    needs: [verify, draft]
+    needs: [version, verify, draft]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
+    env:
+      RELEASE_VERSION: ${{ needs.version.outputs.version }}
+      RELEASE_TAG: v${{ needs.version.outputs.version }}
+      RELEASE_SHA: ${{ needs.version.outputs.sha }}
+      PRERELEASE: ${{ contains(needs.version.outputs.version, '-') }}
+      NPM_TAG: ${{ contains(needs.version.outputs.version, '-nightly.') && 'nightly' || contains(needs.version.outputs.version, '-') && 'next' || 'latest' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.sha }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -333,9 +422,8 @@ jobs:
         with:
           bun-version: latest
       - run: pnpm install --frozen-lockfile
-      - name: Prepare nightly package versions
-        if: contains(inputs.version, '-nightly.')
-        run: node scripts/nightly-release.mjs prepare "$RELEASE_VERSION"
+      - name: Write the release version into the packages
+        run: node scripts/release-version.mjs prepare "$RELEASE_VERSION"
       - name: Use the bootstrap npm token
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -344,20 +432,26 @@ jobs:
             printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
           fi
       - name: Publish the SDK packages
-        run: pnpm release --tag "$NPM_TAG" --filter='!nyte-ai'
+        run: pnpm release:publish --tag "$NPM_TAG" --filter='!nyte-ai'
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
         run: |
           if ! git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null; then
-            git tag "$RELEASE_TAG" "$GITHUB_SHA"
+            git tag "$RELEASE_TAG" "$RELEASE_SHA"
             git push origin "refs/tags/$RELEASE_TAG"
           fi
+          notes=()
+          if [[ -n "$RELEASE_NOTES" ]]; then
+            printf '%s\n' "$RELEASE_NOTES" > "$RUNNER_TEMP/release-notes.md"
+            notes=(--notes-file "$RUNNER_TEMP/release-notes.md")
+          fi
           if [[ "$PRERELEASE" == true ]]; then
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false "${notes[@]}"
           else
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest "${notes[@]}"
           fi
       - name: Publish the launcher
-        run: pnpm release --tag "$NPM_TAG" --filter=nyte-ai
+        run: pnpm release:publish --tag "$NPM_TAG" --filter=nyte-ai

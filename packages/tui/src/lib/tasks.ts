@@ -26,22 +26,22 @@ export type TaskStatus =
 
 interface StatusMark {
   readonly glyph: string;
-  readonly tone: "muted" | "running" | "warning" | "ok" | "error";
+  readonly tone: "dim" | "running" | "warning" | "ok" | "error";
 }
 
 export function statusMark(status: TaskStatus): StatusMark {
   switch (status) {
     case "queued":
-      return { glyph: GLYPHS.diamond, tone: "muted" };
+      return { glyph: GLYPHS.diamond, tone: "dim" };
     case "running":
       return { glyph: GLYPHS.bullet, tone: "running" };
     case "waiting":
     case "retrying":
       return { glyph: GLYPHS.bullet, tone: "warning" };
     case "stopping":
-      return { glyph: GLYPHS.bullet, tone: "muted" };
+      return { glyph: GLYPHS.bullet, tone: "dim" };
     case "stopped":
-      return { glyph: GLYPHS.cross, tone: "muted" };
+      return { glyph: GLYPHS.cross, tone: "dim" };
     case "done":
       return { glyph: GLYPHS.check, tone: "ok" };
     case "failed":

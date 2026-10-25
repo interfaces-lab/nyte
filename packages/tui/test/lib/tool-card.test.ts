@@ -110,7 +110,7 @@ describe("toolCard", () => {
     );
 
     expect(text(card)).toBe("✗ Search docs  stopped");
-    expect(card.heading[0]?.role).toBe("muted");
+    expect(card.heading[0]?.role).toBe("dim");
   });
 
   test("an edit that settled with a patch reports +added -removed and draws the patch", () => {

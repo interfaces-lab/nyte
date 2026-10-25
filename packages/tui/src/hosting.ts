@@ -1,5 +1,6 @@
 import { once } from "node:events";
 import { Worker } from "node:worker_threads";
+import { AuthorityType } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
@@ -11,9 +12,18 @@ const HostCommandType = Type.Object({
   kind: Type.Literal("local"),
   port: PortType,
   token: Type.String(),
+  /** What `token` grants on the listener; `maintenance` only for a token this process minted for itself. */
+  authority: Type.Array(AuthorityType),
 });
 
 export type HostCommand = Static<typeof HostCommandType>;
+
+/** What a token grants when a process minted it for the host it runs or serves as its owner (`nyte host`, a command's own host): the trust of an in-process `sdk.open`. */
+export const OWN_TOKEN_AUTHORITY: HostCommand["authority"] = [
+  "participant",
+  "owner",
+  "maintenance",
+];
 
 const HostMessageType = Type.Union([HostCommandType, Type.Object({ kind: Type.Literal("stop") })]);
 

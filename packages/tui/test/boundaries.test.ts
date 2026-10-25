@@ -109,6 +109,16 @@ test("no frame callbacks, and no raw keyInput listeners but the typeahead held b
   expect(offending).toEqual([]);
 });
 
+test("colors are defined only in lib/theme.ts; everything else reads the theme", () => {
+  const offending = DIRS.flatMap(sources).filter(
+    (file) =>
+      file !== "lib/theme.ts" &&
+      /["'`]#[\da-f]{3,8}["'`]|RGBA\.from/iu.test(readFileSync(join(SRC, file), "utf8")),
+  );
+
+  expect(offending).toEqual([]);
+});
+
 test("the CLI bundle loads no host, provider SDK or Babel; the local host reaches them on the host thread", async () => {
   const result = await Bun.build({
     entrypoints: [join(SRC, "index.ts")],

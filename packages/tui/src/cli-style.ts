@@ -105,6 +105,7 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   },
   { label: "nyte account [status|unlink]", detail: "share this machine with your Nyte account" },
   { label: "nyte mcp <add|remove|list|login|logout>", detail: "manage MCP servers" },
+  { label: "nyte host [--json]", detail: "serve your chats for --host-url to attach to" },
   { label: "nyte --version", detail: "print the installed version" },
   { label: "nyte -p [--json] [--quiet] [--resume] [prompt]", detail: "" },
 ];
@@ -116,6 +117,11 @@ const HELP_FLAGS: readonly AlignedRow[] = [
   { label: "--session <session-id>", detail: "target a session; mutually exclusive with --resume" },
   { label: "--effort <level>", detail: `set thinking level: ${THINKING_LEVELS.join(", ")}` },
   { label: "--trust, --no-trust", detail: "save whether this folder's project files load" },
+  {
+    label: "--no-context-files",
+    detail: "start new sessions without AGENTS.md or CLAUDE.md files",
+  },
+  { label: "--host-url <url>", detail: "attach to a running nyte host; token in NYTE_HOST_TOKEN" },
 ];
 
 export function renderHelp(color: boolean = ansiEnabled()): string {
@@ -143,7 +149,7 @@ export function renderHelp(color: boolean = ansiEnabled()): string {
 }
 
 export function renderCommandHelp(
-  command: "login" | "logout" | "update" | "status" | "account" | "mcp",
+  command: "login" | "logout" | "update" | "status" | "account" | "mcp" | "host",
 ): string {
   switch (command) {
     case "login":
@@ -185,6 +191,16 @@ export function renderCommandHelp(
         "Not linked yet: opens the approval page in your browser and prints the code to enter there.",
         "status prints the link and its devices; unlink removes this machine from the account.",
         "Example: nyte account",
+      ].join("\n");
+    case "host":
+      return [
+        "Usage: nyte host [--json]",
+        "Serve your chats on 127.0.0.1 until stopped, so other nyte processes attach with --host-url.",
+        "Writes the URL, token and pid to ~/.nyte/host.json (mode 0600) and removes it on exit.",
+        "One host runs at a time; a second exits 1 and names the first.",
+        'Prints the URL on stdout; --json prints one {"type":"listening","url","endpoint","pid"} line.',
+        "SIGINT, SIGTERM and SIGHUP stop it and exit 0.",
+        "Attach: NYTE_HOST_TOKEN=<token from host.json> nyte --host-url <url>",
       ].join("\n");
     case "mcp":
       return [

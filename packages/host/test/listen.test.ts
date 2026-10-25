@@ -12,6 +12,7 @@ import type {
   ReceiptId,
   SessionId,
 } from "@nyte-ai/schema";
+import { ALL_AUTHORITY } from "@nyte-ai/core";
 import type { Listener, ListenOptions } from "@nyte-ai/core";
 import type { ComposeOptions } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
@@ -395,6 +396,52 @@ describe("listen", () => {
     expect(await json(checked)).toMatchObject({ plugins: [{ id: "extra", kind: "activated" }] });
     expect((await post(listener, "sessions.list", {}, { Authorization: "" })).status).toBe(401);
     expect((await post(listener, "sessions.list", {}, { "X-Who": "guest" })).status).toBe(403);
+  });
+
+  it("grants the listener token the authority it is given, so the owner's token assigns a session's plugins while a paired device or an owner peer can't", async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "nyte-listen-")));
+    cleanups.push(() => rm(dir, { recursive: true, force: true }));
+    const host = await open(fakeModels(), { loadPlugins: pluginLoader([dir]) });
+    cleanups.push(() => host.close());
+    await writeFile(join(dir, "guard.mjs"), 'export default { id: "guard" };\n');
+
+    const owner = await serve(host, {
+      auth: { kind: "token", token: TOKEN, authority: ALL_AUTHORITY },
+    });
+
+    const peer = await serve(host, {
+      auth: {
+        kind: "custom",
+        authorize: () => ({
+          principal: asId("peer"),
+          authority: new Set<Authority>(["participant", "owner"]),
+        }),
+      },
+    });
+
+    const { session } = await sent(owner);
+    const replace = { plugins: [{ path: join(dir, "guard.mjs") }], scope: { session } };
+    const assigned = await post(owner, "plugins.replace", replace);
+
+    expect(assigned.status).toBe(200);
+    expect(await json(assigned)).toMatchObject({ plugins: [{ id: "guard", kind: "activated" }] });
+
+    const exchange = await post(
+      owner,
+      "sessions.list",
+      {},
+      { Authorization: `Pairing ${await pair(host, ["participant", "owner"])}` },
+    );
+
+    const device = exchange.headers.get("X-Nyte-Credential");
+    assert(device !== null);
+
+    for (const refused of [
+      await post(await serve(host), "plugins.replace", replace),
+      await post(owner, "plugins.replace", replace, { Authorization: `Bearer ${device}` }),
+      await post(peer, "plugins.replace", replace, { Authorization: "" }),
+    ])
+      expect([refused.status, await readErrorCode(refused)]).toEqual([403, "denied"]);
   });
 
   it("answers a paired device's bearer token under custom auth before authorize, which still refuses the rest (§41j)", async () => {

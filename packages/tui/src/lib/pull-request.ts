@@ -20,7 +20,7 @@ const CHECK_MARKS = {
 const STATE_WORDS = { OPEN: "Open", CLOSED: "Closed", MERGED: "Merged" } as const;
 
 function checksLine(checks: readonly GitHubCheck[]): TextLine {
-  if (checks.length === 0) return [{ text: "No checks", tone: "muted" }];
+  if (checks.length === 0) return [{ text: "No checks", tone: "dim" }];
 
   if (checks.every((check) => check.state === "passed"))
     return checks.length === 1 ? "1 check passed" : `All ${String(checks.length)} checks passed`;
@@ -38,10 +38,10 @@ function pullRequestLines(pullRequest: GitHubPullRequest): readonly TextLine[] {
   return [
     [
       { text: `#${String(pullRequest.number)} ${pullRequest.title}`, bold: true },
-      { text: ` · ${state}`, tone: "muted" },
+      { text: ` · ${state}`, tone: "dim" },
     ],
     [{ text: pullRequest.url, tone: "accent" }],
-    [{ text: `${pullRequest.headRefName} → ${pullRequest.baseRefName}`, tone: "muted" }],
+    [{ text: `${pullRequest.headRefName} → ${pullRequest.baseRefName}`, tone: "dim" }],
     "",
     checksLine(pullRequest.checks),
     ...pullRequest.checks.map((check): TextLine => {
@@ -78,7 +78,7 @@ export function gitHubLines(
   const { repository, pullRequest } = folder;
 
   if (repository === undefined) return ["This repository has no GitHub remote"];
-  const named: TextLine = [{ text: `${repository.owner}/${repository.name}`, tone: "muted" }];
+  const named: TextLine = [{ text: `${repository.owner}/${repository.name}`, tone: "dim" }];
 
   if (pullRequest.kind === "none") return [named, "No pull request for this branch"];
 

@@ -37,6 +37,8 @@ export interface HostLink {
   readonly connection: Connection;
   readonly endpoint: LocalEndpoint | null;
   readonly folder: string | null;
+  /** `false` starts this run's new sessions without context files (`--no-context-files`). */
+  readonly contextFiles?: false;
 }
 
 export type ClientPlugins = PluginsPort & {
@@ -407,7 +409,9 @@ async function openHost(
   });
 
   return {
-    host: hostPort(link.connection, link.folder, () => nextFrame(options.renderer)),
+    host: hostPort(link.connection, link.folder, () => nextFrame(options.renderer), {
+      contextFiles: link.contextFiles,
+    }),
     plugins,
     async close() {
       remote.abort();

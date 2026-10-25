@@ -1,4 +1,6 @@
+import { SdkError } from "@nyte-ai/schema";
 import type { Activation, SessionId, ValidationIssue, WorkspaceId } from "@nyte-ai/schema";
+import type { PluginFile } from "../contract/host.ts";
 import type { Kernel, PluginRuntime } from "../contract/kernel.ts";
 import type { Plugin } from "../contract/plugin.ts";
 import { readWorkspace, UnavailableError } from "../env/environment.ts";
@@ -24,10 +26,15 @@ export async function activateSession(
       )
     : INACTIVE;
 
-  const project = runtime.assigned() === null ? await projectPlugins(kernel, workspace) : [];
+  const assigned = runtime.assigned();
+  const project = assigned === null ? await projectPlugins(kernel, workspace) : [];
 
   try {
-    await runtime.load([...sessionPlugins(kernel, runtime), ...project]);
+    await runtime.load([
+      ...kernel.plugins.builtins,
+      ...(assigned === null ? kernel.plugins.host : await loadAssigned(kernel, assigned)),
+      ...project,
+    ]);
   } catch (error) {
     settle(kernel, session, workspace, classifyActivationFailure(workspace, error));
 
@@ -35,6 +42,31 @@ export async function activateSession(
   }
 
   settle(kernel, session, workspace, await attached);
+}
+
+/** Returns `plugins` with each file loaded through the host's plugin loader, in order. */
+export async function loadPlugins(
+  kernel: Kernel,
+  plugins: readonly (Plugin<"core"> | PluginFile)[],
+): Promise<readonly Plugin<"core">[]> {
+  const each = await Promise.all(
+    plugins.map(async (plugin) => ("id" in plugin ? [plugin] : kernel.plugins.load([plugin.path]))),
+  );
+
+  return each.flat();
+}
+
+/** A session's assigned plugins may be what holds it to a policy, so one that no longer loads fails the activation: the session refuses work until it loads again rather than run without it. */
+async function loadAssigned(
+  kernel: Kernel,
+  plugins: readonly (Plugin<"core"> | PluginFile)[],
+): Promise<readonly Plugin<"core">[]> {
+  return loadPlugins(kernel, plugins).catch((error: unknown) => {
+    throw new SdkError(
+      "unavailable",
+      `The plugins assigned to this session did not load: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
 }
 
 /** The plugins a new chat in `workspace` loads: the built-ins, the host's, then the folder's own once it is trusted. */
@@ -101,8 +133,4 @@ function classifyActivationFailure(workspace: WorkspaceId, error: unknown): Acti
   return error instanceof UnavailableError
     ? { kind: "unavailable", workspace, reason: error.reason }
     : { kind: "failed", message: error instanceof Error ? error.message : String(error) };
-}
-
-function sessionPlugins(kernel: Kernel, runtime: PluginRuntime): readonly Plugin<"core">[] {
-  return [...kernel.plugins.builtins, ...(runtime.assigned() ?? kernel.plugins.host)];
 }

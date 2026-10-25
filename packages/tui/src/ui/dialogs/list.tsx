@@ -112,7 +112,7 @@ function ListRow(props: {
     >
       <span style={{ fg: foreground() }}>{props.selected ? `${GLYPHS.prompt} ` : "  "}</span>
       <Show when={props.marked}>
-        <span style={{ fg: theme()[props.choice.mark?.tone ?? "muted"] }}>
+        <span style={{ fg: theme()[props.choice.mark?.tone ?? "dim"] }}>
           {padDisplay(cut(props.choice.mark?.glyph ?? "", MARK_WIDTH), MARK_WIDTH)}
         </span>
       </Show>

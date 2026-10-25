@@ -13,6 +13,7 @@
     "package:desktop:dev": "pnpm --dir packages/desktop package:dev",
     "clean": "turbo clean",
     "dev:tui": "pnpm --filter @nyte-ai/tui dev",
+    "dev:live": "pnpm --filter @nyte-ai/tui dev:live",
     "dev:desktop": "pnpm --filter @nyte-ai/desktop dev",
     "format": "oxfmt --check",
     "format:fix": "oxfmt .",
@@ -28,16 +29,18 @@
     "e2e": "pnpm --dir packages/app e2e",
     "e2e:desktop": "pnpm --dir packages/desktop e2e",
     "typecheck": "turbo typecheck",
+    "check": "pnpm format && pnpm lint && pnpm typecheck",
+    "test": "echo 'Run tests from a package: pnpm --dir packages/<name> test' >&2 && exit 1",
     "sdk:check": "bun scripts/sdk-packages.mjs check",
     "sdk:pack": "turbo run build:package && rm -rf dist/sdk && pnpm -r --filter-prod=@nyte-ai/sdk... pack --pack-destination dist/sdk",
     "sdk:verify": "bun scripts/verify-sdk-packages.mjs",
-    "changeset": "changeset",
-    "version-packages": "changeset version",
-    "release": "turbo run build:package && pnpm -r publish --access public --provenance --no-git-checks"
+    "release": "bun scripts/release.mjs",
+    "release:publish": "turbo run build:package && pnpm -r publish --access public --provenance --no-git-checks"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "^1.0.1",
-    "@changesets/cli": "^3.0.3",
+    "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/sdk": "workspace:*",
+    "@nyte-ai/tui": "workspace:*",
     "@oxlint/plugins": "^1.89.0",
     "@shadcn/lint": "^0.2.3",
     "@types/node": "^26.6.5",
@@ -47,6 +50,23 @@
     "oxlint-tsgolint": "^7.0.2004",
     "turbo": "^2.11.10",
     "typescript": "catalog:"
+  },
+  "release": {
+    "packages": [
+      "@nyte-ai/schema",
+      "@nyte-ai/ai",
+      "@nyte-ai/core",
+      "@nyte-ai/plugin",
+      "@nyte-ai/protocol",
+      "@nyte-ai/host",
+      "@nyte-ai/sdk",
+      "nyte-ai",
+      "@nyte-ai/tui",
+      "@nyte-ai/desktop",
+      "@nyte-ai/ios",
+      "@nyte-ai/example-cloudflare",
+      "@nyte-ai/example-vercel"
+    ]
   },
   "packageManager": "pnpm@12.14.0",
   "intent": {

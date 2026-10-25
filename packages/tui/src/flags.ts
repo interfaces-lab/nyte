@@ -18,6 +18,10 @@ export interface RunFlags {
   readonly model?: string;
   readonly effort?: Thinking;
   readonly trust?: boolean;
+  /** A running `nyte host` to attach to in place of starting one; its token comes from `NYTE_HOST_TOKEN`. */
+  readonly hostUrl?: string;
+  /** `false` starts every new session of this run without context files (`Sessions.start`). */
+  readonly contextFiles?: false;
   readonly rest: readonly string[];
 }
 
@@ -39,6 +43,8 @@ export function parseFlags(args: readonly string[]): RunFlags {
       effort: { type: "string" },
       trust: { type: "boolean" },
       "no-trust": { type: "boolean" },
+      "host-url": { type: "string" },
+      "no-context-files": { type: "boolean" },
     },
   });
 
@@ -65,7 +71,18 @@ export function parseFlags(args: readonly string[]): RunFlags {
   if (values.trust === true && values["no-trust"] === true)
     throw new Error("Use either --trust or --no-trust.");
 
+  if (
+    values["no-context-files"] === true &&
+    (values.resume === true || values.session !== undefined)
+  )
+    throw new Error(
+      "--no-context-files cannot be combined with --resume or --session: a session keeps the context files it started with.",
+    );
+
   if (values.session === "") throw new Error("--session requires a non-empty session ID.");
+
+  if (values["host-url"] !== undefined && !URL.canParse(values["host-url"]))
+    throw new Error("--host-url must be a URL, such as the one `nyte host` prints.");
   const effort = THINKING_LEVELS.find((level) => level === values.effort);
 
   if (values.effort !== undefined && effort === undefined) {
@@ -95,6 +112,10 @@ export function parseFlags(args: readonly string[]): RunFlags {
   if (values.trust === true) flags = { ...flags, trust: true };
 
   if (values["no-trust"] === true) flags = { ...flags, trust: false };
+
+  if (values["host-url"] !== undefined) flags = { ...flags, hostUrl: values["host-url"] };
+
+  if (values["no-context-files"] === true) flags = { ...flags, contextFiles: false };
 
   return flags;
 }

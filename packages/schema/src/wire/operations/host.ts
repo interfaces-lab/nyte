@@ -222,6 +222,7 @@ export const HOST_OPERATIONS = {
       configuration: Type.Optional(Type.Union([ConfigurationType, ConfigurationPatchType])),
       prompt: Type.Optional(PromptOverrideType),
       isolation: Type.Optional(Type.Literal("worktree")),
+      contextFiles: Type.Optional(Type.Literal(false)),
       content: UserContentType,
     }),
     output: wireObject({

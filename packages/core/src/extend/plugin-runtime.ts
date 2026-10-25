@@ -12,6 +12,7 @@ import type {
   ValidationIssue,
 } from "@nyte-ai/schema";
 import { CORE_CONTEXT, LOCAL } from "../contract/host.ts";
+import type { PluginFile } from "../contract/host.ts";
 import type {
   Attached,
   CoreRegistry,
@@ -38,7 +39,7 @@ import { coveredHere, requireSession } from "../store/session.ts";
 import { callable } from "../util/callable.ts";
 import { dev } from "../util/dev-log.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
-import { activateSession } from "./activation.ts";
+import { activateSession, loadPlugins } from "./activation.ts";
 import { createHookDispatch, namesCoreHook } from "./hooks.ts";
 import { build, corePluginApi } from "./plugin-api.ts";
 import { bumpGeneration, createRegistrySet, publishCatalog } from "./registry.ts";
@@ -53,6 +54,7 @@ interface Active {
 type SessionLoad =
   | { readonly kind: "loaded"; readonly outcomes: readonly PluginLoadOutcome[] }
   | { readonly kind: "failed"; readonly session: SessionId; readonly message: string }
+  | { readonly kind: "reassigned" }
   | { readonly kind: "gone" };
 
 type Derive<T> = (draft: RegistryDraft<T>, siblings: Registries<"core">) => void;
@@ -472,9 +474,10 @@ export function checkPlugins(plugins: readonly Plugin<"core">[]): PluginCheckRep
   };
 }
 
+/** Assigns `requested` to `scope`'s session in place of the host's plugins, or replaces the host's plugins. A host-wide replace keeps each session's assignment and reloads it from its files, so the session runs their new code; one that no longer loads fails that session's activation (`loadAssigned`), not the host's plugins. */
 export async function replacePlugins(
   kernel: Kernel,
-  plugins: readonly Plugin<"core">[],
+  requested: readonly (Plugin<"core"> | PluginFile)[],
   scope?: { readonly session: SessionId },
 ): Promise<PluginReplacementReport> {
   const { assigned } = kernel.plugins.state;
@@ -482,19 +485,25 @@ export async function replacePlugins(
 
   if (scope !== undefined) {
     await requireSession(kernel.store, scope.session);
-    assigned.set(scope.session, plugins);
+    await loadPlugins(kernel, requested);
+    assigned.set(scope.session, requested);
     const outcomes = await reloadSession(kernel, scope.session);
 
     return { generation: bumpGeneration(kernel), plugins: outcomes.slice(builtins) };
   }
 
+  const plugins = await loadPlugins(kernel, requested);
   const before = kernel.plugins.host;
   const checked = preflight(plugins, []);
   kernel.plugins.host = plugins;
 
   const sessions = await Promise.all(
     [...kernel.plugins.runtimes().keys()].map(async (session): Promise<SessionLoad> => {
-      assigned.delete(session);
+      if (assigned.has(session)) {
+        await kernel.plugins.reload(session).catch(() => undefined);
+
+        return { kind: "reassigned" };
+      }
 
       try {
         return { kind: "loaded", outcomes: (await reloadSession(kernel, session)).slice(builtins) };

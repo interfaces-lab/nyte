@@ -45,6 +45,8 @@ import type {
   ImageProcessor,
   ModelState,
   OpenOptions,
+  PluginFile,
+  PluginsApi,
 } from "./host.ts";
 import type { PartDefinition, PartDefinitions, PartTable } from "./parts.ts";
 import type {
@@ -178,10 +180,7 @@ export interface PluginHost {
 
   api(owner: string, session: SessionId): PluginApi<"core">;
 
-  replace(
-    plugins: readonly Plugin<"core">[],
-    scope?: { readonly session: SessionId },
-  ): ReturnType<Host["plugins"]["replace"]>;
+  replace: PluginsApi<Plugin<"core"> | PluginFile>["replace"];
 
   check(plugins: readonly Plugin<"core">[]): ReturnType<Host["plugins"]["check"]>;
 
@@ -348,7 +347,7 @@ export interface PluginRuntime {
 
   instance(id: string): PluginInstance | undefined;
 
-  assigned(): readonly Plugin<"core">[] | null;
+  assigned(): readonly (Plugin<"core"> | PluginFile)[] | null;
 
   hold(): Disposer;
 
@@ -369,7 +368,8 @@ export interface InstanceHost {
 }
 
 export interface PluginState {
-  readonly assigned: Map<SessionId, readonly Plugin<"core">[]>;
+  /** The plugins `plugins.replace` assigned to a session in place of the host's, as asked: a file is loaded again at each activation, so a host-wide reload picks up its new code. */
+  readonly assigned: Map<SessionId, readonly (Plugin<"core"> | PluginFile)[]>;
   readonly holds: Map<PartDefinition, { count: number; readonly dispose: Disposer }>;
   readonly settings: Set<(id: string, session: SessionId | null) => void>;
   readonly publishing: Map<SessionId, Promise<void>>;

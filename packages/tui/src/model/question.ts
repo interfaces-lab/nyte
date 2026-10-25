@@ -182,7 +182,7 @@ export function questionPanel(
       )
         ? "✓"
         : "○",
-      tone: "muted" as const,
+      tone: "dim" as const,
     },
   }));
 
@@ -193,7 +193,7 @@ export function questionPanel(
       description: field.customText,
       timing: null,
       status: null,
-      mark: { glyph: customSelected ? "✓" : "○", tone: "muted" as const },
+      mark: { glyph: customSelected ? "✓" : "○", tone: "dim" as const },
     },
     {
       id: "next",

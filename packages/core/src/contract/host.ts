@@ -321,7 +321,12 @@ export interface ListenOptions {
     | { readonly kind: "http"; readonly hostname?: string; readonly port?: number }
     | { readonly kind: "fetch" };
   readonly auth:
-    | { readonly kind: "token"; readonly token: string }
+    | {
+        readonly kind: "token";
+        readonly token: string;
+        /** What the token grants; default {@link TOKEN_AUTHORITY}. Grant `maintenance` only to a token the host's owner minted for its own processes, never one handed to a peer. */
+        readonly authority?: ReadonlySet<Authority>;
+      }
     | {
         readonly kind: "custom";
         authorize(
