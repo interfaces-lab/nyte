@@ -11,7 +11,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
-import { Block, defaultUrlTransform, Streamdown, useIsCodeFenceIncomplete } from "streamdown";
+import { defaultUrlTransform, Streamdown, useIsCodeFenceIncomplete } from "streamdown";
 import type { Components, ExtraProps, StreamdownProps, UrlTransform } from "streamdown";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./external-link.ts";
@@ -33,8 +33,14 @@ import { asId } from "@nyte-ai/schema";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { proseStyles } from "./prose.stylex.ts";
 import { SubagentCitation } from "./subagent-call.tsx";
-import { EnteringText, FadingBlock, Resumes } from "./chunk-fade.tsx";
-import { usePacedText } from "./paced-text.ts";
+import {
+  FadeEnd,
+  FadeSpan,
+  FadingBlock,
+  findStreamingTail,
+  ReducedMotion,
+  StreamingTail,
+} from "./chunk-fade.tsx";
 
 const textNode = Type.Union([Type.String(), Type.Number(), Type.BigInt()]);
 
@@ -268,6 +274,41 @@ function MarkdownPre({
   );
 }
 
+function MarkdownRule({
+  node,
+  className: _className,
+  ...elementProps
+}: ComponentProps<"hr"> & ExtraProps): ReactElement {
+  const settle = use(FadeEnd);
+
+  return (
+    <hr
+      {...elementProps}
+      onAnimationEnd={() => settle?.(node)}
+      {...props(
+        proseStyles.rule,
+        node?.properties["data-sd-animate"] === true && proseStyles.chunk,
+      )}
+    />
+  );
+}
+
+function MarkdownImage({ node, alt, style }: ComponentProps<"img"> & ExtraProps): ReactElement {
+  const fades = node?.properties["data-sd-animate"] === true;
+  const settle = use(FadeEnd);
+
+  return (
+    <span
+      data-sd-animate={fades || undefined}
+      style={style}
+      onAnimationEnd={() => settle?.(node)}
+      {...props(proseStyles.imageLabel, fades && proseStyles.chunk)}
+    >
+      {alt ?? "image"}
+    </span>
+  );
+}
+
 const markdownComponents = {
   p: ({ node: _node, className: _className, ...elementProps }) => (
     <p {...elementProps} {...props(proseStyles.paragraph)} />
@@ -307,9 +348,7 @@ const markdownComponents = {
   blockquote: ({ node: _node, className: _className, ...elementProps }) => (
     <blockquote {...elementProps} {...props(proseStyles.blockquote)} />
   ),
-  hr: ({ node: _node, className: _className, ...elementProps }) => (
-    <hr {...elementProps} {...props(proseStyles.rule)} />
-  ),
+  hr: MarkdownRule,
   pre: MarkdownPre,
   table: ({ node: _node, className: _className, ...elementProps }) => (
     <div data-nyte-scrollport data-prose-table {...props(proseStyles.tableWrap)}>
@@ -322,9 +361,8 @@ const markdownComponents = {
   td: ({ node: _node, className: _className, ...elementProps }) => (
     <td {...elementProps} {...props(proseStyles.cell)} />
   ),
-  img: ({ node: _node, className: _className, alt, title: _title, ..._props }) => (
-    <span {...props(proseStyles.imageLabel)}>{alt ?? "image"}</span>
-  ),
+  img: MarkdownImage,
+  span: FadeSpan,
 } satisfies Components;
 
 const rehypePlugins: NonNullable<StreamdownProps["rehypePlugins"]> = [];
@@ -353,25 +391,22 @@ export function Prose({
     () => true,
   );
 
-  const reveal = usePacedText(markdown, streaming, !reducedMotion);
-  const revealing = streaming || reveal.holding;
-
   return (
     <div {...props(proseStyles.root)}>
-      <EnteringText value={!revealing ? "plain" : reveal.fresh ? "new" : "shown"}>
-        <Resumes value={reveal.resumes}>
+      <ReducedMotion value={reducedMotion}>
+        <StreamingTail value={streaming ? findStreamingTail(markdown) : -1}>
           <Streamdown
-            isAnimating={revealing}
-            BlockComponent={reducedMotion ? Block : FadingBlock}
+            isAnimating={streaming}
+            BlockComponent={FadingBlock}
             components={markdownComponents}
             rehypePlugins={rehypePlugins}
             urlTransform={urlTransform}
             skipHtml
           >
-            {reveal.text}
+            {markdown}
           </Streamdown>
-        </Resumes>
-      </EnteringText>
+        </StreamingTail>
+      </ReducedMotion>
     </div>
   );
 }

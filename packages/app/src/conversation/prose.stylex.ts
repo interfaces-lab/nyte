@@ -189,10 +189,10 @@ export const proseStyles = create({
   },
   imageLabel: { color: role.contentSecondary },
   chunk: {
-    animationName: chunkFadeIn,
-    animationDuration: `${FADE_MS}ms`,
+    animationName: { default: chunkFadeIn, "@media (prefers-reduced-motion: reduce)": "none" },
+    animationDuration: `var(--sd-duration, ${FADE_MS}ms)`,
     animationTimingFunction: "linear",
-    animationFillMode: "backwards",
+    animationFillMode: "both",
   },
 });
 

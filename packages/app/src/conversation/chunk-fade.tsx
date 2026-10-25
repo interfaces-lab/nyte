@@ -1,9 +1,8 @@
 import { props } from "@stylexjs/stylex";
-import { createContext, use, useId, useLayoutEffect, useState } from "react";
-import type { ReactElement } from "react";
-import { Block } from "streamdown";
+import { createContext, use, useState } from "react";
+import type { ComponentProps, ReactElement } from "react";
+import { Block, parseMarkdownIntoBlocks } from "streamdown";
 import type { BlockProps, ExtraProps } from "streamdown";
-import { FLUSH_INTERVAL_MS } from "./paced-text.ts";
 import { FADE_MS, proseStyles } from "./prose.stylex.ts";
 
 type HastElement = NonNullable<ExtraProps["node"]>;
@@ -14,147 +13,219 @@ type HastParent = Pick<HastElement, "children">;
 
 type RehypePlugins = NonNullable<BlockProps["rehypePlugins"]>;
 
-export const EnteringText = createContext<"plain" | "shown" | "new">("plain");
+type FadeInChunks = NonNullable<BlockProps["animatePlugin"]> & {
+  readonly fadingPlugins: (plugins: RehypePlugins) => RehypePlugins;
+  readonly endsFade: (node: HastElement | undefined) => boolean;
+};
 
-export const Resumes = createContext(0);
+interface Commit {
+  readonly offset: number;
+  readonly at: number;
+}
 
-const SETTLE_MS = FADE_MS + 2 * FLUSH_INTERVAL_MS;
+interface Faded {
+  readonly element: HastElement;
+  readonly start: number;
+}
 
-const WHOLE = new Set(["a", "code", "img"]);
+const NO_PLUGINS: RehypePlugins = [];
+
+const UNFADED = new Set(["pre", "svg", "math", "annotation"]);
+
+const FADED_WHOLE = new Set(["img", "hr"]);
+
+const SPACE = /\s/u;
+
+const BLANK = /^\s*$/u;
+
+const FOOTNOTE = /\[\^[\w-]{1,200}\]/u;
 
 const CHUNK_CLASSES = props(proseStyles.chunk).className?.split(" ");
 
-export function FadingBlock(block: BlockProps): ReactElement {
-  const entering = use(EnteringText);
-  const parity = use(Resumes) % 2;
-  const id = useId();
+let fadePlugins = 0;
 
-  const [fade] = useState(() =>
-    createChunkFade(id, entering === "new", block.rehypePlugins ?? [], parity),
-  );
+export const StreamingTail = createContext(-1);
 
-  const [settled, setSettled] = useState(entering === "plain" ? block.content : undefined);
-  const fading = block.content !== settled;
+export const ReducedMotion = createContext(false);
 
-  useLayoutEffect(() => {
-    if (fade.commit(parity) === 0 || !fading) return;
+export const FadeEnd = createContext<((node: HastElement | undefined) => void) | undefined>(
+  undefined,
+);
 
-    const timer = setTimeout(() => {
-      fade.settle();
-      setSettled(block.content);
-    }, SETTLE_MS);
+export function findStreamingTail(markdown: string): number {
+  const blocks = parseMarkdownIntoBlocks(markdown);
 
-    return () => clearTimeout(timer);
-  }, [block.content, fade, fading, parity]);
+  if (blocks.length === 1 && FOOTNOTE.test(markdown)) return -1;
 
-  return <Block {...block} rehypePlugins={fading ? fade.lists[parity] : block.rehypePlugins} />;
+  return blocks.findLastIndex((block, index) => index === 0 || !BLANK.test(block));
 }
 
-function createChunkFade(id: string, fresh: boolean, base: RehypePlugins, parity: number) {
-  let shown = fresh ? "" : undefined;
-  let confirmed = parity;
-  let start = 0;
-  let ends: readonly number[] = [];
-  let rendered = "";
-  let ran = false;
-  let pinned = false;
+export function FadingBlock(block: BlockProps): ReactElement {
+  const tail = use(StreamingTail) === block.index;
+  const reducedMotion = use(ReducedMotion);
+  const [fade] = useState(createFadeInChunks);
+  const [wasTail, setWasTail] = useState(tail);
+  const [retained, setRetained] = useState(false);
+  const [quietContent, setQuietContent] = useState<string>();
 
-  const lists = [0, 1].map((side): RehypePlugins => {
-    const fadeChunks = (tree: HastParent): void => {
-      const text = readText(tree.children);
-      const before = side === confirmed ? shown : undefined;
-      const pin = before === undefined || !text.startsWith(before);
-      rendered = text;
-      ran = true;
-      pinned = pin;
+  if (tail !== wasTail) {
+    setWasTail(tail);
 
-      if (pin) return;
+    if (!tail) setRetained(!reducedMotion && quietContent !== block.content);
+  }
 
-      wrapChunks(tree, start, text.length > before.length ? [...ends, text.length] : ends);
+  const settle = (node: HastElement | undefined): void => {
+    if (!fade.endsFade(node)) return;
+
+    setQuietContent(block.content);
+    setRetained(false);
+  };
+
+  return (
+    <FadeEnd value={settle}>
+      {tail || retained ? (
+        <Block
+          {...block}
+          animatePlugin={fade}
+          rehypePlugins={fade.fadingPlugins(block.rehypePlugins ?? NO_PLUGINS)}
+        />
+      ) : (
+        <Block {...block} />
+      )}
+    </FadeEnd>
+  );
+}
+
+export function FadeSpan({
+  node,
+  ...elementProps
+}: ComponentProps<"span"> & ExtraProps): ReactElement {
+  const settle = use(FadeEnd);
+
+  return <span {...elementProps} onAnimationEnd={() => settle?.(node)} />;
+}
+
+function createFadeInChunks(): FadeInChunks {
+  let commits: Commit[] = [{ offset: 0, at: Number.NEGATIVE_INFINITY }];
+  let settled = 0;
+  let committed = 0;
+  let rendered = 0;
+  let freshStart = 0;
+  let faded: Faded[] = [];
+  let newest = new WeakSet<HastElement>();
+  let base: RehypePlugins | undefined;
+  let plugins: RehypePlugins = [];
+
+  const fadeStyle = (offset: number): string => `--sd-duration:${offset < settled ? 0 : FADE_MS}ms`;
+
+  const chunk = (value: string, start: number): HastChild => {
+    const element: HastElement = {
+      type: "element",
+      tagName: "span",
+      properties: { "data-sd-animate": true, className: CHUNK_CLASSES, style: fadeStyle(start) },
+      children: [{ type: "text", value }],
     };
 
-    return [
-      ...base,
-      Object.defineProperty(() => fadeChunks, "name", { value: `chunkFade${id}${side}` }),
-    ];
-  });
+    faded.push({ element, start });
 
-  return {
-    lists,
-    commit(side: number): number {
-      confirmed = side;
-
-      if (!ran) return ends.length;
-
-      if (pinned || shown === undefined) {
-        start = rendered.length;
-        ends = [];
-      } else if (rendered.length > shown.length) ends = [...ends, rendered.length];
-
-      shown = rendered;
-      ran = false;
-
-      return ends.length;
-    },
-    settle(): void {
-      start = rendered.length;
-      ends = [];
-    },
+    return element;
   };
-}
 
-function readText(children: readonly HastChild[]): string {
-  return children
-    .map((child) => {
-      if (child.type === "text") return child.value;
+  const splitText = (value: string, at: number): HastChild[] => {
+    const cuts = new Set(
+      commits.flatMap((commit) => {
+        const cut = commit.offset - at;
 
-      return child.type === "element" && child.tagName !== "pre" ? readText(child.children) : "";
-    })
-    .join("");
-}
+        if (cut <= 0 || cut >= value.length) return [];
 
-function wrapChunks(tree: HastParent, start: number, ends: readonly number[]): void {
-  let offset = 0;
+        const end = toSpace(value, cut);
 
-  const visit = (parent: HastParent): void => {
-    parent.children = parent.children.flatMap((child): HastChild[] => {
-      const at = offset;
+        return end < value.length ? [end] : [];
+      }),
+    );
 
-      if (child.type === "text") {
-        offset += child.value.length;
+    const bounds = [0, ...cuts, value.length];
 
-        return offset <= start ? [child] : splitText(child.value, at, start, ends);
-      }
+    return bounds.slice(1).map((end, index) => {
+      const start = bounds[index] ?? 0;
+      const piece = value.slice(start, end);
 
-      if (child.type !== "element" || child.tagName === "pre") return [child];
-
-      if (at >= start && WHOLE.has(child.tagName)) {
-        offset += readText(child.children).length;
-
-        return [chunkSpan([child])];
-      }
-
-      visit(child);
-
-      return [child];
+      return BLANK.test(piece) ? { type: "text", value: piece } : chunk(piece, at + start);
     });
   };
 
-  visit(tree);
-}
+  const fadeInChunks = (tree: HastParent): void => {
+    const cutoff = Date.now() - FADE_MS;
+    settled = commits.findLast((commit) => commit.at <= cutoff)?.offset ?? 0;
+    committed = commits.at(-1)?.offset ?? 0;
+    faded = [];
+    let offset = 0;
 
-function splitText(value: string, at: number, start: number, ends: readonly number[]): HastChild[] {
-  const end = at + value.length;
-  const bounds = [at, ...[start, ...ends].filter((cut) => cut > at && cut < end), end];
+    const visit = (parent: HastParent): void => {
+      parent.children = parent.children.flatMap((child): HastChild[] => {
+        if (child.type === "text") {
+          const pieces = splitText(child.value, offset);
+          offset += child.value.length;
 
-  return bounds.slice(1).map((to, index): HastChild => {
-    const piece = value.slice(bounds[index] - at, to - at);
-    const text: HastChild = { type: "text", value: piece };
+          return pieces;
+        }
 
-    return to <= start || piece.trim() === "" ? text : chunkSpan([text]);
+        if (child.type !== "element") return [child];
+
+        if (FADED_WHOLE.has(child.tagName)) {
+          child.properties = {
+            ...child.properties,
+            "data-sd-animate": true,
+            style: fadeStyle(offset),
+          };
+          faded.push({ element: child, start: offset });
+          offset += 1;
+        } else if (!UNFADED.has(child.tagName)) visit(child);
+
+        return [child];
+      });
+    };
+
+    visit(tree);
+    rendered = offset;
+
+    if (faded.some((fade) => fade.start >= committed)) freshStart = committed;
+
+    newest = new WeakSet(faded.flatMap((fade) => (fade.start >= freshStart ? [fade.element] : [])));
+  };
+
+  const rehypePlugin = Object.defineProperty(() => fadeInChunks, "name", {
+    value: `rehypeFadeInChunks$${fadePlugins++}`,
   });
+
+  return {
+    name: "animate",
+    type: "animate",
+    rehypePlugin,
+    commit() {
+      if (rendered > (commits.at(-1)?.offset ?? 0))
+        commits.push({ offset: rendered, at: Date.now() });
+    },
+    getLastRenderCharCount: () => rendered,
+    setPrevContentLength(length) {
+      commits = [{ offset: length, at: Number.NEGATIVE_INFINITY }];
+    },
+    fadingPlugins(next) {
+      if (next !== base) {
+        base = next;
+        plugins = [...next, rehypePlugin];
+      }
+
+      return plugins;
+    },
+    endsFade: (node) => node !== undefined && newest.has(node),
+  };
 }
 
-function chunkSpan(children: HastChild[]): HastChild {
-  return { type: "element", tagName: "span", properties: { className: CHUNK_CLASSES }, children };
+function toSpace(text: string, cut: number): number {
+  if (SPACE.test(text.charAt(cut - 1)) || SPACE.test(text.charAt(cut))) return cut;
+
+  const space = text.slice(cut).search(SPACE);
+
+  return space === -1 ? text.length : cut + space;
 }

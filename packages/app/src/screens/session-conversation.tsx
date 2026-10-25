@@ -33,6 +33,7 @@ import {
   connection,
   loadEarlierMessages,
   sessionWatch,
+  showTranscript,
   useWatchSelect,
 } from "../sdk.tsx";
 import type { WatchStore } from "../sdk.tsx";
@@ -308,6 +309,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     if (activation !== undefined && presentation === "full") observeActivation(activation);
   }, [activation, presentation]);
   useMountEffect(() => childrenWatch(sessionId).subscribe(() => undefined));
+  useMountEffect(() => showTranscript(sessionId));
   const working = navigating || messages.working;
   const cwd = host.data.workspace?.path;
 

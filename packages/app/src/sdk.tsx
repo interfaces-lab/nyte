@@ -23,6 +23,7 @@ import { startupReadsReleased } from "./startup.ts";
 import { countWork } from "./work-counts.ts";
 import { sessionActivityProjector } from "./conversation/session-activity.ts";
 import type { LoadedSessionView } from "./conversation/session-activity.ts";
+import { createTextPacer } from "./conversation/paced-text.ts";
 
 export interface HostEndpoint {
   readonly url: string;
@@ -200,6 +201,11 @@ export class WatchStore<T> {
   subscribeByFrame = (listener: () => void): (() => void) => this.listen(this.renders, listener);
 
   getState = (): WatchState<T> => this.state;
+
+  revise(value: T): void {
+    this.state = { value, error: this.state.error };
+    this.render();
+  }
 
   first(): Promise<void> {
     if (this.state.value !== undefined || this.state.error !== undefined || !this.active)
@@ -470,6 +476,19 @@ export const childrenWatch = watchFamily(
 
 const OPENING_TAIL = 40;
 
+const visibleTranscripts = new Map<SessionId, number>();
+
+export function showTranscript(session: SessionId): () => void {
+  visibleTranscripts.set(session, (visibleTranscripts.get(session) ?? 0) + 1);
+
+  return () => {
+    const count = visibleTranscripts.get(session) ?? 1;
+
+    if (count === 1) visibleTranscripts.delete(session);
+    else visibleTranscripts.set(session, count - 1);
+  };
+}
+
 const pagers = new Map<SessionId, PagedViews>();
 
 function nextFrame(): Promise<void> {
@@ -511,6 +530,12 @@ export const sessionWatch = watchFamily(
         const views = pagedViews(current.session(session), { tail: OPENING_TAIL });
         const iterator = tracePaints(views, session, nextFrame)[Symbol.asyncIterator]();
         const activity = sessionActivityProjector();
+
+        const pacer = createTextPacer<LoadedSessionView>(
+          () => visibleTranscripts.has(session),
+          (view) => sessionWatch(session).revise(view),
+        );
+
         pagers.set(session, views);
         let first = true;
 
@@ -530,9 +555,11 @@ export const sessionWatch = watchFamily(
               if (shown !== undefined) view = keepShown(shown, view);
             }
 
-            return { done: false, value: { ...view, activity: activity(view) } };
+            return { done: false, value: pacer.receive({ ...view, activity: activity(view) }) };
           },
           async return() {
+            pacer.dispose();
+
             if (pagers.get(session) === views) pagers.delete(session);
             await iterator.return?.();
 
