@@ -185,7 +185,8 @@ export interface JobEntry {
   } | null;
   readonly digest: string;
   readonly output: JobOutput;
-  readonly held: boolean;
+  /** Set once `stop` was asked, so the job's end sends no report. */
+  readonly stopping: boolean;
 }
 
 export interface JobOutput {
@@ -210,7 +211,9 @@ export interface JobTable {
   background(
     session: SessionId,
   ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];
+  /** Moves the running jobs `call` started to the background, clearing their `foreground`; false when it started none. */
   release(session: SessionId, call: CallId): boolean;
+  markStopping(id: JobId): void;
 }
 
 export interface ExecutionEnv {

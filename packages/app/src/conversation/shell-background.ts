@@ -1,5 +1,4 @@
-import { showsTool } from "@nyte-ai/plugin/client/presentation";
-import type { PartId, SessionId, SessionView } from "@nyte-ai/sdk";
+import type { PartId, SessionId } from "@nyte-ai/sdk";
 import { connection } from "../sdk.tsx";
 
 export async function moveToBackground(sessionId: SessionId, part: PartId): Promise<void> {
@@ -22,43 +21,4 @@ export async function moveToBackground(sessionId: SessionId, part: PartId): Prom
       return exhaustive;
     }
   }
-}
-
-export function findForegroundJobs(
-  view: Pick<SessionView, "messages" | "background"> | undefined,
-): ReadonlyMap<string, PartId> {
-  const jobs = (view?.background ?? []).flatMap((item) =>
-    item.kind === "job" && item.state === "working" && item.startedBy !== null
-      ? [[item.id, item.startedBy] as const]
-      : [],
-  );
-
-  if (jobs.length === 0) return new Map<string, PartId>();
-  const running = new Map(
-    (view?.messages ?? []).flatMap((message) =>
-      message.kind === "part" &&
-      message.status.kind === "live" &&
-      showsTool(message) &&
-      message.state.phase === "running"
-        ? [[message.state.call, message.part] as const]
-        : [],
-    ),
-  );
-
-  return new Map(
-    jobs.flatMap(([id, startedBy]) => {
-      const part = running.get(startedBy);
-
-      return part === undefined ? [] : [[id, part] as const];
-    }),
-  );
-}
-
-export function sameForegroundJobs(
-  previous: ReadonlyMap<string, PartId>,
-  next: ReadonlyMap<string, PartId>,
-): boolean {
-  return (
-    previous.size === next.size && [...previous].every(([job, part]) => next.get(job) === part)
-  );
 }

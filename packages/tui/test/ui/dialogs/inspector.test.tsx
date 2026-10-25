@@ -31,6 +31,7 @@ const JOB: Task = {
     startedAt: 0,
     endedAt: null,
     tail: "first output line\nsecond output line",
+    foreground: false,
   },
 };
 

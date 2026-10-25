@@ -85,6 +85,18 @@ export function createJobTable(kernel: Kernel): JobTable {
     });
   };
 
+  const update = (id: JobId, change: (view: JobView) => JobView): void => {
+    const previous = entries.get(id);
+
+    if (previous === undefined) return;
+    const next = { ...previous, view: change(previous.view) };
+    entries.set(id, next);
+    announce(next, previous);
+
+    if (previous.view.state.kind === "running" && next.view.state.kind !== "running")
+      forgetEnded(next.workspace);
+  };
+
   return {
     get: (id) => entries.get(id),
     byKey: (key) => [...entries.values()].find((entry) => entry.key === key),
@@ -106,17 +118,7 @@ export function createJobTable(kernel: Kernel): JobTable {
       entries.set(entry.view.id, entry);
       announce(entry, null);
     },
-    update(id, change) {
-      const previous = entries.get(id);
-
-      if (previous === undefined) return;
-      const next = { ...previous, view: change(previous.view) };
-      entries.set(id, next);
-      announce(next, previous);
-
-      if (previous.view.state.kind === "running" && next.view.state.kind !== "running")
-        forgetEnded(next.workspace);
-    },
+    update,
     subscribe(workspace, listener) {
       const known = listeners.get(workspace) ?? new Set<(change: JobChange) => void>();
       known.add(listener);
@@ -144,9 +146,16 @@ export function createJobTable(kernel: Kernel): JobTable {
           entry.view.state.kind === "running",
       );
 
-      for (const entry of started) entries.set(entry.view.id, { ...entry, held: false });
+      for (const entry of started)
+        update(entry.view.id, (view) => ({ ...view, foreground: false }));
 
       return started.length > 0;
+    },
+    markStopping(id) {
+      const entry = entries.get(id);
+
+      if (entry === undefined) return;
+      entries.set(id, { ...entry, stopping: true });
     },
   };
 }
@@ -306,6 +315,7 @@ export function jobHandle(kernel: Kernel, id: JobId): Job {
       const state = entry.view.state;
 
       if (state.kind !== "running") return { kind: "settled", outcome: state };
+      kernel.jobs.markStopping(id);
       await entry.process.stop();
 
       return { kind: "settled", outcome: await settled() };
@@ -337,12 +347,13 @@ async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
     tail: entry.output.tail(),
   }));
 
-  const held = kernel.jobs.get(id)?.held === true;
+  const ended = kernel.jobs.get(id);
+  const silent = ended !== undefined && (ended.view.foreground || ended.stopping);
   entry.output.end(end.kind === "exited" ? end.code : null);
   const consumed = await kernel.waits.jobEnded(id, end);
   const owner = entry.owner;
 
-  if (consumed || owner === null || !recorded || held) return;
+  if (consumed || owner === null || !recorded || silent) return;
 
   await send(kernel, {
     session: owner.session,
@@ -358,7 +369,7 @@ export async function startJob(
   origin: ConnectionContext["origin"],
   workspace: WorkspaceId,
   input: Parameters<Jobs["start"]>[0],
-  hold = false,
+  foreground = false,
 ): Promise<Job> {
   const digest = JSON.stringify([
     input.command ?? null,
@@ -384,7 +395,7 @@ export async function startJob(
   if (acquired.kind === "recorded") return held(asId<"job">(acquired.id));
   const id = acquired.value.id;
   await kernel.jobs.start(id, digest, () =>
-    spawn(kernel, origin, workspace, input, { id, digest, held: hold }),
+    spawn(kernel, origin, workspace, input, { id, digest, foreground }),
   );
 
   return jobHandle(kernel, id);
@@ -395,7 +406,11 @@ async function spawn(
   origin: ConnectionContext["origin"],
   workspace: WorkspaceId,
   input: Parameters<Jobs["start"]>[0],
-  { id, digest, held }: { readonly id: JobId; readonly digest: string; readonly held: boolean },
+  {
+    id,
+    digest,
+    foreground,
+  }: { readonly id: JobId; readonly digest: string; readonly foreground: boolean },
 ): Promise<void> {
   const on = async (session: SessionId): Promise<boolean> =>
     (await readSession(kernel.store, session))?.record.workspace === workspace;
@@ -482,6 +497,7 @@ async function spawn(
       startedAt: Date.now(),
       endedAt: null,
       tail: "",
+      foreground,
     },
     workspace,
     key: input.pty === undefined ? null : asId<"job-key">(crypto.randomUUID()),
@@ -489,7 +505,7 @@ async function spawn(
     owner,
     digest,
     output,
-    held,
+    stopping: false,
   });
 
   void pump(kernel, id, process, output);

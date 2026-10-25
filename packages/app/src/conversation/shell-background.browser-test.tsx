@@ -61,6 +61,7 @@ const job: JobView = {
   startedAt: 1,
   endedAt: null,
   tail: "",
+  foreground: true,
 };
 
 function view(message: Message): SessionView {
@@ -223,50 +224,44 @@ export async function run(): Promise<string> {
 
   const inline = await until(() => button(stage, "Move to background"), "the inline control");
   await painted();
+  await painted();
+
+  if (stage.querySelector("button[aria-description^='Open terminals']") !== null)
+    failures.push("a foreground step shows the terminals pill");
   await capture("shell-running-compact");
   inline.click();
   await until(() => (acts.length > 0 ? acts : null), "the background action");
 
   if (acts.join() !== `${CALL}:background`) failures.push(`the step sent ${acts.join()}`);
 
+  jobs.push([{ ...job, foreground: false }]);
+  views.push(view(settledTool(CALL, SHELL, "[running in the background as job job-1]")));
+
   const pill = await until(
     () => stage.querySelector("button[aria-description='Open terminals (1)']"),
     "the terminals pill",
   );
 
-  if (pill instanceof HTMLElement) pill.click();
-
-  const row = await until(() => button(stage, "Move to Background"), "the tray action");
-
-  if (button(stage, "Stop Terminal") === undefined) failures.push("the row lost Stop Terminal");
-  await painted();
-  await capture("terminals-foreground");
-  applyDisplayMode("dark");
-  await painted();
-  await capture("terminals-foreground-dark");
-  applyDisplayMode("light");
-  row.click();
-  await until(() => (acts.length > 1 ? acts : null), "the tray background action");
-
-  if (acts.join() !== `${CALL}:background,${CALL}:background`)
-    failures.push(`the tray sent ${acts.join()}`);
-
-  views.push(view(settledTool(CALL, SHELL, "[running in the background as job job-1]")));
   await until(
-    () => (button(stage, "Move to Background") === undefined ? true : null),
-    "the tray action to leave",
+    () => (button(stage, "Move to background") === undefined ? true : null),
+    "the inline control to leave",
   );
 
-  if (button(stage, "Move to background") !== undefined)
-    failures.push("a settled step still offers the background move");
+  if (pill instanceof HTMLElement) pill.click();
+  await until(() => button(stage, "Stop Terminal"), "the tray's Stop Terminal");
 
-  if (button(stage, "Stop Terminal") === undefined)
-    failures.push("a background job lost Stop Terminal");
+  if (button(stage, "Move to Background") !== undefined)
+    failures.push("the tray offers a background move");
   await painted();
   await capture("terminals-background");
+  applyDisplayMode("dark");
+  await painted();
+  await capture("terminals-background-dark");
+  applyDisplayMode("light");
 
   flushSync(() => root.unmount());
   views.push(view(running));
+  jobs.push([job]);
 
   const detailed = createRoot(stage);
   flushSync(() => detailed.render(<Stage density="detailed" viewport={stage} />));

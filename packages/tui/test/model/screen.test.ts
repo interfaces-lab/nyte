@@ -340,6 +340,7 @@ describe("drawing inputs", () => {
         startedAt: 0,
         endedAt: null,
         tail: "",
+        foreground: false,
       },
     };
 

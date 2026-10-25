@@ -135,6 +135,7 @@ describe("tasks line", () => {
             tail: "",
             startedAt: 1,
             endedAt: null,
+            foreground: false,
           },
         },
       ],
