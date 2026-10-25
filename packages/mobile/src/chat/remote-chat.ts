@@ -1,23 +1,49 @@
 import { SdkError } from "@nyte-ai/sdk";
-import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
+import { asId } from "@nyte-ai/schema";
 import type {
-  ActOutcome,
   CommitId,
   Configuration,
   Connection,
   Delivery,
   HeadName,
+  Message,
   ModelInfo,
   ModelRef,
   PartId,
   SessionId,
+  UserContent,
 } from "@nyte-ai/sdk";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { describeHostError } from "../connection/connection.ts";
 import { useWatch } from "../connection/use-watch.ts";
 import { uploadDraft, type DraftContent } from "../media/attachments.ts";
 
+/** The host's answer to a message the SDK's journal holds: the message it became, or why the host refused it. */
+export type SendAnswer =
+  | { kind: "sent"; message: Message["id"] }
+  | { kind: "refused"; error: string };
+
+/**
+ * `taken` once the photos are uploaded and the SDK's journal holds the message: the transcript shows it
+ * from then on and the journal retries it while the host is unreachable, so the composer can let go.
+ */
+export type SendOutcome =
+  | { kind: "taken"; answer: Promise<SendAnswer> }
+  | { kind: "failed"; error: string }
+  | { kind: "ignored" };
+
+function describeSendError(cause: unknown): string {
+  return cause instanceof Error && !(cause instanceof SdkError)
+    ? cause.message
+    : describeHostError(cause);
+}
+
+/**
+ * A session's live view and what the conversation does to it. `sending` covers only the photo upload;
+ * the SDK's journal serializes the sends after it. `withdraw` drops a message the host hasn't started
+ * on, and `steerNow` moves a queued one into the running response.
+ */
 export function useRemoteChat(client: Connection, sessionId: SessionId, headName?: HeadName) {
   const session = useMemo(() => client.session(sessionId), [client, sessionId]);
 
@@ -34,7 +60,6 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
 
   const tip = state?.heads.find((entry) => entry.name === head.name)?.tip;
 
-  const submission = useRef<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string>();
 
@@ -43,34 +68,40 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
   >(undefined);
 
   const send = useCallback(
-    async (content: DraftContent, delivery?: Delivery): Promise<boolean> => {
+    async (content: DraftContent, delivery?: Delivery): Promise<SendOutcome> => {
       const empty =
         typeof content === "string"
           ? content.trim() === ""
           : !content.some((part) => (part.kind === "text" ? part.text.trim() !== "" : true));
 
-      if (empty || sending) return false;
+      if (empty || sending) return { kind: "ignored" };
       setSending(true);
       setSendError(undefined);
 
+      let message: UserContent;
+
       try {
         const workspace = client.workspace((await session.info()).workspace);
-        const message = await uploadDraft(workspace, content);
-        const receipt = await head.send(message, delivery === undefined ? undefined : { delivery });
-        submission.current = receipt.message;
-
-        return true;
+        message = await uploadDraft(workspace, content);
       } catch (cause) {
-        setSendError(
-          cause instanceof Error && !(cause instanceof SdkError)
-            ? cause.message
-            : describeHostError(cause),
-        );
+        const error = describeSendError(cause);
+        setSendError(error);
 
-        return false;
+        return { kind: "failed", error };
       } finally {
         setSending(false);
       }
+
+      const answer = head.send(message, delivery === undefined ? undefined : { delivery }).then(
+        (receipt): SendAnswer => ({ kind: "sent", message: receipt.message }),
+        (cause: unknown): SendAnswer => ({ kind: "refused", error: describeSendError(cause) }),
+      );
+
+      void answer.then((outcome) => {
+        if (outcome.kind === "refused") setSendError(outcome.error);
+      });
+
+      return { kind: "taken", answer };
     },
     [client, session, head, sending],
   );
@@ -107,16 +138,13 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     [head, modelSelection],
   );
 
-  const reply = useCallback(
-    async (part: PartId, answers: QuestionAnswers): Promise<ActOutcome<unknown> | undefined> => {
-      try {
-        return await session.part(part).act("answer", { answers });
-      } catch {
-        return undefined;
-      }
-    },
-    [session],
-  );
+  const withdraw = async (message: Message["id"]): Promise<void> => {
+    await session.receipt(asId<"receipt">(message)).stop();
+  };
+
+  const steerNow = async (message: Message["id"], content: UserContent): Promise<void> => {
+    await head.revise(message, content, { delivery: "steer" });
+  };
 
   const report = useCallback(
     (part: PartId, message: string): void => {
@@ -161,8 +189,8 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
       stopError ??
       (watched.kind === "failed" ? describeHostError(watched.error) : undefined),
     send,
-    getSubmissionKey: () => submission.current,
-    reply,
+    withdraw,
+    steerNow,
     report,
     selectedModel,
     selectingModel: modelSelection?.kind === "saving",

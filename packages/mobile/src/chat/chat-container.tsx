@@ -4,6 +4,9 @@ import { css, html } from "react-strict-dom";
 import { router, useFocusEffect } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { skipToken, useQuery } from "@tanstack/react-query";
+import { sessionMark } from "@nyte-ai/plugin/client/presentation";
+import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { HeadName, SessionId } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
 import { useWatch } from "../connection/use-watch.ts";
@@ -12,7 +15,8 @@ import { navigationMenuAction } from "../ui/navigation-menu.tsx";
 import { toast } from "../ui/toast.tsx";
 import { TranscriptSkeleton } from "../ui/skeleton.tsx";
 import { spacing, textStyles, tokens } from "../theme.ts";
-import { openQuestion } from "../view-helpers.ts";
+import { openQuestion, type AskedQuestion } from "../view-helpers.ts";
+import type { QueuedActions } from "./messages.tsx";
 import { useRemoteChat } from "./remote-chat.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "./merge-request.ts";
 import { ModelPickerSheet } from "./model-selector.tsx";
@@ -21,6 +25,10 @@ import { indexDelegateNames } from "./delegate-names.ts";
 import { useChatDraft } from "./drafts.ts";
 import { seeWhileForeground } from "./seen.ts";
 
+/**
+ * One conversation's screen. A waiting subagent's question holds this conversation too, so it is
+ * answered here as well as in the subagent's own conversation, which takes no messages of its own.
+ */
 export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const { client } = useHost();
   const insets = useSafeAreaInsets();
@@ -40,15 +48,40 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
 
   const childSessions = children.kind === "ready" ? children.value : undefined;
   const delegateNames = useMemo(() => indexDelegateNames(childSessions ?? []), [childSessions]);
+  const asking = childSessions?.find((child) => sessionMark(child) === "waiting");
+  const askingId = asking?.id;
+
+  const [askingView] = useWatch(
+    useMemo(
+      () => (askingId === undefined ? undefined : client.session(askingId)),
+      [client, askingId],
+    ),
+  );
+
+  const ownQuestion = chat.state === undefined ? undefined : openQuestion(chat.state);
+  const childQuestion = askingView.kind === "ready" ? openQuestion(askingView.value) : undefined;
+
+  const question: AskedQuestion | undefined =
+    ownQuestion !== undefined
+      ? { session: sessionId, origin: undefined, question: ownQuestion }
+      : askingId !== undefined && childQuestion !== undefined
+        ? { session: askingId, origin: asking?.name ?? "A subagent", question: childQuestion }
+        : undefined;
+
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [, setDraft] = useChatDraft(sessionId);
   const execution = chat.state?.execution;
   const finished = execution?.kind === "idle" && execution.lastRun !== null;
-  const waiting = chat.state === undefined ? undefined : openQuestion(chat.state);
   const changes = chat.state?.changes ?? [];
-  const review = finished && waiting === undefined && changes.length > 0 ? changes : undefined;
+  const review = finished && question === undefined && changes.length > 0 ? changes : undefined;
   const info = chat.info;
   const session = client.session(sessionId);
+  const parentId = info?.parent ?? null;
+
+  const parentInfo = useQuery({
+    queryKey: ["session-info", parentId],
+    queryFn: parentId === null ? skipToken : () => client.session(parentId).info(),
+  });
 
   const sendMerge = () => {
     void chat.send(MERGE_PROMPT);
@@ -57,6 +90,38 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const report = (title: string) => (cause: unknown) => {
     toast.error(title, describeHostError(cause));
   };
+
+  const answer = (asked: AskedQuestion, answers: QuestionAnswers) =>
+    client
+      .session(asked.session)
+      .part(asked.question.part)
+      .act("answer", { answers })
+      .catch(() => undefined);
+
+  const queued: QueuedActions = {
+    edit: (item, text) => {
+      void chat
+        .withdraw(item.message)
+        .then(() => setDraft((current) => (current.trim() === "" ? text : `${text}\n\n${current}`)))
+        .catch(report("Couldn't edit the message"));
+    },
+    sendNow: (item) => {
+      void chat.steerNow(item.message, item.content).catch(report("Couldn't send it now"));
+    },
+    remove: (item) => {
+      void chat.withdraw(item.message).catch(report("Couldn't remove the message"));
+    },
+  };
+
+  const parentName = parentInfo.data?.name?.trim() ?? "";
+
+  const subagent =
+    parentId === null
+      ? undefined
+      : {
+          parentName: parentName === "" ? "a conversation" : parentName,
+          onOpenParent: () => router.dismissTo(`/chat/${parentId}`),
+        };
 
   const name = info?.name?.trim() ?? "";
 
@@ -177,7 +242,10 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
           head={head ?? "main"}
           onSend={chat.send}
           onStop={chat.stop}
-          onReply={chat.reply}
+          question={question}
+          onAnswer={answer}
+          queued={queued}
+          subagent={subagent}
           onReport={chat.report}
           onChooseHead={setHead}
           delegateNames={delegateNames}

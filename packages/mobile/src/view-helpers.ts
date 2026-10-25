@@ -26,3 +26,10 @@ export type OpenQuestion = ReturnType<typeof openQuestions>[number];
 export function openQuestion(view: SessionView): OpenQuestion | undefined {
   return openQuestions(view)[0];
 }
+
+/** An open question and the conversation asking it: the one on screen, or one of its subagents. */
+export type AskedQuestion = {
+  session: SessionId;
+  origin: string | undefined;
+  question: OpenQuestion;
+};

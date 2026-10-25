@@ -130,13 +130,19 @@ describe("conversationRows", () => {
     );
 
     expect(rows.slice(0, 3)).toEqual([
-      { kind: "user", id: "submission:prompt-1", content: "Fix it.", delivery: "sent" },
+      {
+        kind: "user",
+        id: "submission:prompt-1",
+        message: "prompt-1",
+        content: "Fix it.",
+        delivery: { kind: "sent" },
+      },
       { kind: "marker", id: "earlier:turn-1", text: "Earlier steps not shown" },
       { kind: "assistant", id: "text-1", text: "Done.", streaming: false },
     ]);
   });
 
-  it("keeps a live run's waiting steer in the transcript and draws its queue after it, both queued, before the run's status", () => {
+  it("keeps a live run's joining steer in the transcript and draws its queue after it, before the run's status", () => {
     const execution: Execution = {
       kind: "live",
       run: {
@@ -186,13 +192,26 @@ describe("conversationRows", () => {
     );
 
     expect(rows).toEqual([
-      { kind: "user", id: "submission:prompt-1", content: "Fix it.", delivery: "sent" },
-      { kind: "user", id: "submission:steer-1", content: "Use the new API.", delivery: "queued" },
+      {
+        kind: "user",
+        id: "submission:prompt-1",
+        message: "prompt-1",
+        content: "Fix it.",
+        delivery: { kind: "sent" },
+      },
+      {
+        kind: "user",
+        id: "submission:steer-1",
+        message: "steer-1",
+        content: "Use the new API.",
+        delivery: { kind: "joining" },
+      },
       {
         kind: "user",
         id: "submission:later-1",
+        message: "later-1",
         content: "Then update the docs.",
-        delivery: "queued",
+        delivery: { kind: "queued" },
       },
       { kind: "status", id: "status:run-1", execution },
     ]);

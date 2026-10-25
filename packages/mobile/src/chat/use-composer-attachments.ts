@@ -39,7 +39,9 @@ function springShut(
 /**
  * The photos staged on the composer and the attachments menu that adds them. `blocked` is true while
  * another step holds the composer (sending, choosing a model); staging photos holds it too, and
- * `onStaging` reports that to the screen. The menu closes whenever the suggestion menu opens.
+ * `onStaging` reports that to the screen. The menu closes whenever the suggestion menu opens. A sent
+ * photo is withdrawn from the strip at once but keeps its marks until `release`, so a refused message
+ * can be restored whole.
  */
 export function useComposerAttachments({
   blocked,
@@ -127,9 +129,9 @@ export function useComposerAttachments({
       clearAnnotation(id);
       setImages((current) => current.filter((item) => item.id !== id));
     },
+    withdraw: (submitted: readonly StagedImage[]) =>
+      setImages((current) => current.filter((image) => !submitted.includes(image))),
     release: (submitted: readonly StagedImage[]) => {
-      setImages((current) => current.filter((image) => !submitted.includes(image)));
-
       for (const image of submitted) clearAnnotation(image.id);
     },
   };

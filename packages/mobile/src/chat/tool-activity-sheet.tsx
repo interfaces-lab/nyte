@@ -222,14 +222,17 @@ function readOutput(outcome: ToolOutcome): string | undefined {
   }
 }
 
+/** Where a detail row leads once the sheet has dismissed. */
+type Destination = { kind: "file"; path: string } | { kind: "session"; id: SessionId };
+
 const ActivityDetail = memo(function ActivityDetail({
   part,
   delegateNames,
-  onOpenFile,
+  onOpen,
 }: {
   part: ActivityPart;
   delegateNames: ReadonlyMap<SessionId, string>;
-  onOpenFile: ((path: string) => void) | undefined;
+  onOpen: (destination: Destination) => void;
 }) {
   const state = activityState(part, delegateNames);
   const tool = part.kind === "tool" ? part.state : undefined;
@@ -242,6 +245,7 @@ const ActivityDetail = memo(function ActivityDetail({
       : undefined;
 
   const prose = tool?.class.kind === "custom" || tool?.class.kind === "delegate";
+  const child = tool?.class.kind === "delegate" ? tool.class.child : null;
 
   return (
     <html.div style={styles.detail}>
@@ -265,11 +269,18 @@ const ActivityDetail = memo(function ActivityDetail({
       ) : (
         <Output text={output} />
       )}
-      {file === undefined || onOpenFile === undefined ? null : (
+      {file === undefined ? null : (
         <GlassButton
           label={`View changes · +${file.added} −${file.removed}`}
           systemImage="doc.text"
-          onPress={() => onOpenFile(file.path)}
+          onPress={() => onOpen({ kind: "file", path: file.path })}
+        />
+      )}
+      {child === null ? null : (
+        <GlassButton
+          label="Open Conversation"
+          systemImage="bubble.left.and.bubble.right"
+          onPress={() => onOpen({ kind: "session", id: child })}
         />
       )}
     </html.div>
@@ -282,15 +293,17 @@ export function ToolActivitySheet({
   delegateNames,
   onClose,
   onOpenFile,
+  onOpenSession,
 }: {
   open: boolean;
   parts: readonly ActivityPart[];
   delegateNames: ReadonlyMap<SessionId, string>;
   onClose: () => void;
-  onOpenFile?: (path: string) => void;
+  onOpenFile: (path: string) => void;
+  onOpenSession: (session: SessionId) => void;
 }) {
   const theme = useTheme();
-  const [pendingFile, setPendingFile] = useState<string>();
+  const [pending, setPending] = useState<Destination>();
 
   return (
     <Host style={{ position: "absolute" }} pointerEvents="none">
@@ -300,9 +313,11 @@ export function ToolActivitySheet({
           if (!presented) onClose();
         }}
         onDismiss={() => {
-          if (pendingFile === undefined) return;
-          setPendingFile(undefined);
-          onOpenFile?.(pendingFile);
+          if (pending === undefined) return;
+          setPending(undefined);
+
+          if (pending.kind === "file") onOpenFile(pending.path);
+          else onOpenSession(pending.id);
         }}
       >
         <Group
@@ -336,14 +351,10 @@ export function ToolActivitySheet({
                     <ActivityDetail
                       part={item}
                       delegateNames={delegateNames}
-                      onOpenFile={
-                        onOpenFile === undefined
-                          ? undefined
-                          : (path) => {
-                              setPendingFile(path);
-                              onClose();
-                            }
-                      }
+                      onOpen={(destination) => {
+                        setPending(destination);
+                        onClose();
+                      }}
                     />
                   )}
                 />

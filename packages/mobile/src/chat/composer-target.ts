@@ -9,6 +9,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { DraftContent } from "../media/attachments.ts";
+import type { SendOutcome } from "./remote-chat.ts";
 
 /** A composer that starts a conversation in the chosen folder. */
 type NewTarget = { kind: "new" };
@@ -26,7 +27,7 @@ export type SessionTarget = {
   running: boolean;
   stopping: boolean;
   error: string | undefined;
-  onSend: (content: DraftContent, delivery?: Delivery) => Promise<boolean>;
+  onSend: (content: DraftContent, delivery?: Delivery) => Promise<SendOutcome>;
   onStop: () => void;
   onChooseHead: (head: HeadName) => void;
 };

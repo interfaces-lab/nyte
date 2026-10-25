@@ -11,7 +11,7 @@ import {
 } from "../media/attachments.ts";
 import { resolveAttachment } from "../media/annotations.ts";
 import { parseCommandLine, type CommandLine } from "./completions.ts";
-import type { ComposerTarget } from "./composer-target.ts";
+import type { ComposerTarget, SessionTarget } from "./composer-target.ts";
 import { useChatScope } from "./drafts.ts";
 import type { ThinkingLevel } from "./thinking.ts";
 import {
@@ -41,8 +41,9 @@ function buildContent(draft: string, images: readonly StagedImage[]): DraftPart[
 /**
  * Sending what the composer holds. In a session a `/command` line runs as a command and anything else is
  * sent, steering or queued behind a running response; a new conversation records a pending start in the
- * chosen folder and sends it in the background. Whatever was submitted leaves the draft only once the
- * host takes it, so text typed meanwhile survives.
+ * chosen folder and sends it in the background. A message leaves the draft once its photos are uploaded
+ * and the SDK's journal holds it, so text typed meanwhile survives; a refusal puts it back in front of
+ * whatever was typed since. A `/command` the host doesn't know goes out as a message.
  */
 export function useComposerSubmit({
   client,
@@ -66,6 +67,7 @@ export function useComposerSubmit({
   attachments: {
     images: readonly StagedImage[];
     restore: (restored: readonly StagedImage[]) => void;
+    withdraw: (submitted: readonly StagedImage[]) => void;
     release: (submitted: readonly StagedImage[]) => void;
   };
   commands: readonly CommandInfo[];
@@ -84,38 +86,67 @@ export function useComposerSubmit({
   const clearSubmitted = (submitted: string, submittedImages: readonly StagedImage[]) => {
     reportError(undefined);
     setDraft((current) => (current === submitted ? "" : current));
-    attachments.release(submittedImages);
+    attachments.withdraw(submittedImages);
   };
 
-  const deliver = async (
-    sessionId: SessionId,
-    content: DraftContent,
-    line: CommandLine | undefined,
-    send: (content: DraftContent) => Promise<boolean>,
-  ): Promise<boolean> => {
-    if (line === undefined) return send(content);
+  const restoreSubmitted = (submitted: string, submittedImages: readonly StagedImage[]) => {
+    setDraft((current) => (current.trim() === "" ? submitted : `${submitted}\n\n${current}`));
+    attachments.restore(submittedImages);
+  };
 
+  const runCommand = async (
+    sessionId: SessionId,
+    line: CommandLine,
+  ): Promise<"ran" | "unknown" | "failed"> => {
     const outcome = await client.session(sessionId).command(line.name, line.argument);
 
     switch (outcome.kind) {
       case "ran":
         setNotice(outcome.output ?? undefined);
 
-        return true;
+        return "ran";
       case "sent":
-        return true;
+        return "ran";
       case "unknown":
-        return send(content);
+        return "unknown";
       case "failed":
         reportError(outcome.message);
 
-        return false;
+        return "failed";
       default: {
         const exhaustive: never = outcome;
 
         return exhaustive;
       }
     }
+  };
+
+  const sendInSession = async (
+    session: SessionTarget,
+    submitted: string,
+    submittedImages: readonly StagedImage[],
+    content: DraftContent,
+    line: CommandLine | undefined,
+  ) => {
+    const ran = line === undefined ? "unknown" : await runCommand(session.sessionId, line);
+
+    if (ran === "failed") return;
+
+    if (ran === "ran") {
+      clearSubmitted(submitted, submittedImages);
+      attachments.release(submittedImages);
+
+      return;
+    }
+
+    const outcome = await session.onSend(content, session.running ? delivery : undefined);
+
+    if (outcome.kind !== "taken") return;
+    clearSubmitted(submitted, submittedImages);
+    void outcome.answer.then((answer) => {
+      if (answer.kind === "sent") attachments.release(submittedImages);
+      else restoreSubmitted(submitted, submittedImages);
+    });
   };
 
   const startConversation = async (
@@ -159,6 +190,7 @@ export function useComposerSubmit({
     }
 
     clearSubmitted(submitted, submittedImages);
+    attachments.release(submittedImages);
     void startSender.send(recorded.pending.input, true).then((failure) => {
       if (failure !== undefined) reportError(failure);
     });
@@ -176,11 +208,7 @@ export function useComposerSubmit({
 
     const submission =
       target.kind === "session"
-        ? deliver(target.sessionId, content, line, (message) =>
-            target.onSend(message, target.running ? delivery : undefined),
-          ).then((delivered) => {
-            if (delivered) clearSubmitted(submitted, submittedImages);
-          })
+        ? sendInSession(target, submitted, submittedImages, content, line)
         : startConversation(submitted, submittedImages, content);
 
     void submission

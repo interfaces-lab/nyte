@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import Animated, {
+import {
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -7,12 +7,9 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
-import { GlassSurface } from "./composer-glass.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 
 export type AttachmentFrame = { x: number; y: number; width: number; height: number };
-
-export const AttachmentGlass = Animated.createAnimatedComponent(GlassSurface);
 
 const EMPTY_FRAME: AttachmentFrame = { x: 0, y: 0, width: 0, height: 0 };
 

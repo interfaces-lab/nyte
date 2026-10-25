@@ -17,8 +17,11 @@ import type {
 } from "@nyte-ai/sdk";
 import type { DraftContent } from "../media/attachments.ts";
 import { spacing, tokens } from "../theme.ts";
-import { openQuestion } from "../view-helpers.ts";
+import type { AskedQuestion } from "../view-helpers.ts";
 import { Composer } from "./composer.tsx";
+import type { QueuedActions } from "./messages.tsx";
+import type { SendOutcome } from "./remote-chat.ts";
+import { SubagentBar } from "./subagent-bar.tsx";
 import { ReviewStrip } from "./review-strip.tsx";
 import { conversationLayout } from "./conversation-layout.ts";
 import {
@@ -36,15 +39,21 @@ type ChatScreenProps = {
   configuration: Configuration | null;
   sending: boolean;
   error: string | undefined;
-  onSend: (content: DraftContent, delivery?: Delivery) => Promise<boolean>;
-  getSubmissionKey: () => string | undefined;
+  onSend: (content: DraftContent, delivery?: Delivery) => Promise<SendOutcome>;
   onStop: () => void;
-  onReply: (part: PartId, answers: QuestionAnswers) => Promise<ActOutcome<unknown> | undefined>;
+  question: AskedQuestion | undefined;
+  onAnswer: (
+    asked: AskedQuestion,
+    answers: QuestionAnswers,
+  ) => Promise<ActOutcome<unknown> | undefined>;
+  queued: QueuedActions;
   onReport: (part: PartId, message: string) => void;
   onChooseHead: (head: HeadName) => void;
   delegateNames: ReadonlyMap<SessionId, string>;
   changes: SessionView["changes"] | undefined;
   onAskMerge: () => void;
+  /** Set for a subagent's conversation, which takes no messages of its own. */
+  subagent: { parentName: string; onOpenParent: () => void } | undefined;
 };
 
 /**
@@ -61,14 +70,16 @@ export function ChatScreen({
   sending,
   error,
   onSend,
-  getSubmissionKey,
   onStop,
-  onReply,
+  question,
+  onAnswer,
+  queued,
   onReport,
   onChooseHead,
   delegateNames,
   changes,
   onAskMerge,
+  subagent,
 }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 44;
@@ -88,7 +99,8 @@ export function ChatScreen({
   const running = state.execution.kind !== "idle";
   const stopping = state.execution.kind === "live" && state.execution.stopping;
   const { composerRef, onComposerLayout, anchorSend } = scroller;
-  const answerable = openQuestion(state) !== undefined;
+  const answerable = question !== undefined;
+  const gutters = { left: layout.paddingLeft, right: layout.paddingRight };
 
   return (
     <html.div style={styles.screen}>
@@ -101,7 +113,9 @@ export function ChatScreen({
             state={state}
             sessionId={sessionId}
             delegateNames={delegateNames}
-            onReply={onReply}
+            question={question}
+            queued={queued}
+            onAnswer={onAnswer}
             onReport={onReport}
             layout={layout}
             headerHeight={headerHeight}
@@ -120,30 +134,37 @@ export function ChatScreen({
                 <ReviewStrip changes={changes} sessionId={sessionId} onAskMerge={onAskMerge} />
               </html.div>
             ) : null}
-            <Composer
-              target={{
-                kind: "session",
-                sessionId,
-                head,
-                heads: state.heads.map((entry) => entry.name),
-                config: configuration,
-                workspace,
-                catalog: state.catalog,
-                sending,
-                running,
-                stopping,
-                error,
-                onSend: (content, delivery) => {
-                  const sent = onSend(content, delivery);
-
-                  return anchorSend(sent, getSubmissionKey);
-                },
-                onStop,
-                onChooseHead,
-              }}
-              placeholder="Follow up…"
-              gutters={{ left: layout.paddingLeft, right: layout.paddingRight }}
-            />
+            {subagent !== undefined ? (
+              <SubagentBar
+                parentName={subagent.parentName}
+                running={running}
+                stopping={stopping}
+                gutters={gutters}
+                onOpenParent={subagent.onOpenParent}
+                onStop={onStop}
+              />
+            ) : (
+              <Composer
+                target={{
+                  kind: "session",
+                  sessionId,
+                  head,
+                  heads: state.heads.map((entry) => entry.name),
+                  config: configuration,
+                  workspace,
+                  catalog: state.catalog,
+                  sending,
+                  running,
+                  stopping,
+                  error,
+                  onSend: (content, delivery) => anchorSend(onSend(content, delivery)),
+                  onStop,
+                  onChooseHead,
+                }}
+                placeholder="Follow up…"
+                gutters={gutters}
+              />
+            )}
           </View>
         </KeyboardStickyView>
       </MessageScrollerProvider>

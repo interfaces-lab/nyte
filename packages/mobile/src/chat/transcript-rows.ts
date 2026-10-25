@@ -16,8 +16,24 @@ export type ActivityPart =
   | { kind: "tool"; id: string; state: ToolPartState; status: PartStatus }
   | { kind: "thinking"; id: string; text: string; streaming: boolean };
 
+type UserMessage = Extract<Message, { kind: "user" }>;
+
+/** Where a sent message is on its way: the SDK's journal holds it until the host answers, then the host schedules it. */
+export type UserDelivery =
+  | { kind: "sent" }
+  | { kind: "sending" }
+  | { kind: "retrying"; reason: string }
+  | { kind: "queued" }
+  | { kind: "joining" };
+
 export type ChatRow =
-  | { kind: "user"; id: string; content: UserContent; delivery: "sent" | "queued" }
+  | {
+      kind: "user";
+      id: string;
+      message: UserMessage["id"];
+      content: UserContent;
+      delivery: UserDelivery;
+    }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
   | {
       kind: "canvas";
@@ -39,6 +55,37 @@ const STOPPED: Failure = { class: "aborted", message: "" };
 
 const rowsOf = new WeakMap<Message, ChatRow>();
 
+function userDelivery(status: UserMessage["status"]): UserDelivery {
+  switch (status.kind) {
+    case "landed":
+      return { kind: "sent" };
+    case "unsent":
+      return status.retrying === null
+        ? { kind: "sending" }
+        : { kind: "retrying", reason: status.retrying.reason };
+    case "pending":
+      switch (status.schedule.kind) {
+        case "joined":
+        case "attached":
+          return { kind: "joining" };
+        case "next-turn":
+          return { kind: "queued" };
+        case "deciding":
+          return { kind: "sending" };
+        default: {
+          const exhaustive: never = status.schedule;
+
+          return exhaustive;
+        }
+      }
+    default: {
+      const exhaustive: never = status;
+
+      return exhaustive;
+    }
+  }
+}
+
 function messageRow(message: Message): ChatRow | undefined {
   const cached = rowsOf.get(message);
 
@@ -49,8 +96,9 @@ function messageRow(message: Message): ChatRow | undefined {
       ? {
           kind: "user",
           id: `submission:${message.id}`,
+          message: message.id,
           content: message.content,
-          delivery: message.status.kind === "landed" ? "sent" : "queued",
+          delivery: userDelivery(message.status),
         }
       : isPart(message, text)
         ? {

@@ -4,10 +4,10 @@ import { css, html } from "react-strict-dom";
 import type { ActOutcome, PartId, SessionId, SessionView } from "@nyte-ai/sdk";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import { spacing } from "../theme.ts";
-import { openQuestion } from "../view-helpers.ts";
+import type { AskedQuestion } from "../view-helpers.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
 import type { ConversationLayout } from "./conversation-layout.ts";
-import { MessageRow } from "./messages.tsx";
+import { MessageRow, type QueuedActions } from "./messages.tsx";
 import { MessageScroller } from "./message-scroller.tsx";
 import { conversationRows } from "./transcript-rows.ts";
 import { WaitingSelection } from "./waiting-selection.tsx";
@@ -17,7 +17,12 @@ type TimelineProps = {
   state: SessionView;
   sessionId: SessionId;
   delegateNames: ReadonlyMap<SessionId, string>;
-  onReply: (part: PartId, answers: QuestionAnswers) => Promise<ActOutcome<unknown> | undefined>;
+  question: AskedQuestion | undefined;
+  queued: QueuedActions;
+  onAnswer: (
+    asked: AskedQuestion,
+    answers: QuestionAnswers,
+  ) => Promise<ActOutcome<unknown> | undefined>;
   onReport: (part: PartId, message: string) => void;
   layout: ConversationLayout;
   headerHeight: number;
@@ -27,12 +32,13 @@ export function Timeline({
   state,
   sessionId,
   delegateNames,
-  onReply,
+  question,
+  queued,
+  onAnswer,
   onReport,
   layout,
   headerHeight,
 }: TimelineProps) {
-  const question = openQuestion(state);
   const transcript = useMemo(() => conversationRows(state), [state]);
   const activity = useActivitySheet(transcript);
 
@@ -64,6 +70,7 @@ export function Timeline({
             item={item.row}
             layout={layout}
             delegateNames={delegateNames}
+            queued={queued}
             onOpenActivity={activity.openActivity}
             onReport={onReport}
           />
@@ -78,8 +85,9 @@ export function Timeline({
           <html.div style={styles.gutters(layout.paddingLeft, layout.paddingRight)}>
             {question === undefined ? null : (
               <WaitingSelection
-                question={question}
-                onReply={(answers) => onReply(question.part, answers)}
+                question={question.question}
+                origin={question.origin}
+                onReply={(answers) => onAnswer(question, answers)}
               />
             )}
           </html.div>
@@ -91,6 +99,7 @@ export function Timeline({
         delegateNames={delegateNames}
         onClose={activity.close}
         onOpenFile={openFile}
+        onOpenSession={(child) => router.push(`/chat/${child}`)}
       />
     </>
   );

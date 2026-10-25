@@ -10,7 +10,7 @@ import { failureNotice } from "@nyte-ai/plugin/client/presentation";
 import { useHost } from "../connection/host-context.tsx";
 import { controls, media, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import type { ConversationLayout } from "./conversation-layout.ts";
-import type { ChatRow } from "./transcript-rows.ts";
+import type { ChatRow, UserDelivery } from "./transcript-rows.ts";
 import { ActivityIcon, activitySummary } from "./tool-activity-sheet.tsx";
 import { CanvasFrame } from "./canvas-frame.tsx";
 import { Markdown } from "./markdown.tsx";
@@ -24,14 +24,78 @@ function Row({ layout, children }: { layout: ConversationLayout; children: React
   );
 }
 
-function copySheet(text: string) {
-  if (text === "") return;
+type UserRow = Extract<ChatRow, { kind: "user" }>;
+
+/** What the user can still do with a message the host hasn't started on. */
+export type QueuedActions = {
+  /** Take the message back into the composer as `text`; offered only for text-only messages. */
+  edit: (item: UserRow, text: string) => void;
+  sendNow: (item: UserRow) => void;
+  remove: (item: UserRow) => void;
+};
+
+type Choice = { name: string; label: string; run: () => void };
+
+/** Copy for every message; Edit, Send Now, and Remove while it still waits to run. */
+function messageChoices(
+  item: UserRow,
+  text: string,
+  editable: boolean,
+  actions: QueuedActions,
+): { choices: Choice[]; destructive: Choice | undefined } {
+  const waiting = item.delivery.kind !== "sent" && item.delivery.kind !== "joining";
+  const copy = { name: "copy", label: "Copy Message", run: () => void setStringAsync(text) };
+
+  const choices = [
+    ...(waiting && editable
+      ? [{ name: "edit", label: "Edit", run: () => actions.edit(item, text) }]
+      : []),
+    ...(item.delivery.kind === "queued"
+      ? [{ name: "send-now", label: "Send Now", run: () => actions.sendNow(item) }]
+      : []),
+    ...(text === "" ? [] : [copy]),
+  ];
+
+  return {
+    choices,
+    destructive: waiting
+      ? { name: "remove", label: "Remove", run: () => actions.remove(item) }
+      : undefined,
+  };
+}
+
+function showMessageSheet({ choices, destructive }: ReturnType<typeof messageChoices>) {
+  const all = destructive === undefined ? choices : [...choices, destructive];
+
+  if (all.length === 0) return;
   ActionSheetIOS.showActionSheetWithOptions(
-    { options: ["Cancel", "Copy Message"], cancelButtonIndex: 0 },
-    (index) => {
-      if (index === 1) void setStringAsync(text);
+    {
+      options: ["Cancel", ...all.map((choice) => choice.label)],
+      cancelButtonIndex: 0,
+      destructiveButtonIndex: destructive === undefined ? undefined : all.length,
     },
+    (index) => all[index - 1]?.run(),
   );
+}
+
+function deliveryLabel(delivery: UserDelivery): string | undefined {
+  switch (delivery.kind) {
+    case "sent":
+      return undefined;
+    case "sending":
+      return "Sending…";
+    case "retrying":
+      return `Couldn't send: ${delivery.reason}. Retrying…`;
+    case "queued":
+      return "Queued";
+    case "joining":
+      return "Adding to this response";
+    default: {
+      const exhaustive: never = delivery;
+
+      return exhaustive;
+    }
+  }
 }
 
 async function blobUri(client: Connection, blob: BlobId, mime: string): Promise<string> {
@@ -69,9 +133,11 @@ function BlobImage({ blob, mime, width }: { blob: BlobId; mime: string; width: n
 function UserMessage({
   item,
   layout,
+  queued,
 }: {
-  item: Extract<ChatRow, { kind: "user" }>;
+  item: UserRow;
   layout: ConversationLayout;
+  queued: QueuedActions;
 }) {
   const content = item.content;
 
@@ -82,6 +148,14 @@ function UserMessage({
 
   const hasPhotos = typeof content !== "string" && content.some((part) => part.kind === "file");
   const maxWidth = Math.floor(layout.contentWidth * media.bubbleMaxWidthRatio);
+  const status = deliveryLabel(item.delivery);
+  const textOnly = typeof content === "string" || content.every((part) => part.kind === "text");
+  const sheet = messageChoices(item, text, textOnly && text !== "", queued);
+
+  const actions = [
+    ...sheet.choices,
+    ...(sheet.destructive === undefined ? [] : [sheet.destructive]),
+  ];
 
   return (
     <Row layout={layout}>
@@ -89,18 +163,14 @@ function UserMessage({
         <Pressable
           accessible
           accessibilityRole="text"
-          accessibilityLabel={[
-            text,
-            hasPhotos ? "Attached photos" : "",
-            item.delivery === "queued" ? "Queued" : "",
-          ]
+          accessibilityLabel={[text, hasPhotos ? "Attached photos" : "", status ?? ""]
             .filter(Boolean)
             .join(". ")}
-          accessibilityActions={text === "" ? [] : [{ name: "copy", label: "Copy Message" }]}
+          accessibilityActions={actions.map(({ name, label }) => ({ name, label }))}
           onAccessibilityAction={({ nativeEvent }) => {
-            if (nativeEvent.actionName === "copy") void setStringAsync(text);
+            actions.find((action) => action.name === nativeEvent.actionName)?.run();
           }}
-          onLongPress={() => copySheet(text)}
+          onLongPress={() => showMessageSheet(sheet)}
           style={{ maxWidth }}
         >
           <Bubble variant="outgoing">
@@ -132,7 +202,9 @@ function UserMessage({
             )}
           </Bubble>
         </Pressable>
-        {item.delivery === "queued" ? <MessageFooter>Queued</MessageFooter> : null}
+        {status === undefined ? null : (
+          <MessageFooter alert={item.delivery.kind === "retrying"}>{status}</MessageFooter>
+        )}
       </Message>
     </Row>
   );
@@ -196,7 +268,9 @@ function RunStatus({
       : execution.kind === "waiting"
         ? execution.on.kind === "part"
           ? "Waiting for your answer"
-          : "Waiting for background work"
+          : execution.on.kind === "run"
+            ? "Waiting for a subagent"
+            : "Waiting for background work"
         : `${execution.reason}. Retrying…`;
 
   return (
@@ -264,16 +338,18 @@ export const MessageRow = memo(function MessageRow({
   item,
   layout,
   delegateNames,
+  queued,
   onOpenActivity,
   onReport,
 }: {
   item: ChatRow;
   layout: ConversationLayout;
   delegateNames: ReadonlyMap<SessionId, string>;
+  queued: QueuedActions;
   onOpenActivity: (item: Extract<ChatRow, { kind: "activity" }>) => void;
   onReport: (part: PartId, message: string) => void;
 }) {
-  if (item.kind === "user") return <UserMessage item={item} layout={layout} />;
+  if (item.kind === "user") return <UserMessage item={item} layout={layout} queued={queued} />;
 
   if (item.kind === "assistant") return <AssistantMessage item={item} layout={layout} />;
 

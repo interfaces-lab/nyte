@@ -16,13 +16,11 @@ export function ConnectWelcome({
   notice,
   recovery,
   onManual,
-  onPreview,
 }: {
   account: Account | undefined;
   notice: string | undefined;
   recovery: HostRecovery | undefined;
   onManual: (method: ConnectionMethod) => void;
-  onPreview: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -98,20 +96,16 @@ export function ConnectWelcome({
               </html.span>
             </html.button>
           </html.div>
-          {recovery !== undefined ? (
+          {recovery === undefined ? null : (
             <html.button
               disabled={leaving}
               onClick={() => {
                 setLeaving(true);
                 void recovery.disconnect().finally(() => setLeaving(false));
               }}
-              style={[styles.textButton, styles.preview]}
+              style={[styles.textButton, styles.centered]}
             >
               <html.span style={[textStyles.secondary, styles.danger]}>Disconnect</html.span>
-            </html.button>
-          ) : (
-            <html.button onClick={onPreview} style={[styles.textButton, styles.preview]}>
-              <html.span style={textStyles.caption}>Try a demo</html.span>
             </html.button>
           )}
         </html.div>
@@ -175,5 +169,5 @@ const styles = css.create({
   },
   actionLabel: { color: tokens.foreground, textAlign: "center" },
   danger: { color: tokens.danger, textAlign: "center" },
-  preview: { alignSelf: "center" },
+  centered: { alignSelf: "center" },
 });

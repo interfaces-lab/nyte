@@ -1,7 +1,8 @@
 import { StaggeredText } from "./picker-animated-text.tsx";
 import type { PressableProps } from "react-native";
 import type { AnimationConfig } from "./picker-animated-text-types.ts";
-import { GlassView, type GlassViewProps } from "expo-glass-effect";
+import type { GlassViewProps } from "expo-glass-effect";
+import { AnimatedGlass } from "./composer-glass.tsx";
 import type React from "react";
 // oxlint-disable-next-line no-restricted-imports -- a background change starts a Reanimated color tween from the color on screen
 import { memo, useCallback, useEffect, useRef } from "react";
@@ -36,8 +37,6 @@ const COLOR_TIMING = { duration: 420, easing: Easing.inOut(Easing.cubic) };
 const WIDTH_TIMING = {};
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-const AnimatedGlassView = Animated.createAnimatedComponent(GlassView);
 
 const MorphButton: React.FC<IMorphButton> & React.FunctionComponent<IMorphButton> =
   memo<IMorphButton>(
@@ -100,22 +99,24 @@ const MorphButton: React.FC<IMorphButton> & React.FunctionComponent<IMorphButton
 
       return (
         <AnimatedPressable style={[style]} {...rest}>
-          <AnimatedGlassView
+          <AnimatedGlass
             style={[styles.button, animatedStyle]}
             glassEffectStyle="clear"
             isInteractive
             animatedProps={animatedGlassViewPropz}
           >
-            {!!label && (
-              <StaggeredText
-                text={label}
-                style={styles.label}
-                animationConfig={textConfig}
-                enterFrom={{ translateY: 0, rotate: 0 }}
-                exitTo={{ translateY: 0, rotate: 0 }}
-              />
-            )}
-          </AnimatedGlassView>
+            <View style={styles.clip}>
+              {!!label && (
+                <StaggeredText
+                  text={label}
+                  style={styles.label}
+                  animationConfig={textConfig}
+                  enterFrom={{ translateY: 0, rotate: 0 }}
+                  exitTo={{ translateY: 0, rotate: 0 }}
+                />
+              )}
+            </View>
+          </AnimatedGlass>
 
           <View style={styles.measureContainer} pointerEvents="none">
             <Text style={styles.label} numberOfLines={1} onLayout={onMeasure}>
@@ -133,8 +134,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
   },
+  clip: { alignSelf: "stretch", alignItems: "center", overflow: "hidden" },
   label: {
     color: "#fff",
     fontSize: 15,

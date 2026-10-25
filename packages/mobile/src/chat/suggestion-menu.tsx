@@ -50,7 +50,7 @@ export function SuggestionMenu({
 
   return (
     <Animated.View style={viewport}>
-      <GlassSurface isInteractive style={layout.glass}>
+      <GlassSurface style={layout.glass}>
         {notice === undefined ? (
           <LegendList
             key={`${completion.trigger.kind}:${completion.trigger.query}`}
@@ -102,8 +102,8 @@ export function SuggestionMenu({
 }
 
 const layout = StyleSheet.create({
-  glass: { flex: 1, borderRadius: menu.radius, overflow: "hidden" },
-  list: { flex: 1 },
+  glass: { flex: 1, borderRadius: menu.radius, borderCurve: "continuous" },
+  list: { flex: 1, borderRadius: menu.radius, borderCurve: "continuous", overflow: "hidden" },
   content: { padding: menu.padding },
 });
 
