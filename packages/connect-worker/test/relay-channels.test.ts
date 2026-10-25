@@ -183,7 +183,10 @@ describe("flow control", () => {
         label,
         code: RELAY_CLOSE.invalid,
       });
-      await (await answer).body?.cancel().catch(() => undefined);
+      await answer.then(
+        (response) => response.body?.cancel(),
+        () => undefined,
+      );
       await broker.reset();
     }
   });
