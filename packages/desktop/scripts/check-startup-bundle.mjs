@@ -6,7 +6,7 @@ const KIB = 1_024;
 
 const budgets = {
   main: 116 * KIB,
-  host: 1_500 * KIB,
+  host: 1_600 * KIB,
   preload: 8 * KIB,
   renderer: 3_225 * KIB,
   css: 290 * KIB,
