@@ -1,12 +1,14 @@
-import { useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { showsText } from "@nyte-ai/plugin/client/presentation";
+import type { TextMessage } from "@nyte-ai/plugin/client/presentation";
+import type { Message } from "@nyte-ai/sdk";
 
-const CHARS_PER_FRAME = 24;
+const TARGET_CHARS_PER_FRAME = 24;
 
-const LAG_FRAMES = 8;
+const MAX_LAG_FRAMES = 8;
 
-export const FLUSH_INTERVAL_MS = 16;
+const BARRIER_MAX_WAIT_MS = 250;
 
-const DRAIN_MS = 250;
+const MIN_FRAME_FLUSH_INTERVAL_MS = 16;
 
 const SEGMENT_LOOKAHEAD = 32;
 
@@ -17,142 +19,212 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 export interface Pace {
   readonly text: string;
   readonly shown: number;
-  readonly framesLeft: number;
-  readonly flushedAt: number | undefined;
-}
-
-export interface PacedText {
-  readonly text: string;
-  readonly holding: boolean;
-  readonly fresh: boolean;
-  readonly resumes: number;
+  readonly flushedAt: number;
+  readonly drainFrames: number | undefined;
 }
 
 interface Reveal {
-  readonly text: string;
-  readonly fresh: boolean;
-  readonly resumes: number;
+  readonly message: TextMessage;
+  readonly status: TextMessage["status"];
+  readonly pace: Pace;
 }
 
 export function settledPace(text: string): Pace {
-  return { text, shown: text.length, framesLeft: LAG_FRAMES, flushedAt: undefined };
+  return { text, shown: text.length, flushedAt: 0, drainFrames: undefined };
 }
 
-export function stepPace(pace: Pace, text: string, now: number, drainBy: number): Pace {
-  if (!text.startsWith(pace.text)) return settledPace(text);
+export function extendPace(pace: Pace, text: string, now: number): Pace {
+  if (!text.startsWith(pace.text.slice(0, pace.shown))) return flushPace({ ...pace, text }, now);
 
-  if (pace.shown === text.length) return pace;
+  return { ...pace, text, drainFrames: text.length === pace.shown ? undefined : pace.drainFrames };
+}
 
-  const due = now >= drainBy;
+export function flushPace(pace: Pace, now: number): Pace {
+  if (pace.shown === pace.text.length) return { ...pace, drainFrames: undefined };
 
-  if (!due && pace.flushedAt !== undefined && now - pace.flushedAt < FLUSH_INTERVAL_MS) return pace;
+  return { text: pace.text, shown: pace.text.length, flushedAt: now, drainFrames: undefined };
+}
 
-  const framesLeft = due ? 1 : text.length > pace.text.length ? LAG_FRAMES : pace.framesLeft;
-  const budget = Math.max(CHARS_PER_FRAME, Math.ceil((text.length - pace.shown) / framesLeft));
+export function drainPace(pace: Pace, now: number): Pace {
+  const pending = pace.text.length - pace.shown;
+
+  if (pending === 0) return pace;
+
+  if (pending <= TARGET_CHARS_PER_FRAME) return flushPace(pace, now);
+
+  return { ...pace, drainFrames: pace.drainFrames ?? MAX_LAG_FRAMES };
+}
+
+export function framePace(pace: Pace, now: number): Pace {
+  if (now - pace.flushedAt < MIN_FRAME_FLUSH_INTERVAL_MS) return pace;
+
+  const pending = pace.text.slice(pace.shown);
+
+  if (pending.length <= TARGET_CHARS_PER_FRAME) return flushPace(pace, now);
+
+  const budget = Math.max(
+    TARGET_CHARS_PER_FRAME,
+    Math.ceil(pending.length / (pace.drainFrames ?? MAX_LAG_FRAMES)),
+  );
+
+  const shown = pace.shown + chunkLength(pending, budget);
 
   return {
-    text,
-    shown: revealEnd(text, pace.shown, budget),
-    framesLeft: Math.max(1, framesLeft - 1),
+    text: pace.text,
+    shown,
     flushedAt: now,
+    drainFrames:
+      shown === pace.text.length || pace.drainFrames === undefined
+        ? undefined
+        : Math.max(1, pace.drainFrames - 1),
   };
 }
 
-export function revealEnd(text: string, from: number, budget: number): number {
-  if (text.length - from <= budget) return text.length;
+export function chunkLength(pending: string, budget: number): number {
+  if (pending.length <= budget) return pending.length;
 
-  const space = text.slice(from, from + budget).search(/\s\S*$/u);
+  const space = pending.slice(0, budget).search(/\s\S*$/u);
 
-  if (space !== -1) return from + space + 1;
+  if (space !== -1) return space + 1;
 
-  const ahead = text.slice(from, from + budget + SEGMENT_LOOKAHEAD);
-  const word = words.segment(ahead).containing(budget);
+  const ahead = pending.slice(0, budget + SEGMENT_LOOKAHEAD);
+  const word = words.segment(ahead).containing(budget)?.index ?? 0;
 
-  if (word !== undefined && word.index > 0) return from + word.index;
+  if (word > 0) return word;
 
   const grapheme = graphemes.segment(ahead).containing(budget);
 
-  if (grapheme === undefined) return text.length;
+  if (grapheme === undefined) return pending.length;
 
-  return from + (grapheme.index > 0 ? grapheme.index : grapheme.segment.length);
+  return grapheme.index > 0 ? grapheme.index : grapheme.segment.length;
 }
 
-export function usePacedText(text: string, streaming: boolean, pacing: boolean): PacedText {
-  const [pacer] = useState(() => createPacer(text));
-  const reveal = useSyncExternalStore(pacer.subscribe, pacer.read);
-  const shown = text.startsWith(reveal.text) ? reveal.text : text;
-
-  useLayoutEffect(() => pacer.connect(), [pacer]);
-  useLayoutEffect(() => pacer.sync(text, streaming, pacing), [pacer, text, streaming, pacing]);
-
-  return {
-    text: shown,
-    holding: shown.length < text.length,
-    fresh: shown === reveal.text && reveal.fresh,
-    resumes: reveal.resumes,
-  };
-}
-
-function createPacer(initial: string) {
-  let target = initial;
-  let drainBy = Number.POSITIVE_INFINITY;
-  let pace = settledPace(initial);
-  let reveal: Reveal = { text: initial, fresh: false, resumes: 0 };
+export function createTextPacer<V extends { readonly messages: readonly Message[] }>(
+  visible: () => boolean,
+  revise: (view: V) => void,
+) {
+  let latest: V | undefined;
+  let reveal: Reveal | undefined;
   let frame: number | undefined;
-  let stale = false;
-  let resumes = 0;
-  const listeners = new Set<() => void>();
+  let deadline: ReturnType<typeof setTimeout> | undefined;
 
-  const publish = (next: Pace): void => {
-    pace = next;
+  const present = (view: V): V => {
+    const current = reveal;
 
-    if (pace.shown < target.length) frame ??= requestAnimationFrame(tick);
+    if (current === undefined) return view;
+    const markdown = current.pace.text.slice(0, current.pace.shown);
 
-    const text = target.slice(0, pace.shown);
+    if (markdown === current.message.state.markdown && current.status === current.message.status)
+      return view;
 
-    if (text === reveal.text && resumes === reveal.resumes) return;
-
-    reveal = { text, fresh: pace.flushedAt !== undefined, resumes };
-    listeners.forEach((listener) => listener());
+    return {
+      ...view,
+      messages: view.messages.map((message) =>
+        message.id === current.message.id
+          ? {
+              ...current.message,
+              state: { ...current.message.state, markdown },
+              status: current.status,
+            }
+          : message,
+      ),
+    };
   };
 
-  function tick(now: number): void {
+  const settle = (next: Reveal | undefined): void => {
+    reveal =
+      next === undefined ||
+      (next.pace.shown === next.pace.text.length && next.message.status.kind !== "live")
+        ? undefined
+        : next;
+
+    if (reveal?.pace.drainFrames === undefined) {
+      clearTimeout(deadline);
+      deadline = undefined;
+    } else deadline ??= setTimeout(flush, BARRIER_MAX_WAIT_MS);
+
+    if (reveal !== undefined && reveal.pace.shown < reveal.pace.text.length)
+      frame ??= requestAnimationFrame(tick);
+    else if (frame !== undefined) {
+      cancelAnimationFrame(frame);
+      frame = undefined;
+    }
+  };
+
+  function tick(): void {
     frame = undefined;
-    publish(stepPace(pace, target, now, drainBy));
+    const current = reveal;
+
+    if (current === undefined || latest === undefined) return;
+    const now = Date.now();
+    settle({
+      ...current,
+      pace: visible() ? framePace(current.pace, now) : flushPace(current.pace, now),
+    });
+
+    if (reveal?.pace.shown !== current.pace.shown) revise(present(latest));
   }
 
-  const hide = (): void => {
-    if (document.hidden) publish(settledPace(target));
-  };
+  function flush(): void {
+    const current = reveal;
+
+    if (current === undefined || latest === undefined) return;
+    settle({ ...current, pace: flushPace(current.pace, Date.now()) });
+    revise(present(latest));
+  }
 
   return {
-    subscribe: (listener: () => void): (() => void) => {
-      listeners.add(listener);
+    receive(view: V): V {
+      if (typeof requestAnimationFrame !== "function") return view;
+      const now = Date.now();
+      const showing = visible();
+      const opening = latest === undefined || !showing;
+      const current = reveal;
+      latest = view;
 
-      return () => listeners.delete(listener);
+      const live = view.messages.findLast(
+        (message): message is TextMessage => showsText(message) && message.status.kind === "live",
+      );
+
+      const same = view.messages.find((message) => message.id === current?.message.id);
+
+      if (
+        current !== undefined &&
+        same !== undefined &&
+        showsText(same) &&
+        (live === undefined || live.id === same.id)
+      ) {
+        const pace = extendPace(current.pace, same.state.markdown, now);
+
+        if (same.status.kind === "live")
+          settle({
+            message: same,
+            status: same.status,
+            pace: showing ? pace : flushPace(pace, now),
+          });
+        else
+          settle({
+            message: same,
+            status: current.status,
+            pace: showing ? drainPace(pace, now) : flushPace(pace, now),
+          });
+      } else
+        settle(
+          live === undefined
+            ? undefined
+            : {
+                message: live,
+                status: live.status,
+                pace: opening
+                  ? settledPace(live.state.markdown)
+                  : extendPace(settledPace(""), live.state.markdown, now),
+              },
+        );
+
+      return present(view);
     },
-    read: (): Reveal => reveal,
-    connect(): () => void {
-      document.addEventListener("visibilitychange", hide);
-
-      return () => {
-        document.removeEventListener("visibilitychange", hide);
-
-        if (frame !== undefined) cancelAnimationFrame(frame);
-        frame = undefined;
-        stale = true;
-      };
-    },
-    sync(text: string, streaming: boolean, pacing: boolean): void {
-      target = text;
-      drainBy = streaming
-        ? Number.POSITIVE_INFINITY
-        : Math.min(drainBy, performance.now() + DRAIN_MS);
-      const restart = stale || !pacing || document.hidden || !text.startsWith(pace.text);
-
-      if (stale) resumes += 1;
-      stale = false;
-      publish(restart ? settledPace(text) : pace);
+    dispose(): void {
+      settle(undefined);
     },
   };
 }

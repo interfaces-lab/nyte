@@ -2,12 +2,22 @@ import "./transcript-render-counter.ts";
 import "../../test/window-bridge.ts";
 import { Block } from "streamdown";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { showsText } from "@nyte-ai/plugin/client/presentation";
+import type { Message, RunView, SessionId, SessionView } from "@nyte-ai/sdk";
+import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { Activity } from "react";
+import type { ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import type { Root } from "react-dom/client";
 import "../theme/tokens.stylex.ts";
+import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
+import type { ViewStream } from "../../test/scripted-connection.ts";
+import { USAGE } from "../../test/view-fixtures.ts";
+import { installConnection, sessionWatch, showTranscript, useWatchSelect } from "../sdk.tsx";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { renderCount, resetRenders } from "./transcript-render-counter.ts";
 import { Prose } from "./prose.tsx";
 
@@ -29,18 +39,139 @@ const BURST = Array.from(
     `Sentence ${String(sentence)} lands inside one large network burst, and the pacer spreads it over a few frames.`,
 ).join(" ");
 
-const PACED = "Then a few more words are paced in before the chat goes away.";
-
 const WHILE_HIDDEN = "These words arrive while another chat is open.";
 
 const AFTER_RESUME = "Fresh words arrive after the switch back.";
 
-const AFTER_SETTLED_RESUME = "More words follow a second switch.";
+const FADES = "[data-sd-animate]";
+
+type Draw = (markdown: string, streaming: boolean, mode?: "visible" | "hidden") => Promise<void>;
+
+const liveRun: RunView = {
+  id: asId<"run">("run"),
+  head: asId<"head">("main"),
+  startedAt: 0,
+  attempt: 1,
+  configuration: {
+    kind: "exact",
+    model: { provider: "test", id: "test" },
+    thinking: "off",
+    agent: null,
+    settings: {},
+    settingsVersion: "1",
+  },
+  origin: { kind: "input", message: asId<"message">("prompt") },
+};
+
+const base = {
+  revision: asId<"revision">("r1"),
+  seq: asSeq(1),
+  activation: { kind: "active" },
+  queue: [],
+  leadingPrompt: null,
+  parts: [],
+  turns: [],
+  usage: USAGE,
+  execution: { kind: "live", run: liveRun, phase: "responding", stopping: false },
+  reportsHeld: false,
+  background: [],
+  configuration: { selected: liveRun.configuration, effective: liveRun.configuration },
+  context: { tokens: 0, window: 1_000, lastRequest: null },
+  heads: [],
+  changes: [],
+  catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
+} as const satisfies Omit<SessionView, "messages">;
+
+const streams = new Map<SessionId, ViewStream>();
+
+installConnection(scriptedConnection({ views: streams }).connection);
+
+function answerView(session: SessionId, markdown: string, live: boolean): SessionView {
+  const answer: Message = {
+    id: asId<"message">(`${session}-answer`),
+    turn: asId<"turn">(`${session}-turn`),
+    at: 1,
+    kind: "part",
+    part: asId<"part">(`${session}-answer`),
+    partKind: "text",
+    role: "answer",
+    state: { markdown, signature: null },
+    version: 1,
+    status: live
+      ? { kind: "live", run: liveRun.id }
+      : { kind: "settled", commit: asId<"commit">(`${session}-answer`), endedAt: 1 },
+  };
+
+  return { ...base, messages: [answer] };
+}
+
+function Answer({ session }: { readonly session: SessionId }): ReactElement | null {
+  const answer = useWatchSelect(sessionWatch(session), (state) =>
+    state.value?.messages.findLast(showsText),
+  );
+
+  useMountEffect(() => showTranscript(session));
+
+  if (answer === undefined) return null;
+
+  return <Prose markdown={answer.state.markdown} streaming={answer.status.kind === "live"} />;
+}
+
+function drawer(root: Root): Draw {
+  const client = new QueryClient();
+  let chats = 0;
+  let current: { readonly id: SessionId; readonly release: () => void } | undefined;
+
+  const render = (content: ReactElement | null): void =>
+    flushSync(() =>
+      root.render(
+        <QueryClientProvider client={client}>
+          <TooltipProvider>{content}</TooltipProvider>
+        </QueryClientProvider>,
+      ),
+    );
+
+  return async (markdown, streaming, mode = "visible") => {
+    if (markdown === "") {
+      render(null);
+      current?.release();
+      current = undefined;
+
+      return;
+    }
+
+    if (current === undefined) {
+      chats += 1;
+      const id = asId<"session">(`chat-${String(chats)}`);
+      streams.set(id, viewStream(answerView(id, markdown, streaming)));
+      current = { id, release: sessionWatch(id).subscribe(() => undefined) };
+      await sessionWatch(id).first();
+    } else {
+      const arrived = sessionWatch(current.id).next();
+      streams.get(current.id)?.push(answerView(current.id, markdown, streaming));
+      await arrived;
+    }
+
+    const session = current.id;
+
+    render(
+      <Activity mode={mode}>
+        <Answer session={session} />
+      </Activity>,
+    );
+  };
+}
 
 const painted = (): Promise<number> =>
   new Promise((resolve) => {
     requestAnimationFrame(() => setTimeout(() => resolve(performance.now()), 0));
   });
+
+async function still(host: HTMLElement): Promise<void> {
+  const since = performance.now();
+
+  while (fading(host).length > 0 && performance.now() - since < 2_000) await painted();
+}
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -53,18 +184,41 @@ function renders(): number {
 function fading(host: HTMLElement): Element[] {
   return host
     .getAnimations({ subtree: true })
-    .filter((animation) => animation.playState === "running" || animation.pending)
     .flatMap((animation) =>
-      animation.effect instanceof KeyframeEffect && animation.effect.target !== null
+      (animation.playState === "running" || animation.pending) &&
+      animation.effect instanceof KeyframeEffect &&
+      animation.effect.target !== null &&
+      Number(animation.effect.getComputedTiming().duration) > 0
         ? [animation.effect.target]
         : [],
     );
 }
 
-function chunkSpans(root: Element): number {
-  return [...root.querySelectorAll("span")].filter(
-    (span) => getComputedStyle(span).animationName !== "none",
-  ).length;
+function spanParagraphs(host: HTMLElement): number[] {
+  return [...host.querySelectorAll("p")].flatMap((paragraph, index) =>
+    paragraph.querySelector(FADES) === null ? [] : [index],
+  );
+}
+
+function durations(root: Element): string[] {
+  return [
+    ...new Set(
+      [...root.querySelectorAll(FADES)].flatMap((element) =>
+        element instanceof HTMLElement ? [element.style.getPropertyValue("--sd-duration")] : [],
+      ),
+    ),
+  ].toSorted();
+}
+
+function animationStyle(element: Element) {
+  const style = getComputedStyle(element);
+
+  return {
+    animated: style.animationName !== "none",
+    duration: style.animationDuration,
+    timing: style.animationTimingFunction,
+    fill: style.animationFillMode,
+  };
 }
 
 function textBefore(host: HTMLElement, node: Node): number {
@@ -82,24 +236,30 @@ function paragraphText(host: HTMLElement): string {
 function watch(host: HTMLElement) {
   const started = new Map<Element, number>();
   const ended = new Set<Element>();
+  const seen = new Set<string>();
   let previous = host.textContent;
   let staleFades = 0;
   let replays = 0;
-  let spansMax = 0;
-  let fadingMax = 0;
   let oldestFadeMs = 0;
-  let emptyChips = 0;
-  let chipFades = 0;
+  let fadingMax = 0;
+  let spanParagraphsMax = 0;
+  let codeTextFades = 0;
+  let fadesAroundCode = 0;
+  let fresh: ReturnType<typeof animationStyle> | undefined;
+  let settled: ReturnType<typeof animationStyle> | undefined;
 
   return {
     observe(): string {
       const now = performance.now();
-      const text = host.textContent;
       const targets = fading(host);
 
       for (const target of targets) {
         if (ended.has(target)) replays += 1;
         oldestFadeMs = Math.max(oldestFadeMs, now - (started.get(target) ?? now));
+
+        if (target.closest("code") !== null) codeTextFades += 1;
+
+        if (target.querySelector("code") !== null) fadesAroundCode += 1;
 
         if (started.has(target)) continue;
         started.set(target, now);
@@ -109,26 +269,34 @@ function watch(host: HTMLElement) {
 
       for (const target of started.keys()) if (!targets.includes(target)) ended.add(target);
 
-      for (const code of host.querySelectorAll("code")) {
-        if (targets.some((target) => target !== code && code.contains(target))) emptyChips += 1;
+      for (const element of host.querySelectorAll(FADES)) {
+        if (!(element instanceof HTMLElement)) continue;
 
-        if (targets.some((target) => target.contains(code))) chipFades += 1;
+        const duration = element.style.getPropertyValue("--sd-duration");
+        seen.add(duration);
+
+        if (duration === "150ms") fresh ??= animationStyle(element);
+
+        if (duration === "0ms") settled ??= animationStyle(element);
       }
 
-      spansMax = Math.max(spansMax, chunkSpans(host));
       fadingMax = Math.max(fadingMax, targets.length);
-      previous = text;
+      spanParagraphsMax = Math.max(spanParagraphsMax, spanParagraphs(host).length);
+      previous = host.textContent;
 
       return paragraphText(host);
     },
     report: () => ({
       staleFades,
       replays,
-      spansMax,
-      fadingMax,
       oldestFadeMs,
-      emptyChips,
-      chipFades,
+      fadingMax,
+      spanParagraphsMax,
+      codeTextFades: codeTextFades > 0,
+      fadesAroundCode,
+      durations: [...seen].toSorted(),
+      fresh,
+      settled,
     }),
   };
 }
@@ -139,260 +307,163 @@ export async function run(): Promise<string> {
   host.style.width = "640px";
   document.body.append(host);
   const root = createRoot(host);
-  const client = new QueryClient();
-
-  const draw = (markdown: string, streaming: boolean, mode: "visible" | "hidden" = "visible") =>
-    flushSync(() =>
-      root.render(
-        <QueryClientProvider client={client}>
-          <TooltipProvider>
-            <Activity mode={mode}>
-              {markdown === "" ? null : <Prose markdown={markdown} streaming={streaming} />}
-            </Activity>
-          </TooltipProvider>
-        </QueryClientProvider>,
-      ),
-    );
+  const draw = drawer(root);
 
   try {
-    draw(ANSWER, false);
+    await draw(ANSWER, false);
     await painted();
     const final = paragraphText(host);
     const blocks = host.querySelectorAll("p").length;
-    draw("", false);
+    const staticSpans = host.querySelectorAll(FADES).length;
+    await draw("", false);
 
-    return matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? JSON.stringify(await reduced(host, draw, final))
-      : JSON.stringify({ blocks, ...(await paced(host, draw, final)) });
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches)
+      return JSON.stringify({
+        reduced: true,
+        catchUp: await burst(host, draw, true),
+        drain: await burst(host, draw, false),
+      });
+
+    return JSON.stringify({
+      blocks,
+      staticSpans,
+      stream: await stream(host, draw, final),
+      catchUp: await burst(host, draw, true),
+      drain: await burst(host, draw, false),
+      mount: await mount(host, draw, final),
+      hidden: await hidden(host, draw),
+    });
   } finally {
     root.unmount();
     host.remove();
   }
 }
 
-type Draw = (markdown: string, streaming: boolean, mode?: "visible" | "hidden") => void;
-
-async function paced(host: HTMLElement, draw: Draw, final: string) {
+async function stream(host: HTMLElement, draw: Draw, final: string) {
   resetRenders(Block);
   const watcher = watch(host);
   const frames: string[] = [];
-  const startedAt = performance.now();
   let markdown = "";
 
   for (const word of WORDS.slice(0, -1)) {
     markdown += word;
-    draw(markdown, true);
+    await draw(markdown, true);
     await painted();
     frames.push(watcher.observe());
   }
 
-  const streamMs = performance.now() - startedAt;
-  draw(ANSWER, true);
+  await draw(ANSWER, true);
   const lastDelta = performance.now();
-  let flushesAfterLastDelta = 0;
 
-  while (frames.at(-1) !== final && performance.now() - lastDelta < 5_000) {
+  while (frames.at(-1) !== final && performance.now() - lastDelta < 2_000) {
     await painted();
-    const previous = frames.at(-1);
     frames.push(watcher.observe());
-
-    if (frames.at(-1) !== previous) flushesAfterLastDelta += 1;
   }
 
-  const completed = frames.at(-1) === final;
-  const lastDeltaToFullTextMs = performance.now() - lastDelta;
+  const lastFadeAt = performance.now();
   const streamed = renders();
+  await draw(ANSWER, false);
+  const ended = renders();
+  const spansAtEnd = spanParagraphs(host);
 
-  while (fading(host).length > 0 && performance.now() - lastDelta < 5_000) {
+  while (host.querySelector(FADES) !== null && performance.now() - lastFadeAt < 2_000) {
     await painted();
     watcher.observe();
   }
 
-  const lastDeltaToStillMs = performance.now() - lastDelta;
-  const tailSpans = chunkSpans(host);
-
-  const settledBlockSpans = [...host.querySelectorAll("p")]
-    .slice(0, -1)
-    .reduce((total, paragraph) => total + chunkSpans(paragraph), 0);
-
-  draw(ANSWER, false);
-  const ended = renders();
+  const releaseMs = performance.now() - lastFadeAt;
   await sleep(1_000);
   const settlingRenders = renders() - ended;
-  const spansAfterSettling = chunkSpans(host);
   const settled = renders();
   await sleep(1_000);
   const idleRenders = renders() - settled;
-  draw("", false);
+  await draw("", false);
 
   return {
     deltas: WORDS.length,
-    streamMs,
-    textChanges: frames.filter((text, index) => text !== frames[index - 1]).length,
-    markdownRenders: streamed,
-    rendersPerDelta: streamed / WORDS.length,
-    completed,
+    completed: frames.at(-1) === final,
     offWordFrames: frames.filter(
       (text) =>
         !final.startsWith(text) ||
         (text !== final && !/\s$/u.test(text) && !/\s/u.test(final.charAt(text.length))),
     ).length,
-    flushesAfterLastDelta,
-    lastDeltaToFullTextMs,
-    lastDeltaToStillMs,
-    tailSpans,
-    settledBlockSpans,
+    markdownRenders: streamed,
+    spansAtEnd,
+    releaseMs,
     settlingRenders,
-    spansAfterSettling,
     idleRenders,
     ...watcher.report(),
-    burst: await burst(host, draw),
-    mount: await mount(host, draw, final),
-    hidden: await hidden(host, draw),
   };
 }
 
-async function burst(host: HTMLElement, draw: Draw) {
-  draw(LEAD, true);
+async function burst(host: HTMLElement, draw: Draw, streaming: boolean) {
+  await draw(LEAD, true);
   await painted();
+  await still(host);
   const watcher = watch(host);
-  const lead = paragraphText(host);
   const whole = `${LEAD}\n\n${BURST}`;
-  draw(whole, true);
-  draw(whole, false);
-  const endedAt = performance.now();
-  const shown: number[] = [];
+  await draw(whole, streaming);
+  const startedAt = performance.now();
+  const steps: number[] = [];
 
-  while (shown.at(-1) !== BURST.length && performance.now() - endedAt < 5_000) {
+  while (steps.at(-1) !== BURST.length && performance.now() - startedAt < 5_000) {
     await painted();
-    const text = watcher.observe().slice(lead.length).trimStart();
+    watcher.observe();
+    const length = host.querySelectorAll("p").item(1)?.textContent.length ?? 0;
 
-    if (text.length !== (shown.at(-1) ?? 0)) shown.push(text.length);
+    if (length !== (steps.at(-1) ?? 0)) steps.push(length);
   }
 
-  const endToFullTextMs = performance.now() - endedAt;
-  const steps = shown.map((length, index) => length - (shown[index - 1] ?? 0));
+  const fullTextMs = performance.now() - startedAt;
+  await draw(whole, false);
+  const spansAfterEnd = host.querySelectorAll(FADES).length;
+  await draw("", false);
 
-  const budgets = shown.map((_, index) =>
-    Math.max(24, Math.ceil((BURST.length - (shown[index - 1] ?? 0)) / (8 - index))),
-  );
-
-  draw("", false);
-
-  return {
-    flushes: shown.length,
-    endToFullTextMs,
-    steps,
-    overBudget: steps.filter((step, index) => step > (budgets[index] ?? 0)).length,
-    offWord: shown.filter((length) => length !== BURST.length && !/\s/u.test(BURST.charAt(length)))
-      .length,
-    ...watcher.report(),
-  };
+  return { steps, fullTextMs, spansAfterEnd, ...watcher.report() };
 }
 
 async function mount(host: HTMLElement, draw: Draw, final: string) {
-  draw(ANSWER, true);
+  await draw(ANSWER, true);
   await painted();
-  const firstFrameWhole = paragraphText(host) === final;
-  const fadingAtMount = fading(host).length;
-  const spansAtMount = chunkSpans(host);
-  const watcher = watch(host);
-  draw(`${ANSWER} Then one more sentence arrives.`, true);
 
-  for (let frame = 0; frame < 4; frame += 1) {
-    await painted();
-    watcher.observe();
-  }
+  const result = {
+    firstFrameWhole: paragraphText(host) === final,
+    spanParagraphs: spanParagraphs(host),
+    durations: durations(host),
+    fades: fading(host).length > 0,
+  };
 
-  draw("", false);
+  await draw("", false);
 
-  return { firstFrameWhole, fadingAtMount, spansAtMount, ...watcher.report() };
+  return result;
 }
 
 async function hidden(host: HTMLElement, draw: Draw) {
-  draw(LEAD, true);
+  await draw(LEAD, true);
   await painted();
-  const paced = `${LEAD} ${PACED}`;
-  draw(paced, true);
+  const whole = `${LEAD}\n\n${BURST}`;
+  await draw(whole, true);
   await painted();
+  const pacingBeforeHiding = paragraphText(host) !== `${LEAD}\n${BURST}`;
+  await draw(whole, true, "hidden");
   await painted();
-  const spansBeforeHiding = chunkSpans(host);
-  draw(paced, true, "hidden");
-  await painted();
-  const whole = `${paced} ${WHILE_HIDDEN}\n\n${BURST}`;
-  draw(whole, true, "hidden");
+  const more = `${whole} ${WHILE_HIDDEN}`;
+  await draw(more, true, "hidden");
   await sleep(100);
-  draw(whole, true);
+  await draw(more, true);
   await painted();
-  const firstFrameWhole = paragraphText(host) === `${paced} ${WHILE_HIDDEN}\n${BURST}`;
-  let fadingAfterResume = fading(host).length;
+  const firstFrameWhole = paragraphText(host) === `${LEAD}\n${BURST} ${WHILE_HIDDEN}`;
 
-  for (let frame = 0; frame < 10; frame += 1) {
-    await painted();
-    fadingAfterResume = Math.max(fadingAfterResume, fading(host).length);
-  }
-
+  await still(host);
   const watcher = watch(host);
-  const resumed = `${whole} ${AFTER_RESUME}`;
-  draw(resumed, true);
+  await draw(`${more} ${AFTER_RESUME}`, true);
 
   for (let frame = 0; frame < 6; frame += 1) {
     await painted();
     watcher.observe();
   }
 
-  await sleep(300);
-  draw(resumed, true, "hidden");
-  await painted();
-  draw(resumed, true);
-  await painted();
-  const again = watch(host);
-  draw(`${resumed} ${AFTER_SETTLED_RESUME}`, true);
+  await draw("", false);
 
-  for (let frame = 0; frame < 6; frame += 1) {
-    await painted();
-    again.observe();
-  }
-
-  draw("", false);
-
-  return {
-    spansBeforeHiding,
-    firstFrameWhole,
-    fadingAfterResume,
-    afterResume: watcher.report(),
-    afterSettledResume: again.report(),
-  };
-}
-
-async function reduced(host: HTMLElement, draw: Draw, final: string) {
-  resetRenders(Block);
-  let markdown = "";
-  let lagging = 0;
-  let fadingMax = 0;
-  let spansMax = 0;
-
-  for (const word of WORDS) {
-    markdown += word;
-    draw(markdown, true);
-
-    if (!host.textContent.endsWith(word.trimEnd().replaceAll(/[`*]/gu, ""))) lagging += 1;
-    await painted();
-    fadingMax = Math.max(fadingMax, fading(host).length);
-    spansMax = Math.max(spansMax, chunkSpans(host));
-  }
-
-  const whole = paragraphText(host) === final;
-  const rendersPerDelta = renders() / WORDS.length;
-  draw("", false);
-
-  return {
-    reduced: true,
-    deltas: WORDS.length,
-    lagging,
-    whole,
-    rendersPerDelta,
-    fadingMax,
-    spansMax,
-  };
+  return { pacingBeforeHiding, firstFrameWhole, afterResume: watcher.report() };
 }
