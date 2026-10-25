@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { SymbolView, type SFSymbol } from "expo-symbols";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, ScrollView, useWindowDimensions } from "react-native";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -56,16 +56,10 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const view = chat.state;
   const changes = view?.changes ?? [];
 
-  const changedTurn = useMemo(
-    () => (view === undefined ? undefined : latestChangedTurn(view)),
-    [view],
-  );
+  const changedTurn = view === undefined ? undefined : latestChangedTurn(view);
 
-  const summary = useMemo(
-    () =>
-      view === undefined || changedTurn === undefined ? undefined : turnAnswer(view, changedTurn),
-    [view, changedTurn],
-  );
+  const summary =
+    view === undefined || changedTurn === undefined ? undefined : turnAnswer(view, changedTurn);
 
   const info = chat.info;
   const execution = view?.execution;
@@ -134,9 +128,9 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
       router.back();
     } catch (cause) {
       setMergeError(describeHostError(cause));
-    } finally {
-      setMerging(false);
     }
+
+    setMerging(false);
   }
 
   if (chat.state === undefined) {

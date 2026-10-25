@@ -2,7 +2,7 @@ import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
-import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { worktreeFiles } from "../view-helpers.ts";
 import type { MentionFile } from "../conversation/message-references.ts";
@@ -109,6 +109,18 @@ function FilePreferenceItem({
   );
 }
 
+async function discardEdits(editor: FileEditorHandle | undefined): Promise<string | undefined> {
+  if (editor === undefined) return "The file is not ready to reload.";
+
+  try {
+    await editor.discard();
+
+    return undefined;
+  } catch (cause: unknown) {
+    return errorMessage(cause);
+  }
+}
+
 export function FilesPanel({
   viewKey,
   visible,
@@ -127,10 +139,7 @@ export function FilesPanel({
   }, [files.data]);
   const vcs = useVcsSnapshot(shown);
 
-  const changes = useMemo(
-    () => (vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : undefined),
-    [vcs.data],
-  );
+  const changes = vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : undefined;
 
   const host = useHostState();
   const tabs = useFileTabs(viewKey);
@@ -272,14 +281,10 @@ export function FilesPanel({
     if (file !== undefined) fileActions.open(viewKey, { ...file, preview });
   };
 
-  const paths = useMemo(() => (files.data ?? []).map((file) => file.displayPath), [files.data]);
+  const paths = (files.data ?? []).map((file) => file.displayPath);
 
-  const drafts = useMemo(
-    () =>
-      tabs.tabs.flatMap((file) =>
-        file.draft === undefined ? [] : [{ path: file.path, contents: file.draft.contents }],
-      ),
-    [tabs.tabs],
+  const drafts = tabs.tabs.flatMap((file) =>
+    file.draft === undefined ? [] : [{ path: file.path, contents: file.draft.contents }],
   );
 
   const revealed = useRef(0);
@@ -304,19 +309,17 @@ export function FilesPanel({
   const discard = async (): Promise<void> => {
     if (discardPath === undefined) return;
     setDiscarding(true);
+    const failure = await discardEdits(editors.current.get(discardPath));
+    setDiscarding(false);
 
-    try {
-      const editor = editors.current.get(discardPath);
+    if (failure !== undefined) {
+      setDiscardError(failure);
 
-      if (editor === undefined) throw new Error("The file is not ready to reload.");
-      await editor.discard();
-      setDiscardPath(undefined);
-      setDiscardError(undefined);
-    } catch (cause: unknown) {
-      setDiscardError(errorMessage(cause));
-    } finally {
-      setDiscarding(false);
+      return;
     }
+
+    setDiscardPath(undefined);
+    setDiscardError(undefined);
   };
 
   return (
@@ -677,13 +680,9 @@ function BreadcrumbTree({
 }): ReactElement {
   const prefix = directory === "" ? "" : `${directory}/`;
 
-  const paths = useMemo(
-    () =>
-      (files ?? [])
-        .filter((file) => file.displayPath.startsWith(prefix))
-        .map((file) => file.displayPath.slice(prefix.length)),
-    [files, prefix],
-  );
+  const paths = (files ?? [])
+    .filter((file) => file.displayPath.startsWith(prefix))
+    .map((file) => file.displayPath.slice(prefix.length));
 
   const [itemHeight] = useState(treeItemHeight);
 

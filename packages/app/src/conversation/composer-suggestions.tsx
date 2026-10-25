@@ -4,6 +4,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Popover } from "@nyte-ai/ui/popover";
 import { PreviewCard, PreviewCardContent } from "@nyte-ai/ui/preview-card";
 import { skipToken, useQuery } from "@tanstack/react-query";
+// oxlint-disable-next-line no-restricted-imports -- the compiler skips memoizing the file index because later closures capture it, so it would rebuild on every keystroke
 import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";

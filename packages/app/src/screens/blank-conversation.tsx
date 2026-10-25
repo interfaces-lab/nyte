@@ -3,7 +3,7 @@ import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import {
-  useCallback,
+  useEffectEvent,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -57,16 +57,13 @@ function useBlankViewBinding(
   const [, redraw] = useReducer((value: number) => value + 1, 0);
   const draftId = state.id;
 
-  const update = useCallback(
-    (change: BlankViewUpdate): void => {
-      const current = store.readBlank(paneId);
+  const update = (change: BlankViewUpdate): void => {
+    const current = store.readBlank(paneId);
 
-      if (current.id !== draftId) return;
-      store.writeBlank(paneId, change(current));
-      redraw();
-    },
-    [draftId, paneId, store],
-  );
+    if (current.id !== draftId) return;
+    store.writeBlank(paneId, change(current));
+    redraw();
+  };
 
   return [state, update];
 }
@@ -97,13 +94,10 @@ export function BlankConversation({
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const blankRef = useRef<HTMLDivElement>(null);
 
-  const attachInput = useCallback(
-    (handle: ComposerEditorHandle | null) => {
-      editorRef.current = handle;
-      inputRef(handle);
-    },
-    [inputRef],
-  );
+  const attachInput = (handle: ComposerEditorHandle | null) => {
+    editorRef.current = handle;
+    inputRef(handle);
+  };
 
   const { choice } = viewState;
 
@@ -138,30 +132,32 @@ export function BlankConversation({
     return startDraft(viewStore, actions, draft.id, waiting, plan);
   };
 
-  const addFiles = useCallback(
-    async (files: readonly File[]): Promise<void> => {
-      setAttachmentReads((count) => count + 1);
+  const addFiles = async (files: readonly File[]): Promise<void> => {
+    setAttachmentReads((count) => count + 1);
 
-      return attachComposerFiles({ files, editor: editorRef.current })
-        .then((result) => {
-          if (result.attachments.length > 0) {
-            updateViewState((state) => ({
-              ...state,
-              composer: {
-                ...state.composer,
-                attachments: [...state.composer.attachments, ...result.attachments],
-              },
-            }));
-          }
+    return attachComposerFiles({ files, editor: editorRef.current })
+      .then((result) => {
+        if (result.attachments.length > 0) {
+          updateViewState((state) => ({
+            ...state,
+            composer: {
+              ...state.composer,
+              attachments: [...state.composer.attachments, ...result.attachments],
+            },
+          }));
+        }
 
-          setAttachmentError(result.error);
-        })
-        .finally(() => setAttachmentReads((count) => count - 1));
-    },
-    [updateViewState],
-  );
+        setAttachmentError(result.error);
+      })
+      .finally(() => setAttachmentReads((count) => count - 1));
+  };
 
   const dropDisabled = held;
+
+  const dropFiles = useEffectEvent((files: readonly File[]): void => {
+    void addFiles(files);
+  });
+
   useLayoutEffect(() => {
     const element = blankRef.current;
 
@@ -170,11 +166,9 @@ export function BlankConversation({
     return bindComposerFileDrop({
       element,
       disabled: dropDisabled,
-      onFiles: (files) => {
-        void addFiles(files);
-      },
+      onFiles: dropFiles,
     });
-  }, [addFiles, dropDisabled]);
+  }, [dropDisabled]);
 
   return (
     <div {...props(sessionScreenStyles.screen)}>

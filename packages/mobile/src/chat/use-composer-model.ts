@@ -5,6 +5,42 @@ import { openHead, type ComposerTarget } from "./composer-target.ts";
 import { useModelCatalog } from "./remote-models.ts";
 import { supportedThinkingLevel, thinkingLevelsFor, type ThinkingLevel } from "./thinking.ts";
 
+async function configureHead(
+  head: Head,
+  next: { model?: ModelInfo; thinking?: ThinkingLevel },
+  reportError: (message: string) => void,
+): Promise<boolean> {
+  try {
+    const outcome = await head.configure({ model: next.model?.ref, thinking: next.thinking });
+
+    switch (outcome.kind) {
+      case "configured":
+        return true;
+      case "unknown-model":
+        reportError("The host doesn't offer that model.");
+
+        return false;
+      case "unknown-agent":
+        reportError("The host doesn't offer that agent.");
+
+        return false;
+      case "invalid":
+        reportError(outcome.issues[0]?.message ?? "The host refused that choice.");
+
+        return false;
+      default: {
+        const exhaustive: never = outcome;
+
+        return exhaustive;
+      }
+    }
+  } catch (cause: unknown) {
+    reportError(describeHostError(cause));
+
+    return false;
+  }
+}
+
 export function useComposerModel(
   client: Connection,
   target: ComposerTarget,
@@ -48,41 +84,6 @@ export function useComposerModel(
     if (sessionThinking !== undefined) setThinking(sessionThinking);
   }
 
-  const configure = async (
-    head: Head,
-    next: { model?: ModelInfo; thinking?: ThinkingLevel },
-  ): Promise<boolean> => {
-    try {
-      const outcome = await head.configure({ model: next.model?.ref, thinking: next.thinking });
-
-      switch (outcome.kind) {
-        case "configured":
-          return true;
-        case "unknown-model":
-          reportError("The host doesn't offer that model.");
-
-          return false;
-        case "unknown-agent":
-          reportError("The host doesn't offer that agent.");
-
-          return false;
-        case "invalid":
-          reportError(outcome.issues[0]?.message ?? "The host refused that choice.");
-
-          return false;
-        default: {
-          const exhaustive: never = outcome;
-
-          return exhaustive;
-        }
-      }
-    } catch (cause: unknown) {
-      reportError(describeHostError(cause));
-
-      return false;
-    }
-  };
-
   const chooseModel = async (choice: ModelInfo): Promise<boolean> => {
     setModel(choice);
     setThinking(choice.defaultThinking);
@@ -91,10 +92,11 @@ export function useComposerModel(
 
     setSelecting(true);
 
-    const applied = await configure(openHead(client, target), {
-      model: choice,
-      thinking: choice.defaultThinking,
-    });
+    const applied = await configureHead(
+      openHead(client, target),
+      { model: choice, thinking: choice.defaultThinking },
+      reportError,
+    );
 
     setSelecting(false);
 
@@ -110,9 +112,11 @@ export function useComposerModel(
     setThinking(choice);
 
     if (target.kind !== "session") return;
-    void configure(openHead(client, target), { thinking: choice }).then((applied) => {
-      if (!applied) setThinking(sessionThinking);
-    });
+    void configureHead(openHead(client, target), { thinking: choice }, reportError).then(
+      (applied) => {
+        if (!applied) setThinking(sessionThinking);
+      },
+    );
   };
 
   return {

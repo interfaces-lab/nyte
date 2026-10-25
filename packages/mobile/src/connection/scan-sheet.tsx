@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { AppState, Linking, Modal, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -53,29 +53,26 @@ function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
   const [found, setFound] = useState(false);
   const [error, setError] = useState<string>();
 
-  const onObjectsScanned = useCallback(
-    (objects: ScannedObject[]) => {
-      if (settled.current) return;
+  const onObjectsScanned = (objects: ScannedObject[]) => {
+    if (settled.current) return;
 
-      for (const object of objects) {
-        const value = isScannedCode(object) ? object.value : undefined;
+    for (const object of objects) {
+      const value = isScannedCode(object) ? object.value : undefined;
 
-        if (value === undefined) continue;
+      if (value === undefined) continue;
 
-        try {
-          const connection = parseConnectionPayload(value);
-          settled.current = true;
-          setFound(true);
-          onScan(connection);
-        } catch (cause) {
-          setError(cause instanceof Error ? cause.message : "That code isn't a Nyte connection.");
-        }
-
-        return;
+      try {
+        const connection = parseConnectionPayload(value);
+        settled.current = true;
+        setFound(true);
+        onScan(connection);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "That code isn't a Nyte connection.");
       }
-    },
-    [onScan],
-  );
+
+      return;
+    }
+  };
 
   const output = useObjectOutput({ types: SCANNED_TYPES, onObjectsScanned });
 

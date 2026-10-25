@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { SymbolView } from "expo-symbols";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -179,19 +179,15 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
   const nextNumber =
     marks.reduce((max, mark) => (mark.kind === "point" ? Math.max(max, mark.point.n) : max), 0) + 1;
 
-  const responder = useMemo(
-    () =>
-      createAnnotateResponder({
-        size,
-        saving,
-        nextNumber,
-        marks,
-        addMark: (mark) => setMarks((current) => [...current, mark]),
-        setDrawing,
-        setSelected,
-      }),
-    [size, saving, nextNumber, marks],
-  );
+  const responder = createAnnotateResponder({
+    size,
+    saving,
+    nextNumber,
+    marks,
+    addMark: (mark) => setMarks((current) => [...current, mark]),
+    setDrawing,
+    setSelected,
+  });
 
   function writeComment(n: number, comment: string) {
     setMarks((current) =>

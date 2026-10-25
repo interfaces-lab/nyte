@@ -6,6 +6,7 @@ import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Command } from "@nyte-ai/ui/command";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { formatTimeAgo } from "../components/ui.tsx";
+import { useNowMinute } from "../use-now-minute.ts";
 import { StatusGlyph } from "./status-glyph.tsx";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
@@ -91,6 +92,7 @@ export function SearchPalette({
   onOpenCustomize,
 }: SearchPaletteProps): ReactElement {
   const workingSessions = useWorkingSessionIds();
+  const now = useNowMinute();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
   const [shownOpen, setShownOpen] = useState(open);
@@ -206,7 +208,7 @@ export function SearchPalette({
               mark={sessionActivityMark(session, workingSessions.has(session.id))}
             />
           }
-          meta={formatTimeAgo(session.lastActivityAt)}
+          meta={formatTimeAgo(session.lastActivityAt, now)}
           onClick={() => run(() => onOpenSession(session.id))}
         >
           {sessionTitle(session)}

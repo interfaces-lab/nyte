@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Alert, AppState, Keyboard } from "react-native";
 import { css, html } from "react-strict-dom";
 import { router, useFocusEffect } from "expo-router";
@@ -37,26 +37,16 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
 
   useFocusEffect(() => seeWhileForeground({ appState: AppState, tip: chat.tip, see: chat.see }));
 
-  const [children] = useWatch(
-    useMemo(
-      () => ({
-        watch: () => client.sessions.watch({ parents: { kind: "children", session: sessionId } }),
-      }),
-      [client, sessionId],
-    ),
-  );
+  const [children] = useWatch({
+    watch: () => client.sessions.watch({ parents: { kind: "children", session: sessionId } }),
+  });
 
   const childSessions = children.kind === "ready" ? children.value : undefined;
-  const delegateNames = useMemo(() => indexDelegateNames(childSessions ?? []), [childSessions]);
+  const delegateNames = indexDelegateNames(childSessions ?? []);
   const asking = childSessions?.find((child) => sessionMark(child) === "waiting");
   const askingId = asking?.id;
 
-  const [askingView] = useWatch(
-    useMemo(
-      () => (askingId === undefined ? undefined : client.session(askingId)),
-      [client, askingId],
-    ),
-  );
+  const [askingView] = useWatch(askingId === undefined ? undefined : client.session(askingId));
 
   const ownQuestion = chat.state === undefined ? undefined : openQuestion(chat.state);
   const childQuestion = askingView.kind === "ready" ? openQuestion(askingView.value) : undefined;

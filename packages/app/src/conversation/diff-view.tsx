@@ -5,8 +5,9 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
-import { memo, useMemo } from "react";
 import type { ReactElement } from "react";
+// oxlint-disable-next-line no-restricted-imports -- the compiler merges the patch parse into the theme/layout scope; keep it keyed on diff.patch alone
+import { useMemo } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import {
   PIERRE_HIGHLIGHTER_OPTIONS,
@@ -288,7 +289,7 @@ interface DiffFacts {
   readonly removed: number;
 }
 
-export const DiffView = memo(function DiffView({
+export function DiffView({
   path,
   label,
   diff,
@@ -314,17 +315,14 @@ export const DiffView = memo(function DiffView({
   const wrapped = wordWrap ?? stacked;
   const expansion = expandContext ? loadDiffFiles : undefined;
 
-  const options = useMemo<FileDiffOptions<undefined, undefined>>(
-    () => ({
-      ...PATCH_OPTIONS,
-      diffStyle: layout,
-      overflow: wrapped ? "wrap" : "scroll",
-      themeType: theme,
-      loadDiffFiles: expansion,
-      expansionLineCount: EXPANSION_LINE_COUNT,
-    }),
-    [layout, wrapped, theme, expansion],
-  );
+  const options = {
+    ...PATCH_OPTIONS,
+    diffStyle: layout,
+    overflow: wrapped ? "wrap" : "scroll",
+    themeType: theme,
+    loadDiffFiles: expansion,
+    expansionLineCount: EXPANSION_LINE_COUNT,
+  } satisfies FileDiffOptions<undefined, undefined>;
 
   return (
     <div
@@ -386,4 +384,4 @@ export const DiffView = memo(function DiffView({
       </div>
     </div>
   );
-});
+}

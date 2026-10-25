@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 export type Watched<T> =
   | { readonly kind: "loading" }
@@ -12,7 +12,7 @@ export interface Watchable<T> {
 const LOADING = { kind: "loading" } as const;
 
 export function useWatch<T>(source: Watchable<T> | undefined): readonly [Watched<T>, () => void] {
-  const store = useMemo(() => watchStore(source), [source]);
+  const store = watchStore(source);
 
   return [useSyncExternalStore(store.subscribe, store.getSnapshot), store.restart];
 }

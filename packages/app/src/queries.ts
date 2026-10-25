@@ -8,7 +8,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { MutationState, UseQueryResult } from "@tanstack/react-query";
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { asId } from "@nyte-ai/schema";
 import type { ClientCommandName } from "@nyte-ai/schema";
 import { toast } from "@nyte-ai/ui/toast";
@@ -50,7 +50,6 @@ import type {
   UsageWindow,
 } from "./bridge.ts";
 import { groupByWorkspace } from "./session-list.ts";
-import type { WorkspaceSessions } from "./session-list.ts";
 import { nyte } from "./nyte.ts";
 import {
   childrenWatch,
@@ -313,11 +312,9 @@ function useRootSessions(): readonly SessionInfo[] | undefined {
     queryFn: skipToken,
   }).data;
 
-  return useMemo(() => {
-    const listed = roots ?? recorded;
+  const listed = roots ?? recorded;
 
-    return listed === undefined ? undefined : projection.list(listed);
-  }, [roots, projection, recorded]);
+  return listed === undefined ? undefined : projection.list(listed);
 }
 
 export function useWorkingSessionIds(): ReadonlySet<SessionId> {
@@ -343,38 +340,30 @@ export function useWorkingSessionIds(): ReadonlySet<SessionId> {
   );
 }
 
-export function useWorkspaceSessions(): {
-  readonly data: readonly WorkspaceSessions[] | undefined;
-} {
+export function useWorkspaceSessions() {
   const roots = useRootSessions();
-  const workspaces = useWorkspaces();
+  const workspaces = useWorkspaces().data;
 
-  return useMemo(
-    () => ({
-      data: roots === undefined ? undefined : groupByWorkspace(roots, workspaces.data ?? []),
-    }),
-    [roots, workspaces.data],
-  );
+  return {
+    data: roots === undefined ? undefined : groupByWorkspace(roots, workspaces ?? []),
+  };
 }
 
 export function useSessionSearch(search: string, enabled = true) {
   const roots = useRootSessions();
   const needle = search.trim().toLocaleLowerCase();
 
-  return useMemo(
-    () => ({
-      data:
-        !enabled || needle === "" || roots === undefined
-          ? undefined
-          : {
-              items: roots.filter(
-                (session) =>
-                  !session.archived && (session.name ?? "").toLocaleLowerCase().includes(needle),
-              ),
-            },
-    }),
-    [enabled, needle, roots],
-  );
+  return {
+    data:
+      !enabled || needle === "" || roots === undefined
+        ? undefined
+        : {
+            items: roots.filter(
+              (session) =>
+                !session.archived && (session.name ?? "").toLocaleLowerCase().includes(needle),
+            ),
+          },
+  };
 }
 
 const UNLISTED = Symbol("unlisted");
@@ -827,13 +816,10 @@ export function usePluginCatalog(sessionId?: SessionId) {
     (state) => state.value === undefined && state.error !== undefined,
   );
 
-  const data = useMemo(
-    () =>
-      catalog === undefined
-        ? undefined
-        : { ...catalog, commands: [...catalog.commands, COMPACT_COMMAND] },
-    [catalog],
-  );
+  const data =
+    catalog === undefined
+      ? undefined
+      : { ...catalog, commands: [...catalog.commands, COMPACT_COMMAND] };
 
   return { data, isError: failed };
 }

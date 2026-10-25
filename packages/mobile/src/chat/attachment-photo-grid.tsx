@@ -1,5 +1,5 @@
 // oxlint-disable-next-line no-restricted-imports -- a recycled cell snaps its selection while a toggled one animates it in Reanimated
-import { memo, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { LegendList } from "@legendapp/list/react-native";
 import Animated, {
@@ -12,7 +12,7 @@ import Animated, {
 import type { RecentPhoto } from "../media/recent-photos.ts";
 import { MorphButton } from "./picker-morph-button.tsx";
 
-const PhotoCell = memo(function PhotoCell({
+function PhotoCell({
   photo,
   size,
   selected,
@@ -89,7 +89,7 @@ const PhotoCell = memo(function PhotoCell({
       </Animated.View>
     </Pressable>
   );
-});
+}
 
 export function AttachmentPhotoGrid({
   photos,

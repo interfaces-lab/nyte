@@ -4,7 +4,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { use, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { use, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
@@ -205,7 +205,6 @@ export function CanvasFrame({
   const frameRef = useRef<HTMLIFrameElement>(null);
   const theme = useSyncExternalStore(subscribeCanvasTheme, readCanvasTheme, readCanvasTheme);
   const { runtime, code, title, error: known } = state;
-  const heightKey = useMemo(() => patchDigest(code), [code]);
   const [reported, setReported] = useState<{ readonly key: string; readonly height: number }>();
   const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState<CanvasError>();
@@ -215,6 +214,7 @@ export function CanvasFrame({
   const origin = use(PartOrigin);
   const files = useCitableFiles(opener !== undefined);
   const citable = files.data;
+  const heightKey = patchDigest(code);
 
   const reportedHeight =
     reported?.key === heightKey ? reported.height : measuredHeights.get(heightKey);

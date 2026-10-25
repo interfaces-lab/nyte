@@ -2,7 +2,7 @@ import { DndContext, PointerSensor, useDraggable, useSensor, useSensors } from "
 import type { Announcements, PointerSensorOptions, PointerSensorProps } from "@dnd-kit/core";
 import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
-import { createContext, use, useCallback, useRef, useState } from "react";
+import { createContext, use, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import { motion } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "../use-mount-effect.ts";
@@ -283,15 +283,12 @@ export function SortableItem({
   const { setNodeRef, listeners } = useDraggable({ id });
   const shift = drag === undefined ? 0 : slideDistance(drag, id);
 
-  const ref = useCallback(
-    (element: HTMLDivElement | null): void => {
-      setNodeRef(element);
+  const ref = (element: HTMLDivElement | null): void => {
+    setNodeRef(element);
 
-      if (element === null) items.delete(id);
-      else items.set(id, element);
-    },
-    [id, items, setNodeRef],
-  );
+    if (element === null) items.delete(id);
+    else items.set(id, element);
+  };
 
   return (
     <div

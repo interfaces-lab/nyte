@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, ScrollView, Text } from "react-native";
 import { Host, RNHostView } from "@expo/ui";
 import { BottomSheet, Group } from "@expo/ui/swift-ui";
@@ -27,10 +27,10 @@ export function useActivitySheet(rows: readonly ChatRow[]) {
 
   if (open && current?.kind === "activity" && current !== selected) setSelected(current);
 
-  const openActivity = useCallback((row: Extract<ChatRow, { kind: "activity" }>) => {
+  const openActivity = (row: Extract<ChatRow, { kind: "activity" }>) => {
     setSelected(row);
     setOpen(true);
-  }, []);
+  };
 
   return { open, parts: selected?.parts ?? [], openActivity, close: () => setOpen(false) };
 }
@@ -225,7 +225,7 @@ function readOutput(outcome: ToolOutcome): string | undefined {
 /** Where a detail row leads once the sheet has dismissed. */
 type Destination = { kind: "file"; path: string } | { kind: "session"; id: SessionId };
 
-const ActivityDetail = memo(function ActivityDetail({
+function ActivityDetail({
   part,
   delegateNames,
   onOpen,
@@ -285,7 +285,7 @@ const ActivityDetail = memo(function ActivityDetail({
       )}
     </html.div>
   );
-});
+}
 
 export function ToolActivitySheet({
   open,

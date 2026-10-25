@@ -1,5 +1,5 @@
 import type { SessionId } from "@nyte-ai/sdk";
-import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
+import { createContext, useContext, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { PaneController, PaneControllerSnapshot } from "./pane-controller.ts";
 import { activePane, canSplitPane } from "./pane-layout.ts";
@@ -99,43 +99,40 @@ export interface PaneActions {
 export function usePaneActions(): PaneActions {
   const controller = useController();
 
-  return useMemo(
-    () => ({
-      newChat() {
-        shellActions.showWorkspace();
-        controller.newChat();
-      },
-      openSession(sessionId) {
-        controller.selectSession(sessionId);
-      },
-      openSessionInPane(paneId, sessionId) {
-        controller.selectSessionInPane(paneId, sessionId);
-      },
-      openDraftChat(draftId, sessionId, composer) {
-        controller.openDraftChat(draftId, sessionId, composer);
-      },
-      split(direction) {
-        splitPanes(controller, direction);
-      },
-      close(paneId) {
-        controller.close(paneId);
-      },
-      focus(paneId) {
-        controller.focus(paneId);
-      },
-      focusNext() {
-        return focusNextPane(controller);
-      },
-      resize(ratio) {
-        controller.resize(ratio);
-      },
-      drop(sessionId, targetPaneId, placement) {
-        controller.drop(sessionId, targetPaneId, placement);
-      },
-      removeSession(sessionId) {
-        controller.removeSession(sessionId);
-      },
-    }),
-    [controller],
-  );
+  return {
+    newChat() {
+      shellActions.showWorkspace();
+      controller.newChat();
+    },
+    openSession(sessionId) {
+      controller.selectSession(sessionId);
+    },
+    openSessionInPane(paneId, sessionId) {
+      controller.selectSessionInPane(paneId, sessionId);
+    },
+    openDraftChat(draftId, sessionId, composer) {
+      controller.openDraftChat(draftId, sessionId, composer);
+    },
+    split(direction) {
+      splitPanes(controller, direction);
+    },
+    close(paneId) {
+      controller.close(paneId);
+    },
+    focus(paneId) {
+      controller.focus(paneId);
+    },
+    focusNext() {
+      return focusNextPane(controller);
+    },
+    resize(ratio) {
+      controller.resize(ratio);
+    },
+    drop(sessionId, targetPaneId, placement) {
+      controller.drop(sessionId, targetPaneId, placement);
+    },
+    removeSession(sessionId) {
+      controller.removeSession(sessionId);
+    },
+  };
 }

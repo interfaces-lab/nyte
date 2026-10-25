@@ -1,15 +1,9 @@
 import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
-import {
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type {
+  ChangeSet,
   ChangeSource,
   FileStatus,
   LineStat,
@@ -87,15 +81,13 @@ const NO_TURN_OPTIONS: readonly TurnChangeOption[] = [];
 
 const EMPTY_ROWS: readonly VcsChangeRow[] = [];
 
-const EMPTY_RECORDED: readonly RecordedChangeRow[] = [];
-
 const UNKNOWN_STAT: LineStat = { kind: "unknown" };
 
-const recordedVersions = new WeakMap<readonly RecordedChangeRow[], number>();
+const recordedVersions = new WeakMap<readonly ChangeRow[], number>();
 
 let nextRecordedVersion = 0;
 
-function recordedVersion(rows: readonly RecordedChangeRow[]): number {
+function recordedVersion(rows: readonly ChangeRow[]): number {
   const known = recordedVersions.get(rows);
 
   if (known !== undefined) return known;
@@ -229,6 +221,147 @@ function revertConfirmation(target: RevertTarget) {
   };
 }
 
+type PatchSnapshot = ReturnType<ReturnType<typeof createPatchLoader>["getSnapshot"]>;
+
+function findPatch(
+  snapshot: PatchSnapshot,
+  source: PatchSource | undefined,
+  path: string,
+): { readonly entry: PatchEntry; readonly fresh: boolean } | undefined {
+  const current = source !== undefined && snapshot.key === source.key;
+  const fresh = current ? snapshot.fresh.get(path) : undefined;
+
+  if (fresh !== undefined) return { entry: fresh, fresh: true };
+
+  if (source === undefined || snapshot.lineage !== source.lineage) return undefined;
+
+  const stale = snapshot.stale.get(path) ?? (current ? undefined : snapshot.fresh.get(path));
+
+  return stale === undefined ? undefined : { entry: stale, fresh: false };
+}
+
+function usePatchLoader(
+  source: PatchSource | undefined,
+  preparedPaths: readonly string[],
+): ReturnType<typeof createPatchLoader> {
+  const [patches] = useState(createPatchLoader);
+
+  useLayoutEffect(() => {
+    if (source !== undefined) patches.setSource(source);
+  }, [patches, source]);
+
+  useLayoutEffect(() => {
+    patches.prepare(preparedPaths);
+  }, [patches, preparedPaths]);
+
+  useMountEffect(() => () => patches.release());
+
+  return patches;
+}
+
+function useChangeRows(
+  source: ChangeRow["source"],
+  workingRows: readonly VcsChangeRow[],
+  manifest: ChangeSet | undefined,
+  recorded: ChangeSet | undefined,
+): readonly ChangeRow[] {
+  "use memo";
+
+  if (source === "working") return workingRows;
+
+  if (source === "recorded") {
+    return (recorded?.files ?? []).map((file): RecordedChangeRow => ({
+      source: "recorded",
+      path: file.path,
+      added: file.stat.kind === "text" ? file.stat.added : 0,
+      removed: file.stat.kind === "text" ? file.stat.removed : 0,
+    }));
+  }
+
+  return (manifest?.files ?? []).map((change): VcsChangeRow => ({
+    source: "commit",
+    path: change.path,
+    status: change.status,
+  }));
+}
+
+function useStackSections(
+  rows: readonly ChangeRow[],
+  manifest: ChangeSet | undefined,
+  patchSnapshot: PatchSnapshot,
+  patchSource: PatchSource | undefined,
+): readonly ChangesStackItem[] {
+  "use memo";
+
+  const statByPath = new Map((manifest?.files ?? []).map((change) => [change.path, change.stat]));
+
+  return rows.map((row): ChangesStackItem => {
+    const found = findPatch(patchSnapshot, patchSource, row.path);
+    const section = patchStackSection({ path: row.path, entry: found?.entry });
+
+    const stat: LineStat =
+      row.source === "recorded"
+        ? { kind: "text", added: row.added, removed: row.removed }
+        : ((found?.fresh === true ? entryStat(found.entry) : undefined) ??
+          statByPath.get(row.path) ??
+          UNKNOWN_STAT);
+
+    return { ...section, stat };
+  });
+}
+
+function preparationOrder(
+  rows: readonly ChangeRow[],
+  activePath: string | undefined,
+  collapsedPaths: readonly string[],
+): readonly string[] {
+  const collapsed = new Set(collapsedPaths);
+
+  const active = Math.max(
+    rows.findIndex((row) => row.path === activePath),
+    0,
+  );
+
+  const nearest: string[] = [];
+
+  for (let distance = 0; nearest.length < rows.length; distance += 1) {
+    const below = rows[active + distance]?.path;
+    const above = distance === 0 ? undefined : rows[active - distance]?.path;
+
+    if (below !== undefined) nearest.push(below);
+
+    if (above !== undefined) nearest.push(above);
+  }
+
+  return nearest.filter((path) => !collapsed.has(path));
+}
+
+async function revertFile(path: string, revision: string | undefined): Promise<string | undefined> {
+  if (revision === undefined) return "Refresh changes and try again.";
+
+  try {
+    const result = await (
+      await workspaceGit()
+    ).discard([path], {
+      expect: asId<"git-revision">(revision),
+    });
+
+    if (result.kind === "stale") {
+      void refreshVcs();
+
+      return "Changes changed. Review them and try again.";
+    }
+
+    if (result.kind === "rejected") return result.reason;
+
+    if (result.kind === "busy") return "A run is still writing to this workspace.";
+
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : "Couldn’t revert this file.";
+  }
+}
+
 function focusFileFilter(field: HTMLInputElement | null): void {
   if (field === null) return;
   field.focus();
@@ -283,10 +416,8 @@ function ChangesPanelView({
 }: ChangesPanelViewProps): ReactElement {
   const uiFontSize = useSetting(preferences.uiFontSize);
 
-  const sessionOption = useMemo(
-    () => (sessionChanges === undefined ? undefined : sessionScopeOption(sessionChanges)),
-    [sessionChanges],
-  );
+  const sessionOption =
+    sessionChanges === undefined ? undefined : sessionScopeOption(sessionChanges);
 
   const snapshot = useVcsSnapshot(visible);
   const filterInput = useRef<HTMLInputElement>(null);
@@ -301,6 +432,8 @@ function ChangesPanelView({
     readonly paths: readonly string[];
   }>({ scope: "", paths: NO_COLLAPSED_PATHS });
 
+  const [markNotice, setMarkNotice] = useState({ scope: "", text: "" });
+
   const selectedTurn =
     scope.kind === "turn"
       ? turnOptions.find((option) => option.scope.turnId === scope.turnId)
@@ -314,12 +447,12 @@ function ChangesPanelView({
 
   const selectedRun = selectedTurn?.run ?? undefined;
 
-  const recordedSource = useMemo((): ChangeSource | undefined => {
-    if (activeScope.kind === "thread" && sessionId !== undefined)
-      return { kind: "session", session: sessionId };
-
-    return selectedRun === undefined ? undefined : { kind: "run", run: selectedRun };
-  }, [activeScope.kind, sessionId, selectedRun]);
+  const recordedSource: ChangeSource | undefined =
+    activeScope.kind === "thread" && sessionId !== undefined
+      ? { kind: "session", session: sessionId }
+      : selectedRun === undefined
+        ? undefined
+        : { kind: "run", run: selectedRun };
 
   const recordedScope = activeScope.kind === "thread" || activeScope.kind === "turn";
 
@@ -339,29 +472,23 @@ function ChangesPanelView({
 
   const workingScope = !recordedScope && activeScope.kind !== "commit";
 
-  const statusFiles = useMemo(
-    () =>
-      activeScope.kind === "uncommitted" ||
-      activeScope.kind === "staged" ||
-      activeScope.kind === "unstaged"
-        ? scopeFiles(snapshot.data, activeScope.kind)
-        : undefined,
-    [snapshot.data, activeScope.kind],
-  );
+  const statusFiles =
+    activeScope.kind === "uncommitted" ||
+    activeScope.kind === "staged" ||
+    activeScope.kind === "unstaged"
+      ? scopeFiles(snapshot.data, activeScope.kind)
+      : undefined;
 
-  const workingRows = useMemo(
-    () =>
-      statusFiles === undefined
-        ? EMPTY_ROWS
-        : statusFiles
-            .map((file): VcsChangeRow => ({
-              source: "working",
-              path: file.path,
-              status: file.kind,
-            }))
-            .sort((left, right) => left.path.localeCompare(right.path)),
-    [statusFiles],
-  );
+  const workingRows =
+    statusFiles === undefined
+      ? EMPTY_ROWS
+      : statusFiles
+          .map((file): VcsChangeRow => ({
+            source: "working",
+            path: file.path,
+            status: file.kind,
+          }))
+          .sort((left, right) => left.path.localeCompare(right.path));
 
   const vcsRequest = vcsRequestForScope(activeScope);
 
@@ -370,23 +497,6 @@ function ChangesPanelView({
     options.ignoreWhitespace,
     revision,
     visible && (!workingScope || workingRows.length > 0),
-  );
-
-  const statByPath = useMemo(
-    () => new Map((manifest.data?.files ?? []).map((change) => [change.path, change.stat])),
-    [manifest.data],
-  );
-
-  const commitRows = useMemo(
-    (): readonly VcsChangeRow[] =>
-      activeScope.kind === "commit"
-        ? (manifest.data?.files ?? []).map((change) => ({
-            source: "commit",
-            path: change.path,
-            status: change.status,
-          }))
-        : EMPTY_ROWS,
-    [activeScope.kind, manifest.data],
   );
 
   const recorded = useRecordedChanges({
@@ -399,58 +509,23 @@ function ChangesPanelView({
     enabled: visible,
   });
 
-  const recordedRows = useMemo(
-    (): readonly RecordedChangeRow[] =>
-      !recordedScope
-        ? EMPTY_RECORDED
-        : (recorded.data?.files ?? []).map((file): RecordedChangeRow => ({
-            source: "recorded",
-            path: file.path,
-            added: file.stat.kind === "text" ? file.stat.added : 0,
-            removed: file.stat.kind === "text" ? file.stat.removed : 0,
-          })),
-    [recordedScope, recorded.data],
+  const rows = useChangeRows(
+    workingScope ? "working" : recordedScope ? "recorded" : "commit",
+    workingRows,
+    manifest.data,
+    recorded.data,
   );
 
-  const rows: readonly ChangeRow[] = workingScope
-    ? workingRows
-    : recordedScope
-      ? recordedRows
-      : commitRows;
-
-  const rowByPath = useMemo(() => new Map(rows.map((row) => [row.path, row])), [rows]);
-  const stackOrder = useMemo(() => rows.map((row) => row.path), [rows]);
+  const stackOrder = rows.map((row) => row.path);
 
   const collapsedPaths =
     collapsedSections.scope === activeScopeValue ? collapsedSections.paths : NO_COLLAPSED_PATHS;
 
-  const allCollapsed =
-    stackOrder.length > 0 && stackOrder.every((path) => collapsedPaths.includes(path));
+  const allCollapsed = rows.length > 0 && rows.every((row) => collapsedPaths.includes(row.path));
 
-  const activePath = stackOrder.includes(selectedPath ?? "") ? selectedPath : stackOrder[0];
+  const activePath = rows.some((row) => row.path === selectedPath) ? selectedPath : rows[0]?.path;
 
-  const preparedPaths = useMemo((): readonly string[] => {
-    if (!visible) return [];
-    const collapsed = new Set(collapsedPaths);
-
-    const active = Math.max(
-      stackOrder.findIndex((path) => path === activePath),
-      0,
-    );
-
-    const nearest: string[] = [];
-
-    for (let distance = 0; nearest.length < stackOrder.length; distance += 1) {
-      const below = stackOrder[active + distance];
-      const above = distance === 0 ? undefined : stackOrder[active - distance];
-
-      if (below !== undefined) nearest.push(below);
-
-      if (above !== undefined) nearest.push(above);
-    }
-
-    return nearest.filter((path) => !collapsed.has(path));
-  }, [visible, collapsedPaths, stackOrder, activePath]);
+  const preparedPaths = visible ? preparationOrder(rows, activePath, collapsedPaths) : [];
 
   const { ignoreWhitespace } = options;
 
@@ -467,43 +542,25 @@ function ChangesPanelView({
   const whitespace = ignoreWhitespace ? "w" : "";
   const vcsLineage = `${root ?? ""}\u0000${activeScopeValue}\u0000${whitespace}`;
 
-  const patchSource = useMemo((): PatchSource | undefined => {
-    if (recordedScope) {
-      if (workspace === undefined || recordedSource === undefined) return undefined;
+  const patchSource: PatchSource | undefined = recordedScope
+    ? workspace === undefined || recordedSource === undefined
+      ? undefined
+      : {
+          key: `${activeScopeValue}\u0000${whitespace}\u0000${String(recordedVersion(rows))}`,
+          lineage: `${activeScopeValue}\u0000${whitespace}`,
+          paths: stackOrder,
+          read: (paths) => readRecordedPatches(workspace, recordedSource, paths, ignoreWhitespace),
+        }
+    : patchKey === undefined || vcsRequest === undefined
+      ? undefined
+      : {
+          key: patchKey,
+          lineage: vcsLineage,
+          paths: stackOrder,
+          read: (paths) => readGitPatches(vcsRequest, paths, ignoreWhitespace),
+        };
 
-      return {
-        key: `${activeScopeValue}\u0000${whitespace}\u0000${String(recordedVersion(recordedRows))}`,
-        lineage: `${activeScopeValue}\u0000${whitespace}`,
-        paths: stackOrder,
-        read: (paths) => readRecordedPatches(workspace, recordedSource, paths, ignoreWhitespace),
-      };
-    }
-
-    const request = vcsRequestForScope(activeScope);
-
-    if (patchKey === undefined || request === undefined) return undefined;
-
-    return {
-      key: patchKey,
-      lineage: vcsLineage,
-      paths: stackOrder,
-      read: (paths) => readGitPatches(request, paths, ignoreWhitespace),
-    };
-  }, [
-    recordedScope,
-    recordedSource,
-    activeScopeValue,
-    workspace,
-    recordedRows,
-    patchKey,
-    vcsLineage,
-    stackOrder,
-    activeScope,
-    ignoreWhitespace,
-    whitespace,
-  ]);
-
-  const [patches] = useState(createPatchLoader);
+  const patches = usePatchLoader(patchSource, preparedPaths);
   const refresh = useMutation({ mutationFn: refreshVcs });
 
   const patchSnapshot = useSyncExternalStore(
@@ -512,65 +569,7 @@ function ChangesPanelView({
     patches.getSnapshot,
   );
 
-  useLayoutEffect(() => {
-    if (patchSource !== undefined) patches.setSource(patchSource);
-  }, [patches, patchSource]);
-
-  useLayoutEffect(() => {
-    patches.prepare(preparedPaths);
-  }, [patches, preparedPaths]);
-
-  useMountEffect(() => () => patches.release());
-
-  const patchFor = useCallback(
-    (path: string): { readonly entry: PatchEntry; readonly fresh: boolean } | undefined => {
-      const current = patchSource !== undefined && patchSnapshot.key === patchSource.key;
-      const fresh = current ? patchSnapshot.fresh.get(path) : undefined;
-
-      if (fresh !== undefined) return { entry: fresh, fresh: true };
-
-      if (patchSource === undefined || patchSnapshot.lineage !== patchSource.lineage) {
-        return undefined;
-      }
-
-      const stale =
-        patchSnapshot.stale.get(path) ?? (current ? undefined : patchSnapshot.fresh.get(path));
-
-      return stale === undefined ? undefined : { entry: stale, fresh: false };
-    },
-    [patchSnapshot, patchSource],
-  );
-
-  const sections = useMemo(
-    () =>
-      rows.map((row): ChangesStackItem => {
-        const found = patchFor(row.path);
-        const section = patchStackSection({ path: row.path, entry: found?.entry });
-
-        const stat: LineStat =
-          row.source === "recorded"
-            ? { kind: "text", added: row.added, removed: row.removed }
-            : ((found?.fresh === true ? entryStat(found.entry) : undefined) ??
-              statByPath.get(row.path) ??
-              UNKNOWN_STAT);
-
-        return { ...section, stat };
-      }),
-    [rows, patchFor, statByPath],
-  );
-
-  const digestByPath = useMemo(() => {
-    const digests = new Map<string, string>();
-
-    for (const row of rows) {
-      const found = patchFor(row.path);
-      const digest = found?.fresh === true ? viewedDigest(found.entry) : undefined;
-
-      if (digest !== undefined) digests.set(row.path, digest);
-    }
-
-    return digests;
-  }, [rows, patchFor]);
+  const sections = useStackSections(rows, manifest.data, patchSnapshot, patchSource);
 
   const transcriptError = queryError(turnsError);
 
@@ -608,112 +607,90 @@ function ChangesPanelView({
 
   const viewedScopeId = `${optionsScopeId}\u0000${activeScopeValue}`;
 
-  const viewedByPath = useMemo(
-    () =>
-      new Map(
-        rows.map((row) => {
-          const mark = viewedSnapshot[viewedScopeId]?.files[row.path];
-          const digest = digestByPath.get(row.path);
+  const viewedByPath = new Map(
+    rows.map((row) => {
+      const mark = viewedSnapshot[viewedScopeId]?.files[row.path];
+      const found = findPatch(patchSnapshot, patchSource, row.path);
+      const digest = found?.fresh === true ? viewedDigest(found.entry) : undefined;
 
-          const state: ViewedState =
-            mark === undefined
-              ? "unviewed"
-              : digest === undefined
-                ? "unknown"
-                : mark.digest === digest
-                  ? "viewed"
-                  : "changed";
+      const state: ViewedState =
+        mark === undefined
+          ? "unviewed"
+          : digest === undefined
+            ? "unknown"
+            : mark.digest === digest
+              ? "viewed"
+              : "changed";
 
-          return [row.path, state];
-        }),
-      ),
-    [rows, digestByPath, viewedSnapshot, viewedScopeId],
+      return [row.path, state];
+    }),
   );
 
-  const viewedState = useCallback(
-    (path: string): ViewedState => viewedByPath.get(path) ?? "unviewed",
-    [viewedByPath],
-  );
+  const viewedState = (path: string): ViewedState => viewedByPath.get(path) ?? "unviewed";
+  const rowByPath = new Map(rows.map((row) => [row.path, row]));
 
-  const [markNotice, setMarkNotice] = useState({ scope: "", text: "" });
+  const sidebarFiles: readonly ChangesSidebarFile[] = sections.map((section) => {
+    const row = rowByPath.get(section.path);
+    const file = { path: section.path, stat: section.stat, viewed: viewedState(section.path) };
 
-  const setViewed = useCallback(
-    (paths: readonly string[], viewed: boolean): void => {
-      if (!viewed) {
-        changesViewed.clearAllViewed(viewedScopeId, paths);
+    return row === undefined || row.source === "recorded" ? file : { ...file, status: row.status };
+  });
+
+  const setViewed = (paths: readonly string[], viewed: boolean): void => {
+    if (!viewed) {
+      changesViewed.clearAllViewed(viewedScopeId, paths);
+
+      return;
+    }
+
+    const scopeValue = activeScopeValue;
+
+    void patches.ensure(paths).then((answer) => {
+      if (answer.kind === "superseded") {
+        setMarkNotice({
+          scope: scopeValue,
+          text: "The changes moved before every file was read, so nothing was marked viewed.",
+        });
 
         return;
       }
 
-      const scopeValue = activeScopeValue;
+      const marks = paths.flatMap((path) => {
+        const entry = answer.entries.get(path);
+        const digest = entry === undefined ? undefined : viewedDigest(entry);
 
-      void patches.ensure(paths).then((answer) => {
-        if (answer.kind === "superseded") {
-          setMarkNotice({
-            scope: scopeValue,
-            text: "The changes moved before every file was read, so nothing was marked viewed.",
-          });
-
-          return;
-        }
-
-        const marks = paths.flatMap((path) => {
-          const entry = answer.entries.get(path);
-          const digest = entry === undefined ? undefined : viewedDigest(entry);
-
-          return digest === undefined ? [] : [{ path, digest }];
-        });
-
-        changesViewed.markAllViewed(viewedScopeId, marks);
-        const unread = paths.length - marks.length;
-
-        setMarkNotice({
-          scope: scopeValue,
-          text:
-            unread === 0
-              ? ""
-              : unread === 1
-                ? "1 file wasn’t marked viewed because its diff couldn’t be read."
-                : `${String(unread)} files weren’t marked viewed because their diffs couldn’t be read.`,
-        });
+        return digest === undefined ? [] : [{ path, digest }];
       });
-    },
-    [viewedScopeId, patches, activeScopeValue],
-  );
 
-  const setFileViewed = useCallback(
-    (path: string, viewed: boolean): void => {
-      setViewed([path], viewed);
-    },
-    [setViewed],
-  );
+      changesViewed.markAllViewed(viewedScopeId, marks);
+      const unread = paths.length - marks.length;
+
+      setMarkNotice({
+        scope: scopeValue,
+        text:
+          unread === 0
+            ? ""
+            : unread === 1
+              ? "1 file wasn’t marked viewed because its diff couldn’t be read."
+              : `${String(unread)} files weren’t marked viewed because their diffs couldn’t be read.`,
+      });
+    });
+  };
+
+  const setFileViewed = (path: string, viewed: boolean): void => {
+    setViewed([path], viewed);
+  };
 
   const expandable = repository !== undefined && workingScope;
 
-  const loadDiffFiles = useMemo(
-    () =>
-      expandable && root !== undefined
-        ? createDiffFilesLoader({
-            readContents: async (input) => (await workspaceGit()).contents(input.path, input.scope),
-            root,
-            scope: { kind: "worktree" },
-          })
-        : undefined,
-    [expandable, root],
-  );
-
-  const sidebarFiles = useMemo(
-    (): readonly ChangesSidebarFile[] =>
-      sections.map((section) => {
-        const row = rowByPath.get(section.path);
-        const file = { path: section.path, stat: section.stat, viewed: viewedState(section.path) };
-
-        return row === undefined || row.source === "recorded"
-          ? file
-          : { ...file, status: row.status };
-      }),
-    [sections, rowByPath, viewedState],
-  );
+  const loadDiffFiles =
+    expandable && root !== undefined
+      ? createDiffFilesLoader({
+          readContents: async (input) => (await workspaceGit()).contents(input.path, input.scope),
+          root,
+          scope: { kind: "worktree" },
+        })
+      : undefined;
 
   const scopeStats = sections.reduce<{ added: number; removed: number } | undefined>(
     (total, section) =>
@@ -733,65 +710,33 @@ function ChangesPanelView({
     requestAnimationFrame(() => focusFileFilter(filterInput.current));
   };
 
-  const askToRevert = useCallback(
-    (path: string): void => {
-      const row = rowByPath.get(path);
+  const askToRevert = (path: string): void => {
+    const row = rowByPath.get(path);
 
-      if (row === undefined || row.source !== "working") return;
-      const opener = document.activeElement;
-      revertReturnRef.current = opener instanceof HTMLButtonElement ? opener : null;
-      setRevertError(undefined);
-      setRevertTarget({ path, untracked: row.status === "untracked" });
-    },
-    [rowByPath],
-  );
+    if (row === undefined || row.source !== "working") return;
+    const opener = document.activeElement;
+    revertReturnRef.current = opener instanceof HTMLButtonElement ? opener : null;
+    setRevertError(undefined);
+    setRevertTarget({ path, untracked: row.status === "untracked" });
+  };
 
   const revertPath = workingScope ? (onRevertPath ?? askToRevert) : undefined;
 
   const confirmRevert = async (target: RevertTarget): Promise<void> => {
     setReverting(true);
     setRevertError(undefined);
+    const failure = await revertFile(target.path, revision);
+    setReverting(false);
 
-    try {
-      if (revision === undefined) {
-        setRevertError("Refresh changes and try again.");
+    if (failure !== undefined) {
+      setRevertError(failure);
 
-        return;
-      }
-
-      const result = await (
-        await workspaceGit()
-      ).discard([target.path], {
-        expect: asId<"git-revision">(revision),
-      });
-
-      if (result.kind === "stale") {
-        void refreshVcs();
-        setRevertError("Changes changed. Review them and try again.");
-
-        return;
-      }
-
-      if (result.kind === "rejected") {
-        setRevertError(result.reason);
-
-        return;
-      }
-
-      if (result.kind === "busy") {
-        setRevertError("A run is still writing to this workspace.");
-
-        return;
-      }
-
-      changesViewed.clearViewed(viewedScopeId, target.path);
-      void refreshVcs();
-      setRevertTarget(undefined);
-    } catch (error) {
-      setRevertError(error instanceof Error ? error.message : "Couldn’t revert this file.");
-    } finally {
-      setReverting(false);
+      return;
     }
+
+    changesViewed.clearViewed(viewedScopeId, target.path);
+    void refreshVcs();
+    setRevertTarget(undefined);
   };
 
   const revertCopy = revertConfirmation(revertTarget ?? { path: "", untracked: false });

@@ -7,7 +7,6 @@ import {
   createContext,
   Fragment,
   isValidElement,
-  memo,
   use,
   useSyncExternalStore,
 } from "react";
@@ -341,7 +340,7 @@ function subscribeReducedMotion(onChange: () => void): () => void {
   return () => reducedMotionQuery.removeEventListener("change", onChange);
 }
 
-export const Prose = memo(function Prose({
+export function Prose({
   markdown,
   streaming = false,
 }: {
@@ -375,4 +374,4 @@ export const Prose = memo(function Prose({
       </EnteringText>
     </div>
   );
-});
+}

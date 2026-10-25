@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type {
   GitHubAccountState,
+  GitHubApi,
   GitHubPullRequestInput,
   GitHubPullRequestOutcome,
   GitHubState,
@@ -337,19 +338,107 @@ const styles = create({
   resultActions: { display: "flex", alignItems: "center", gap: space.s2, flexWrap: "wrap" },
 });
 
+interface RunOptions {
+  readonly branchName?: string;
+  readonly setUpstream?: boolean;
+  readonly skipBranch?: boolean;
+  readonly skipCommit?: boolean;
+}
+
+interface CommitRun {
+  readonly action: CommitAction;
+  readonly options: RunOptions;
+  readonly revision: string;
+  readonly message: string;
+  readonly scope: WorkbenchChangesScope;
+  readonly github: GitHubApi | undefined;
+  readonly onBranchCreated: () => void;
+  readonly onCommitted: () => void;
+  readonly onPushInterrupted: () => void;
+}
+
+async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
+  const { options } = run;
+  const plan = commitActionPlan(run.action);
+  let expect: GitRevision = asId<"git-revision">(run.revision);
+  const reported: string[] = [];
+
+  const settle = (outcome: CommitBarResult): CommitBarResult =>
+    reported.length === 0 ? outcome : { ...outcome, text: `${reported.join(" ")} ${outcome.text}` };
+
+  try {
+    if (plan.branch && options.skipBranch !== true) {
+      const name = options.branchName ?? "";
+
+      const created = await (await workspaceGit()).branch({ name, checkout: true }, { expect });
+      const outcome = createBranchResultMessage(created, name);
+
+      if (created.kind !== "applied") return settle(outcome);
+
+      expect = created.revision;
+      run.onBranchCreated();
+      reported.push(outcome.text);
+    }
+
+    if (plan.commit && options.skipCommit !== true) {
+      const committed = await (
+        await workspaceGit()
+      ).commit({ message: run.message, files: commitTargetFor(run.scope) }, { expect });
+
+      const outcome = commitResultMessage(committed);
+
+      if (committed.kind !== "applied") return settle(outcome);
+
+      expect = committed.revision;
+      run.onCommitted();
+      reported.push(outcome.text);
+    }
+
+    if (plan.push) {
+      const pushed = await (
+        await workspaceGit()
+      ).push({ setUpstream: options.setUpstream === true }, { expect });
+
+      const outcome = pushResultMessage(pushed);
+
+      if (outcome.tone === "error") {
+        if (pushed.kind !== "stale") run.onPushInterrupted();
+
+        return settle(outcome);
+      }
+
+      reported.push(outcome.text);
+      void queryClient.invalidateQueries({ queryKey: keys.github });
+    }
+
+    if (plan.pullRequest) {
+      if (run.github === undefined) {
+        return settle({ tone: "error", text: "Pull requests need GitHub on the server." });
+      }
+
+      const opened = await run.github.createPullRequest(pullRequestInput(run.message));
+      const outcome = pullRequestResultMessage(opened);
+
+      if (outcome.tone === "success") {
+        void refreshVcs();
+        void queryClient.invalidateQueries({ queryKey: keys.github });
+      }
+
+      return settle(outcome);
+    }
+
+    return settle({ tone: "success", text: "" });
+  } catch (cause) {
+    return settle(actionFailureMessage(cause));
+  }
+}
+
 interface ChangesCommitBarProps {
   readonly scope: WorkbenchChangesScope;
   readonly branch: BranchReadout | undefined;
   readonly revision: string;
   readonly fileCount: number;
   readonly onOpenLink?: (url: string) => void;
-}
-
-interface RunOptions {
-  readonly branchName?: string;
-  readonly setUpstream?: boolean;
-  readonly skipBranch?: boolean;
-  readonly skipCommit?: boolean;
 }
 
 export function ChangesCommitBar({
@@ -396,105 +485,27 @@ export function ChangesCommitBar({
 
   const run = async (chosen: CommitAction, options: RunOptions = {}): Promise<void> => {
     if (running) return;
-    const plan = commitActionPlan(chosen);
-    let expect: GitRevision = asId<"git-revision">(revision);
     setRunning(true);
     setResult(undefined);
     setInterrupted(undefined);
-    const reported: string[] = [];
 
-    const settle = (outcome: CommitBarResult): void => {
-      setResult(
-        reported.length === 0
-          ? outcome
-          : { ...outcome, text: `${reported.join(" ")} ${outcome.text}` },
-      );
-    };
-
-    try {
-      if (plan.branch && options.skipBranch !== true) {
-        const name = options.branchName ?? "";
-
-        const created = await (await workspaceGit()).branch({ name, checkout: true }, { expect });
-        const outcome = createBranchResultMessage(created, name);
-
-        if (created.kind !== "applied") {
-          settle(outcome);
-
-          return;
-        }
-
-        expect = created.revision;
-
+    const outcome = await runCommitAction({
+      action: chosen,
+      options,
+      revision,
+      message,
+      scope,
+      github,
+      onBranchCreated: () => {
         setBranchPrompt(undefined);
         setBranchName("");
-        reported.push(outcome.text);
-      }
+      },
+      onCommitted: () => setMessage(""),
+      onPushInterrupted: () => setInterrupted(chosen),
+    });
 
-      if (plan.commit && options.skipCommit !== true) {
-        const committed = await (
-          await workspaceGit()
-        ).commit({ message, files: commitTargetFor(scope) }, { expect });
-
-        const outcome = commitResultMessage(committed);
-
-        if (committed.kind !== "applied") {
-          settle(outcome);
-
-          return;
-        }
-
-        expect = committed.revision;
-
-        setMessage("");
-        reported.push(outcome.text);
-      }
-
-      if (plan.push) {
-        const pushed = await (
-          await workspaceGit()
-        ).push({ setUpstream: options.setUpstream === true }, { expect });
-
-        const outcome = pushResultMessage(pushed);
-
-        if (outcome.tone === "error") {
-          if (pushed.kind !== "stale") setInterrupted(chosen);
-          settle(outcome);
-
-          return;
-        }
-
-        reported.push(outcome.text);
-        void queryClient.invalidateQueries({ queryKey: keys.github });
-      }
-
-      if (plan.pullRequest) {
-        if (github === undefined) {
-          settle({ tone: "error", text: "Pull requests need GitHub on the server." });
-
-          return;
-        }
-
-        const opened = await github.createPullRequest(pullRequestInput(message));
-
-        const outcome = pullRequestResultMessage(opened);
-
-        if (outcome.tone === "success") {
-          void refreshVcs();
-          void queryClient.invalidateQueries({ queryKey: keys.github });
-        }
-
-        settle(outcome);
-
-        return;
-      }
-
-      settle({ tone: "success", text: "" });
-    } catch (cause) {
-      settle(actionFailureMessage(cause));
-    } finally {
-      setRunning(false);
-    }
+    setResult(outcome);
+    setRunning(false);
   };
 
   const start = (chosen: CommitAction): void => {

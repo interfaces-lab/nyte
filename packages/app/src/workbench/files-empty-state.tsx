@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import { useId, useMemo, useState, type ReactElement } from "react";
+import { useId, useState, type ReactElement } from "react";
 import type { MentionFile } from "../conversation/message-references.ts";
 import type { WorktreeFile } from "../view-helpers.ts";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -14,6 +14,17 @@ import { treeStatus } from "./tree-theme.ts";
 import { nyte } from "../nyte.ts";
 
 const MATCH_LIMIT = 50;
+
+function useOpenableFiles(files: readonly MentionFile[] | undefined) {
+  "use memo";
+
+  const openable = (files ?? []).filter((file) => !mentionsFolder(file));
+
+  return {
+    rank: createFileRanking(openable, MATCH_LIMIT),
+    byPath: new Map(openable.map((file) => [file.displayPath, file])),
+  };
+}
 
 export function FilesEmptyState({
   files,
@@ -36,14 +47,7 @@ export function FilesEmptyState({
   const needle = query.trim().toLocaleLowerCase();
   const mod = nyte.platform === "darwin" ? "⌘" : "Ctrl";
 
-  const { rank, byPath } = useMemo(() => {
-    const openable = (files ?? []).filter((file) => !mentionsFolder(file));
-
-    return {
-      rank: createFileRanking(openable, MATCH_LIMIT),
-      byPath: new Map(openable.map((file) => [file.displayPath, file])),
-    };
-  }, [files]);
+  const { rank, byPath } = useOpenableFiles(files);
 
   const matches = needle === "" ? [] : rank(needle);
   const active = Math.min(highlight, matches.length - 1);

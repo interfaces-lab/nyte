@@ -18,7 +18,6 @@ import type {
   DroppableContainer,
 } from "@dnd-kit/core";
 import { create, props } from "@stylexjs/stylex";
-import { useCallback, useMemo } from "react";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -191,7 +190,7 @@ function SessionDragSurface({ children }: { readonly children: ReactNode }): Rea
 export function SessionDndProvider({ children }: { readonly children: ReactNode }): ReactElement {
   const { layout } = usePaneControllerSnapshot();
   const panes = usePaneActions();
-  const detectCollision = useMemo(() => collisionDetector(layout), [layout]);
+  const detectCollision = collisionDetector(layout);
 
   const pointerSensor = useSensor(PointerSensor, {
     activationConstraint: { distance: SESSION_DRAG_ACTIVATION_DISTANCE },
@@ -199,16 +198,13 @@ export function SessionDndProvider({ children }: { readonly children: ReactNode 
 
   const sensors = useSensors(pointerSensor);
 
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent): void => {
-      const dragged = parseSessionDragData(event.active.data.current);
-      const target = dropTargetFromEvent(event);
+  const handleDragEnd = (event: DragEndEvent): void => {
+    const dragged = parseSessionDragData(event.active.data.current);
+    const target = dropTargetFromEvent(event);
 
-      if (dragged === undefined || target === undefined) return;
-      panes.drop(dragged.sessionId, target.paneId, target.placement);
-    },
-    [panes],
-  );
+    if (dragged === undefined || target === undefined) return;
+    panes.drop(dragged.sessionId, target.paneId, target.placement);
+  };
 
   return (
     <DndContext
@@ -244,16 +240,13 @@ export function useSessionPaneDropTarget(paneId: PaneId): (element: HTMLElement 
   const { setNodeRef: setLeftNodeRef } = usePanePlacement(paneId, "left");
   const { setNodeRef: setRightNodeRef } = usePanePlacement(paneId, "right");
 
-  return useCallback(
-    (element: HTMLElement | null): void => {
-      setCenterNodeRef(element);
-      setTopNodeRef(element);
-      setBottomNodeRef(element);
-      setLeftNodeRef(element);
-      setRightNodeRef(element);
-    },
-    [setBottomNodeRef, setCenterNodeRef, setLeftNodeRef, setRightNodeRef, setTopNodeRef],
-  );
+  return (element: HTMLElement | null): void => {
+    setCenterNodeRef(element);
+    setTopNodeRef(element);
+    setBottomNodeRef(element);
+    setLeftNodeRef(element);
+    setRightNodeRef(element);
+  };
 }
 
 export function useSessionDropTarget(): SessionDropTarget | undefined {

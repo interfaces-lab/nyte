@@ -2,7 +2,7 @@ import { useFocusEffect } from "expo-router";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 import type { ExpoSpeechRecognitionErrorCode } from "expo-speech-recognition";
 // oxlint-disable-next-line no-restricted-imports -- the elapsed clock runs only while recording
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const WAVEFORM_LEVELS = 8;
 
@@ -74,36 +74,34 @@ export function useDictation(onTranscript: (transcript: string) => void) {
     setRecording(false);
     setError(dictationFailure(event.error));
   });
-  useFocusEffect(
-    useCallback(() => {
-      focused.current = true;
+  useFocusEffect(() => {
+    focused.current = true;
 
-      return () => {
-        focused.current = false;
-        const owner = session.current;
-        session.current = undefined;
-        setRecording(false);
+    return () => {
+      focused.current = false;
+      const owner = session.current;
+      session.current = undefined;
+      setRecording(false);
 
-        if (owner === undefined || recognizerOwner !== owner) return;
+      if (owner === undefined || recognizerOwner !== owner) return;
 
-        if (!recognitionStarted.current) {
-          recognizerOwner = undefined;
+      if (!recognitionStarted.current) {
+        recognizerOwner = undefined;
 
-          return;
-        }
+        return;
+      }
 
-        recognitionStarted.current = false;
+      recognitionStarted.current = false;
 
-        const ended = ExpoSpeechRecognitionModule.addListener("end", () => {
-          ended.remove();
+      const ended = ExpoSpeechRecognitionModule.addListener("end", () => {
+        ended.remove();
 
-          if (recognizerOwner === owner) recognizerOwner = undefined;
-        });
+        if (recognizerOwner === owner) recognizerOwner = undefined;
+      });
 
-        ExpoSpeechRecognitionModule.abort();
-      };
-    }, []),
-  );
+      ExpoSpeechRecognitionModule.abort();
+    };
+  });
   useEffect(() => {
     if (!recording) return;
     const timer = setInterval(() => setElapsed((value) => value + 1), 1000);
@@ -146,7 +144,9 @@ export function useDictation(onTranscript: (transcript: string) => void) {
     try {
       const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
 
-      if (session.current !== owner || recognizerOwner !== owner) return;
+      if (session.current !== owner) return;
+
+      if (recognizerOwner !== owner) return;
 
       if (!permission.granted) {
         session.current = undefined;

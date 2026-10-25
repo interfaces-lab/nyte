@@ -7,7 +7,7 @@ import { BubbleContent } from "@nyte-ai/ui/bubble";
 import { Message } from "@nyte-ai/ui/message";
 import { AttachmentGroup } from "@nyte-ai/ui/attachment";
 // oxlint-disable-next-line no-restricted-imports -- the outside-click listener lives only while an edit can dismiss
-import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
@@ -627,22 +627,14 @@ function TurnPartView({
   return <NoteView message={message} />;
 }
 
-const ResponseView = memo(function ResponseView({
-  messages,
-}: {
-  messages: readonly TextMessage[];
-}): ReactElement | null {
-  const markdown = useMemo(
-    () => messages.map((message) => message.state.markdown.trim()).join("\n\n"),
-    [messages],
-  );
-
+function ResponseView({ messages }: { messages: readonly TextMessage[] }): ReactElement | null {
+  const markdown = messages.map((message) => message.state.markdown.trim()).join("\n\n");
   const streaming = messages.some((message) => message.status.kind === "live");
 
   return markdown === "" ? null : <Prose markdown={markdown} streaming={streaming} />;
-});
+}
 
-export const TurnItemView = memo(function TurnItemView({
+export function TurnItemView({
   row,
   running,
   density,
@@ -723,4 +715,4 @@ export const TurnItemView = memo(function TurnItemView({
       return _exhaustive;
     }
   }
-});
+}

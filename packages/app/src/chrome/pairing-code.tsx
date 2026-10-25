@@ -1,7 +1,6 @@
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import qrcode from "qrcode-generator";
-import { useMemo } from "react";
 import type { ReactElement } from "react";
 
 const styles = create({
@@ -35,13 +34,11 @@ function modulePath(code: ReturnType<typeof qrcode>): string {
 }
 
 export function PairingCode({ value, size }: { value: string; size: number }): ReactElement {
-  const { path, count } = useMemo(() => {
-    const code = qrcode(0, "M");
-    code.addData(value);
-    code.make();
-
-    return { path: modulePath(code), count: code.getModuleCount() };
-  }, [value]);
+  const code = qrcode(0, "M");
+  code.addData(value);
+  code.make();
+  const path = modulePath(code);
+  const count = code.getModuleCount();
 
   return (
     <div {...props(styles.frame)}>

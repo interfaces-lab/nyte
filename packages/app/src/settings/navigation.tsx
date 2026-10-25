@@ -1,7 +1,7 @@
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Link, useRouter } from "@tanstack/react-router";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
@@ -22,20 +22,19 @@ export function SettingsNavigation({
   const [search, setSearch] = useState("");
   const [highlight, setHighlight] = useState(0);
 
-  const results = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
+  const query = search.trim().toLocaleLowerCase();
 
-    if (query === "") return undefined;
+  const results =
+    query === ""
+      ? undefined
+      : sectionGroups.flat().filter((id) => {
+          const { title, keywords } = SETTINGS_PAGES[id];
 
-    return sectionGroups.flat().filter((id) => {
-      const { title, keywords } = SETTINGS_PAGES[id];
-
-      return (
-        title.toLocaleLowerCase().includes(query) ||
-        keywords.some((keyword) => keyword.includes(query))
-      );
-    });
-  }, [search, sectionGroups]);
+          return (
+            title.toLocaleLowerCase().includes(query) ||
+            keywords.some((keyword) => keyword.includes(query))
+          );
+        });
 
   const highlighted = results === undefined ? undefined : Math.min(highlight, results.length - 1);
   const groups = results === undefined ? sectionGroups : [results];

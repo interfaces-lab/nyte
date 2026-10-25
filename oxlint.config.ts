@@ -16,6 +16,13 @@ const mountEffectImport = {
     "No direct useEffect: derive inline, fetch with useQuery, act in the event handler, remount via key, or useMountEffect for mount-time external sync.",
 };
 
+const compilerMemoImport = {
+  name: "react",
+  importNames: ["useMemo", "useCallback", "memo"],
+  message:
+    "React Compiler memoizes this package. Write the plain value, function, or component; fix a compiler bailout (react/todo) instead of memoizing by hand.",
+};
+
 const uiLibraryImports = [
   {
     group: ["@base-ui/**"],
@@ -255,6 +262,7 @@ export default defineConfig({
     {
       files: ["packages/app/src/**/*.{ts,tsx}", "packages/desktop/src/renderer/**/*.{ts,tsx}"],
       rules: {
+        "react/todo": "error",
         "react/forbid-elements": [
           "error",
           { forbid: [{ element: "button", message: buttonLibraryMessage }] },
@@ -262,7 +270,12 @@ export default defineConfig({
         "eslint/no-restricted-imports": [
           "error",
           {
-            paths: [...rendererCoreImports, mountEffectImport, ...runtimeLoadImports],
+            paths: [
+              ...rendererCoreImports,
+              mountEffectImport,
+              compilerMemoImport,
+              ...runtimeLoadImports,
+            ],
             patterns: uiLibraryImports,
           },
         ],

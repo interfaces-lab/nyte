@@ -1,5 +1,5 @@
 import { useRouter } from "@tanstack/react-router";
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import { activateWorkspace } from "../chrome/use-show-session.ts";
@@ -138,14 +138,10 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
   const workspaceSessions = useWorkspaceSessions();
   const working = useWorkingSessionIds();
 
-  const sessions = useMemo(
-    () =>
-      new Map(
-        (workspaceSessions.data ?? []).flatMap((entry) =>
-          entry.sessions.map((session) => [session.id, session] as const),
-        ),
-      ),
-    [workspaceSessions.data],
+  const sessions = new Map(
+    (workspaceSessions.data ?? []).flatMap((entry) =>
+      entry.sessions.map((session) => [session.id, session] as const),
+    ),
   );
 
   return state.tabs.map((tab) => {

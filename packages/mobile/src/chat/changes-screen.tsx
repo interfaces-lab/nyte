@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import type { RefreshControlProps } from "react-native";
 import { ActivityIndicator, RefreshControl, SectionList } from "react-native";
 import { useQuery } from "@tanstack/react-query";
@@ -103,6 +103,22 @@ async function textPatches(stream: AsyncIterable<PatchSet>): Promise<TextPatch[]
   );
 }
 
+/** One section per agent edit, numbered when a run touched the same file more than once. */
+function agentSections(perRun: readonly TextPatch[][]): FileSection[] {
+  const edits = new Map<string, TextPatch[]>();
+
+  for (const file of perRun.flat()) edits.set(file.path, [...(edits.get(file.path) ?? []), file]);
+
+  return [...edits.values()].flatMap((group) =>
+    group.map((file, index) =>
+      fileSection(
+        file,
+        group.length > 1 ? `Edit ${String(index + 1)} of ${String(group.length)}` : undefined,
+      ),
+    ),
+  );
+}
+
 /**
  * A session's changes, from the agent's record or the Mac's working tree. Past three files, only the
  * file the user arrived on starts open; a tap moves one file between collapsed, head, and full views.
@@ -127,18 +143,11 @@ export function ChangesScreen({
 
   const workspaceId = chat.info?.workspace;
 
-  const runs = useMemo(
-    () =>
-      (chat.state?.turns ?? []).flatMap((turn) =>
-        turn.run !== null && changedFiles(turn) ? [turn.run] : [],
-      ),
-    [chat.state?.turns],
+  const runs = (chat.state?.turns ?? []).flatMap((turn) =>
+    turn.run !== null && changedFiles(turn) ? [turn.run] : [],
   );
 
-  const conversationPaths = useMemo(
-    () => (chat.state?.changes ?? []).map((change) => change.path),
-    [chat.state?.changes],
-  );
+  const conversationPaths = (chat.state?.changes ?? []).map((change) => change.path);
 
   const agentQuery = useQuery({
     queryKey: ["run-patches", sessionId, runs],
@@ -212,32 +221,16 @@ export function ChangesScreen({
         ? { kind: "failed", message: describeHostError(macDiffsQuery.error) }
         : { kind: "ready", diffs: macDiffsQuery.data };
 
-  const sections = useMemo<FileSection[]>(() => {
-    if (source === "agent") {
-      const edits = new Map<string, TextPatch[]>();
+  const agentEdits = agentQuery.data ?? [];
 
-      for (const file of (agentQuery.data ?? []).flat())
-        edits.set(file.path, [...(edits.get(file.path) ?? []), file]);
+  const sections =
+    source === "agent"
+      ? agentSections(agentEdits)
+      : (macDiffsQuery.data ?? []).map((file) => fileSection(file, undefined));
 
-      return [...edits.values()].flatMap((group) =>
-        group.map((file, index) =>
-          fileSection(
-            file,
-            group.length > 1 ? `Edit ${String(index + 1)} of ${String(group.length)}` : undefined,
-          ),
-        ),
-      );
-    }
-
-    return (macDiffsQuery.data ?? []).map((file) => fileSection(file, undefined));
-  }, [source, agentQuery.data, macDiffsQuery.data]);
-
-  const readView = useCallback(
-    (section: FileSection): FileView =>
-      views.get(section.key) ??
-      (sections.length > 3 && section.path !== initialPath ? "collapsed" : "head"),
-    [views, sections.length, initialPath],
-  );
+  const readView = (section: FileSection): FileView =>
+    views.get(section.key) ??
+    (sections.length > 3 && section.path !== initialPath ? "collapsed" : "head");
 
   const setView = (key: string, view: FileView) =>
     setViews((current) => new Map(current).set(key, view));
@@ -353,24 +346,17 @@ function DiffSections({
 }) {
   const theme = useTheme();
 
-  const visibleSections = useMemo(
-    () =>
-      sections.map((section) => {
-        const view = readView(section);
+  const visibleSections = sections.map((section) => {
+    const view = readView(section);
 
-        return {
-          ...section,
-          data:
-            view === "collapsed"
-              ? []
-              : displayLines(
-                  section.hunks,
-                  view === "head" ? LINE_LIMIT : Number.POSITIVE_INFINITY,
-                ),
-        };
-      }),
-    [sections, readView],
-  );
+    return {
+      ...section,
+      data:
+        view === "collapsed"
+          ? []
+          : displayLines(section.hunks, view === "head" ? LINE_LIMIT : Number.POSITIVE_INFINITY),
+    };
+  });
 
   return (
     <SectionList<Line, FileSection>

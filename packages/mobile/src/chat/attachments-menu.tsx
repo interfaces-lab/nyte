@@ -54,6 +54,24 @@ type PermissionHandoff =
   | { kind: "idle" }
   | { kind: "presenting" | "dismissing"; action: ExtendMode | "manage" };
 
+/** Whether `mode` can open now, needs the system permission prompt first, or failed to load. */
+async function prepareMode(
+  mode: ExtendMode,
+  camera: { granted: boolean; requestable: boolean },
+  readPhotos: () => Promise<void>,
+): Promise<"ready" | "ask" | "failed"> {
+  if (mode === "camera") return camera.granted || !camera.requestable ? "ready" : "ask";
+
+  try {
+    if (!(await getPermissionsAsync(false, ["photo"])).granted) return "ask";
+    await readPhotos();
+
+    return "ready";
+  } catch {
+    return "failed";
+  }
+}
+
 /**
  * Plus → glass menu → photo grid or live camera. Geometry is one continuous
  * blend of closed / open / extended, so closing from the grid shrinks straight
@@ -143,21 +161,20 @@ export function AttachmentsMenu({
     setNotice(undefined);
     setSelectedPhotos([]);
 
-    try {
-      const granted =
-        next === "photos" ? (await getPermissionsAsync(false, ["photo"])).granted : hasPermission;
+    const access = await prepareMode(
+      next,
+      { granted: hasPermission, requestable: canRequestPermission },
+      onReadPhotos,
+    );
 
-      if (!granted && (next === "photos" || canRequestPermission)) {
-        setHandoff({ kind: "presenting", action: next });
+    if (access === "ask") {
+      setHandoff({ kind: "presenting", action: next });
 
-        return;
-      }
-
-      if (next === "photos") await onReadPhotos();
-    } catch {
-      setNotice(next === "photos" ? "Couldn't load photos" : "Couldn't open camera");
+      return;
     }
 
+    if (access === "failed")
+      setNotice(next === "photos" ? "Couldn't load photos" : "Couldn't open camera");
     setRequesting(undefined);
     showPanel(next);
   };
@@ -181,10 +198,10 @@ export function AttachmentsMenu({
       } else await onManageAccess();
     } catch {
       setNotice(action === "camera" ? "Couldn't open camera" : "Couldn't load photos");
-    } finally {
-      permissionRunning.current = false;
-      setHandoff({ kind: "dismissing", action });
     }
+
+    permissionRunning.current = false;
+    setHandoff({ kind: "dismissing", action });
   };
 
   const collapseToMenu = () => {
@@ -199,22 +216,22 @@ export function AttachmentsMenu({
     setAdding(true);
 
     try {
-      const prepared = await onPreparePhotos(
-        selected.filter((photo) => availableIds.has(photo.id)),
-      );
-
-      const single = prepared.length === 1 ? prepared[0] : undefined;
-
-      if (single !== undefined)
-        flight.run(single, () => onCommitPhotos([single]), surfaceFrame.get());
-      else if (prepared.length > 0) {
-        onCommitPhotos(prepared);
-        onClose();
-      }
+      commitPhotos(await onPreparePhotos(selected.filter((photo) => availableIds.has(photo.id))));
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : "Couldn't attach photos");
-    } finally {
-      setAdding(false);
+    }
+
+    setAdding(false);
+  };
+
+  const commitPhotos = (prepared: readonly StagedImage[]) => {
+    const single = prepared.length === 1 ? prepared[0] : undefined;
+
+    if (single !== undefined)
+      flight.run(single, () => onCommitPhotos([single]), surfaceFrame.get());
+    else if (prepared.length > 0) {
+      onCommitPhotos(prepared);
+      onClose();
     }
   };
 
@@ -550,19 +567,20 @@ function AttachCamera({
     try {
       const photo = await output.capturePhotoToFile({ flashMode: "off" }, {});
 
-      if (!mounted.current) return;
-      const image = await prepareImage(photo.filePath);
+      if (mounted.current) {
+        const image = await prepareImage(photo.filePath);
 
-      if (mounted.current) onCapture(image);
+        if (mounted.current) onCapture(image);
+      }
     } catch {
       if (mounted.current) setCaptureError("Couldn't take photo. Try again.");
-    } finally {
-      capturePending.current = false;
+    }
 
-      if (mounted.current) {
-        setBusy(false);
-        onBusyChange(false);
-      }
+    capturePending.current = false;
+
+    if (mounted.current) {
+      setBusy(false);
+      onBusyChange(false);
     }
   };
 

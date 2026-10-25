@@ -2,7 +2,7 @@ import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { FileTreeBatchOperation } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
-import { memo, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { Input } from "@nyte-ai/ui/input";
 import {
@@ -134,7 +134,7 @@ function sidebarCountLabel(total: number, shown: number, filtered: boolean): str
   return `${String(shown)} of ${filesChangedLabel(total)}`;
 }
 
-export const ChangesSidebar = memo(function ChangesSidebar({
+export function ChangesSidebar({
   files,
   activePath,
   filterInputRef,
@@ -152,11 +152,11 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   const [query, setQuery] = useState("");
   const [statuses, setStatuses] = useState<readonly ChangeStatus[]>([]);
   const [viewedMode, setViewedMode] = useState<ViewedFilterMode>("all");
-  const fileByPath = useMemo(() => new Map(files.map((file) => [file.path, file])), [files]);
+  const fileByPath = new Map(files.map((file) => [file.path, file]));
   const current = useRef({ fileByPath, onRevealPath });
   useLayoutEffect(() => {
     current.current = { fileByPath, onRevealPath };
-  }, [fileByPath, onRevealPath]);
+  });
   const syncing = useRef(false);
   const paths = useRef<ReadonlySet<string>>(new Set());
 
@@ -190,18 +190,14 @@ export const ChangesSidebar = memo(function ChangesSidebar({
 
   const filtering = query.trim() !== "" || statuses.length > 0 || viewedMode !== "all";
 
-  const shownPaths = useMemo(
-    () =>
-      filterChangePaths(files, {
-        query,
-        statuses,
-        viewed:
-          viewedMode === "all"
-            ? { mode: "all" }
-            : { mode: viewedMode, isViewed: (path) => fileByPath.get(path)?.viewed === "viewed" },
-      }),
-    [files, fileByPath, query, statuses, viewedMode],
-  );
+  const shownPaths = filterChangePaths(files, {
+    query,
+    statuses,
+    viewed:
+      viewedMode === "all"
+        ? { mode: "all" }
+        : { mode: viewedMode, isViewed: (path) => fileByPath.get(path)?.viewed === "viewed" },
+  });
 
   useLayoutEffect(() => {
     const next = new Set(
@@ -350,4 +346,4 @@ export const ChangesSidebar = memo(function ChangesSidebar({
       />
     </WorkbenchRail>
   );
-});
+}

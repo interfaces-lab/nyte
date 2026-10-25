@@ -1,9 +1,14 @@
 import { DEFAULT_CODE_VIEW_LAYOUT } from "@pierre/diffs";
 import type { CodeViewLineSelection, CodeViewSearch, SelectedLineRange } from "@pierre/diffs";
 import { CodeView } from "@pierre/diffs/react";
-import type { CodeViewHandle, CodeViewItem, CodeViewReactOptions } from "@pierre/diffs/react";
+import type {
+  CodeViewAnnotationArgs,
+  CodeViewHandle,
+  CodeViewItem,
+  CodeViewReactOptions,
+} from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { LineStat } from "@nyte-ai/sdk";
 import { AnimatedNumber } from "../components/animated-number.tsx";
@@ -102,6 +107,10 @@ const STACK_CSS = `${PIERRE_TOKEN_CSS}${DIFF_SEPARATOR_CSS}`;
 
 const SCROLL_SETTLE_MS = 150;
 
+function renderNotice(...[annotation]: CodeViewAnnotationArgs<string>): ReactElement {
+  return <div {...props(text.sm, styles.notice)}>{annotation.metadata}</div>;
+}
+
 interface ScrollReport {
   top: number;
   timer: number | undefined;
@@ -150,8 +159,8 @@ export function ChangesStack({
   const restore = useRef<number | undefined>(scrollTop);
   const appliedFocusRevision = useRef(0);
   const [codeItems] = useState(createChangesCodeViewItems);
-  const model = useMemo(() => codeItems(items, collapsedPaths), [codeItems, items, collapsedPaths]);
-  const collapsed = useMemo(() => new Set(collapsedPaths), [collapsedPaths]);
+  const model = codeItems(items, collapsedPaths);
+  const collapsed = new Set(collapsedPaths);
   const scrollReport = useRef<ScrollReport>({ top: scrollTop, timer: undefined, path: undefined });
   const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
   const sources = useRef(model.sourceById);
@@ -166,7 +175,7 @@ export function ChangesStack({
     sources.current = model.sourceById;
   }, [model.sourceById]);
 
-  const addRange = useCallback((id: string, range: SelectedLineRange): boolean => {
+  const addRange = (id: string, range: SelectedLineRange): boolean => {
     const item = viewer.current?.getItem(id);
     const source = sources.current.get(id);
 
@@ -177,7 +186,9 @@ export function ChangesStack({
     viewer.current?.clearSelectedLines();
 
     return true;
-  }, []);
+  };
+
+  const addSelectedRange = useEffectEvent(addRange);
 
   useLayoutEffect(() => {
     if (selection === null) return undefined;
@@ -189,39 +200,35 @@ export function ChangesStack({
 
       if (owner !== undefined && owner.closest("[data-changes-stack]") === null) return;
 
-      if (addRange(selection.id, selection.range)) event.preventDefault();
+      if (addSelectedRange(selection.id, selection.range)) event.preventDefault();
     };
 
     window.addEventListener("keydown", add);
 
     return () => window.removeEventListener("keydown", add);
-  }, [addRange, mac, selection]);
+  }, [mac, selection]);
 
-  const options = useMemo(
-    () =>
-      ({
-        ...PIERRE_HIGHLIGHTER_OPTIONS,
-        themeType: theme,
-        diffStyle: layout,
-        overflow: wordWrap ? "wrap" : "scroll",
-        loadDiffFiles,
-        expansionLineCount: EXPANSION_LINE_COUNT,
-        stickyHeaders: true,
-        layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
-        unsafeCSS: STACK_CSS,
-        onPostRender: (node, _instance, phase) => {
-          if (phase !== "unmount") adaptDiffExpanders(node);
-        },
-        enableLineSelection: true,
-        onGutterUtilityClick: (
-          range: SelectedLineRange,
-          context: { readonly item: { readonly id: string } },
-        ) => {
-          addRange(context.item.id, range);
-        },
-      }) satisfies CodeViewReactOptions<string, undefined>,
-    [theme, layout, loadDiffFiles, wordWrap, addRange],
-  );
+  const options = {
+    ...PIERRE_HIGHLIGHTER_OPTIONS,
+    themeType: theme,
+    diffStyle: layout,
+    overflow: wordWrap ? "wrap" : "scroll",
+    loadDiffFiles,
+    expansionLineCount: EXPANSION_LINE_COUNT,
+    stickyHeaders: true,
+    layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
+    unsafeCSS: STACK_CSS,
+    onPostRender: (node, _instance, phase) => {
+      if (phase !== "unmount") adaptDiffExpanders(node);
+    },
+    enableLineSelection: true,
+    onGutterUtilityClick: (
+      range: SelectedLineRange,
+      context: { readonly item: { readonly id: string } },
+    ) => {
+      addRange(context.item.id, range);
+    },
+  } satisfies CodeViewReactOptions<string, undefined>;
 
   useLayoutEffect(() => {
     const pending = restore.current;
@@ -251,67 +258,53 @@ export function ChangesStack({
     onFocusApplied?.(focusRevision);
   }, [focusPath, focusRevision, model.items, onFocusApplied]);
 
-  const renderHeader = useCallback(
-    (codeItem: CodeViewItem<string>): ReactElement | null => {
-      const item = model.sourceById.get(codeItem.id);
+  const renderHeader = (codeItem: CodeViewItem<string>): ReactElement | null => {
+    const item = model.sourceById.get(codeItem.id);
 
-      if (item === undefined) return null;
-      const viewed = viewedState(item.path);
+    if (item === undefined) return null;
+    const viewed = viewedState(item.path);
 
-      return (
-        <StackHeader
-          path={item.path}
-          stat={item.stat}
-          collapsed={collapsed.has(item.path)}
-          demand={onDemandPatch}
-          onToggleCollapsed={onToggleCollapsed}
-        >
-          {selection?.id === codeItem.id && (
-            <Button
-              iconOnly
-              icon="paperclip"
-              aria-label={ADD_TO_CHAT_LABEL}
-              aria-keyshortcuts={mac ? "Meta+Shift+L" : "Control+Shift+L"}
-              onClick={() => addRange(selection.id, selection.range)}
-            />
-          )}
-          {onRevertPath !== undefined && (
-            <Button
-              iconOnly
-              icon="refresh"
-              aria-label={`Revert ${item.path}`}
-              onClick={() => onRevertPath(item.path)}
-            />
-          )}
-          <ReviewCheckbox
-            state={viewed}
-            label={
-              viewed === "viewed"
-                ? `Mark ${item.path} not viewed`
-                : viewed === "changed"
-                  ? `Mark ${item.path} viewed; changed since last view`
-                  : viewed === "unknown"
-                    ? `Mark ${item.path} viewed; its earlier mark is not checked against this diff yet`
-                    : `Mark ${item.path} viewed`
-            }
-            onChange={(next) => onViewedChange(item.path, next)}
+    return (
+      <StackHeader
+        path={item.path}
+        stat={item.stat}
+        collapsed={collapsed.has(item.path)}
+        demand={onDemandPatch}
+        onToggleCollapsed={onToggleCollapsed}
+      >
+        {selection?.id === codeItem.id && (
+          <Button
+            iconOnly
+            icon="paperclip"
+            aria-label={ADD_TO_CHAT_LABEL}
+            aria-keyshortcuts={mac ? "Meta+Shift+L" : "Control+Shift+L"}
+            onClick={() => addRange(selection.id, selection.range)}
           />
-        </StackHeader>
-      );
-    },
-    [
-      addRange,
-      collapsed,
-      mac,
-      model.sourceById,
-      onDemandPatch,
-      onRevertPath,
-      onToggleCollapsed,
-      onViewedChange,
-      selection,
-      viewedState,
-    ],
-  );
+        )}
+        {onRevertPath !== undefined && (
+          <Button
+            iconOnly
+            icon="refresh"
+            aria-label={`Revert ${item.path}`}
+            onClick={() => onRevertPath(item.path)}
+          />
+        )}
+        <ReviewCheckbox
+          state={viewed}
+          label={
+            viewed === "viewed"
+              ? `Mark ${item.path} not viewed`
+              : viewed === "changed"
+                ? `Mark ${item.path} viewed; changed since last view`
+                : viewed === "unknown"
+                  ? `Mark ${item.path} viewed; its earlier mark is not checked against this diff yet`
+                  : `Mark ${item.path} viewed`
+          }
+          onChange={(next) => onViewedChange(item.path, next)}
+        />
+      </StackHeader>
+    );
+  };
 
   return (
     <div
@@ -365,9 +358,7 @@ export function ChangesStack({
             if (source !== undefined) onExpand(source.path);
           }}
           renderCustomHeader={renderHeader}
-          renderAnnotation={(...[annotation]) => (
-            <div {...props(text.sm, styles.notice)}>{annotation.metadata}</div>
-          )}
+          renderAnnotation={renderNotice}
           onScroll={(top, instance) => {
             const report = scrollReport.current;
             report.top = top;

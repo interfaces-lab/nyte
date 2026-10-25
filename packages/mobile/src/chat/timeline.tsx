@@ -1,4 +1,3 @@
-import { useCallback, useMemo } from "react";
 import { router } from "expo-router";
 import { css, html } from "react-strict-dom";
 import type { ActOutcome, PartId, SessionId, SessionView } from "@nyte-ai/sdk";
@@ -39,25 +38,18 @@ export function Timeline({
   layout,
   headerHeight,
 }: TimelineProps) {
-  const transcript = useMemo(() => conversationRows(state), [state]);
+  const transcript = conversationRows(state);
   const activity = useActivitySheet(transcript);
 
-  const rows = useMemo(
-    () =>
-      transcript.map((row) => ({
-        messageId: row.id,
-        scrollAnchor: row.kind === "user",
-        row,
-      })),
-    [transcript],
-  );
+  const rows = transcript.map((row) => ({
+    messageId: row.id,
+    scrollAnchor: row.kind === "user",
+    row,
+  }));
 
-  const openFile = useCallback(
-    (path: string) => {
-      router.push(`/changes/${sessionId}?path=${encodeURIComponent(path)}`);
-    },
-    [sessionId],
-  );
+  const openFile = (path: string) => {
+    router.push(`/changes/${sessionId}?path=${encodeURIComponent(path)}`);
+  };
 
   return (
     <>

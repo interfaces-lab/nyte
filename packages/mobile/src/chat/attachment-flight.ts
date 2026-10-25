@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   Easing,
   useAnimatedStyle,
@@ -51,12 +51,9 @@ export function useAttachmentFlight({
     for (const timer of timers.current) clearTimeout(timer);
   });
 
-  const reportFrame = useCallback(
-    (id: string, frame: AttachmentFrame) => {
-      if (activeId.current === id && frame.width > 0 && frame.height > 0) targetLayout.set(frame);
-    },
-    [targetLayout],
-  );
+  const reportFrame = (id: string, frame: AttachmentFrame) => {
+    if (activeId.current === id && frame.width > 0 && frame.height > 0) targetLayout.set(frame);
+  };
 
   const run = (next: { id: string; uri: string }, commit: () => void, frame: AttachmentFrame) => {
     generation.current += 1;

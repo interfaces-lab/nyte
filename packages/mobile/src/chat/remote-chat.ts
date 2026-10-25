@@ -5,16 +5,18 @@ import type {
   Configuration,
   Connection,
   Delivery,
+  Head,
   HeadName,
   Message,
   ModelInfo,
   ModelRef,
   PartId,
+  Session,
   SessionId,
   UserContent,
 } from "@nyte-ai/sdk";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 import { describeHostError } from "../connection/connection.ts";
 import { useWatch } from "../connection/use-watch.ts";
 import { uploadDraft, type DraftContent } from "../media/attachments.ts";
@@ -39,18 +41,44 @@ function describeSendError(cause: unknown): string {
     : describeHostError(cause);
 }
 
+/** The draft as a message the host can take, with its photos uploaded, or why it couldn't be. */
+async function uploadMessage(
+  client: Connection,
+  session: Session,
+  content: DraftContent,
+): Promise<{ kind: "uploaded"; message: UserContent } | { kind: "failed"; error: string }> {
+  try {
+    const workspace = client.workspace((await session.info()).workspace);
+
+    return { kind: "uploaded", message: await uploadDraft(workspace, content) };
+  } catch (cause) {
+    return { kind: "failed", error: describeSendError(cause) };
+  }
+}
+
+/** What kept the head from switching to `model`, or `undefined` once it switched. */
+async function configureModel(head: Head, model: ModelInfo): Promise<string | undefined> {
+  try {
+    const outcome = await head.configure({ model: model.ref });
+
+    if (outcome.kind === "configured") return undefined;
+
+    return outcome.kind === "unknown-model"
+      ? "That model is no longer available on your Mac. Refresh the model list."
+      : "Your Mac couldn't apply that model choice.";
+  } catch (cause) {
+    return describeHostError(cause);
+  }
+}
+
 /**
  * A session's live view and what the conversation does to it. `sending` covers only the photo upload;
  * the SDK's journal serializes the sends after it. `withdraw` drops a message the host hasn't started
  * on, and `steerNow` moves a queued one into the running response.
  */
 export function useRemoteChat(client: Connection, sessionId: SessionId, headName?: HeadName) {
-  const session = useMemo(() => client.session(sessionId), [client, sessionId]);
-
-  const head = useMemo(
-    () => (headName === undefined ? session : session.head(headName)),
-    [session, headName],
-  );
+  const session = client.session(sessionId);
+  const head = headName === undefined ? session : session.head(headName);
 
   const [watched] = useWatch(head);
   const info = useQuery({ queryKey: ["session-info", sessionId], queryFn: () => session.info() });
@@ -67,76 +95,47 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     { kind: "saving"; model: ModelInfo } | { kind: "failed"; message: string } | undefined
   >(undefined);
 
-  const send = useCallback(
-    async (content: DraftContent, delivery?: Delivery): Promise<SendOutcome> => {
-      const empty =
-        typeof content === "string"
-          ? content.trim() === ""
-          : !content.some((part) => (part.kind === "text" ? part.text.trim() !== "" : true));
+  const send = async (content: DraftContent, delivery?: Delivery): Promise<SendOutcome> => {
+    const empty =
+      typeof content === "string"
+        ? content.trim() === ""
+        : !content.some((part) => (part.kind === "text" ? part.text.trim() !== "" : true));
 
-      if (empty || sending) return { kind: "ignored" };
-      setSending(true);
-      setSendError(undefined);
+    if (empty || sending) return { kind: "ignored" };
+    setSending(true);
+    setSendError(undefined);
 
-      let message: UserContent;
+    const upload = await uploadMessage(client, session, content);
+    setSending(false);
 
-      try {
-        const workspace = client.workspace((await session.info()).workspace);
-        message = await uploadDraft(workspace, content);
-      } catch (cause) {
-        const error = describeSendError(cause);
-        setSendError(error);
+    if (upload.kind === "failed") {
+      setSendError(upload.error);
 
-        return { kind: "failed", error };
-      } finally {
-        setSending(false);
-      }
+      return upload;
+    }
 
-      const answer = head.send(message, delivery === undefined ? undefined : { delivery }).then(
+    const answer = head
+      .send(upload.message, delivery === undefined ? undefined : { delivery })
+      .then(
         (receipt): SendAnswer => ({ kind: "sent", message: receipt.message }),
         (cause: unknown): SendAnswer => ({ kind: "refused", error: describeSendError(cause) }),
       );
 
-      void answer.then((outcome) => {
-        if (outcome.kind === "refused") setSendError(outcome.error);
-      });
+    void answer.then((outcome) => {
+      if (outcome.kind === "refused") setSendError(outcome.error);
+    });
 
-      return { kind: "taken", answer };
-    },
-    [client, session, head, sending],
-  );
+    return { kind: "taken", answer };
+  };
 
-  const selectModel = useCallback(
-    async (model: ModelInfo): Promise<boolean> => {
-      if (modelSelection?.kind === "saving") return false;
-      setModelSelection({ kind: "saving", model });
+  const selectModel = async (model: ModelInfo): Promise<boolean> => {
+    if (modelSelection?.kind === "saving") return false;
+    setModelSelection({ kind: "saving", model });
+    const failure = await configureModel(head, model);
+    setModelSelection(failure === undefined ? undefined : { kind: "failed", message: failure });
 
-      try {
-        const outcome = await head.configure({ model: model.ref });
-
-        if (outcome.kind === "configured") {
-          setModelSelection(undefined);
-
-          return true;
-        }
-
-        setModelSelection({
-          kind: "failed",
-          message:
-            outcome.kind === "unknown-model"
-              ? "That model is no longer available on your Mac. Refresh the model list."
-              : "Your Mac couldn't apply that model choice.",
-        });
-
-        return false;
-      } catch (cause) {
-        setModelSelection({ kind: "failed", message: describeHostError(cause) });
-
-        return false;
-      }
-    },
-    [head, modelSelection],
-  );
+    return failure === undefined;
+  };
 
   const withdraw = async (message: Message["id"]): Promise<void> => {
     await session.receipt(asId<"receipt">(message)).stop();
@@ -146,15 +145,12 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     await head.revise(message, content, { delivery: "steer" });
   };
 
-  const report = useCallback(
-    (part: PartId, message: string): void => {
-      void session
-        .part(part)
-        .act("report", { message })
-        .catch(() => undefined);
-    },
-    [session],
-  );
+  const report = (part: PartId, message: string): void => {
+    void session
+      .part(part)
+      .act("report", { message })
+      .catch(() => undefined);
+  };
 
   const [stopError, setStopError] = useState<string>();
 
