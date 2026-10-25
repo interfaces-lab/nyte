@@ -180,10 +180,6 @@ export function reportRow(report: ReportMessage, tasks: readonly Task[]): Report
   };
 }
 
-export function reportHeld(execution: Execution): boolean {
-  return execution.kind === "idle" && execution.lastRun?.end.kind !== "completed";
-}
-
 export function taskAgent(task: Task): string {
   return task.kind === "agent" ? "subagent" : "command";
 }

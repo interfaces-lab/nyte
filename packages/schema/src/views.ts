@@ -4,7 +4,13 @@ import { ConfigurationType } from "./configuration.ts";
 import { FileChangeType } from "./files.ts";
 import { idSchema, SeqType } from "./ids.ts";
 import { withJson } from "./json.ts";
-import { DeliveryType, MessageSourceType, ScheduleType, UserContentType } from "./messages.ts";
+import {
+  DeliveryType,
+  MessageSourceType,
+  ScheduleType,
+  UserContentType,
+  WaitingScheduleType,
+} from "./messages.ts";
 import { ContextViewType, UsageType } from "./models.ts";
 import { PartStatusType, PartViewType } from "./parts.ts";
 import { BackgroundItemType, ExecutionType, RunEndType, WaitTargetType } from "./runs.ts";
@@ -22,13 +28,21 @@ export const ViewOptionsType = Type.Object({ tail: Type.Optional(Type.Number()) 
 
 export type ViewOptions = Decoded<typeof ViewOptionsType>;
 
+const UnsentStatusType = Type.Object({
+  kind: Type.Literal("unsent"),
+  attempts: Type.Number(),
+  retrying: nullable(Type.Object({ at: Type.Number(), reason: Type.String() })),
+});
+
+const PendingStatusType = Type.Object({
+  kind: Type.Literal("pending"),
+  schedule: ScheduleType,
+  covered: Type.Boolean(),
+});
+
 export const UserStatusType = Type.Union([
-  Type.Object({
-    kind: Type.Literal("unsent"),
-    attempts: Type.Number(),
-    retrying: nullable(Type.Object({ at: Type.Number(), reason: Type.String() })),
-  }),
-  Type.Object({ kind: Type.Literal("pending"), schedule: ScheduleType, covered: Type.Boolean() }),
+  UnsentStatusType,
+  PendingStatusType,
   Type.Object({
     kind: Type.Literal("landed"),
     commit: idSchema<"commit">(),
@@ -54,6 +68,16 @@ const UserMessageType = Type.Object({
     ids: Type.Array(idSchema<"commit">()),
   }),
 });
+
+const QueuedMessageType = Type.Object({
+  ...UserMessageType.properties,
+  status: Type.Union([
+    UnsentStatusType,
+    Type.Object({ ...PendingStatusType.properties, schedule: WaitingScheduleType }),
+  ]),
+});
+
+export type QueuedMessage = Decoded<typeof QueuedMessageType>;
 
 export const MessageType = Type.Union([
   UserMessageType,
@@ -107,11 +131,13 @@ export const SessionViewType = Type.Object({
   seq: SeqType,
   activation: ActivationType,
   messages: Type.Array(MessageType),
+  queue: Type.Array(QueuedMessageType),
   leadingPrompt: nullable(UserMessageType),
   parts: Type.Array(PartViewType),
   turns: Type.Array(TurnInfoType),
   usage: UsageType,
   execution: ExecutionType,
+  reportsHeld: Type.Boolean(),
   background: Type.Array(BackgroundItemType),
   configuration: Type.Object({
     selected: nullable(ConfigurationType),
@@ -158,12 +184,14 @@ export const ViewFrameType = Type.Union([
     revision: Type.Optional(VIEW.revision),
     activation: Type.Optional(VIEW.activation),
     messages: Type.Optional(viewSplice(MessageType)),
+    queue: Type.Optional(viewSplice(QueuedMessageType)),
     appends: Type.Optional(Type.Array(ViewAppendType)),
     leadingPrompt: Type.Optional(VIEW.leadingPrompt),
     parts: Type.Optional(viewSplice(PartViewType)),
     turns: Type.Optional(viewSplice(TurnInfoType)),
     usage: Type.Optional(VIEW.usage),
     execution: Type.Optional(VIEW.execution),
+    reportsHeld: Type.Optional(VIEW.reportsHeld),
     background: Type.Optional(viewSplice(BackgroundItemType)),
     configuration: Type.Optional(VIEW.configuration),
     context: Type.Optional(VIEW.context),

@@ -493,6 +493,7 @@ function keepShown(shown: SessionView, next: SessionView): SessionView {
   return {
     ...next,
     messages: keepItems(shown.messages, next.messages, (message) => message.id),
+    queue: keepItems(shown.queue, next.queue, (message) => message.id),
     leadingPrompt: keepItem(shown.leadingPrompt, next.leadingPrompt),
     turns: keepItems(shown.turns, next.turns, (turn) => turn.id),
     changes: keepItems(shown.changes, next.changes, (change) => change.path),

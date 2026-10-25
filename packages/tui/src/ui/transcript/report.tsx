@@ -3,7 +3,7 @@ import { createMemo, Show } from "solid-js";
 import type { ReportMessage } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS } from "../../lib/constants.ts";
-import { reportHeld, reportRow } from "../../lib/tasks.ts";
+import { reportRow } from "../../lib/tasks.ts";
 import { useTranscript } from "./scope.tsx";
 
 export function ReportBlock(props: { readonly message: ReportMessage }): JSX.Element {
@@ -11,11 +11,9 @@ export function ReportBlock(props: { readonly message: ReportMessage }): JSX.Ele
   const scope = useTranscript();
   const row = createMemo(() => reportRow(props.message, scope.tasks()));
 
-  const held = createMemo(() => {
-    const execution = scope.model().execution;
-
-    return props.message.status.kind !== "landed" && execution !== null && reportHeld(execution);
-  });
+  const held = createMemo(
+    () => props.message.status.kind !== "landed" && scope.model().reportsHeld,
+  );
 
   return (
     <text

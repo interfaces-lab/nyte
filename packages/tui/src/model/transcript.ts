@@ -1,4 +1,4 @@
-import type { Execution, Failure, Message, SessionView, TurnId, TurnInfo } from "@nyte-ai/sdk";
+import type { Failure, Message, SessionView, TurnId, TurnInfo } from "@nyte-ai/sdk";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
@@ -30,7 +30,7 @@ export interface TranscriptModel {
   readonly following: boolean;
   readonly toolOutput: "collapsed" | "expanded";
   readonly disclosures: ReadonlySet<string>;
-  readonly execution: Execution | null;
+  readonly reportsHeld: boolean;
 }
 
 export interface TurnModel {
@@ -141,7 +141,7 @@ export function deriveTranscript(
     following: local.following,
     toolOutput: local.toolOutput,
     disclosures: local.disclosures,
-    execution: view?.execution ?? null,
+    reportsHeld: view?.reportsHeld ?? false,
   };
 }
 

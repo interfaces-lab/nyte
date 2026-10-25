@@ -21,6 +21,7 @@ import type { Dialog } from "./dialogs/dialog.ts";
 import type { ListDialog } from "./dialogs/list.ts";
 import { NO_PARTS } from "./draft.ts";
 import type { DraftParts, DraftSnapshot } from "./draft.ts";
+import { rowMessage } from "./queue.ts";
 import type { WindowStart } from "./window.ts";
 
 export interface State {
@@ -362,15 +363,9 @@ export function rowStatus(
 ): "pending" | "landed" | "unsent" | "absent" {
   const followed = followedSession(state);
 
-  if (followed === null || followed.id !== session || followed.view === null) return "absent";
+  if (followed === null || followed.id !== session) return "absent";
 
-  const row = followed.view.messages.find(
-    (candidate) => candidate.kind === "user" && candidate.id === message,
-  );
-
-  if (row === undefined || row.kind !== "user") return "absent";
-
-  return row.status.kind;
+  return rowMessage(followed, message)?.status.kind ?? "absent";
 }
 
 export function followedShells(state: State): readonly ShellJob[] {

@@ -1,5 +1,4 @@
 import type { Message, SessionView } from "@nyte-ai/sdk";
-import { waitsInQueue } from "@nyte-ai/plugin/client/presentation";
 import type {
   failureNotice,
   TextMessage,
@@ -66,9 +65,9 @@ export type TranscriptRow =
       readonly files: SessionView["changes"];
     });
 
-const NO_USERS: readonly UserMessage[] = [];
+const NO_USERS: readonly never[] = [];
 
-function present(messages: readonly UserMessage[]): readonly UserMessage[] {
+function present<T extends UserMessage>(messages: readonly T[]): readonly T[] {
   return messages.length === 0 ? NO_USERS : messages;
 }
 
@@ -77,7 +76,6 @@ function runState(view: SessionView | undefined) {
 
   return {
     running: execution !== undefined && execution.kind !== "idle",
-    held: execution?.kind === "idle" && execution.lastRun?.end.kind !== "completed",
     retrying: execution?.kind === "retrying" ? execution.reason : undefined,
   };
 }
@@ -93,24 +91,22 @@ function readWorking(running: boolean, held: boolean, prompts: readonly UserMess
 }
 
 export function conversationMessages(view: SessionView | undefined) {
-  const { running, held } = runState(view);
+  const { running } = runState(view);
+  const held = view?.reportsHeld ?? false;
   const turns = new Set(view?.turns.map((turn) => turn.id));
+  const queue = view?.queue ?? [];
 
-  const users = (view?.messages ?? []).filter(
+  const prompts = (view?.messages ?? []).filter(
     (message): message is UserMessage => message.kind === "user" && !turns.has(message.turn),
   );
-
-  const prompts = users.filter((message) => !waitsInQueue(message, running));
-
-  const waiting = users.filter((message) => waitsInQueue(message, running));
 
   return {
     running,
     held,
     working: readWorking(running, held, prompts),
     prompts: present(prompts),
-    queued: present(waiting.filter((message) => message.status.kind === "pending")),
-    unsent: present(waiting.filter((message) => message.status.kind === "unsent")),
+    queued: present(queue.filter((message) => message.status.kind === "pending")),
+    unsent: present(queue.filter((message) => message.status.kind === "unsent")),
   };
 }
 
@@ -449,6 +445,8 @@ function streamed(previous: Projection, state: SessionState): Projection | undef
     after.turns !== before.turns ||
     after.leadingPrompt !== before.leadingPrompt ||
     after.changes !== before.changes ||
+    after.queue !== before.queue ||
+    after.reportsHeld !== before.reportsHeld ||
     after.messages.length !== before.messages.length
   )
     return undefined;
@@ -456,8 +454,7 @@ function streamed(previous: Projection, state: SessionState): Projection | undef
   const run = runState(before);
   const next = runState(after);
 
-  if (run.running !== next.running || run.held !== next.held || run.retrying !== next.retrying)
-    return undefined;
+  if (run.running !== next.running || run.retrying !== next.retrying) return undefined;
 
   const changed = new Map<string, TranscriptRow>();
 

@@ -4,7 +4,7 @@ import type {
   HostView,
   HostViewWire,
   Json,
-  Message,
+  QueuedMessage,
   SessionId,
   SessionView,
   ViewOptions,
@@ -184,17 +184,23 @@ export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterab
   );
 }
 
-/** Returns `view` with the sends the journal still holds: one the view carries replaces its message there, one it does not carry joins its messages, and one that is the view's `leadingPrompt` is left to it. */
-export function withUnsent(view: SessionView, unsent: readonly Message[]): SessionView {
+export function withUnsent(view: SessionView, unsent: readonly QueuedMessage[]): SessionView {
   const lead = view.leadingPrompt?.id;
   const held = unsent.filter((message) => message.id !== lead);
 
   if (held.length === 0) return view;
   const over = new Map(held.map((message) => [message.id, message]));
-  const known = new Set(view.messages.map((message) => message.id));
-  const missing = held.filter((message) => !known.has(message.id));
+  const known = new Set([...view.messages, ...view.queue].map((message) => message.id));
+  const live = view.execution.kind !== "idle";
 
-  if (missing.length === 0 && !view.messages.some((message) => over.has(message.id))) return view;
+  const waiting = held.filter(
+    (message) =>
+      !known.has(message.id) &&
+      ((message.status.kind === "unsent" && message.status.retrying !== null) ||
+        (live && message.delivery !== "steer")),
+  );
+
+  const missing = held.filter((message) => !known.has(message.id) && !waiting.includes(message));
   const messages = view.messages.map((message) => over.get(message.id) ?? message);
 
   const at = messages.findIndex(
@@ -206,6 +212,7 @@ export function withUnsent(view: SessionView, unsent: readonly Message[]): Sessi
   return {
     ...view,
     messages: [...messages.slice(0, index), ...missing, ...messages.slice(index)],
+    queue: [...view.queue.map((message) => over.get(message.id) ?? message), ...waiting],
   };
 }
 

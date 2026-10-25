@@ -53,6 +53,12 @@ export function users(view: SessionView): readonly string[] {
   );
 }
 
+export function queued(view: SessionView): readonly string[] {
+  return view.queue.flatMap((message) =>
+    typeof message.content === "string" ? [message.content] : [],
+  );
+}
+
 export function answer(view: SessionView): string | null {
   const found = view.messages.find((message) => isPart(message, textPart));
 

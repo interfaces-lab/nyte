@@ -425,6 +425,7 @@ describe("fold", () => {
           status: { kind: "settled", commit: "c3", endedAt: 14 },
         },
       ],
+      queue: [],
       leadingPrompt: null,
       parts: [],
       turns: [
@@ -455,6 +456,7 @@ describe("fold", () => {
       ],
       usage,
       execution,
+      reportsHeld: false,
       background: [],
       configuration: { selected: configuration, effective: configuration },
       context: { tokens: 120, window: 1000, lastRequest: usage },
@@ -750,10 +752,13 @@ describe("fold", () => {
       position: 0,
     });
 
-    expect(ids(project(reordered, main))).toEqual(["m4", "m3"]);
-    expect(project(reordered, main).messages[0]).toMatchObject({
-      status: { kind: "pending", schedule: { kind: "next-turn", reason: "requested" } },
-    });
+    expect(ids(project(reordered, main))).toEqual(["m3"]);
+    expect(project(reordered, main).queue).toMatchObject([
+      {
+        id: "m4",
+        status: { kind: "pending", schedule: { kind: "next-turn", reason: "requested" } },
+      },
+    ]);
   });
 
   it("drops the abandoned tail on an edit and counts the edited message's siblings", () => {

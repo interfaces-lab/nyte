@@ -1,7 +1,6 @@
-import type { Delivery, MessageId, Schedule } from "@nyte-ai/sdk";
+import type { Delivery, MessageId, QueuedMessage, Schedule } from "@nyte-ai/sdk";
 import { shownContent } from "@nyte-ai/plugin/client/presentation";
-import type { QueuedMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
-import { queuedMessages } from "../lib/view-helpers.ts";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { draftFromContent } from "./draft.ts";
 import type { FollowedSession, State } from "./state.ts";
 
@@ -69,7 +68,7 @@ export function queueRows(
 
   if (view === null || view === undefined) return [];
 
-  return queuedMessages(view).map((message) => {
+  return view.queue.map((message) => {
     const place = placeMessage(message);
 
     return {
@@ -128,7 +127,13 @@ export function queuedCount(rows: readonly QueueRow[]): number {
 }
 
 export function rowMessage(session: FollowedSession | null, id: MessageId): UserMessage | null {
-  const found = session?.view?.messages.find((message) => message.id === id);
+  const view = session?.view;
+
+  if (view === null || view === undefined) return null;
+
+  const found =
+    view.queue.find((message) => message.id === id) ??
+    view.messages.find((message) => message.id === id);
 
   return found?.kind === "user" ? found : null;
 }

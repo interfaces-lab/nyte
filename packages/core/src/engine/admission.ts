@@ -25,6 +25,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { CommitRecord } from "../contract/records.ts";
 import type { SendReceipt } from "../contract/session.ts";
 import { commit } from "../fold/commit.ts";
+import { holdsReports } from "../fold/project.ts";
 import { withFold } from "../fold/reads.ts";
 import { callRef, headRef, inboxRef, receiptRef } from "../store/refs.ts";
 import {
@@ -161,7 +162,7 @@ export function selectRunStart(
   if (prompt !== undefined) return { origin: { kind: "input", message: prompt.id }, input: prompt };
   const execution = state.heads.get(head)?.info.execution;
 
-  if (execution?.kind !== "idle" || execution.lastRun?.end.kind !== "completed") return null;
+  if (execution?.kind !== "idle" || holdsReports(execution)) return null;
 
   const report = inputs
     .flatMap((input) =>

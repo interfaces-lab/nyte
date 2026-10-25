@@ -10,6 +10,7 @@ import type {
   MessageSource,
   PartStatus,
   PartView,
+  QueuedMessage,
   RunEnd,
   RunId,
   RunView,
@@ -319,17 +320,20 @@ export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionVie
   };
 
   build(view);
+  const idle = execution.kind === "idle";
 
   return {
     revision: asId("rev-1"),
     seq: asSeq(messages.length),
     activation: { kind: "active" },
-    messages,
+    messages: messages.filter((message) => !queued(message, idle)),
+    queue: messages.filter((message) => queued(message, idle)),
     leadingPrompt: null,
     parts,
     turns,
     usage: { ...USAGE, input: 0, output: 0, total: 0 },
     execution,
+    reportsHeld: idle && execution.lastRun?.end.kind !== "completed",
     background: [],
     configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
     context: { tokens: 1_000, window: 100_000, lastRequest: null },
@@ -589,6 +593,27 @@ function buildEnd(kind: "completed" | "failed" | "stopped", failure: string | un
   if (kind === "stopped") return { kind };
 
   return { kind, failure: { class: "runner", message: failure ?? "failed" } };
+}
+
+function queued(message: Message, idle: boolean): message is QueuedMessage {
+  if (message.kind !== "user") return false;
+  const steer = message.delivery === "steer";
+
+  if (message.status.kind === "unsent")
+    return message.status.retrying !== null || (!idle && !steer);
+
+  if (
+    message.status.kind !== "pending" ||
+    message.source.kind === "child" ||
+    message.source.kind === "job"
+  )
+    return false;
+  const schedule = message.status.schedule;
+
+  return (
+    schedule.kind === "attached" ||
+    (schedule.kind === "next-turn" && (schedule.reason !== "idle" || (!idle && !steer)))
+  );
 }
 
 function buildSchedule(spec: ScheduleSpec): Schedule {

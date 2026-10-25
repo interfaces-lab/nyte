@@ -139,6 +139,7 @@ export function conversationRows(view: SessionView): ChatRow[] {
   }
 
   closeTurn();
+  rows.push(...view.queue.flatMap((message) => messageRow(message) ?? []));
 
   if (view.execution.kind !== "idle")
     rows.push({

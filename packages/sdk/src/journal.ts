@@ -4,6 +4,7 @@ import type {
   HeadName,
   JournalEntry,
   Message,
+  QueuedMessage,
   SessionId,
   SessionView,
 } from "@nyte-ai/schema";
@@ -16,7 +17,7 @@ import { backoff, retryDelay } from "./rows.ts";
 export interface JournalLoop {
   send(entry: JournalEntry): Promise<Sent>;
   replay(entries: readonly JournalEntry[]): void;
-  unsent(session: SessionId, head: HeadName): readonly Message[];
+  unsent(session: SessionId, head: HeadName): readonly QueuedMessage[];
   landed(session: SessionId, head: HeadName, view: SessionView): void;
   subscribe(listener: () => void): Disposer;
 }
@@ -184,7 +185,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
       shown.set(key, Math.max(shown.get(key) ?? 0, view.seq));
 
       if (held.size === 0) return;
-      const ids = new Set(view.messages.map((message) => message.id));
+      const ids = new Set([...view.messages, ...view.queue].map((message) => message.id));
 
       if (view.leadingPrompt !== null) ids.add(view.leadingPrompt.id);
 
@@ -215,7 +216,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
   };
 }
 
-function unsentMessage(id: Message["id"], { entry, attempts, retrying }: Held): Message {
+function unsentMessage(id: Message["id"], { entry, attempts, retrying }: Held): QueuedMessage {
   return {
     id,
     turn: asId<"turn">(`pending:${id}`),
