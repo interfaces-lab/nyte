@@ -72,7 +72,7 @@ const ANTHROPIC_ALLOWED_FALLBACK_MODELS = {
 function supportsAnthropicMidConvoSystemMessages(modelId: string): boolean {
   return (
     /^claude-opus-(?:4[.-]8|5(?:[.-]5)?)(?:-\d{8})?$/.test(modelId) ||
-    /^claude-sonnet-5[.-]5(?:-\d{8})?$/.test(modelId) ||
+    /^claude-(?:sonnet|haiku)-5[.-]5(?:-\d{8})?$/.test(modelId) ||
     /^claude-(?:fable|mythos)-5(?:[.-]1)?(?:-\d{8})?$/.test(modelId)
   );
 }
@@ -280,8 +280,9 @@ export function applyOpenAICompletionsCompatMetadata(model: Model<Api>): void {
 /**
  * The Anthropic Messages behavior a provider's model has. OpenCode Zen and GitHub Copilot
  * forward mid-conversation system messages but reject `tool_addition`/`tool_removal` blocks,
- * so tool changes stay top-level there. OpenCode Qwen 3.8 Flash emits and accepts thinking
- * blocks with empty signatures.
+ * so tool changes stay top-level there. Haiku 5.5 tool changes are verified only with inline
+ * tool definitions (`inline-tools-2026-09-15`), which the adapter does not send yet. OpenCode
+ * Qwen 3.8 Flash emits and accepts thinking blocks with empty signatures.
  */
 export function getAnthropicMessagesCompat(
   provider: string,
@@ -291,7 +292,8 @@ export function getAnthropicMessagesCompat(
 
   if (provider === "anthropic" && supportsAnthropicMidConvoSystemMessages(modelId)) {
     compat.supportsMidConvoSystemMessages = true;
-    compat.supportsMidConvoToolChanges = true;
+
+    if (!modelId.startsWith("claude-haiku-")) compat.supportsMidConvoToolChanges = true;
   }
 
   if (

@@ -8,7 +8,8 @@ import { Value } from "typebox/value";
 
 const ToolArgumentsSchema = Type.Record(Type.String(), Type.Unknown());
 
-const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t", "u"]);
+/** `\u` is valid only before four hex digits, which `repairJson` checks on its own. */
+const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t"]);
 
 function escapeControlCharacter(char: string): string {
   switch (char) {

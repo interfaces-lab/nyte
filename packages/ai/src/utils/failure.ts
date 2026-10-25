@@ -115,13 +115,15 @@ const OVERLOADED_PATTERN = pattern([
   "\\b529\\b",
   "\\b5(?:00|02|03|04|20|24)\\b",
   "overload",
+  "server_busy",
+  "servers are currently busy",
   "currently experiencing high demand",
   "model is at capacity",
   "service.?unavailable",
   "temporarily unavailable",
   "server.?error",
   "internal.?error",
-  "provider.?returned.?error",
+  "provider.?returned.?(?:an.?)?error",
   "exceeded request buffer limit while retrying upstream",
   "you can retry your request",
   "try your request again",
@@ -138,6 +140,13 @@ const NETWORK_PATTERN = pattern([
   "ENOTFOUND",
   "EAI_AGAIN",
   "upstream.?connect",
+  "unable to forward upstream",
+  "upstream.?request.?failed",
+  "upstream_stream_read_error",
+  "stream was interrupted",
+  "http/?2 stream failed",
+  // node-fetch system errors, whose reason is often empty.
+  "request to \\S+ failed, reason:",
   "reset before headers",
   "socket hang up",
   "socket connection was closed",
@@ -149,6 +158,10 @@ const NETWORK_PATTERN = pattern([
   "stream ended before message_stop",
   "stream ended before a terminal response event",
   "http2 request did not get a response",
+  // Codex CLI mid-stream disconnect, relayed by proxies that wrap the CLI.
+  "stream disconnected before completion",
+  // Node ERR_HTTP2_STREAM_CANCEL: the HTTP/2 session died before the request was sent.
+  "pending stream has been canceled",
 ]);
 
 const RETRY_DELAY_PATTERN =

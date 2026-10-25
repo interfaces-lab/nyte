@@ -73,6 +73,12 @@ const ANTHROPIC_ADAPTIVE_THINKING_ID_PARTS = [
   "fable-5",
 ];
 
+/**
+ * Claude models that accept `thinking: {type: "disabled"}` although models.dev lists no thinking
+ * toggle for them. https://platform.claude.com/docs/en/build-with-claude/thinking#configuring-thinking
+ */
+const ANTHROPIC_DISABLED_THINKING_MODEL = /(?:^|[./])claude-opus-5(?:-\d{8})?$/;
+
 /** Lowercased model id fragments of the Anthropic models that reject `temperature`. */
 const ANTHROPIC_FIXED_TEMPERATURE_ID_PARTS = [
   "opus-4-7",
@@ -160,7 +166,10 @@ export function applyModelsDevReasoningOptionMetadata(
   if (!thinkingLevelMap) return;
 
   if (isModelsDevAnthropicModel) {
-    if (reasoningOptions.some((option) => option.type === "toggle")) {
+    if (
+      reasoningOptions.some((option) => option.type === "toggle") ||
+      ANTHROPIC_DISABLED_THINKING_MODEL.test(model.id)
+    ) {
       delete thinkingLevelMap.off;
     } else {
       thinkingLevelMap.off = null;
