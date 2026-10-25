@@ -165,6 +165,9 @@ installConnection(
             : { kind: "rejected", reason: refusal };
         },
         answer: async () => null,
+        watch: async function* () {
+          yield* [];
+        },
         close: async () => undefined,
       }),
     }),

@@ -43,6 +43,7 @@ import type {
   WorkbenchViewState,
 } from "./controller.ts";
 import { readDeferred } from "../deferred.tsx";
+import { useCanvasEditing } from "./canvas-activity.ts";
 import { terminalActions, useTerminalRuntime } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
@@ -168,6 +169,7 @@ const tabIcons = {
   files: "file",
   changes: "git-branch",
   browser: "globe",
+  canvas: "canvas-grid",
   terminal: "console",
 } satisfies Record<WorkbenchTabKind, IconName>;
 
@@ -189,6 +191,31 @@ function newTerminal(view: WorkbenchViewKey, workspacePath: string | null): void
   });
 
   void terminalActions.create({ id, workspacePath });
+}
+
+/** A canvas tab's icon and title, tinted with a spinner while the agent rewrites the canvas. */
+function CanvasTabContent({
+  tab,
+}: {
+  readonly tab: Extract<WorkbenchTab, { readonly kind: "canvas" }>;
+}): ReactElement {
+  const editing = useCanvasEditing(tab.sessionId, tab.part);
+
+  return (
+    <span
+      {...props(editing && surfaceTheme.purple, styles.content, editing && styles.agentTerminal)}
+    >
+      <span {...props(styles.tabIcon)}>
+        <Icon name={tabIcons.canvas} size={16} />
+      </span>
+      <span {...props(styles.label)}>{tab.title}</span>
+      {editing && (
+        <span aria-label="Updating" {...props(styles.running)}>
+          <Spinner />
+        </span>
+      )}
+    </span>
+  );
 }
 
 function ChatTabLabel({ sessionId }: { readonly sessionId: SessionId }): ReactElement {
@@ -402,34 +429,38 @@ export function WorkbenchTabStrip({
                       }
                     }}
                   >
-                    <span
-                      data-agent-terminal={agentTerminal ? "true" : undefined}
-                      {...props(styles.content)}
-                    >
-                      {tab.kind === "file" ? (
-                        <FileTypeIcon path={tab.path} />
-                      ) : (
-                        <span {...props(styles.tabIcon)}>
-                          <Icon name={tabIcons[tab.kind]} size={16} />
-                        </span>
-                      )}
+                    {tab.kind === "canvas" ? (
+                      <CanvasTabContent tab={tab} />
+                    ) : (
                       <span
-                        {...props(
-                          styles.label,
-                          tab.kind === "file" && tab.preview && styles.preview,
-                        )}
+                        data-agent-terminal={agentTerminal ? "true" : undefined}
+                        {...props(styles.content)}
                       >
-                        {label}
-                      </span>
-                      {file?.dirty && (
-                        <span aria-hidden="true" {...props(surfaceTheme.yellow, styles.dirty)} />
-                      )}
-                      {running && (
-                        <span aria-label="Running" {...props(styles.running)}>
-                          <Spinner />
+                        {tab.kind === "file" ? (
+                          <FileTypeIcon path={tab.path} />
+                        ) : (
+                          <span {...props(styles.tabIcon)}>
+                            <Icon name={tabIcons[tab.kind]} size={16} />
+                          </span>
+                        )}
+                        <span
+                          {...props(
+                            styles.label,
+                            tab.kind === "file" && tab.preview && styles.preview,
+                          )}
+                        >
+                          {label}
                         </span>
-                      )}
-                    </span>
+                        {file?.dirty && (
+                          <span aria-hidden="true" {...props(surfaceTheme.yellow, styles.dirty)} />
+                        )}
+                        {running && (
+                          <span aria-label="Running" {...props(styles.running)}>
+                            <Spinner />
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </Tabs.Tab>
                   <span {...props(styles.close)}>
                     <Button

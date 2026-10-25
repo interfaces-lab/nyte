@@ -1,3 +1,4 @@
+import { asId } from "@nyte-ai/schema";
 import { pagedViews, sdk, SdkError, tracePaints } from "@nyte-ai/sdk";
 import type {
   ConnectOptions,
@@ -9,6 +10,8 @@ import type {
   JobView,
   McpView,
   PagedViews,
+  PartId,
+  PartView,
   SessionId,
   SessionInfo,
   SessionView,
@@ -540,6 +543,17 @@ export const sessionWatch = watchFamily(
     };
   },
 );
+
+const partWatches = watchFamily((current, key: string): AsyncIterable<PartView | null> => {
+  const [session = "", part = ""] = key.split(" ");
+
+  return current.session(asId<"session">(session)).part(asId<"part">(part)).watch();
+});
+
+/** One part, live wherever it sits in its chat, even past the messages the chat's view holds. */
+export function partWatch(session: SessionId, part: PartId): WatchStore<PartView | null> {
+  return partWatches(`${session} ${part}`);
+}
 
 const WARM_SESSIONS = 3;
 

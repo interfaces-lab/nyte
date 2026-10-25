@@ -141,7 +141,14 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       command: refuse,
       completeCommand: refuse,
       parts: { create: refuse },
-      part: (part) => ({ id: part, update: refuse, act: refuse, answer: refuse, close: refuse }),
+      part: (part) => ({
+        id: part,
+        update: refuse,
+        act: refuse,
+        answer: refuse,
+        watch: refused,
+        close: refuse,
+      }),
     };
 
     return { ...base, ...script.session?.(id) };

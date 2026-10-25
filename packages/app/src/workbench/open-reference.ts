@@ -20,6 +20,18 @@ export function workbenchReferenceOpener(input: {
         });
     }
 
+    if (reference.kind === "canvas") {
+      const tab = {
+        kind: "canvas",
+        sessionId: reference.sessionId,
+        part: reference.part,
+        title: reference.title,
+        pinned: null,
+      } as const;
+
+      return () => workbenchController.actions.openTab({ view: viewKey, tab, activate: true });
+    }
+
     if (workspacePath === undefined) return undefined;
 
     switch (reference.kind) {

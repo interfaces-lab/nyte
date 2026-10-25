@@ -359,6 +359,11 @@ export function bindConnection(connection: Connection, options: BindingOptions):
         ? null
         : { action: String(answer.action), input: toJson(answer.input) };
     },
+    "part.watch": async ({ session: id, part }) => {
+      await session(id).info();
+
+      return session(id).part(part).watch();
+    },
     "part.close": async ({ session: id, part }) => {
       await session(id).part(part).close();
 

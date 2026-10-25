@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { SessionId } from "@nyte-ai/sdk";
+import type { PartId, SessionId } from "@nyte-ai/sdk";
 import type { TurnId } from "@nyte-ai/sdk";
 import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -53,6 +53,15 @@ export type WorkbenchTab =
       readonly scrollTop: number;
     }
   | { readonly id: WorkbenchTabId; readonly kind: "browser"; readonly url: string }
+  | {
+      readonly id: WorkbenchTabId;
+      readonly kind: "canvas";
+      readonly sessionId: SessionId;
+      readonly part: PartId;
+      readonly title: string;
+      /** The revision held in view while newer ones land; `null` follows the latest. */
+      readonly pinned: number | null;
+    }
   | { readonly id: WorkbenchTabId; readonly kind: "files" };
 
 export type WorkbenchTabInput = WorkbenchTab extends infer Tab
@@ -159,6 +168,7 @@ export function workbenchTabAvailable(
     case "browser":
       return capabilities.browser;
     case "terminal":
+    case "canvas":
       return true;
     case "file":
     case "files":
@@ -195,6 +205,10 @@ type FilePatch = Omit<Extract<WorkbenchTab, { readonly kind: "file" }>, "id" | "
 
 type BrowserPatch = Omit<Extract<WorkbenchTab, { readonly kind: "browser" }>, "id" | "kind">;
 
+type CanvasPatch = Partial<
+  Pick<Extract<WorkbenchTab, { readonly kind: "canvas" }>, "title" | "pinned">
+>;
+
 export type WorkbenchTabUpdate =
   | {
       readonly view: WorkbenchViewKey;
@@ -213,6 +227,12 @@ export type WorkbenchTabUpdate =
       readonly id: WorkbenchTabId;
       readonly kind: "browser";
       readonly patch: BrowserPatch;
+    }
+  | {
+      readonly view: WorkbenchViewKey;
+      readonly id: WorkbenchTabId;
+      readonly kind: "canvas";
+      readonly patch: CanvasPatch;
     };
 
 export interface WorkbenchPanels {
@@ -312,6 +332,18 @@ const persistedBrowserTab = Type.Object(
   strict,
 );
 
+const persistedCanvasTab = Type.Object(
+  {
+    id: nonEmpty,
+    kind: Type.Literal("canvas"),
+    sessionId: idSchema<"session">(),
+    part: idSchema<"part">(),
+    title: nonEmpty,
+    pinned: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+  },
+  strict,
+);
+
 const persistedFilesTab = Type.Object({ id: nonEmpty, kind: Type.Literal("files") }, strict);
 
 const persistedTerminalTab = Type.Object(
@@ -327,6 +359,7 @@ const persistedTab = Type.Union([
   persistedFileTab,
   persistedChangesTab,
   persistedBrowserTab,
+  persistedCanvasTab,
   persistedFilesTab,
   persistedTerminalTab,
 ]);
@@ -356,6 +389,7 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
   switch (tab.kind) {
     case "file":
     case "browser":
+    case "canvas":
     case "files":
     case "changes":
       return tab;
@@ -387,6 +421,8 @@ export function activeWorkbenchTab(
 export function workbenchTabLabel(tab: WorkbenchTab): string {
   if (tab.kind === "file") return tab.path.split(/[\\/]/).at(-1) ?? tab.path;
 
+  if (tab.kind === "canvas") return tab.title;
+
   return workbenchKindLabel(tab.kind);
 }
 
@@ -400,6 +436,8 @@ export function workbenchKindLabel(kind: WorkbenchTabKind): string {
       return "Changes";
     case "browser":
       return "Browser";
+    case "canvas":
+      return "Canvas";
     case "terminal":
       return "Terminal";
     default: {
@@ -428,6 +466,8 @@ export function defaultWorkbenchTab(kind: WorkbenchTabKind): WorkbenchTabInput {
       return { kind: "terminal", owner: { kind: "user" } };
     case "file":
       throw new Error("A file tab requires a path");
+    case "canvas":
+      throw new Error("A canvas tab requires a canvas");
     default: {
       const _exhaustive: never = kind;
 
@@ -597,6 +637,10 @@ function sameTab(tab: WorkbenchTab, input: WorkbenchTabInput): boolean {
       );
     case "browser":
       return input.kind === "browser" && tab.url === input.url;
+    case "canvas":
+      return (
+        input.kind === "canvas" && tab.sessionId === input.sessionId && tab.part === input.part
+      );
     case "changes":
     case "files":
       return true;
@@ -629,6 +673,13 @@ function patchTab(tab: WorkbenchTab, input: WorkbenchTabUpdate): WorkbenchTab {
       return tab.kind !== "browser" || tab.url === input.patch.url
         ? tab
         : { id: tab.id, kind: "browser", ...input.patch };
+    case "canvas": {
+      if (tab.kind !== "canvas") return tab;
+      const next = { ...tab, ...input.patch };
+
+      return next.title === tab.title && next.pinned === tab.pinned ? tab : next;
+    }
+
     default: {
       const _exhaustive: never = input;
 
@@ -714,7 +765,12 @@ export function createWorkbenchController(
 
       const next = { id: crypto.randomUUID(), ...tab } satisfies WorkbenchTab;
 
-      if (tab.kind === "browser" || panels === undefined || panels.ready()) {
+      if (
+        tab.kind === "browser" ||
+        tab.kind === "canvas" ||
+        panels === undefined ||
+        panels.ready()
+      ) {
         addTab(view, next, activate);
 
         return next.id;

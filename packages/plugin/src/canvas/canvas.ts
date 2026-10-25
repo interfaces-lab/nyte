@@ -23,7 +23,7 @@ import type {
 } from "./canvas-preview.ts";
 import type { CompileError } from "./canvas-compile.ts";
 import type { Plugin } from "@nyte-ai/plugin/core";
-import { canvas as canvasContract } from "./schema.ts";
+import { CANVAS_RENDER_TOOL, CANVAS_REVISIONS_KEPT, canvas as canvasContract } from "./schema.ts";
 import type { CanvasState } from "./schema.ts";
 
 type Actions = typeof canvasContract.actions;
@@ -35,7 +35,24 @@ const handlers: {
   ) => Awaitable<ActionOutput<Actions[A]>>;
 } = {
   async replace(input, context) {
-    const outcome = await context.part.update(() => ({ ...input, error: null }));
+    const outcome = await context.part.update((current) => ({
+      runtime: input.runtime,
+      title: input.title,
+      code: input.code,
+      height: input.height,
+      error: null,
+      revisions: [
+        ...(current.revisions ?? []),
+        {
+          number: (current.revisions?.at(-1)?.number ?? 1) + 1,
+          blob: input.blob,
+          runtime: input.runtime,
+          title: input.title,
+          height: input.height,
+          at: Date.now(),
+        },
+      ].slice(-CANVAS_REVISIONS_KEPT),
+    }));
 
     if (outcome.kind !== "updated")
       throw new Error(`The canvas could not be replaced: ${outcome.kind}.`);
@@ -159,7 +176,7 @@ const PREVIEW_FIRST =
 
 function renderTool(previewing: boolean): ToolDefinition<Infer<typeof parameters>> {
   return {
-    name: "canvas_render",
+    name: CANVAS_RENDER_TOOL,
     description: previewing ? `${PREVIEW_FIRST}\n\n${CANVAS_DESCRIPTION}` : CANVAS_DESCRIPTION,
     parameters,
     class: (args) => ({
@@ -171,16 +188,22 @@ function renderTool(previewing: boolean): ToolDefinition<Infer<typeof parameters
     replay: "safe",
     async execute(args, invocation) {
       const compiled = await compile(args, invocation);
-      const next = {
-        runtime: compiled.runtime,
-        title: args.title,
-        code: compiled.code,
-        height: args.height ?? null,
-      };
+      const drawn = { runtime: compiled.runtime, title: args.title, height: args.height ?? null };
+
+      const blob = await invocation.env.files.upload(
+        (async function* () {
+          yield encoder.encode(compiled.code);
+        })(),
+      );
 
       if (args.canvas === undefined) {
         const part = await invocation.session.parts.create(canvas, {
-          state: { ...next, error: null },
+          state: {
+            ...drawn,
+            code: compiled.code,
+            error: null,
+            revisions: [{ number: 1, blob, ...drawn, at: Date.now() }],
+          },
           placement: { kind: "transcript", role: "answer" },
         });
 
@@ -190,7 +213,9 @@ function renderTool(previewing: boolean): ToolDefinition<Infer<typeof parameters
         };
       }
 
-      const outcome = await invocation.session.part(asId(args.canvas)).act("replace", next);
+      const outcome = await invocation.session
+        .part(asId(args.canvas))
+        .act("replace", { ...drawn, code: compiled.code, blob });
 
       if (outcome.kind !== "ok")
         throw new Error(`Canvas ${args.canvas} was not replaced: ${outcome.kind}.`);

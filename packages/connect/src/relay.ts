@@ -176,6 +176,7 @@ export const RELAY_OPERATIONS = [
   "part.update",
   "part.act",
   "part.answer",
+  "part.watch",
   "part.close",
   "workspace.info",
   "workspace.watch",

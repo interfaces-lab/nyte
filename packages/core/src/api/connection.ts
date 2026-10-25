@@ -96,6 +96,11 @@ export function createConnection(
     watch: (options) => track(handle.watch(options)),
     ...watchStore(() => track(handle.watch())),
     head: (name) => head(handle.head(name)),
+    part: (id) => {
+      const part = handle.part(id);
+
+      return { ...part, watch: () => track(part.watch()) };
+    },
   });
 
   const capability = async <T extends object>(

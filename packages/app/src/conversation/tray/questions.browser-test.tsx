@@ -99,6 +99,9 @@ installConnection(
         update: async () => ({ kind: "missing" }),
         act: async () => ({ kind: "rejected", reason: REFUSED }),
         answer: async () => null,
+        watch: async function* () {
+          yield* [];
+        },
         close: async () => {
           throw new Error(UNREACHABLE);
         },
