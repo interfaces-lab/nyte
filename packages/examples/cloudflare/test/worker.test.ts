@@ -47,6 +47,8 @@ function fakeHost(input: {
 
         return { runnable: input.runnable ?? [], next: null };
       },
+      pause(): void {},
+      resume(): void {},
     },
   };
 
