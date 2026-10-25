@@ -146,7 +146,7 @@ export function BrowserSignInPanel({
   return (
     <div {...props(styles.deviceCodePanel)}>
       {acceptsCode && (
-        <span {...props(text.base, styles.deviceCodeLead)}>
+        <span {...props(text.base, styles.deviceCodeNote)}>
           Sign in at {host ?? "the provider's page"}, then paste the code it shows or the address it
           ends on.
         </span>
