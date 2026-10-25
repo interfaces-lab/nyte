@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import rename from "../src/rename.ts";
 import { fakeModels, open, until } from "./fake-models.ts";
 
-it("names an unnamed session from its first message, then from a title request, and a later run asks nothing", async () => {
+it("titles an untitled session from its first message, and a later run asks nothing", async () => {
   const fake = fakeModels();
   const title = Promise.withResolvers<void>();
 
@@ -17,25 +17,20 @@ it("names an unnamed session from its first message, then from a title request, 
 
   await using host = await open(fake, [rename]);
   const { session, receipt: started } = await host.sessions.start({
-    content: "\nWhy does fetch time out?\nIt hangs on CI.",
+    content: "Why does fetch time out?\nIt hangs on CI.",
   });
 
-  expect(await until(async () => (await session.info()).name ?? undefined)).toBe(
-    "Why does fetch time out?",
-  );
-  title.resolve();
   await started.settled();
+  expect((await session.info()).name).toBeNull();
+  title.resolve();
 
-  expect(
-    await until(async () => {
-      const name = (await session.info()).name;
-
-      return name === "Why does fetch time out?" ? undefined : name;
-    }),
-  ).toBe("Timeout for flaky fetch");
+  expect(await until(async () => (await session.info()).name ?? undefined)).toBe(
+    "Timeout for flaky fetch",
+  );
   expect(fake.requests[0]?.context.messages.at(-1)).toMatchObject({
     role: "user",
-    content: "User: \nWhy does fetch time out?\nIt hangs on CI.",
+    content:
+      "Here is the first message of the conversation:\n\n<message>\nWhy does fetch time out?\nIt hangs on CI.\n</message>\n\nReply with only the title.",
   });
 
   await (await session.send("Thanks.")).settled();

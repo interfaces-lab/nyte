@@ -176,7 +176,11 @@ export function titleReply(request: Request): string | null {
 
   if (first?.role !== "system" || first.content !== TITLE_PROMPT) return null;
 
-  return (lastUserText(request).split("\n")[0] ?? "").replace(/^User: /u, "");
+  const prompt = lastUserText(request);
+
+  return (
+    prompt.match(/<message>\n(.*)/u)?.[1] ?? prompt.match(/Original request:\n(.*)/u)?.[1] ?? ""
+  );
 }
 
 export function fakeModels(input?: {

@@ -85,7 +85,7 @@ async function until<T>(read: () => T | null | undefined, what: string): Promise
 const WEBSEARCH_KEY = {
   name: "websearch-key",
   description: "Set the web search key",
-  owner: "web-search",
+  owner: "web",
   side: "core",
   title: "Web search key",
   takesText: true,

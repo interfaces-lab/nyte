@@ -31,14 +31,14 @@ const shout: ToolDefinition<{ text: string }, { loud: string }> = {
 const lookup: ToolDefinition<{ text: string }> = {
   ...echo,
   name: "lookup",
-  namespace: "mcp/docs",
+  namespace: { name: "mcp__docs", aliases: ["docs"], instructions: "Ask the docs server." },
   description: "Echo the text from the docs server.",
 };
 
-it("searches tools within a namespace", async () => {
+it("searches tools within a namespace and describes the namespace", async () => {
   const fake = fakeModels();
   const script =
-    'const all = await searchTools("echo text"); const docs = await searchTools("echo text", { namespace: "mcp/docs" }); return JSON.stringify([["echo", "lookup"].every((name) => all.some((tool) => tool.name === name)), docs]);';
+    'const all = await searchTools("echo text"); const docs = await searchTools("echo text", { namespace: "docs" }); return JSON.stringify([all.map((tool) => tool.name), docs, await describeNamespace("mcp__docs")]);';
 
   fake.reply(
     { content: [{ type: "toolCall", id: "find", name: "codemode", arguments: { code: script } }] },
@@ -64,14 +64,13 @@ it("searches tools within a namespace", async () => {
       call.state.phase === "settled" &&
       call.state.outcome.kind === "ok",
   );
-  expect(call.state.outcome.content).toEqual([
-    {
-      kind: "text",
-      text: JSON.stringify([
-        true,
-        [{ name: "lookup", namespace: "mcp/docs", description: lookup.description }],
-      ]),
-    },
+  const [output] = call.state.outcome.content;
+
+  assert(output?.kind === "text");
+  expect(JSON.parse(output.text)).toEqual([
+    expect.arrayContaining(["echo", "lookup"]),
+    [{ name: "lookup", description: expect.stringContaining(lookup.description) }],
+    { name: "mcp__docs", instructions: "Ask the docs server.", tools: ["lookup"] },
   ]);
 });
 
@@ -120,6 +119,7 @@ it("runs a script that calls two tools, one exposed to code only, and keeps its 
   assert(system?.role === "system");
   expect(system.toolsAdded?.map((declared) => declared.name)).not.toContain("shout");
   expect(system.content).toContain(
-    "returns a tool's arguments:\n- shout: Upper-case the text; callable from code only.\n</0096-codemode>",
+    "<0096-codemode>\nTools you reach only from a codemode script, as `await tools.<name>(args)`:\n\n### `shout`\n",
   );
+  expect(system.content).toContain("Upper-case the text; callable from code only.");
 });

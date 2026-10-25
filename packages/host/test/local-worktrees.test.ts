@@ -7,6 +7,7 @@ import type { WorkspaceTarget } from "@nyte-ai/schema";
 import { composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { ExecutionEnv } from "@nyte-ai/core";
+import subagents from "@nyte-ai/plugin/core/subagents";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import {
   listWorktrees,
@@ -256,7 +257,7 @@ describe.skipIf(!hasGit)("worktree isolation on a local host", () => {
     await using host = await composeHost({
       store: memoryStore(),
       models: fake.models,
-      plugins: [{ id: "local", environment: localProvider({ home }) }],
+      plugins: [{ id: "local", environment: localProvider({ home }) }, subagents],
       workspace: { kind: "local", path: root },
       home,
       description: { name: "test", platform: "darwin", version: "0.1.0" },

@@ -60,15 +60,15 @@ export async function stopRun(
   }
 
   await finishFence(kernel, session, run);
-  await stopWaitedChildren(kernel, session, run);
+  await stopAwaitedChildRuns(kernel, session, run);
   await kernel.waits.runStopped(session, run);
   kernel.wakes.notify(session, fenced.head);
 
   return { kind: "requested" };
 }
 
-/** Stops each run of this session's subagents that `run` is parked waiting on, as a `task` call waits on the child it started: the work it waited for is part of what the user stopped. */
-async function stopWaitedChildren(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
+/** Stops each run of this session's children that `run` is parked waiting on: the work it waited for is part of what the user stopped. */
+async function stopAwaitedChildRuns(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
   const found = await load(
     kernel.store,
     await kernel.store.refs.get(runRef(session, run)),

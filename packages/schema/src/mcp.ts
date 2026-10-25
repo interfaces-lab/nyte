@@ -8,8 +8,10 @@ export const McpExposureType = Type.Enum(["model", "deferred", "code", "hidden"]
 
 /**
  * How a server's tools reach the model. `model` declares them, `deferred`
- * leaves them for tool search, `code` makes them callable only from codemode
- * scripts (the default), and `hidden` makes them unreachable.
+ * leaves them for `tool_search` to load, `code` leaves them for codemode
+ * scripts (the default), and `hidden` makes them unreachable. Neither
+ * `deferred` nor `code` tools are listed; both are callable from scripts and
+ * found by `searchTools()` and `tool_search`.
  */
 export type McpExposure = Decoded<typeof McpExposureType>;
 

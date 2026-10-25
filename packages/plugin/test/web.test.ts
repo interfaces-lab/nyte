@@ -1,6 +1,6 @@
 import { isPart, tool } from "@nyte-ai/core";
-import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import webSearch, { adapters } from "../src/web-search.ts";
+import { assert, describe, expect, it } from "vitest";
+import { adapters, webPlugin } from "../src/web/index.ts";
 import { fakeModels, open } from "./fake-models.ts";
 
 function recording(body: string) {
@@ -66,6 +66,7 @@ describe("web search adapters", () => {
       success: true,
       data: { web: [{ url: "https://f.test", title: "F", description: null }] },
     };
+
     const { sent, fetch } = recording(
       JSON.stringify({
         jsonrpc: "2.0",
@@ -75,7 +76,7 @@ describe("web search adapters", () => {
     );
 
     expect(await adapters.firecrawl({ query: "nyte", key: "fc", fetch, signal })).toEqual([
-      { url: "https://f.test", title: "F", content: null },
+      { url: "https://f.test", title: "F" },
     ]);
     expect(sent[0]).toMatchObject({
       url: "https://mcp.firecrawl.dev/v2/mcp",
@@ -107,15 +108,11 @@ describe("web search adapters", () => {
   });
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
 it("routes web_search by its declared host setting, read through settings.value (§48b)", async () => {
   const { sent, fetch } = recording(
     JSON.stringify({ results: [{ url: "https://a.test", title: "A", content: "aa" }] }),
   );
-  vi.stubGlobal("fetch", fetch);
+
   const fake = fakeModels();
 
   fake.reply(
@@ -123,7 +120,7 @@ it("routes web_search by its declared host setting, read through settings.value 
     { content: [{ type: "text", text: "Found." }] },
   );
 
-  await using host = await open(fake, [webSearch]);
+  await using host = await open(fake, [webPlugin(fetch)]);
   expect(await host.settings.apply("web_search.provider", "tavily")).toEqual({ kind: "applied" });
   const { session, receipt: started } = await host.sessions.start({ content: "Search." });
   await started.settled();
@@ -133,7 +130,8 @@ it("routes web_search by its declared host setting, read through settings.value 
   assert(call !== undefined && isPart(call, tool) && call.state.phase === "settled");
   expect(call.state.outcome).toMatchObject({
     kind: "ok",
-    content: [{ kind: "text", text: "## A\nhttps://a.test\n\naa" }],
+    content: [{ kind: "text", text: "## [A](https://a.test)\n\naa" }],
+    output: { provider: "tavily", results: [{ url: "https://a.test", title: "A", content: "aa" }] },
   });
   expect(sent.map((request) => request.url)).toEqual(["https://api.tavily.com/search"]);
 });

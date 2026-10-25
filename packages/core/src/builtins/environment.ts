@@ -56,8 +56,15 @@ const editParameters = standard(
     path: Type.String({ description: "The file to edit, relative to the workspace root." }),
     edits: Type.Array(
       Type.Object({
-        oldText: Type.String({ description: "Text that occurs exactly once in the file." }),
+        oldText: Type.String({
+          description: "Text in the file, copied from read without the line-number prefix.",
+        }),
         newText: Type.String({ description: "The text that replaces it." }),
+        replaceAll: Type.Optional(
+          Type.Boolean({
+            description: "Replace every occurrence instead of requiring exactly one.",
+          }),
+        ),
       }),
       { minItems: 1 },
     ),
@@ -161,7 +168,7 @@ const write: ToolDefinition<Infer<typeof writeParameters>, PatchEntry> = {
 const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
   name: "edit",
   description:
-    "Edit a file in the workspace by exact replacement. Each oldText must match exactly one place in the file, and edits must not overlap.",
+    "Edit a file in the workspace by replacing text. Each oldText must match exactly one place in the file unless replaceAll is set, and edits must not overlap. Line endings follow the file. Without an exact match, the edit retries ignoring typographic quote, dash and space variants, then trailing whitespace on each line.",
   parameters: editParameters,
   output: PatchEntrySchema,
   class: (args) => ({ kind: "edit", path: args.path }),
@@ -173,27 +180,24 @@ const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
     if (document.kind !== "text")
       throw new Error(`${args.path} is ${document.kind}, not a text file.`);
     const { contents } = document;
+    const crlf = /^[^\n]*\r\n/.test(contents);
 
-    const spans = args.edits.map((change, index) => {
-      const starts =
-        change.oldText === ""
-          ? []
-          : Array.from(
-              contents.matchAll(new RegExp(`(?=${RegExp.escape(change.oldText)})`, "g")),
-              (match) => match.index,
-            );
+    const spans = args.edits.flatMap((change, index) => {
+      const matches = change.oldText === "" ? [] : findMatches(contents, change.oldText, crlf);
 
-      const [start] = starts;
-
-      if (start === undefined)
-        throw new Error(`Edit ${index + 1}: no match for oldText in ${args.path}.`);
-
-      if (starts.length > 1)
+      if (matches.length === 0)
         throw new Error(
-          `Edit ${index + 1}: oldText occurs ${starts.length} times in ${args.path}; make it unique.`,
+          `Edit ${index + 1}: no match for oldText in ${args.path}; read it again and copy the text exactly.`,
         );
 
-      return { start, end: start + change.oldText.length, newText: change.newText, index };
+      if (matches.length > 1 && change.replaceAll !== true)
+        throw new Error(
+          `Edit ${index + 1}: oldText occurs ${matches.length} times in ${args.path}; add surrounding lines to make it unique, or set replaceAll.`,
+        );
+
+      const newText = crlf ? change.newText.replace(/\r?\n/g, "\r\n") : change.newText;
+
+      return separate(matches).map((match) => ({ ...match, newText, index }));
     });
 
     const ordered = [...spans].sort((left, right) => left.start - right.start);
@@ -527,6 +531,88 @@ export const environmentPlugin: Plugin<"core"> = {
       });
   },
 };
+
+type Match = { readonly start: number; readonly end: number };
+
+function findMatches(contents: string, oldText: string, crlf: boolean): readonly Match[] {
+  const searches = crlf ? [oldText, oldText.replace(/\r?\n/g, "\r\n")] : [oldText];
+
+  const tiers = [
+    () => searches.map((search) => occurrences(contents, search)),
+    () => {
+      const folded = foldTypography(contents);
+
+      return searches.map((search) => occurrences(folded, foldTypography(search)));
+    },
+    () => [lineOccurrences(contents, oldText)],
+  ];
+
+  for (const tier of tiers) {
+    const found = tier().find((matches) => matches.length > 0);
+
+    if (found !== undefined) return found;
+  }
+
+  return [];
+}
+
+function occurrences(contents: string, search: string): readonly Match[] {
+  return Array.from(
+    contents.matchAll(new RegExp(`(?=${RegExp.escape(search)})`, "g")),
+    (match) => ({
+      start: match.index,
+      end: match.index + search.length,
+    }),
+  );
+}
+
+function foldTypography(value: string): string {
+  return value
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g, " ");
+}
+
+function lineOccurrences(contents: string, search: string): readonly Match[] {
+  const expected = search.split(/\r?\n/);
+  const throughNewline = expected.at(-1) === "";
+
+  if (throughNewline) expected.pop();
+
+  if (expected.length === 0) return [];
+  const key = (line: string) => foldTypography(line.trimEnd());
+  const wanted = expected.map(key);
+
+  const lines = Array.from(contents.matchAll(/([^\n]*?)(\r?\n|$)/g), (match) => ({
+    key: key(match[1] ?? ""),
+    start: match.index,
+    contentEnd: match.index + (match[1] ?? "").length,
+    end: match.index + match[0].length,
+    newline: (match[2] ?? "") !== "",
+  }));
+
+  return lines.flatMap((line, index) => {
+    const last = lines[index + wanted.length - 1];
+
+    if (last === undefined || (throughNewline && !last.newline)) return [];
+
+    if (wanted.some((want, offset) => lines[index + offset]?.key !== want)) return [];
+
+    return [{ start: line.start, end: throughNewline ? last.end : last.contentEnd }];
+  });
+}
+
+function separate(matches: readonly Match[]): readonly Match[] {
+  let end = 0;
+
+  return matches.filter((match) => {
+    if (match.start < end) return false;
+    end = match.end;
+
+    return true;
+  });
+}
 
 function text(value: string) {
   return { content: [{ kind: "text", text: value } satisfies ToolContent] };

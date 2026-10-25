@@ -43,6 +43,7 @@ import type {
   JobView,
   Json,
   McpChange,
+  McpExposure,
   McpScope,
   McpServerConfig,
   McpView,
@@ -646,16 +647,20 @@ export type McpWorkspace = {
 };
 
 /**
- * One MCP server as the model hears of it: the `instructions` it sent when
- * it connected, and `unavailable` when it has no tools because it failed to
- * connect or waits for the user to sign in.
+ * One MCP server as the model hears of it: the `description` its `mcp.json`
+ * gives, the `instructions` it sent when it connected, the `exposures` its
+ * tools can have (its own and each `toolExposure`'s), and `unavailable` when
+ * it has no tools because it failed to connect or waits for the user to sign
+ * in.
  *
  * @category mcp
  * @since 0.1.0
  */
 export interface McpServerBrief {
   readonly name: string;
+  readonly description: string | null;
   readonly instructions: string | null;
+  readonly exposures: readonly McpExposure[];
   readonly unavailable: "failed" | "needs-sign-in" | null;
 }
 

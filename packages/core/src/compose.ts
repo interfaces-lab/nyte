@@ -21,7 +21,6 @@ import { createHostState } from "./api/host.ts";
 import { createServerHost } from "./api/server.ts";
 import { rerunAction } from "./api/part.ts";
 import { activationSession, sessionHandle } from "./api/session.ts";
-import { delegationPlugin } from "./builtins/delegation.ts";
 import { environmentPlugin } from "./builtins/environment.ts";
 import { interruptionsPlugin } from "./builtins/interruptions.ts";
 import { mcpPlugin } from "./builtins/mcp.ts";
@@ -127,7 +126,6 @@ const BUILTINS: readonly Plugin<"core">[] = [
   systemPromptPlugin,
   environmentPlugin,
   resourcesPlugin,
-  delegationPlugin,
   interruptionsPlugin,
   worktreesPlugin,
 ];

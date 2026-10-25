@@ -31,8 +31,10 @@
     "./core/openai-compaction": "./src/openai-compaction.ts",
     "./core/question": "./src/question/question.ts",
     "./core/rename": "./src/rename.ts",
+    "./core/subagents": "./src/subagents.ts",
     "./core/telemetry": "./src/telemetry.ts",
-    "./core/web-search": "./src/web-search.ts",
+    "./core/tool-search": "./src/tool-search.ts",
+    "./core/web": "./src/web/index.ts",
     "./client": "./src/client.ts",
     "./client/mount": "./src/client/mount.ts",
     "./client/notifications": "./src/client/notifications.ts",
@@ -112,13 +114,21 @@
         "types": "./dist/src/rename.d.ts",
         "import": "./dist/src/rename.js"
       },
+      "./core/subagents": {
+        "types": "./dist/src/subagents.d.ts",
+        "import": "./dist/src/subagents.js"
+      },
       "./core/telemetry": {
         "types": "./dist/src/telemetry.d.ts",
         "import": "./dist/src/telemetry.js"
       },
-      "./core/web-search": {
-        "types": "./dist/src/web-search.d.ts",
-        "import": "./dist/src/web-search.js"
+      "./core/tool-search": {
+        "types": "./dist/src/tool-search.d.ts",
+        "import": "./dist/src/tool-search.js"
+      },
+      "./core/web": {
+        "types": "./dist/src/web/index.d.ts",
+        "import": "./dist/src/web/index.js"
       },
       "./client": {
         "types": "./dist/src/client.d.ts",
@@ -191,6 +201,7 @@
     "@opentelemetry/sdk-trace": "^3.0.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "es-module-lexer": "^3.0.4",
+    "htmlparser2": "^8.0.2",
     "sucrase": "^3.35.1",
     "typebox": "^1.4.2",
     "zod": "^4.6.7"

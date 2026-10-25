@@ -303,7 +303,11 @@ function hub(input: {
       state: () => state,
       brief: () => ({
         name: entry.name,
+        description: link.entry.description,
         instructions: listed?.instructions ?? null,
+        exposures: [
+          ...new Set([link.entry.exposure, ...link.entry.toolExposure.map((pair) => pair[1])]),
+        ],
         unavailable:
           listed === null && (state.kind === "failed" || state.kind === "needs-sign-in")
             ? state.kind
@@ -317,7 +321,7 @@ function hub(input: {
           bridged = {
             entry: link.entry,
             listed,
-            tools: bridgeTools(link.entry, listed.tools, call),
+            tools: bridgeTools(link.entry, listed, call),
           };
 
         return bridged.tools;

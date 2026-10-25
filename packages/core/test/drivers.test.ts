@@ -9,7 +9,6 @@ import { envelope, headRef, inboxRef, leaseRef, memoryStore } from "../src/store
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { Durable, StoreConnection } from "../src/index.ts";
 import { coveredHere } from "../src/store/session.ts";
-import { fakeModels, open } from "./fake-models.ts";
 import { completed, configuration, main, setup, startRun, until } from "../src/harness.ts";
 
 function counting(store: StoreConnection): {
@@ -118,47 +117,6 @@ describe("coverage (§42a, §42t)", () => {
     expect((await child.view()).messages[1]).toMatchObject({ status: { covered: true } });
     expect((await unrelated.view()).messages[1]).toMatchObject({ status: { covered: false } });
     await owned.close();
-  });
-
-  it("drives a delegated child to completion on a run kernel covering only its parent, so the parent's task resolves (§42ac)", async () => {
-    const store = memoryStore();
-    const fake = fakeModels();
-
-    fake.reply(
-      {
-        content: [
-          {
-            type: "toolCall",
-            id: "call-task",
-            name: "task",
-            arguments: { prompt: "Find the answer.", title: "Finder" },
-          },
-        ],
-      },
-      { content: [{ type: "text", text: "The answer is 42." }] },
-      { content: [{ type: "text", text: "The child found 42." }] },
-    );
-
-    const seed = await open(fake, { store, execution: { kind: "admit-only" } });
-    const { session: created } = await seed.sessions.start({ content: "Delegate it." });
-    await seed.close();
-
-    const host = await open(fake, {
-      store,
-      execution: { kind: "run", coverage: { kind: "sessions", sessions: [created.id] } },
-    });
-
-    const receipt = host.session(created.id).receipt(asId<"receipt">(created.id));
-
-    expect(await receipt.settled()).toMatchObject({ kind: "completed" });
-    expect(fake.requests).toHaveLength(3);
-
-    const children = await host.sessions.list({
-      parents: { kind: "children", session: created.id },
-    });
-
-    expect(children.items).toHaveLength(1);
-    await host.close();
   });
 
   it("keeps the lease of an advance in flight when its cover closes, until its turn ends (§42ac)", async () => {

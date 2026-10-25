@@ -23,6 +23,8 @@ export interface Reply {
   readonly content?: readonly Block[];
   readonly error?: string;
   readonly after?: Promise<void>;
+  readonly until?: Promise<void>;
+  readonly hold?: boolean;
 }
 
 export interface Request {
@@ -34,7 +36,7 @@ export interface Request {
 export interface FakeModels {
   readonly models: MutableModels;
   readonly requests: Request[];
-  reply(...replies: readonly Reply[]): void;
+  reply(...replies: readonly (Reply | ((request: Request) => Reply))[]): void;
 }
 
 export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Api> {
@@ -54,7 +56,7 @@ export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Ap
 }
 
 export function fakeModels(models?: readonly Model<Api>[], provider = "test"): FakeModels {
-  const queue: Reply[] = [];
+  const queue: (Reply | ((request: Request) => Reply))[] = [];
   const requests: Request[] = [];
   const registry = createModels();
 
@@ -63,12 +65,11 @@ export function fakeModels(models?: readonly Model<Api>[], provider = "test"): F
     context: TranscriptContext,
     options?: SimpleStreamOptions,
   ) => {
-    requests.push({ model, context, options });
+    const request = { model, context, options };
+    requests.push(request);
+    const next = queue.shift() ?? { error: "No reply was scripted for this request." };
 
-    return streamReply(
-      model,
-      queue.shift() ?? { error: "No reply was scripted for this request." },
-    );
+    return streamReply(model, typeof next === "function" ? next(request) : next, options?.signal);
   };
 
   registry.setProvider({
@@ -175,7 +176,11 @@ export async function until<T>(
   }
 }
 
-function streamReply(model: Model<Api>, reply: Reply): AssistantMessageEventStream {
+function streamReply(
+  model: Model<Api>,
+  reply: Reply,
+  signal: AbortSignal | undefined,
+): AssistantMessageEventStream {
   const stream = new AssistantMessageEventStream();
 
   const message: AssistantMessage = {
@@ -222,8 +227,21 @@ function streamReply(model: Model<Api>, reply: Reply): AssistantMessageEventStre
       message.content.push({ type: "text", text: block.text });
       stream.push({ type: "text_start", contentIndex: index, partial: message });
       stream.push({ type: "text_delta", contentIndex: index, delta: block.text, partial: message });
+
+      if (reply.hold === true) {
+        await aborted(signal);
+        stream.push({
+          type: "error",
+          reason: "aborted",
+          error: { ...message, stopReason: "aborted", errorMessage: "Request was aborted" },
+        });
+
+        return;
+      }
       stream.push({ type: "text_end", contentIndex: index, content: block.text, partial: message });
     }
+
+    await reply.until;
 
     if (reply.error !== undefined) {
       stream.push({
@@ -242,6 +260,18 @@ function streamReply(model: Model<Api>, reply: Reply): AssistantMessageEventStre
   })();
 
   return stream;
+}
+
+function aborted(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal === undefined || signal.aborted) {
+      resolve();
+
+      return;
+    }
+
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
 }
 
 async function refuse(): Promise<never> {

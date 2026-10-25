@@ -394,7 +394,7 @@ describe("plugin api", () => {
           commands: [{ ...says("hello", "hi"), category: "Fun" }],
           agents: [{ id: "reviewer", description: "Reviews.", mode: "subagent" }],
           skills: [{ name: "lint", description: "Lints.", location: "/skills/lint" }],
-          tools: [{ ...echo, namespace: "demo", exposure: "deferred" }],
+          tools: [{ ...echo, namespace: { name: "demo" }, exposure: "deferred" }],
         },
       },
     ];

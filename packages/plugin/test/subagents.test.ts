@@ -1,11 +1,18 @@
+import { isPart, text, tool } from "@nyte-ai/core";
+import type { Plugin } from "@nyte-ai/core";
+import { composeHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
+import subagents from "@nyte-ai/plugin/core/subagents";
 import { asId } from "@nyte-ai/schema";
-import type { Message } from "@nyte-ai/schema";
+import type { Message, WorkspaceTarget } from "@nyte-ai/schema";
 import { contentText } from "@nyte-ai/schema/model";
 import { assert, describe, expect, it } from "vitest";
-import { isPart, text, tool } from "../src/index.ts";
-import { fakeModels, open } from "./fake-models.ts";
+import { env, fakeModels, open, until } from "./fake-models.ts";
 import type { Reply, Request } from "./fake-models.ts";
-import { until } from "../src/harness.ts";
+
+function locate(target: WorkspaceTarget): string {
+  return "locator" in target ? JSON.stringify(target.locator) : target.path;
+}
 
 function settledCall(messages: readonly Message[], call: string) {
   const found = messages.find(
@@ -24,14 +31,10 @@ function lastResult(request: Request | undefined): string {
   return result.content.map((block) => (block.type === "text" ? block.text : "")).join("");
 }
 
-describe("delegation", () => {
+describe("subagents", () => {
   it("runs task in a child, waits for it, and resumes the parent with its answer", async () => {
     const fake = fakeModels();
-    let release = () => {};
-
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const gate = Promise.withResolvers<void>();
 
     fake.reply(
       {
@@ -44,11 +47,11 @@ describe("delegation", () => {
           },
         ],
       },
-      { content: [{ type: "text", text: "The answer is 42." }], until: gate },
+      { content: [{ type: "text", text: "The answer is 42." }], until: gate.promise },
       { content: [{ type: "text", text: "The child found 42." }] },
     );
 
-    await using host = await open(fake);
+    await using host = await open(fake, [subagents]);
     const { session: parent, receipt } = await host.sessions.start({
       content: "Delegate it.",
     });
@@ -59,7 +62,7 @@ describe("delegation", () => {
       return execution.kind === "waiting" && execution.on.kind === "run" ? true : undefined;
     });
 
-    release();
+    gate.resolve();
     const end = await receipt.settled();
 
     expect(end.kind).toBe("completed");
@@ -96,11 +99,7 @@ describe("delegation", () => {
 
   it("returns task when the user writes, so the parent answers while the child keeps working", async () => {
     const fake = fakeModels();
-    let release = () => {};
-
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const gate = Promise.withResolvers<void>();
 
     fake.reply(
       {
@@ -113,12 +112,12 @@ describe("delegation", () => {
           },
         ],
       },
-      { content: [{ type: "text", text: "Halfway." }], until: gate },
+      { content: [{ type: "text", text: "Halfway." }], until: gate.promise },
       { content: [{ type: "text", text: "Still on it." }] },
       { content: [{ type: "text", text: "It found it." }] },
     );
 
-    await using host = await open(fake);
+    await using host = await open(fake, [subagents]);
     const { session: parent } = await host.sessions.start({ content: "Delegate it." });
 
     const child = await until(async () => {
@@ -143,7 +142,7 @@ describe("delegation", () => {
       content: "How is it going?",
     });
 
-    release();
+    gate.resolve();
     await until(() => (fake.requests.length === 4 ? true : undefined));
 
     expect(fake.requests[3].context.messages.at(-1)).toMatchObject({
@@ -154,13 +153,9 @@ describe("delegation", () => {
 
   it("creates a child with a role and a first message, awaits its answer, and sends to it", async () => {
     const fake = fakeModels();
-    let release = () => {};
+    const gate = Promise.withResolvers<void>();
 
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-
-    await using host = await open(fake);
+    await using host = await open(fake, [subagents]);
     const parent = asId<"session">("parent");
     let child = "";
 
@@ -198,7 +193,7 @@ describe("delegation", () => {
     ];
 
     const childScript: readonly ((request: Request) => Reply)[] = [
-      () => ({ content: [{ type: "text", text: "One, two." }], until: gate }),
+      () => ({ content: [{ type: "text", text: "One, two." }], until: gate.promise }),
       () => ({ content: [{ type: "text", text: "One, two, three." }] }),
     ];
 
@@ -221,7 +216,7 @@ describe("delegation", () => {
       return execution.kind === "waiting" ? true : undefined;
     });
 
-    release();
+    gate.resolve();
     expect(await receipt.settled()).toMatchObject({ kind: "completed" });
 
     const messages = (await host.session(parent).view()).messages;
@@ -249,7 +244,7 @@ describe("delegation", () => {
       { content: [{ type: "text", text: "Ready." }] },
       { content: [{ type: "text", text: "Hi from the child." }] },
     );
-    await using host = await open(fake);
+    await using host = await open(fake, [subagents]);
     const { session: parent, receipt: ready } = await host.sessions.start({ content: "Hi." });
     await ready.settled();
     const { session: child, receipt: started } = await host.sessions.start({
@@ -281,7 +276,7 @@ describe("delegation", () => {
 
   it("fails a call naming a session that is not its child", async () => {
     const fake = fakeModels();
-    await using host = await open(fake);
+    await using host = await open(fake, [subagents]);
     fake.reply({ content: [{ type: "text", text: "Hello." }] });
     const { session: stranger, receipt: greeted } = await host.sessions.start({ content: "Hi." });
     await greeted.settled();
@@ -313,7 +308,7 @@ describe("delegation", () => {
   it("stops a child's live run with stop", async () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Ready." }] });
-    await using host = await open(fake);
+    await using host = await open(fake, [subagents]);
     const { session: parent, receipt: ready } = await host.sessions.start({ content: "Hi." });
     await ready.settled();
     fake.reply({ content: [{ type: "text", text: "Working on it forever" }], hold: true });
@@ -348,6 +343,151 @@ describe("delegation", () => {
       child: child.id,
       role: "stop",
       title: null,
+    });
+  });
+
+  it("drives a child to completion on a run kernel covering only its parent, so the parent's task resolves (§42ac)", async () => {
+    const store = memoryStore();
+    const fake = fakeModels();
+
+    fake.reply(
+      {
+        content: [
+          {
+            type: "toolCall",
+            id: "call-task",
+            name: "task",
+            arguments: { prompt: "Find the answer.", title: "Finder" },
+          },
+        ],
+      },
+      { content: [{ type: "text", text: "The answer is 42." }] },
+      { content: [{ type: "text", text: "The child found 42." }] },
+    );
+
+    const seed = await open(fake, [subagents], { store, execution: { kind: "admit-only" } });
+    const { session: created } = await seed.sessions.start({ content: "Delegate it." });
+    await seed.close();
+
+    const host = await open(fake, [subagents], {
+      store,
+      execution: { kind: "run", coverage: { kind: "sessions", sessions: [created.id] } },
+    });
+
+    const receipt = host.session(created.id).receipt(asId<"receipt">(created.id));
+
+    expect(await receipt.settled()).toMatchObject({ kind: "completed" });
+    expect(fake.requests).toHaveLength(3);
+
+    const children = await host.sessions.list({
+      parents: { kind: "children", session: created.id },
+    });
+
+    expect(children.items).toHaveLength(1);
+    await host.close();
+  });
+
+  it("runs a task's subagent in a worktree, names it in the reply, and makes no second worktree when the task replays after a restart", async () => {
+    const store = memoryStore();
+    const fake = fakeModels();
+    const created: string[] = [];
+
+    const repo: Plugin<"core"> = {
+      id: "repo",
+      environment: {
+        kind: "repo",
+        inspect: async (target) => ({
+          identity: asId(`repo:${locate(target)}`),
+          availability: { kind: "available" },
+          projectSources: [],
+        }),
+        attach: async (target) => ({
+          ...env,
+          identity: asId(`repo:${locate(target)}`),
+        }),
+        worktrees: {
+          async create(_env, input) {
+            created.push(input.name);
+
+            return {
+              target: { kind: "repo", locator: `worktree:${input.name}` },
+              branch: `nyte/${input.title ?? input.name}`,
+              base: "c0ffee",
+            };
+          },
+          remove: async () => ({ folder: "removed", branch: "deleted" }),
+          clean: async () => false,
+        },
+      },
+    };
+
+    const compose = () =>
+      composeHost({
+        store,
+        models: fake.models,
+        plugins: [repo, subagents],
+        workspace: { kind: "repo", locator: "main" },
+        home: null,
+        description: { name: "test", platform: "darwin", version: "0.1.0" },
+      });
+
+    fake.reply(
+      {
+        content: [
+          {
+            type: "toolCall",
+            id: "call-task",
+            name: "task",
+            arguments: { prompt: "Fix the login.", title: "fixer", isolation: "worktree" },
+          },
+        ],
+      },
+      { content: [{ type: "text", text: "Still fixing" }], hold: true },
+    );
+
+    const first = await compose();
+    const { session: parent } = await first.sessions.start({ content: "Delegate it." });
+
+    await until(async () => {
+      const execution = (await parent.view()).execution;
+
+      return execution.kind === "waiting" &&
+        execution.on.kind === "run" &&
+        fake.requests.length === 2
+        ? true
+        : undefined;
+    });
+    await first.close();
+
+    fake.reply(
+      { content: [{ type: "text", text: "Fixed it." }] },
+      { content: [{ type: "text", text: "The subagent fixed it." }] },
+    );
+
+    await using second = await compose();
+    const receipt = second.session(parent.id).receipt(asId<"receipt">(parent.id));
+
+    expect(await receipt.settled()).toMatchObject({ kind: "completed" });
+
+    const children = await second.sessions.list({
+      parents: { kind: "children", session: parent.id },
+    });
+    const child = children.items[0];
+    assert(child !== undefined);
+
+    expect(children.items).toHaveLength(1);
+    expect(created).toEqual([child.id]);
+
+    expect(
+      settledCall((await second.session(parent.id).view()).messages, "call-task").outcome,
+    ).toMatchObject({
+      kind: "ok",
+      content: [
+        {
+          kind: "text",
+          text: `It works in the worktree ${child.workspace} on branch nyte/fixer.\n\nSubagent ${child.id} finished.\n\nFixed it.`,
+        },
+      ],
     });
   });
 });

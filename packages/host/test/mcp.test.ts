@@ -161,7 +161,7 @@ it("gives tools codemode exposure by default and applies an edit to mcp.json", a
   await vi.waitFor(async () =>
     expect(
       (await session.view()).catalog.tools.find((info) => info.name === "mcp__fake__echo"),
-    ).toMatchObject({ exposure: "code", namespace: "mcp/fake" }),
+    ).toMatchObject({ exposure: "deferred", namespace: "mcp__fake" }),
   );
 
   await writeMcp(folder, {

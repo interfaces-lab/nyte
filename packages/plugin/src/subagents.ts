@@ -7,19 +7,24 @@ import type {
   ModelRef,
   RunEnd,
   RunId,
+  Schedule,
   ToolResult,
   WaitOutcome,
 } from "@nyte-ai/schema";
-import { isPart, text, tool } from "../contract/parts.ts";
-import type { Plugin } from "../contract/plugin.ts";
-import type { SendReceipt, Session } from "../contract/session.ts";
-import type { ToolDefinition, ToolInvocation } from "../contract/tools.ts";
-import { extractUserText } from "../util/text.ts";
-import { followedTrace, traceReceipt } from "../util/trace.ts";
+import { isPart, text, tool } from "@nyte-ai/core";
+import type { Session, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
+import type { Plugin } from "@nyte-ai/plugin/core";
 
 const ANSWER_LIMIT = 16_000;
 
 const TRANSCRIPT_LIMIT = 16_000;
+
+const SCHEDULED: Readonly<Record<Schedule["kind"], string>> = {
+  joined: "it joins the work in progress",
+  "next-turn": "it runs once its current work ends",
+  attached: "it rides with its next turn",
+  deciding: "its plugins are deciding it",
+};
 
 const selectionParameters = {
   agent: Type.Optional(
@@ -182,7 +187,9 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
   replay: "safe",
   async execute(args, invocation) {
     const child = await requireChildSession(invocation, args.session);
-    const receipt = await sendOnce(invocation, child, args.prompt);
+    const receipt = await child.send(args.prompt, {
+      id: asId<"receipt">(`${invocation.call}:${child.id}`),
+    });
     const view = await child.view();
     const message = [...view.messages, ...view.queue].find((entry) => entry.id === receipt.message);
 
@@ -296,15 +303,23 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
   },
 };
 
-export const delegationPlugin: Plugin<"core"> = {
-  id: "delegation",
+/**
+ * Contributes the subagent tools to top-level sessions: `task`, `create`,
+ * `send`, `await`, `read_agent` and `stop`, built on child sessions and
+ * durable waits.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export default {
+  id: "subagents",
   async activate(api) {
     if ((await api.session.info()).parent !== null) return;
 
-    for (const tool of [task, create, send, awaitChild, readAgent, stop])
-      api.contribute.tools.add(tool);
+    for (const definition of [task, create, send, awaitChild, readAgent, stop])
+      api.contribute.tools.add(definition);
   },
-};
+} satisfies Plugin;
 
 async function childConfiguration(
   invocation: ToolInvocation,
@@ -378,17 +393,6 @@ async function requireChildSession(invocation: ToolInvocation, id: string): Prom
   return child;
 }
 
-function sendOnce(
-  invocation: ToolInvocation,
-  child: Session,
-  prompt: string,
-): Promise<SendReceipt> {
-  const id = asId<"receipt">(`${invocation.call}:${child.id}`);
-  traceReceipt(id, followedTrace(invocation.session.id));
-
-  return child.send(prompt, { id });
-}
-
 async function readSubagentReply(
   child: Session,
   run: RunId,
@@ -419,14 +423,9 @@ function describeSubagentOutcome(outcome: WaitOutcome): string {
 }
 
 function endedAs(end: RunEnd): string {
-  switch (end.kind) {
-    case "completed":
-      return "finished";
-    case "stopped":
-      return "was stopped";
-    case "failed":
-      return `failed: ${end.failure.message}`;
-  }
+  if (end.kind === "failed") return `failed: ${end.failure.message}`;
+
+  return end.kind === "completed" ? "finished" : "was stopped";
 }
 
 function scheduled(message: Message | undefined): string {
@@ -436,20 +435,14 @@ function scheduled(message: Message | undefined): string {
 
   if (message.status.kind !== "pending") return "it was admitted";
 
-  switch (message.status.schedule.kind) {
-    case "joined":
-      return "it joins the work in progress";
-    case "next-turn":
-      return "it runs once its current work ends";
-    case "attached":
-      return "it rides with its next turn";
-    case "deciding":
-      return "its plugins are deciding it";
-  }
+  return SCHEDULED[message.status.schedule.kind];
 }
 
 function renderTranscriptMessage(message: Message): readonly string[] {
-  if (message.kind === "user") return [`User: ${extractUserText(message.content)}`];
+  if (message.kind === "user")
+    return [
+      `User: ${typeof message.content === "string" ? message.content : message.content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join(" ")}`,
+    ];
 
   if (isPart(message, text))
     return message.state.markdown === "" ? [] : [`Assistant: ${message.state.markdown}`];

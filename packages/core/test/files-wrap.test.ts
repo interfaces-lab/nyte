@@ -233,13 +233,15 @@ describe("environment tools", () => {
       await call("edit", { path: "deep/new.ts", edits: [{ oldText: "= 1;", newText: "= 2;" }] }),
     ).toEqual({
       kind: "failed",
-      message: "Edit 1: oldText occurs 2 times in deep/new.ts; make it unique.",
+      message:
+        "Edit 1: oldText occurs 2 times in deep/new.ts; add surrounding lines to make it unique, or set replaceAll.",
     });
     expect(
       await call("edit", { path: "deep/new.ts", edits: [{ oldText: "let c", newText: "let d" }] }),
     ).toEqual({
       kind: "failed",
-      message: "Edit 1: no match for oldText in deep/new.ts.",
+      message:
+        "Edit 1: no match for oldText in deep/new.ts; read it again and copy the text exactly.",
     });
 
     const edits = [
@@ -253,7 +255,8 @@ describe("environment tools", () => {
     expect(disk.text("/work/project/deep/new.ts")).toBe("let a = 2;\nlet b = 3;\n");
     expect(await call("edit", { path: "deep/new.ts", edits })).toEqual({
       kind: "failed",
-      message: "Edit 1: no match for oldText in deep/new.ts.",
+      message:
+        "Edit 1: no match for oldText in deep/new.ts; read it again and copy the text exactly.",
     });
     expect(disk.text("/work/project/deep/new.ts")).toBe("let a = 2;\nlet b = 3;\n");
   });

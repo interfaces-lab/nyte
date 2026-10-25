@@ -47,6 +47,7 @@ interface Entry<T> {
 }
 
 const ORDER = [
+  "searchProviders",
   "tools",
   "agents",
   "skills",
@@ -105,6 +106,7 @@ export function createRegistrySet(input: {
       onChange: reload,
     }),
     skills: createRegistry({ key: (skill) => skill.name, onChange: reload }),
+    searchProviders: createRegistry({ key: (provider) => provider.id, onChange: reload }),
     parts: createRegistry({ key: (definition) => definition.kind, onChange: reload }),
     commands: createRegistry({
       key: (command) => command.name,
@@ -122,6 +124,7 @@ export function createRegistrySet(input: {
       agents: registries.agents.owned(owner, signal),
       modelContext: registries.modelContext.owned(owner, signal),
       skills: registries.skills.owned(owner, signal),
+      searchProviders: registries.searchProviders.owned(owner, signal),
       parts: registries.parts.owned(owner, signal),
       commands: registries.commands.owned(owner, signal),
       settings: { ...registries.settings.owned(owner, signal), ...reading(owner) },
@@ -433,7 +436,7 @@ export function toolSource(runtime: PluginRuntime): ToolSource {
           {
             name: item.name,
             owner,
-            namespace: item.namespace ?? null,
+            namespace: item.namespace?.name ?? null,
             description: item.description,
             parameters,
             output,

@@ -1,34 +1,30 @@
-import { dev } from "@nyte-ai/core";
-import type { Command, SettingDefinition, ToolDefinition } from "@nyte-ai/core";
-import { standard } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { Plugin, PluginApi } from "@nyte-ai/plugin/core";
+import type { SearchProvider, SearchResult } from "@nyte-ai/plugin/core";
+import { readCapped } from "./body.ts";
+import type { Fetch } from "./body.ts";
 
 /**
- * Names a search provider the `web_search` tool can route to.
+ * The search providers the web plugin ships, by id and display name.
  *
  * @category plugins
  * @since 0.1.0
  */
-export type SearchProvider = (typeof PROVIDERS)[number];
-
-const PROVIDERS = ["exa", "tavily", "firecrawl", "parallel"] as const;
-
-const providerSchema = Type.Union(PROVIDERS.map((name) => Type.Literal(name)));
+export const PROVIDERS = [
+  { id: "exa", name: "Exa" },
+  { id: "tavily", name: "Tavily" },
+  { id: "firecrawl", name: "Firecrawl" },
+  { id: "parallel", name: "Parallel" },
+] as const;
 
 /**
- * Returns one search hit as the tool reports it.
+ * Names a search provider the web plugin ships.
  *
  * @category plugins
  * @since 0.1.0
  */
-export interface SearchResult {
-  readonly url: string;
-  readonly title: string | null;
-  readonly content: string | null;
-}
+export type ShippedProvider = (typeof PROVIDERS)[number]["id"];
 
 /**
  * Returns what one adapter call needs: the query, the provider's key or
@@ -40,23 +36,11 @@ export interface SearchResult {
 export interface SearchInput {
   readonly query: string;
   readonly key: string | undefined;
-  readonly fetch: typeof globalThis.fetch;
+  readonly fetch: Fetch;
   readonly signal: AbortSignal;
 }
 
-const provider: SettingDefinition<SearchProvider> = {
-  id: "web_search.provider",
-  label: "Web search provider",
-  schema: standard(providerSchema),
-  choices: [
-    { value: "exa", label: "Exa" },
-    { value: "tavily", label: "Tavily" },
-    { value: "firecrawl", label: "Firecrawl" },
-    { value: "parallel", label: "Parallel" },
-  ],
-  default: "exa",
-  scope: "host",
-};
+const MAX_RESPONSE_BYTES = 256 * 1024;
 
 const textBlocks = Type.Object({
   content: Type.Array(Type.Object({ type: Type.String(), text: Type.Optional(Type.String()) })),
@@ -86,6 +70,7 @@ const parallelResponse = Type.Object({
       Type.Object({
         url: Type.String(),
         title: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+        publish_date: Type.Optional(Type.Union([Type.String(), Type.Null()])),
         excerpts: Type.Array(Type.String()),
       }),
     ),
@@ -95,13 +80,13 @@ const parallelResponse = Type.Object({
 /**
  * One adapter per provider: Tavily over its REST endpoint, the others over
  * one stateless MCP `tools/call` to their public route. Each sends through
- * the given fetch only and returns the hits it recognised.
+ * the given fetch only, reads at most 256 KiB, and returns the hits it recognised.
  *
  * @category plugins
  * @since 0.1.0
  */
 export const adapters: {
-  readonly [P in SearchProvider]: (input: SearchInput) => Promise<readonly SearchResult[]>;
+  readonly [P in ShippedProvider]: (input: SearchInput) => Promise<readonly SearchResult[]>;
 } = {
   async tavily({ query, key, fetch, signal }) {
     const response = await fetch("https://api.tavily.com/search", {
@@ -116,7 +101,7 @@ export const adapters: {
       signal,
     });
 
-    const body = parse(await answered(response));
+    const body = parse(await answered(response, "tavily"));
 
     return Value.Check(tavilyResponse, body)
       ? body.results.map((hit) => ({ url: hit.url, title: hit.title, content: hit.content }))
@@ -126,28 +111,36 @@ export const adapters: {
     const endpoint = new URL("https://mcp.exa.ai/mcp");
 
     if (key !== undefined) endpoint.searchParams.set("exaApiKey", key);
+
     const result = await callTool(
       fetch,
       endpoint,
+      "exa",
       undefined,
       "web_search_exa",
-      { query, numResults: 8 },
+      {
+        query,
+        numResults: 8,
+      },
       signal,
     );
+
     const text = Value.Check(textBlocks, result)
       ? (result.content.find((block) => block.text !== undefined)?.text ?? "")
       : "";
 
     return text.split(/\n\n---\n\n/).flatMap((block) => {
       const url = field(block, "URL");
+      const published = field(block, "Published");
 
-      return url === null
+      return url === undefined
         ? []
         : [
             {
               url,
               title: field(block, "Title"),
-              content: block.match(/^(?:Highlights|Text):\s*\n?([\s\S]*)$/m)?.[1]?.trim() ?? null,
+              content: block.match(/^(?:Highlights|Text):\s*\n?([\s\S]*)$/m)?.[1]?.trim(),
+              published: published === undefined ? undefined : Date.parse(published),
             },
           ];
     });
@@ -156,21 +149,24 @@ export const adapters: {
     const result = await callTool(
       fetch,
       new URL("https://mcp.firecrawl.dev/v2/mcp"),
+      "firecrawl",
       key,
       "firecrawl_search",
       { query, limit: 8 },
       signal,
     );
+
     const text = Value.Check(textBlocks, result)
       ? (result.content.find((block) => block.text !== undefined)?.text ?? "")
       : "";
+
     const body = parse(text);
 
     return Value.Check(firecrawlResponse, body)
       ? body.data.web.map((hit) => ({
           url: hit.url,
-          title: hit.title ?? null,
-          content: hit.description ?? null,
+          title: hit.title ?? undefined,
+          content: hit.description ?? undefined,
         }))
       : [];
   },
@@ -178,6 +174,7 @@ export const adapters: {
     const result = await callTool(
       fetch,
       new URL("https://search.parallel.ai/mcp"),
+      "parallel",
       key,
       "web_search",
       { objective: query, search_queries: [query] },
@@ -187,16 +184,45 @@ export const adapters: {
     return Value.Check(parallelResponse, result)
       ? result.structuredContent.results.map((hit) => ({
           url: hit.url,
-          title: hit.title ?? null,
-          content: hit.excerpts.length === 0 ? null : hit.excerpts.join("\n\n"),
+          title: hit.title ?? undefined,
+          content: hit.excerpts.length === 0 ? undefined : hit.excerpts.join("\n\n"),
+          published:
+            hit.publish_date === undefined || hit.publish_date === null
+              ? undefined
+              : Date.parse(hit.publish_date),
         }))
       : [];
   },
 };
 
+/**
+ * Returns the shipped providers for the search registry, each reading its key
+ * through `key` on every search and sending through `fetch`.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export function shippedProviders(
+  fetch: Fetch,
+  key: (provider: ShippedProvider) => Promise<string | undefined>,
+): readonly SearchProvider[] {
+  return PROVIDERS.map((provider) => ({
+    id: provider.id,
+    name: provider.name,
+    search: async (input) =>
+      adapters[provider.id]({
+        query: input.query,
+        key: await key(provider.id),
+        fetch,
+        signal: input.signal,
+      }),
+  }));
+}
+
 async function callTool(
-  fetch: typeof globalThis.fetch,
+  fetch: Fetch,
   url: URL,
+  provider: ShippedProvider,
   key: string | undefined,
   tool: string,
   args: Json,
@@ -218,7 +244,8 @@ async function callTool(
     signal,
   });
 
-  const body = await answered(response);
+  const body = await answered(response, provider);
+
   const frames = [
     body,
     ...body.split("\n").flatMap((line) => (line.startsWith("data: ") ? [line.slice(6)] : [])),
@@ -234,8 +261,19 @@ async function callTool(
   return undefined;
 }
 
-async function answered(response: Response): Promise<string> {
-  const body = await response.text();
+async function answered(response: Response, provider: ShippedProvider): Promise<string> {
+  const body = new TextDecoder().decode(await readCapped(response, MAX_RESPONSE_BYTES));
+  const name = PROVIDERS.find((known) => known.id === provider)?.name ?? provider;
+
+  if (response.status === 401)
+    throw new Error(
+      `${name} refused the search (HTTP 401). Set a key with /websearch-key ${provider} <key>.`,
+    );
+
+  if (response.status === 429)
+    throw new Error(
+      `${name} is rate limiting searches (HTTP 429). Try again later, or set a key with /websearch-key ${provider} <key>.`,
+    );
 
   if (!response.ok)
     throw new Error(`HTTP ${response.status}: ${body.trim().slice(0, 200) || response.statusText}`);
@@ -251,105 +289,8 @@ function parse(text: string): unknown {
   }
 }
 
-function field(block: string, name: string): string | null {
+function field(block: string, name: string): string | undefined {
   const value = block.match(new RegExp(`^${name}:\\s*(.+)$`, "m"))?.[1]?.trim();
 
-  return value === undefined || value === "" || value === "N/A" ? null : value;
+  return value === undefined || value === "" || value === "N/A" ? undefined : value;
 }
-
-const parameters = standard(
-  Type.Object({ query: Type.String({ minLength: 1, description: "What to search the web for." }) }),
-);
-
-function webSearch(api: PluginApi): ToolDefinition<{ query: string }> {
-  return {
-    name: "web_search",
-    description:
-      "Search the web for current information beyond your knowledge cutoff. Returns titles, URLs and excerpts.",
-    parameters,
-    class: (args) => ({ kind: "custom", label: `Searching ${args.query}` }),
-    effects: "none",
-    approval: "never",
-    replay: "safe",
-    async execute(args, invocation) {
-      const value = await api.contribute.settings.value(provider.id);
-      const name = PROVIDERS.find((known) => known === value) ?? provider.default;
-
-      const results = await invocation.memo("results", async () => {
-        const key = await api.storage.secrets.get(name);
-        dev("web-search", "search", {
-          call: invocation.call,
-          provider: name,
-          keyed: key !== undefined,
-        });
-        const hits = await adapters[name]({
-          query: args.query,
-          key,
-          fetch: globalThis.fetch,
-          signal: AbortSignal.any([invocation.signal, AbortSignal.timeout(25_000)]),
-        });
-
-        return hits.map((hit) => ({ url: hit.url, title: hit.title, content: hit.content }));
-      });
-
-      const text =
-        results.length === 0
-          ? "No results. Try a different query."
-          : results
-              .map(
-                (hit) =>
-                  `## ${hit.title ?? hit.url}\n${hit.url}${hit.content === null ? "" : `\n\n${hit.content}`}`,
-              )
-              .join("\n\n");
-
-      return { content: [{ kind: "text", text }] };
-    },
-  };
-}
-
-const keyCommand: Command = {
-  name: "websearch-key",
-  title: "Set a web search key",
-  description: "Store a web search provider's API key: <provider> <key>; no key removes it.",
-  complete(prefix) {
-    const typed = prefix.trimStart();
-
-    if (/\s/u.test(typed)) return [];
-
-    return PROVIDERS.filter((known) => known.startsWith(typed.toLowerCase())).map((known) => ({
-      value: `${known} `,
-      label: known,
-    }));
-  },
-  async run(text, { api }) {
-    const [named = "", key = ""] = text.split(/\s+(.*)/su);
-    const chosen = PROVIDERS.find((known) => known === named.toLowerCase());
-
-    if (chosen === undefined) throw new Error(`Name a provider first: ${PROVIDERS.join(", ")}.`);
-
-    if (key === "") await api.storage.secrets.delete(chosen);
-    else await api.storage.secrets.set(chosen, key);
-
-    return `Key for ${chosen} ${key === "" ? "removed" : "saved"}.`;
-  },
-};
-
-/**
- * Adds `web_search`, routed by the host setting `web_search.provider` to
- * Tavily, Exa, Firecrawl or Parallel. A provider's key lives in the plugin's
- * secrets under the provider's id, set with the `websearch-key` command; without one
- * the provider's keyless route is used.
- *
- * @category plugins
- * @since 0.1.0
- */
-export default {
-  id: "web-search",
-  contribute: {
-    settings: [provider],
-    commands: [keyCommand],
-  },
-  activate(api) {
-    api.contribute.tools.add(webSearch(api));
-  },
-} satisfies Plugin;

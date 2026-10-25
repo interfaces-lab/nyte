@@ -16,14 +16,14 @@ import tuiRenderers from "../src/client/transcript-tui.ts";
 import questions from "../src/question/client/questions.tsx";
 import tuiQuestions from "../src/question/client/questions-tui.ts";
 import telemetry from "../src/telemetry.ts";
-import webSearch from "../src/web-search.ts";
+import web from "../src/web/index.ts";
 import { fakeModels, open } from "./fake-models.ts";
 
 const core: readonly CorePlugin[] = [
   question,
   rename,
   bashDescription,
-  webSearch,
+  web,
   codemode,
   openaiCompaction({ getModel: () => undefined, getAuth: async () => undefined }),
   astraContext,
@@ -65,6 +65,7 @@ describe("the plugins", () => {
       expect.arrayContaining([
         "question",
         "web_search",
+        "web_fetch",
         "codemode",
         "canvas_render",
         "browser_open",

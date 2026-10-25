@@ -40,8 +40,6 @@ const TRACE_PATTERN = /^[0-9a-f]{32}$/;
 
 const followed = new Map<string, string>();
 
-const caused = new Map<string, string>();
-
 let latest: string | null = null;
 
 const NOOP: EndSpan = () => undefined;
@@ -109,20 +107,6 @@ export function followTrace(scope: string, trace: string): void {
   latest = trace;
 }
 
-/** Records that the submit with receipt `receipt` serves `trace`, as a subagent's task serves its parent's submit, so its admission joins `trace` instead of starting its own; a null `trace` records nothing. */
-export function traceReceipt(receipt: string, trace: string | null): void {
-  if (!tracing.enabled || trace === null) return;
-  caused.set(receipt, trace);
-}
-
-/** The trace the submit with receipt `receipt` serves, which its admission takes once: the one `traceReceipt` gave it, else the receipt id itself. */
-export function takeReceiptTrace(receipt: string): string {
-  const trace = caused.get(receipt) ?? receipt;
-  caused.delete(receipt);
-
-  return trace;
-}
-
 /** The trace `scope` last followed, or without `scope` the one any scope followed last, as a renderer that knows no session reads it; null when none did or tracing is off. */
 export function followedTrace(scope?: string): string | null {
   return scope === undefined ? latest : (followed.get(scope) ?? null);
@@ -146,7 +130,6 @@ export function readSpans(trace?: string): readonly Span[] {
 export function clearSpans(): void {
   for (const name of SPAN_NAMES) performance.clearMeasures(name);
   followed.clear();
-  caused.clear();
   latest = null;
 }
 

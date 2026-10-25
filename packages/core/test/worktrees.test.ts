@@ -2,7 +2,6 @@ import { asId } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
 import { assert, describe, expect, it, vi } from "vitest";
 import { memoryStore } from "../src/store.ts";
-import { isPart, tool } from "../src/index.ts";
 import type { EnvironmentProvider, Plugin, Store, Worktree } from "../src/index.ts";
 import type { ComposeOptions } from "../src/server.ts";
 import { env, until } from "../src/harness.ts";
@@ -172,77 +171,5 @@ describe("worktree isolation", () => {
       }),
     ).rejects.toThrow("A repo workspace has no git worktrees, so this chat cannot run in one.");
     expect((await served.sessions.list()).items).toEqual([]);
-  });
-
-  it("runs a task's subagent in a worktree, names it in the reply, and makes no second worktree when the task replays after a restart", async () => {
-    const store = memoryStore();
-    const fake = fakeModels();
-    const repo = repository();
-
-    fake.reply(
-      {
-        content: [
-          {
-            type: "toolCall",
-            id: "call-task",
-            name: "task",
-            arguments: { prompt: "Fix the login.", title: "fixer", isolation: "worktree" },
-          },
-        ],
-      },
-      { content: [{ type: "text", text: "Still fixing" }], hold: true },
-    );
-
-    const first = await host(fake, repo.plugin, { store });
-    const { session: parent } = await first.sessions.start({ content: "Delegate it." });
-
-    await until(async () => {
-      const execution = (await parent.view()).execution;
-
-      return execution.kind === "waiting" &&
-        execution.on.kind === "run" &&
-        fake.requests.length === 2
-        ? true
-        : undefined;
-    });
-    await first.close();
-
-    fake.reply(
-      { content: [{ type: "text", text: "Fixed it." }] },
-      { content: [{ type: "text", text: "The subagent fixed it." }] },
-    );
-
-    await using second = await host(fake, repo.plugin, { store });
-    const receipt = second.session(parent.id).receipt(asId<"receipt">(parent.id));
-
-    expect(await receipt.settled()).toMatchObject({ kind: "completed" });
-
-    const children = await second.sessions.list({
-      parents: { kind: "children", session: parent.id },
-    });
-    const child = children.items[0];
-    assert(child !== undefined);
-
-    expect(children.items).toHaveLength(1);
-    expect(repo.created).toEqual([child.id]);
-
-    const call = (await second.session(parent.id).view()).messages.find(
-      (message) => isPart(message, tool) && message.state.call.endsWith(":call-task"),
-    );
-
-    expect(call).toMatchObject({
-      state: {
-        phase: "settled",
-        outcome: {
-          kind: "ok",
-          content: [
-            {
-              kind: "text",
-              text: `It works in the worktree ${child.workspace} on branch nyte/fixer.\n\nSubagent ${child.id} finished.\n\nFixed it.`,
-            },
-          ],
-        },
-      },
-    });
   });
 });

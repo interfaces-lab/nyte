@@ -125,29 +125,104 @@ export async function requestBody(
       ? undefined
       : runtime.registries.agents.list().find((entry) => entry.id === configuration.agent);
 
+  const steps = await readSteps(kernel, session, head, run);
+
   const messages = await buildContext(kernel, models, runtime, {
     ...input,
     run,
+    steps,
     agent: agent?.prompt ?? null,
   });
 
   const source = toolSource(runtime);
   const named = agent?.tools;
   const hidden = await hiddenOwners(kernel, session, run);
+  const loads = await readLoads(steps, source);
+  const loaded = new Set([...loads.values()].flat());
 
   const tools = source
     .list()
     .filter(
       (info) =>
-        info.exposure === "model" &&
+        (info.exposure === "model" ||
+          info.exposure === "model-only" ||
+          (info.exposure !== "hidden" && loaded.has(info.name))) &&
         (named === undefined || named.includes(info.name)) &&
         (info.owner === null || !hidden.has(info.owner)),
     );
 
+  const declared = new Set(tools.map((info) => info.name));
+
   return {
-    transcript: await runtime.hooks.transform("transform_transcript", { messages, tools }, where),
+    transcript: await runtime.hooks.transform(
+      "transform_transcript",
+      { messages: messages.map((message) => markLoads(message, loads, declared)), tools },
+      where,
+    ),
     source,
   };
+}
+
+/** Tools earlier calls on the head's history loaded, compacted ones included. */
+export async function loadedTools(
+  kernel: Kernel,
+  source: ToolSource,
+  where: { readonly session: SessionId; readonly head: HeadName; readonly run: RunId | null },
+): Promise<readonly string[]> {
+  const loads = await readLoads(
+    await readSteps(kernel, where.session, where.head, where.run),
+    source,
+  );
+
+  return [...new Set([...loads.values()].flat())];
+}
+
+/** The tools each settled call's output loads (`ToolDefinition.loads`), by the call's commit. */
+async function readLoads(
+  steps: readonly Step[],
+  source: ToolSource,
+): Promise<ReadonlyMap<CommitId, readonly string[]>> {
+  const loads = await Promise.all(
+    steps.map(async (step): Promise<readonly (readonly [CommitId, readonly string[]])[]> => {
+      const state = step.part?.partKind === "tool" ? step.part.state : null;
+
+      if (!isJsonObject(state) || typeof state.name !== "string") return [];
+      const definition = source.get(state.name)?.definition;
+
+      if (definition?.loads === undefined || definition.output === undefined) return [];
+      const checked = await check(tool.state, state);
+
+      if (
+        checked.kind === "invalid" ||
+        checked.value.phase !== "settled" ||
+        checked.value.outcome.kind !== "ok"
+      )
+        return [];
+      const output = await check(definition.output, checked.value.outcome.output);
+
+      return output.kind === "invalid" ? [] : [[step.commit, definition.loads(output.value)]];
+    }),
+  );
+
+  return new Map(loads.flat());
+}
+
+/** Marks a tool result with the declared tools its call loaded, so providers that load tools from results keep their cached prefix. */
+function markLoads(
+  message: Message,
+  loads: ReadonlyMap<CommitId, readonly string[]>,
+  declared: ReadonlySet<string>,
+): Message {
+  const commit = projections.get(message);
+
+  if (message.role !== "toolResult" || commit === undefined) return message;
+  const names = (loads.get(commit) ?? []).filter((name) => declared.has(name));
+
+  if (names.length === 0) return message;
+  const marked: ToolResultMessage = { ...message, addedToolNames: names };
+  projections.set(marked, commit);
+
+  return marked;
 }
 
 export function estimateTranscriptTokens(transcript: Transcript): number {
@@ -174,6 +249,7 @@ async function buildContext(
     readonly head: HeadName;
     readonly run: RunId | null;
     readonly configuration: Configuration;
+    readonly steps: readonly Step[];
     readonly agent: PromptOverride | null;
   },
 ): Promise<readonly Message[]> {
@@ -208,8 +284,7 @@ async function buildContext(
   if (live?.record.response !== undefined) responses.set(live.record.view.id, live.record.response);
 
   const messages = await conversation(kernel, models, {
-    session,
-    head: input.head,
+    steps: input.steps,
     run: input.run,
     images: model?.input.includes("image") === true,
     responses,
@@ -254,21 +329,17 @@ function collectPromptLayer(id: string, override: PromptOverride | null): readon
   return override?.kind === "layer" ? [{ id, text: override.text, order: override.order }] : [];
 }
 
-async function conversation(
+/** The head's path, then the run's settled parts that are not on it yet. */
+function readSteps(
   kernel: Kernel,
-  models: Models,
-  input: {
-    readonly session: SessionId;
-    readonly head: HeadName;
-    readonly run: RunId | null;
-    readonly images: boolean;
-    readonly responses: ReadonlyMap<RunId, Usage>;
-  },
-): Promise<Message[]> {
-  const steps = await withFold(kernel, input.session, (state): readonly Step[] => {
+  session: SessionId,
+  head: HeadName,
+  run: RunId | null,
+): Promise<readonly Step[]> {
+  return withFold(kernel, session, (state): readonly Step[] => {
     const path = walkCommitPath(
       state.commits,
-      readPositionCommit(state.heads.get(input.head)?.info.tip ?? START),
+      readPositionCommit(state.heads.get(head)?.info.tip ?? START),
     );
 
     const on = new Set(path);
@@ -276,8 +347,8 @@ async function conversation(
     const created = new Map([...state.parts.keys()].map((id, index) => [id, index]));
 
     const later = [...state.parts.values()].flatMap((part) =>
-      input.run !== null &&
-      part.run === input.run &&
+      run !== null &&
+      part.run === run &&
       part.status.kind === "settled" &&
       !on.has(part.status.commit)
         ? [part.status.commit]
@@ -304,7 +375,19 @@ async function conversation(
       ];
     });
   });
+}
 
+async function conversation(
+  kernel: Kernel,
+  models: Models,
+  input: {
+    readonly steps: readonly Step[];
+    readonly run: RunId | null;
+    readonly images: boolean;
+    readonly responses: ReadonlyMap<RunId, Usage>;
+  },
+): Promise<Message[]> {
+  const steps = input.steps;
   const removed = new Set<CommitId>();
   const anchors = new Map<CommitId, Step[]>();
 

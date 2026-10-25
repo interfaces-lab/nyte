@@ -152,7 +152,7 @@ export function composerSource<T>(data: T | undefined, failed: boolean): Compose
   return failed ? { status: "error" } : { status: "loading" };
 }
 
-const NYTE_COMMAND_OWNERS = new Set(["", "rename", "web-search"]);
+const NYTE_COMMAND_OWNERS = new Set(["", "rename", "web"]);
 
 function revealSuggestion(list: HTMLElement | null, option: HTMLElement): void {
   if (list === null) return;
