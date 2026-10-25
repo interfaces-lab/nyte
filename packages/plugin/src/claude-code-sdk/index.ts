@@ -64,6 +64,7 @@ const CLAUDE_CODE_HAS_ITS_OWN = new Set([
   "edit",
   "list",
   "web_search",
+  "web_fetch",
   "question",
 ]);
 

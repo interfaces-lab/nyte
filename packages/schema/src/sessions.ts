@@ -141,7 +141,7 @@ export const ToolInfoType = Type.Object({
   description: Type.String(),
   parameters: JsonObjectType,
   output: nullable(JsonObjectType),
-  exposure: Type.Enum(["model", "deferred", "code", "hidden"]),
+  exposure: Type.Enum(["model", "model-only", "deferred", "code", "hidden"]),
 });
 
 export type ToolInfo = Decoded<typeof ToolInfoType>;

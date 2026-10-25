@@ -21,6 +21,7 @@ export function run(): string {
   const sample = document.createElement("div");
   sample.className = props(styles.sample).className ?? "";
   document.body.append(sample);
+  applyTint();
 
   for (const mode of ["light", "dark"] as const) {
     for (const pointer of [false, true]) {
@@ -29,7 +30,6 @@ export function run(): string {
           applyDisplayMode(mode);
           applyPointerCursors(pointer);
           applyFocusModality(modality);
-          applyTint(true);
           applyTransparency(reduced);
           const computed = getComputedStyle(sample);
 
@@ -48,7 +48,6 @@ export function run(): string {
 
           if (!root.classList.contains("external-class"))
             return "An appearance update replaced an unrelated root class";
-          applyTint(false);
           applyDisplayMode(mode);
 
           if (getComputedStyle(sample).cursor !== (pointer ? "pointer" : "default"))

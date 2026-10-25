@@ -56,6 +56,7 @@ export async function run(): Promise<string> {
     startedAt: 1,
     endedAt: null,
     tail: "running\n",
+    foreground: false,
   };
 
   const viewKey = workbenchViewKey("/workspace/browser-tab-strip");

@@ -35,7 +35,7 @@ export class TaskIndex {
       follow(
         options.jobs,
         (jobs) => {
-          this.jobs = jobs.filter((job) => job.session === session.id);
+          this.jobs = jobs.filter((job) => job.session === session.id && !job.foreground);
           options.onChange();
         },
         options.onError,

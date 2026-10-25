@@ -55,6 +55,11 @@ SOFTWARE.
   `@earendil-works/pi-codemode` 1.0.0 supply the MCP client and QuickJS
   executor. Tool discovery and code-mode integration are adapted from commit
   `86dfceec402ad77e563bf4feab5f26c42d5f5db6`.
+- BM25 tool search (`tool_search`, `searchTools()`), tool namespaces with
+  `describeNamespace()`, the budgeted codemode listing and the one-line MCP
+  server summary (`packages/plugin/src/tool-search.ts`,
+  `packages/plugin/src/codemode.ts`, `packages/core/src/builtins/mcp.ts`) are
+  ported from commit `d5b3de22d0e24a3e9c38a9410d3329b099717283`.
 - Transcript reconciliation, checkpoint instruction snapshots, provider system
   updates, and cache warming are ported from the 1.0.0 release commit
   `a13d35a742c6ef8462812a28fbe1d8c8b7431c32`.
@@ -312,11 +317,14 @@ Copyright 2025 OpenAI
   front of the queue (`packages/tui/src/model/interactions.ts`) is its
   `onEmptySubmit`. The rename
   plugin's context construction, prompt, model fallback, and output cleanup
-  (`packages/plugin/src/rename.ts`) port OpenCode v2. The web-search
-  plugin set (`packages/plugin/src/web-search.ts`) ports its Exa, Firecrawl,
-  Parallel, and Tavily adapters, its stateless MCP `tools/call` transport and
-  response bounds, its result and error vocabulary, and its arrangement of one
-  plugin per provider from OpenCode v2.
+  (`packages/plugin/src/rename.ts`) port OpenCode v2. The web plugin
+  (`packages/plugin/src/web/`) ports OpenCode v2's web search and fetch tools:
+  the search provider registry any plugin can add to (`searchProviders` in
+  `packages/core/src/contract/plugin.ts`), its Exa, Firecrawl, Parallel, and
+  Tavily adapters, their stateless MCP `tools/call` transport and response
+  bounds, the result and error vocabulary, `web_fetch`'s Accept headers,
+  Cloudflare-challenge retry and size limits, and the streaming HTML-to-Markdown
+  and HTML-to-text converters (`packages/plugin/src/web/html-markdown.ts`).
 - Core's ripgrep resolver and search adapter (`packages/core/src/ripgrep.ts`,
   `packages/core/src/ripgrep/binary.ts`) and filename search
   (`packages/core/src/file-search.ts`) adapt OpenCode v2's core implementation.

@@ -119,7 +119,7 @@ it("carries a cold server's tools on the first request after launch", async () =
   });
 });
 
-it("lists a codemode-exposed tool in the prompt and runs it from a script on a cold start", async () => {
+it("names a codemode-exposed server in the prompt and runs its tool from a script on a cold start", async () => {
   const fake = answering(
     {
       content: [
@@ -143,9 +143,8 @@ it("lists a codemode-exposed tool in the prompt and runs it from a script on a c
   const { outcome } = await settledCall(host, "Find a place nearby.");
 
   expect(requestTools(turnRequests(fake)[0])).not.toContain(SEARCH);
-  expect(systemPrompt(turnRequests(fake)[0])).toContain(
-    `- ${SEARCH}: Find places near a location.\n`,
-  );
+  expect(systemPrompt(turnRequests(fake)[0])).toContain("\n- places (codemode)");
+  expect(systemPrompt(turnRequests(fake)[0])).not.toContain(SEARCH);
   expect(outcome).toMatchObject({
     kind: "ok",
     content: [{ text: expect.stringContaining("luigi") }],
@@ -163,7 +162,7 @@ it("does not hold the first request for a server that crashed, and shows it fail
   expect(performance.now() - started).toBeLessThan(4000);
   expect(requestTools(turnRequests(fake)[0])).not.toContain(SEARCH);
   expect(systemPrompt(turnRequests(fake)[0])).toContain(
-    "## places\nNot connected: it failed to start",
+    "- places: not connected; it failed to start",
   );
 
   const views = host
@@ -189,7 +188,7 @@ it("fails the call, not the turn, when the server exits mid-call", async () => {
   expect(systemPrompt(turnRequests(fake)[1])).toBe(systemPrompt(turnRequests(fake)[0]));
 });
 
-it("tells the model a server's instructions", async () => {
+it("tells the model the first line of a server's instructions", async () => {
   const fake = answering({ content: [{ type: "text", text: "Noted." }] });
 
   await using host = await openPlaces(
@@ -204,7 +203,7 @@ it("tells the model a server's instructions", async () => {
   await started.settled();
 
   expect(systemPrompt(turnRequests(fake)[0])).toContain(
-    "## places\nSearch before you recommend a place.",
+    "\n- places (direct): Search before you recommend a place.",
   );
 });
 

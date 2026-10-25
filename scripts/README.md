@@ -12,7 +12,7 @@ It never downloads or publishes.
 
 ## Nightly releases
 
-Run **Nightly** in GitHub Actions to build the selected commit. The workflow derives
+**Nightly** runs hourly and builds `main` when it has moved since the latest release tag; run it by hand to build another commit. The workflow derives
 a version such as `0.0.25-nightly.20261023.123` from the patch after the latest stable tag,
 the UTC date and the run number. It publishes a GitHub prerelease and npm's `nightly` tag.
 Checked-in package versions stay unchanged, and stable installations keep following stable

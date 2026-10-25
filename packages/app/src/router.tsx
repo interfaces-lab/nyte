@@ -59,7 +59,10 @@ const styles = create({
     flexDirection: "column",
     width: "100%",
     height: "100%",
-    backgroundColor: role.sidebarMaterial,
+    backgroundColor: role.windowWash,
+  },
+  shellChrome: {
+    backgroundImage: `linear-gradient(${role.sidebarMaterial}, ${role.sidebarMaterial})`,
   },
   stage: {
     display: "flex",
@@ -72,14 +75,14 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: role.bgBase,
+    backgroundColor: role.surfaceMaterial,
     overflow: "clip",
   },
   card: {
     marginInlineEnd: shell.cardInset,
     marginBlockEnd: shell.cardInset,
     borderRadius: radius.card,
-    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}, 0 0 0 100vmax ${role.sidebarMaterial}`,
   },
   cardSidebarHidden: { marginInlineStart: shell.cardInset },
   loadError: {
@@ -209,7 +212,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   );
 
   return (
-    <div data-nyte-shell {...props(styles.shell)}>
+    <div data-nyte-shell {...props(styles.shell, !strip && styles.shellChrome)}>
       <Titlebar />
       <div {...props(styles.stage)}>
         <SessionDndProvider>

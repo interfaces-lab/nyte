@@ -45,6 +45,7 @@ import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { startJob } from "../engine/jobs.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { hiddenOwners, missingCapabilities } from "../engine/surface.ts";
+import { loadedTools } from "./transcript.ts";
 import { toolSource } from "../extend/registry.ts";
 import { commit } from "../fold/commit.ts";
 import { settling } from "../store/parts.ts";
@@ -928,6 +929,7 @@ export function createInvocation(
         return outcome.kind === "parked" ? parkStep(durable) : outcome;
       },
       list: () => source.list().filter((info) => input.hidden?.has(info.owner) !== true),
+      loaded: () => loadedTools(kernel, source, { session, head, run }),
     },
     wait: (target) => durable.wait(target),
     memo: (name, compute) => durable.memo(name, compute),

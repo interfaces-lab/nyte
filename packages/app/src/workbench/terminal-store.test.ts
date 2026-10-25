@@ -156,6 +156,7 @@ function command(id: string, change: Partial<JobView> = {}): JobView {
     startedAt: 1,
     endedAt: null,
     tail: "",
+    foreground: false,
     ...change,
   };
 }

@@ -145,7 +145,6 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: role.bgBase,
   },
   body: { display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
   unmarked: {

@@ -170,7 +170,7 @@
                     "ttl": "1h",
                     "type": "ephemeral"
                   },
-                  "text": "User: What do my notes say?",
+                  "text": "Here is the first message of the conversation:\n\n<message>\nWhat do my notes say?\n</message>\n\nReply with only the title.",
                   "type": "text"
                 }
               ],

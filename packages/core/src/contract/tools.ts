@@ -35,7 +35,21 @@ export interface ToolInvocation extends Durable {
       options?: { readonly key?: string; readonly signal?: AbortSignal },
     ): Promise<ToolOutcome>;
     list(): readonly ToolInfo[];
+    /** Tools earlier calls on this head's history loaded (see {@link ToolDefinition.loads}). */
+    loaded(): Promise<readonly string[]>;
   };
+}
+
+/** A group of related tools, such as the tools of one MCP server. */
+export interface ToolNamespace {
+  /** For example `mcp__docs`. */
+  readonly name: string;
+  /** Other names lookups by namespace accept, for example `docs`. */
+  readonly aliases?: readonly string[];
+  /** A short summary shown once with the group in tool listings. */
+  readonly description?: string;
+  /** Longer guidance, such as MCP server instructions, given only on request. */
+  readonly instructions?: string;
 }
 
 export interface ForegroundJobs {
@@ -61,16 +75,25 @@ export interface Durable {
 
 export interface ToolDefinition<Args = unknown, Output = unknown> {
   readonly name: string;
-  readonly namespace?: string;
+  readonly namespace?: ToolNamespace;
   readonly description: string;
   readonly parameters: Schema<Args>;
   readonly output?: Schema<Output>;
-  readonly exposure?: "model" | "deferred" | "code" | "hidden";
+  /**
+   * How the model reaches the tool. `model` (the default) declares it and lets scripts call it;
+   * `model-only` declares it but keeps it from scripts, for orchestrating tools; `code` leaves it
+   * undeclared, callable from scripts and listed for them; `deferred` is `code` left unlisted, so
+   * only search finds it; `hidden` makes it unreachable. A `code` or `deferred` tool another
+   * call loads (see `loads`) is declared from the next request on.
+   */
+  readonly exposure?: "model" | "model-only" | "deferred" | "code" | "hidden";
+  /** Names of the tools a settled call's output loads: the head declares them from its next request on. Needs `output`. */
+  loads?(output: Output): readonly string[];
   readonly grammar?:
     | { readonly kind: "lark"; readonly source: string }
     | { readonly kind: "regex"; readonly pattern: string };
   class(args: Args, context: { readonly call: CallId }): ToolClass;
-  /** What a call can change besides the session: `"workspace"` when it may write the workspace's files, so the runner snapshots the tree around it and records what changed; `"none"` when it cannot (reads, browser pages, canvases, questions, delegation that does not wait on a subagent, or a script whose nested calls declare their own); `task` and `await` keep the default, since the subagent writes the same workspace while they wait. Default `"workspace"`. A call nested inside one that snapshots is covered by its parent's pair and takes none of its own. */
+  /** What a call can change besides the session: `"workspace"` when it may write the workspace's files, so the runner snapshots the tree around it and records what changed; `"none"` when it cannot (reads, browser pages, canvases, questions, starting or messaging a child session without waiting on it, or a script whose nested calls declare their own); a call that waits on a child session keeps the default, since the child writes the same workspace while it waits. Default `"workspace"`. A call nested inside one that snapshots is covered by its parent's pair and takes none of its own. */
   readonly effects?: "workspace" | "none";
   /** Whether a permissions policy may hold a call before it runs: `"policy"` (the default) lets a before_tool gate such as the approvals plugin ask by the call's class; `"never"` for a call that changes nothing the user guards (a question, a canvas, a web search, a page read, or a script whose nested calls are gated on their own); `"runtime"` for the mirror of a call another agent runtime runs, which asked through `PluginApi.approve` before it ran. Snapshots read `effects`, never this. */
   readonly approval?: "policy" | "never" | "runtime";

@@ -219,7 +219,7 @@ describe("command text suggestions", () => {
         commands: [
           {
             name: "websearch-key",
-            owner: "web-search",
+            owner: "web",
             side: "core",
             title: "Key",
             description: "Key",

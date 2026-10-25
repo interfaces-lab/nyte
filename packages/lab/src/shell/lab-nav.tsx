@@ -2,13 +2,11 @@ import { create, props } from "@stylexjs/stylex";
 import { Link } from "@tanstack/react-router";
 
 const PAGES = [
-  ["/review", "Review"],
   ["/projects", "Projects"],
   ["/tabs", "Tabs"],
   ["/changes", "Changes"],
   ["/settings", "Settings"],
   ["/hubs", "Hubs"],
-  ["/studio", "Studio"],
 ] as const;
 
 /** Painted from literals: each page loads a different palette, and this sits on all of them. */

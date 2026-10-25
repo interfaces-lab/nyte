@@ -29,7 +29,12 @@ test("the settings journey", async ({ desktop }) => {
 
   await test.step("General shows startup, chat and link defaults", async () => {
     await openSettings(page, "General");
-    await expect(page.getByRole("heading", { level: 2 })).toHaveText(["Startup", "Chat", "Links", "Updates"]);
+    await expect(page.getByRole("heading", { level: 2 })).toHaveText([
+      "Startup",
+      "Chat",
+      "Links",
+      "Updates",
+    ]);
     await expect(page.getByRole("combobox", { name: "Window restoration" })).toHaveText("New chat");
     await expect(page.getByRole("combobox", { name: "Messages while running" })).toHaveText(
       "Steer",

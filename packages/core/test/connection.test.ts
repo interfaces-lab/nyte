@@ -41,6 +41,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "workspaces.inspect": () => sdk.workspaces.inspect({ kind: "local", path: "/new" }),
     "workspaces.add": () => sdk.workspaces.add({ kind: "local", path: "/new" }),
     "workspaces.forget": () => sdk.workspaces.forget(at.id),
+    "workspaces.cleanWorktrees": () => sdk.workspaces.cleanWorktrees(),
     "workspace.update": () => at.update({ projectResources: false }),
     "workspace.reload": () => at.reload(),
     "mcp.watch": () => at.mcp.watch()[Symbol.asyncIterator]().next(),
@@ -151,7 +152,7 @@ describe("connection gate (§52 rule 5)", () => {
       covered: false,
     });
 
-    expect(elevated).toHaveLength(38);
+    expect(elevated).toHaveLength(39);
     expect(await elevatedRows(participant, participant.workspace(at))).toEqual(denied);
     expect(await elevatedRows(invocation.sdk, invocation.workspace)).toEqual(denied);
   });

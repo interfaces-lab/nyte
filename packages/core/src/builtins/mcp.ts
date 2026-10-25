@@ -2,12 +2,16 @@ import type { WorkspaceId } from "@nyte-ai/schema";
 import type { Plugin } from "../contract/plugin.ts";
 import type { McpHub, McpServerBrief, McpWorkspace } from "../contract/workspace.ts";
 
-const INSTRUCTIONS_CHARS = 4000;
+/** Characters of one server's summary, as Codex allows for a deferred namespace. */
+const SUMMARY_CHARS = 250;
+
+/** Characters of the whole section: summaries shrink to fit, then the last servers are counted instead. */
+const SECTION_CHARS = 4096;
 
 /**
  * Puts the hub's tools for the session's workspace in the session, tells the
- * model each server's instructions and which servers are unavailable, and
- * reloads the session whenever they change.
+ * model in one line per server how to reach its tools and which servers are
+ * unavailable, and reloads the session whenever they change.
  */
 export function mcpPlugin(
   hub: McpHub,
@@ -50,30 +54,97 @@ export function mcpPlugin(
   };
 }
 
+type ServerLine = {
+  readonly head: string;
+  readonly reach: "direct" | "codemode" | "tool_search" | null;
+  readonly summary: string;
+};
+
+/**
+ * One line per server: how its tools are reached and the first line of its
+ * description or instructions. The full instructions stay with its tools'
+ * namespace, for `describeNamespace()`.
+ */
 function describeServers(briefs: readonly McpServerBrief[]): string | null {
-  const told = briefs.flatMap((brief) => {
+  const servers = briefs.flatMap((brief): readonly ServerLine[] => {
     if (brief.unavailable === "failed")
       return [
-        `## ${brief.name}\nNot connected: it failed to start, so it has no tools here. Tell the user when the task needs it.`,
+        {
+          head: `- ${brief.name}: not connected; it failed to start, so it has no tools here. Tell the user when the task needs it.`,
+          reach: null,
+          summary: "",
+        },
       ];
 
     if (brief.unavailable === "needs-sign-in")
       return [
-        `## ${brief.name}\nNot connected: the user has to sign in to it in the MCP settings before its tools appear.`,
+        {
+          head: `- ${brief.name}: not connected; the user has to sign in to it in the MCP settings before its tools appear.`,
+          reach: null,
+          summary: "",
+        },
       ];
-    const instructions = brief.instructions?.trim() ?? "";
+    const reach = brief.exposures.includes("code")
+      ? "codemode"
+      : brief.exposures.includes("deferred")
+        ? "tool_search"
+        : brief.exposures.includes("model")
+          ? "direct"
+          : null;
 
-    if (instructions === "") return [];
+    if (reach === null) return [];
+    const [summary = ""] = (brief.description?.trim() || brief.instructions?.trim() || "").split(
+      "\n",
+    );
 
-    return [
-      `## ${brief.name}\n${instructions.length > INSTRUCTIONS_CHARS ? `${instructions.slice(0, INSTRUCTIONS_CHARS)}…` : instructions}`,
-    ];
+    return [{ head: `- ${brief.name} (${reach})`, reach, summary: summary.trim() }];
   });
 
-  if (told.length === 0) return null;
+  if (servers.length === 0) return null;
+  const reaches = new Set(servers.map((server) => server.reach));
+
+  const intro = [
+    "MCP servers in this workspace. Their tools are named mcp__<server>__<tool>.",
+    ...(reaches.has("direct") ? ["The tools of `direct` servers are declared to you."] : []),
+    ...(reaches.has("codemode")
+      ? ["Call the tools of `codemode` servers from codemode scripts; `searchTools()` finds them."]
+      : []),
+    ...(reaches.has("tool_search")
+      ? ["Load the tools of `tool_search` servers with `tool_search`."]
+      : []),
+    ...(servers.some((server) => server.reach !== null)
+      ? ['`describeNamespace("<server>")` in a codemode script returns a server\'s instructions.']
+      : []),
+  ].join(" ");
+
+  const omitted = (count: number): readonly string[] =>
+    count > 0 ? [`- … ${count} more server${count === 1 ? "" : "s"}`] : [];
+
+  const size = (kept: number): number =>
+    [
+      intro,
+      ...servers.slice(0, kept).map((server) => server.head),
+      ...omitted(servers.length - kept),
+    ].join("\n").length;
+
+  let kept = servers.length;
+
+  while (kept > 0 && size(kept) > SECTION_CHARS) kept -= 1;
+  const room =
+    kept === 0 ? 0 : Math.min(SUMMARY_CHARS, Math.floor((SECTION_CHARS - size(kept)) / kept) - 2);
 
   return [
-    "MCP servers in this workspace. Their tools are named mcp__<server>__<tool>.",
-    ...told,
-  ].join("\n\n");
+    intro,
+    ...servers.slice(0, kept).map((server) => {
+      const summary =
+        server.summary.length <= room
+          ? server.summary
+          : room <= 1
+            ? ""
+            : `${server.summary.slice(0, room - 1).trimEnd()}…`;
+
+      return summary === "" ? server.head : `${server.head}: ${summary}`;
+    }),
+    ...omitted(servers.length - kept),
+  ].join("\n");
 }

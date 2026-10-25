@@ -34,6 +34,7 @@ import {
   WorkspaceInfoSchema,
   WorkspaceInspectionSchema,
   WorkspaceTargetSchema,
+  WorktreeCleanupSchema,
   McpViewSchema,
   McpChangeSchema,
   McpServerConfigSchema,
@@ -230,6 +231,7 @@ export const workspaceCases = {
     { kind: "busy", sessions: [session] },
     { kind: "busy" },
   ),
+  WorktreeCleanupSchema: sample(WorktreeCleanupSchema, { cleaned: 2 }, { cleaned: "2" }),
   WorkspaceInspectionSchema: sample(
     WorkspaceInspectionSchema,
     {

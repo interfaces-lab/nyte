@@ -23,6 +23,7 @@ import type {
   FileVersion,
   ForgetOutcome,
   FormatOutcome,
+  WorktreeCleanup,
   GitCommitView,
   GitFileSides,
   GitOutcome,
@@ -42,6 +43,7 @@ import type {
   JobView,
   Json,
   McpChange,
+  McpExposure,
   McpScope,
   McpServerConfig,
   McpView,
@@ -185,7 +187,8 @@ export interface JobEntry {
   } | null;
   readonly digest: string;
   readonly output: JobOutput;
-  readonly held: boolean;
+  /** Set once `stop` was asked, so the job's end sends no report. */
+  readonly stopping: boolean;
 }
 
 export interface JobOutput {
@@ -210,7 +213,9 @@ export interface JobTable {
   background(
     session: SessionId,
   ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];
+  /** Moves the running jobs `call` started to the background, clearing their `foreground`; false when it started none. */
   release(session: SessionId, call: CallId): boolean;
+  markStopping(id: JobId): void;
 }
 
 export interface ExecutionEnv {
@@ -265,10 +270,11 @@ export interface WorktreeProvider {
   /** Checks a new branch out from the HEAD of `env`'s repository in a folder of its own and copies `env`'s uncommitted changes, ignored files aside, into it. `name` keys it: a later call with the same name answers the worktree the first made. Throws `SdkError("unavailable")` outside a git repository or before its first commit. */
   create(
     env: ExecutionEnv,
-    input: { readonly name: string; readonly title: string | null },
+    input: { readonly name: string; readonly title: string | null; readonly prefix?: string },
   ): Promise<Worktree>;
   /** Removes the worktree's folder and deletes its branch, keeping the folder (and so the branch) while it holds uncommitted changes and the branch once it moved past `base`. A folder already gone counts as removed. */
   remove(worktree: Worktree): Promise<WorktreeRemoval>;
+  clean(target: WorkspaceTarget): Promise<boolean>;
 }
 
 export interface EnvironmentProvider {
@@ -527,6 +533,8 @@ export interface Workspaces {
   ): Promise<AddOutcome>;
 
   forget(id: WorkspaceId): Promise<ForgetOutcome>;
+
+  cleanWorktrees(): Promise<WorktreeCleanup>;
 }
 
 export interface Workspace {
@@ -639,16 +647,20 @@ export type McpWorkspace = {
 };
 
 /**
- * One MCP server as the model hears of it: the `instructions` it sent when
- * it connected, and `unavailable` when it has no tools because it failed to
- * connect or waits for the user to sign in.
+ * One MCP server as the model hears of it: the `description` its `mcp.json`
+ * gives, the `instructions` it sent when it connected, the `exposures` its
+ * tools can have (its own and each `toolExposure`'s), and `unavailable` when
+ * it has no tools because it failed to connect or waits for the user to sign
+ * in.
  *
  * @category mcp
  * @since 0.1.0
  */
 export interface McpServerBrief {
   readonly name: string;
+  readonly description: string | null;
   readonly instructions: string | null;
+  readonly exposures: readonly McpExposure[];
   readonly unavailable: "failed" | "needs-sign-in" | null;
 }
 

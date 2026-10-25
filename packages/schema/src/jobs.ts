@@ -37,6 +37,8 @@ export const JobViewType = Type.Object({
   startedAt: Type.Number(),
   endedAt: nullable(Type.Number()),
   tail: Type.String(),
+  /** True while the job is still the tool call that started it; false for a job started detached or once moved to the background. */
+  foreground: Type.Boolean(),
 });
 
 export type JobView = Decoded<typeof JobViewType>;

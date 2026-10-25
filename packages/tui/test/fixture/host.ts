@@ -7,6 +7,7 @@ import type { ExecutionEnv, GitHubAccountApi, Plugin } from "@nyte-ai/core";
 import { chatOnly, fakeModels, testModel } from "@nyte-ai/bench";
 import type { FakeModels } from "@nyte-ai/bench";
 import questionPlugin from "@nyte-ai/plugin/core/question";
+import subagentsPlugin from "@nyte-ai/plugin/core/subagents";
 import { asId } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
 
@@ -41,7 +42,12 @@ export async function openTestHost(options?: {
   const host = await composeHost({
     store: memoryStore(),
     models: models.models,
-    plugins: [options?.environment ?? chatOnly, questionPlugin, ...(options?.plugins ?? [])],
+    plugins: [
+      options?.environment ?? chatOnly,
+      questionPlugin,
+      subagentsPlugin,
+      ...(options?.plugins ?? []),
+    ],
     workspace: options?.workspace ?? { kind: "chat-only", locator: null },
     home: null,
     description: { name: "tui-test", platform: process.platform, version: "0.0.0" },

@@ -32,8 +32,10 @@ import openaiAstraContext from "@nyte-ai/plugin/core/openai-astra-context";
 import { openaiCompaction } from "@nyte-ai/plugin/core/openai-compaction";
 import question from "@nyte-ai/plugin/core/question";
 import rename from "@nyte-ai/plugin/core/rename";
+import subagents from "@nyte-ai/plugin/core/subagents";
 import telemetry from "@nyte-ai/plugin/core/telemetry";
-import webSearch from "@nyte-ai/plugin/core/web-search";
+import toolSearch from "@nyte-ai/plugin/core/tool-search";
+import web from "@nyte-ai/plugin/core/web";
 import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./credentials.ts";
 import { identitySigner } from "./identity-key.ts";
@@ -125,9 +127,11 @@ async function composeOpen(
     approvals,
     question,
     rename,
+    subagents,
     bashDescription,
-    webSearch,
+    web,
     codemode,
+    toolSearch,
     openaiCompaction(models),
     openaiAstraContext,
     telemetry,

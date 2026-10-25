@@ -6,14 +6,13 @@ import type { JobEnd, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
 import { Row } from "@nyte-ai/ui/row";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useSession, useWorkspaceJobs } from "../../queries.ts";
-import { connection, sessionWatch, useWatchSelect } from "../../sdk.tsx";
+import { connection } from "../../sdk.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { readDeferred } from "../../deferred.tsx";
-import { findForegroundJobs, moveToBackground, sameForegroundJobs } from "../shell-background.ts";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 
 const styles = create({
@@ -54,12 +53,6 @@ export function BackgroundWork({
   const workspace = useSession(sessionId, (session) => session.workspace).data ?? undefined;
   const jobs = useWorkspaceJobs(workspace);
 
-  const foreground = useWatchSelect(
-    sessionWatch(sessionId),
-    ({ value }) => findForegroundJobs(value),
-    sameForegroundJobs,
-  );
-
   const { root, ref, availableHeight } = useTrayRoot(viewport);
   const pillRef = useRef<HTMLButtonElement>(null);
   const trayId = useId();
@@ -73,25 +66,17 @@ export function BackgroundWork({
 
   const cancel = useMutation({ mutationFn: stopJob });
 
-  const background = useMutation({
-    mutationFn: async (jobId: JobView["id"]) => {
-      const part = foreground.get(jobId);
-
-      if (part !== undefined) await moveToBackground(sessionId, part);
-    },
-  });
-
   const stopAll = useMutation({
     mutationFn: (jobIds: readonly JobView["id"][]) => Promise.all(jobIds.map(stopJob)),
   });
 
   const liveTerminals = (jobs ?? [])
-    .filter((job) => job.session === sessionId && job.state.kind === "running")
+    .filter((job) => job.session === sessionId && job.state.kind === "running" && !job.foreground)
     .toSorted((left, right) => right.startedAt - left.startedAt);
 
   const hasTerminals = liveTerminals.length > 0;
   const trayOpen = open && hasTerminals;
-  const pendingAction = cancel.isPending || stopAll.isPending || background.isPending;
+  const pendingAction = cancel.isPending || stopAll.isPending;
   const count = String(liveTerminals.length);
   const noun = liveTerminals.length === 1 ? "Terminal" : "Terminals";
 
@@ -119,7 +104,6 @@ export function BackgroundWork({
             setStopCandidates(undefined);
             cancel.reset();
             stopAll.reset();
-            background.reset();
             onOpenChange(true);
           }}
         >
@@ -143,7 +127,7 @@ export function BackgroundWork({
             }
             tone="danger"
             loading={stopAll.isPending}
-            disabled={cancel.isPending || background.isPending}
+            disabled={cancel.isPending}
             onClick={() => {
               if (stopCandidates === undefined) {
                 setStopCandidates(liveTerminals.map((job) => job.id));
@@ -188,16 +172,6 @@ export function BackgroundWork({
                 <Row.Label>{job.command}</Row.Label>
               </Row.Primary>
               <Row.Actions xstyle={styles.actions}>
-                {foreground.has(job.id) && (
-                  <Button
-                    aria-description={`Move ${job.command} to the background`}
-                    loading={background.isPending && background.variables === job.id}
-                    disabled={pendingAction}
-                    onClick={() => background.mutate(job.id)}
-                  >
-                    Move to Background
-                  </Button>
-                )}
                 <Button
                   aria-description={`Stop ${job.command}`}
                   tone="danger"
@@ -213,11 +187,7 @@ export function BackgroundWork({
         </div>
         {pendingAction && (
           <div role="status" {...props(trayParts.notice)}>
-            {background.isPending
-              ? "Moving to the background…"
-              : stopAll.isPending
-                ? "Stopping terminals…"
-                : "Stopping terminal…"}
+            {stopAll.isPending ? "Stopping terminals…" : "Stopping terminal…"}
           </div>
         )}
         {cancel.isSuccess && (
@@ -232,7 +202,7 @@ export function BackgroundWork({
               : "Some work has already finished or is no longer available."}
           </div>
         )}
-        {(cancel.isError || stopAll.isError || background.isError) && (
+        {(cancel.isError || stopAll.isError) && (
           <div role="alert" {...props(intent.danger, trayParts.notice, trayParts.error)}>
             Failed to update background work. Try again.
           </div>

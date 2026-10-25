@@ -49,8 +49,8 @@ export const stripStyles = create({
   tabClosable: { paddingInlineEnd: space.s1 },
   tabActive: {
     backgroundColor: {
-      default: role.bgBase,
-      ":hover": { [media.hover]: role.bgBase },
+      default: role.surfaceMaterial,
+      ":hover": { [media.hover]: role.surfaceMaterial },
     },
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentPrimary,

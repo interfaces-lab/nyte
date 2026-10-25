@@ -105,7 +105,7 @@ describe("turn", () => {
     const system = fake.requests[0].context.messages[0];
     assert(system?.role === "system");
     expect(system.toolsAdded?.map((entry) => entry.name)).toEqual(
-      expect.arrayContaining(["echo", "read", "task", "read_agent"]),
+      expect.arrayContaining(["echo", "read"]),
     );
     expect(contentText(system.content)).toMatch(/^<0000-system-prompt>\n/);
 

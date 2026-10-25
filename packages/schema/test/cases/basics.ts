@@ -284,6 +284,7 @@ export const basicCases = {
       startedAt: 1,
       endedAt: null,
       tail: "ok",
+      foreground: false,
     },
     { id: job, command: "npm test" },
   ),

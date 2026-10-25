@@ -22,6 +22,7 @@ const TASKS: readonly Task[] = [
       endedAt: 1,
       state: { kind: "exited", reason: "exited", code: 0 },
       tail: "",
+      foreground: false,
     },
   },
 ];

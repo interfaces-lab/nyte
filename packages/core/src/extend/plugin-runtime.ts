@@ -76,8 +76,8 @@ const BUILT_IN: ReadonlySet<string> = new Set([
   "system-prompt",
   "environment",
   "resources",
-  "delegation",
   "interruptions",
+  "worktrees",
 ]);
 
 const RESERVED_IDS: readonly string[] = ["models", "settings"];
@@ -780,6 +780,8 @@ function install(plugin: Plugin<"core">, api: PluginApi<"core">): void {
 
   for (const item of declared?.skills ?? []) contribute.skills.add(item);
 
+  for (const item of declared?.searchProviders ?? []) contribute.searchProviders.add(item);
+
   for (const item of declared?.parts ?? []) contribute.parts.add(item);
 
   for (const item of declared?.commands ?? []) contribute.commands.add(item);
@@ -904,6 +906,7 @@ function createInstance(
     agents: contribution((registries) => registries.agents),
     modelContext: contribution((registries) => registries.modelContext),
     skills: contribution((registries) => registries.skills),
+    searchProviders: contribution((registries) => registries.searchProviders),
     parts: contribution((registries) => registries.parts),
     commands: contribution((registries) => registries.commands),
     settings: {

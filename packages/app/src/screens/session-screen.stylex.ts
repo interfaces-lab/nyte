@@ -38,7 +38,6 @@ export const sessionScreenStyles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "clip",
-    backgroundColor: role.bgBase,
   },
   paneSingle: { flex: 1 },
   paneLeading: (ratio: number) => ({

@@ -964,6 +964,7 @@ describe("session and view intents", () => {
         tail: "",
         startedAt: 1,
         endedAt: 2,
+        foreground: false,
       },
     };
 

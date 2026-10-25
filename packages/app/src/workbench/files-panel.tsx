@@ -48,7 +48,6 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: role.bgBase,
   },
   toolbar: { gap: space.s2, height: "auto", minHeight: workbench.headerHeight },
   explorerHeader: {

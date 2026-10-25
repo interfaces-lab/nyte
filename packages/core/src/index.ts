@@ -66,6 +66,8 @@ export type {
   Row,
   RuntimeCall,
   RuntimeVerdict,
+  SearchProvider,
+  SearchResult,
   Setting,
   SettingDefinition,
   Side,
@@ -98,7 +100,13 @@ export type {
   StoreConnection,
 } from "./contract/store.ts";
 
-export type { Durable, ForegroundJobs, ToolDefinition, ToolInvocation } from "./contract/tools.ts";
+export type {
+  Durable,
+  ForegroundJobs,
+  ToolDefinition,
+  ToolInvocation,
+  ToolNamespace,
+} from "./contract/tools.ts";
 
 export type {
   BrowserApi,

@@ -7,7 +7,7 @@ import type {
   Tool,
 } from "@earendil-works/pi-mcp";
 import { followedTrace, startSpan, traceparent } from "@nyte-ai/core";
-import type { ExecutionEnv, ToolDefinition } from "@nyte-ai/core";
+import type { ExecutionEnv, ToolDefinition, ToolNamespace } from "@nyte-ai/core";
 import { isJson, isJsonObject } from "@nyte-ai/schema";
 import type {
   Json,
@@ -142,20 +142,33 @@ export class TracingMcpClient extends McpClient {
   }
 }
 
-/** Turns a server's listed tools into session tools named `mcp__<server>__<tool>`. */
+/**
+ * Turns a server's listed tools into session tools named
+ * `mcp__<server>__<tool>`, in the namespace `mcp__<server>` (alias
+ * `<server>`) that carries the server's description and instructions.
+ */
 export function bridgeTools(
   entry: McpServerEntry,
-  tools: readonly Tool[],
+  listed: { readonly tools: readonly Tool[]; readonly instructions: string | null },
   call: McpCall,
 ): ToolDefinition[] {
-  const names = tools.map((tool) => toolName(entry.name, tool.name));
+  const names = listed.tools.map((tool) => toolName(entry.name, tool.name));
   const counts = Map.groupBy(names, (name) => name);
+  const description = entry.description?.trim() ?? "";
+  const instructions = listed.instructions?.trim() ?? "";
 
-  return tools.map((tool, index) => {
+  const namespace: ToolNamespace = {
+    name: `mcp__${entry.name}`.replace(/[^A-Za-z0-9_]/g, "_"),
+    aliases: [entry.name],
+    ...(description === "" ? {} : { description }),
+    ...(instructions === "" ? {} : { instructions }),
+  };
+
+  return listed.tools.map((tool, index) => {
     const name = names[index];
     const unique = (counts.get(name)?.length ?? 0) > 1 ? hashed(name, tool.name) : name;
 
-    return bridge(entry, tool, call, unique);
+    return bridge(entry, tool, call, unique, namespace);
   });
 }
 
@@ -182,20 +195,23 @@ function globMatches(pattern: string, value: string): boolean {
   return new RegExp(`^${source}$`).test(value);
 }
 
+/** One listed tool as a session tool. Codemode's go unlisted like `deferred` ones; the session's prompt names their server instead. */
 function bridge(
   entry: McpServerEntry,
   tool: Tool,
   call: McpCall,
   name: string,
+  namespace: ToolNamespace,
 ): ToolDefinition<JsonObject> {
   const output = tool.outputSchema;
+  const exposure = toolExposure(entry, tool.name);
 
   const definition: ToolDefinition<JsonObject> = {
     name,
-    namespace: `mcp/${entry.name}`,
+    namespace,
     description: tool.description ?? tool.title ?? tool.name,
     parameters: passthrough(tool.inputSchema),
-    exposure: toolExposure(entry, tool.name),
+    exposure: exposure === "code" ? "deferred" : exposure,
     class: () => ({ kind: "custom", label: `${entry.name}: ${tool.title ?? tool.name}` }),
     effects: tool.annotations?.readOnlyHint === true ? "none" : "workspace",
     replay:

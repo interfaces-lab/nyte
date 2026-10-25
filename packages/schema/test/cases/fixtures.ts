@@ -588,6 +588,7 @@ export const jobView = {
   startedAt: 1,
   endedAt: null,
   tail: "",
+  foreground: false,
 };
 
 export const pageInfo = { id: page, url: "https://a.b", title: "A", holders: 1 };

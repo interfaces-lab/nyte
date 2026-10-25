@@ -17,7 +17,6 @@ From a checkout with `gh` signed in and a Nyte model configured:
 ```sh
 pnpm release            # patch
 pnpm release minor
-pnpm release 0.1.0-beta.1
 ```
 
 `scripts/release.mjs` fetches `origin/main` and the tags. It stops if `HEAD` has commits that

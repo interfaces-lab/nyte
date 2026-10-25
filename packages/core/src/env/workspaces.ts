@@ -30,6 +30,7 @@ import type {
 } from "../contract/workspace.ts";
 import { createJobs, jobHandle } from "../engine/jobs.ts";
 import { dropScans } from "../extend/resources.ts";
+import { cleanWorktrees } from "./worktrees.ts";
 import { commit } from "../fold/commit.ts";
 import { endedRunRef, runRef, workspaceRef } from "../store/refs.ts";
 import {
@@ -176,6 +177,7 @@ export function createWorkspaces(
         return { kind: "forgotten" };
       });
     },
+    cleanWorktrees: () => cleanWorktrees(kernel),
   };
 }
 

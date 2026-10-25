@@ -1,6 +1,10 @@
 import type { CanvasHostContext } from "@nyte-ai/plugin/canvas/protocol";
 import { preferences } from "../preferences/index.ts";
-import { subscribeSystemTransparency, systemReducesTransparency } from "../theme/appearance.ts";
+import {
+  subscribeSystemTransparency,
+  systemReducesTransparency,
+  windowHasVibrancy,
+} from "../theme/appearance.ts";
 import { codeFontFamily, localFontFamily, uiFontFamily } from "../theme/fonts.ts";
 import type { CodeFont, UiFont } from "../theme/fonts.ts";
 
@@ -68,7 +72,8 @@ function currentAppearance(): CanvasAppearance {
     uiFontSize: preferences.uiFontSize.get(),
     codeFontSize: preferences.codeFontSize.get(),
     antialiased: preferences.fontSmoothing.get() === "antialiased",
-    reduceTransparency: preferences.reduceTransparency.get() || systemReducesTransparency(),
+    reduceTransparency:
+      preferences.reduceTransparency.get() || systemReducesTransparency() || !windowHasVibrancy(),
   };
 }
 

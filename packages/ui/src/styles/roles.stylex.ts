@@ -22,6 +22,9 @@ const contrast = <Value extends string>(normal: Value, more: Value) => ({
   "@media (prefers-contrast: more)": more,
 });
 
+const tint = (color: string, strength: string) =>
+  `color-mix(in srgb, ${color}, hsl(from ${color} var(--nyte-custom-hue) 100 l) calc(${strength} * var(--nyte-custom-chroma-scale)))`;
+
 const hover = (role: string) => contrast(shade(role, 0.95, 1.05), shade(role, 0.7, 1.3));
 
 const press = (role: string) => contrast(shade(role, 0.88, 1.12), shade(role, 0.5, 1.4));
@@ -80,8 +83,12 @@ export const roles = defineVars({
   "--nyte-button-fill-hover": shade("button-fill", 0.95, 0.95),
   "--nyte-button-fill-pressed": shade("button-fill", 0.88, 0.88),
 
+  "--nyte-window-wash":
+    "color-mix(in srgb, var(--nyte-bg-chrome) calc(100% * var(--nyte-reduce-transparency)), light-dark(#ffffff29, #0000006b))",
   "--nyte-sidebar-material":
-    "light-dark(var(--nyte-bg-chrome), color-mix(in srgb, var(--nyte-bg-chrome) calc(36% + 64% * var(--nyte-reduce-transparency)), transparent))",
+    "light-dark(color-mix(in srgb, var(--nyte-bg-chrome) calc(42% + 58% * var(--nyte-reduce-transparency)), transparent), color-mix(in srgb, var(--nyte-bg-chrome) calc(36% + 64% * var(--nyte-reduce-transparency)), transparent))",
+  "--nyte-surface-material":
+    "light-dark(color-mix(in srgb, var(--nyte-bg-base) calc(84% + 16% * var(--nyte-reduce-transparency)), transparent), color-mix(in srgb, var(--nyte-bg-base) calc(72% + 28% * var(--nyte-reduce-transparency)), transparent))",
   "--nyte-popup-material":
     "light-dark(color-mix(in srgb, var(--nyte-bg-elevated) calc(80% + 20% * var(--nyte-reduce-transparency)), transparent), color-mix(in srgb, var(--nyte-bg-elevated) calc(90% + 10% * var(--nyte-reduce-transparency)), transparent))",
   "--nyte-layer-hover": "linear-gradient(var(--nyte-bg-hover), var(--nyte-bg-hover))",
@@ -106,6 +113,13 @@ const hued = {
 };
 
 export const tinted = createTheme(roles, hued);
+
+export const surfaceTint = createTheme(roles, {
+  "--nyte-bg-base": tint(step(0, 145), "50%"),
+  "--nyte-bg-chrome": tint(step(5, 150), "100%"),
+  "--nyte-bg-muted": tint(step(10, 140), "50%"),
+  "--nyte-bg-elevated": tint(step(0, 140), "50%"),
+});
 
 /** The primary intent: its solid fill is the hue itself, not darkened for a text label. */
 export const accent = createTheme(roles, {

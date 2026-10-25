@@ -143,6 +143,24 @@ export interface Skill {
   readonly location: string;
 }
 
+/** One web search hit; `published` is milliseconds since the Unix epoch. */
+export interface SearchResult {
+  readonly url: string;
+  readonly title?: string;
+  readonly content?: string;
+  readonly published?: number;
+}
+
+/** A web search backend the `web_search` tool routes to by `id`; a throw fails the call. */
+export interface SearchProvider {
+  readonly id: string;
+  readonly name: string;
+  search(input: {
+    readonly query: string;
+    readonly signal: AbortSignal;
+  }): Promise<readonly SearchResult[]>;
+}
+
 export interface Keybinding {
   readonly key: string;
   readonly command: string;
@@ -229,6 +247,7 @@ export type ContributionTable = {
   agents: Row<Agent, "core">;
   modelContext: Row<ModelContextPolicy, "core">;
   skills: Row<Skill, "core">;
+  searchProviders: Row<SearchProvider, "core">;
   parts: Row<PartDefinition, "core">;
   commands: Row<Command, Side>;
   settings: Row<SettingDefinition, Side, Setting<unknown>>;

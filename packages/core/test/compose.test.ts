@@ -191,8 +191,8 @@ describe("composeHost", () => {
       "system-prompt",
       "environment",
       "resources",
-      "delegation",
       "interruptions",
+      "worktrees",
       "chat-only",
       "extra",
     ]);
@@ -214,7 +214,6 @@ describe("composeHost", () => {
     expect(view.plugins.map((plugin) => [plugin.id, plugin.source])).toEqual(
       expect.arrayContaining([
         ["system-prompt", "builtin"],
-        ["delegation", "builtin"],
         ["chat-only", "inline"],
       ]),
     );
@@ -236,7 +235,7 @@ describe("composeHost", () => {
     await views.return?.();
 
     const seeded = [
-      ...["system-prompt", "environment", "resources", "delegation", "interruptions"].map((id) => ({
+      ...["system-prompt", "environment", "resources", "interruptions", "worktrees"].map((id) => ({
         id,
         source: "builtin",
         path: null,

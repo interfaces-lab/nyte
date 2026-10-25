@@ -59,7 +59,6 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: role.bgBase,
   },
   toolbar: { position: "relative", gap: space.s2 },
   progress: {

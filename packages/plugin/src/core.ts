@@ -18,6 +18,8 @@ export type {
   PartDefinition,
   PartState,
   PromptSection,
+  SearchProvider,
+  SearchResult,
   Setting,
   SettingDefinition,
   Skill,
