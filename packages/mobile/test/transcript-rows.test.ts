@@ -119,6 +119,9 @@ const usage: CanvasState = {
   code: "export default () => null",
   height: 240,
   error: null,
+  revisions: [
+    { number: 1, blob: asId<"blob">("blob-1"), runtime: 1, title: "Usage", height: 240, at: 0 },
+  ],
 };
 
 describe("conversationRows", () => {

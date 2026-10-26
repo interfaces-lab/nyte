@@ -85,7 +85,23 @@ describe("turn", () => {
           .user("chart it")
           .part(
             "canvas",
-            { runtime: 1, title: "Weekly signups", code: "", height: null, error: null },
+            {
+              runtime: 1,
+              title: "Weekly signups",
+              code: "",
+              height: null,
+              error: null,
+              revisions: [
+                {
+                  number: 1,
+                  blob: "blob-1",
+                  runtime: 1,
+                  title: "Weekly signups",
+                  height: null,
+                  at: 0,
+                },
+              ],
+            },
             { role: "answer" },
           )
           .ended("completed"),
