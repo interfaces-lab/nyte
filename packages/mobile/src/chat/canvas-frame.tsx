@@ -17,7 +17,7 @@ import {
   renderNotification,
 } from "@nyte-ai/plugin/canvas/protocol";
 import { controls, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
-import { mobileHostContext, shellEffect, shellScript } from "./canvas-host.ts";
+import { mobileHostContext, shellEffect, shellScript, startupScript } from "./canvas-host.ts";
 import type { ShellBound } from "./canvas-host.ts";
 import { openExternalLink } from "./markdown.tsx";
 import type { ChatRow } from "./transcript-rows.ts";
@@ -147,6 +147,7 @@ export function CanvasFrame({
             key={generation}
             ref={webView}
             source={{ html: shell.html }}
+            injectedJavaScriptBeforeContentLoaded={startupScript(scheme)}
             originWhitelist={EVERY_ORIGIN}
             onShouldStartLoadWithRequest={(request) => request.url === "about:blank"}
             onMessage={onMessage}

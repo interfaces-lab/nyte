@@ -1,6 +1,8 @@
 import {
   CANVAS_MAX_HEIGHT,
+  CANVAS_STARTUP_CONTEXT,
   clampCanvasHeight,
+  hostContextChangedNotification,
   readShellMessage,
   renderNotification,
 } from "@nyte-ai/plugin/canvas/protocol";
@@ -18,6 +20,11 @@ export type CanvasEffect =
 
 export function shellScript(message: ShellBound): string {
   return `window.dispatchEvent(new MessageEvent("message", { data: ${JSON.stringify(message)} })); true;`;
+}
+
+/** Hands the shell its host context before its scripts run, so its first frame is already in the app's scheme. */
+export function startupScript(theme: "light" | "dark"): string {
+  return `window.${CANVAS_STARTUP_CONTEXT} = ${JSON.stringify(hostContextChangedNotification(mobileHostContext(theme)))}; true;`;
 }
 
 export function shellEffect(data: string): CanvasEffect | undefined {

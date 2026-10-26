@@ -15,6 +15,9 @@ export const CANVAS_RUNTIME = 2;
 /** The global the shell installs before importing a module: `{ runtime, react, jsxRuntime, reactDom, kit, library }`, where `library(specifier)` loads one of `LIBRARY_EXPORTS`' modules. */
 export const CANVAS_GLOBAL = "__nyteCanvas";
 
+/** The global a client may set before the shell's scripts run (iOS, through a WebView's document-start script) to a `hostContextChangedNotification` the shell applies before it first paints, so it starts in the client's scheme rather than waiting for `ui/initialize`. */
+export const CANVAS_STARTUP_CONTEXT = "__nyteCanvasContext";
+
 /** The import specifier for the kit. */
 export const KIT_SPECIFIER = "nyte/canvas";
 

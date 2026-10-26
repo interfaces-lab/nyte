@@ -13,6 +13,7 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   CANVAS_GLOBAL,
   CANVAS_RUNTIME,
+  CANVAS_STARTUP_CONTEXT,
   errorNotification,
   initializeRequest,
   initializedNotification,
@@ -376,6 +377,12 @@ document.addEventListener(
 );
 
 new ResizeObserver(measure).observe(container, { box: "border-box" });
+
+const startup = readHostMessage(
+  CANVAS_STARTUP_CONTEXT in window ? window[CANVAS_STARTUP_CONTEXT] : undefined,
+);
+
+if (startup?.kind === "context-changed") apply(startup.context);
 
 paint();
 post(initializeRequest(1, CANVAS_RUNTIME));
