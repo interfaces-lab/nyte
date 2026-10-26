@@ -206,6 +206,9 @@ function leadingPrompt(view: SessionView, start: number): SessionView["leadingPr
   return prompt?.kind === "user" ? prompt : null;
 }
 
+/** Each round trip a chat cost, as `<chat>:<call>`, in the order they started. */
+const fetches: string[] = [];
+
 installConnection(
   scriptedConnection({
     sessions: NAMES.map((name) => sessionRow(name, { name })),
@@ -217,6 +220,7 @@ installConnection(
 
       return {
         watch: async function* (options) {
+          fetches.push(`${entry.name}:watch`);
           await roundTrip();
 
           const initial = entry.view(entry.live);
@@ -241,6 +245,7 @@ installConnection(
             };
         },
         history: async ({ before, limit }) => {
+          fetches.push(`${entry.name}:history`);
           await roundTrip();
           const view = entry.view(entry.live);
           const end = view.messages.findIndex((message) => message.id === before);
@@ -365,6 +370,7 @@ export async function run(): Promise<string> {
 
     const gapClosed = performance.now() - gapStarted;
     await pause(1_000);
+    const beforeSwitching = fetches.length;
     const switches: string[] = [];
     let slowest = 0;
 
@@ -383,6 +389,7 @@ export async function run(): Promise<string> {
       gapShown,
       gapClosed,
       switches,
+      switched: fetches.slice(beforeSwitching),
       slowest,
       roundTrip: ROUND_TRIP_MS,
     });
