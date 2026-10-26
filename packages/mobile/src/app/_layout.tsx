@@ -139,6 +139,14 @@ function Connected({ session }: { session: HostSession }) {
               contentStyle: { backgroundColor: theme.canvas },
             }}
           />
+          <Stack.Screen
+            name="canvas/[id]"
+            options={{
+              title: "",
+              headerStyle: { backgroundColor: theme.canvas },
+              contentStyle: { backgroundColor: theme.canvas },
+            }}
+          />
           <Stack.Screen name="changes/[id]" options={{ title: "Changed Files" }} />
           <Stack.Screen name="review/[id]" options={{ title: "" }} />
           <Stack.Screen

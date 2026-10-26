@@ -51,6 +51,10 @@ export function Timeline({
     router.push(`/changes/${sessionId}?path=${encodeURIComponent(path)}`);
   };
 
+  const openCanvas = (part: PartId) => {
+    router.push(`/canvas/${sessionId}?part=${encodeURIComponent(part)}`);
+  };
+
   return (
     <>
       <MessageScroller
@@ -65,6 +69,7 @@ export function Timeline({
             queued={queued}
             onOpenActivity={activity.openActivity}
             onReport={onReport}
+            onOpenCanvas={openCanvas}
           />
         )}
         contentContainerStyle={{ paddingTop: headerHeight + spacing.md, paddingBottom: spacing.md }}

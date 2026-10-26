@@ -1,6 +1,6 @@
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
-import { SessionIdSchema } from "@nyte-ai/schema";
-import type { RunView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
+import { PartIdSchema, SessionIdSchema } from "@nyte-ai/schema";
+import type { PartId, RunView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
 import { mainHead } from "@nyte-ai/plugin/client/presentation";
 
 export function liveRun(session: SessionInfo): RunView | undefined {
@@ -17,6 +17,12 @@ export function hasRun(session: SessionInfo): boolean {
 
 export function parseSessionId(raw: string | undefined): SessionId | undefined {
   const result = SessionIdSchema["~standard"].validate(raw);
+
+  return result instanceof Promise || result.issues !== undefined ? undefined : result.value;
+}
+
+export function parsePartId(raw: string | undefined): PartId | undefined {
+  const result = PartIdSchema["~standard"].validate(raw);
 
   return result instanceof Promise || result.issues !== undefined ? undefined : result.value;
 }

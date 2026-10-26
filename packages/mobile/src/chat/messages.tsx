@@ -234,16 +234,22 @@ function CanvasRow({
   item,
   layout,
   onReport,
+  onOpenCanvas,
 }: {
   item: Extract<ChatRow, { kind: "canvas" }>;
   layout: ConversationLayout;
   onReport: (part: PartId, message: string) => void;
+  onOpenCanvas: (part: PartId) => void;
 }) {
   return (
     <Row layout={layout}>
       <Message>
         <View style={{ width: layout.contentWidth }}>
-          <CanvasFrame item={item} onReport={(message) => onReport(item.part, message)} />
+          <CanvasFrame
+            item={item}
+            onReport={(message) => onReport(item.part, message)}
+            onExpand={() => onOpenCanvas(item.part)}
+          />
         </View>
       </Message>
     </Row>
@@ -341,6 +347,7 @@ export const MessageRow = memo(function MessageRow({
   queued,
   onOpenActivity,
   onReport,
+  onOpenCanvas,
 }: {
   item: ChatRow;
   layout: ConversationLayout;
@@ -348,12 +355,16 @@ export const MessageRow = memo(function MessageRow({
   queued: QueuedActions;
   onOpenActivity: (item: Extract<ChatRow, { kind: "activity" }>) => void;
   onReport: (part: PartId, message: string) => void;
+  onOpenCanvas: (part: PartId) => void;
 }) {
   if (item.kind === "user") return <UserMessage item={item} layout={layout} queued={queued} />;
 
   if (item.kind === "assistant") return <AssistantMessage item={item} layout={layout} />;
 
-  if (item.kind === "canvas") return <CanvasRow item={item} layout={layout} onReport={onReport} />;
+  if (item.kind === "canvas")
+    return (
+      <CanvasRow item={item} layout={layout} onReport={onReport} onOpenCanvas={onOpenCanvas} />
+    );
 
   return (
     <Row layout={layout}>
