@@ -120,12 +120,14 @@ function GroupRow({
   glyph,
   meta,
   action,
+  indented = false,
   children,
 }: {
   readonly name: string;
   readonly title: string;
   readonly glyph: (expanded: boolean) => IconName;
   readonly meta?: string;
+  readonly indented?: boolean;
   readonly action?: ReactNode;
   readonly children: ReactNode;
 }): ReactElement {
@@ -158,7 +160,7 @@ function GroupRow({
         </Row.Primary>
         {action !== undefined && <Row.Actions placement="overlay">{action}</Row.Actions>}
       </Row>
-      <Collapsible.Panel {...props(sidebarStyles.sessionList, styles.nested)}>
+      <Collapsible.Panel {...props(sidebarStyles.sessionList, indented && styles.indented)}>
         {children}
       </Collapsible.Panel>
     </Collapsible.Root>
@@ -349,6 +351,7 @@ export function ProjectsSidebar({
                   name={lane.name}
                   title={`${lane.name} stack`}
                   glyph={() => "layers"}
+                  indented
                   meta={
                     lane.questions === 0
                       ? undefined

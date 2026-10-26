@@ -192,18 +192,7 @@ export const styles = create({
     boxShadow: `inset 0 0 0 1px ${role.contentInteractivePrimary}`,
   },
   /** Children start under the parent's label; the guide runs down from the parent's glyph. */
-  nested: {
-    position: "relative",
-    paddingInlineStart: `calc(${sidebar.iconSlot} + ${sidebar.rowGap})`,
-    "::before": {
-      content: "''",
-      position: "absolute",
-      insetBlock: 2,
-      insetInlineStart: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} / 2)`,
-      width: 1,
-      backgroundColor: role.borderSecondaryTranslucent,
-    },
-  },
+  indented: { paddingInlineStart: `calc(${sidebar.iconSlot} + ${sidebar.rowGap})` },
   dragging: { opacity: 0.5 },
   dragOverlay: {
     display: "flex",

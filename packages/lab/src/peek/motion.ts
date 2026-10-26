@@ -1,7 +1,7 @@
 import { useDialKit, type TransitionConfig } from "dialkit";
 import type { Transition } from "motion/react";
 
-export const TRIGGERS = ["shift", "other-sites", "off"] as const;
+export const TRIGGERS = ["click", "shift", "other-sites", "off"] as const;
 
 export const LAYOUTS = ["popover", "full-bleed"] as const;
 
@@ -58,11 +58,12 @@ export function usePeekDials(): PeekDials {
     trigger: {
       type: "select",
       options: [
+        { value: "click", label: "Click" },
         { value: "shift", label: "Shift-click" },
         { value: "other-sites", label: "Click links to other sites" },
         { value: "off", label: "Off" },
       ],
-      default: "shift",
+      default: "click",
     },
     layout: {
       type: "select",
@@ -103,7 +104,7 @@ export function usePeekDials(): PeekDials {
   const springs = values.layout === "full-bleed" ? values.fullBleed : values.popover;
 
   return {
-    trigger: TRIGGERS.find((trigger) => trigger === values.trigger) ?? "shift",
+    trigger: TRIGGERS.find((trigger) => trigger === values.trigger) ?? "click",
     layout: LAYOUTS.find((layout) => layout === values.layout) ?? "popover",
     open: toTransition(springs.open, scale),
     close: toTransition(springs.close, scale),
