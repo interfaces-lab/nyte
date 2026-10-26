@@ -3,7 +3,6 @@ import type { ReactElement } from "react";
 import { titlebarStyles } from "@nyte-ai/app/chrome/titlebar.stylex.ts";
 import { WindowTabStrip } from "@nyte-ai/app/tabs/window-tab-strip.tsx";
 import type { WindowTabItem } from "@nyte-ai/app/tabs/window-tab-strip.tsx";
-import { Button } from "@nyte-ai/ui/button";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { styles } from "./page.stylex";
@@ -48,12 +47,6 @@ export function Titlebar({
             <PanelToggleIcon side="left" visible={sidebar} />
           </Toggle>
         </span>
-        <span {...props(titlebarStyles.historyControl, titlebarStyles.historyControlBack)}>
-          <Button iconOnly icon="arrow-left" aria-label="Go back" disabled />
-        </span>
-        <span {...props(titlebarStyles.historyControl)}>
-          <Button iconOnly icon="arrow-right" aria-label="Go forward" disabled />
-        </span>
       </span>
       <div {...props(titlebarStyles.contentArea, titlebarStyles.contentAreaTabbed)}>
         <span {...props(titlebarStyles.center, titlebarStyles.centerTrailing)}>
@@ -65,7 +58,6 @@ export function Titlebar({
             onClose={(id) => onClose([id])}
             onNewTab={onNewTab}
             onReorder={onReorder}
-            onDuplicate={onActivate}
             onCloseOthers={(id) => onClose(ids.filter((candidate) => candidate !== id))}
             onCloseToRight={(id) => onClose(ids.slice(ids.indexOf(id) + 1))}
           />
