@@ -115,13 +115,14 @@ jobs:
           fi
           echo "sha=$sha" | tee -a "$GITHUB_OUTPUT"
 
-  verify:
+  # Packaging only needs these assets, so signing and notarizing run while verify tests.
+  # Nothing is published until verify passes: draft waits for it.
+  assets:
     needs: version
     runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 45
+    timeout-minutes: 20
     env:
       RELEASE_VERSION: ${{ needs.version.outputs.version }}
-      NYTE_RELEASE_VERSION: ${{ needs.version.outputs.version }}
       VITE_NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
       VITE_NYTE_CLERK_PUBLISHABLE_KEY: ${{ vars.NYTE_CLERK_PUBLISHABLE_KEY }}
     steps:
@@ -161,25 +162,6 @@ jobs:
               exit 1
             fi
           done
-      - name: Install Linux test dependencies
-        if: ${{ !inputs.skip_verify }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ripgrep xvfb
-          pnpm --dir packages/app exec playwright install-deps chromium
-          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
-            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          fi
-      - if: ${{ !inputs.skip_verify }}
-        run: |
-          pnpm sdk:check
-          pnpm format
-          pnpm lint
-          pnpm typecheck
-          pnpm build
-          xvfb-run --auto-servernum pnpm exec turbo run test --concurrency=3 --continue
-          pnpm sdk:pack
-          pnpm sdk:verify
       - name: Build portable desktop assets
         run: node packages/desktop/scripts/assets.mjs build "$RUNNER_TEMP/desktop-assets"
       - uses: actions/upload-artifact@v7
@@ -190,8 +172,48 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  verify:
+    needs: version
+    if: ${{ !inputs.skip_verify }}
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 45
+    env:
+      NYTE_RELEASE_VERSION: ${{ needs.version.outputs.version }}
+      VITE_NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
+      VITE_NYTE_CLERK_PUBLISHABLE_KEY: ${{ vars.NYTE_CLERK_PUBLISHABLE_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: pnpm install --frozen-lockfile
+      - name: Install Linux test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep xvfb
+          pnpm --dir packages/app exec playwright install-deps chromium
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - run: |
+          pnpm sdk:check
+          pnpm format
+          pnpm lint
+          pnpm typecheck
+          pnpm build
+          xvfb-run --auto-servernum pnpm exec turbo run test --concurrency=3 --continue
+          pnpm sdk:pack
+          pnpm sdk:verify
+
   tui:
-    needs: [version, verify]
+    needs: [version, assets]
     permissions:
       contents: read
       id-token: write
@@ -219,7 +241,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 26
-          cache: pnpm
+          # On Blacksmith macOS, restoring the pnpm store takes as long as installing without it,
+          # and saving it after a lockfile change adds over a minute.
+          cache: ${{ runner.os != 'macOS' && 'pnpm' || '' }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -266,7 +290,7 @@ jobs:
           if-no-files-found: error
 
   desktop:
-    needs: [version, verify]
+    needs: [version, assets]
     strategy:
       fail-fast: false
       matrix:
@@ -302,7 +326,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 26
-          cache: pnpm
+          # See the tui job.
+          cache: ${{ runner.os != 'macOS' && 'pnpm' || '' }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -347,7 +372,9 @@ jobs:
           if-no-files-found: error
 
   draft:
-    needs: [version, tui, desktop]
+    needs: [version, verify, tui, desktop]
+    # verify is skipped with skip_verify; draft still waits for it otherwise.
+    if: ${{ !cancelled() && !failure() }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
@@ -383,7 +410,7 @@ jobs:
           gh release create "$RELEASE_TAG" "${files[@]}" --draft --prerelease="$PRERELEASE" --target "$RELEASE_SHA" --generate-notes --title "Nyte $RELEASE_TAG"
 
   publish:
-    needs: [version, verify, draft]
+    needs: [version, draft]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -398,26 +425,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.version.outputs.sha }}
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 26
-          cache: pnpm
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: pnpm install --frozen-lockfile
-      - name: Write the release version into the packages
-        run: node scripts/release-version.mjs prepare "$RELEASE_VERSION"
-      - name: Use the bootstrap npm token
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [[ -n "$NPM_TOKEN" ]]; then
-            printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
-          fi
-      - name: Publish the SDK packages
-        run: pnpm release:publish --tag "$NPM_TAG" --filter='!nyte-ai'
+      # First, so the desktop updater sees the release without waiting for npm.
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -438,5 +446,25 @@ jobs:
           else
             gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest "${notes[@]}"
           fi
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: pnpm install --frozen-lockfile
+      - name: Write the release version into the packages
+        run: node scripts/release-version.mjs prepare "$RELEASE_VERSION"
+      - name: Use the bootstrap npm token
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ -n "$NPM_TOKEN" ]]; then
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
+          fi
+      - name: Publish the SDK packages
+        run: pnpm release:publish --tag "$NPM_TAG" --filter='!nyte-ai'
       - name: Publish the launcher
         run: pnpm release:publish --tag "$NPM_TAG" --filter=nyte-ai

@@ -44,14 +44,14 @@ After you confirm, the script runs
    started from and pushes it to `main`. It holds the version in every release package and a
    `## v<version> — <date>` entry at the top of `CHANGELOG.md`. If `main` moved in the meantime,
    the push fails; start the release again.
-3. Checks out that commit and checks that the release packages share one version, then runs format,
-   lint, typecheck, build, tests, `sdk:check`, `sdk:pack` and `sdk:verify` on Linux. It exports the
-   web and canvas builds for every desktop target.
-4. Builds, signs and notarizes the `nyte` binaries, and builds the desktop app.
-5. Uploads both to a draft GitHub release `v<version>`.
-6. Publishes the SDK packages to npm with `pnpm -r publish`, in dependency order, with provenance.
-7. Tags the release commit `v<version>` and publishes the GitHub release, with the reviewed notes
-   as its body when given and generated notes otherwise.
+3. Checks out that commit, checks that the release packages share one version, and exports the web
+   and canvas builds for every desktop target.
+4. Builds, signs and notarizes the `nyte` binaries, and builds the desktop app. Meanwhile it runs
+   format, lint, typecheck, build, tests, `sdk:check`, `sdk:pack` and `sdk:verify` on Linux.
+5. Once those pass, uploads the binaries and the desktop app to a draft GitHub release `v<version>`.
+6. Tags the release commit `v<version>` and publishes the GitHub release, with the reviewed notes
+   as its body when given and generated notes otherwise. The desktop updater picks it up from here.
+7. Publishes the SDK packages to npm with `pnpm -r publish`, in dependency order, with provenance.
 8. Publishes `nyte-ai` last, so the launcher never points at assets a draft still hides.
 
 So `v<version>` names the commit whose package manifests say `<version>`. Versions with a `-` skip
