@@ -41,12 +41,9 @@ it("renders a canvas from the tool as an answer part, then replaces it in place 
   });
   expect(drawn.state.code).toContain("var _canvas = require('nyte/canvas');");
   expect(drawn.state.code).toContain('export default __require("main.tsx").default;');
-  expect(
-    canvas.fallback(
-      { runtime: 1, title: "Totals", code: "", height: null, error: null },
-      { id: drawn.part },
-    ),
-  ).toBe(`Canvas ${drawn.part}: Totals.`);
+  expect(canvas.fallback({ ...drawn.state, error: null }, { id: drawn.part })).toBe(
+    `Canvas ${drawn.part}: Totals.`,
+  );
 
   expect(
     await session.part(drawn.part).act("report", { message: "View is not a function" }),
@@ -57,10 +54,7 @@ it("renders a canvas from the tool as an answer part, then replaces it in place 
     ),
   ).toMatchObject({ state: { error: "View is not a function" } });
   expect(
-    canvas.fallback(
-      { runtime: 1, title: "Totals", code: "", height: null, error: "View is not a function" },
-      { id: drawn.part },
-    ),
+    canvas.fallback({ ...drawn.state, error: "View is not a function" }, { id: drawn.part }),
   ).toBe(
     `Canvas ${drawn.part}: Totals. It failed to render: View is not a function. Fix it by calling canvas_render with canvas "${drawn.part}".`,
   );

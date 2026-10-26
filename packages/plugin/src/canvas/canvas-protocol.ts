@@ -91,6 +91,18 @@ export const LIBRARY_EXPORTS: Readonly<Record<string, readonly string[]>> = Obje
   Object.entries(CANVAS_LIBRARIES).map(([name, library]) => [name, library.exports.split(" ")]),
 );
 
+/** A library a canvas may import, by its import specifier. */
+export type CanvasLibrary = keyof typeof CANVAS_LIBRARIES;
+
+const CANVAS_LIBRARY_NAMES = Object.keys(CANVAS_LIBRARIES).filter((name): name is CanvasLibrary =>
+  Object.hasOwn(CANVAS_LIBRARIES, name),
+);
+
+/** Returns the library a value names, or undefined when it names none. */
+export function readCanvasLibrary(value: unknown): CanvasLibrary | undefined {
+  return CANVAS_LIBRARY_NAMES.find((name) => name === value);
+}
+
 /** Each library's pinned version, by its import specifier. */
 export const LIBRARY_VERSIONS: Readonly<Record<string, string>> = Object.fromEntries(
   Object.entries(CANVAS_LIBRARIES).map(([name, library]) => [name, library.version]),
@@ -274,6 +286,8 @@ export type ShellMessage =
   | { readonly kind: "size"; readonly height: number }
   /** `url` is an http(s) URL, or a reference with no scheme that the client resolves in its workspace. */
   | { readonly kind: "open-link"; readonly id: JsonRpcId; readonly url: string }
+  /** Asked only by a shell with no base URL to load `libraries/<name>.js` from (the inline one in a WebView); the request's id is the name. */
+  | { readonly kind: "library"; readonly name: CanvasLibrary }
   | {
       readonly kind: "error";
       readonly phase: "load" | "render";
@@ -291,7 +305,9 @@ export type HostMessage =
     }
   | { readonly kind: "render"; readonly module: CanvasModule }
   | { readonly kind: "context-changed"; readonly context: Partial<CanvasHostContext> }
-  | { readonly kind: "open-link-result"; readonly id: JsonRpcId; readonly isError: boolean };
+  | { readonly kind: "open-link-result"; readonly id: JsonRpcId; readonly isError: boolean }
+  /** `source` is the library's self-contained ES module. */
+  | { readonly kind: "library-result"; readonly name: CanvasLibrary; readonly source: string };
 
 const INITIALIZE = "ui/initialize";
 
@@ -300,6 +316,8 @@ const INITIALIZED = "ui/notifications/initialized";
 const SIZE_CHANGED = "ui/notifications/size-changed";
 
 const OPEN_LINK = "ui/open-link";
+
+const LIBRARY = "nyte/library";
 
 const LOG_MESSAGE = "notifications/message";
 
@@ -390,6 +408,14 @@ export function openLinkResult(id: JsonRpcId, isError = false): Json {
   return { jsonrpc: "2.0", id, result: isError ? { isError: true } : {} };
 }
 
+export function libraryRequest(name: CanvasLibrary): Json {
+  return { jsonrpc: "2.0", id: name, method: LIBRARY, params: { name } };
+}
+
+export function libraryResult(name: CanvasLibrary, source: string): Json {
+  return { jsonrpc: "2.0", id: name, result: { source } };
+}
+
 /** Returns the message a shell posted, or undefined for anything that is not one. */
 export function readShellMessage(data: unknown): ShellMessage | undefined {
   const message = envelope(data);
@@ -422,6 +448,12 @@ export function readShellMessage(data: unknown): ShellMessage | undefined {
     return url === undefined ? undefined : { kind: "open-link", id, url };
   }
 
+  if (method === LIBRARY) {
+    const name = readCanvasLibrary(params?.["name"]);
+
+    return name !== undefined && id === name ? { kind: "library", name } : undefined;
+  }
+
   if (method === LOG_MESSAGE) {
     const payload = record(params?.["data"]);
     const phase = payload?.["phase"];
@@ -449,6 +481,15 @@ export function readHostMessage(data: unknown): HostMessage | undefined {
   const { id, method, params, result } = message;
 
   if (method === undefined && id !== undefined && result !== undefined) {
+    if ("source" in result) {
+      const source = result["source"];
+      const name = readCanvasLibrary(id);
+
+      return typeof source === "string" && name !== undefined
+        ? { kind: "library-result", name, source }
+        : undefined;
+    }
+
     if (result["hostContext"] === undefined)
       return { kind: "open-link-result", id, isError: result["isError"] === true };
     const info = record(result["hostInfo"]);

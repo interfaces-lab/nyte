@@ -13,16 +13,21 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   CANVAS_GLOBAL,
   CANVAS_RUNTIME,
-  LIBRARY_EXPORTS,
   errorNotification,
   initializeRequest,
   initializedNotification,
+  libraryRequest,
   locateCanvasStack,
   openLinkRequest,
+  readCanvasLibrary,
   readHostMessage,
   sizeChangedNotification,
 } from "@nyte-ai/plugin/canvas/protocol";
-import type { CanvasHostContext, CanvasModule } from "@nyte-ai/plugin/canvas/protocol";
+import type {
+  CanvasHostContext,
+  CanvasLibrary,
+  CanvasModule,
+} from "@nyte-ai/plugin/canvas/protocol";
 import { kit } from "../kit/index.ts";
 import { SchemeContext } from "../kit/scheme.ts";
 
@@ -63,19 +68,44 @@ const styles = create({
   },
 });
 
+/** Each library a canvas imported, and, in a shell with no base URL, the hand-off for the source its client sends. */
+const libraries = new Map<
+  CanvasLibrary,
+  { readonly module: Promise<unknown>; readonly receive: (source: string) => void }
+>();
+
 /**
  * Loads one of the libraries, each its own chunk beside the shell, so only a
  * canvas that imports `three` downloads it. A shell with no base URL (the
- * inline one in a WebView) has nowhere to load a chunk from.
+ * inline one in a WebView) asks its client for the module's source instead.
+ * Every import of a library shares one module, so its classes stay one.
  */
-function library(name: string): Promise<unknown> {
-  if (!Object.hasOwn(LIBRARY_EXPORTS, name))
-    return Promise.reject(new Error(`"${name}" is not a canvas library.`));
+function library(specifier: string): Promise<unknown> {
+  const name = readCanvasLibrary(specifier);
+
+  if (name === undefined)
+    return Promise.reject(new Error(`"${specifier}" is not a canvas library.`));
+  const loaded = libraries.get(name);
+
+  if (loaded !== undefined) return loaded.module;
   const url = URL.parse(`libraries/${name}.js`, document.baseURI);
+  const source = Promise.withResolvers<string>();
 
-  if (url === null) return Promise.reject(new Error(`This client cannot load "${name}".`));
+  const module =
+    url === null
+      ? source.promise.then(
+          (code) =>
+            import(
+              /* @vite-ignore */ URL.createObjectURL(new Blob([code], { type: "text/javascript" }))
+            ),
+        )
+      : import(/* @vite-ignore */ url.href);
 
-  return import(/* @vite-ignore */ url.href);
+  libraries.set(name, { module, receive: source.resolve });
+
+  if (url === null) post(libraryRequest(name));
+
+  return module;
 }
 
 Object.defineProperty(globalThis, CANVAS_GLOBAL, {
@@ -285,6 +315,10 @@ function receive(data: unknown): void {
 
       return;
     case "open-link-result":
+      return;
+    case "library-result":
+      libraries.get(message.name)?.receive(message.source);
+
       return;
   }
 }

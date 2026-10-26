@@ -42,9 +42,9 @@ const handlers: {
       height: input.height,
       error: null,
       revisions: [
-        ...(current.revisions ?? []),
+        ...current.revisions,
         {
-          number: (current.revisions?.at(-1)?.number ?? 1) + 1,
+          number: (current.revisions.at(-1)?.number ?? 0) + 1,
           blob: input.blob,
           runtime: input.runtime,
           title: input.title,

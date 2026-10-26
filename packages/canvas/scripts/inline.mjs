@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CANVAS_RUNTIME } from "@nyte-ai/plugin/canvas/protocol";
+import { CANVAS_RUNTIME, LIBRARY_EXPORTS } from "@nyte-ai/plugin/canvas/protocol";
+import { build } from "vite";
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 
@@ -56,13 +57,38 @@ const inlined = html
   .replace(styleMatch[0], () => `<style>${css}</style>`)
   .replace(scriptMatch[0], () => `<script type="module">${script}</script>`);
 
+/**
+ * Each library as one ES module with no imports, by its specifier: the inline
+ * shell has no URL to import a shared chunk from, so it imports a library's
+ * source from a blob its client hands it.
+ */
+const libraries = {};
+
+for (const name of Object.keys(LIBRARY_EXPORTS)) {
+  const output = await build({
+    configFile: fileURLToPath(new URL("../vite.libraries.config.ts", import.meta.url)),
+    logLevel: "warn",
+    build: {
+      write: false,
+      emptyOutDir: false,
+      rolldownOptions: { input: name, output: { codeSplitting: false } },
+    },
+  });
+
+  const chunks = (Array.isArray(output) ? output : [output]).flatMap((result) => result.output);
+
+  if (chunks.length !== 1 || chunks[0].type !== "chunk")
+    throw new Error(`The ${name} library did not build to one module.`);
+  libraries[name] = chunks[0].code;
+}
+
 await writeFile(
   join(dist, "shell-inline.js"),
-  `export const shell = ${JSON.stringify({ runtime: CANVAS_RUNTIME, html: inlined })};\n`,
+  `export const shell = ${JSON.stringify({ runtime: CANVAS_RUNTIME, html: inlined, libraries })};\n`,
 );
 await writeFile(
   join(dist, "shell-inline.d.ts"),
-  "export declare const shell: { readonly runtime: number; readonly html: string };\n",
+  'import type { CanvasLibrary } from "@nyte-ai/plugin/canvas/protocol";\nexport declare const shell: { readonly runtime: number; readonly html: string; readonly libraries: Readonly<Record<CanvasLibrary, string>> };\n',
 );
 /** Every file of the shell directory, base64 by its path from it, for a host that serves the shell itself at a URL of its own (a headless preview), as the chat's clients serve dist/shell. */
 const files = Object.fromEntries(

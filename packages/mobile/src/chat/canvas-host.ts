@@ -4,7 +4,7 @@ import {
   readShellMessage,
   renderNotification,
 } from "@nyte-ai/plugin/canvas/protocol";
-import type { CanvasHostContext, JsonRpcId } from "@nyte-ai/plugin/canvas/protocol";
+import type { CanvasHostContext, CanvasLibrary, JsonRpcId } from "@nyte-ai/plugin/canvas/protocol";
 
 export type ShellBound = ReturnType<typeof renderNotification>;
 
@@ -13,6 +13,7 @@ export type CanvasEffect =
   | { readonly kind: "ready" }
   | { readonly kind: "height"; readonly height: number; readonly scrolls: boolean }
   | { readonly kind: "open-link"; readonly id: JsonRpcId; readonly url: string }
+  | { readonly kind: "library"; readonly name: CanvasLibrary }
   | { readonly kind: "error"; readonly message: string };
 
 export function shellScript(message: ShellBound): string {
@@ -45,6 +46,8 @@ export function shellEffect(data: string): CanvasEffect | undefined {
       };
     case "open-link":
       return { kind: "open-link", id: message.id, url: message.url };
+    case "library":
+      return { kind: "library", name: message.name };
     case "error":
       return { kind: "error", message: message.message };
     default: {

@@ -12,6 +12,7 @@ import {
   clampCanvasHeight,
   hostContextChangedNotification,
   initializeResult,
+  libraryResult,
   openLinkResult,
   renderNotification,
 } from "@nyte-ai/plugin/canvas/protocol";
@@ -102,6 +103,9 @@ export function CanvasFrame({
         void openExternalLink(effect.url).then((opened) =>
           inject(webView.current, openLinkResult(effect.id, !opened)),
         );
+        break;
+      case "library":
+        inject(webView.current, libraryResult(effect.name, shell.libraries[effect.name]));
         break;
       case "error":
         fail(effect.message);

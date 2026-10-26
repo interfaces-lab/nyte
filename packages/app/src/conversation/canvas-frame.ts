@@ -25,6 +25,7 @@ export function canvasFrameHeight(hint: number | null, reported: number | undefi
   return clampCanvasHeight(reported ?? hint ?? CANVAS_DEFAULT_HEIGHT);
 }
 
+/** Answers a shell message; this shell is served beside its libraries, so a library request never comes. */
 export function canvasFrameEffects(
   message: ShellMessage,
   frame: {
@@ -47,6 +48,8 @@ export function canvasFrameEffects(
       return [{ kind: "height", height: clampCanvasHeight(message.height) }];
     case "open-link":
       return [{ kind: "open-link", id: message.id, url: message.url }];
+    case "library":
+      return [];
     case "error":
       return [{ kind: "error", phase: message.phase, message: message.message }];
   }

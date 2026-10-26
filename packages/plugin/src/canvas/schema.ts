@@ -38,8 +38,7 @@ const state = standard(
     ...drawn,
     code: Type.String({ maxLength: CANVAS_CODE_LIMIT }),
     error: Type.Union([Type.String(), Type.Null()]),
-    // Absent on a canvas rendered before revisions were kept.
-    revisions: Type.Optional(Type.Array(revision, { maxItems: CANVAS_REVISIONS_KEPT })),
+    revisions: Type.Array(revision, { minItems: 1, maxItems: CANVAS_REVISIONS_KEPT }),
   }),
 );
 
@@ -75,7 +74,7 @@ export type CanvasState = Infer<typeof state>;
  * @category plugins
  * @since 0.1.0
  */
-export type CanvasRevision = NonNullable<CanvasState["revisions"]>[number];
+export type CanvasRevision = CanvasState["revisions"][number];
 
 /**
  * A canvas part: a React module the agent wrote, compiled on the host and
