@@ -1,13 +1,14 @@
 import { create, props } from "@stylexjs/stylex";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
+import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { Icon } from "@nyte-ai/ui/icon";
 import { avatar, button, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { YOU } from "./model.ts";
-import type { Attachment, Check, DiffLine, Event } from "./model.ts";
+import type { Attachment, Check, DiffLine, Event, Finding } from "./model.ts";
 import { ago } from "./parts.tsx";
 import { Shot } from "./shots.tsx";
 
@@ -71,6 +72,34 @@ const styles = create({
   },
   checkGlyph: { display: "inline-flex", color: role.contentInteractivePrimary },
   checkPending: { color: role.contentTertiary },
+  tail: { paddingBlockEnd: 0 },
+  tailMarker: { color: role.contentInteractivePrimary },
+  findings: {
+    display: "flex",
+    flexDirection: "column",
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+    borderRadius: radius.card,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    overflow: "hidden",
+  },
+  finding: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: space.s3,
+    padding: space.s3,
+    borderBlockStartWidth: { default: 1, ":first-child": 0 },
+    borderBlockStartStyle: "solid",
+    borderBlockStartColor: role.borderSecondaryTranslucent,
+    transitionProperty: "opacity",
+    transitionDuration: motion.durationFast,
+  },
+  findingDropped: { opacity: 0.55 },
+  findingBody: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
+  findingTitle: { fontWeight: type.weightMedium },
+  findingDetail: { color: role.contentSecondary },
+  nit: { color: role.contentTertiary, fontWeight: type.weightRegular },
   images: { display: "flex", flexWrap: "wrap", gap: space.s2 },
   image: {
     display: "block",
@@ -110,21 +139,29 @@ const styles = create({
   diffChangedSign: { color: role.contentInteractivePrimary },
 });
 
+/** The item's whole story in one column; `tail` is what's open now, like a question for you. */
 export function Activity({
   events,
   clock,
+  findings,
+  canKeep,
+  onKeep,
+  tail,
 }: {
   readonly events: readonly Event[];
   readonly clock: number;
+  readonly findings: readonly Finding[];
+  readonly canKeep: boolean;
+  readonly onKeep: (finding: string) => void;
+  readonly tail: ReactNode;
 }): ReactElement {
+  const last = tail === null || tail === undefined || tail === false ? events.length - 1 : -1;
+
   return (
     <ol aria-label="Activity" {...props(styles.list)}>
       {events.map((event, index) => (
         <li key={event.id} {...props(styles.event)}>
-          <span
-            aria-hidden="true"
-            {...props(styles.rail, index === events.length - 1 && styles.railLast)}
-          />
+          <span aria-hidden="true" {...props(styles.rail, index === last && styles.railLast)} />
           <span {...props(styles.marker)}>
             {event.mine === true ? (
               <Avatar size="xs" tone={YOU.tone}>
@@ -152,10 +189,53 @@ export function Activity({
               {event.text}
             </p>
             {event.attachment !== undefined && <Evidence attachment={event.attachment} />}
+            {event.attachment?.findings === true && (
+              <Findings findings={findings} canKeep={canKeep} onKeep={onKeep} />
+            )}
           </div>
         </li>
       ))}
+      {last === -1 && (
+        <li {...props(styles.event, styles.tail)}>
+          <span {...props(styles.marker, styles.tailMarker)}>
+            <Icon name="bubble-question" size={14} />
+          </span>
+          <div {...props(styles.body)}>{tail}</div>
+        </li>
+      )}
     </ol>
+  );
+}
+
+function Findings({
+  findings,
+  canKeep,
+  onKeep,
+}: {
+  readonly findings: readonly Finding[];
+  readonly canKeep: boolean;
+  readonly onKeep: (finding: string) => void;
+}): ReactElement {
+  return (
+    <ul aria-label="Findings" {...props(styles.findings)}>
+      {findings.map((finding) => (
+        <li key={finding.id} {...props(styles.finding, !finding.kept && styles.findingDropped)}>
+          <Checkbox
+            aria-label={`Send “${finding.title}”`}
+            checked={finding.kept}
+            disabled={!canKeep}
+            onCheckedChange={() => onKeep(finding.id)}
+          />
+          <span {...props(styles.findingBody)}>
+            <span {...props(text.base, styles.findingTitle)}>
+              {finding.title}
+              {finding.severity === "nit" && <span {...props(styles.nit)}> · nit</span>}
+            </span>
+            <span {...props(text.sm, styles.findingDetail)}>{finding.detail}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

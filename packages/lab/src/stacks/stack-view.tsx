@@ -3,22 +3,21 @@ import { useEffectEvent, useState } from "react";
 import type { ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
-import { Kbd } from "@nyte-ai/ui/kbd";
-import { button, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import type { IconName } from "@nyte-ai/ui/icon";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { Toggle } from "@nyte-ai/ui/toggle";
-import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { Board } from "./board.tsx";
-import { ItemList } from "./list.tsx";
 import { Composer, editable } from "./composer.tsx";
 import type { Request } from "./delegate.ts";
-import { DUTIES, GROUPS, MODELS, YOU } from "./model.ts";
-import type { Answer, Duty, Item, ModelId, PullRequest, Stack } from "./model.ts";
-import { Header, ModelPicker, Properties, StatusGlyph, Tile, styles as parts } from "./parts.tsx";
-
-const COMPACT = "@container stacks (max-width: 959px)";
+import { DropZone, useCarrying } from "./dnd.tsx";
+import { ItemList } from "./list.tsx";
+import { GROUPS, MODELS } from "./model.ts";
+import type { Item, PullRequest, Stack } from "./model.ts";
+import { Header, Tile } from "./parts.tsx";
+import { WATCHER } from "./staffing.ts";
 
 const NARROW = "@container stacks (max-width: 639px)";
 
@@ -38,126 +37,42 @@ export const pane = create({
   summary: { margin: 0, color: role.contentSecondary, textWrap: "pretty", maxWidth: 560 },
 });
 
-type View = "list" | "board";
-
-type Who = "all" | "yours" | "team";
-
 const styles = create({
   page: {
     display: "flex",
     flexDirection: "column",
     gap: { default: space.s8, [NARROW]: space.s6 },
-    maxWidth: 1160,
+    maxWidth: 820,
     paddingInline: { default: space.s8, [NARROW]: space.s4 },
     paddingBlockStart: { default: space.s8, [NARROW]: space.s5 },
     paddingBlockEnd: 96,
   },
-  top: {
-    display: { default: "grid", [COMPACT]: "contents" },
-    gridTemplateColumns: { default: "minmax(0, 1fr) 300px", [COMPACT]: "minmax(0, 1fr)" },
-    columnGap: space.s8,
-    rowGap: space.s6,
-  },
-  main: { display: "flex", flexDirection: "column", gap: space.s6, minWidth: 0 },
   heroTop: { display: "flex", flexDirection: "column", gap: space.s4 },
-  rail: {
-    order: { default: 0, [COMPACT]: 1 },
-    display: { default: "flex", [COMPACT]: "grid" },
-    flexDirection: "column",
-    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 240px), 1fr))",
-    alignContent: "start",
-    gap: space.s6,
-    minWidth: 0,
-    paddingInlineStart: { default: space.s6, [COMPACT]: 0 },
-    paddingBlockStart: { default: 0, [COMPACT]: space.s6 },
-    borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
-    borderWidth: 0,
-    borderInlineStartWidth: { default: 1, [COMPACT]: 0 },
-    borderBlockStartWidth: { default: 0, [COMPACT]: 1 },
-  },
-  crewLine: {
-    display: { default: "none", [COMPACT]: "flex" },
+  people: {
+    display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
     columnGap: space.s3,
     rowGap: space.s1,
     color: role.contentSecondary,
   },
-  crewEntry: { display: "inline-flex", alignItems: "center", gap: space.s1_5 },
-  railSection: { display: "flex", flexDirection: "column", gap: space.s2 },
-  work: { display: "flex", flexDirection: "column", gap: space.s4 },
-  toolbar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: space.s3,
-  },
-  toolbarEnd: { display: "flex", alignItems: "center", gap: space.s3, color: role.contentTertiary },
-  hint: { display: "flex", alignItems: "center", gap: space.s1_5 },
-  skills: { display: "flex", flexWrap: "wrap", gap: space.s1_5 },
-  skill: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: space.s1,
-    height: button.heightSm,
-    paddingInline: space.s2,
-    borderRadius: radius.control,
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
-    color: role.contentSecondary,
-  },
-  asks: {
+  person: { display: "inline-flex", alignItems: "center", gap: space.s1_5 },
+  personLead: { color: role.contentPrimary },
+  dot: { color: role.contentDisabled },
+  drop: {
     display: "flex",
     flexDirection: "column",
-    gap: space.s1,
-    margin: 0,
-    padding: 0,
-    listStyle: "none",
-    color: role.contentPrimary,
-  },
-  ask: { display: "flex", alignItems: "center", gap: space.s2 },
-  askGlyph: { display: "inline-flex", color: role.contentTertiary },
-  meter: { display: "flex", flexDirection: "column", gap: space.s2 },
-  meterLine: { display: "flex", justifyContent: "space-between", color: role.contentSecondary },
-  meterValue: { color: role.contentPrimary, fontVariantNumeric: "tabular-nums" },
-  bar: {
-    display: "block",
-    height: 4,
-    borderRadius: radius.pill,
-    backgroundColor: role.bgMuted,
-    overflow: "hidden",
-  },
-  barFill: {
-    display: "block",
-    height: "100%",
-    borderRadius: radius.pill,
-    backgroundColor: role.contentSecondary,
-    transitionProperty: "width",
-    transitionDuration: motion.durationNormal,
-  },
-  receipt: {
-    display: "flex",
     alignItems: "center",
-    gap: space.s2,
-    minHeight: 40,
-    paddingInlineStart: space.s3,
-    paddingInlineEnd: space.s1_5,
+    gap: space.s1,
+    paddingBlock: space.s5,
+    color: role.contentSecondary,
     borderRadius: radius.card,
-    backgroundColor: role.bgMuted,
   },
-  receiptText: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  receiptNow: { color: role.contentSecondary, whiteSpace: "nowrap" },
   empty: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: space.s2,
+    gap: space.s1,
     paddingBlock: space.s8,
     borderRadius: radius.card,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
@@ -165,16 +80,19 @@ const styles = create({
   },
 });
 
+/**
+ * Interfere's inbox: one column you read top to bottom. Who works here, one place to ask for
+ * something, then everything in flight, grouped by what it waits on.
+ */
 export function StackView({
   stack,
   items,
   pulls,
   fresh,
   clock,
+  chats,
   onSend,
   onOpen,
-  onAnswer,
-  onCrew,
   onEdit,
 }: {
   readonly stack: Stack;
@@ -182,23 +100,16 @@ export function StackView({
   readonly pulls: readonly PullRequest[];
   readonly fresh: string | null;
   readonly clock: number;
+  readonly chats: Readonly<Record<string, string>>;
   readonly onSend: (request: Request) => void;
   readonly onOpen: (item: string) => void;
-  readonly onAnswer: (item: string, answer: Answer) => void;
-  readonly onCrew: (duty: Duty, model: ModelId) => void;
   readonly onEdit: () => void;
 }): ReactElement {
-  const [view, setView] = useState<View>("list");
-  const [who, setWho] = useState<Who>("all");
   const [cursor, setCursor] = useState<string | null>(null);
-  const sent = items.find((item) => item.id === fresh);
-
-  const shown = items.filter((item) =>
-    who === "all" ? true : who === "yours" ? item.author.id === YOU.id : item.author.id !== YOU.id,
-  );
+  const carrying = useCarrying();
 
   const order = GROUPS.flatMap((group) =>
-    shown.filter((item) => group.statuses.includes(item.status)),
+    items.filter((item) => group.statuses.includes(item.status)),
   );
 
   const done = items.filter((item) => item.status === "merged" || item.status === "done").length;
@@ -237,217 +148,138 @@ export function StackView({
       <Header
         trail={[{ label: "Stacks" }, { label: stack.name }]}
         actions={
-          <Button size="sm" icon="pencil" onClick={onEdit}>
-            <span {...props(parts.wideLabel)}>Edit Stack</span>
-          </Button>
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button size="sm" iconOnly icon="more-horizontal" aria-label="Stack Actions" />
+              }
+            />
+            <MenuContent align="end">
+              <MenuItem icon="pencil" onClick={onEdit}>
+                Edit Agents and Rules
+              </MenuItem>
+            </MenuContent>
+          </Menu>
         }
       />
       <div {...props(pane.scroller)}>
         <div {...props(styles.page)}>
-          <div {...props(styles.top)}>
-            <div {...props(styles.main)}>
-              <div {...props(styles.heroTop)}>
-                <Tile surface={stack} size="lg" />
-                <div {...props(pane.hero)}>
-                  <h1 {...props(pane.title)}>{stack.name}</h1>
-                  <p {...props(text.base, pane.summary)}>{stack.purpose}</p>
-                </div>
-                <span {...props(text.sm, styles.crewLine)}>
-                  {DUTIES.map((entry) => (
-                    <span key={entry.duty} {...props(styles.crewEntry)}>
-                      <Icon name={MODELS[stack.crew[entry.duty]].icon} size={12} />
-                      {MODELS[stack.crew[entry.duty]].short} {entry.label.toLowerCase()}
-                    </span>
-                  ))}
-                </span>
-              </div>
-              <Composer
-                stack={stack}
-                pulls={pulls}
-                onSend={onSend}
-                receipt={
-                  sent !== undefined && (
-                    <div role="status" {...props(text.base, styles.receipt)}>
-                      <StatusGlyph status={sent.status} />
-                      <span {...props(styles.receiptText)}>
-                        {sent.number !== null && (
-                          <span {...props(pane.number)}>#{sent.number} </span>
-                        )}
-                        {sent.title}
-                      </span>
-                      <span {...props(styles.receiptNow)}>{sent.now}</span>
-                      <Button size="xs" variant="outline" onClick={() => onOpen(sent.id)}>
-                        Open
-                      </Button>
-                    </div>
-                  )
-                }
-              />
+          <div {...props(styles.heroTop)}>
+            <Tile surface={stack} size="lg" />
+            <div {...props(pane.hero)}>
+              <h1 {...props(pane.title)}>{stack.name}</h1>
+              <p {...props(text.base, pane.summary)}>{stack.purpose}</p>
             </div>
-            <Rail stack={stack} done={done} total={items.length} onCrew={onCrew} />
+            <People stack={stack} done={done} total={items.length} />
           </div>
-          <div {...props(styles.work)}>
-            <div {...props(styles.toolbar)}>
-              <ToggleGroup
-                aria-label="Whose work"
-                value={[who]}
-                onValueChange={(values) => {
-                  const next = values.at(-1);
-
-                  if (next === "all" || next === "yours" || next === "team") setWho(next);
-                }}
-              >
-                <Toggle value="all" size="sm">
-                  All
-                </Toggle>
-                <Toggle value="yours" size="sm">
-                  Yours
-                </Toggle>
-                <Toggle value="team" size="sm">
-                  Teammates&apos;
-                </Toggle>
-              </ToggleGroup>
-              <span {...props(text.sm, styles.toolbarEnd)}>
-                <span {...props(styles.hint)}>
-                  <Kbd keys={["J"]} />
-                  <Kbd keys={["K"]} />
-                  to move
-                </span>
-                <ToggleGroup
-                  aria-label="Layout"
-                  value={[view]}
-                  onValueChange={(values) => {
-                    const next = values.at(-1);
-
-                    if (next === "list" || next === "board") setView(next);
-                  }}
-                >
-                  <Toggle value="list" size="sm" icon="list">
-                    List
-                  </Toggle>
-                  <Toggle value="board" size="sm" icon="canvas-grid">
-                    Board
-                  </Toggle>
-                </ToggleGroup>
-              </span>
-            </div>
-            {shown.length === 0 ? (
-              <div {...props(text.base, styles.empty)}>
-                <Icon name="inbox-empty" size={20} />
-                Nothing here yet.
+          <Composer stack={stack} pulls={pulls} onSend={onSend} />
+          {carrying !== null && chats[carrying] !== stack.id && (
+            <DropZone stack={stack.id} label="page">
+              <div {...props(text.base, styles.drop)}>
+                <Icon name="layers" size={16} />
+                Drop to hand it to {stack.name}
               </div>
-            ) : view === "board" ? (
-              <Board items={shown} clock={clock} cursor={cursor} fresh={fresh} onOpen={onOpen} />
-            ) : (
-              <ItemList
-                groups={GROUPS.map((group) => ({
-                  id: group.id,
-                  label: group.label,
-                  items: shown.filter((item) => group.statuses.includes(item.status)),
-                }))}
-                clock={clock}
-                cursor={cursor}
-                fresh={fresh}
-                onOpen={onOpen}
-                onAnswer={onAnswer}
-              />
-            )}
-          </div>
+            </DropZone>
+          )}
+          {items.length === 0 ? (
+            <div {...props(text.base, styles.empty)}>
+              Nothing here yet.
+              <span {...props(text.sm)}>Write above, or drag a chat in from the sidebar.</span>
+            </div>
+          ) : (
+            <ItemList
+              groups={GROUPS.map((group) => ({
+                id: group.id,
+                label: group.label,
+                items: items.filter((item) => group.statuses.includes(item.status)),
+              }))}
+              clock={clock}
+              cursor={cursor}
+              fresh={fresh}
+              onOpen={onOpen}
+            />
+          )}
         </div>
       </div>
     </section>
   );
 }
 
-function Rail({
+/** Who works here, in one line: the lead, each agent, CI, and what today cost. */
+function People({
   stack,
   done,
   total,
-  onCrew,
 }: {
   readonly stack: Stack;
   readonly done: number;
   readonly total: number;
-  readonly onCrew: (duty: Duty, model: ModelId) => void;
 }): ReactElement {
+  const separator = (
+    <span aria-hidden="true" {...props(styles.dot)}>
+      ·
+    </span>
+  );
+
   return (
-    <aside aria-label={`How ${stack.name} works`} {...props(styles.rail)}>
-      <div {...props(styles.railSection)}>
-        <span {...props(parts.group)}>Crew</span>
-        <Properties
-          rows={DUTIES.map((entry) => ({
-            label: entry.label,
-            value: (
-              <ModelPicker
-                label={entry.label}
-                value={stack.crew[entry.duty]}
-                onChange={(model) => onCrew(entry.duty, model)}
-              />
-            ),
-          }))}
-        />
-      </div>
-      <div {...props(styles.railSection)}>
-        <span {...props(parts.group)}>Reads every time</span>
-        <div {...props(styles.skills)}>
-          {stack.skills.map((skill) => (
-            <span key={skill} {...props(text.sm, styles.skill)}>
-              <Icon name="skills" size={12} />
-              {skill}
-            </span>
-          ))}
-        </div>
-      </div>
-      <div {...props(styles.railSection)}>
-        <span {...props(parts.group)}>Asks you</span>
-        <ul {...props(text.base, styles.asks)}>
-          {stack.asks.map((ask) => (
-            <li key={ask} {...props(styles.ask)}>
-              <span {...props(styles.askGlyph)}>
-                <Icon name="bubble-question" size={14} />
-              </span>
-              {ask}
-            </li>
-          ))}
-        </ul>
-      </div>
-      {stack.due !== null && (
-        <Meter
-          label={`Due ${stack.due}`}
-          value={`${String(done)} of ${String(total)} done`}
-          ratio={total === 0 ? 0 : done / total}
-        />
-      )}
-      <Meter
-        label="Today"
-        value={`$${stack.spent.toFixed(2)} of $${String(stack.budget)}`}
-        ratio={stack.spent / stack.budget}
+    <div {...props(text.sm, styles.people)}>
+      <Who
+        icon={MODELS[stack.lead].icon}
+        name={`${stack.name} leads`}
+        detail={`${MODELS[stack.lead].name} · Plans each task, reviews it and opens the pull request`}
+        lead
       />
-    </aside>
+      {stack.agents.map((agent) => (
+        <Who
+          key={agent.id}
+          icon={MODELS[agent.model].icon}
+          name={agent.name}
+          detail={`${MODELS[agent.model].name} · ${agent.does}`}
+          lead={false}
+        />
+      ))}
+      <Who
+        icon="server"
+        name={`${WATCHER} watches CI`}
+        detail="No model runs until something fails"
+        lead={false}
+      />
+      {separator}
+      <span>
+        ${stack.spent.toFixed(2)} of ${stack.budget} today
+      </span>
+      {stack.due !== null && (
+        <>
+          {separator}
+          <span>
+            Due {stack.due}, {done} of {total} done
+          </span>
+        </>
+      )}
+    </div>
   );
 }
 
-function Meter({
-  label,
-  value,
-  ratio,
+function Who({
+  icon,
+  name,
+  detail,
+  lead,
 }: {
-  readonly label: string;
-  readonly value: string;
-  readonly ratio: number;
+  readonly icon: IconName;
+  readonly name: string;
+  readonly detail: string;
+  readonly lead: boolean;
 }): ReactElement {
   return (
-    <div {...props(styles.railSection)}>
-      <span {...props(parts.group)}>{label}</span>
-      <div {...props(styles.meter)}>
-        <span {...props(text.base, styles.meterLine, styles.meterValue)}>{value}</span>
-        <span {...props(styles.bar)}>
-          <span
-            {...props(styles.barFill)}
-            style={{ width: `${String(Math.round(Math.min(1, ratio) * 100))}%` }}
-          />
-        </span>
-      </div>
-    </div>
+    <Tooltip>
+      <TooltipTrigger
+        render={<span tabIndex={0} {...props(styles.person, lead && styles.personLead)} />}
+      >
+        <Icon name={icon} size={12} />
+        {name}
+      </TooltipTrigger>
+      <TooltipContent>{detail}</TooltipContent>
+    </Tooltip>
   );
 }

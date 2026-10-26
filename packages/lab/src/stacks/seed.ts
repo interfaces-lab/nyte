@@ -1,6 +1,47 @@
 import { GREEN, KAI, MAYA, SURFACES, YOU, checks } from "./model.ts";
-import type { Chat, Item, PullRequest, Stack } from "./model.ts";
+import type { Agent, Chat, Item, PullRequest, Stack } from "./model.ts";
 import { fixSteps, lookAsk, mergeAsk } from "./script.ts";
+import { WATCHER, sessionFor } from "./staffing.ts";
+
+const SOL: Agent = {
+  id: "sol",
+  name: "Sol",
+  model: "sol",
+  does: "Writes fixes in its own worktree",
+  skills: ["nyte-styles"],
+};
+
+const PIXEL: Agent = {
+  id: "pixel",
+  name: "Pixel",
+  model: "sonnet",
+  does: "Checks screenshots in light and dark",
+  skills: ["better-ui", "verify-nyte"],
+};
+
+const MINI: Agent = {
+  id: "mini",
+  name: "Mini",
+  model: "mini",
+  does: "Fixes lint and format on any pull request",
+  skills: [],
+};
+
+const SCRIBE: Agent = {
+  id: "scribe",
+  name: "Scribe",
+  model: "sonnet",
+  does: "Writes changelogs and docs",
+  skills: ["clean-copy"],
+};
+
+const KEEPER: Agent = {
+  id: "keeper",
+  name: "Keeper",
+  model: "sol",
+  does: "Keeps branches current and fixes what fails",
+  skills: ["blast-radius"],
+};
 
 export const POLISH: Stack = {
   id: "polish",
@@ -8,7 +49,8 @@ export const POLISH: Stack = {
   purpose: "Small UI and code-quality fixes to Nyte, one pull request each.",
   icon: "layers",
   tint: "purple",
-  crew: { writes: "sol", reviews: "opus", watches: "mini" },
+  lead: "opus",
+  agents: [SOL, PIXEL, MINI],
   skills: ["better-ui", "nyte-styles", "verify-nyte"],
   asks: ["Before merging", "Before pushing to a teammate's branch"],
   spent: 3.1,
@@ -22,7 +64,8 @@ export const RELEASE: Stack = {
   purpose: "Everything that has to land before 0.9 ships.",
   icon: "pin",
   tint: "green",
-  crew: { writes: "opus", reviews: "opus", watches: "mini" },
+  lead: "opus",
+  agents: [SCRIBE, KEEPER],
   skills: ["blast-radius", "verify-nyte", "clean-copy"],
   asks: ["Before merging", "Before rebasing"],
   spent: 7.4,
@@ -31,6 +74,16 @@ export const RELEASE: Stack = {
 };
 
 export const STACKS: readonly Stack[] = [POLISH, RELEASE];
+
+const LEAD_POLISH: Agent = {
+  id: "lead",
+  name: "Polish",
+  model: "opus",
+  does: "Plans each task, reviews it and opens the pull request",
+  skills: [],
+};
+
+const LEAD_RELEASE: Agent = { ...LEAD_POLISH, name: "Release 0.9" };
 
 const BASE = {
   author: YOU,
@@ -58,16 +111,16 @@ export const ITEMS: readonly Item[] = [
     branch: "polish/sidebar-row-height",
     surface: SURFACES.sidebar,
     checks: GREEN,
-    ask: lookAsk(POLISH, 486, 2),
+    ask: lookAsk(POLISH, 486, [SOL, PIXEL], 2),
     shot: "row-height",
     files: [
       { path: "packages/app/src/chrome/sidebar.stylex.ts", added: 2, removed: 3 },
       { path: "packages/ui/src/row.tsx", added: 1, removed: 1 },
     ],
     sessions: [
-      { duty: "writes", model: "sol", state: "Done", turns: 9, cost: 0.31 },
-      { duty: "reviews", model: "opus", state: "Approved", turns: 2, cost: 0.09 },
-      { duty: "watches", model: "mini", state: "CI passed", turns: 3, cost: 0.02 },
+      sessionFor(LEAD_POLISH, "Approved", 3, true),
+      sessionFor(SOL, "Done", 9),
+      sessionFor(PIXEL, "Done", 2),
     ],
     activity: [
       {
@@ -98,14 +151,21 @@ export const ITEMS: readonly Item[] = [
       },
       {
         id: "a3",
-        who: "Opus",
-        what: "approved",
+        who: "Pixel",
+        what: "checked it",
+        at: -17,
+        text: "Row and tab hovers line up in light and dark.",
+      },
+      {
+        id: "a3b",
+        who: "Polish",
+        what: "reviewed it and opened #486",
         at: -14,
         text: "Token use is right and nothing else reads the old value.",
       },
       {
         id: "a4",
-        who: "Mini",
+        who: WATCHER,
         what: "CI passed",
         at: -6,
         text: "All six checks passed on the first run.",
@@ -164,7 +224,7 @@ export const ITEMS: readonly Item[] = [
               now: "Waiting on review",
               checks: GREEN,
               event: {
-                who: "Mini",
+                who: WATCHER,
                 what: "CI passed",
                 text: "Green. Waiting on Kai's reviewer.",
                 attachment: { checks: GREEN },
@@ -178,7 +238,7 @@ export const ITEMS: readonly Item[] = [
           status: "watching",
           now: "Waiting on Kai",
           event: {
-            who: "Mini",
+            who: "Polish",
             what: "commented",
             text: "Left Kai the new screenshot and the command that updates it.",
           },
@@ -190,7 +250,7 @@ export const ITEMS: readonly Item[] = [
       { path: "packages/app/src/conversation/composer-model-chip.tsx", added: 6, removed: 2 },
       { path: "packages/app/test/__screenshots__/composer-model-chip.png", added: 0, removed: 0 },
     ],
-    sessions: [{ duty: "watches", model: "mini", state: "Waiting on you", turns: 4, cost: 0.04 }],
+    sessions: [sessionFor(MINI, "Waiting on you", 4)],
     activity: [
       {
         id: "b1",
@@ -202,15 +262,15 @@ export const ITEMS: readonly Item[] = [
       },
       {
         id: "b2",
-        who: "Mini",
-        what: "is watching",
+        who: "Polish",
+        what: "planned it",
         at: -60,
-        text: "Watching #482 until it merges. It fixes format and lint itself and asks before pushing anything else to Kai's branch.",
+        text: "Nyte watches #482 without a model. Mini fixes what fails, and asks before pushing to Kai's branch.",
       },
       {
         id: "b3",
-        who: "Mini",
-        what: "found a failure",
+        who: WATCHER,
+        what: "saw a failure",
         at: -12,
         text: "test · macOS failed on a screenshot. The chip is 24px wider, which is the point of the change.",
         attachment: { checks: [{ name: "test · macOS", outcome: "failed" }] },
@@ -230,7 +290,7 @@ export const ITEMS: readonly Item[] = [
     now: "Sol is writing",
     branch: "polish/terminal-pill-flicker",
     surface: SURFACES.terminal,
-    sessions: [{ duty: "writes", model: "sol", state: "Writing", turns: 5, cost: 0.12 }],
+    sessions: [sessionFor(LEAD_POLISH, "Planned it", 1, true), sessionFor(SOL, "Writing", 5)],
     activity: [
       {
         id: "c1",
@@ -249,7 +309,7 @@ export const ITEMS: readonly Item[] = [
       },
     ],
     updated: -3,
-    script: fixSteps(POLISH, 492).slice(2),
+    script: fixSteps(POLISH, 492, [SOL, PIXEL]).slice(2),
     due: 3,
   },
   {
@@ -259,15 +319,16 @@ export const ITEMS: readonly Item[] = [
     number: null,
     kind: "fix",
     title: "Tab close button sits 1px low at 125% zoom",
-    summary: "Opus asked for one change; Sol made it.",
+    summary: "Polish asked for one change; Sol made it.",
     status: "working",
-    now: "Opus is reviewing",
+    now: "Pixel is checking",
     branch: "polish/tab-close-zoom",
     surface: SURFACES.tabs,
     files: [{ path: "packages/app/src/tabs/window-tab-strip.tsx", added: 3, removed: 3 }],
     sessions: [
-      { duty: "writes", model: "sol", state: "Revised", turns: 7, cost: 0.18 },
-      { duty: "reviews", model: "opus", state: "Reviewing", turns: 1, cost: 0.06 },
+      sessionFor(LEAD_POLISH, "Waiting", 2, true),
+      sessionFor(SOL, "Revised", 7),
+      sessionFor(PIXEL, "Checking", 1),
     ],
     activity: [
       {
@@ -280,7 +341,7 @@ export const ITEMS: readonly Item[] = [
       },
       {
         id: "d2",
-        who: "Opus",
+        who: "Polish",
         what: "asked for a change",
         at: -12,
         text: "Center with the glyph box, not a margin, so it holds at every zoom.",
@@ -294,7 +355,7 @@ export const ITEMS: readonly Item[] = [
       },
     ],
     updated: -4,
-    script: fixSteps(POLISH, 493).slice(3),
+    script: fixSteps(POLISH, 493, [SOL, PIXEL]).slice(3),
     due: 9,
   },
   {
@@ -304,22 +365,18 @@ export const ITEMS: readonly Item[] = [
     number: 479,
     kind: "fix",
     title: "Settings select is low-contrast in dark",
-    summary: "Opus approved it; CI is on the last two jobs.",
+    summary: "Polish approved it; CI is on the last two jobs.",
     status: "watching",
     now: "CI 4 of 6",
     branch: "polish/select-dark-contrast",
     surface: SURFACES.settings,
     checks: checks(4),
     files: [{ path: "packages/ui/src/select.tsx", added: 1, removed: 1 }],
-    sessions: [
-      { duty: "writes", model: "sol", state: "Done", turns: 4, cost: 0.08 },
-      { duty: "reviews", model: "opus", state: "Approved", turns: 1, cost: 0.05 },
-      { duty: "watches", model: "mini", state: "Watching", turns: 2, cost: 0.01 },
-    ],
+    sessions: [sessionFor(LEAD_POLISH, "Approved", 2, true), sessionFor(SOL, "Done", 4)],
     activity: [
       {
         id: "e1",
-        who: "Mini",
+        who: WATCHER,
         what: "is watching",
         at: -9,
         text: "Next check in a minute.",
@@ -332,7 +389,7 @@ export const ITEMS: readonly Item[] = [
         wait: 3,
         now: "CI passed",
         checks: GREEN,
-        event: { who: "Mini", what: "CI passed", text: "Green.", attachment: { checks: GREEN } },
+        event: { who: WATCHER, what: "CI passed", text: "Green.", attachment: { checks: GREEN } },
       },
       { wait: 1, status: "needs-you", now: "Ready to merge", ask: mergeAsk(479) },
     ],
@@ -352,13 +409,11 @@ export const ITEMS: readonly Item[] = [
     branch: "maya/peek-radius",
     surface: SURFACES.tabs,
     checks: GREEN,
-    sessions: [
-      { duty: "watches", model: "mini", state: "Waiting on review", turns: 2, cost: 0.01 },
-    ],
+    sessions: [sessionFor(MINI, "Asleep, nothing failed", 0)],
     activity: [
       {
         id: "f1",
-        who: "Mini",
+        who: WATCHER,
         what: "is watching",
         at: -40,
         text: "CI is green. Nothing to do until someone reviews it.",
@@ -370,7 +425,7 @@ export const ITEMS: readonly Item[] = [
         wait: 0,
         status: "merged",
         now: "Merged by Maya",
-        event: { who: "Mini", what: "stopped watching", text: "Maya merged it." },
+        event: { who: WATCHER, what: "stopped watching", text: "Maya merged it." },
       },
     ],
     due: 14,
@@ -416,7 +471,7 @@ export const ITEMS: readonly Item[] = [
           now: "CI running",
           checks: checks(0),
           event: {
-            who: "Opus",
+            who: "Keeper",
             what: "rebased",
             text: "Rebased onto main and kept the old head. One conflict, resolved by keeping both columns.",
           },
@@ -440,14 +495,11 @@ export const ITEMS: readonly Item[] = [
         },
       ],
     },
-    sessions: [
-      { duty: "writes", model: "opus", state: "Done", turns: 21, cost: 1.4 },
-      { duty: "watches", model: "mini", state: "Waiting on you", turns: 6, cost: 0.05 },
-    ],
+    sessions: [sessionFor(LEAD_RELEASE, "Done", 21, true), sessionFor(KEEPER, "Waiting on you", 6)],
     activity: [
       {
         id: "h1",
-        who: "Mini",
+        who: WATCHER,
         what: "noticed",
         at: -7,
         text: "Main moved under #468. One of the new commits edits 0042_sessions.sql.",
@@ -464,10 +516,10 @@ export const ITEMS: readonly Item[] = [
     title: "Write the 0.9 changelog",
     summary: "From the merged pull requests since 0.8, grouped by what users notice.",
     status: "working",
-    now: "Opus is writing",
+    now: "Scribe is writing",
     branch: "release/changelog-0-9",
     surface: SURFACES.docs,
-    sessions: [{ duty: "writes", model: "opus", state: "Writing", turns: 3, cost: 0.4 }],
+    sessions: [sessionFor(LEAD_RELEASE, "Planned it", 1, true), sessionFor(SCRIBE, "Writing", 3)],
     activity: [
       {
         id: "i1",
@@ -479,7 +531,7 @@ export const ITEMS: readonly Item[] = [
       },
     ],
     updated: -2,
-    script: fixSteps(RELEASE, 494).slice(1),
+    script: fixSteps(RELEASE, 494, [SCRIBE]).slice(1),
     due: 5,
   },
   {

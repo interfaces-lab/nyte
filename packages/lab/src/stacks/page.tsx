@@ -1,8 +1,20 @@
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
 import { create, props } from "@stylexjs/stylex";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Icon } from "@nyte-ai/ui/icon";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
 import { Toaster, toast } from "@nyte-ai/ui/toast";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -10,24 +22,25 @@ import { styles as shell } from "../projects/page.stylex";
 import { useDisplayMode } from "../shell/display-mode";
 import type { DisplayMode } from "../shell/display-mode";
 import { createItem } from "./delegate.ts";
+import type { Request } from "./delegate.ts";
+import { CHAT, droppedOn } from "./dnd.tsx";
+import { ItemView } from "./item-view.tsx";
 import { LabControls } from "./lab-controls.tsx";
 import type { Pace } from "./lab-controls.tsx";
-import type { Request } from "./delegate.ts";
-import { Inbox } from "./inbox.tsx";
-import { ItemView } from "./item-view.tsx";
-import { MODELS, SURFACES, YOU } from "./model.ts";
-import type { Answer, Chat, Duty, Item, ModelId, PullRequest, Session, Stack } from "./model.ts";
+import { SURFACES, YOU } from "./model.ts";
+import type { Answer, Chat, Item, PullRequest, Stack } from "./model.ts";
 import { NewStack } from "./new-stack.tsx";
 import { StatusGlyph } from "./parts.tsx";
-import { PageScheme } from "./shots.tsx";
 import { TICK_MS, advance, land, revisionSteps, schedule } from "./script.ts";
 import { CHATS, ITEMS, OPEN_PULLS, STACKS } from "./seed.ts";
+import { PageScheme } from "./shots.tsx";
 import { StacksSidebar } from "./sidebar.tsx";
 import { StackView } from "./stack-view.tsx";
+import { hands, propose } from "./staffing.ts";
 import { Titlebar } from "./titlebar.tsx";
 
+/** Three places, one way through: a stack, an item in it, or the form that sets a stack up. */
 type Screen =
-  | { readonly kind: "inbox" }
   | { readonly kind: "stack"; readonly stack: string }
   | { readonly kind: "item"; readonly item: string }
   | { readonly kind: "new" }
@@ -92,8 +105,8 @@ const local = create({
   stage: { position: "relative" },
   /**
    * Every view lays out against this card, not the window, because the sidebar, a split or the
-   * browser panel all change its room: 959px and under stacks the columns, 759px moves inline
-   * controls to their own line, 639px is phone-sized and drops hints a touch screen can't use.
+   * browser panel all change its room: 959px and under stacks the columns, 639px is phone-sized
+   * and drops hints a touch screen can't use.
    */
   card: { containerType: "inline-size", containerName: "stacks" },
   drawer: {
@@ -113,11 +126,31 @@ const local = create({
     backgroundColor: role.bgScrimTranslucent,
     cursor: "pointer",
   },
+  carried: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.s2,
+    width: "max-content",
+    maxWidth: 280,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s3,
+    borderRadius: radius.control,
+    backgroundColor: role.bgElevated,
+    boxShadow: shadow.shadowMdOutline,
+    color: role.contentPrimary,
+    cursor: "grabbing",
+  },
+  carriedLabel: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 });
 
+/**
+ * The lab's whole Stacks product on fake data. A reply always goes to the lead, which passes it
+ * on. A chat dropped on a stack joins it: its pull requests get watched, or the lead finishes it.
+ */
 export function StacksPage(): ReactElement {
   const [board, setBoard] = useState(START);
   const [scheme, setScheme] = useState<DisplayMode>("light");
+  const [carrying, setCarrying] = useState<string | null>(null);
 
   const drawer = useSyncExternalStore(
     watchDrawer,
@@ -125,12 +158,16 @@ export function StacksPage(): ReactElement {
     () => false,
   );
 
-  const shown = board.sidebar ?? !drawer;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const seen = useRef(
     new Set(ITEMS.filter((item) => item.status === "needs-you").map((item) => item.id)),
   );
 
+  const shown = board.sidebar ?? !drawer;
   const screen = board.screen;
 
   const item =
@@ -138,14 +175,7 @@ export function StacksPage(): ReactElement {
 
   const stackId = screen.kind === "stack" || screen.kind === "edit" ? screen.stack : item?.stack;
   const stack = board.stacks.find((entry) => entry.id === stackId);
-
-  const go = (next: Screen): void =>
-    setBoard((current) => ({
-      ...current,
-      screen: next,
-      fresh: next.kind === "item" ? null : current.fresh,
-      sidebar: drawer ? null : current.sidebar,
-    }));
+  const carried = CHATS.find((chat) => chat.id === carrying);
 
   useDisplayMode(scheme);
 
@@ -186,6 +216,14 @@ export function StacksPage(): ReactElement {
     seen.current = new Set(waiting.map((entry) => entry.id));
   }, [board.items, item?.id]);
 
+  const go = (next: Screen): void =>
+    setBoard((current) => ({
+      ...current,
+      screen: next,
+      fresh: next.kind === "item" ? null : current.fresh,
+      sidebar: drawer ? null : current.sidebar,
+    }));
+
   const send = (target: string, request: Request): void =>
     setBoard((current) => {
       const home = current.stacks.find((entry) => entry.id === target);
@@ -204,9 +242,9 @@ export function StacksPage(): ReactElement {
         ...current,
         items: [made, ...current.items],
         pulls:
-          request.kind === "fix"
+          request.pull === null
             ? current.pulls
-            : current.pulls.filter((pull) => pull.number !== request.pull.number),
+            : current.pulls.filter((pull) => pull.number !== request.pull?.number),
         fresh: made.id,
         made: current.made + 1,
       };
@@ -238,33 +276,38 @@ export function StacksPage(): ReactElement {
       ),
     );
 
-  const reply = (id: string, session: Session | undefined, text: string): void =>
+  const reply = (id: string, note: string): void =>
     update(id, (entry, current) => {
       const home = current.stacks.find((candidate) => candidate.id === entry.stack);
-      const who = session === undefined ? (home?.name ?? "Stack") : MODELS[session.model].short;
+      const lead = home?.name ?? "The lead";
 
       const heard = land(
         land(
           entry,
-          { wait: 0, event: { who: "You", what: "replied", text, mine: true } },
+          { wait: 0, event: { who: "You", what: "replied", text: note, mine: true } },
           current.clock,
         ),
         {
           wait: 0,
-          event: { who, what: "picked it up", text: "Working your note into the same branch." },
+          event: {
+            who: lead,
+            what: "passed it on",
+            text: "Working your note into the same branch.",
+          },
         },
         current.clock,
       );
 
       if (home === undefined || entry.kind !== "fix" || entry.script.length > 0) return heard;
+      const staff = hands(home, propose(home, "fix"));
 
       return schedule(
         land(
           heard,
-          { wait: 0, status: "working", now: `${who} is revising`, ask: null },
+          { wait: 0, status: "working", now: `${staff[0]?.name ?? lead} is revising`, ask: null },
           current.clock,
         ),
-        revisionSteps(home, entry.number ?? 495 + current.made, 1),
+        revisionSteps(home, entry.number ?? 495 + current.made, staff, 1),
         current.clock,
       );
     });
@@ -298,22 +341,22 @@ export function StacksPage(): ReactElement {
       ),
     }));
 
-  const crew = (target: string, duty: Duty, model: ModelId): void =>
-    setBoard((current) => ({
-      ...current,
-      stacks: current.stacks.map((entry) =>
-        entry.id === target ? { ...entry, crew: { ...entry.crew, [duty]: model } } : entry,
-      ),
-    }));
-
   const hand = (chat: Chat, target: string): void => {
+    const home = board.stacks.find((entry) => entry.id === target);
     const first = chat.pulls[0];
 
+    if (home === undefined) return;
     setBoard((current) => ({ ...current, handed: { ...current.handed, [chat.id]: target } }));
     send(
       target,
       first === undefined
-        ? { kind: "fix", text: "Take over this chat and finish it.", title: chat.title }
+        ? {
+            kind: "fix",
+            text: "Take over this chat and finish it.",
+            title: chat.title,
+            pull: null,
+            staff: propose(home, "fix"),
+          }
         : {
             kind: "babysit",
             text: `Babysit ${chat.pulls.map((pull) => `#${String(pull)}`).join(", ")} from “${chat.title}”.`,
@@ -325,162 +368,173 @@ export function StacksPage(): ReactElement {
               branch: `chat/${chat.id}`,
               surface: SURFACES.conversation,
             },
+            staff: propose(home, "babysit"),
           },
     );
     go({ kind: "stack", stack: target });
   };
 
+  const drop = (event: DragEndEvent): void => {
+    setCarrying(null);
+    const target = droppedOn(event.over?.id);
+    const chat = CHATS.find((entry) => `${CHAT}${entry.id}` === String(event.active.id));
+
+    if (target !== null && chat !== undefined) hand(chat, target);
+  };
+
   const title =
     screen.kind === "new"
       ? "New Stack"
-      : screen.kind === "inbox"
-        ? "Needs You"
-        : item === undefined
-          ? (stack?.name ?? "Stacks")
-          : item.title;
+      : item === undefined
+        ? (stack?.name ?? "Stacks")
+        : item.title;
 
   return (
     <PageScheme value={scheme}>
-      <div {...props(shell.shell)}>
-        <Titlebar
-          tab={{
-            id: "stack",
-            title,
-            tooltip: title,
-            glyph:
-              item === undefined ? (
-                <Icon
-                  name={
-                    screen.kind === "new"
-                      ? "plus"
-                      : screen.kind === "inbox"
-                        ? "inbox-empty"
-                        : (stack?.icon ?? "layers")
-                  }
-                  size={14}
-                />
-              ) : (
-                <StatusGlyph status={item.status} />
-              ),
-            unread: false,
-            split: undefined,
-          }}
-          docked={shown && !drawer}
-          open={shown}
-          onSidebar={() =>
-            setBoard((current) => ({ ...current, sidebar: !(current.sidebar ?? !drawer) }))
-          }
-          onClose={() => go({ kind: "stack", stack: stack?.id ?? "polish" })}
-          trailing={
-            <LabControls
-              scheme={scheme}
-              pace={board.pace}
-              onScheme={setScheme}
-              onPace={(pace) => setBoard((current) => ({ ...current, pace }))}
-              onReset={() => {
-                seen.current = new Set(
-                  ITEMS.filter((entry) => entry.status === "needs-you").map((entry) => entry.id),
-                );
-                setBoard(START);
-              }}
-            />
-          }
-        />
-        <div {...props(shell.stage)}>
-          {board.sidebar && (
-            <div {...props(shell.seat)}>
-              <StacksSidebar
-                stacks={board.stacks.map((entry) => ({
-                  id: entry.id,
-                  name: entry.name,
-                  icon: entry.icon,
-                  waiting: board.items.filter(
-                    (candidate) => candidate.stack === entry.id && candidate.status === "needs-you",
-                  ).length,
-                }))}
-                selected={
-                  screen.kind === "new" || screen.kind === "inbox" ? null : (stack?.id ?? null)
-                }
-                creating={screen.kind === "new"}
-                inbox={screen.kind === "inbox"}
-                waiting={board.items.filter((entry) => entry.status === "needs-you").length}
-                onInbox={() => go({ kind: "inbox" })}
-                chats={CHATS}
-                handed={board.handed}
-                onOpenStack={(id) => go({ kind: "stack", stack: id })}
-                onNewStack={() => go({ kind: "new" })}
-                onHand={hand}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        autoScroll={false}
+        onDragStart={(event) => setCarrying(String(event.active.id).slice(CHAT.length))}
+        onDragCancel={() => setCarrying(null)}
+        onDragEnd={drop}
+      >
+        <div {...props(shell.shell)}>
+          <Titlebar
+            tab={{
+              id: "stack",
+              title,
+              tooltip: title,
+              glyph:
+                item === undefined ? (
+                  <Icon
+                    name={screen.kind === "new" ? "plus" : (stack?.icon ?? "layers")}
+                    size={14}
+                  />
+                ) : (
+                  <StatusGlyph status={item.status} />
+                ),
+              unread: false,
+              split: undefined,
+            }}
+            docked={shown && !drawer}
+            open={shown}
+            onSidebar={() =>
+              setBoard((current) => ({ ...current, sidebar: !(current.sidebar ?? !drawer) }))
+            }
+            onClose={() => go({ kind: "stack", stack: stack?.id ?? "polish" })}
+            trailing={
+              <LabControls
+                scheme={scheme}
+                pace={board.pace}
+                onScheme={setScheme}
+                onPace={(pace) => setBoard((current) => ({ ...current, pace }))}
+                onReset={() => {
+                  seen.current = new Set(
+                    ITEMS.filter((entry) => entry.status === "needs-you").map((entry) => entry.id),
+                  );
+                  setBoard(START);
+                }}
               />
-            </div>
-          )}
-          <main {...props(shell.card, (!shown || drawer) && shell.cardSidebarHidden, local.card)}>
-            {screen.kind === "inbox" ? (
-              <Inbox
-                stacks={board.stacks}
-                items={board.items}
-                clock={board.clock}
-                onOpen={(id) => go({ kind: "item", item: id })}
-                onAnswer={answer}
-              />
-            ) : screen.kind === "new" ? (
-              <NewStack
-                count={board.stacks.length}
-                onCreate={(made) =>
-                  setBoard((current) => ({
-                    ...current,
-                    stacks: [...current.stacks, made],
-                    screen: { kind: "stack", stack: made.id },
-                  }))
-                }
-                onCancel={() => go({ kind: "stack", stack: "polish" })}
-              />
-            ) : stack === undefined ? null : screen.kind === "edit" ? (
-              <NewStack
-                key={`edit-${stack.id}`}
-                count={board.stacks.length}
-                initial={stack}
-                onCreate={(edited) =>
-                  setBoard((current) => ({
-                    ...current,
-                    stacks: current.stacks.map((entry) =>
-                      entry.id === edited.id ? edited : entry,
-                    ),
-                    screen: { kind: "stack", stack: edited.id },
-                  }))
-                }
-                onCancel={() => go({ kind: "stack", stack: stack.id })}
-              />
-            ) : item === undefined ? (
-              <StackView
-                key={stack.id}
-                stack={stack}
-                items={board.items.filter((entry) => entry.stack === stack.id)}
-                pulls={board.pulls}
-                fresh={board.fresh}
-                clock={board.clock}
-                onSend={(request) => send(stack.id, request)}
-                onOpen={(id) => go({ kind: "item", item: id })}
-                onAnswer={answer}
-                onCrew={(duty, model) => crew(stack.id, duty, model)}
-                onEdit={() => go({ kind: "edit", stack: stack.id })}
-              />
-            ) : (
-              <ItemView
-                key={item.id}
-                stack={stack}
-                item={item}
-                clock={board.clock}
-                onBack={() => go({ kind: "stack", stack: stack.id })}
-                onAnswer={(chosen) => answer(item.id, chosen)}
-                onReply={(session, text) => reply(item.id, session, text)}
-                onKeep={(finding) => keep(item.id, finding)}
-                onStop={() => stop(item.id)}
+            }
+          />
+          <div {...props(shell.stage, local.stage)}>
+            {shown && drawer && carrying === null && (
+              <button
+                type="button"
+                aria-label="Close sidebar"
+                onClick={() => setBoard((current) => ({ ...current, sidebar: null }))}
+                {...props(local.scrim)}
               />
             )}
-          </main>
+            {shown && (
+              <div {...props(shell.seat, drawer && local.drawer)}>
+                <StacksSidebar
+                  stacks={board.stacks.map((entry) => ({
+                    id: entry.id,
+                    name: entry.name,
+                    icon: entry.icon,
+                    waiting: board.items.filter(
+                      (candidate) =>
+                        candidate.stack === entry.id && candidate.status === "needs-you",
+                    ).length,
+                  }))}
+                  selected={screen.kind === "new" ? null : (stack?.id ?? null)}
+                  chats={CHATS}
+                  handed={board.handed}
+                  onOpenStack={(id) => go({ kind: "stack", stack: id })}
+                  onNewStack={() => go({ kind: "new" })}
+                />
+              </div>
+            )}
+            <main {...props(shell.card, (!shown || drawer) && shell.cardSidebarHidden, local.card)}>
+              {screen.kind === "new" ? (
+                <NewStack
+                  count={board.stacks.length}
+                  onCreate={(made) =>
+                    setBoard((current) => ({
+                      ...current,
+                      stacks: [...current.stacks, made],
+                      screen: { kind: "stack", stack: made.id },
+                    }))
+                  }
+                  onCancel={() => go({ kind: "stack", stack: "polish" })}
+                />
+              ) : stack === undefined ? null : screen.kind === "edit" ? (
+                <NewStack
+                  key={`edit-${stack.id}`}
+                  count={board.stacks.length}
+                  initial={stack}
+                  onCreate={(edited) =>
+                    setBoard((current) => ({
+                      ...current,
+                      stacks: current.stacks.map((entry) =>
+                        entry.id === edited.id ? edited : entry,
+                      ),
+                      screen: { kind: "stack", stack: edited.id },
+                    }))
+                  }
+                  onCancel={() => go({ kind: "stack", stack: stack.id })}
+                />
+              ) : item === undefined ? (
+                <StackView
+                  key={stack.id}
+                  stack={stack}
+                  items={board.items.filter((entry) => entry.stack === stack.id)}
+                  pulls={board.pulls}
+                  fresh={board.fresh}
+                  clock={board.clock}
+                  chats={board.handed}
+                  onSend={(request) => send(stack.id, request)}
+                  onOpen={(id) => go({ kind: "item", item: id })}
+                  onEdit={() => go({ kind: "edit", stack: stack.id })}
+                />
+              ) : (
+                <ItemView
+                  key={item.id}
+                  stack={stack}
+                  item={item}
+                  clock={board.clock}
+                  onBack={() => go({ kind: "stack", stack: stack.id })}
+                  onAnswer={(chosen) => answer(item.id, chosen)}
+                  onReply={(note) => reply(item.id, note)}
+                  onKeep={(finding) => keep(item.id, finding)}
+                  onStop={() => stop(item.id)}
+                />
+              )}
+            </main>
+          </div>
+          <Toaster />
         </div>
-        <Toaster />
-      </div>
+        <DragOverlay dropAnimation={null}>
+          {carried === undefined ? null : (
+            <div {...props(text.base, local.carried)}>
+              <Icon name="new-chat" size={14} />
+              <span {...props(local.carriedLabel)}>{carried.title}</span>
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
     </PageScheme>
   );
 }

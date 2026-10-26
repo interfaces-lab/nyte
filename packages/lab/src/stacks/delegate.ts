@@ -1,34 +1,46 @@
-import { MODELS, SURFACES, YOU } from "./model.ts";
-import type { Item, PullRequest, Stack } from "./model.ts";
+import { SURFACES, YOU } from "./model.ts";
+import type { Item, Kind, PullRequest, Stack } from "./model.ts";
 import { babysitSteps, fixSteps, reviewSteps, schedule } from "./script.ts";
+import { hands, leadAgent, mentioned, planSentence, propose, sessionFor } from "./staffing.ts";
 
-export type Request =
-  | {
-      readonly kind: "fix";
-      readonly text: string;
-      readonly title?: string;
-      readonly images?: readonly string[];
-    }
-  | {
-      readonly kind: "babysit" | "review";
-      readonly text: string;
-      readonly pull: PullRequest;
-      readonly images?: readonly string[];
-    };
+/** A task as the composer read it: what kind, which pull request, and who works it. */
+export interface Request {
+  readonly kind: Kind;
+  readonly text: string;
+  readonly pull: PullRequest | null;
+  readonly staff: readonly string[];
+  readonly title?: string;
+  readonly images?: readonly string[];
+}
 
 const PULL_URL = /github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/;
 
 const PULL_REF = /(?:^|\s)#(\d+)\b/;
 
-/** What the composer's text asks for: a pull request to watch or review, or a fix to write. */
-export function readRequest(text: string, pulls: readonly PullRequest[]): Request | null {
+/**
+ * A pull request in the text means watch it, or review it if you say review. Anything else is a
+ * fix. Agents named with @ work it; without one, the lead picks.
+ */
+export function readRequest(
+  text: string,
+  stack: Stack,
+  pulls: readonly PullRequest[],
+): Request | null {
   const trimmed = text.trim();
 
   if (trimmed === "") return null;
   const match = PULL_URL.exec(trimmed) ?? PULL_REF.exec(trimmed);
+  const named = mentioned(stack, trimmed);
 
-  if (match === null) return { kind: "fix", text: trimmed };
+  if (match === null)
+    return {
+      kind: "fix",
+      text: trimmed,
+      pull: null,
+      staff: named.length > 0 ? named : propose(stack, "fix"),
+    };
   const number = Number(match[1]);
+  const kind = /\breview\b/i.test(trimmed) ? "review" : "babysit";
 
   const pull = pulls.find((candidate) => candidate.number === number) ?? {
     number,
@@ -39,26 +51,11 @@ export function readRequest(text: string, pulls: readonly PullRequest[]): Reques
     surface: SURFACES.unknown,
   };
 
-  return { kind: /\breview\b/i.test(trimmed) ? "review" : "babysit", text: trimmed, pull };
+  return { kind, text: trimmed, pull, staff: named.length > 0 ? named : propose(stack, kind) };
 }
 
-/** One line on who will do what, shown while you type. */
 export function describePlan(request: Request, stack: Stack): string {
-  const writes = MODELS[stack.crew.writes].short;
-  const reviews = MODELS[stack.crew.reviews].short;
-  const watches = MODELS[stack.crew.watches].short;
-
-  if (request.kind === "fix")
-    return `${writes} writes it in its own worktree, ${reviews} reviews it, then one pull request.`;
-  const number = `#${String(request.pull.number)}`;
-
-  if (request.kind === "review")
-    return `${reviews} runs ${number}, screenshots it against main, and drafts comments for you to send.`;
-
-  if (request.pull.author.id === YOU.id)
-    return `${watches} watches ${number} until it merges and fixes what fails on your branch.`;
-
-  return `${watches} watches ${number} until it merges and asks before pushing to ${firstName(request.pull.author.name)}'s branch.`;
+  return planSentence(stack, request.kind, hands(stack, request.staff), request.pull);
 }
 
 export function createItem(
@@ -68,64 +65,72 @@ export function createItem(
   number: number,
   clock: number,
 ): Item {
-  const plan = describePlan(request, stack);
+  const staff = hands(stack, request.staff);
+  const lead = leadAgent(stack);
   const images = request.images ?? [];
+  const pull = request.pull;
 
-  const asked = {
-    id: `${id}-asked`,
-    who: "You",
-    what: "asked",
-    at: clock,
-    text: request.text,
-    mine: true,
-    attachment: images.length === 0 ? undefined : { images },
-  };
-
-  const shared = {
+  const base = {
     id,
     stack: stack.id,
     ask: null,
     shot: null,
     files: [],
     findings: [],
+    checks: [],
     updated: clock,
     script: [],
     due: clock,
+    sessions: [
+      sessionFor(lead, "Planned it", 1, true),
+      ...staff.map((agent) => sessionFor(agent, "Waiting", 0)),
+    ],
+    activity: [
+      {
+        id: `${id}-asked`,
+        who: "You",
+        what: "asked",
+        at: clock,
+        text: request.text,
+        mine: true,
+        attachment: images.length === 0 ? undefined : { images },
+      },
+      {
+        id: `${id}-plan`,
+        who: stack.name,
+        what: "planned it",
+        at: clock,
+        text: planSentence(stack, request.kind, staff, pull),
+      },
+    ],
   };
 
-  if (request.kind === "fix") {
-    const writes = MODELS[stack.crew.writes];
+  if (pull === null) {
     const title = request.title ?? titleFrom(request.text);
 
     return schedule(
       {
-        ...shared,
+        ...base,
         number: null,
         kind: "fix",
         title,
-        summary: plan,
+        summary: planSentence(stack, "fix", staff, null),
         status: "working",
         now: "Queued",
         author: YOU,
         branch: `${stack.id}/${slug(title)}`,
         surface: SURFACES.unknown,
-        checks: [],
-        sessions: [{ duty: "writes", model: writes.id, state: "Starting", turns: 0, cost: 0 }],
-        activity: [asked],
       },
-      fixSteps(stack, number),
+      fixSteps(stack, number, staff),
       clock,
     );
   }
 
-  const pull = request.pull;
-  const duty = request.kind === "review" ? "reviews" : "watches";
-  const model = MODELS[stack.crew[duty]];
   const mine = pull.author.id === YOU.id;
 
   return schedule(
     {
-      ...shared,
+      ...base,
       number: pull.number,
       kind: request.kind,
       title: pull.title,
@@ -133,18 +138,14 @@ export function createItem(
         ? "Your pull request."
         : `${firstName(pull.author.name)}'s pull request, opened ${pull.opened}.`,
       status: request.kind === "review" ? "working" : "watching",
-      now: request.kind === "review" ? `${model.short} is starting` : "CI queued",
+      now: request.kind === "review" ? "Starting" : "CI queued",
       author: pull.author,
       branch: pull.branch,
       surface: pull.surface,
-      checks: [],
-      sessions: [{ duty, model: model.id, state: "Starting", turns: 0, cost: 0 }],
-      activity: [
-        asked,
-        { id: `${id}-plan`, who: model.short, what: "took it", at: clock, text: plan },
-      ],
     },
-    request.kind === "review" ? reviewSteps(stack, pull) : babysitSteps(stack, pull, mine),
+    request.kind === "review"
+      ? reviewSteps(stack, pull, staff)
+      : babysitSteps(stack, pull, mine, staff),
     clock,
   );
 }
@@ -154,7 +155,12 @@ export function firstName(name: string): string {
 }
 
 function titleFrom(text: string): string {
-  const sentence = text.split(/[.\n]/)[0]?.trim() ?? text;
+  const sentence =
+    text
+      .replace(/@[\w-]+/g, "")
+      .split(/[.\n]/)[0]
+      ?.trim() ?? text;
+
   const capped = sentence.length > 64 ? `${sentence.slice(0, 63).trimEnd()}…` : sentence;
 
   return capped.charAt(0).toUpperCase() + capped.slice(1);

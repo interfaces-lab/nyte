@@ -1,18 +1,14 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
-import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { MODELS } from "./model.ts";
-import type { Answer, Item } from "./model.ts";
+import type { Item } from "./model.ts";
 import { CheckDots, GroupLabel, Meta, StatusGlyph, Tile, ago, checkSummary } from "./parts.tsx";
 import { pane } from "./stack-view.tsx";
-
-const TIGHT = "@container stacks (max-width: 759px)";
 
 const NARROW = "@container stacks (max-width: 639px)";
 
@@ -75,21 +71,9 @@ const styles = create({
     rowGap: space.s1,
     minWidth: 0,
   },
-  rowMetaAsking: { paddingInlineEnd: { default: 240, [TIGHT]: 0 } },
   rowNow: { color: role.contentSecondary },
   rowAsk: { color: role.contentPrimary, fontWeight: type.weightMedium },
   rowEnd: { display: "flex", alignItems: "center", gap: space.s2, color: role.contentTertiary },
-  answers: {
-    position: { default: "absolute", [TIGHT]: "static" },
-    insetInlineEnd: space.s3,
-    insetBlockEnd: space.s2_5,
-    display: "flex",
-    flexWrap: "wrap",
-    gap: space.s1_5,
-    paddingInlineStart: { default: 0, [TIGHT]: `calc(${space.s3} * 2 + 24px)` },
-    paddingInlineEnd: { default: 0, [TIGHT]: space.s3 },
-    paddingBlockEnd: { default: 0, [TIGHT]: space.s3 },
-  },
 });
 
 export interface ListGroup {
@@ -98,21 +82,19 @@ export interface ListGroup {
   readonly items: readonly Item[];
 }
 
-/** Groups of rows; a row that asks you something carries its answers, so you can reply without opening it. */
+/** Groups of rows. A row says what it waits on; answering happens on the item, in one place. */
 export function ItemList({
   groups,
   clock,
   cursor,
   fresh,
   onOpen,
-  onAnswer,
 }: {
   readonly groups: readonly ListGroup[];
   readonly clock: number;
   readonly cursor: string | null;
   readonly fresh: string | null;
   readonly onOpen: (item: string) => void;
-  readonly onAnswer: (item: string, answer: Answer) => void;
 }): ReactElement {
   return (
     <div {...props(styles.groups)}>
@@ -131,21 +113,6 @@ export function ItemList({
                     cursor={item.id === cursor}
                     onOpen={() => onOpen(item.id)}
                   />
-                  {item.ask !== null && (
-                    <span {...props(styles.answers)}>
-                      {item.ask.answers.map((answer) => (
-                        <Button
-                          key={answer.label}
-                          size="xs"
-                          variant={answer.primary ? "solid" : "outline"}
-                          tone={answer.primary ? "primary" : "neutral"}
-                          onClick={() => onAnswer(item.id, answer)}
-                        >
-                          {answer.label}
-                        </Button>
-                      ))}
-                    </span>
-                  )}
                 </li>
               ))}
             </ul>
@@ -168,7 +135,12 @@ function ItemRow({
   readonly cursor: boolean;
   readonly onOpen: () => void;
 }): ReactElement {
-  const crew = item.sessions.map((session) => MODELS[session.model].short).join(" → ");
+  const working = item.sessions.filter((session) => !session.lead);
+
+  const crew = (working.length === 0 ? item.sessions : working)
+    .map((session) => session.name)
+    .join(" → ");
+
   const finished = item.status === "merged" || item.status === "done";
 
   return (
@@ -195,7 +167,7 @@ function ItemRow({
         </Avatar>
         {ago(item.updated, clock, true)}
       </span>
-      <span {...props(styles.rowMeta, item.ask !== null && styles.rowMetaAsking)}>
+      <span {...props(styles.rowMeta)}>
         <Meta icon={<StatusGlyph status={item.status} />}>
           <span {...props(item.status === "needs-you" ? styles.rowAsk : styles.rowNow)}>
             {item.now}

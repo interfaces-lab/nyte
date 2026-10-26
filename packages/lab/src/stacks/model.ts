@@ -44,13 +44,14 @@ export const MODELS: Readonly<Record<ModelId, Model>> = {
   },
 };
 
-export type Duty = "writes" | "reviews" | "watches";
-
-export const DUTIES: readonly { readonly duty: Duty; readonly label: string }[] = [
-  { duty: "writes", label: "Writes" },
-  { duty: "reviews", label: "Reviews" },
-  { duty: "watches", label: "Watches CI" },
-];
+/** Anyone the lead can hand work to. Nothing about it is fixed: you name it and say what it does. */
+export interface Agent {
+  readonly id: string;
+  readonly name: string;
+  readonly model: ModelId;
+  readonly does: string;
+  readonly skills: readonly string[];
+}
 
 export const SKILLS: readonly string[] = [
   "better-ui",
@@ -88,7 +89,9 @@ export interface Stack {
   readonly purpose: string;
   readonly icon: IconName;
   readonly tint: Tint;
-  readonly crew: Readonly<Record<Duty, ModelId>>;
+  /** The stack's own agent, named after it: plans each task, reviews it and opens the pull request. */
+  readonly lead: ModelId;
+  readonly agents: readonly Agent[];
   readonly skills: readonly string[];
   readonly asks: readonly string[];
   readonly spent: number;
@@ -140,6 +143,8 @@ export interface Attachment {
   readonly diff?: { readonly file: string; readonly lines: readonly DiffLine[] };
   readonly shot?: ShotId;
   readonly images?: readonly string[];
+  /** Shows the item's findings, which you keep or drop before they're sent. */
+  readonly findings?: boolean;
 }
 
 /** The tick it happened on; one tick is a minute, and the seed's history is before tick 0. */
@@ -178,9 +183,12 @@ export interface FileChange {
   readonly removed: number;
 }
 
+/** One agent's session on one item, kept as it was even if the agent changes later. */
 export interface Session {
-  readonly duty: Duty;
+  readonly name: string;
   readonly model: ModelId;
+  readonly does: string;
+  readonly lead: boolean;
   readonly state: string;
   readonly turns: number;
   readonly cost: number;

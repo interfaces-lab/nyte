@@ -7,8 +7,8 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
-import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
+import { DraggableChat, DropZone } from "./dnd.tsx";
 import type { Chat } from "./model.ts";
 
 function NavRow({
@@ -37,9 +37,11 @@ function NavRow({
 
 function Section({
   label,
+  action,
   children,
 }: {
   readonly label: string;
+  readonly action?: ReactNode;
   readonly children: ReactNode;
 }): ReactElement {
   return (
@@ -48,6 +50,7 @@ function Section({
         <span {...props(sidebarStyles.sectionToggle)}>
           <span {...props(sidebarStyles.sectionLabel)}>{label}</span>
         </span>
+        {action}
       </div>
       <div {...props(sidebarStyles.sessionList)}>{children}</div>
     </section>
@@ -60,19 +63,16 @@ function ListRow({
   meta,
   selected,
   onOpen,
-  action,
 }: {
   readonly glyph: ReactNode;
   readonly label: string;
   readonly meta?: string;
   readonly selected: boolean;
   readonly onOpen?: () => void;
-  readonly action?: ReactNode;
 }): ReactElement {
   return (
     <Row
       selected={selected}
-      revealActions
       xstyle={[
         sidebarStyles.rowSurface,
         sidebarStyles.sessionRow,
@@ -85,9 +85,6 @@ function ListRow({
         <Row.Label xstyle={sidebarStyles.sessionLabel}>{label}</Row.Label>
         {meta !== undefined && <Row.Meta xstyle={sidebarStyles.rowMeta}>{meta}</Row.Meta>}
       </Row.Primary>
-      {action !== undefined && action !== false && (
-        <Row.Actions placement="overlay">{action}</Row.Actions>
-      )}
     </Row>
   );
 }
@@ -99,31 +96,24 @@ export interface SidebarStack {
   readonly waiting: number;
 }
 
-/** No drag and no disclosure: a stack is one row, and a chat hands itself over from its own row. */
+/**
+ * No disclosures. A stack is one row; drag a chat onto it, or onto the stack's page, to hand
+ * the chat over.
+ */
 export function StacksSidebar({
   stacks,
   selected,
-  creating,
-  inbox,
-  waiting,
   chats,
   handed,
-  onInbox,
   onOpenStack,
   onNewStack,
-  onHand,
 }: {
   readonly stacks: readonly SidebarStack[];
   readonly selected: string | null;
-  readonly creating: boolean;
-  readonly inbox: boolean;
-  readonly waiting: number;
-  readonly onInbox: () => void;
   readonly chats: readonly Chat[];
   readonly handed: Readonly<Record<string, string>>;
   readonly onOpenStack: (stack: string) => void;
   readonly onNewStack: () => void;
-  readonly onHand: (chat: Chat, stack: string) => void;
 }): ReactElement {
   return (
     <aside {...props(sidebarStyles.rail)}>
@@ -135,42 +125,34 @@ export function StacksSidebar({
             keys={clientActionKeys(clientActions.newChat, true)}
           />
           <NavRow icon="search" label="Search" />
-          <ListRow
-            glyph={<Icon name={waiting === 0 ? "inbox-checked" : "inbox-empty"} size={14} />}
-            label="Needs You"
-            meta={waiting === 0 ? undefined : String(waiting)}
-            selected={inbox}
-            onOpen={onInbox}
-          />
           <NavRow icon="customize" label="Customize" />
           <NavRow icon="settings" label="Settings" />
         </div>
         <div {...props(sidebarStyles.scroll)}>
-          <Section label="Stacks">
+          <Section
+            label="Stacks"
+            action={
+              <Button size="2xs" iconOnly icon="plus" aria-label="New Stack" onClick={onNewStack} />
+            }
+          >
             {stacks.map((stack) => (
-              <ListRow
-                key={stack.id}
-                glyph={<Icon name={stack.icon} size={14} />}
-                label={stack.name}
-                meta={stack.waiting === 0 ? undefined : `${String(stack.waiting)} for you`}
-                selected={stack.id === selected}
-                onOpen={() => onOpenStack(stack.id)}
-              />
+              <DropZone key={stack.id} stack={stack.id} label="sidebar">
+                <ListRow
+                  glyph={<Icon name={stack.icon} size={14} />}
+                  label={stack.name}
+                  meta={stack.waiting === 0 ? undefined : `${String(stack.waiting)} for you`}
+                  selected={stack.id === selected}
+                  onOpen={() => onOpenStack(stack.id)}
+                />
+              </DropZone>
             ))}
-            <ListRow
-              glyph={<Icon name="plus" size={14} />}
-              label="New Stack"
-              selected={creating}
-              onOpen={onNewStack}
-            />
           </Section>
           <Section label="nyte">
             {chats.map((chat) => {
               const home = stacks.find((stack) => stack.id === handed[chat.id]);
 
-              return (
+              const row = (
                 <ListRow
-                  key={chat.id}
                   glyph={
                     home === undefined ? (
                       chat.working && <StatusDot mark="working" />
@@ -179,36 +161,18 @@ export function StacksSidebar({
                     )
                   }
                   label={chat.title}
+                  meta={home?.name}
                   selected={false}
                   onOpen={home === undefined ? undefined : () => onOpenStack(home.id)}
-                  action={
-                    home === undefined && (
-                      <Menu>
-                        <MenuTrigger
-                          render={
-                            <Button
-                              size="2xs"
-                              iconOnly
-                              icon="layers"
-                              aria-label="Hand to a Stack"
-                            />
-                          }
-                        />
-                        <MenuContent align="end">
-                          {stacks.map((stack) => (
-                            <MenuItem
-                              key={stack.id}
-                              icon={stack.icon}
-                              onClick={() => onHand(chat, stack.id)}
-                            >
-                              Hand to {stack.name}
-                            </MenuItem>
-                          ))}
-                        </MenuContent>
-                      </Menu>
-                    )
-                  }
                 />
+              );
+
+              return home === undefined ? (
+                <DraggableChat key={chat.id} chat={chat.id}>
+                  {row}
+                </DraggableChat>
+              ) : (
+                <div key={chat.id}>{row}</div>
               );
             })}
           </Section>

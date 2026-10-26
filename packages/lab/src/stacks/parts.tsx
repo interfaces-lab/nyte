@@ -31,16 +31,16 @@ export const styles = create({
     flexShrink: 0,
     color: role.contentSecondary,
   },
+  /** A section's name: sentence case, the size of the text under it, a step quieter. */
   group: {
     display: "flex",
     alignItems: "center",
     gap: space.s2,
-    color: role.contentTertiary,
-    fontSize: 10,
-    lineHeight: "16px",
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+    letterSpacing: type.letterBase,
     fontWeight: type.weightMedium,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
   },
   count: {
     minWidth: glyph.md,
@@ -50,7 +50,6 @@ export const styles = create({
     color: role.contentSecondary,
     textAlign: "center",
     fontVariantNumeric: "tabular-nums",
-    letterSpacing: 0,
   },
   meta: {
     display: "inline-flex",
@@ -118,9 +117,6 @@ export const styles = create({
     gap: space.s2,
     height: 44,
     paddingInline: { default: space.s4, [NARROW]: space.s3 },
-    borderBlockEndWidth: 1,
-    borderBlockEndStyle: "solid",
-    borderBlockEndColor: role.borderSecondaryTranslucent,
     flexShrink: 0,
   },
   crumbs: {
@@ -156,15 +152,6 @@ export const styles = create({
   crumbPassive: { color: role.contentSecondary },
   crumbSeparator: { display: "inline-flex", color: role.contentDisabled },
   person: { display: "inline-flex", alignItems: "center", gap: space.s2, minWidth: 0 },
-  /** A button label that stays for screen readers but leaves the glyph alone on a phone. */
-  wideLabel: {
-    position: { default: "static", [NARROW]: "absolute" },
-    width: { default: "auto", [NARROW]: 1 },
-    height: { default: "auto", [NARROW]: 1 },
-    overflow: { default: "visible", [NARROW]: "hidden" },
-    clipPath: { default: "none", [NARROW]: "inset(50%)" },
-    whiteSpace: "nowrap",
-  },
   crumbCollapsible: { display: { default: "flex", [NARROW]: "none" } },
 });
 

@@ -4,13 +4,13 @@ import type { ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { CheckboxField } from "@nyte-ai/ui/checkbox";
 import { Input } from "@nyte-ai/ui/input";
-import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { ASKS, DUTIES, SKILLS } from "./model.ts";
-import type { Stack } from "./model.ts";
+import { ASKS, SKILLS } from "./model.ts";
+import type { Agent, Stack } from "./model.ts";
 import { Header, ModelPicker, Properties, Tile, styles as parts } from "./parts.tsx";
 import { pane } from "./stack-view.tsx";
 
@@ -38,6 +38,25 @@ const styles = create({
   asks: { display: "flex", flexDirection: "column", gap: space.s2 },
   actions: { display: "flex", gap: space.s2 },
   quiet: { margin: 0, color: role.contentSecondary },
+  agents: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.s2,
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  agent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.s2,
+    padding: space.s3,
+    borderRadius: radius.card,
+    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+  },
+  agentHead: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: space.s2 },
+  agentName: { flex: "1 1 160px" },
+  agentRemove: { display: "inline-flex", marginInlineStart: "auto" },
 });
 
 /** Everything a stack needs, on one page, with nothing hidden. Pass `initial` to edit one. */
@@ -59,7 +78,16 @@ export function NewStack({
       purpose: "",
       icon: "layers",
       tint: TINTS[count % TINTS.length] ?? "blue",
-      crew: { writes: "sol", reviews: "opus", watches: "mini" },
+      lead: "opus",
+      agents: [
+        {
+          id: "agent-0",
+          name: "Sol",
+          model: "sol",
+          does: "Writes what you ask for in its own worktree",
+          skills: [],
+        },
+      ],
       skills: ["verify-nyte"],
       asks: ["Before merging", "Before pushing to a teammate's branch"],
       spent: 0,
@@ -68,7 +96,14 @@ export function NewStack({
     },
   );
 
+  const [focusAgent, setFocusAgent] = useState<string | null>(null);
   const name = draft.name.trim();
+
+  const change = (id: string, patch: Partial<Agent>): void =>
+    setDraft((current) => ({
+      ...current,
+      agents: current.agents.map((agent) => (agent.id === id ? { ...agent, ...patch } : agent)),
+    }));
 
   return (
     <section aria-label="New stack" {...props(pane.pane)}>
@@ -94,7 +129,7 @@ export function NewStack({
               <h1 {...props(pane.title)}>{name === "" ? "New stack" : name}</h1>
               <p {...props(text.base, styles.quiet)}>
                 {draft.purpose.trim() === ""
-                  ? "A crew of models with its own rules."
+                  ? "A lead, the agents it hands work to, and the rules they follow."
                   : draft.purpose}
               </p>
             </div>
@@ -131,24 +166,90 @@ export function NewStack({
             ]}
           />
           <div {...props(styles.section)}>
-            <span {...props(parts.group)}>Crew</span>
+            <span {...props(parts.group)}>Lead</span>
             <Properties
-              rows={DUTIES.map((entry) => ({
-                label: entry.label,
-                value: (
-                  <ModelPicker
-                    label={entry.label}
-                    value={draft.crew[entry.duty]}
-                    onChange={(model) =>
-                      setDraft((current) => ({
-                        ...current,
-                        crew: { ...current.crew, [entry.duty]: model },
-                      }))
-                    }
-                  />
-                ),
-              }))}
+              rows={[
+                {
+                  label: name === "" ? "This stack" : name,
+                  value: (
+                    <ModelPicker
+                      label="Lead"
+                      value={draft.lead}
+                      onChange={(model) => setDraft((current) => ({ ...current, lead: model }))}
+                    />
+                  ),
+                },
+              ]}
             />
+            <p {...props(text.sm, styles.quiet)}>
+              Plans each task, picks who works it, reviews the result and opens the pull request.
+              Nyte watches CI without a model.
+            </p>
+          </div>
+          <div {...props(styles.section)}>
+            <span {...props(parts.group)}>Agents</span>
+            <ul {...props(styles.agents)}>
+              {draft.agents.map((agent, index) => (
+                <li key={agent.id} {...props(styles.agent)}>
+                  <div {...props(styles.agentHead)}>
+                    <Input
+                      aria-label={`Agent ${String(index + 1)} name`}
+                      placeholder="Name"
+                      value={agent.name}
+                      autoFocus={focusAgent === agent.id}
+                      onValueChange={(value) => change(agent.id, { name: value })}
+                      xstyle={styles.agentName}
+                    />
+                    <ModelPicker
+                      label={agent.name}
+                      value={agent.model}
+                      onChange={(model) => change(agent.id, { model })}
+                    />
+                    <span {...props(styles.agentRemove)}>
+                      <Button
+                        size="sm"
+                        iconOnly
+                        icon="trash"
+                        aria-label={`Remove ${agent.name === "" ? "Agent" : agent.name}`}
+                        onClick={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            agents: current.agents.filter((entry) => entry.id !== agent.id),
+                          }))
+                        }
+                      />
+                    </span>
+                  </div>
+                  <Input
+                    aria-label={`What ${agent.name === "" ? "this agent" : agent.name} does`}
+                    placeholder="What it does, in a few words"
+                    value={agent.does}
+                    onValueChange={(value) => change(agent.id, { does: value })}
+                    xstyle={styles.field}
+                  />
+                </li>
+              ))}
+            </ul>
+            <span>
+              <Button
+                size="sm"
+                icon="plus"
+                onClick={() => {
+                  const id = `agent-${String(Date.now())}`;
+
+                  setFocusAgent(id);
+                  setDraft((current) => ({
+                    ...current,
+                    agents: [
+                      ...current.agents,
+                      { id, name: "", model: "sonnet", does: "", skills: [] },
+                    ],
+                  }));
+                }}
+              >
+                Add Agent
+              </Button>
+            </span>
           </div>
           <div {...props(styles.section)}>
             <span {...props(parts.group)}>Reads every time</span>
