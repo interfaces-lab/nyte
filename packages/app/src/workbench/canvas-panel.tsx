@@ -62,14 +62,20 @@ const styles = create({
 
 const LATEST = "latest";
 
+/**
+ * Workbench slots stay mounted while hidden, so the frames render only while `visible`;
+ * unmounting them tears down each iframe and its canvas runtime.
+ */
 export function CanvasPanel({
   sessionId,
   part,
+  visible,
   pinned,
   onPin,
 }: {
   readonly sessionId: SessionId;
   readonly part: PartId;
+  readonly visible: boolean;
   readonly pinned: number | null;
   readonly onPin: (revision: number | null) => void;
 }): ReactElement {
@@ -103,7 +109,7 @@ export function CanvasPanel({
       </section>
     );
 
-  const revisions = state.revisions ?? [];
+  const revisions = state.revisions;
   const latest = revisions.at(-1)?.number ?? 1;
   const held = pinned === latest ? undefined : revisions.find((entry) => entry.number === pinned);
 
@@ -156,18 +162,20 @@ export function CanvasPanel({
           onPressedChange={(pressed) => onPin(pressed ? latest : null)}
         />
       </div>
-      <div {...props(styles.body)}>
-        {held !== undefined && <PinnedRevision key={held.number} revision={held} />}
-        <div {...props(styles.column, held !== undefined && styles.divided)}>
-          {held !== undefined && <p {...props(text.sm, styles.heading)}>r{latest} · latest</p>}
-          <CanvasFrame
-            state={state}
-            report={(message) =>
-              void connection().session(sessionId).part(part).act("report", { message })
-            }
-          />
+      {visible && (
+        <div {...props(styles.body)}>
+          {held !== undefined && <PinnedRevision key={held.number} revision={held} />}
+          <div {...props(styles.column, held !== undefined && styles.divided)}>
+            {held !== undefined && <p {...props(text.sm, styles.heading)}>r{latest} · latest</p>}
+            <CanvasFrame
+              state={state}
+              report={(message) =>
+                void connection().session(sessionId).part(part).act("report", { message })
+              }
+            />
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }

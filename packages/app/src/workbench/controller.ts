@@ -418,6 +418,17 @@ export function activeWorkbenchTab(
   return view.tabs.find((tab) => workbenchTabAvailable(scope, tab.kind, capabilities)) ?? null;
 }
 
+/** The tab on screen: none while the workbench is collapsed or the maximized chat covers it. */
+export function shownWorkbenchTab(
+  view: WorkbenchViewState,
+  scope: WorkbenchScope,
+  capabilities: ClientCapabilities,
+): WorkbenchTab | null {
+  if (!view.expanded || workbenchShowsChat(view.layout)) return null;
+
+  return activeWorkbenchTab(view, scope, capabilities);
+}
+
 export function workbenchTabLabel(tab: WorkbenchTab): string {
   if (tab.kind === "file") return tab.path.split(/[\\/]/).at(-1) ?? tab.path;
 
@@ -934,4 +945,26 @@ export function useWorkbenchSnapshot(): WorkbenchSnapshot {
     workbenchController.getSnapshot,
     workbenchController.getSnapshot,
   );
+}
+
+/** The workbench tab drawing this canvas while it is on screen beside the chat. */
+export function useVisibleCanvasTab(
+  workspacePath: string | undefined,
+  canvas: { readonly sessionId: SessionId; readonly part: PartId } | undefined,
+): WorkbenchTabId | undefined {
+  const read = (): WorkbenchTabId | undefined => {
+    if (canvas === undefined) return undefined;
+
+    const tab = shownWorkbenchTab(
+      workbenchController.getView(workbenchViewKey(workspacePath)),
+      workbenchScope(workspacePath),
+      clientCapabilities(nyte.host),
+    );
+
+    return tab?.kind === "canvas" && tab.sessionId === canvas.sessionId && tab.part === canvas.part
+      ? tab.id
+      : undefined;
+  };
+
+  return useSyncExternalStore(workbenchController.subscribe, read, read);
 }

@@ -3,10 +3,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
-import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
 import { preferences } from "../preferences/index.ts";
 import "../theme/tokens.stylex.ts";
 import { CanvasFrame } from "./canvas-frame.tsx";
+import type { DrawnCanvas } from "./canvas-frame.tsx";
 
 declare global {
   interface Window {
@@ -34,7 +34,7 @@ export async function run(): Promise<string> {
   const root = createRoot(host);
   const reported: string[] = [];
 
-  const state = (name: string, title: string): CanvasState => {
+  const state = (name: string, title: string): DrawnCanvas => {
     const compiled = window.canvases[name];
 
     if (compiled === undefined) throw new Error(`No canvas ${name}.`);

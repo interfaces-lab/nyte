@@ -15,9 +15,9 @@ import { useHostState, useVcsSnapshot } from "../queries.ts";
 import { changesRepository, scopeFiles } from "./change-scopes.ts";
 import { BranchRow, ChangesRow, SessionStatusRows } from "./rail-status.tsx";
 import {
-  activeWorkbenchTab,
   clampWorkbenchWidthToBounds,
   defaultWorkbenchTab,
+  shownWorkbenchTab,
   WORKBENCH_ACTIVE_WIDTH_VARIABLE,
   WORKBENCH_CENTER_WIDTH_MIN,
   WORKBENCH_WIDTH_DEFAULT,
@@ -462,6 +462,7 @@ function PanelContent({
         <CanvasPanel
           sessionId={tab.sessionId}
           part={tab.part}
+          visible={visible}
           pinned={tab.pinned}
           onPin={(pinned) =>
             workbenchController.actions.updateTab({
@@ -581,7 +582,6 @@ function WorkbenchViewHost({
     });
   };
 
-  const activeTab = activeWorkbenchTab(view, scope, capabilities);
   const panelVisible = current && view.expanded;
   const panelShown = panelVisible && !chatShowing;
   const panelHidden = !current || (panelVisible && chatShowing);
@@ -616,10 +616,10 @@ function WorkbenchViewHost({
   const fileTab = mountedTabs.find((tab) => tab.kind === "file" || tab.kind === "files");
   const panelTabs = mountedTabs.filter((tab) => tab.kind !== "file" && tab.kind !== "files");
 
+  const shownTab = current ? shownWorkbenchTab(view, scope, capabilities) : null;
+
   const fileVisible =
-    panelShown &&
-    (activeTab?.kind === "file" || activeTab?.kind === "files") &&
-    fileTab !== undefined;
+    (shownTab?.kind === "file" || shownTab?.kind === "files") && fileTab !== undefined;
 
   const renderSlot = (tab: WorkbenchTab, visible: boolean, id: string): ReactElement => {
     const sidebarVisible = sidebars.get(tab.id) ?? false;
@@ -710,8 +710,8 @@ function WorkbenchViewHost({
           />
         )}
         {fileTab !== undefined && renderSlot(fileTab, fileVisible, "files")}
-        {panelTabs.map((tab) => renderSlot(tab, panelShown && activeTab?.id === tab.id, tab.id))}
-        {panelShown && activeTab === null && (
+        {panelTabs.map((tab) => renderSlot(tab, shownTab?.id === tab.id, tab.id))}
+        {panelShown && shownTab === null && (
           <div {...props(workbenchStyles.launcher)}>
             {workbenchTabs(scope, capabilities).map((kind) => (
               <div key={kind} {...props(workbenchStyles.launcherFrame)}>

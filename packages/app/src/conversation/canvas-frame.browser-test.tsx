@@ -3,12 +3,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
-import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
 import { sizeChangedNotification } from "@nyte-ai/plugin/canvas/protocol";
 import { preferences } from "../preferences/index.ts";
 import "../theme/tokens.stylex.ts";
 import { keys } from "../queries.ts";
 import { CanvasFrame } from "./canvas-frame.tsx";
+import type { DrawnCanvas } from "./canvas-frame.tsx";
 import { mentionFile } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 import { ReferenceOpenerProvider } from "./reference-opener.tsx";
@@ -36,7 +36,7 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
   }
 }
 
-const part = (code: string, runtime = 1): CanvasState => ({
+const part = (code: string, runtime = 1): DrawnCanvas => ({
   runtime,
   title: "Quarterly revenue",
   code,
@@ -62,11 +62,11 @@ export async function run(): Promise<string> {
 
   const reported: string[] = [];
 
-  const draw = (state: CanvasState): void =>
+  const draw = (state: DrawnCanvas): void =>
     root.render(
       <QueryClientProvider client={client}>
         <ReferenceOpenerProvider value={opener}>
-          <CanvasFrame state={state} report={(message) => reported.push(message)} />
+          <CanvasFrame state={state} report={(message) => reported.push(message)} remembered />
         </ReferenceOpenerProvider>
       </QueryClientProvider>,
     );

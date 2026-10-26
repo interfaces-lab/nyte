@@ -4,8 +4,15 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { use, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { ReactElement } from "react";
+import {
+  use,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import type { ReactElement, ReactNode } from "react";
 import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
 import {
@@ -20,11 +27,17 @@ import type { Plugin } from "@nyte-ai/plugin/client";
 import { followedTrace, startSpan } from "@nyte-ai/sdk";
 import type { EndSpan } from "@nyte-ai/sdk";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { media, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
+import { useHostState } from "../queries.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { patchDigest } from "../workbench/changes-viewed.ts";
+import {
+  useVisibleCanvasTab,
+  workbenchController,
+  workbenchViewKey,
+} from "../workbench/controller.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
 import { readCanvasTheme, subscribeCanvasTheme } from "./canvas-theme.ts";
@@ -82,6 +95,18 @@ const styles = create({
     alignItems: "center",
     height: "100%",
     margin: 0,
+    color: role.contentSecondary,
+  },
+  beside: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space.s3,
+    height: "100%",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: role.borderSecondaryTranslucent,
+    borderRadius: radius.card,
     color: role.contentSecondary,
   },
   status: {
@@ -191,33 +216,192 @@ interface CanvasError {
   readonly message: string;
 }
 
+/** Heights depend on the width a canvas lays out in, so a narrowed chat keeps its own. */
+function heightKey(digest: string, width: number): string {
+  return `${digest}@${String(width)}`;
+}
+
 /** What drawing one canvas module takes: a part's current state, or one of its revisions. */
 export type DrawnCanvas = Pick<CanvasState, "runtime" | "code" | "title" | "height" | "error">;
 
+/**
+ * Draws one canvas at the height its shell reports. `remembered` starts a
+ * remounted frame at the height it last reported at this width, for the
+ * transcript's virtualized rows; `standIn` takes the canvas's place at that
+ * height, so its runtime isn't running.
+ */
 export function CanvasFrame({
   state,
   report,
+  remembered = false,
+  action,
+  standIn,
 }: {
   readonly state: DrawnCanvas;
   /** Records an error the shell hit on the part; absent for a revision that is no longer the part's module. */
   readonly report?: (message: string) => void;
+  readonly remembered?: boolean;
+  /** Drawn over the frame's top corner. */
+  readonly action?: ReactNode;
+  readonly standIn?: ReactNode;
+}): ReactElement {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState<number>();
+  const [reported, setReported] = useState<{ readonly digest: string; readonly height: number }>();
+  const [error, setError] = useState<CanvasError>();
+  const digest = patchDigest(state.code);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the box before paint to read the height remembered at its width
+  useLayoutEffect(() => {
+    if (remembered) setWidth(boxRef.current?.clientWidth);
+  }, [remembered]);
+
+  const reportedHeight =
+    reported?.digest === digest
+      ? reported.height
+      : width === undefined
+        ? undefined
+        : measuredHeights.get(heightKey(digest, width));
+
+  const tooNew = state.runtime > CANVAS_RUNTIME;
+  const height = canvasFrameHeight(state.height, tooNew ? undefined : reportedHeight);
+  const failure = error?.code === state.code ? error.message : undefined;
+
+  const resize = (next: number): void => {
+    const box = boxRef.current;
+
+    if (remembered && box !== null) rememberHeight(heightKey(digest, box.clientWidth), next);
+    setReported({ digest, height: next });
+  };
+
+  return (
+    <figure aria-label={state.title} {...props(styles.figure)}>
+      <div ref={boxRef} {...props(styles.box)} style={{ height }}>
+        {action !== undefined && <span {...props(styles.open)}>{action}</span>}
+        {standIn ??
+          (tooNew ? (
+            <p {...props(styles.message)}>Update Nyte to see this canvas.</p>
+          ) : (
+            <CanvasShell
+              state={state}
+              report={report}
+              onResize={resize}
+              onError={(message) => setError({ code: state.code, message })}
+            />
+          ))}
+      </div>
+      {standIn === undefined && failure !== undefined && (
+        <figcaption role="status" {...props(text.sm, styles.status)}>
+          <span aria-hidden="true" {...props(surfaceTheme.red, styles.dot)} />
+          {failure}
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+/**
+ * A canvas in the chat. While the workbench shows the same part, a stand-in
+ * takes its place so only one copy runs.
+ */
+function TranscriptCanvas({
+  state,
+  report,
+}: {
+  readonly state: DrawnCanvas;
+  readonly report: (message: string) => void;
+}): ReactElement {
+  const origin = use(PartOrigin);
+  const opener = useReferenceOpener();
+  const workspacePath = useHostState().data.workspace?.path;
+  const besideTab = useVisibleCanvasTab(workspacePath, origin);
+  const title = state.title;
+
+  if (besideTab !== undefined)
+    return (
+      <CanvasFrame
+        state={state}
+        remembered
+        standIn={
+          <div {...props(text.sm, styles.beside)}>
+            Shown beside chat
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                workbenchController.actions.closeTab({
+                  view: workbenchViewKey(workspacePath),
+                  id: besideTab,
+                })
+              }
+            >
+              Show Here
+            </Button>
+          </div>
+        }
+      />
+    );
+
+  const openBeside =
+    origin === undefined
+      ? undefined
+      : opener?.({ kind: "canvas", sessionId: origin.sessionId, part: origin.part, title });
+
+  return (
+    <CanvasFrame
+      state={state}
+      report={report}
+      remembered
+      action={
+        openBeside === undefined ? undefined : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  iconOnly
+                  icon="split-right"
+                  aria-label={`Open ${title} beside chat`}
+                  onClick={openBeside}
+                />
+              }
+            />
+            <TooltipContent>Open beside chat</TooltipContent>
+          </Tooltip>
+        )
+      }
+    />
+  );
+}
+
+/** The sandboxed iframe running one canvas; unmounting it ends the canvas's runtime. */
+function CanvasShell({
+  state,
+  report,
+  onResize,
+  onError,
+}: {
+  readonly state: DrawnCanvas;
+  readonly report: ((message: string) => void) | undefined;
+  readonly onResize: (height: number) => void;
+  readonly onError: (message: string) => void;
 }): ReactElement {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const theme = useSyncExternalStore(subscribeCanvasTheme, readCanvasTheme, readCanvasTheme);
-  const { runtime, code, title, error: known } = state;
-  const [reported, setReported] = useState<{ readonly key: string; readonly height: number }>();
   const [initialized, setInitialized] = useState(false);
-  const [error, setError] = useState<CanvasError>();
   const shell = useRef({ initialized: false, reported: new Set<string>() });
   const painted = useRef<EndSpan>(undefined);
   const opener = useReferenceOpener();
-  const origin = use(PartOrigin);
   const files = useCitableFiles(opener !== undefined);
   const citable = files.data;
-  const heightKey = patchDigest(code);
-
-  const reportedHeight =
-    reported?.key === heightKey ? reported.height : measuredHeights.get(heightKey);
+  const runtime = state.runtime;
+  const code = state.code;
+  const title = state.title;
+  const known = state.error;
+  const resized = useEffectEvent(onResize);
+  const failed = useEffectEvent(onError);
+  const reportError = useEffectEvent((message: string) => report?.(message));
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- iframe shell messages, answered with the current module, theme and files
   useLayoutEffect(() => {
@@ -242,8 +426,7 @@ export function CanvasFrame({
             break;
           case "height":
             painted.current?.({ height: effect.height });
-            rememberHeight(heightKey, effect.height);
-            setReported({ key: heightKey, height: effect.height });
+            resized(effect.height);
             break;
           case "open-link": {
             const allowed = document.activeElement === frame && navigator.userActivation.isActive;
@@ -255,12 +438,12 @@ export function CanvasFrame({
 
           case "error": {
             const key = `${code}\n${effect.message}`;
-            setError({ code, message: effect.message });
+            failed(effect.message);
 
             if (shell.current.reported.has(key)) break;
             shell.current.reported.add(key);
 
-            if (known !== effect.message) report?.(effect.message);
+            if (known !== effect.message) reportError(effect.message);
             break;
           }
         }
@@ -270,7 +453,7 @@ export function CanvasFrame({
     window.addEventListener("message", receive);
 
     return () => window.removeEventListener("message", receive);
-  }, [theme, runtime, code, title, known, report, heightKey, citable, opener]);
+  }, [theme, runtime, code, title, known, citable, opener]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- posts changed code to the running iframe shell
   useLayoutEffect(() => {
@@ -292,59 +475,17 @@ export function CanvasFrame({
     }),
   );
 
-  const tooNew = runtime > CANVAS_RUNTIME;
-  const height = canvasFrameHeight(state.height, tooNew ? undefined : reportedHeight);
-  const failure = error?.code === code ? error.message : undefined;
-
-  const openBeside =
-    origin === undefined
-      ? undefined
-      : opener?.({ kind: "canvas", sessionId: origin.sessionId, part: origin.part, title });
-
   return (
-    <figure aria-label={title} {...props(styles.figure)}>
-      <div {...props(styles.box)} style={{ height }}>
-        {openBeside !== undefined && (
-          <span {...props(styles.open)}>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    iconOnly
-                    icon="split-right"
-                    aria-label={`Open ${title} beside chat`}
-                    onClick={openBeside}
-                  />
-                }
-              />
-              <TooltipContent>Open beside chat</TooltipContent>
-            </Tooltip>
-          </span>
-        )}
-        {tooNew ? (
-          <p {...props(styles.message)}>Update Nyte to see this canvas.</p>
-        ) : (
-          <iframe
-            ref={frameRef}
-            src={nyte.canvasShell ?? DEFAULT_SHELL}
-            title={title}
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
-            loading="lazy"
-            {...props(styles.frame)}
-            style={{ colorScheme: initialized ? theme.theme : "light" }}
-          />
-        )}
-      </div>
-      {failure !== undefined && (
-        <figcaption role="status" {...props(text.sm, styles.status)}>
-          <span aria-hidden="true" {...props(surfaceTheme.red, styles.dot)} />
-          {failure}
-        </figcaption>
-      )}
-    </figure>
+    <iframe
+      ref={frameRef}
+      src={nyte.canvasShell ?? DEFAULT_SHELL}
+      title={title}
+      sandbox="allow-scripts"
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      {...props(styles.frame)}
+      style={{ colorScheme: initialized ? theme.theme : "light" }}
+    />
   );
 }
 
@@ -361,7 +502,7 @@ export const canvasRenderers: Plugin = {
           if (checked instanceof Promise || checked.issues !== undefined) return null;
 
           return (
-            <CanvasFrame
+            <TranscriptCanvas
               state={checked.value}
               report={(message) => void act("report", { message })}
             />
