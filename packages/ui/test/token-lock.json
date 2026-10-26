@@ -780,8 +780,11 @@
       "--nyte-settings-section-title-line-height",
       "--nyte-settings-section-title-size",
       "--nyte-shell-card-inset",
+      "--nyte-shell-card-radius",
       "--nyte-sidebar-action-size",
       "--nyte-sidebar-ask-row-height",
+      "--nyte-sidebar-float-inset",
+      "--nyte-sidebar-float-radius",
       "--nyte-sidebar-gutter",
       "--nyte-sidebar-handle-width",
       "--nyte-sidebar-icon-slot",
@@ -791,6 +794,8 @@
       "--nyte-sidebar-row-height",
       "--nyte-sidebar-row-padding-inline",
       "--nyte-sidebar-section-gap",
+      "--nyte-sidebar-slide-duration",
+      "--nyte-sidebar-slide-easing",
       "--nyte-sidebar-trailing-width",
       "--nyte-sidebar-width",
       "--nyte-suggestion-item-gap",
@@ -1064,10 +1069,17 @@
       "sectionTitleLineHeight",
       "sectionTitleSize"
     ],
-    "app/src/theme/schema.stylex.ts shell": ["cardInset", "titlebarHeight", "trafficLightInset"],
+    "app/src/theme/schema.stylex.ts shell": [
+      "cardInset",
+      "cardRadius",
+      "titlebarHeight",
+      "trafficLightInset"
+    ],
     "app/src/theme/schema.stylex.ts sidebar": [
       "actionSize",
       "askRowHeight",
+      "floatInset",
+      "floatRadius",
       "gutter",
       "handleWidth",
       "iconSlot",
@@ -1077,6 +1089,8 @@
       "rowHeight",
       "rowPaddingInline",
       "sectionGap",
+      "slideDuration",
+      "slideEasing",
       "trailingWidth",
       "width"
     ],
