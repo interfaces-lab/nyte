@@ -24,7 +24,7 @@ const drawn = {
   runtime: Type.Integer({ minimum: 1 }),
   title: Type.String({ minLength: 1, maxLength: 120 }),
   height: Type.Union([Type.Number(), Type.Null()]),
-  // What a preview of the same module measured, by frame width; empty when none did, absent on a canvas drawn before heights were kept.
+  // The module's measured heights by frame width; empty when it could not be measured, absent on a canvas drawn before heights were kept.
   heights: Type.Optional(
     Type.Array(
       Type.Object({ width: Type.Integer({ minimum: 1 }), height: Type.Number({ minimum: 0 }) }),
@@ -66,9 +66,9 @@ const actions = {
 
 /**
  * Returns a canvas part's state: the compiled module, the runtime it needs,
- * its title, the agent's height hint, the heights a preview of the module
- * measured, the last error a client reported, and
- * its revisions, oldest first, the last one being the module itself.
+ * its title, the agent's height hint, the module's measured heights, the last
+ * error a client reported, and its revisions, oldest first, the last one
+ * being the module itself.
  *
  * @category plugins
  * @since 0.1.0
