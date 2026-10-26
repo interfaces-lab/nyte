@@ -541,6 +541,36 @@ export function clampCanvasHeight(height: number): number {
   return Math.min(CANVAS_MAX_HEIGHT, Math.max(CANVAS_MIN_HEIGHT, Math.round(height)));
 }
 
+/** A canvas's height in CSS pixels as a preview measured it at one frame width. */
+export type CanvasMeasuredHeight = { readonly width: number; readonly height: number };
+
+/**
+ * Returns the height a frame `width` px wide starts a canvas at, before its
+ * shell reports one: interpolated between the heights a preview measured,
+ * holding the nearest past either end; without those, the agent's hint, then
+ * the default. With no width yet, it skips the measured heights.
+ */
+export function canvasStartHeight(
+  canvas: {
+    readonly height: number | null;
+    readonly heights?: readonly CanvasMeasuredHeight[];
+  },
+  width: number | undefined,
+): number {
+  const fallback = clampCanvasHeight(canvas.height ?? CANVAS_DEFAULT_HEIGHT);
+
+  if (width === undefined || canvas.heights === undefined) return fallback;
+  const measured = canvas.heights.toSorted((left, right) => left.width - right.width);
+  const narrower = measured.findLast((point) => point.width <= width);
+  const wider = measured.find((point) => point.width >= width);
+
+  if (narrower === undefined || wider === undefined || narrower.width === wider.width)
+    return clampCanvasHeight((narrower ?? wider)?.height ?? fallback);
+  const share = (width - narrower.width) / (wider.width - narrower.width);
+
+  return clampCanvasHeight(narrower.height + share * (wider.height - narrower.height));
+}
+
 /** Returns the variables the shell may apply: allowlisted names, values stripped of the characters that could end a declaration. */
 export function sanitizeCanvasVariables(
   variables: Readonly<Record<string, string>>,

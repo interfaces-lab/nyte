@@ -1,4 +1,5 @@
 import { canvas } from "@nyte-ai/plugin/canvas/schema";
+import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
 import { branchSummary, compaction, isPart, text, thinking, tool } from "@nyte-ai/plugin/client";
 import type {
   Execution,
@@ -43,6 +44,7 @@ export type ChatRow =
       runtime: number;
       code: string;
       height: number | null;
+      heights?: CanvasState["heights"];
       error: string | null;
     }
   | { kind: "activity"; id: string; parts: readonly ActivityPart[] }

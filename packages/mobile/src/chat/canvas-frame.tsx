@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, View, useColorScheme } from "react-native";
+import { ActivityIndicator, View, useColorScheme, useWindowDimensions } from "react-native";
 import { WebView } from "react-native-webview";
 import type { WebViewMessageEvent } from "react-native-webview";
 import Constants from "expo-constants";
@@ -9,7 +9,7 @@ import { shell } from "@nyte-ai/canvas/shell-inline";
 import {
   CANVAS_DEFAULT_HEIGHT,
   CANVAS_RUNTIME,
-  clampCanvasHeight,
+  canvasStartHeight,
   hostContextChangedNotification,
   initializeResult,
   libraryResult,
@@ -39,6 +39,11 @@ function inject(view: WebView<unknown> | null, message: ShellBound): void {
   view?.injectJavaScript(shellScript(message));
 }
 
+/**
+ * Draws a canvas part in the inline shell at the height the shell reports,
+ * and until then at the height a preview measured at the frame's width,
+ * reading the window's width before the frame is laid out.
+ */
 export function CanvasFrame({
   item,
   onReport,
@@ -54,10 +59,11 @@ export function CanvasFrame({
   const [generation, setGeneration] = useState(0);
   const [ready, setReady] = useState(false);
 
-  const [frame, setFrame] = useState({
-    height: clampCanvasHeight(item.height ?? CANVAS_DEFAULT_HEIGHT),
-    scrolls: false,
-  });
+  const windowWidth = useWindowDimensions().width;
+  const [width, setWidth] = useState<number>();
+  const [frame, setFrame] = useState<{ height: number; scrolls: boolean }>();
+  const height = frame?.height ?? canvasStartHeight(item, width ?? windowWidth);
+  const scrolls = frame?.scrolls ?? false;
 
   const [failure, setFailure] = useState<{ code: string; message: string; fatal: boolean }>();
   const shown = failure?.code === item.code ? failure : undefined;
@@ -142,7 +148,7 @@ export function CanvasFrame({
       ) : shown?.fatal ? (
         <Notice>{shown.message}</Notice>
       ) : (
-        <View style={{ height: frame.height }}>
+        <View style={{ height }} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
           <WebView<unknown>
             key={generation}
             ref={webView}
@@ -153,9 +159,9 @@ export function CanvasFrame({
             onMessage={onMessage}
             onOpenWindow={(event) => void openExternalLink(event.nativeEvent.targetUrl)}
             onContentProcessDidTerminate={restart}
-            scrollEnabled={frame.scrolls}
+            scrollEnabled={scrolls}
             bounces={false}
-            showsVerticalScrollIndicator={frame.scrolls}
+            showsVerticalScrollIndicator={scrolls}
             showsHorizontalScrollIndicator={false}
             automaticallyAdjustContentInsets={false}
             allowsLinkPreview={false}

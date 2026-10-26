@@ -37,15 +37,15 @@ function shellMessage(data: ReturnType<typeof initializeRequest>): ShellMessage 
 
 describe("canvas frame height", () => {
   test("stands at the hint, or the default, until the shell reports", () => {
-    expect(canvasFrameHeight(null, undefined)).toBe(80);
-    expect(canvasFrameHeight(320, undefined)).toBe(320);
-    expect(canvasFrameHeight(320, 512)).toBe(512);
+    expect(canvasFrameHeight({ height: null }, undefined, undefined)).toBe(80);
+    expect(canvasFrameHeight({ height: 320 }, undefined, undefined)).toBe(320);
+    expect(canvasFrameHeight({ height: 320 }, undefined, 512)).toBe(512);
   });
 
   test("clamps the hint and the report alike", () => {
-    expect(canvasFrameHeight(10, undefined)).toBe(CANVAS_MIN_HEIGHT);
-    expect(canvasFrameHeight(null, 4_000)).toBe(CANVAS_MAX_HEIGHT);
-    expect(canvasFrameHeight(null, 100.4)).toBe(100);
+    expect(canvasFrameHeight({ height: 10 }, undefined, undefined)).toBe(CANVAS_MIN_HEIGHT);
+    expect(canvasFrameHeight({ height: null }, undefined, 4_000)).toBe(CANVAS_MAX_HEIGHT);
+    expect(canvasFrameHeight({ height: null }, undefined, 100.4)).toBe(100);
   });
 });
 

@@ -1,7 +1,7 @@
 import { attachFile, definePart, followedTrace, traced } from "@nyte-ai/core";
 import type { ActionContext, ActionOutput, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
 import { asId, standard } from "@nyte-ai/schema";
-import type { Awaitable, Infer } from "@nyte-ai/schema";
+import type { Awaitable, Infer, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import {
   CANVAS_ENTRY,
@@ -35,20 +35,23 @@ const handlers: {
   ) => Awaitable<ActionOutput<Actions[A]>>;
 } = {
   async replace(input, context) {
-    const outcome = await context.part.update((current) => ({
+    const drawn = {
       runtime: input.runtime,
       title: input.title,
-      code: input.code,
       height: input.height,
+      heights: input.heights ?? [],
+    };
+
+    const outcome = await context.part.update((current) => ({
+      ...drawn,
+      code: input.code,
       error: null,
       revisions: [
         ...current.revisions,
         {
           number: (current.revisions.at(-1)?.number ?? 0) + 1,
           blob: input.blob,
-          runtime: input.runtime,
-          title: input.title,
-          height: input.height,
+          ...drawn,
           at: Date.now(),
         },
       ].slice(-CANVAS_REVISIONS_KEPT),
@@ -171,13 +174,53 @@ async function compile(
   return compiled;
 }
 
+/** What a session's last clean preview measured, by the digest of the module it compiled to. */
+type MeasuredPreview = {
+  readonly digest: string;
+  readonly heights: NonNullable<CanvasState["heights"]>;
+};
+
+/** Each session's last clean preview, so a render of the same module starts its frame at the measured heights. */
+type Previews = Map<SessionId, MeasuredPreview>;
+
+/** How many sessions' previews one plugin keeps; past it, the one previewed longest ago drops out. */
+const PREVIEWS_KEPT = 64;
+
+function rememberPreview(previews: Previews, session: SessionId, preview: MeasuredPreview): void {
+  previews.delete(session);
+  previews.set(session, preview);
+
+  if (previews.size <= PREVIEWS_KEPT) return;
+  const oldest = previews.keys().next().value;
+
+  if (oldest !== undefined) previews.delete(oldest);
+}
+
+/** Returns the heights a preview measured when it compiled to the same module, else none. */
+async function previewedHeights(
+  preview: MeasuredPreview | undefined,
+  code: string,
+): Promise<MeasuredPreview["heights"]> {
+  if (preview === undefined) return [];
+
+  return preview.digest === (await digestCode(code)) ? preview.heights : [];
+}
+
+async function digestCode(code: string): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", encoder.encode(code));
+
+  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 const PREVIEW_FIRST =
   "Before rendering, call `canvas_preview` with the same `source` and `files`: it shows you the canvas and its errors, console and height without the user seeing it. Fix what it shows, then render once.";
 
-function renderTool(previewing: boolean): ToolDefinition<Infer<typeof parameters>> {
+/** Returns `canvas_render`; with `previews`, it tells the model to preview first and keeps a matching preview's heights. */
+function renderTool(previews: Previews | undefined): ToolDefinition<Infer<typeof parameters>> {
   return {
     name: CANVAS_RENDER_TOOL,
-    description: previewing ? `${PREVIEW_FIRST}\n\n${CANVAS_DESCRIPTION}` : CANVAS_DESCRIPTION,
+    description:
+      previews === undefined ? CANVAS_DESCRIPTION : `${PREVIEW_FIRST}\n\n${CANVAS_DESCRIPTION}`,
     parameters,
     class: (args) => ({
       kind: "custom",
@@ -188,7 +231,13 @@ function renderTool(previewing: boolean): ToolDefinition<Infer<typeof parameters
     replay: "safe",
     async execute(args, invocation) {
       const compiled = await compile(args, invocation);
-      const drawn = { runtime: compiled.runtime, title: args.title, height: args.height ?? null };
+
+      const drawn = {
+        runtime: compiled.runtime,
+        title: args.title,
+        height: args.height ?? null,
+        heights: await previewedHeights(previews?.get(invocation.session.id), compiled.code),
+      };
 
       const blob = await invocation.env.files.upload(
         (async function* () {
@@ -272,7 +321,10 @@ async function previewWithin(
   };
 }
 
-function previewTool(preview: CanvasPreviewer): ToolDefinition<Infer<typeof previewParameters>> {
+function previewTool(
+  preview: CanvasPreviewer,
+  previews: Previews,
+): ToolDefinition<Infer<typeof previewParameters>> {
   return {
     name: "canvas_preview",
     description: `Render a canvas off-screen in the real canvas runtime and see it before the user does: a PNG at the chat column's width (${CANVAS_PREVIEW_WIDTHS.chat} px), its height there and at a phone's width (${CANVAS_PREVIEW_WIDTHS.phone} px), every load or render error with its file and line, and the canvas's console output. Takes the same \`source\` and \`files\` as canvas_render and compiles them the same way; nothing is added to the chat.`,
@@ -303,6 +355,18 @@ function previewTool(preview: CanvasPreviewer): ToolDefinition<Infer<typeof prev
         };
       const { png } = outcome.report;
 
+      const heights = (["chat", "phone"] as const).flatMap((name) => {
+        const height = outcome.report.heights[name];
+
+        return height > 0 ? [{ width: CANVAS_PREVIEW_WIDTHS[name], height }] : [];
+      });
+
+      if (outcome.report.errors.length === 0 && heights.length > 0)
+        rememberPreview(previews, invocation.session.id, {
+          digest: await digestCode(compiled.code),
+          heights,
+        });
+
       return {
         content: [
           { kind: "text", text: describeCanvasPreview(outcome.report) },
@@ -323,18 +387,20 @@ function previewTool(preview: CanvasPreviewer): ToolDefinition<Infer<typeof prev
  * Returns the canvas plugin: the `canvas` part and `canvas_render`, which
  * compiles in-process on any host, plus `canvas_preview` when the host
  * passes a previewer, in which case `canvas_render` tells the model to
- * preview first.
+ * preview first and saves the heights the session's last clean preview
+ * measured on a canvas that compiles to the same module.
  *
  * @category plugins
  * @since 0.1.0
  */
 export function canvasPlugin(preview?: CanvasPreviewer): Plugin {
+  if (preview === undefined)
+    return { id: "canvas", contribute: { parts: [canvas], tools: [renderTool(undefined)] } };
+  const previews: Previews = new Map();
+
   return {
     id: "canvas",
-    contribute: {
-      parts: [canvas],
-      tools: preview === undefined ? [renderTool(false)] : [renderTool(true), previewTool(preview)],
-    },
+    contribute: { parts: [canvas], tools: [renderTool(previews), previewTool(preview, previews)] },
   };
 }
 

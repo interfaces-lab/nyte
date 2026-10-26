@@ -222,13 +222,17 @@ function heightKey(digest: string, width: number): string {
 }
 
 /** What drawing one canvas module takes: a part's current state, or one of its revisions. */
-export type DrawnCanvas = Pick<CanvasState, "runtime" | "code" | "title" | "height" | "error">;
+export type DrawnCanvas = Pick<
+  CanvasState,
+  "runtime" | "code" | "title" | "height" | "heights" | "error"
+>;
 
 /**
- * Draws one canvas at the height its shell reports. `remembered` starts a
- * remounted frame at the height it last reported at this width, for the
- * transcript's virtualized rows; `standIn` takes the canvas's place at that
- * height, so its runtime isn't running.
+ * Draws one canvas at the height its shell reports, until then at the height
+ * a preview measured at its width. `remembered` starts a remounted frame at
+ * the height it last reported at this width, for the transcript's virtualized
+ * rows; `standIn` takes the canvas's place at that height, so its runtime
+ * isn't running.
  */
 export function CanvasFrame({
   state,
@@ -251,20 +255,20 @@ export function CanvasFrame({
   const [error, setError] = useState<CanvasError>();
   const digest = patchDigest(state.code);
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the box before paint to read the height remembered at its width
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the box before paint to start the canvas at its height at that width
   useLayoutEffect(() => {
-    if (remembered) setWidth(boxRef.current?.clientWidth);
-  }, [remembered]);
+    setWidth(boxRef.current?.clientWidth);
+  }, []);
 
   const reportedHeight =
     reported?.digest === digest
       ? reported.height
-      : width === undefined
-        ? undefined
-        : measuredHeights.get(heightKey(digest, width));
+      : remembered && width !== undefined
+        ? measuredHeights.get(heightKey(digest, width))
+        : undefined;
 
   const tooNew = state.runtime > CANVAS_RUNTIME;
-  const height = canvasFrameHeight(state.height, tooNew ? undefined : reportedHeight);
+  const height = canvasFrameHeight(state, width, tooNew ? undefined : reportedHeight);
   const failure = error?.code === state.code ? error.message : undefined;
 
   const resize = (next: number): void => {

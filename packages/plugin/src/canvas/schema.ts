@@ -24,6 +24,13 @@ const drawn = {
   runtime: Type.Integer({ minimum: 1 }),
   title: Type.String({ minLength: 1, maxLength: 120 }),
   height: Type.Union([Type.Number(), Type.Null()]),
+  // What a preview of the same module measured, by frame width; empty when none did, absent on a canvas drawn before heights were kept.
+  heights: Type.Optional(
+    Type.Array(
+      Type.Object({ width: Type.Integer({ minimum: 1 }), height: Type.Number({ minimum: 0 }) }),
+      { maxItems: 8 },
+    ),
+  ),
 };
 
 const revision = Type.Object({
@@ -59,7 +66,8 @@ const actions = {
 
 /**
  * Returns a canvas part's state: the compiled module, the runtime it needs,
- * its title, the agent's height hint, the last error a client reported, and
+ * its title, the agent's height hint, the heights a preview of the module
+ * measured, the last error a client reported, and
  * its revisions, oldest first, the last one being the module itself.
  *
  * @category plugins

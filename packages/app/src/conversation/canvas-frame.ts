@@ -1,5 +1,5 @@
 import {
-  CANVAS_DEFAULT_HEIGHT,
+  canvasStartHeight,
   clampCanvasHeight,
   initializeResult,
   renderNotification,
@@ -11,6 +11,7 @@ import type {
   JsonRpcId,
   ShellMessage,
 } from "@nyte-ai/plugin/canvas/protocol";
+import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
 
 export type CanvasPost = ReturnType<typeof renderNotification>;
 
@@ -21,8 +22,13 @@ type CanvasFrameEffect =
   | { readonly kind: "open-link"; readonly id: JsonRpcId; readonly url: string }
   | { readonly kind: "error"; readonly phase: "load" | "render"; readonly message: string };
 
-export function canvasFrameHeight(hint: number | null, reported: number | undefined): number {
-  return clampCanvasHeight(reported ?? hint ?? CANVAS_DEFAULT_HEIGHT);
+/** Returns the frame's height: what the shell reported, else where the canvas starts at the frame's width. */
+export function canvasFrameHeight(
+  canvas: Pick<CanvasState, "height" | "heights">,
+  width: number | undefined,
+  reported: number | undefined,
+): number {
+  return reported === undefined ? canvasStartHeight(canvas, width) : clampCanvasHeight(reported);
 }
 
 /** Answers a shell message; this shell is served beside its libraries, so a library request never comes. */
