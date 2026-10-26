@@ -37,6 +37,7 @@ import type {
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import { readPositionCommit, START } from "../store/session.ts";
 import { applyCall, describeLiveActivity } from "./calls.ts";
+import { mergeChanges } from "./changes.ts";
 import {
   committed,
   dropFailed,
@@ -178,7 +179,7 @@ function apply(draft: Draft, event: SessionEvent): void {
     case "request":
       return eachHead(draft, event.head, (head) => ({ ...head, context: event.context }));
     case "changes":
-      draft.changes = event.files;
+      draft.changes = "cleared" in event ? mergeChanges(draft.changes, event) : event.files;
 
       return;
     case "session":

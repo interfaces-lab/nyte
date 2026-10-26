@@ -537,7 +537,18 @@ export const events = {
       step: "plugin",
     },
   ],
-  changes: [{ seq: asSeq(28), at: 1, head: null, kind: "changes", files: [fileChange] }],
+  changes: [
+    { seq: asSeq(28), at: 1, head: null, kind: "changes", files: [fileChange] },
+    {
+      seq: asSeq(28),
+      at: 1,
+      head: null,
+      kind: "changes",
+      change: "merged",
+      files: [fileChange],
+      cleared: ["b.ts"],
+    },
+  ],
   session: [{ seq: asSeq(29), at: 1, head: null, kind: "session", info: sessionInfo }],
   activation: [
     { seq: asSeq(30), at: 1, head: null, kind: "activation", activation: { kind: "active" } },

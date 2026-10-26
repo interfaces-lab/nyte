@@ -189,6 +189,13 @@ function durableEvent<Common extends TProperties>(common: Common) {
       context: ContextViewType,
       step: Type.Enum(["assistant", "compaction", "summary", "plugin"]),
     }),
+    Type.Object({
+      ...common,
+      kind: Type.Literal("changes"),
+      change: Type.Literal("merged"),
+      files: Type.Array(FileChangeType),
+      cleared: Type.Array(Type.String()),
+    }),
     Type.Object({ ...common, kind: Type.Literal("changes"), files: Type.Array(FileChangeType) }),
     Type.Object({ ...common, kind: Type.Literal("session"), info: SessionInfoType }),
     Type.Object({ ...common, kind: Type.Literal("activation"), activation: ActivationType }),

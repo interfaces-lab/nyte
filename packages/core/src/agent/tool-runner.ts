@@ -50,6 +50,8 @@ import { hiddenOwners, missingCapabilities } from "../engine/surface.ts";
 import { loadedTools } from "./transcript.ts";
 import { toolSource } from "../extend/registry.ts";
 import { commit } from "../fold/commit.ts";
+import { changesEvents } from "../fold/changes.ts";
+import { withFold } from "../fold/reads.ts";
 import { settling } from "../store/parts.ts";
 import { partRef, runRef } from "../store/refs.ts";
 import {
@@ -349,7 +351,7 @@ async function perform(
 
       return {
         result: settled.outcome,
-        updates: await settlement(kernel.store, where, planned, settled, before),
+        updates: await settlement(kernel, where, planned, settled, before),
       };
     },
     decode: (value) => (outcomes.Check(value) ? outcomes.Decode(value) : null),
@@ -672,13 +674,14 @@ function fileChanges(set: ChangeSet): readonly FileChange[] {
 }
 
 async function settlement(
-  store: StoreConnection,
+  kernel: Kernel,
   where: Where,
   planned: Plan,
   settled: Settled,
   before: ToolBaseline | null,
 ): Promise<readonly RefUpdate[]> {
   const { session, head, run, call } = where;
+  const store = kernel.store;
   const part = asId<"part">(call);
   const name = partRef(session, part);
 
@@ -740,7 +743,7 @@ async function settlement(
     },
     ...(settled.thread === null
       ? []
-      : [{ head: null, kind: "changes", files: settled.thread } as const]),
+      : changesEvents(await withFold(kernel, session, (state) => state.changes), settled.thread)),
   ];
 
   if (found.record.status.kind === "failed" || found.record.status.kind === "settled")
