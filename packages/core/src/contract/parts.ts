@@ -136,6 +136,7 @@ const EMPTY_INPUT: Schema<Record<string, never>> = {
   },
 };
 
+/** A model's text. `signature` is the provider's token for replaying it; the store keeps it for requests, and views send `null`. */
 export const text = definePart({
   kind: "text",
   state: standard(
@@ -145,6 +146,7 @@ export const text = definePart({
   fallback: (state, { id }) => `${clip(state.markdown)} [${id}]`,
 });
 
+/** A model's thinking, `merged` blocks in one part. `signature` holds each block's provider token for replaying it; the store keeps it for requests, and views send `null`. */
 export const thinking = definePart({
   kind: "thinking",
   state: standard(

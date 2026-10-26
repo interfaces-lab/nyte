@@ -68,10 +68,7 @@ describe("turn", () => {
     expect(thought.state).toEqual({
       markdown: "Plan the call.\n\nCheck it.",
       merged: 2,
-      signature: [
-        { length: 14, signature: "sig-1", redacted: false },
-        { length: 9, signature: "sig-2", redacted: false },
-      ],
+      signature: null,
     });
     assert(answer !== undefined && isPart(answer, text));
     expect(answer).toMatchObject({
@@ -79,7 +76,7 @@ describe("turn", () => {
       role: "answer",
       status: { kind: "settled" },
     });
-    expect(answer.state).toEqual({ markdown: "Calling echo.", signature: "msg-1" });
+    expect(answer.state).toEqual({ markdown: "Calling echo.", signature: null });
     assert(call !== undefined && isPart(call, tool));
     expect(call.id).toBe(`${run}:1:call-1`);
     expect(call.state).toMatchObject({

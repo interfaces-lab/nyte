@@ -486,7 +486,7 @@ describe("fold", () => {
 
     expect(ids(later)).toEqual(["m0", "r0:1:0", "m1", "r1:1:0"]);
     expect(later.messages[3]).toMatchObject({
-      state: { markdown: "Hello.", signature: { id: "msg_1" } },
+      state: { markdown: "Hello.", signature: null },
       version: 3,
     });
     expect(later).not.toBe(earlier);

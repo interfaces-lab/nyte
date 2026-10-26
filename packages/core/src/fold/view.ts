@@ -15,7 +15,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { PartRecord } from "../contract/records.ts";
 import { closable, coalesce, DONE, latest } from "../util/iterable.ts";
 import { partView } from "./draft.ts";
-import { findLeadingPrompt, project } from "./project.ts";
+import { findLeadingPrompt, project, showMessage, showPart } from "./project.ts";
 
 export function watchHead(
   kernel: Kernel,
@@ -99,7 +99,7 @@ export function watchPart(
           if (shown !== null && shown.record === record) continue;
           shown = { record };
 
-          return { done: false, value: record === null ? null : partView(record) };
+          return { done: false, value: record === null ? null : showPart(partView(record)) };
         }
       },
       close() {
@@ -155,7 +155,7 @@ export async function historyHead(
     if (folded === undefined || path === undefined || end < 0 || input.limit <= 0)
       return { messages: [], leadingPrompt: null, turns: [] };
     const start = Math.max(0, end - input.limit);
-    const page = messages.slice(start, end);
+    const page = messages.slice(start, end).map(showMessage);
 
     const positions = [
       ...new Set(page.flatMap((message) => path.turnAt.get(message.turn) ?? [])),
