@@ -13,7 +13,7 @@ import { ignoredSettingsText } from "../services/settings.ts";
 import type { HostPort, PluginsPort, Ports } from "../effects/ports.ts";
 import { createRunner } from "../effects/runner.ts";
 import { exitStatus } from "../lifecycle.ts";
-import { installMiniScrollback } from "../mini/scrollback.ts";
+import { installMiniScrollback } from "../mini/scrollback.tsx";
 import { followRemote } from "../local-host.ts";
 import type { Msg } from "../model/msg.ts";
 import { followedSession, initialState } from "../model/state.ts";

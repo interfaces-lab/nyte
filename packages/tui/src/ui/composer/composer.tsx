@@ -289,9 +289,11 @@ export function Composer(props: {
           if (area?.focusable === true) area.focus();
         }}
       >
-        <text id="input-prompt" fg={theme().user} flexShrink={0} wrapMode="none">
-          {`${GLYPHS.prompt} `}
-        </text>
+        <Show when={!props.compact}>
+          <text id="input-prompt" fg={theme().user} flexShrink={0} wrapMode="none">
+            {`${GLYPHS.prompt} `}
+          </text>
+        </Show>
         <textarea
           ref={(node) => (area = node)}
           id="input"

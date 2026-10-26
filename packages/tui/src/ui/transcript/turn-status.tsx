@@ -26,7 +26,7 @@ interface Line {
 
 const CLOCK_INTERVAL_MS = 1_000;
 
-function statusLine(status: TurnStatus, theme: CliTheme, now: number): Line {
+export function statusLine(status: TurnStatus, theme: CliTheme, now: number): Line {
   switch (status.kind) {
     case "unanswered":
       return { text: "", color: theme.dim, spinner: null };

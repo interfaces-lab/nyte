@@ -217,6 +217,7 @@ export const GLYPHS = {
   queue: LEGACY_CONSOLE ? "v" : "↓",
   sending: LEGACY_CONSOLE ? "~" : "…",
   report: LEGACY_CONSOLE ? "<" : "↳",
+  said: LEGACY_CONSOLE ? ">" : "›",
   bullet: "●",
   check: "✓",
   cross: "✗",
