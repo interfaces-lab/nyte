@@ -61,7 +61,6 @@ export async function run(): Promise<string> {
       onClose: (id) => calls.push(`close ${id}`),
       onNewTab: () => calls.push("new"),
       onReorder: (ids) => calls.push(`reorder ${ids.join(",")}`),
-      onDuplicate: (id) => calls.push(`duplicate ${id}`),
       onCloseOthers: (id) => calls.push(`close-others ${id}`),
       onCloseToRight: (id) => calls.push(`close-right ${id}`),
     };

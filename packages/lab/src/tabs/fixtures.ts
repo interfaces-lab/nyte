@@ -1,7 +1,8 @@
 import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { IconName } from "@nyte-ai/ui/icon";
 
-export type TabKind = "pinned" | "folder" | "chat";
+/** pinned: always in the strip, never closes. page: a full-tab place opened on demand. */
+export type TabKind = "pinned" | "page" | "chat";
 
 export interface ShellTab {
   readonly id: string;
@@ -11,15 +12,23 @@ export interface ShellTab {
   readonly mark: SessionMark;
   readonly unread: boolean;
   readonly split?: "right" | "down";
-  readonly count?: number;
 }
 
 export const SPACE = "nyte";
 
-export const TABS: readonly ShellTab[] = [
+export const INBOX: ShellTab = {
+  id: "inbox",
+  kind: "pinned",
+  title: "Needs you",
+  icon: "inbox-empty",
+  mark: "waiting",
+  unread: false,
+};
+
+export const PAGES: readonly ShellTab[] = [
   {
     id: "customize",
-    kind: "pinned",
+    kind: "page",
     title: "Customize",
     icon: "customize",
     mark: "idle",
@@ -27,37 +36,30 @@ export const TABS: readonly ShellTab[] = [
   },
   {
     id: "environments",
-    kind: "pinned",
+    kind: "page",
     title: "Environments",
     icon: "server",
     mark: "idle",
     unread: false,
   },
+];
+
+export const CHATS: readonly ShellTab[] = [
   {
-    id: "inbox",
-    kind: "pinned",
-    title: "Needs you",
-    icon: "inbox-empty",
+    id: "dialogs",
+    kind: "chat",
+    title: "Migrate dialog surfaces",
+    icon: "agent",
     mark: "waiting",
     unread: false,
   },
   {
-    id: "dialogs",
-    kind: "folder",
-    title: "Dialog surface migration",
-    icon: "folder",
-    mark: "working",
+    id: "config",
+    kind: "chat",
+    title: "Move settings into nyte.json",
+    icon: "agent",
+    mark: "waiting",
     unread: false,
-    count: 3,
-  },
-  {
-    id: "tabs-project",
-    kind: "folder",
-    title: "Window tabs",
-    icon: "folder",
-    mark: "idle",
-    unread: true,
-    count: 1,
   },
   {
     id: "shadows",
@@ -100,8 +102,10 @@ export const TABS: readonly ShellTab[] = [
     mark: "failed",
     unread: false,
   },
-  { id: "new", kind: "chat", title: "New chat", icon: "new-chat", mark: "idle", unread: false },
 ];
+
+/** Every pinned tab and chat; the peek board lists the chats from it. */
+export const TABS: readonly ShellTab[] = [INBOX, ...CHATS];
 
 export const DRAFTS = [
   "Split the popover shadow by tier",

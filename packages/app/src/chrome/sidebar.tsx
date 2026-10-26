@@ -88,6 +88,7 @@ async function showSession(sessionId: SessionId, target: OpenTarget | "beside"):
     return;
   }
 
+  shellActions.showWorkspace();
   const controller = windowTabs.controller();
   controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
 }
@@ -103,11 +104,6 @@ function listedNeighbours(
   return [ordered[index - 1], ordered[index + 1]].flatMap((session) =>
     session === undefined ? [] : [session.id],
   );
-}
-
-function showDraft(draftId: string): void {
-  shellActions.showWorkspace();
-  windowTabs.controller().selectDraft(draftId);
 }
 
 function NewChatRow({
@@ -264,7 +260,7 @@ export function Sidebar(): ReactElement {
       sessionActions.archive([session.id], !session.archived, hideFromPanes);
     },
     remove: (sessionId) => setConfirmation({ kind: "delete-session", sessionId }),
-    openDraft: showDraft,
+    openDraft: (draftId) => windowTabs.showDraft(draftId),
     removeDraft: (draftId) => windowTabs.controller().removeDraft(draftId),
   };
 
@@ -410,7 +406,7 @@ export function Sidebar(): ReactElement {
               windowTabs.dispatch({
                 kind: "open",
                 place: { kind: "session", sessionId },
-                target: "here",
+                target: "foreground",
               })
             }
             onNewChat={() => panes.newChat()}

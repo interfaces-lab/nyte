@@ -15,9 +15,9 @@ import {
 import { sessionsWatch } from "../sdk.tsx";
 import { sessionActivityMark } from "../session-activity.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
-import { activeTab, currentView, showsPage, tabPlace, tabPlaces } from "./model.ts";
+import { activeTab, showsPage, tabPlace, tabPlaces } from "./model.ts";
 import type { Place, WindowState } from "./model.ts";
 import { locationPlace, navigateTo, pageSection, samePlaceAt } from "./places.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
@@ -78,7 +78,7 @@ export function useWindowTabsSync(): void {
       const location = locationPlace(router);
 
       if (location === undefined) return;
-      const view = currentView(activeTab(windowTabs.getSnapshot()));
+      const view = activeTab(windowTabs.getSnapshot()).view;
 
       if (view.kind === "page" && showsPage(location) && view.page.kind === location.kind) {
         if (pageSection(view.page) !== pageSection(location))
@@ -88,7 +88,7 @@ export function useWindowTabsSync(): void {
       }
 
       if (!samePlaceAt(tabPlace(activeTab(windowTabs.getSnapshot())), location))
-        windowTabs.dispatch({ kind: "open", place: location, target: "here" });
+        windowTabs.dispatch({ kind: "open", place: location, target: "foreground" });
     };
 
     adopt();
@@ -147,7 +147,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
   return state.tabs.map((tab) => {
     const places = tabPlaces(tab);
     const place = tabPlace(tab);
-    const view = currentView(tab);
+    const view = tab.view;
     const session = place.kind === "session" ? sessions.get(place.sessionId) : undefined;
 
     const mark =

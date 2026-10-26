@@ -2,24 +2,30 @@ import type { Static } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { PaneController } from "../layout/pane-controller.ts";
-import { paneLayoutSchema, paneSelectionSchema } from "../layout/pane-layout.ts";
-import type { PaneLayout, PaneLayoutAction } from "../layout/pane-layout.ts";
+import { paneLayoutSchema, paneSelection } from "../layout/pane-layout.ts";
+import type { PaneLayout } from "../layout/pane-layout.ts";
+import { SessionViewStateStore, WindowDrafts } from "../layout/session-view-state.ts";
 import { sessionId } from "../schemas.ts";
-import { activeTab, canTravel, initialWindow, reduce, tabLayout } from "./model.ts";
+import { activeTab, findChatTab, initialWindow, reduce, tabLayout } from "./model.ts";
 import type { Tab, View, WindowAction, WindowState } from "./model.ts";
 
-const STRIP_KEY = "nyte.desktop.tabs.v1";
+/** Each window keeps its tabs and drafts under its own id. */
+const WINDOW_KEY_PREFIX = "nyte.window.v1:";
+
+/** What earlier builds saved: one tab strip for every window, and drafts under each tab. */
+const EARLIER_STRIP_KEY = "nyte.desktop.tabs.v1";
+
+const EARLIER_TAB_KEY_PREFIX = "nyte.desktop.tab.v1:";
 
 const SAVE_DELAY_MS = 250;
 
-const TAB_KEY_PREFIX = "nyte.desktop.tab.v1:";
+/** How the desktop opened a window: its lasting id and, when no other window was open, every id worth keeping. */
+export interface DesktopWindow {
+  readonly id: string;
+  readonly launch: { readonly windowIds: readonly string[] } | undefined;
+}
 
 const strict = { additionalProperties: false };
-
-const historySchema = Type.Object(
-  { back: Type.Array(paneSelectionSchema), forward: Type.Array(paneSelectionSchema) },
-  strict,
-);
 
 const section = Type.Optional(Type.String());
 
@@ -37,30 +43,17 @@ const viewSchema = Type.Union([
     },
     strict,
   ),
-  Type.Object(
-    {
-      kind: Type.Literal("panes"),
-      layout: paneLayoutSchema,
-      history: Type.Object({ primary: historySchema, secondary: historySchema }, strict),
-    },
-    strict,
-  ),
+  Type.Object({ kind: Type.Literal("panes"), layout: paneLayoutSchema }, strict),
 ]);
 
-const tabSchema = Type.Object(
-  {
-    id: Type.String({ minLength: 1 }),
-    views: Type.Array(viewSchema, { minItems: 1 }),
-    index: Type.Integer({ minimum: 0 }),
-  },
-  strict,
-);
+const tabSchema = Type.Object({ id: Type.String({ minLength: 1 }), view: viewSchema }, strict);
 
 const stripSchema = Type.Object(
   {
-    version: Type.Literal(1),
+    version: Type.Literal(2),
     tabs: Type.Array(tabSchema, { minItems: 1 }),
     activeTabId: Type.String(),
+    recent: Type.Array(Type.String()),
     closed: Type.Array(
       Type.Object({ tab: tabSchema, index: Type.Integer({ minimum: 0 }) }, strict),
     ),
@@ -70,7 +63,7 @@ const stripSchema = Type.Object(
 
 type StoredTab = Static<typeof tabSchema>;
 
-function storedView(view: StoredTab["views"][number]): View {
+function storedView(view: StoredTab["view"]): View {
   if (view.kind === "panes") return view;
 
   return {
@@ -83,11 +76,7 @@ function storedView(view: StoredTab["views"][number]): View {
 }
 
 function storedTab(tab: StoredTab): Tab {
-  return {
-    id: tab.id,
-    views: tab.views.map(storedView),
-    index: Math.min(tab.index, tab.views.length - 1),
-  };
+  return { id: tab.id, view: storedView(tab.view) };
 }
 
 function parseStrip(raw: string | null): WindowState | undefined {
@@ -98,12 +87,15 @@ function parseStrip(raw: string | null): WindowState | undefined {
 
     if (!Value.Check(stripSchema, stored)) return undefined;
     const tabs = stored.tabs.map(storedTab);
+    const open = new Set(tabs.map((tab) => tab.id));
+    const activeTabId = open.has(stored.activeTabId) ? stored.activeTabId : tabs[0]?.id;
+
+    if (activeTabId === undefined) return undefined;
 
     return {
       tabs,
-      activeTabId: tabs.some((tab) => tab.id === stored.activeTabId)
-        ? stored.activeTabId
-        : (tabs[0]?.id ?? stored.activeTabId),
+      activeTabId,
+      recent: stored.recent.filter((id) => id !== activeTabId && open.has(id)),
       closed: stored.closed.map(({ tab, index }) => ({ tab: storedTab(tab), index })),
     };
   } catch {
@@ -111,43 +103,42 @@ function parseStrip(raw: string | null): WindowState | undefined {
   }
 }
 
-function storage(kind: "localStorage" | "sessionStorage"): Storage | undefined {
+function localStore(): Storage | undefined {
   try {
-    return window[kind];
+    return window.localStorage;
   } catch {
     return undefined;
   }
 }
 
-function read(store: Storage | undefined, key: string): string | null {
+function read(key: string): string | null {
   try {
-    return store?.getItem(key) ?? null;
+    return localStore()?.getItem(key) ?? null;
   } catch {
     return null;
   }
 }
 
-function write(store: Storage | undefined, key: string, value: string): void {
+function write(key: string, value: string): void {
   try {
-    store?.setItem(key, value);
+    localStore()?.setItem(key, value);
   } catch {}
 }
 
-function knownTabIds(state: WindowState): ReadonlySet<string> {
-  return new Set([...state.tabs, ...state.closed.map(({ tab }) => tab)].map((tab) => tab.id));
-}
-
-function forgetTabs(shouldForget: (tabId: string) => boolean): void {
-  const local = storage("localStorage");
+/** Removes what no open window owns: closed windows' tabs and drafts, and what earlier builds saved. */
+function forgetWindows(windowIds: readonly string[]): void {
+  const local = localStore();
 
   if (local === undefined) return;
+  const owned = windowIds.map((id) => `${WINDOW_KEY_PREFIX}${id}:`);
 
   try {
     const stale = Array.from({ length: local.length }, (_, index) => local.key(index)).filter(
       (key): key is string =>
         key !== null &&
-        key.startsWith(TAB_KEY_PREFIX) &&
-        shouldForget(key.slice(TAB_KEY_PREFIX.length).split(":")[0] ?? ""),
+        (key === EARLIER_STRIP_KEY ||
+          key.startsWith(EARLIER_TAB_KEY_PREFIX) ||
+          (key.startsWith(WINDOW_KEY_PREFIX) && !owned.some((prefix) => key.startsWith(prefix)))),
     );
 
     for (const key of stale) local.removeItem(key);
@@ -156,8 +147,10 @@ function forgetTabs(shouldForget: (tabId: string) => boolean): void {
 
 class WindowTabs {
   #strip = false;
+  #windowKey = `${WINDOW_KEY_PREFIX}web`;
   #state: WindowState = initialWindow("tab");
   #startupDestination = true;
+  #drafts: WindowDrafts | undefined;
   readonly #controllers = new Map<string, PaneController>();
   readonly #listeners = new Set<() => void>();
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -170,26 +163,16 @@ class WindowTabs {
     return this.#startupDestination;
   }
 
-  start(firstWindow: boolean): void {
+  /** Restores this window's own tabs; the first window of a launch also clears what no window owns. */
+  start(desktopWindow: DesktopWindow): void {
     this.#strip = true;
-    this.#startupDestination = false;
-    const reloaded = parseStrip(read(storage("sessionStorage"), STRIP_KEY));
-    this.#state = reloaded ?? initialWindow(crypto.randomUUID());
-    window.addEventListener("focus", () => this.#mirror());
+    this.#windowKey = `${WINDOW_KEY_PREFIX}${desktopWindow.id}`;
+
+    if (desktopWindow.launch !== undefined) forgetWindows(desktopWindow.launch.windowIds);
+    const saved = parseStrip(read(`${this.#windowKey}:tabs`));
+    this.#state = saved ?? initialWindow(crypto.randomUUID());
+    this.#startupDestination = desktopWindow.launch !== undefined && saved === undefined;
     window.addEventListener("pagehide", this.#flush);
-
-    if (!firstWindow || reloaded !== undefined) return;
-    const saved = parseStrip(read(storage("localStorage"), STRIP_KEY));
-    const kept = knownTabIds(saved ?? this.#state);
-    forgetTabs((tabId) => !kept.has(tabId));
-
-    if (saved === undefined) {
-      this.#startupDestination = true;
-
-      return;
-    }
-
-    this.#apply(saved);
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -200,15 +183,43 @@ class WindowTabs {
 
   readonly getSnapshot = (): WindowState => this.#state;
 
+  /** Without a strip the window has one tab, so every open replaces what it shows. */
   dispatch(action: WindowAction): void {
-    this.#apply(reduce(this.#state, action, () => crypto.randomUUID()));
+    const next =
+      action.kind === "open" && !this.#strip ? { ...action, target: "here" as const } : action;
+
+    this.#apply(reduce(this.#state, next, () => crypto.randomUUID()));
   }
 
-  canTravel(step: 1 | -1): boolean {
-    return canTravel(this.#state, step);
+  /** A new chat gets its own tab, or the new-chat tab already waiting; one tab replaces its view. */
+  newChat(): void {
+    this.dispatch(this.#strip ? { kind: "new-tab" } : { kind: "leave-page" });
+    this.controller().newChat();
   }
 
-  controller(tabId: string = this.#state.activeTabId): PaneController {
+  /** Shows a draft in the tab whose new chat it is, else in the window's new-chat tab. */
+  showDraft(draftId: string): void {
+    const located = this.#windowDrafts().find(draftId);
+
+    const owner =
+      located?.kind === "active"
+        ? this.#state.tabs.find(
+            (tab) =>
+              tab.id === located.tabId &&
+              paneSelection(tabLayout(tab), located.paneId)?.kind === "blank",
+          )
+        : undefined;
+
+    if (owner !== undefined) this.dispatch({ kind: "activate-tab", tabId: owner.id });
+    else if (this.#strip) this.dispatch({ kind: "new-tab" });
+    else this.dispatch({ kind: "leave-page" });
+    this.controller().selectDraft(draftId);
+  }
+
+  /** The tab whose panes the window shows: the active tab, or under a page the chat tab used last. */
+  readonly paneTabId = (): string => findChatTab(this.#state)?.id ?? this.#state.activeTabId;
+
+  controller(tabId: string = this.paneTabId()): PaneController {
     const existing = this.#controllers.get(tabId);
 
     if (existing !== undefined) return existing;
@@ -217,10 +228,9 @@ class WindowTabs {
       this.#state.tabs.find((candidate) => candidate.id === tabId) ?? activeTab(this.#state);
 
     const controller = new PaneController({
-      storage: storage("localStorage"),
-      storageKey: `${TAB_KEY_PREFIX}${tab.id}`,
       initialLayout: tabLayout(tab),
-      route: (current, next, action) => this.#route(tab.id, current, next, action),
+      route: (current, next) => this.#route(tab.id, current, next),
+      viewState: new SessionViewStateStore(this.#windowDrafts(), tab.id),
     });
 
     this.#controllers.set(tab.id, controller);
@@ -228,16 +238,19 @@ class WindowTabs {
     return controller;
   }
 
-  #route(
-    tabId: string,
-    current: PaneLayout,
-    next: PaneLayout,
-    action: PaneLayoutAction,
-  ): PaneLayout {
-    if (tabId !== this.#state.activeTabId) return current;
+  #windowDrafts(): WindowDrafts {
+    const local = localStore();
 
+    this.#drafts ??= new WindowDrafts(
+      local === undefined ? undefined : { storage: local, storageKey: `${this.#windowKey}:drafts` },
+    );
+
+    return this.#drafts;
+  }
+
+  #route(tabId: string, current: PaneLayout, next: PaneLayout): PaneLayout {
     this.#apply(
-      reduce(this.#state, { kind: "layout", action, layout: next }, () => crypto.randomUUID()),
+      reduce(this.#state, { kind: "layout", tabId, layout: next }, () => crypto.randomUUID()),
       tabId,
     );
 
@@ -248,9 +261,11 @@ class WindowTabs {
 
   #apply(next: WindowState, routing?: string): void {
     if (next === this.#state) return;
-    const before = knownTabIds(this.#state);
     this.#state = next;
-    const known = knownTabIds(next);
+
+    const known = new Set(
+      [...next.tabs, ...next.closed.map((closed) => closed.tab)].map((tab) => tab.id),
+    );
 
     for (const [tabId, controller] of this.#controllers) {
       if (!known.has(tabId)) {
@@ -263,9 +278,6 @@ class WindowTabs {
       if (tab !== undefined && tabId !== routing) controller.show(tabLayout(tab));
     }
 
-    const gone = new Set([...before].filter((tabId) => !known.has(tabId)));
-
-    if (gone.size > 0) forgetTabs((tabId) => gone.has(tabId));
     this.#save();
 
     for (const listener of this.#listeners) listener();
@@ -279,18 +291,8 @@ class WindowTabs {
   readonly #flush = (): void => {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
-    write(storage("sessionStorage"), STRIP_KEY, this.#serialized());
-
-    if (document.hasFocus()) this.#mirror();
+    write(`${this.#windowKey}:tabs`, JSON.stringify({ version: 2, ...this.#state }));
   };
-
-  #mirror(): void {
-    write(storage("localStorage"), STRIP_KEY, this.#serialized());
-  }
-
-  #serialized(): string {
-    return JSON.stringify({ version: 1, ...this.#state });
-  }
 }
 
 export const windowTabs = new WindowTabs();

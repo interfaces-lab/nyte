@@ -21,7 +21,7 @@ import { sessionActivityMark } from "../session-activity.ts";
 import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useNowMinute } from "../use-now-minute.ts";
 import { sessionWatch, warmSession } from "../sdk.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
@@ -39,13 +39,9 @@ function TimeAgo({ timestamp }: { readonly timestamp: number }): string {
 }
 
 function openTarget(event: MouseEvent): OpenTarget {
-  if (!windowTabs.strip) return "here";
-
-  if (event.button === 1) return "background";
-
-  if (event.metaKey || event.ctrlKey) return event.shiftKey ? "foreground" : "background";
-
-  return "here";
+  return event.button === 1 || ((event.metaKey || event.ctrlKey) && !event.shiftKey)
+    ? "background"
+    : "foreground";
 }
 
 export function DraftRow({

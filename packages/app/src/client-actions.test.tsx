@@ -73,17 +73,13 @@ test("search rejects the other platform modifier and modified aliases", () => {
 test("settings and customize keep window navigation but do not split the workspace", () => {
   for (const stage of ["settings", "customize"] as const) {
     expect(resolveAction(keyEvent({ metaKey: true }), true, stage)?.id).toBe("new-chat");
-    expect(resolveAction(keyEvent({ key: "[", metaKey: true }), true, stage)?.id).toBe("back");
+    expect(resolveAction(keyEvent({ key: "k", metaKey: true }), true, stage)?.id).toBe("search");
     expect(resolveAction(keyEvent({ key: "d", metaKey: true }), true, stage)).toBeUndefined();
+    expect(resolveAction(keyEvent({ key: "b", metaKey: true }), true, stage)?.id).toBe("sidebar");
     expect(
       resolveAction(keyEvent({ key: "b", metaKey: true, altKey: true }), true, stage),
     ).toBeUndefined();
   }
-
-  expect(resolveAction(keyEvent({ key: "b", metaKey: true }), true, "settings")).toBeUndefined();
-  expect(resolveAction(keyEvent({ key: "b", metaKey: true }), true, "customize")?.id).toBe(
-    "sidebar",
-  );
 });
 
 test("consumed editor input and composition do not dispatch window actions", () => {

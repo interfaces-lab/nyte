@@ -4,11 +4,10 @@ import {
   activeSelection,
   createSinglePane,
   orderedPanes,
-  paneSelection,
   reducePaneLayout,
   sameSelection,
 } from "../layout/pane-layout.ts";
-import type { PaneId, PaneLayout, PaneLayoutAction, PaneSelection } from "../layout/pane-layout.ts";
+import type { PaneLayout, PaneSelection } from "../layout/pane-layout.ts";
 
 export type Page =
   | {
@@ -20,23 +19,14 @@ export type Page =
 
 export type Place = PaneSelection | Page;
 
-interface PaneHistory {
-  readonly back: readonly PaneSelection[];
-  readonly forward: readonly PaneSelection[];
-}
-
-export type PaneHistories = { readonly [Id in PaneId]: PaneHistory };
-
 export type View =
   | { readonly kind: "page"; readonly page: Page }
-  | { readonly kind: "panes"; readonly layout: PaneLayout; readonly history: PaneHistories };
+  | { readonly kind: "panes"; readonly layout: PaneLayout };
 
-type PanesView = Extract<View, { readonly kind: "panes" }>;
-
+/** A tab shows one place: a chat, a new chat, or a page. Opening a place that has a tab switches to it. */
 export interface Tab {
   readonly id: string;
-  readonly views: readonly View[];
-  readonly index: number;
+  readonly view: View;
 }
 
 export interface ClosedTab {
@@ -47,50 +37,45 @@ export interface ClosedTab {
 export interface WindowState {
   readonly tabs: readonly Tab[];
   readonly activeTabId: string;
+  /** Previously active tabs, most recent first. Closing the active tab goes to the first. */
+  readonly recent: readonly string[];
   readonly closed: readonly ClosedTab[];
 }
 
-export type OpenTarget = "here" | "background" | "foreground";
+/** foreground: a plain click; the place's tab, shown. background: a tab after the active one. */
+export type OpenTarget = "foreground" | "background";
 
 export type WindowAction =
-  | { readonly kind: "open"; readonly place: Place; readonly target: OpenTarget }
-  | { readonly kind: "layout"; readonly action: PaneLayoutAction; readonly layout: PaneLayout }
+  | {
+      readonly kind: "open";
+      readonly place: Place;
+      /** "here" is a window without a strip: its chats share one tab and each page has its own. */
+      readonly target: OpenTarget | "here";
+    }
+  /** A tab's panes changed; a background tab's change lands too, as when its draft starts a chat. */
+  | { readonly kind: "layout"; readonly tabId: string; readonly layout: PaneLayout }
   | { readonly kind: "page-section"; readonly section: string }
   | { readonly kind: "leave-page" }
   | { readonly kind: "new-tab" }
   | { readonly kind: "close-tab"; readonly tabId: string }
   | { readonly kind: "close-others"; readonly tabId: string }
   | { readonly kind: "close-right"; readonly tabId: string }
-  | { readonly kind: "duplicate-tab"; readonly tabId: string }
   | { readonly kind: "reopen-tab" }
   | { readonly kind: "activate-tab"; readonly tabId: string }
   | { readonly kind: "activate-index"; readonly index: number }
   | { readonly kind: "cycle-tab"; readonly step: 1 | -1 }
-  | { readonly kind: "reorder"; readonly tabIds: readonly string[] }
-  | { readonly kind: "travel"; readonly step: 1 | -1 };
+  | { readonly kind: "reorder"; readonly tabIds: readonly string[] };
 
 const BLANK: PaneSelection = { kind: "blank" };
 
 const BLANK_LAYOUT = createSinglePane();
 
-const EMPTY_HISTORY: PaneHistory = { back: [], forward: [] };
-
-const FRESH_HISTORIES: PaneHistories = { primary: EMPTY_HISTORY, secondary: EMPTY_HISTORY };
-
 const CLOSED_LIMIT = 25;
 
-const HISTORY_LIMIT = 50;
+const RECENT_LIMIT = 50;
 
 export function showsPage(place: Place): place is Page {
   return place.kind === "customize" || place.kind === "environments";
-}
-
-export function currentView(tab: Tab): View {
-  const view = tab.views[tab.index];
-
-  if (view === undefined) throw new Error("A tab always shows a view.");
-
-  return view;
 }
 
 export function activeTab(state: WindowState): Tab {
@@ -102,50 +87,45 @@ export function activeTab(state: WindowState): Tab {
 }
 
 export function tabPlace(tab: Tab): Place {
-  const view = currentView(tab);
+  return tab.view.kind === "page" ? tab.view.page : activeSelection(tab.view.layout);
+}
 
-  return view.kind === "page" ? view.page : activeSelection(view.layout);
+/** The tab a window shows chats in: the active tab, or under a page the chat tab used last. */
+export function findChatTab(state: WindowState): Tab | undefined {
+  const id = [state.activeTabId, ...state.recent].find((candidate) =>
+    state.tabs.some((tab) => tab.id === candidate && tab.view.kind === "panes"),
+  );
+
+  return state.tabs.find((tab) => tab.id === id);
 }
 
 export function tabLayout(tab: Tab): PaneLayout {
-  for (let index = tab.index; index >= 0; index -= 1) {
-    const view = tab.views[index];
-
-    if (view?.kind === "panes") return view.layout;
-  }
-
-  return BLANK_LAYOUT;
+  return tab.view.kind === "panes" ? tab.view.layout : BLANK_LAYOUT;
 }
 
+/** The focused pane's place first, then the other pane's. */
 export function tabPlaces(tab: Tab): readonly Place[] {
-  const view = currentView(tab);
+  if (tab.view.kind === "page") return [tab.view.page];
+  const focused = activePane(tab.view.layout).id;
 
-  if (view.kind === "page") return [view.page];
-  const focused = activePane(view.layout).id;
-
-  return orderedPanes(view.layout)
+  return orderedPanes(tab.view.layout)
     .toSorted((left, right) => Number(right.id === focused) - Number(left.id === focused))
     .map((pane) => pane.selection);
 }
 
-function panesView(layout: PaneLayout): PanesView {
-  return { kind: "panes", layout, history: FRESH_HISTORIES };
-}
-
-function newTab(id: string, place: Place): Tab {
-  return {
-    id,
-    views: [
-      showsPage(place)
-        ? { kind: "page", page: place }
-        : panesView(createSinglePane("primary", place)),
-    ],
-    index: 0,
-  };
+function placeView(place: Place): View {
+  return showsPage(place)
+    ? { kind: "page", page: place }
+    : { kind: "panes", layout: createSinglePane("primary", place) };
 }
 
 export function initialWindow(id: string): WindowState {
-  return { tabs: [newTab(id, BLANK)], activeTabId: id, closed: [] };
+  return {
+    tabs: [{ id, view: placeView(BLANK) }],
+    activeTabId: id,
+    recent: [],
+    closed: [],
+  };
 }
 
 function withTab(state: WindowState, tab: Tab): WindowState {
@@ -155,108 +135,123 @@ function withTab(state: WindowState, tab: Tab): WindowState {
   };
 }
 
-function withView(tab: Tab, view: View): Tab {
-  return { ...tab, views: tab.views.with(tab.index, view) };
-}
+function activate(state: WindowState, tabId: string): WindowState {
+  if (state.activeTabId === tabId) return state;
 
-function pushView(tab: Tab, view: View): Tab {
-  return { ...tab, views: [...tab.views.slice(0, tab.index + 1), view], index: tab.index + 1 };
-}
-
-function withHistory(
-  histories: PaneHistories,
-  paneId: PaneId,
-  history: PaneHistory,
-): PaneHistories {
-  return paneId === "primary"
-    ? { ...histories, primary: history }
-    : { ...histories, secondary: history };
-}
-
-function withSelection(layout: PaneLayout, paneId: PaneId, selection: PaneSelection): PaneLayout {
-  if (layout.kind === "single") return { ...layout, selection };
-
-  return paneId === "primary"
-    ? { ...layout, primary: selection }
-    : { ...layout, secondary: selection };
-}
-
-function recordLayout(tab: Tab, view: PanesView, next: PaneLayout, action: PaneLayoutAction): Tab {
-  const navigation = action.kind === "select" || action.kind === "select-in-pane";
-  let moved = false;
-
-  const history = (paneId: PaneId): PaneHistory => {
-    const before = paneSelection(view.layout, paneId);
-    const after = paneSelection(next, paneId);
-
-    if (before === undefined || after === undefined) return EMPTY_HISTORY;
-
-    if (sameSelection(before, after)) return view.history[paneId];
-    moved = true;
-
-    if (!navigation || (action.kind === "select-in-pane" && before.kind === "blank"))
-      return view.history[paneId];
-
-    return { back: [...view.history[paneId].back, before].slice(-HISTORY_LIMIT), forward: [] };
-  };
-
-  const nextView: PanesView = {
-    kind: "panes",
-    layout: next,
-    history: { primary: history("primary"), secondary: history("secondary") },
-  };
-
-  return navigation && moved
-    ? { ...tab, views: [...tab.views.slice(0, tab.index), nextView] }
-    : withView(tab, nextView);
-}
-
-function openHere(tab: Tab, place: Place): Tab {
-  const view = currentView(tab);
-
-  if (showsPage(place)) {
-    if (view.kind === "page" && view.page.kind === place.kind) return tab;
-
-    return pushView(tab, { kind: "page", page: place });
-  }
-
-  if (view.kind === "page") return pushView(tab, panesView(createSinglePane("primary", place)));
-  const action: PaneLayoutAction = { kind: "select", selection: place };
-  const next = reducePaneLayout(view.layout, action);
-
-  return next === view.layout ? tab : recordLayout(tab, view, next, action);
-}
-
-function insertTab(state: WindowState, tab: Tab, at: number, activate: boolean): WindowState {
   return {
     ...state,
-    tabs: state.tabs.toSpliced(at, 0, tab),
-    activeTabId: activate ? tab.id : state.activeTabId,
+    activeTabId: tabId,
+    recent: [
+      state.activeTabId,
+      ...state.recent.filter((id) => id !== tabId && id !== state.activeTabId),
+    ].slice(0, RECENT_LIMIT),
   };
 }
 
-function openInTab(
-  state: WindowState,
-  place: Place,
-  activate: boolean,
-  createId: () => string,
-): WindowState {
-  const at = state.tabs.findIndex((tab) => tab.id === state.activeTabId) + 1;
-
-  return insertTab(state, newTab(createId(), place), at, activate);
+function insertTab(state: WindowState, tab: Tab, at: number): WindowState {
+  return { ...state, tabs: state.tabs.toSpliced(at, 0, tab) };
 }
 
-function worthReopening(tab: Tab): boolean {
-  const view = currentView(tab);
+function afterActive(state: WindowState): number {
+  return state.tabs.findIndex((tab) => tab.id === state.activeTabId) + 1;
+}
 
-  if (tab.views.length > 1 || view.kind === "page") return true;
+/** A tab showing nothing but a new chat: the next place opened from it uses it, and it isn't worth reopening. */
+function showsNewChat(tab: Tab): boolean {
+  return (
+    tab.view.kind === "panes" &&
+    tab.view.layout.kind === "single" &&
+    tab.view.layout.selection.kind === "blank"
+  );
+}
+
+/** A session can sit in either pane of a split; a page is one per window. */
+function showing(tab: Tab, place: Place): boolean {
+  if (tab.view.kind === "page") return showsPage(place) && tab.view.page.kind === place.kind;
 
   return (
-    view.layout.kind === "split" ||
-    activeSelection(view.layout).kind !== "blank" ||
-    view.history.primary.back.length + view.history.primary.forward.length > 0 ||
-    view.history.secondary.back.length + view.history.secondary.forward.length > 0
+    place.kind === "session" &&
+    orderedPanes(tab.view.layout).some((pane) => sameSelection(pane.selection, place))
   );
+}
+
+/** Brings the place forward inside the tab already showing it. */
+function reveal(tab: Tab, place: Place): Tab {
+  if (tab.view.kind === "page") {
+    if (!showsPage(place)) return tab;
+    const page = place.section === undefined ? { ...place, section: tab.view.page.section } : place;
+
+    return { ...tab, view: { kind: "page", page } };
+  }
+
+  if (showsPage(place)) return tab;
+
+  const pane = orderedPanes(tab.view.layout).find((candidate) =>
+    sameSelection(candidate.selection, place),
+  );
+
+  if (pane === undefined) return tab;
+  const layout = reducePaneLayout(tab.view.layout, { kind: "focus", paneId: pane.id });
+
+  return layout === tab.view.layout ? tab : { ...tab, view: { kind: "panes", layout } };
+}
+
+function openInChatTab(
+  state: WindowState,
+  place: PaneSelection,
+  createId: () => string,
+): WindowState {
+  const tab = findChatTab(state);
+
+  if (tab === undefined) {
+    const id = createId();
+
+    return activate(insertTab(state, { id, view: placeView(place) }, state.tabs.length), id);
+  }
+
+  const layout = reducePaneLayout(tabLayout(tab), { kind: "select", selection: place });
+
+  return activate(withTab(state, { ...tab, view: { kind: "panes", layout } }), tab.id);
+}
+
+/** A new chat goes to the tab already showing one, the active tab first, or to a new tab. */
+function openBlank(state: WindowState, createId: () => string): WindowState {
+  const waiting =
+    state.tabs.find((tab) => tab.id === state.activeTabId && showsNewChat(tab)) ??
+    state.tabs.find(showsNewChat);
+
+  if (waiting !== undefined) return activate(state, waiting.id);
+  const id = createId();
+
+  return activate(insertTab(state, { id, view: placeView(BLANK) }, state.tabs.length), id);
+}
+
+function open(
+  state: WindowState,
+  place: Place,
+  target: OpenTarget | "here",
+  createId: () => string,
+): WindowState {
+  const existing = state.tabs.find((tab) => showing(tab, place));
+
+  if (existing !== undefined) {
+    if (target === "background") return state;
+
+    return activate(withTab(state, reveal(existing, place)), existing.id);
+  }
+
+  if (target === "here" && !showsPage(place)) return openInChatTab(state, place, createId);
+
+  if (place.kind === "blank" && target !== "background") return openBlank(state, createId);
+
+  const active = activeTab(state);
+
+  if (target === "foreground" && showsNewChat(active))
+    return withTab(state, { ...active, view: placeView(place) });
+  const tab: Tab = { id: createId(), view: placeView(place) };
+  const opened = insertTab(state, tab, afterActive(state));
+
+  return target === "background" ? opened : activate(opened, tab.id);
 }
 
 function closeTabs(
@@ -269,85 +264,51 @@ function closeTabs(
   if (leaving.length === 0) return state;
 
   const closed = [
-    ...leaving.filter(({ tab }) => worthReopening(tab)).toReversed(),
+    ...leaving.filter(({ tab }) => !showsNewChat(tab)).toReversed(),
     ...state.closed,
   ].slice(0, CLOSED_LIMIT);
 
-  const tabs = state.tabs.filter((tab) => !tabIds.has(tab.id));
+  const remaining: WindowState = {
+    ...state,
+    tabs: state.tabs.filter((tab) => !tabIds.has(tab.id)),
+    recent: state.recent.filter((id) => !tabIds.has(id)),
+    closed,
+  };
 
-  if (!tabIds.has(state.activeTabId) && tabs.length > 0) return { ...state, tabs, closed };
+  if (!tabIds.has(state.activeTabId)) return remaining;
 
   const index = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
-  const takesOver = (tab: Tab): boolean => !tabIds.has(tab.id);
+  const stays = (tab: Tab): boolean => !tabIds.has(tab.id);
 
-  const neighbour =
-    state.tabs.slice(index + 1).find(takesOver) ?? state.tabs.slice(0, index).findLast(takesOver);
+  const next =
+    remaining.recent[0] ??
+    state.tabs.slice(index + 1).find(stays)?.id ??
+    state.tabs.slice(0, index).findLast(stays)?.id;
 
-  if (neighbour !== undefined) return { ...state, tabs, closed, activeTabId: neighbour.id };
-  const fresh = newTab(createId(), BLANK);
+  if (next !== undefined)
+    return {
+      ...remaining,
+      activeTabId: next,
+      recent: remaining.recent.filter((id) => id !== next),
+    };
+  const fresh: Tab = { id: createId(), view: placeView(BLANK) };
 
-  return { tabs: [...tabs, fresh], activeTabId: fresh.id, closed };
+  return { ...remaining, tabs: [fresh], activeTabId: fresh.id };
 }
 
-function travelTab(tab: Tab, step: 1 | -1): Tab | undefined {
-  const view = currentView(tab);
+function reduceLayout(state: WindowState, tabId: string, layout: PaneLayout): WindowState {
+  const tab = state.tabs.find((candidate) => candidate.id === tabId);
 
-  if (view.kind === "panes") {
-    const pane = activePane(view.layout);
-    const history = view.history[pane.id];
-    const target = (step < 0 ? history.back : history.forward).at(-1);
-
-    if (target !== undefined) {
-      const next: PaneHistory =
-        step < 0
-          ? { back: history.back.slice(0, -1), forward: [...history.forward, pane.selection] }
-          : { back: [...history.back, pane.selection], forward: history.forward.slice(0, -1) };
-
-      return withView(tab, {
-        kind: "panes",
-        layout: withSelection(view.layout, pane.id, target),
-        history: withHistory(view.history, pane.id, next),
-      });
-    }
-  }
-
-  const index = tab.index + step;
-
-  return index >= 0 && index < tab.views.length ? { ...tab, index } : undefined;
+  return tab === undefined || tab.view.kind === "page"
+    ? state
+    : withTab(state, { ...tab, view: { kind: "panes", layout } });
 }
 
-export function canTravel(state: WindowState, step: 1 | -1): boolean {
-  return travelTab(activeTab(state), step) !== undefined;
-}
+/** Shows panes again: the chat tab used last, or a new chat. */
+function leavePage(state: WindowState, createId: () => string): WindowState {
+  const tab = findChatTab(state);
 
-function proposedPlace(action: PaneLayoutAction): PaneSelection | undefined {
-  switch (action.kind) {
-    case "select":
-    case "select-in-pane":
-      return action.selection;
-    case "drop-session":
-      return { kind: "session", sessionId: action.sessionId };
-    default:
-      return undefined;
-  }
-}
-
-function reduceLayout(
-  state: WindowState,
-  action: PaneLayoutAction,
-  layout: PaneLayout,
-): WindowState {
-  const tab = activeTab(state);
-  const view = currentView(tab);
-  const place = proposedPlace(action);
-
-  if (view.kind === "page") {
-    if (place === undefined || action.kind === "drop-session") return state;
-
-    return withTab(state, pushView(tab, panesView(createSinglePane("primary", place))));
-  }
-
-  return withTab(state, recordLayout(tab, view, layout, action));
+  return tab === undefined ? openBlank(state, createId) : activate(state, tab.id);
 }
 
 export function reduce(
@@ -356,46 +317,25 @@ export function reduce(
   createId: () => string,
 ): WindowState {
   switch (action.kind) {
-    case "open": {
-      const tab = activeTab(state);
-
-      if (action.target === "here") {
-        const next = openHere(tab, action.place);
-
-        return next === tab ? state : withTab(state, next);
-      }
-
-      return openInTab(state, action.place, action.target !== "background", createId);
-    }
-
+    case "open":
+      return open(state, action.place, action.target, createId);
     case "layout":
-      return reduceLayout(state, action.action, action.layout);
+      return reduceLayout(state, action.tabId, action.layout);
     case "page-section": {
       const tab = activeTab(state);
-      const view = currentView(tab);
 
-      if (view.kind !== "page" || view.page.section === action.section) return state;
+      if (tab.view.kind !== "page" || tab.view.page.section === action.section) return state;
 
-      return withTab(
-        state,
-        withView(tab, { kind: "page", page: { ...view.page, section: action.section } }),
-      );
+      return withTab(state, {
+        ...tab,
+        view: { kind: "page", page: { ...tab.view.page, section: action.section } },
+      });
     }
 
-    case "leave-page": {
-      const tab = activeTab(state);
-
-      if (currentView(tab).kind !== "page") return state;
-
-      const covered =
-        tab.views.slice(0, tab.index).findLast((view) => view.kind === "panes") ??
-        panesView(BLANK_LAYOUT);
-
-      return withTab(state, pushView(tab, covered));
-    }
-
+    case "leave-page":
+      return leavePage(state, createId);
     case "new-tab":
-      return insertTab(state, newTab(createId(), BLANK), state.tabs.length, true);
+      return openBlank(state, createId);
     case "close-tab":
       return closeTabs(state, new Set([action.tabId]), createId);
     case "close-others":
@@ -412,59 +352,41 @@ export function reduce(
       return closeTabs(state, new Set(state.tabs.slice(index + 1).map((tab) => tab.id)), createId);
     }
 
-    case "duplicate-tab": {
-      const index = state.tabs.findIndex((tab) => tab.id === action.tabId);
-      const tab = state.tabs[index];
-
-      if (tab === undefined) return state;
-
-      return insertTab(state, { ...tab, id: createId() }, index + 1, true);
-    }
-
     case "reopen-tab": {
       const [last, ...rest] = state.closed;
 
       if (last === undefined) return state;
 
-      return {
-        ...state,
-        tabs: state.tabs.toSpliced(Math.min(last.index, state.tabs.length), 0, last.tab),
-        activeTabId: last.tab.id,
-        closed: rest,
-      };
+      return activate(
+        {
+          ...insertTab(state, last.tab, Math.min(last.index, state.tabs.length)),
+          closed: rest,
+        },
+        last.tab.id,
+      );
     }
 
     case "activate-tab":
-      return state.activeTabId !== action.tabId && state.tabs.some((tab) => tab.id === action.tabId)
-        ? { ...state, activeTabId: action.tabId }
+      return state.tabs.some((tab) => tab.id === action.tabId)
+        ? activate(state, action.tabId)
         : state;
     case "activate-index": {
       const tab = state.tabs[action.index];
 
-      return tab === undefined || tab.id === state.activeTabId
-        ? state
-        : { ...state, activeTabId: tab.id };
+      return tab === undefined ? state : activate(state, tab.id);
     }
 
     case "cycle-tab": {
       const index = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
       const tab = state.tabs[(index + action.step + state.tabs.length) % state.tabs.length];
 
-      return tab === undefined || tab.id === state.activeTabId
-        ? state
-        : { ...state, activeTabId: tab.id };
+      return tab === undefined ? state : activate(state, tab.id);
     }
 
     case "reorder": {
       const tabs = action.tabIds.flatMap((id) => state.tabs.filter((tab) => tab.id === id));
 
       return tabs.length === state.tabs.length ? { ...state, tabs } : state;
-    }
-
-    case "travel": {
-      const next = travelTab(activeTab(state), action.step);
-
-      return next === undefined ? state : withTab(state, next);
     }
 
     default: {

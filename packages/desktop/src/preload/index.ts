@@ -11,10 +11,11 @@ import {
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
   HOST_PORT_CHANNEL,
-  FIRST_WINDOW_ARGUMENT,
+  LAUNCH_WINDOWS_ARGUMENT,
   MACHINE_NAME_ARGUMENT,
   THEME_PREFERENCE_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
+  WINDOW_ID_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
@@ -77,17 +78,29 @@ function object<P extends Exclude<CallPath, NoneCallPath>>(
   return (input) => call(path, input);
 }
 
-const canvasShell = process.argv
-  .find((argument) => argument.startsWith(`${CANVAS_SHELL_ARGUMENT}=`))
-  ?.slice(CANVAS_SHELL_ARGUMENT.length + 1);
+function argumentValue(name: string): string | undefined {
+  return process.argv.find((argument) => argument.startsWith(`${name}=`))?.slice(name.length + 1);
+}
+
+const canvasShell = argumentValue(CANVAS_SHELL_ARGUMENT);
+
+const windowId = argumentValue(WINDOW_ID_ARGUMENT);
+
+if (windowId === undefined) throw new Error("The main process names every window it opens.");
+
+const launchWindows = argumentValue(LAUNCH_WINDOWS_ARGUMENT);
 
 const bridge = {
   clientSurface: "desktop",
   platform: process.platform,
-  machineName: process.argv
-    .find((argument) => argument.startsWith(`${MACHINE_NAME_ARGUMENT}=`))
-    ?.slice(MACHINE_NAME_ARGUMENT.length + 1),
-  firstWindow: process.argv.includes(FIRST_WINDOW_ARGUMENT),
+  machineName: argumentValue(MACHINE_NAME_ARGUMENT),
+  window: {
+    id: windowId,
+    launch:
+      launchWindows === undefined
+        ? undefined
+        : { windowIds: launchWindows.split(",").filter((id) => id !== "") },
+  },
   windowPainted: () => ipcRenderer.send(WINDOW_PAINTED_CHANNEL),
   ...(canvasShell === undefined ? {} : { canvasShell }),
   host: {

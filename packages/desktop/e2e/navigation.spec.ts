@@ -26,20 +26,20 @@ test("the navigation journey", async ({ desktop }) => {
     );
   });
 
-  await test.step("Go back and Go forward walk the tab's history", async () => {
+  await test.step("a click opens a chat in its own tab, and a modified click opens it behind", async () => {
+    const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
     await openChat(page, FIXTURES.beta);
-    const back = page.getByRole("button", { name: "Go back" });
-    const forward = page.getByRole("button", { name: "Go forward" });
-    await expect(back).toBeEnabled();
-    await back.click();
+    await expect(tabs).toHaveCount(2);
+    await openChat(page, FIXTURES.alpha);
+    await expect(tabs, "an open chat switches to its tab").toHaveCount(2);
+    await (await revealChat(page, FIXTURES.sidebar)).click({ modifiers: ["ControlOrMeta"] });
+    await expect(tabs).toHaveCount(3);
+    await expect(tabs.nth(1)).toHaveAccessibleName(new RegExp(`^${FIXTURES.sidebar}`, "u"));
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "false");
     await expect(chatTab(page, FIXTURES.alpha)).toHaveAttribute("aria-selected", "true");
-    await expect(forward).toBeEnabled();
-    await forward.click();
-    await expect(chatTab(page, FIXTURES.beta)).toHaveAttribute("aria-selected", "true");
-    await expect(forward).toBeDisabled();
   });
 
-  await test.step("New tab adds a second new chat tab beside the open one", async () => {
+  await test.step("New tab adds a new chat, and closing it goes back to the chat before it", async () => {
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
     const before = await tabs.count();
     await page.getByRole("button", { name: "New tab" }).click();
@@ -47,7 +47,7 @@ test("the navigation journey", async ({ desktop }) => {
     await expect(chatTab(page, "New chat")).toHaveAttribute("aria-selected", "true");
     await chatTab(page, "New chat").click({ button: "middle" });
     await expect(tabs).toHaveCount(before);
-    await expect(chatTab(page, FIXTURES.beta)).toHaveAttribute("aria-selected", "true");
+    await expect(chatTab(page, FIXTURES.alpha)).toHaveAttribute("aria-selected", "true");
   });
 
   await test.step("Chat actions offers the two splits", async () => {

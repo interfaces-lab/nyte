@@ -2,7 +2,6 @@ import type { SessionId } from "@nyte-ai/sdk";
 import {
   activePane,
   activeSelection,
-  createSinglePane,
   orderedPanes,
   paneForSession,
   paneSelection,
@@ -15,10 +14,9 @@ import type {
   PaneId,
   PaneLayout,
   PaneLayoutAction,
-  PaneSelection,
   SplitDirection,
 } from "./pane-layout.ts";
-import { SessionViewStateStore } from "./session-view-state.ts";
+import { SessionViewStateStore, WindowDrafts } from "./session-view-state.ts";
 import type { ComposerViewState } from "./session-view-state.ts";
 
 interface LayoutStorage {
@@ -32,7 +30,21 @@ export interface PaneControllerSnapshot {
   readonly focusRequest: { readonly paneId: PaneId; readonly revision: number };
 }
 
-type LayoutRoute = (current: PaneLayout, next: PaneLayout, action: PaneLayoutAction) => PaneLayout;
+type LayoutRoute = (current: PaneLayout, next: PaneLayout) => PaneLayout;
+
+/** Standalone, a controller keeps its own layout and drafts; a window's tab routes both through its window. */
+type PaneControllerOptions =
+  | { readonly storage?: LayoutStorage; readonly storageKey: string }
+  | {
+      readonly initialLayout: PaneLayout;
+      readonly route: LayoutRoute;
+      readonly viewState: SessionViewStateStore;
+    };
+
+interface SavedLayout {
+  readonly storage: LayoutStorage;
+  readonly key: string;
+}
 
 function selectedSession(action: PaneLayoutAction): SessionId | undefined {
   if (action.kind === "select" || action.kind === "select-in-pane") {
@@ -43,35 +55,34 @@ function selectedSession(action: PaneLayoutAction): SessionId | undefined {
 }
 
 export class PaneController {
-  readonly #storage: LayoutStorage | undefined;
-  readonly #storageKey: string;
+  readonly #saved: SavedLayout | undefined;
   readonly #viewState: SessionViewStateStore;
   readonly #listeners = new Set<() => void>();
   readonly #route: LayoutRoute | undefined;
   #snapshot: PaneControllerSnapshot;
 
-  constructor({
-    storage,
-    storageKey,
-    initialLayout,
-    route,
-  }: {
-    storage?: LayoutStorage;
-    storageKey: string;
-    initialLayout?: PaneLayout;
-    route?: LayoutRoute;
-  }) {
-    this.#storage = storage;
-    this.#storageKey = storageKey;
-    this.#route = route;
-    this.#viewState = new SessionViewStateStore(
-      storage === undefined ? undefined : { storage, storageKey: `${storageKey}:composer-drafts` },
-    );
+  constructor(options: PaneControllerOptions) {
+    if ("route" in options) {
+      this.#saved = undefined;
+      this.#route = options.route;
+      this.#viewState = options.viewState;
+    } else {
+      const storage = options.storage;
+      this.#saved = storage === undefined ? undefined : { storage, key: options.storageKey };
+      this.#route = undefined;
+
+      this.#viewState = new SessionViewStateStore(
+        new WindowDrafts(
+          storage === undefined
+            ? undefined
+            : { storage, storageKey: `${options.storageKey}:composer-drafts` },
+        ),
+        "",
+      );
+    }
 
     const layout =
-      route === undefined
-        ? parsePersistedPaneLayout(this.#readLayout())
-        : (initialLayout ?? createSinglePane());
+      "route" in options ? options.initialLayout : parsePersistedPaneLayout(this.#readLayout());
 
     this.#snapshot = {
       layout,
@@ -112,7 +123,7 @@ export class PaneController {
     if (layout === current) return current;
 
     if (this.#route !== undefined) {
-      layout = this.#route(current, layout, action);
+      layout = this.#route(current, layout);
 
       if (layout === current) return current;
     }
@@ -130,8 +141,7 @@ export class PaneController {
     this.#snapshot = { layout, focusRequest };
 
     try {
-      if (this.#route === undefined)
-        this.#storage?.setItem(this.#storageKey, serializePaneLayout(layout));
+      this.#saved?.storage.setItem(this.#saved.key, serializePaneLayout(layout));
     } catch {}
 
     for (const listener of this.#listeners) listener();
@@ -151,10 +161,6 @@ export class PaneController {
     };
 
     for (const listener of this.#listeners) listener();
-  }
-
-  syncSelection(selection: PaneSelection): PaneLayout {
-    return this.dispatch({ kind: "select", selection });
   }
 
   selectSession(sessionId: SessionId): PaneLayout {
@@ -293,7 +299,7 @@ export class PaneController {
 
   #readLayout(): string | null {
     try {
-      return this.#storage?.getItem(this.#storageKey) ?? null;
+      return this.#saved?.storage.getItem(this.#saved.key) ?? null;
     } catch {
       return null;
     }

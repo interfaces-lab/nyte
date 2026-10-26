@@ -14,7 +14,7 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { SortableItem, SortableList } from "../components/sortable-strip.tsx";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { stripStyles } from "./window-tab-strip.stylex.ts";
 
 export type WindowTabSplit = "right" | "down";
@@ -36,7 +36,6 @@ export interface WindowTabStripProps {
   readonly onClose: (tabId: string) => void;
   readonly onNewTab: () => void;
   readonly onReorder: (tabIds: readonly string[]) => void;
-  readonly onDuplicate: (tabId: string) => void;
   readonly onCloseOthers: (tabId: string) => void;
   readonly onCloseToRight: (tabId: string) => void;
 }
@@ -168,9 +167,6 @@ function TabItem({
       <ContextMenuContent aria-label={`${tab.title} tab actions`}>
         <ContextMenuItem icon="plus" meta={shortcut("T")} onClick={strip.onNewTab}>
           New Tab
-        </ContextMenuItem>
-        <ContextMenuItem icon="copy" onClick={() => strip.onDuplicate(tab.id)}>
-          Duplicate Tab
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem icon="close" meta={shortcut("W")} onClick={() => strip.onClose(tab.id)}>

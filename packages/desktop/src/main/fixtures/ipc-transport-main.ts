@@ -8,7 +8,7 @@ import { Value } from "typebox/value";
 import { ExpectedHostError, ipcDiagnostics, ipcResult } from "../errors.ts";
 import { callIpc } from "../ipc-call.ts";
 import { decodeCallRequest } from "../ipc-inputs.ts";
-import { CALL_CHANNEL } from "../../shared/ipc.ts";
+import { CALL_CHANNEL, WINDOW_ID_ARGUMENT } from "../../shared/ipc.ts";
 import type { CallRequest, CallOutput } from "../../shared/ipc.ts";
 import { exitWithParent } from "./exit-with-parent.ts";
 
@@ -31,6 +31,7 @@ void app.whenReady().then(async () => {
     show: false,
     webPreferences: {
       preload: join(directory, "preload.cjs"),
+      additionalArguments: [`${WINDOW_ID_ARGUMENT}=ipc-transport`],
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,

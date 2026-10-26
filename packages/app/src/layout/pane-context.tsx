@@ -5,14 +5,9 @@ import type { PaneController, PaneControllerSnapshot } from "./pane-controller.t
 import { activePane, canSplitPane } from "./pane-layout.ts";
 import type { DropPlacement, PaneId, SplitDirection } from "./pane-layout.ts";
 import type { ComposerViewState, SessionViewStateStore } from "./session-view-state.ts";
-import { shellActions } from "../chrome/shell-state.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
 const PaneControllerContext = createContext<PaneController | undefined>(undefined);
-
-function activeTabId(): string {
-  return windowTabs.getSnapshot().activeTabId;
-}
 
 export function PaneControllerProvider({
   controller,
@@ -21,7 +16,12 @@ export function PaneControllerProvider({
   controller?: PaneController;
   children: ReactNode;
 }): ReactElement {
-  const tabId = useSyncExternalStore(windowTabs.subscribe, activeTabId, activeTabId);
+  const tabId = useSyncExternalStore(
+    windowTabs.subscribe,
+    windowTabs.paneTabId,
+    windowTabs.paneTabId,
+  );
+
   const value = controller ?? windowTabs.controller(tabId);
 
   return <PaneControllerContext.Provider value={value}>{children}</PaneControllerContext.Provider>;
@@ -101,8 +101,7 @@ export function usePaneActions(): PaneActions {
 
   return {
     newChat() {
-      shellActions.showWorkspace();
-      controller.newChat();
+      windowTabs.newChat();
     },
     openSession(sessionId) {
       controller.selectSession(sessionId);

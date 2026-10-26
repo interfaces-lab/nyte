@@ -24,7 +24,11 @@ const windowFrame = Type.Object({
   fullscreen: Type.Boolean(),
 });
 
-const stateSchema = Type.Object({ theme: themeSource, window: Type.Optional(windowFrame) });
+const stateSchema = Type.Object({
+  theme: themeSource,
+  window: Type.Optional(windowFrame),
+  windows: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+});
 
 const launchState = Compile(stateSchema);
 
@@ -61,12 +65,21 @@ export class LaunchStateStore {
     return this.#state.window;
   }
 
+  /** The ids of the windows to reopen: those open when the app last quit. */
+  windows(): readonly string[] {
+    return this.#state.windows ?? [];
+  }
+
   setTheme(theme: ThemeSource): void {
     this.#write({ ...this.#state, theme });
   }
 
   setWindow(window: WindowFrame): void {
     this.#write({ ...this.#state, window });
+  }
+
+  setWindows(windows: readonly string[]): void {
+    this.#write({ ...this.#state, windows: [...windows] });
   }
 
   #write(next: LaunchState): void {

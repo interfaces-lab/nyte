@@ -11,6 +11,7 @@ import {
   screen,
   shell,
 } from "electron";
+import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -21,11 +22,12 @@ import {
   HOST_PORT_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
-  FIRST_WINDOW_ARGUMENT,
+  LAUNCH_WINDOWS_ARGUMENT,
   MACHINE_NAME_ARGUMENT,
   MAIN_OPERATION_PATHS,
   THEME_PREFERENCE_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
+  WINDOW_ID_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
@@ -595,8 +597,12 @@ function openingFrame(): OpeningFrame {
 
 const FIRST_FRAME_LIMIT_MS = 4_000;
 
-function createWindow(): NyteWindow {
+/** Each window keeps a lasting id, so its tabs and drafts reopen in it after a quit. */
+function createWindow(windowId: string = randomUUID()): NyteWindow {
   const frame = openingFrame();
+  const kept = launchState.windows();
+
+  if (!kept.includes(windowId)) launchState.setWindows([...kept, windowId]);
 
   const options: Electron.BrowserWindowConstructorOptions = {
     ...frame.bounds,
@@ -609,7 +615,10 @@ function createWindow(): NyteWindow {
       additionalArguments: [
         `${CANVAS_SHELL_ARGUMENT}=${canvasShell}`,
         `${MACHINE_NAME_ARGUMENT}=${machineName()}`,
-        ...(windows.size === 0 ? [FIRST_WINDOW_ARGUMENT] : []),
+        `${WINDOW_ID_ARGUMENT}=${windowId}`,
+        ...(windows.size === 0
+          ? [`${LAUNCH_WINDOWS_ARGUMENT}=${launchState.windows().join(",")}`]
+          : []),
       ],
       contextIsolation: true,
       nodeIntegration: false,
@@ -730,6 +739,9 @@ function createWindow(): NyteWindow {
     nativeTheme.off("updated", updateWindowBackground);
     screen.off("display-metrics-changed", placeButtons);
     windows.delete(id);
+
+    if (!quitting && windows.size > 0)
+      launchState.setWindows(launchState.windows().filter((kept) => kept !== windowId));
     browserSurfaces.releaseWindow(id);
     hostProcess?.release(id);
 
@@ -741,6 +753,21 @@ function createWindow(): NyteWindow {
 
   return entry;
 }
+
+/**
+ * Reopens the windows open when the app last quit, or one new window. Closing a window while
+ * others stay forgets it; quitting, or closing the last one, keeps every window open then.
+ */
+function restoreWindows(): NyteWindow {
+  const saved = launchState.windows();
+  const first = createWindow(saved[0]);
+
+  for (const windowId of saved.slice(1)) createWindow(windowId);
+
+  return first;
+}
+
+let quitting = false;
 
 const SHUTDOWN_LIMIT_MS = 5_000;
 
@@ -787,7 +814,7 @@ if (!hasSingleInstanceLock) {
   app.on("second-instance", (_event, argv) => {
     const clerkCallback = argv.some((arg) => arg.startsWith(`${scheme}:`));
 
-    if (!clerkCallback) reveal(currentWindow() ?? createWindow());
+    if (!clerkCallback) reveal(currentWindow() ?? restoreWindows());
   });
 
   void app.whenReady().then(async () => {
@@ -808,8 +835,8 @@ if (!hasSingleInstanceLock) {
       applicationMenuTemplate({
         platform: process.platform,
         name: app.getName(),
-        dispatch: (command) => (currentWindow() ?? createWindow()).menuCommands.dispatch(command),
-        newWindow: createWindow,
+        dispatch: (command) => (currentWindow() ?? restoreWindows()).menuCommands.dispatch(command),
+        newWindow: () => createWindow(),
         developer: !app.isPackaged,
         view: (command, window) => {
           const host = [...windows].find(([, entry]) => entry.window === window)?.[0];
@@ -842,11 +869,15 @@ if (!hasSingleInstanceLock) {
         publishChannel: (channel) => broadcast({ kind: "update_channel_changed", channel }),
         item: updateItem,
         activity: () => startedHost().activity(),
-        beforeRelaunch: shutdown,
+        beforeRelaunch: () => {
+          quitting = true;
+
+          return shutdown();
+        },
       });
 
     updatesReady.resolve();
-    createWindow();
+    restoreWindows();
 
     const cli =
       app.isPackaged && process.platform !== "win32"
@@ -870,6 +901,8 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on("before-quit", (event) => {
+    quitting = true;
+
     if (shutDown) return;
     event.preventDefault();
     void shutdown().then(() => {
@@ -883,7 +916,7 @@ if (!hasSingleInstanceLock) {
 
   app.on("activate", () => {
     void app.whenReady().then(() => {
-      if (windows.size === 0) createWindow();
+      if (windows.size === 0) restoreWindows();
     });
   });
 }

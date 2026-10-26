@@ -33,8 +33,6 @@ const COMMANDS = [
   "terminal",
   "split-right",
   "split-down",
-  "back",
-  "forward",
   "focus-pane",
   "reload-window",
 ] as const satisfies readonly AppMenuAction[];
@@ -95,8 +93,7 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
   switch (command) {
     case "new-chat":
       if (settingsOpen(router)) closeSettings(router);
-      shellActions.showWorkspace();
-      windowTabs.controller().newChat();
+      windowTabs.newChat();
 
       return true;
     case "new-tab":
@@ -129,16 +126,6 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
       return true;
     case "sidebar":
       shellActions.toggleSidebar();
-
-      return true;
-    case "back":
-      if (settingsOpen(router)) closeSettings(router);
-      else windowTabs.dispatch({ kind: "travel", step: -1 });
-
-      return true;
-    case "forward":
-      if (settingsOpen(router)) return false;
-      windowTabs.dispatch({ kind: "travel", step: 1 });
 
       return true;
     case "workbench":

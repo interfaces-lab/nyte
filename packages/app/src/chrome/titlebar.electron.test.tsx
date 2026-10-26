@@ -75,8 +75,6 @@ async function geometry() {
       'button[aria-label="Hide sidebar"], button[aria-label="Show sidebar"]',
     );
 
-    const back = document.querySelector('button[aria-label="Go back"]');
-    const forward = document.querySelector('button[aria-label="Go forward"]');
     const workbenchToggle = document.getElementById("workbench-toggle");
 
     const workbench = document.querySelector(
@@ -99,8 +97,6 @@ async function geometry() {
     return {
       header: box(header),
       toggle: box(toggle),
-      back: back ? box(back) : null,
-      forward: forward ? box(forward) : null,
       track: box(workbenchToggle.parentElement?.parentElement ?? workbenchToggle),
       workbench: workbench ? box(workbench) : null,
       zoom: Number(
@@ -155,11 +151,6 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
         .toBeLessThanOrEqual(1);
       const measured = await geometry();
       assert.ok(Math.abs(measured.toggle.centerY - measured.header.centerY) < 0.1);
-      assert.ok(measured.back && measured.forward);
-      assert.ok(measured.back.left - measured.toggle.right >= 7.9);
-      assert.ok(Math.abs(measured.back.centerY - measured.header.centerY) < 0.1);
-      assert.ok(Math.abs(measured.forward.centerY - measured.header.centerY) < 0.1);
-      assert.ok(measured.forward.left - measured.back.right >= 7.9);
 
       if (process.platform === "darwin") {
         const native = await application.evaluate(({ BrowserWindow }) => {
@@ -180,7 +171,7 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
   await setZoom(1);
 }, 90_000);
 
-test("chrome stages survive a refresh and travel with history", async () => {
+test("chrome stages survive a refresh", async () => {
   const sidebar = page.getByRole("navigation", { name: "Sessions and workspaces" });
   const customize = page.locator("[data-nyte-customize-surface]");
   await sidebar.getByRole("button", { name: "Customize", exact: true }).click();
@@ -189,10 +180,6 @@ test("chrome stages survive a refresh and travel with history", async () => {
   await expect(customize).toBeVisible();
   await sidebar.getByRole("button", { name: "Environments", exact: true }).click();
   const remoteAccess = page.getByRole("heading", { name: "Remote access", exact: true });
-  await expect(remoteAccess).toBeVisible();
-  await page.getByRole("button", { name: "Go back", exact: true }).click();
-  await expect(customize).toBeVisible();
-  await page.getByRole("button", { name: "Go forward", exact: true }).click();
   await expect(remoteAccess).toBeVisible();
   await page.reload();
   await expect(remoteAccess).toBeVisible();

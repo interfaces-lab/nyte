@@ -1,4 +1,5 @@
 import type { HostBridge, NyteBridge } from "@nyte-ai/app/bridge.ts";
+import type { DesktopWindow } from "@nyte-ai/app/tabs/window-tabs.ts";
 import type { IpcFailure } from "@nyte-ai/app/errors.ts";
 
 export const CALL_CHANNEL = "nyte:call";
@@ -23,7 +24,10 @@ export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
 export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
 
-export const FIRST_WINDOW_ARGUMENT = "--nyte-first-window";
+export const WINDOW_ID_ARGUMENT = "--nyte-window";
+
+/** Given only to a window opened while no other was: every window id worth keeping. */
+export const LAUNCH_WINDOWS_ARGUMENT = "--nyte-launch-windows";
 
 export const MAIN_OPERATION_PATHS = [
   "host.fonts",
@@ -93,7 +97,7 @@ export type DesktopBridge = {
   readonly clientSurface: NyteBridge["clientSurface"];
   readonly platform: NyteBridge["platform"];
   readonly machineName: NyteBridge["machineName"];
-  readonly firstWindow: boolean;
+  readonly window: DesktopWindow;
   windowPainted(): void;
   readonly canvasShell?: NyteBridge["canvasShell"];
   readonly host: {

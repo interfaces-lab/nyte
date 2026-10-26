@@ -11,14 +11,14 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 import type { RouterHistory } from "@tanstack/react-router";
-// oxlint-disable-next-line no-restricted-imports -- shortcuts act on the current pane state
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffectEvent, useSyncExternalStore } from "react";
 import { AboutDialog } from "./chrome/about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "./chrome/open-workspace.tsx";
 import { runWindowCommand, windowCommand } from "./shell/window-commands.ts";
 import { shellActions, useOverlays, useStagePage } from "./chrome/shell-state.ts";
 import { SidebarPane } from "./chrome/sidebar-pane.tsx";
+import { useSidebar } from "./chrome/use-sidebar.ts";
 import { Sidebar } from "./chrome/sidebar.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Titlebar } from "./chrome/titlebar.tsx";
@@ -28,13 +28,13 @@ import { keys, queryClient, readSession, useHostRelease } from "./queries.ts";
 import { routeSessionExists } from "./route-session.ts";
 import { sessionsWatch } from "./sdk.tsx";
 import { startupConnection } from "./startup.ts";
-import { preferences, useSetting } from "./preferences/index.ts";
+import { preferences } from "./preferences/index.ts";
 import { loadHostSettings } from "./preferences/host.ts";
 import type { ShellSearch } from "./shell/search.ts";
 import { SessionScreen } from "./screens/session-screen.tsx";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { shell } from "./theme/schema.stylex.ts";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { shell, sidebar } from "./theme/schema.stylex.ts";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { nyte } from "./nyte.ts";
@@ -43,6 +43,8 @@ import { activeTab, tabPlace } from "./tabs/model.ts";
 import { placeHref } from "./tabs/places.ts";
 import { useWindowTabsSync } from "./tabs/use-window-tabs.tsx";
 import { windowTabs } from "./tabs/window-tabs.ts";
+import type { DesktopWindow } from "./tabs/window-tabs.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { CustomizeSurface } from "./chrome/customize.tsx";
 import { EnvironmentsSurface } from "./chrome/environments.tsx";
@@ -79,8 +81,11 @@ const styles = create({
   card: {
     marginInlineEnd: shell.cardInset,
     marginBlockEnd: shell.cardInset,
-    borderRadius: radius.card,
+    borderRadius: shell.cardRadius,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    transitionProperty: "margin-inline-start",
+    transitionDuration: sidebar.slideDuration,
+    transitionTimingFunction: sidebar.slideEasing,
   },
   cardSidebarHidden: { marginInlineStart: shell.cardInset },
   loadError: {
@@ -153,60 +158,57 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const shellRouter = useRouter();
   const page = useStagePage();
   const { about } = useOverlays();
-  const sidebarVisible = useSetting(preferences.sidebarVisible);
+  const sidebarCollapsed = useSidebar().state === "collapsed";
   const mac = nyte.platform === "darwin";
   const strip = windowTabs.strip;
   useWindowTabsSync();
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      const settingsOpen = shellRouter.state.matches.some(
-        (match) => match.routeId === settingsRoute.id,
-      );
+  const onKeyDown = useEffectEvent((event: KeyboardEvent): void => {
+    const settingsOpen = shellRouter.state.matches.some(
+      (match) => match.routeId === settingsRoute.id,
+    );
 
-      if (settingsOpen && event.key === "Escape" && !event.defaultPrevented && !event.isComposing) {
-        event.preventDefault();
-        closeSettings(shellRouter);
+    if (settingsOpen && event.key === "Escape" && !event.defaultPrevented && !event.isComposing) {
+      event.preventDefault();
+      closeSettings(shellRouter);
 
-        return;
-      }
+      return;
+    }
 
-      const shortcut = strip && !settingsOpen ? resolveTabShortcut(event, mac) : undefined;
+    const shortcut = strip && !settingsOpen ? resolveTabShortcut(event, mac) : undefined;
 
-      if (shortcut !== undefined) {
-        event.preventDefault();
-        windowTabs.dispatch(shortcut);
+    if (shortcut !== undefined) {
+      event.preventDefault();
+      windowTabs.dispatch(shortcut);
 
-        return;
-      }
+      return;
+    }
 
-      const action = resolveClientAction(
-        event,
-        mac,
-        settingsOpen ? "settings" : (page?.kind ?? "workspace"),
-        clientCapabilities(nyte.host),
-      );
+    const action = resolveClientAction(
+      event,
+      mac,
+      settingsOpen ? "settings" : (page?.kind ?? "workspace"),
+      clientCapabilities(nyte.host),
+    );
 
-      const command = action === undefined ? undefined : windowCommand(action.id);
+    const command = action === undefined ? undefined : windowCommand(action.id);
 
-      if (command !== undefined && runWindowCommand(shellRouter, command)) event.preventDefault();
-    };
+    if (command !== undefined && runWindowCommand(shellRouter, command)) event.preventDefault();
+  });
 
-    window.addEventListener("keydown", onKeyDown);
+  useMountEffect(() => {
+    const listener = (event: KeyboardEvent): void => onKeyDown(event);
+    window.addEventListener("keydown", listener);
 
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [mac, page?.kind, shellRouter, strip]);
+    return () => window.removeEventListener("keydown", listener);
+  });
 
-  useEffect(
-    () =>
-      nyte.host.onMenuCommand((command) => {
-        shellActions.showAbout(command.kind === "about" ? command.info : undefined);
+  useMountEffect(() =>
+    nyte.host.onMenuCommand((command) => {
+      shellActions.showAbout(command.kind === "about" ? command.info : undefined);
 
-        if (command.kind === "action") runWindowCommand(shellRouter, command.action);
-      }),
-    [shellRouter],
+      if (command.kind === "action") runWindowCommand(shellRouter, command.action);
+    }),
   );
 
   return (
@@ -221,7 +223,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
             {...props(
               styles.surface,
               strip && styles.card,
-              strip && !sidebarVisible && styles.cardSidebarHidden,
+              strip && sidebarCollapsed && styles.cardSidebarHidden,
             )}
           >
             <ConnectionFailure />
@@ -438,8 +440,8 @@ const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, sessionRoute]
 
 const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 
-export function startWindowTabs(firstWindow: boolean): void {
-  windowTabs.start(firstWindow);
+export function startWindowTabs(desktopWindow: DesktopWindow): void {
+  windowTabs.start(desktopWindow);
 }
 
 export function windowTabRoute(): string {

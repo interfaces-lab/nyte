@@ -1,5 +1,12 @@
 import { create, props } from "@stylexjs/stylex";
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import {
+  useEffectEvent,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { sidebarStyles as rail } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { shell, sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
@@ -12,36 +19,46 @@ import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Switch } from "@nyte-ai/ui/switch";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { motion as motionTokens, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { WindowTabStrip as ShippedTabStrip } from "@nyte-ai/app/tabs/window-tab-strip.tsx";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { DISPLAY_MODES, useDisplayMode, type DisplayMode } from "../shell/display-mode";
-import { DRAFTS, SPACE, TABS, type ShellTab } from "./fixtures";
+import { CHATS, DRAFTS, INBOX, PAGES, SPACE, type ShellTab } from "./fixtures";
+import {
+  NEEDS,
+  NeedsYouPage,
+  chatWithNeeds,
+  type Need,
+  type NeedAction,
+  type NeedsDesign,
+} from "./needs-you";
 import { WindowTabStrip, useCardCorners, type StripDesign } from "./strip";
 
-type CloseGoes = "recent" | "neighbour";
-
-/** The app's strip as it ships, or the proposal this board explores. */
-type Strip = "shipped" | "proposal";
-
-interface ShellDesign extends StripDesign {
-  readonly strip: Strip;
-  readonly closeGoes: CloseGoes;
-  readonly sidebar: boolean;
-}
-
-const DESIGN_DEFAULT: ShellDesign = {
-  strip: "shipped",
-  active: "connected",
-  inactive: "chip",
-  close: "beside",
-  pinned: "icon",
-  folders: true,
-  dividers: true,
-  width: "shrink",
-  status: "badge",
+/** Decided; the lab draws these and the copied config records them. */
+const SETTLED = {
+  click: "own tab",
   closeGoes: "recent",
-  sidebar: false,
-};
+  numbering: "pinned",
+  pinned: ["inbox"],
+  pages: "open as tabs",
+  inactive: "ghost",
+  close: "hover",
+  status: "glyph",
+  active: "connected",
+  width: "shrink",
+  backForward: false,
+  duplicate: false,
+} as const;
+
+const CONFIG_DEFAULT: StripDesign = { inverse: "card" };
+
+const NEEDS_DEFAULT: NeedsDesign = { order: "urgency", finished: true };
+
+/** How long a chat runs after you act before it lands back in Needs you as finished. */
+const RUN_MS = 4000;
+
+const RUNNING = new Set(CHATS.filter((chat) => chat.mark === "working").map((chat) => chat.id));
+
+type OpenMode = "foreground" | "background";
 
 interface TabState {
   readonly open: readonly ShellTab[];
@@ -49,16 +66,21 @@ interface TabState {
   readonly history: readonly string[];
   readonly closed: readonly { readonly tab: ShellTab; readonly index: number }[];
   readonly drafts: number;
+  readonly needs: readonly Need[];
 }
 
+const STARTING_CHATS = new Set(["shadows", "trust"]);
+
 const INITIAL: TabState = {
-  open: TABS,
-  active: "trust",
-  history: ["trust", "shadows", "review"],
+  open: [INBOX, ...CHATS.filter((tab) => STARTING_CHATS.has(tab.id))],
+  active: "inbox",
+  history: ["inbox", "trust", "shadows"],
   closed: [],
   drafts: 0,
+  needs: NEEDS,
 };
 
+/** Showing a chat reads it, so a finished chat leaves Needs you once you look at it. */
 function activate(state: TabState, id: string): TabState {
   if (!state.open.some((tab) => tab.id === id)) return state;
 
@@ -66,28 +88,37 @@ function activate(state: TabState, id: string): TabState {
     ...state,
     active: id,
     history: [id, ...state.history.filter((entry) => entry !== id)].slice(0, 20),
+    needs: state.needs.filter((need) => need.kind !== "finished" || need.chatId !== id),
   };
 }
 
-/** The proposal keeps pinned places and folders open; the shipped strip closes any tab but the last. */
-function closeTab(state: TabState, id: string, design: ShellDesign): TabState {
+/** A place that already has a tab switches to it; otherwise it opens after the active tab. */
+function openTab(state: TabState, tab: ShellTab, mode: OpenMode): TabState {
+  if (state.open.some((entry) => entry.id === tab.id))
+    return mode === "background" ? state : activate(state, tab.id);
+
+  const at = state.open.findIndex((entry) => entry.id === state.active) + 1;
+  const opened = { ...state, open: state.open.toSpliced(at, 0, tab) };
+
+  return mode === "background" ? opened : activate(opened, tab.id);
+}
+
+/** Pinned tabs never close; closing the active tab goes back to the one used before it. */
+function closeTab(state: TabState, id: string): TabState {
   const index = state.open.findIndex((tab) => tab.id === id);
   const tab = state.open[index];
 
-  if (tab === undefined) return state;
-
-  if (design.strip === "proposal" ? tab.kind !== "chat" : state.open.length === 1) return state;
+  if (tab === undefined || tab.kind === "pinned") return state;
   const open = state.open.filter((entry) => entry.id !== id);
   const history = state.history.filter((entry) => entry !== id);
   const closed = [{ tab, index }, ...state.closed].slice(0, 25);
 
   if (state.active !== id) return { ...state, open, history, closed };
 
-  const recent = history.find((entry) => open.some((tab) => tab.id === entry));
-  const neighbour = (open[index] ?? open[index - 1])?.id;
-
   const next =
-    (design.closeGoes === "recent" ? recent : undefined) ?? neighbour ?? open[0]?.id ?? id;
+    history.find((entry) => open.some((candidate) => candidate.id === entry)) ??
+    (open[index] ?? open[index - 1])?.id ??
+    id;
 
   return activate({ ...state, open, history, closed }, next);
 }
@@ -108,53 +139,69 @@ function newTab(state: TabState): TabState {
   return activate({ ...state, open: [...state.open, tab], drafts: state.drafts + 1 }, id);
 }
 
-function duplicateTab(state: TabState, id: string): TabState {
-  const index = state.open.findIndex((tab) => tab.id === id);
-  const tab = state.open[index];
-
-  if (tab === undefined) return state;
-  const copy: ShellTab = { ...tab, id: `${id}-copy-${String(state.drafts)}` };
-  const open = [...state.open];
-
-  open.splice(index + 1, 0, copy);
-
-  return activate({ ...state, open, drafts: state.drafts + 1 }, copy.id);
-}
-
-function reorderTabs(state: TabState, ids: readonly string[]): TabState {
-  const open = ids.flatMap((id) => state.open.filter((tab) => tab.id === id));
-
-  return open.length === state.open.length ? { ...state, open } : state;
-}
-
 function reopenTab(state: TabState): TabState {
   const [last, ...closed] = state.closed;
 
   if (last === undefined) return state;
-  const open = [...state.open];
 
-  open.splice(Math.min(last.index, open.length), 0, last.tab);
-
-  return activate({ ...state, open, closed }, last.tab.id);
+  return activate(
+    {
+      ...state,
+      open: state.open.toSpliced(Math.min(last.index, state.open.length), 0, last.tab),
+      closed,
+    },
+    last.tab.id,
+  );
 }
 
-function cycleTab(state: TabState, shown: readonly ShellTab[], step: 1 | -1): TabState {
-  const index = shown.findIndex((tab) => tab.id === state.active);
-  const next = shown[(index + step + shown.length) % shown.length];
+function cycleTab(state: TabState, step: 1 | -1): TabState {
+  const index = state.open.findIndex((tab) => tab.id === state.active);
+  const next = state.open[(index + step + state.open.length) % state.open.length];
 
   return next === undefined ? state : activate(state, next.id);
 }
 
-function visible(tabs: readonly ShellTab[], design: ShellDesign): readonly ShellTab[] {
-  if (design.strip === "shipped") return tabs;
+function clickMode(event: MouseEvent): OpenMode {
+  return event.button === 1 || ((event.metaKey || event.ctrlKey) && !event.shiftKey)
+    ? "background"
+    : "foreground";
+}
 
-  return tabs.filter((tab) => {
-    if (tab.kind === "pinned") return design.pinned !== "off";
+function configText(design: StripDesign, needs: NeedsDesign): string {
+  return `Tabs lab config\n${JSON.stringify({ ...design, needs, settled: SETTLED }, null, 2)}`;
+}
 
-    if (tab.kind === "folder") return design.folders;
+/** The pinned tab shows the most urgent thing waiting: blocked, then failed, then unread. */
+function inboxMark(needs: readonly Need[], design: NeedsDesign): Pick<ShellTab, "mark" | "unread"> {
+  if (needs.some((need) => need.kind === "approval" || need.kind === "question"))
+    return { mark: "waiting", unread: false };
 
-    return true;
-  });
+  if (needs.some((need) => need.kind === "failed")) return { mark: "failed", unread: false };
+
+  return {
+    mark: "idle",
+    unread: design.finished && needs.some((need) => need.kind === "finished"),
+  };
+}
+
+function finishedAfter(need: Need, action: NeedAction): Need {
+  const summary =
+    action.kind === "deny"
+      ? "Stopped after you denied the request and wrote up what it skipped."
+      : action.kind === "answer"
+        ? `Went with “${action.option}” and finished.`
+        : action.kind === "retry"
+          ? "Retried and finished."
+          : "Ran it and finished.";
+
+  return {
+    id: `${need.id}-done`,
+    chatId: need.chatId,
+    since: 0,
+    kind: "finished",
+    summary,
+    changes: undefined,
+  };
 }
 
 function TrafficLights(): ReactElement {
@@ -167,19 +214,56 @@ function TrafficLights(): ReactElement {
   );
 }
 
-function Sidebar({
-  tabs,
-  activeId,
+function OpenRow({
+  tab,
+  selected,
   onOpen,
 }: {
-  readonly tabs: readonly ShellTab[];
+  readonly tab: ShellTab;
+  readonly selected: boolean;
+  readonly onOpen: (tab: ShellTab, mode: OpenMode) => void;
+}): ReactElement {
+  return (
+    <Row
+      interactive
+      selected={selected}
+      xstyle={[rail.rowSurface, rail.sessionRow, selected && rail.rowSelected]}
+    >
+      {selected && <Row.Backdrop xstyle={rail.sessionSelection} />}
+      <Row.Primary
+        onClick={(event) => onOpen(tab, clickMode(event))}
+        onAuxClick={(event) => {
+          if (event.button === 1) onOpen(tab, "background");
+        }}
+      >
+        <Row.Leading xstyle={rail.rowIcon}>
+          {tab.kind === "chat" ? (
+            <StatusDot mark={tab.mark} unread={tab.unread} />
+          ) : (
+            <Icon name={tab.icon} size={14} />
+          )}
+        </Row.Leading>
+        <Row.Label xstyle={rail.sessionLabel}>{tab.title}</Row.Label>
+      </Row.Primary>
+    </Row>
+  );
+}
+
+function Sidebar({
+  chats,
+  activeId,
+  onOpen,
+  onNew,
+}: {
+  readonly chats: readonly ShellTab[];
   readonly activeId: string;
-  readonly onOpen: (id: string) => void;
+  readonly onOpen: (tab: ShellTab, mode: OpenMode) => void;
+  readonly onNew: () => void;
 }): ReactElement {
   return (
     <nav aria-label="Sidebar" {...props(styles.sidebar)}>
       <div {...props(rail.primaryActions)}>
-        <Row variant="nav" xstyle={rail.navRow}>
+        <Row variant="nav" xstyle={rail.navRow} onClick={onNew}>
           <Row.Leading xstyle={rail.navLeading}>
             <Icon name="new-chat" size={14} />
           </Row.Leading>
@@ -191,6 +275,9 @@ function Sidebar({
           </Row.Leading>
           <Row.Label>Search</Row.Label>
         </Row>
+        {PAGES.map((page) => (
+          <OpenRow key={page.id} tab={page} selected={page.id === activeId} onOpen={onOpen} />
+        ))}
       </div>
       <div {...props(rail.scroll)}>
         <section aria-label="Chats" {...props(rail.section)}>
@@ -199,28 +286,9 @@ function Sidebar({
               <span {...props(rail.sectionLabel)}>Chats</span>
             </span>
           </div>
-          {tabs
-            .filter((tab) => tab.kind === "chat")
-            .map((tab) => {
-              const selected = tab.id === activeId;
-
-              return (
-                <Row
-                  key={tab.id}
-                  interactive
-                  selected={selected}
-                  xstyle={[rail.rowSurface, rail.sessionRow, selected && rail.rowSelected]}
-                >
-                  {selected && <Row.Backdrop xstyle={rail.sessionSelection} />}
-                  <Row.Primary onClick={() => onOpen(tab.id)}>
-                    <Row.Leading xstyle={rail.rowIcon}>
-                      <StatusDot mark={tab.mark} unread={tab.unread} />
-                    </Row.Leading>
-                    <Row.Label xstyle={rail.sessionLabel}>{tab.title}</Row.Label>
-                  </Row.Primary>
-                </Row>
-              );
-            })}
+          {chats.map((chat) => (
+            <OpenRow key={chat.id} tab={chat} selected={chat.id === activeId} onOpen={onOpen} />
+          ))}
         </section>
       </div>
     </nav>
@@ -233,12 +301,12 @@ function CardContent({ tab }: { readonly tab: ShellTab | undefined }): ReactElem
   return (
     <>
       <header {...props(styles.cardHeader)}>
-        <span {...props(styles.crumb)}>{tab.kind === "pinned" ? "Window" : SPACE}</span>
+        <span {...props(styles.crumb)}>{tab.kind === "chat" ? SPACE : "Window"}</span>
         <span {...props(styles.crumbDivider)}>/</span>
         <span {...props(styles.cardTitle)}>{tab.title}</span>
       </header>
       <div {...props(styles.cardBody)}>
-        {tab.kind === "chat" && (
+        {tab.kind === "chat" ? (
           <>
             <div {...props(styles.you)}>{tab.title}</div>
             <p {...props(styles.reply)}>
@@ -251,17 +319,8 @@ function CardContent({ tab }: { readonly tab: ShellTab | undefined }): ReactElem
                     : "Done. Switch tabs to see how the strip reports the others."}
             </p>
           </>
-        )}
-        {tab.kind === "folder" && (
-          <p {...props(styles.reply)}>
-            A project. Its coordinator runs {String(tab.count ?? 0)} agents; each opens as a tab
-            inside this one, as in the Projects board.
-          </p>
-        )}
-        {tab.kind === "pinned" && (
-          <p {...props(styles.reply)}>
-            A full-tab page. It fills the card and stays pinned, so it is always one click away.
-          </p>
+        ) : (
+          <p {...props(styles.reply)}>A full-tab page.</p>
         )}
       </div>
     </>
@@ -318,6 +377,37 @@ function Flag({
   );
 }
 
+function CopyConfig({
+  design,
+  needs,
+}: {
+  readonly design: StripDesign;
+  readonly needs: NeedsDesign;
+}): ReactElement {
+  const [copied, setCopied] = useState(false);
+  const reset = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useMountEffect(() => () => clearTimeout(reset.current));
+
+  const copy = async (): Promise<void> => {
+    await navigator.clipboard.writeText(configText(design, needs));
+    setCopied(true);
+    clearTimeout(reset.current);
+    reset.current = setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      icon={copied ? "checkmark" : "copy"}
+      onClick={() => void copy()}
+    >
+      {copied ? "Copied" : "Copy config"}
+    </Button>
+  );
+}
+
 function Note({
   title,
   children,
@@ -335,50 +425,106 @@ function Note({
 
 export function TabsPage(): ReactElement {
   const [state, setState] = useState(INITIAL);
-  const [design, setDesign] = useState(DESIGN_DEFAULT);
+  const [design, setDesign] = useState(CONFIG_DEFAULT);
+  const [needsDesign, setNeedsDesign] = useState(NEEDS_DEFAULT);
+  const [running, setRunning] = useState<ReadonlySet<string>>(RUNNING);
+  const runs = useRef(new Set<ReturnType<typeof setTimeout>>());
   const [scheme, setScheme] = useState<DisplayMode>("dark");
+  const [showSidebar, setShowSidebar] = useState(true);
   const stripRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const proposal = design.strip === "proposal";
-  const connected = proposal && design.active === "connected";
-  const shown = visible(state.open, design);
-  const active = state.open.find((tab) => tab.id === state.active);
-  const corners = useCardCorners(stripRef, cardRef, state.active, connected);
+  const needs = state.needs;
+  const chats = CHATS.map((chat) => chatWithNeeds(chat, needs, running));
+  const inbox = inboxMark(needs, needsDesign);
 
-  const set = <Key extends keyof ShellDesign>(key: Key, value: ShellDesign[Key]): void =>
-    setDesign((current) => ({ ...current, [key]: value }));
+  const tabs = state.open.map((tab) => {
+    if (tab.id === INBOX.id) return { ...tab, ...inbox };
+
+    return tab.kind === "chat"
+      ? (chats.find((chat) => chat.id === tab.id) ?? chatWithNeeds(tab, needs, running))
+      : tab;
+  });
+
+  const active = tabs.find((tab) => tab.id === state.active);
+  const corners = useCardCorners(stripRef, cardRef, state.active);
+
+  const act = (need: Need, action: NeedAction): void => {
+    setState((current) => ({
+      ...current,
+      needs: current.needs.filter((entry) => entry.id !== need.id),
+    }));
+
+    if (action.kind === "read") return;
+    setRunning((current) => new Set([...current, need.chatId]));
+
+    const timer = setTimeout(() => {
+      runs.current.delete(timer);
+      setRunning((current) => new Set([...current].filter((id) => id !== need.chatId)));
+      setState((current) =>
+        current.active === need.chatId
+          ? current
+          : { ...current, needs: [...current.needs, finishedAfter(need, action)] },
+      );
+    }, RUN_MS);
+
+    runs.current.add(timer);
+  };
+
+  const openChat = (chatId: string, event: MouseEvent | undefined): void => {
+    const chat = CHATS.find((entry) => entry.id === chatId);
+
+    if (chat === undefined) return;
+    setState((current) =>
+      openTab(current, chat, event === undefined ? "foreground" : clickMode(event)),
+    );
+  };
+
+  const reset = (): void => {
+    for (const timer of runs.current) clearTimeout(timer);
+    runs.current.clear();
+    setState((current) => ({ ...current, needs: NEEDS }));
+    setRunning(RUNNING);
+  };
 
   useDisplayMode(scheme);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      const key = event.key.toLowerCase();
+  useMountEffect(() => {
+    const pending = runs.current;
 
-      if (event.altKey && key === "w") {
-        event.preventDefault();
-        setState((current) => closeTab(current, current.active, design));
-      } else if (event.altKey && event.shiftKey && key === "t") {
-        event.preventDefault();
-        setState(reopenTab);
-      } else if (event.altKey && key === "t") {
-        event.preventDefault();
-        setState(newTab);
-      } else if (event.altKey && /^[1-9]$/.test(event.key)) {
-        const target = shown[Number(event.key) - 1];
-
-        if (target === undefined) return;
-        event.preventDefault();
-        setState((current) => activate(current, target.id));
-      } else if (event.ctrlKey && event.key === "Tab") {
-        event.preventDefault();
-        setState((current) => cycleTab(current, shown, event.shiftKey ? -1 : 1));
-      }
+    return () => {
+      for (const timer of pending) clearTimeout(timer);
     };
+  });
 
+  const onKey = useEffectEvent((event: KeyboardEvent): void => {
+    const key = event.key.toLowerCase();
+
+    if (event.altKey && key === "w") {
+      event.preventDefault();
+      setState((current) => closeTab(current, current.active));
+    } else if (event.altKey && event.shiftKey && key === "t") {
+      event.preventDefault();
+      setState(reopenTab);
+    } else if (event.altKey && key === "t") {
+      event.preventDefault();
+      setState(newTab);
+    } else if (event.altKey && /^[1-9]$/.test(event.key)) {
+      const target = state.open[Number(event.key) - 1];
+
+      if (target === undefined) return;
+      event.preventDefault();
+      setState((current) => activate(current, target.id));
+    } else if (event.ctrlKey && event.key === "Tab") {
+      event.preventDefault();
+      setState((current) => cycleTab(current, event.shiftKey ? -1 : 1));
+    }
+  });
+
+  useMountEffect(() => {
     window.addEventListener("keydown", onKey);
 
     return () => window.removeEventListener("keydown", onKey);
-  }, [shown, design]);
+  });
 
   return (
     <main {...props(styles.page)}>
@@ -386,10 +532,8 @@ export function TabsPage(): ReactElement {
         <header {...props(styles.header)}>
           <h1 {...props(styles.title)}>Window tabs</h1>
           <p {...props(styles.lede)}>
-            The strip lives in the titlebar. Shipped is the app&rsquo;s own strip: every tab in one
-            row, the active one wearing the card below it. Proposal follows Dia and Arc: pinned
-            places as bare icons, then folders, then the chats you opened. Switch above the window;{" "}
-            <Kbd keys={["⌥", "1"]} plain />–
+            A tab is a chat or a page. Click one in the sidebar to open it in its own tab, or
+            ⌘-click to open it behind. <Kbd keys={["⌥", "1"]} plain />–
             <Kbd keys={["⌥", "9"]} plain /> jump, <Kbd keys={["⌥", "W"]} plain /> closes,{" "}
             <Kbd keys={["⌥", "T"]} plain /> opens, <Kbd keys={["⌥", "⇧", "T"]} plain /> reopens,{" "}
             <Kbd keys={["⌃", "Tab"]} plain /> cycles.
@@ -398,111 +542,53 @@ export function TabsPage(): ReactElement {
 
         <div role="toolbar" aria-label="Design" {...props(styles.toolbar)}>
           <Choice
-            label="Strip"
-            value={design.strip}
+            label="Inverse curve"
+            value={design.inverse}
             options={[
-              { value: "shipped", label: "Shipped" },
-              { value: "proposal", label: "Proposal" },
+              { value: "card", label: "Card radius" },
+              { value: "control", label: "Control radius" },
             ]}
-            onChange={(strip) => set("strip", strip)}
+            onChange={(inverse) => setDesign({ inverse })}
           />
-          <Choice label="Scheme" value={scheme} options={DISPLAY_MODES} onChange={setScheme} />
           <span {...props(styles.toolbarRule)} />
-          <Choice
-            label="On close"
-            value={design.closeGoes}
-            options={[
-              { value: "recent", label: "Recent" },
-              { value: "neighbour", label: "Neighbour" },
-            ]}
-            onChange={(closeGoes) => set("closeGoes", closeGoes)}
-          />
-          <Flag label="Sidebar" checked={design.sidebar} onChange={(on) => set("sidebar", on)} />
+          <Choice label="Scheme" value={scheme} options={DISPLAY_MODES} onChange={setScheme} />
+          <Flag label="Sidebar" checked={showSidebar} onChange={setShowSidebar} />
+          <CopyConfig design={design} needs={needsDesign} />
         </div>
 
-        {proposal && (
-          <div role="toolbar" aria-label="Proposal" {...props(styles.toolbar)}>
-            <Choice
-              label="Active"
-              value={design.active}
-              options={[
-                { value: "connected", label: "Connected" },
-                { value: "card", label: "Card" },
-                { value: "flat", label: "Flat" },
-              ]}
-              onChange={(active) => set("active", active)}
-            />
-            <Choice
-              label="Others"
-              value={design.inactive}
-              options={[
-                { value: "chip", label: "Chips" },
-                { value: "ghost", label: "Ghost" },
-              ]}
-              onChange={(inactive) => set("inactive", inactive)}
-            />
-            <Choice
-              label="Close"
-              value={design.close}
-              options={[
-                { value: "beside", label: "Beside active" },
-                { value: "active", label: "Inside active" },
-                { value: "hover", label: "Inside on hover" },
-              ]}
-              onChange={(close) => set("close", close)}
-            />
-            <Choice
-              label="Width"
-              value={design.width}
-              options={[
-                { value: "shrink", label: "Shrink to icon" },
-                { value: "fixed", label: "Fixed, scroll" },
-              ]}
-              onChange={(width) => set("width", width)}
-            />
-            <Choice
-              label="Status"
-              value={design.status}
-              options={[
-                { value: "badge", label: "Badge on icon" },
-                { value: "glyph", label: "Replaces icon" },
-                { value: "dot", label: "After title" },
-              ]}
-              onChange={(status) => set("status", status)}
-            />
-            <span {...props(styles.toolbarRule)} />
-            <Choice
-              label="Pinned"
-              value={design.pinned}
-              options={[
-                { value: "icon", label: "Icon" },
-                { value: "label", label: "Icon + title" },
-                { value: "off", label: "None" },
-              ]}
-              onChange={(pinned) => set("pinned", pinned)}
-            />
-            <Flag label="Folders" checked={design.folders} onChange={(on) => set("folders", on)} />
-            <Flag
-              label="Dividers"
-              checked={design.dividers}
-              onChange={(on) => set("dividers", on)}
-            />
-          </div>
-        )}
+        <div role="toolbar" aria-label="Needs you" {...props(styles.toolbar)}>
+          <Choice
+            label="Needs you order"
+            value={needsDesign.order}
+            options={[
+              { value: "urgency", label: "By urgency" },
+              { value: "newest", label: "Newest first" },
+            ]}
+            onChange={(order) => setNeedsDesign({ ...needsDesign, order })}
+          />
+          <Flag
+            label="Finished chats"
+            checked={needsDesign.finished}
+            onChange={(finished) => setNeedsDesign({ ...needsDesign, finished })}
+          />
+          <Button size="sm" variant="outline" icon="refresh" onClick={reset}>
+            Reset
+          </Button>
+        </div>
 
         <div {...props(styles.window)}>
           <div {...props(styles.titlebar)}>
-            <div {...props(styles.sidebarSlot, design.sidebar && styles.sidebarSlotOpen)}>
+            <div {...props(styles.sidebarSlot, showSidebar && styles.sidebarSlotOpen)}>
               <TrafficLights />
               <Button
                 size="sm"
                 variant="ghost"
                 iconOnly
                 icon="panel-left"
-                aria-label={design.sidebar ? "Hide sidebar" : "Show sidebar"}
-                onClick={() => set("sidebar", !design.sidebar)}
+                aria-label={showSidebar ? "Hide sidebar" : "Show sidebar"}
+                onClick={() => setShowSidebar(!showSidebar)}
               />
-              {!design.sidebar && (
+              {!showSidebar && (
                 <Menu>
                   <MenuTrigger
                     render={
@@ -523,57 +609,17 @@ export function TabsPage(): ReactElement {
               )}
             </div>
             <div {...props(styles.center)}>
-              {proposal ? (
-                <WindowTabStrip
-                  tabs={shown}
-                  activeId={state.active}
-                  design={design}
-                  stripRef={stripRef}
-                  onActivate={(id) => setState((current) => activate(current, id))}
-                  onClose={(id) => setState((current) => closeTab(current, id, design))}
-                  onNew={() => setState(newTab)}
-                />
-              ) : (
-                <ShippedTabStrip
-                  tabs={state.open.map((tab) => ({
-                    id: tab.id,
-                    title: tab.title,
-                    tooltip: tab.title,
-                    glyph:
-                      tab.kind !== "chat" ? (
-                        <Icon name={tab.icon} size={14} />
-                      ) : tab.mark === "idle" ? undefined : (
-                        <StatusDot mark={tab.mark} />
-                      ),
-                    unread: tab.unread && tab.id !== state.active,
-                    split: tab.split,
-                  }))}
-                  activeTabId={state.active}
-                  mac
-                  onActivate={(id) => setState((current) => activate(current, id))}
-                  onClose={(id) => setState((current) => closeTab(current, id, design))}
-                  onNewTab={() => setState(newTab)}
-                  onReorder={(ids) => setState((current) => reorderTabs(current, ids))}
-                  onDuplicate={(id) => setState((current) => duplicateTab(current, id))}
-                  onCloseOthers={(id) =>
-                    setState((current) =>
-                      current.open
-                        .filter((tab) => tab.id !== id)
-                        .reduce(
-                          (next, tab) => closeTab(next, tab.id, design),
-                          activate(current, id),
-                        ),
-                    )
-                  }
-                  onCloseToRight={(id) =>
-                    setState((current) =>
-                      current.open
-                        .slice(current.open.findIndex((tab) => tab.id === id) + 1)
-                        .reduce((next, tab) => closeTab(next, tab.id, design), current),
-                    )
-                  }
-                />
-              )}
+              <WindowTabStrip
+                tabs={tabs}
+                activeId={state.active}
+                numbered={state.open.map((tab) => tab.id)}
+                flush={corners}
+                design={design}
+                stripRef={stripRef}
+                onActivate={(id) => setState((current) => activate(current, id))}
+                onClose={(id) => setState((current) => closeTab(current, id))}
+                onNew={() => setState(newTab)}
+              />
             </div>
             <div {...props(styles.trailing)}>
               <Menu>
@@ -589,7 +635,7 @@ export function TabsPage(): ReactElement {
                   }
                 />
                 <MenuContent aria-label="All tabs" align="end">
-                  {shown.map((tab) => (
+                  {tabs.map((tab) => (
                     <MenuItem
                       key={tab.id}
                       icon={tab.icon}
@@ -623,18 +669,13 @@ export function TabsPage(): ReactElement {
               />
             </div>
           </div>
-          <div
-            {...props(
-              styles.body,
-              design.sidebar && styles.bodyWithSidebar,
-              connected && styles.bodyConnected,
-            )}
-          >
-            {design.sidebar && (
+          <div {...props(styles.body, showSidebar && styles.bodyWithSidebar)}>
+            {showSidebar && (
               <Sidebar
-                tabs={state.open}
+                chats={chats}
                 activeId={state.active}
-                onOpen={(id) => setState((current) => activate(current, id))}
+                onOpen={(tab, mode) => setState((current) => openTab(current, tab, mode))}
+                onNew={() => setState(newTab)}
               />
             )}
             <div
@@ -645,83 +686,73 @@ export function TabsPage(): ReactElement {
                 corners.right && styles.cardSquareRight,
               )}
             >
-              <CardContent tab={active} />
+              {active?.id === INBOX.id ? (
+                <NeedsYouPage
+                  needs={needs}
+                  chats={chats}
+                  design={needsDesign}
+                  onAct={act}
+                  onOpen={openChat}
+                />
+              ) : (
+                <CardContent tab={active} />
+              )}
             </div>
           </div>
         </div>
 
         <section {...props(styles.notes)}>
-          <h2 {...props(styles.notesTitle)}>Design notes</h2>
+          <h2 {...props(styles.notesTitle)}>Needs you</h2>
           <ul {...props(styles.list)}>
-            <Note title="Shipped">
-              The app&apos;s own strip, drawn by its WindowTabStrip. Every tab sits in one row in
-              the order opened, with no pinned or folder groups. The active tab is a hairlined chip
-              in the card&apos;s colour; the others are bare until hovered. A chat shows its status
-              dot where a place shows its icon, and an unread dot after the title. Drag reorders,
-              right-click opens New, Duplicate and Close actions, and a middle click closes.
+            <Note title="What lands here">
+              Approvals and questions, where the agent is stopped until you answer; failed runs; and
+              finished chats you haven&apos;t read. Working chats stay out: the strip already shows
+              them. Requests from subagents say who asked.
             </Note>
             <Note title="Order">
-              Pinned, folders, chats, left to right, each group behind a hairline. Dia keeps this
-              order so the tabs that never close stay where your hand expects them. Pinned places
-              are full-tab pages (Customize, Environments) and anything you pin; a pinned chat keeps
-              its status.
+              By urgency puts blocked chats first, longest waiting at the top, because every minute
+              blocked is an idle agent. Failed runs follow, then finished chats, newest first.
+              Newest first is one list by time, like t3code&apos;s inbox.
             </Note>
-            <Note title="Active: connected">
-              The tab is painted in the card&apos;s colour and curves into it; it overlaps the
-              card&apos;s hairline by a pixel so the two read as one sheet. The card squares its top
-              corner only when the active tab sits flush with its edge, which happens with the
-              sidebar open and the first tab active. Card keeps the shipped strip&apos;s look, a
-              hairlined chip in the card&apos;s colour floating over the chrome; Flat is the
-              quietest and loses the most at a glance.
+            <Note title="Act in place">
+              Allow, deny, answer and retry without leaving the page. The chat runs again and comes
+              back as finished, so you can clear a queue while several agents work. Opening a chat
+              gives it its own tab and marks a finished chat read.
             </Note>
-            <Note title="Others: chips">
-              Dia fills every inactive tab, so the row reads as a row of objects and the
-              strip&apos;s bounds are visible without a border. Ghost is the shipped behaviour; it
-              is calmer with few tabs and harder to scan with many. Decide after living with eight
-              or more tabs.
+            <Note title="Keyboard">
+              J and K move, Enter opens. A allows once, S allows for the session, D denies, 1–9
+              answers, R retries, E marks read. Acting moves the selection to the next item.
             </Note>
-            <Note title="Close">
-              Dia puts one close button after the active tab, outside it. Nothing hides inside the
-              other tabs, so a crowded strip has no reveal-on-hover surprises and the hit area never
-              steals from the title. Inside on hover is the shipped behaviour and still the fastest
-              for closing several background tabs in a row; a middle click does that in every
-              variant.
+            <Note title="The pinned tab">
+              Its icon becomes the most urgent status: waiting while anything is blocked, failed
+              while a run failed, unread while only finished chats remain.
             </Note>
-            <Note title="Width: shrink to icon">
-              Chat tabs share the row up to 176px and give up their title below 72px, so a full
-              strip becomes a row of icons before it scrolls, as in the first Dia screenshot. The
-              active tab keeps at least 96px so its title survives. Pinned and folder tabs never
-              shrink. The shipped strip shares the row up to 240px a tab and scrolls once tabs reach
-              72px, so titles never give way to icons.
+          </ul>
+          <h2 {...props(styles.notesTitle)}>Drawing the active tab</h2>
+          <ul {...props(styles.list)}>
+            <Note title="Circles">
+              The active tab and its two inverse curves are one path. Its top corners are quarter
+              circles of the card&apos;s radius. Each inverse curve is a quarter circle tangent to
+              the tab&apos;s side and to the card&apos;s top edge, so it lands exactly on the
+              card&apos;s hairline, which the outline continues.
             </Note>
-            <Note title="Status">
-              Badge keeps the place icon and pins a dot to its corner: blue pulsing while working,
-              yellow when a run needs you, red on failure, blue when a background chat finished
-              unread. Replaces icon is the sidebar&apos;s rule and the shipped strip&apos;s for
-              chats, which loses what the tab is while it runs. After title is the shipped
-              strip&apos;s unread dot, and it disappears when a tab collapses to its icon, which is
-              the case against it.
+            <Note title="Flush with the card">
+              When the active tab lines up with the card&apos;s edge, that side has no inverse
+              curve: the card&apos;s corner squares off and the tab&apos;s top corner, also the
+              card&apos;s radius, becomes the sheet&apos;s corner.
             </Note>
-            <Note title="Space">
-              With the sidebar hidden, Dia names the space where the sidebar toggle would be
-              (&quot;Personal&quot;). Here it is the workspace folder, and it opens the same
-              switcher as the sidebar&apos;s footer.
+            <Note title="Inverse curve">
+              Card radius uses one 6px circle everywhere, Arc&apos;s page corner. Control radius
+              draws the inverse curves at 8px, wider than the corners; Chrome&apos;s are tighter.
             </Note>
-            <Note title="Overflow">
-              The chevron at the trailing edge lists every tab and the last closed one, so nothing
-              is lost when the strip collapses to icons. Hover shows the title and the tab&apos;s
-              number; ⌘ in the product, ⌥ here because the browser keeps ⌘W and ⌘T.
+            <Note title="No layout shift">
+              Active and inactive tabs share one content box and one width. The active tab trades
+              the inactive tabs&apos; bottom margin for the same padding, so clicking a tab only
+              repaints it.
             </Note>
-            <Note title="On close">
-              Recent goes to the tab you were on before, the way Arc does; Neighbour goes right,
-              then left, the way Chrome does and the tabs doc currently says. Recent is better when
-              you bounce between a chat and a review; Neighbour is more predictable while closing a
-              run of tabs.
-            </Note>
-            <Note title="Not here">
-              Drag to reorder and the right-click menu work in Shipped; the proposal leaves them out
-              because they do not change with the design. ⌘-click from the sidebar into a background
-              tab is in the tabs doc.
+            <Note title="Pages">
+              Customize and Environments open from the sidebar as ordinary tabs and close like any
+              other. Needs you is the only pinned tab.
             </Note>
           </ul>
         </section>
@@ -819,11 +850,9 @@ const styles = create({
     minHeight: 0,
     paddingInlineEnd: shell.cardInset,
     paddingBottom: shell.cardInset,
-    paddingTop: shell.cardInset,
     backgroundColor: role.sidebarMaterial,
   },
   bodyWithSidebar: { gridTemplateColumns: `${sidebar.width} minmax(0, 1fr)` },
-  bodyConnected: { paddingTop: 0 },
   sidebar: {
     display: "flex",
     flexDirection: "column",
@@ -836,24 +865,18 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     marginInlineStart: shell.cardInset,
-    borderRadius: radius.card,
+    borderRadius: shell.cardRadius,
     backgroundColor: role.bgBase,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
-    transitionProperty: "border-radius",
-    transitionDuration: motionTokens.durationNormal,
-    transitionTimingFunction: motionTokens.easeOut,
   },
-  cardSquareLeft: { borderStartStartRadius: 1 },
-  cardSquareRight: { borderStartEndRadius: 1 },
+  cardSquareLeft: { borderStartStartRadius: 0 },
+  cardSquareRight: { borderStartEndRadius: 0 },
   cardHeader: {
     display: "flex",
     alignItems: "center",
     gap: 6,
     paddingBlock: 10,
     paddingInline: 16,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },

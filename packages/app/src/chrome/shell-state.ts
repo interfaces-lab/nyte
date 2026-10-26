@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import type { AppInfo } from "../bridge.ts";
 import { preferences, SIDEBAR_WIDTH } from "../preferences/index.ts";
-import { activeTab, currentView } from "../tabs/model.ts";
+import { activeTab } from "../tabs/model.ts";
 import type { Page } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
@@ -53,7 +53,7 @@ export function useOverlays(): Overlays {
 }
 
 function stagePage(): Page | undefined {
-  const view = currentView(activeTab(windowTabs.getSnapshot()));
+  const view = activeTab(windowTabs.getSnapshot()).view;
 
   return view.kind === "page" ? view.page : undefined;
 }
@@ -81,14 +81,14 @@ export const shellActions = Object.freeze({
   openCustomize(sessionId: SessionId | undefined): void {
     windowTabs.dispatch({
       kind: "open",
-      target: "here",
+      target: "foreground",
       place: { kind: "customize", section: undefined, sessionId },
     });
   },
   openEnvironments(): void {
     windowTabs.dispatch({
       kind: "open",
-      target: "here",
+      target: "foreground",
       place: { kind: "environments", section: undefined },
     });
   },

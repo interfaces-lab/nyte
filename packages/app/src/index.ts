@@ -6,6 +6,8 @@ export { connectLocalHost, queryClient, setUpdateStateForDemo } from "./queries.
 
 export { createAppRouter, startWindowTabs, windowTabRoute } from "./router.tsx";
 
+export type { DesktopWindow } from "./tabs/window-tabs.ts";
+
 export { startRendererStartup } from "./startup.ts";
 
 export { StartupFailure } from "./startup-failure.tsx";

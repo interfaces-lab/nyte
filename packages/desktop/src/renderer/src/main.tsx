@@ -24,7 +24,7 @@ import {
 import appIcon from "../../../build/icon-macos.svg";
 import { AccountProvider } from "../../account/provider.tsx";
 
-startWindowTabs(window.nyte.firstWindow);
+startWindowTabs(window.nyte.window);
 
 seedFirstFrame("local");
 

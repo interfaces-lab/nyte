@@ -150,14 +150,12 @@ export const clientActions = {
     chord: "primary",
     scope: "outside-settings",
   },
-  back: { id: "back", label: "Go Back", key: "[", chord: "primary", scope: "window" },
-  forward: { id: "forward", label: "Go Forward", key: "]", chord: "primary", scope: "window" },
   sidebar: {
     id: "sidebar",
     label: "Toggle Sidebar",
     key: "b",
     chord: "primary",
-    scope: "outside-settings",
+    scope: "window",
   },
   splitRight: {
     id: "split-right",

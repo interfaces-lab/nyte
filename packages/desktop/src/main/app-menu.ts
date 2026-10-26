@@ -52,6 +52,7 @@ export function applicationMenuTemplate(options: {
     action(clientActions.newChat),
     action(clientActions.newTab),
     action(clientActions.openFolder),
+    command(clientActions.search),
     { type: "separator" },
     action(clientActions.newTerminal),
     action(clientActions.newBrowser),
@@ -146,15 +147,6 @@ export function applicationMenuTemplate(options: {
         view("Zoom Out", "CommandOrControl+-", "zoom-out"),
         { type: "separator" },
         { role: "togglefullscreen" },
-      ],
-    },
-    {
-      label: "Go",
-      submenu: [
-        command(clientActions.back),
-        command(clientActions.forward),
-        { type: "separator" },
-        command(clientActions.search),
       ],
     },
     options.platform === "darwin"

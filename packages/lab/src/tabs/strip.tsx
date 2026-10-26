@@ -1,63 +1,44 @@
-import { create, keyframes, props } from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState, type ReactElement, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type ReactElement, type RefObject } from "react";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { button, glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
-import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { motion as motionTokens, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import type { ShellTab, TabKind } from "./fixtures";
-
-type ActiveStyle = "connected" | "card" | "flat";
-
-type InactiveStyle = "chip" | "ghost";
-
-type ClosePlacement = "hover" | "beside" | "active";
-
-type PinnedStyle = "icon" | "label" | "off";
-
-type WidthRule = "shrink" | "fixed";
-
-type StatusPlacement = "glyph" | "badge" | "dot";
+import { shell } from "@nyte-ai/app/theme/schema.stylex.ts";
+import type { ShellTab } from "./fixtures";
 
 export interface StripDesign {
-  readonly active: ActiveStyle;
-  readonly inactive: InactiveStyle;
-  readonly close: ClosePlacement;
-  readonly pinned: PinnedStyle;
-  readonly folders: boolean;
-  readonly dividers: boolean;
-  readonly width: WidthRule;
-  readonly status: StatusPlacement;
+  /** The radius of the inverse curves where the active tab flares into the card. */
+  readonly inverse: "card" | "control";
 }
 
+/** Which sides of the active tab sit flush with the card's edge. */
 export interface CardCorners {
   readonly left: boolean;
   readonly right: boolean;
 }
 
-const CORNER = 12;
-
 const COLLAPSED = "@container (max-width: 72px)";
 
 const GAP = 4;
 
-const CURVE_LEFT = `M${CORNER} 0V${CORNER}H0A${CORNER} ${CORNER} 0 0 0 ${CORNER} 0Z`;
+/** Inactive tabs stop this far above the card; the active one runs 1px into it. */
+const LIFT = GAP + 1;
 
-const CURVE_RIGHT = `M0 0V${CORNER}H${CORNER}A${CORNER} ${CORNER} 0 0 1 0 0Z`;
-
+/** Measured before paint, so the card's corners and the tab's outline change in one frame. */
 export function useCardCorners(
   stripRef: RefObject<HTMLElement | null>,
   cardRef: RefObject<HTMLElement | null>,
   activeId: string,
-  connected: boolean,
 ): CardCorners {
   const [corners, setCorners] = useState<CardCorners>({ left: false, right: false });
 
-  useEffect(() => {
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the active tab against the card before paint
+  useLayoutEffect(() => {
     const strip = stripRef.current;
     const card = cardRef.current;
 
@@ -66,7 +47,7 @@ export function useCardCorners(
     const read = (): void => {
       const active = strip.querySelector(`[data-tab-id="${CSS.escape(activeId)}"]`);
 
-      if (!connected || !(active instanceof HTMLElement)) {
+      if (!(active instanceof HTMLElement)) {
         setCorners((current) =>
           current.left || current.right ? { left: false, right: false } : current,
         );
@@ -76,8 +57,8 @@ export function useCardCorners(
 
       const tab = active.getBoundingClientRect();
       const frame = card.getBoundingClientRect();
-      const left = Math.abs(tab.left - frame.left) < 2;
-      const right = Math.abs(tab.right - frame.right) < 2;
+      const left = Math.abs(tab.left - frame.left) < 1;
+      const right = Math.abs(tab.right - frame.right) < 1;
 
       setCorners((current) =>
         current.left === left && current.right === right ? current : { left, right },
@@ -99,64 +80,135 @@ export function useCardCorners(
       observer.disconnect();
       strip.removeEventListener("scroll", read);
     };
-  }, [stripRef, cardRef, activeId, connected]);
+  }, [stripRef, cardRef, activeId]);
 
   return corners;
 }
 
-function markTone(tab: ShellTab) {
-  switch (tab.mark) {
-    case "working":
-      return intent.primary;
-    case "waiting":
-    case "retry":
-      return intent.warning;
-    case "failed":
-      return intent.danger;
-    case "idle":
-      return tab.unread ? intent.primary : undefined;
-    default: {
-      const _exhaustive: never = tab.mark;
-
-      return _exhaustive;
-    }
-  }
+interface Geometry {
+  readonly width: number;
+  readonly height: number;
+  /** The tab's top corners: the card's own radius, so a flush tab reads as the card's corner. */
+  readonly corner: number;
+  readonly inverse: number;
 }
 
-function Glyph({
-  tab,
-  placement,
+/**
+ * The active tab and its inverse curves as one shape, so every arc is a true circle and nothing
+ * seams. The tab box runs 1px into the card to cover the card's top hairline; the inverse curves
+ * are tangent to the card's real top edge, 1px above the box's bottom. The outline is inset half
+ * a pixel, as the card's inset hairline is, so it meets the card's hairline at each curve's end.
+ */
+function sheetPaths(geometry: Geometry, flush: CardCorners) {
+  const corner = geometry.corner;
+  const inverse = geometry.inverse;
+  const bottom = geometry.height;
+  const edge = bottom - 1;
+  const left = flush.left ? 0 : inverse;
+  const right = left + geometry.width;
+  const end = right + (flush.right ? 0 : inverse);
+  const half = 0.5;
+
+  const fill = [
+    flush.left
+      ? `M${left} ${bottom}`
+      : `M0 ${bottom}V${edge}A${inverse} ${inverse} 0 0 0 ${left} ${edge - inverse}`,
+    `V${corner}A${corner} ${corner} 0 0 1 ${left + corner} 0`,
+    `H${right - corner}A${corner} ${corner} 0 0 1 ${right} ${corner}`,
+    flush.right
+      ? `V${bottom}`
+      : `V${edge - inverse}A${inverse} ${inverse} 0 0 0 ${end} ${edge}V${bottom}`,
+    "Z",
+  ].join("");
+
+  const outer = inverse + half;
+  const inner = corner - half;
+
+  const outline = [
+    flush.left
+      ? `M${left + half} ${bottom}`
+      : `M0 ${edge + half}A${outer} ${outer} 0 0 0 ${left + half} ${edge - inverse}`,
+    `V${corner}A${inner} ${inner} 0 0 1 ${left + corner} ${half}`,
+    `H${right - corner}A${inner} ${inner} 0 0 1 ${right - half} ${corner}`,
+    flush.right ? `V${bottom}` : `V${edge - inverse}A${outer} ${outer} 0 0 0 ${end} ${edge + half}`,
+  ].join("");
+
+  return { fill, edge: outline };
+}
+
+function TabSheet({
+  flush,
+  design,
 }: {
-  readonly tab: ShellTab;
-  readonly placement: StatusPlacement;
+  readonly flush: CardCorners;
+  readonly design: StripDesign;
 }): ReactElement {
-  const icon = <Icon name={tab.icon} size={14} />;
+  const probeRef = useRef<HTMLSpanElement | null>(null);
+  const [geometry, setGeometry] = useState<Geometry | undefined>(undefined);
 
-  if (placement === "glyph" && (tab.mark !== "idle" || tab.unread))
-    return <StatusDot mark={tab.mark} unread={tab.unread} />;
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the probe before paint, again per design
+  useLayoutEffect(() => {
+    const probe = probeRef.current;
 
-  const tone = markTone(tab);
+    if (probe === null) return;
 
-  if (placement !== "badge" || tone === undefined) return icon;
+    const read = (): void => {
+      const style = getComputedStyle(probe);
+
+      setGeometry({
+        width: probe.offsetWidth,
+        height: probe.offsetHeight,
+        corner: parseFloat(style.borderTopLeftRadius),
+        inverse: parseFloat(style.borderTopRightRadius),
+      });
+    };
+
+    read();
+    const observer = new ResizeObserver(read);
+
+    observer.observe(probe);
+
+    return () => observer.disconnect();
+  }, [design.inverse]);
+
+  const paths = geometry === undefined ? undefined : sheetPaths(geometry, flush);
+  const offset = flush.left || geometry === undefined ? 0 : geometry.inverse;
 
   return (
-    <span {...props(styles.badgeHost)}>
-      {icon}
-      <span {...props(styles.badgeRing)}>
-        <span {...props(tone, styles.badge, tab.mark === "working" && styles.badgePulse)} />
-      </span>
+    <span
+      ref={probeRef}
+      aria-hidden="true"
+      {...props(
+        styles.probe,
+        design.inverse === "card" ? styles.inverseCard : styles.inverseControl,
+      )}
+    >
+      {geometry !== undefined && paths !== undefined && (
+        <svg
+          width={geometry.width + offset + (flush.right ? 0 : geometry.inverse)}
+          height={geometry.height}
+          {...props(styles.sheet, placed.outline(-offset))}
+        >
+          <path d={paths.fill} {...props(styles.sheetFill)} />
+          <path d={paths.edge} {...props(styles.sheetEdge)} />
+        </svg>
+      )}
     </span>
   );
 }
 
-function shortcutFor(position: number): string | undefined {
-  return position < 9 ? String(position + 1) : undefined;
+/** A running or unread chat shows its status dot where its icon would be. */
+function Glyph({ tab }: { readonly tab: ShellTab }): ReactElement {
+  if (tab.mark !== "idle" || tab.unread) return <StatusDot mark={tab.mark} unread={tab.unread} />;
+
+  return <Icon name={tab.icon} size={14} />;
 }
 
 function Tab({
   tab,
   position,
   active,
+  flush,
   design,
   onActivate,
   onClose,
@@ -164,18 +216,13 @@ function Tab({
   readonly tab: ShellTab;
   readonly position: number;
   readonly active: boolean;
+  readonly flush: CardCorners;
   readonly design: StripDesign;
   readonly onActivate: () => void;
   readonly onClose: () => void;
 }): ReactElement {
-  const connected = design.active === "connected";
-  const iconOnly = tab.kind === "pinned" && design.pinned === "icon";
-  const closable = tab.kind === "chat";
-
-  const closeInside =
-    closable && (design.close === "hover" || (design.close === "active" && active));
-
-  const digit = shortcutFor(position);
+  const pinned = tab.kind === "pinned";
+  const digit = position >= 0 && position < 9 ? String(position + 1) : undefined;
 
   const body = (
     <div
@@ -186,17 +233,8 @@ function Tab({
       data-tab-id={tab.id}
       {...props(
         styles.tab,
-        tab.kind === "chat" && (design.width === "shrink" ? styles.tabShrink : styles.tabFixed),
-        tab.kind === "chat" && active && design.width === "shrink" && styles.tabShrinkActive,
-        tab.kind === "folder" && styles.tabFolder,
-        tab.kind === "pinned" && styles.tabPinned,
-        iconOnly && styles.tabIconOnly,
-        !active && design.inactive === "chip" && styles.chip,
-        !active && design.inactive === "ghost" && styles.ghost,
-        !active && connected && styles.lift,
-        active && connected && styles.activeConnected,
-        active && design.active === "card" && styles.activeCard,
-        active && design.active === "flat" && styles.activeFlat,
+        pinned ? styles.tabPinned : styles.tabShrink,
+        active ? styles.active : styles.inactive,
       )}
       onMouseDown={(event) => {
         if (event.button === 0) onActivate();
@@ -204,7 +242,7 @@ function Tab({
         if (event.button === 1) event.preventDefault();
       }}
       onAuxClick={(event) => {
-        if (event.button === 1 && closable) onClose();
+        if (event.button === 1 && !pinned) onClose();
       }}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -213,40 +251,18 @@ function Tab({
         }
       }}
     >
-      {active && connected && (
-        <svg aria-hidden="true" {...props(styles.curve, styles.curveLeft)}>
-          <path d={CURVE_LEFT} fill="currentColor" />
-        </svg>
-      )}
+      {active && <TabSheet flush={flush} design={design} />}
       <span {...props(styles.glyph)}>
-        <Glyph tab={tab} placement={design.status} />
+        <Glyph tab={tab} />
       </span>
-      {!iconOnly && (
-        <span {...props(styles.label, tab.kind === "chat" && styles.labelCollapsible)}>
-          {tab.title}
-        </span>
-      )}
-      {tab.kind === "folder" && tab.count !== undefined && tab.count > 0 && (
-        <span {...props(styles.count)}>{tab.count}</span>
-      )}
-      {tab.split !== undefined && !iconOnly && (
+      {!pinned && <span {...props(styles.label)}>{tab.title}</span>}
+      {tab.split !== undefined && !pinned && (
         <span {...props(styles.trailingMark, styles.collapsible)}>
           <Icon name={tab.split === "down" ? "split-down" : "split-right"} size={12} />
         </span>
       )}
-      {design.status === "dot" && !iconOnly && (tab.mark !== "idle" || tab.unread) && (
-        <span {...props(styles.trailingMark, styles.collapsible)}>
-          <StatusDot mark={tab.mark} unread={tab.unread} />
-        </span>
-      )}
-      {closeInside && (
-        <span
-          {...props(
-            styles.close,
-            styles.collapsible,
-            design.close === "hover" && !active && styles.closeOnHover,
-          )}
-        >
+      {!pinned && (
+        <span {...props(styles.close, styles.collapsible, !active && styles.closeOnHover)}>
           <Button
             size="2xs"
             variant="ghost"
@@ -258,11 +274,6 @@ function Tab({
             onClick={onClose}
           />
         </span>
-      )}
-      {active && connected && (
-        <svg aria-hidden="true" {...props(styles.curve, styles.curveRight)}>
-          <path d={CURVE_RIGHT} fill="currentColor" />
-        </svg>
       )}
     </div>
   );
@@ -280,15 +291,11 @@ function Tab({
   );
 }
 
-function Divider({ lifted }: { readonly lifted: boolean }): ReactElement {
-  return <span aria-hidden="true" {...props(styles.divider, lifted && styles.lift)} />;
-}
-
-const GROUPS: readonly TabKind[] = ["pinned", "folder", "chat"];
-
 export function WindowTabStrip({
   tabs,
   activeId,
+  numbered,
+  flush,
   design,
   stripRef,
   onActivate,
@@ -297,30 +304,25 @@ export function WindowTabStrip({
 }: {
   readonly tabs: readonly ShellTab[];
   readonly activeId: string;
+  /** Tab ids in ⌥1–9 order. */
+  readonly numbered: readonly string[];
+  readonly flush: CardCorners;
   readonly design: StripDesign;
   readonly stripRef: RefObject<HTMLDivElement | null>;
   readonly onActivate: (id: string) => void;
   readonly onClose: (id: string) => void;
   readonly onNew: () => void;
 }): ReactElement {
-  const connected = design.active === "connected";
-
-  const groups = GROUPS.flatMap((kind) => {
-    const group = tabs.filter((tab) => tab.kind === kind);
-
-    return group.length === 0 ? [] : [group];
-  });
+  const groups = [
+    tabs.filter((tab) => tab.kind === "pinned"),
+    tabs.filter((tab) => tab.kind !== "pinned"),
+  ].filter((group) => group.length > 0);
 
   return (
-    <div
-      ref={stripRef}
-      role="tablist"
-      aria-label="Tabs"
-      {...props(styles.strip, connected && styles.stripConnected)}
-    >
+    <div ref={stripRef} role="tablist" aria-label="Tabs" {...props(styles.strip)}>
       {groups.map((group, index) => (
-        <div key={group[0]?.kind} {...props(styles.group)}>
-          {index > 0 && design.dividers && <Divider lifted={connected} />}
+        <div key={group[0]?.kind === "pinned" ? "pinned" : "tabs"} {...props(styles.group)}>
+          {index > 0 && <span aria-hidden="true" {...props(styles.divider)} />}
           <AnimatePresence initial={false} mode="popLayout">
             {group.map((tab) => {
               const active = tab.id === activeId;
@@ -335,42 +337,26 @@ export function WindowTabStrip({
                   transition={{ duration: 0.16 }}
                   {...props(
                     styles.slot,
-                    tab.kind === "chat" && design.width === "shrink" && styles.slotShrink,
+                    tab.kind !== "pinned" && styles.slotShrink,
                     active && styles.slotActive,
-                    active &&
-                      tab.kind === "chat" &&
-                      design.width === "shrink" &&
-                      design.close === "beside" &&
-                      styles.slotBeside,
                   )}
                 >
                   <Tab
                     tab={tab}
-                    position={tabs.findIndex((entry) => entry === tab)}
+                    position={numbered.indexOf(tab.id)}
                     active={active}
+                    flush={flush}
                     design={design}
                     onActivate={() => onActivate(tab.id)}
                     onClose={() => onClose(tab.id)}
                   />
-                  {design.close === "beside" && active && tab.kind === "chat" && (
-                    <span {...props(styles.beside, connected && styles.lift)}>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        iconOnly
-                        icon="x"
-                        aria-label={`Close ${tab.title}`}
-                        onClick={() => onClose(tab.id)}
-                      />
-                    </span>
-                  )}
                 </motion.div>
               );
             })}
           </AnimatePresence>
         </div>
       ))}
-      <span {...props(styles.add, connected && styles.lift)}>
+      <span {...props(styles.add)}>
         <Button
           size="xs"
           variant="ghost"
@@ -384,12 +370,6 @@ export function WindowTabStrip({
   );
 }
 
-const pulse = keyframes({
-  "0%": { opacity: 1 },
-  "50%": { opacity: 0.35 },
-  "100%": { opacity: 1 },
-});
-
 const styles = create({
   strip: {
     display: "flex",
@@ -397,18 +377,16 @@ const styles = create({
     gap: 2,
     flex: 1,
     minWidth: 0,
-    height: "100%",
-    paddingBlock: GAP,
+    height: "calc(100% + 1px)",
+    marginBottom: -1,
+    // Room for the first tab's inverse curve inside the scroll box, which clips overflow.
+    marginInlineStart: `calc(-1 * max(${shell.cardRadius}, ${radius.control}))`,
+    paddingInlineStart: `max(${shell.cardRadius}, ${radius.control})`,
+    paddingTop: GAP,
     overflowX: "auto",
     overflowY: "hidden",
     scrollbarWidth: "none",
   },
-  stripConnected: {
-    height: "calc(100% + 1px)",
-    marginBottom: -1,
-    paddingBottom: 0,
-  },
-  lift: { marginBottom: GAP + 1 },
   group: { display: "contents" },
   slot: {
     position: "relative",
@@ -419,9 +397,9 @@ const styles = create({
   },
   slotShrink: { flexShrink: 1, flexBasis: 176, minWidth: button.heightMd },
   slotActive: { zIndex: 1 },
-  slotBeside: { minWidth: `calc(96px + ${button.heightXs} + 2px)` },
   tab: {
     position: "relative",
+    isolation: "isolate",
     display: "flex",
     alignItems: "center",
     gap: 6,
@@ -429,15 +407,13 @@ const styles = create({
     minWidth: 0,
     paddingInline: 8,
     borderRadius: button.radiusMd,
-    color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
     cursor: "default",
     userSelect: "none",
     outline: "none",
     "--_reveal": { default: "0", ":hover": "1", ":focus-within": "1" },
-    "--_ring": role.bgChrome,
-    transitionProperty: "background-color, color, box-shadow",
+    transitionProperty: "background-color, color",
     transitionDuration: motionTokens.durationNormal,
     transitionTimingFunction: motionTokens.easeOut,
   },
@@ -446,46 +422,33 @@ const styles = create({
     justifyContent: { default: "flex-start", [COLLAPSED]: "center" },
     paddingInline: { default: 8, [COLLAPSED]: 0 },
   },
-  tabShrinkActive: { minWidth: 96 },
-  tabFixed: { width: 152, containerType: "inline-size" },
-  tabFolder: { flexShrink: 0, maxWidth: 176 },
-  tabPinned: { flexShrink: 0 },
-  tabIconOnly: { width: button.heightMd, paddingInline: 0, justifyContent: "center" },
-  chip: {
-    backgroundColor: { default: role.bgMutedTranslucent, ":hover": role.bgHover },
-  },
-  ghost: {
+  tabPinned: { flexShrink: 0, width: button.heightMd, paddingInline: 0, justifyContent: "center" },
+  /** Same content box as `active`, which trades this margin for padding, so a click moves nothing. */
+  inactive: {
+    marginBottom: LIFT,
+    color: role.contentSecondary,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
   },
-  activeConnected: {
-    paddingBottom: 1,
-    borderRadius: 0,
-    borderStartStartRadius: radius.card,
-    borderStartEndRadius: radius.card,
-    backgroundColor: role.bgBase,
-    color: role.contentPrimary,
-    "--_ring": role.bgBase,
-  },
-  activeCard: {
-    backgroundColor: role.bgBase,
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
-    color: role.contentPrimary,
-    "--_ring": role.bgBase,
-  },
-  activeFlat: {
-    backgroundColor: role.bgPressed,
+  active: {
+    paddingBottom: LIFT,
     color: role.contentPrimary,
   },
-  curve: {
+  probe: {
     position: "absolute",
-    bottom: 0,
-    width: CORNER,
-    height: CORNER,
-    color: role.bgBase,
+    inset: 0,
+    zIndex: -1,
     pointerEvents: "none",
+    borderTopLeftRadius: shell.cardRadius,
   },
-  curveLeft: { left: -CORNER },
-  curveRight: { right: -CORNER },
+  inverseCard: { borderTopRightRadius: shell.cardRadius },
+  inverseControl: { borderTopRightRadius: radius.control },
+  sheet: { position: "absolute", top: 0, overflow: "visible" },
+  sheetFill: { fill: role.bgBase },
+  sheetEdge: {
+    fill: "none",
+    stroke: role.borderSecondaryTranslucent,
+    strokeWidth: 1,
+  },
   glyph: {
     display: "grid",
     placeItems: "center",
@@ -493,53 +456,16 @@ const styles = create({
     width: glyph.box,
     height: glyph.box,
   },
-  badgeHost: { position: "relative", display: "grid", placeItems: "center" },
-  badgeRing: {
-    position: "absolute",
-    insetInlineEnd: -4,
-    insetBlockEnd: -3,
-    display: "grid",
-    placeItems: "center",
-    width: 10,
-    height: 10,
-    borderRadius: radius.pill,
-    backgroundColor: "var(--_ring)",
-  },
-  badge: {
-    width: 6,
-    height: 6,
-    borderRadius: radius.pill,
-    backgroundColor: role.bgInteractivePrimary,
-  },
-  badgePulse: {
-    animationName: pulse,
-    animationDuration: "1.6s",
-    animationIterationCount: "infinite",
-  },
   label: {
+    display: { default: "block", [COLLAPSED]: "none" },
     flex: 1,
     minWidth: 0,
     overflow: "hidden",
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
   },
-  labelCollapsible: {
-    display: { default: "block", [COLLAPSED]: "none" },
-  },
   collapsible: {
     display: { default: "inline-flex", [COLLAPSED]: "none" },
-  },
-  count: {
-    flexShrink: 0,
-    minWidth: glyph.box,
-    paddingInline: 4,
-    borderRadius: radius.pill,
-    backgroundColor: role.bgHover,
-    color: role.contentTertiary,
-    fontSize: type.fontXs,
-    lineHeight: glyph.box,
-    textAlign: "center",
-    fontVariantNumeric: "tabular-nums",
   },
   trailingMark: { alignItems: "center", flexShrink: 0, color: role.contentTertiary },
   close: { alignItems: "center", flexShrink: 0, marginInlineEnd: -4 },
@@ -548,16 +474,26 @@ const styles = create({
     transitionProperty: "opacity",
     transitionDuration: motionTokens.durationNormal,
   },
-  beside: { display: "inline-flex", alignItems: "center", marginInlineStart: 2 },
-  add: { display: "inline-flex", alignItems: "center", flexShrink: 0, marginInlineStart: 2 },
+  add: {
+    display: "inline-flex",
+    alignItems: "center",
+    flexShrink: 0,
+    marginInlineStart: 2,
+    marginBottom: LIFT,
+  },
   divider: {
     flexShrink: 0,
     alignSelf: "center",
     width: 1,
     height: glyph.sm,
     marginInline: 4,
+    marginBottom: LIFT,
     borderRadius: radius.pill,
     backgroundColor: role.borderStrongTranslucent,
   },
   tip: { display: "inline-flex", alignItems: "center", gap: 8 },
+});
+
+const placed = create({
+  outline: (left: number) => ({ left }),
 });

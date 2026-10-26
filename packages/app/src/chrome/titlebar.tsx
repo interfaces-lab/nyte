@@ -24,8 +24,8 @@ import {
   workbenchViewKey,
   useWorkbenchSnapshot,
 } from "../workbench/controller.ts";
-import { shellActions, useStagePage } from "./shell-state.ts";
-import { preferences, useSetting } from "../preferences/index.ts";
+import { useStagePage } from "./shell-state.ts";
+import { useSidebar } from "./use-sidebar.ts";
 import {
   clientActionAriaShortcut,
   clientActionShortcut,
@@ -34,7 +34,6 @@ import {
 } from "../client-actions.ts";
 
 import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
-import { canTravel } from "../tabs/model.ts";
 import type { WindowState } from "../tabs/model.ts";
 import { useWindowTabItems, useWindowTabsState } from "../tabs/use-window-tabs.tsx";
 import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
@@ -120,7 +119,6 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
       onClose={(tabId) => windowTabs.dispatch({ kind: "close-tab", tabId })}
       onNewTab={() => windowTabs.dispatch({ kind: "new-tab" })}
       onReorder={(tabIds) => windowTabs.dispatch({ kind: "reorder", tabIds })}
-      onDuplicate={(tabId) => windowTabs.dispatch({ kind: "duplicate-tab", tabId })}
       onCloseOthers={(tabId) => windowTabs.dispatch({ kind: "close-others", tabId })}
       onCloseToRight={(tabId) => windowTabs.dispatch({ kind: "close-right", tabId })}
     />
@@ -133,7 +131,8 @@ export function Titlebar(): ReactElement {
   const panes = usePaneActions();
   const canSplit = useCanSplitPane();
   const workbench = useWorkbenchSnapshot();
-  const sidebarVisible = useSetting(preferences.sidebarVisible);
+  const sidebarControl = useSidebar();
+  const sidebarVisible = sidebarControl.open;
   const page = useStagePage();
   const mac = nyte.platform === "darwin";
   const capabilities = clientCapabilities(nyte.host);
@@ -153,10 +152,37 @@ export function Titlebar(): ReactElement {
   const strip = windowTabs.strip;
   const tabs = useWindowTabsState();
 
+  const sidebarSlot = (
+    <span
+      {...props(titlebarStyles.sidebarSlot, !sidebarVisible && titlebarStyles.sidebarSlotHidden)}
+    >
+      <span {...props(titlebarStyles.actionTrack)}>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                iconOnly
+                indicator="glyph"
+                aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+                pressed={sidebarVisible}
+                aria-keyshortcuts={clientActionAriaShortcut(clientActions.sidebar, mac)}
+                onPressedChange={sidebarControl.toggleSidebar}
+                title={undefined}
+              >
+                <PanelToggleIcon side="left" visible={sidebarVisible} />
+              </Toggle>
+            }
+          />
+          <TooltipContent>{`${sidebarVisible ? "Hide Sidebar" : "Show Sidebar"} ${clientActionShortcut(clientActions.sidebar, mac)}`}</TooltipContent>
+        </Tooltip>
+      </span>
+    </span>
+  );
+
   if (settingsOpen) {
     return (
       <header {...props(titlebarStyles.bar)}>
-        <span {...props(titlebarStyles.sidebarSlot)} />
+        {sidebarSlot}
         <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)} />
       </header>
     );
@@ -164,66 +190,7 @@ export function Titlebar(): ReactElement {
 
   return (
     <header {...props(titlebarStyles.bar)}>
-      <span
-        {...props(titlebarStyles.sidebarSlot, !sidebarVisible && titlebarStyles.sidebarSlotHidden)}
-      >
-        <span {...props(titlebarStyles.actionTrack)}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Toggle
-                  iconOnly
-                  indicator="glyph"
-                  aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
-                  pressed={sidebarVisible}
-                  aria-keyshortcuts={clientActionAriaShortcut(clientActions.sidebar, mac)}
-                  onPressedChange={() => shellActions.toggleSidebar()}
-                  title={undefined}
-                >
-                  <PanelToggleIcon side="left" visible={sidebarVisible} />
-                </Toggle>
-              }
-            />
-            <TooltipContent>{`${sidebarVisible ? "Hide Sidebar" : "Show Sidebar"} ${clientActionShortcut(clientActions.sidebar, mac)}`}</TooltipContent>
-          </Tooltip>
-        </span>
-        <span {...props(titlebarStyles.historyControl, titlebarStyles.historyControlBack)}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  iconOnly
-                  icon="arrow-left"
-                  aria-label="Go back"
-                  disabled={!canTravel(tabs, -1)}
-                  aria-keyshortcuts={clientActionAriaShortcut(clientActions.back, mac)}
-                  onClick={() => windowTabs.dispatch({ kind: "travel", step: -1 })}
-                  title={undefined}
-                />
-              }
-            />
-            <TooltipContent>{`Go Back ${clientActionShortcut(clientActions.back, mac)}`}</TooltipContent>
-          </Tooltip>
-        </span>
-        <span {...props(titlebarStyles.historyControl)}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  iconOnly
-                  icon="arrow-right"
-                  aria-label="Go forward"
-                  aria-keyshortcuts={clientActionAriaShortcut(clientActions.forward, mac)}
-                  disabled={!canTravel(tabs, 1)}
-                  onClick={() => windowTabs.dispatch({ kind: "travel", step: 1 })}
-                  title={undefined}
-                />
-              }
-            />
-            <TooltipContent>{`Go Forward ${clientActionShortcut(clientActions.forward, mac)}`}</TooltipContent>
-          </Tooltip>
-        </span>
-      </span>
+      {sidebarSlot}
       <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)}>
         <span {...props(titlebarStyles.center, !workspaceVisible && titlebarStyles.centerTrailing)}>
           {strip ? (
