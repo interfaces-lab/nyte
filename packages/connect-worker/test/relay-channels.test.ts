@@ -175,7 +175,7 @@ describe("flow control", () => {
       const answer = phone({ environmentId, bearer }, "/sessions.list", {
         method: "POST",
         body: "{}",
-      });
+      }).catch(() => undefined);
       const { ch } = await desktop.next("open");
 
       act(desktop, ch);
@@ -183,10 +183,7 @@ describe("flow control", () => {
         label,
         code: RELAY_CLOSE.invalid,
       });
-      await answer.then(
-        (response) => response.body?.cancel(),
-        () => undefined,
-      );
+      await answer.then((response) => response?.body?.cancel());
       await broker.reset();
     }
   });
