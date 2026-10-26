@@ -5,17 +5,18 @@ import {
   fenceNames,
   assertStoreVersion,
   blobId,
+  collectBlob,
   decodeObject,
   collectSessionEvents,
   migrateStore,
   objectId,
+  replacedTargets,
   sessionIndexRef,
   parseSessionRef,
 } from "@nyte-ai/core/store";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import type { CommitOutcome, MigrationTarget } from "@nyte-ai/core/store";
 import {
-  collect,
   decodeEvent,
   loggedRow,
   memoryReader,
@@ -238,7 +239,7 @@ function connect(storage: DurableObjectSql): StoreConnection {
         return body === null ? null : decodeObject(body);
       },
       async putBlob(bytes) {
-        const joined = await collect(bytes);
+        const joined = await collectBlob(bytes);
         const id = await blobId(joined);
         fits(joined.byteLength, `Blob ${id}`);
         rows(
@@ -297,6 +298,21 @@ function connect(storage: DurableObjectSql): StoreConnection {
               revision: before.get(stale.name)?.revision ?? null,
             };
 
+          const missing = updates.find(
+            (update) =>
+              update.target !== null &&
+              rows("SELECT 1 FROM objects WHERE id = ? AND body IS NOT NULL", update.target)
+                .length === 0,
+          );
+
+          if (missing !== undefined)
+            return {
+              kind: "stale",
+              name: missing.name,
+              revision: before.get(missing.name)?.revision ?? null,
+            };
+
+          const replaced = replacedTargets(updates, before);
           const touched = new Map<SessionId, Revision>();
           const revisions = updates.map((update) => {
             const revision = mintRevision();
@@ -319,6 +335,13 @@ function connect(storage: DurableObjectSql): StoreConnection {
 
           for (const [session, version] of touched)
             rows("UPDATE session_index SET version = ? WHERE session = ?", version, session);
+
+          for (const id of replaced)
+            rows(
+              "DELETE FROM objects WHERE id = ? AND bytes IS NULL AND json_extract(body, '$.kind') IS NOT 'commit' AND NOT EXISTS (SELECT 1 FROM refs WHERE target = ?)",
+              id,
+              id,
+            );
 
           const at = Date.now();
           const tails = new Map<SessionId, number>();

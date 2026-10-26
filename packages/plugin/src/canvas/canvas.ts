@@ -1,4 +1,4 @@
-import { definePart, followedTrace, traced } from "@nyte-ai/core";
+import { attachFile, definePart, followedTrace, traced } from "@nyte-ai/core";
 import type { ActionContext, ActionOutput, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
 import { asId, standard } from "@nyte-ai/schema";
 import type { Awaitable, Infer } from "@nyte-ai/schema";
@@ -302,16 +302,17 @@ function previewTool(preview: CanvasPreviewer): ToolDefinition<Infer<typeof prev
           ],
         };
       const { png } = outcome.report;
-      const blob = await invocation.env.files.upload(
-        (async function* () {
-          yield png;
-        })(),
-      );
 
       return {
         content: [
           { kind: "text", text: describeCanvasPreview(outcome.report) },
-          { kind: "file", blob, mime: "image/png" },
+          await attachFile(
+            invocation.env.files,
+            (async function* () {
+              yield png;
+            })(),
+            { mime: "image/png" },
+          ),
         ],
       };
     },

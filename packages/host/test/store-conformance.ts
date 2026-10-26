@@ -477,6 +477,8 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
         revision: outcome.revisions[3],
       });
       expect((await refs.log(session, asSeq(0), 10)).map((event) => event.seq)).toEqual([1, 2, 3]);
+      expect(await objects.get(one)).toBeNull();
+      expect(await objects.put("one")).toBe(one);
 
       const deleted = await refs.set([
         { name: "sessions/s1/parts/p", target: null },
@@ -501,6 +503,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       const seen = new Set<string>();
 
       for (let round = 0; round < 3; round += 1) {
+        await objects.put("again");
         const set = await refs.set([{ name: "kv/a", target }]);
         const unset = await refs.set([{ name: "kv/a", target: null }]);
         assert(set.kind === "set" && unset.kind === "set");

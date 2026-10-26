@@ -136,11 +136,12 @@ export interface MigrationTarget {
   objects(kind: string): AsyncIterable<StoredObject>;
   commit(change: StoreChange): Promise<CommitOutcome>;
   /**
-   * Saves the current rows of `refs`, the refs the next commit repoints, and
-   * the logged events it rewrites (their `expect`), before it runs. Called only
-   * when a rewrite changes records or events: schema steps touch derived tables
-   * alone, and objects are never deleted, so these rows are enough to restore
-   * the store as it was.
+   * Saves the current rows of `refs`, the refs the next commit repoints, with
+   * the objects they hold, and the logged events it rewrites (their `expect`),
+   * before it runs. Called only when a rewrite changes records or events:
+   * schema steps touch derived tables alone. A ref write deletes the object it
+   * moves a ref off, so the rows alone could name objects gone by the time
+   * they are restored; with those objects they restore the store as it was.
    */
   backup?(from: number, to: number, refs: readonly string[], log: readonly Relog[]): Promise<void>;
 }
@@ -520,11 +521,12 @@ const hookToolArgs: RewriteStep = {
 
 /**
  * A run's record went with its ref when the run ended, until endRun kept the
- * last one under `sessions/<s>/ended/<run>` for the turn's changes. Objects
- * are never deleted, so each run that one session's log ended gets that ref
- * at its latest record holding a snapshot (by `at`, then id), unless the run
- * is still live, its session is gone, or that record predates today's run
- * record (no `lastSnapshot`, so no end to compare with).
+ * last one under `sessions/<s>/ended/<run>` for the turn's changes. Objects a
+ * ref moved off were kept until `refTargetIndex`, and every store migrates
+ * before its first ref write, so each run that one session's log ended gets
+ * that ref at its latest record holding a snapshot (by `at`, then id), unless
+ * the run is still live, its session is gone, or that record predates today's
+ * run record (no `lastSnapshot`, so no end to compare with).
  */
 const endedRunRecords: RecoverStep = {
   kind: "recover",
@@ -771,6 +773,16 @@ const modelsPerRequest: RewriteStep = {
   },
 };
 
+/** A ref write deletes each object it moves a ref off that no ref holds anymore; this index answers whether one does. Every store migrates before its first ref write, so `endedRunRecords` read every object a ref ever held. */
+const refTargetIndex: SchemaStep = {
+  kind: "schema",
+  name: "2026-10-26-ref-target-index",
+  sql: {
+    sqlite: ["CREATE INDEX IF NOT EXISTS refs_target ON refs(target)"],
+    postgres: ["CREATE INDEX IF NOT EXISTS refs_target ON refs(target)"],
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -795,6 +807,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   changesAsWholeList,
   foldCheckpointsCleared,
   modelsPerRequest,
+  refTargetIndex,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

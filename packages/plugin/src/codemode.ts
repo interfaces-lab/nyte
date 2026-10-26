@@ -7,7 +7,7 @@ import type {
 import { renderToolSample, toCodemodeIdentifier } from "@earendil-works/pi-codemode/declarations";
 import { CODEMODE_SOURCE_GRAMMAR, parseCodemodeSource } from "@earendil-works/pi-codemode/source";
 import { estimateTextTokens } from "@nyte-ai/ai/utils/estimate";
-import { dev } from "@nyte-ai/core";
+import { attachFile, dev } from "@nyte-ai/core";
 import type { ToolDefinition, ToolInvocation, ToolNamespace } from "@nyte-ai/core";
 import { isJson, isJsonObject, SdkError, standard } from "@nyte-ai/schema";
 import type { Json, JsonSchema, ToolContent, ToolInfo, ToolOutcome } from "@nyte-ai/schema";
@@ -250,11 +250,11 @@ function codemode(
       for (const item of result.output) {
         if (item.type === "text") content.push({ kind: "text", text: item.text });
         else
-          content.push({
-            kind: "file",
-            blob: await invocation.env.files.upload(once(Uint8Array.fromBase64(item.data))),
-            mime: item.mimeType,
-          });
+          content.push(
+            await attachFile(invocation.env.files, once(Uint8Array.fromBase64(item.data)), {
+              mime: item.mimeType,
+            }),
+          );
       }
 
       if (result.value !== undefined)

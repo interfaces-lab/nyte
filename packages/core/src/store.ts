@@ -35,7 +35,10 @@ export {
   decodeObject,
   fenceNames,
   loggedEvent,
+  replacedTargets,
 } from "./store/log.ts";
+
+export { BLOB_LIMIT, collectBlob } from "./store/blobs.ts";
 
 export { memoryStore } from "./store/memory-store.ts";
 
@@ -51,6 +54,8 @@ export type {
 } from "./store/migrations.ts";
 
 export { readModelSelection } from "./store/model-state.ts";
+
+export { readHeld } from "./store/session.ts";
 
 export {
   callRef,

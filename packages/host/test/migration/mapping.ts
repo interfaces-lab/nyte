@@ -22,7 +22,7 @@ type JsonObject = { readonly [key: string]: Json };
  * What migrating a store changes, one row per store step: `version` is the
  * stamp a store holds once the step has run, so a store stamped below it runs
  * it. Every field a row does not name is kept as it was, every object row is
- * kept (content addressing never deletes one), and every logged event keeps
+ * kept (no step deletes one), and every logged event keeps
  * its session, seq and time. `covers` names the tallies a property run must
  * count at least once to have exercised the row: the store stamp just below
  * the row's version, and each field or ref the row changes (`call/*` for a
@@ -235,6 +235,13 @@ export const MAPPING = [
       "field log request /model",
       "field log input/scheduled /schedule/reason",
     ],
+  },
+  {
+    version: 24,
+    step: "2026-10-26-ref-target-index",
+    target: "tables",
+    change: "creates the refs_target index",
+    covers: ["from 23"],
   },
 ] as const;
 

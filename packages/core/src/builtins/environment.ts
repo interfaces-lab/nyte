@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import type { Plugin } from "../contract/plugin.ts";
 import type { ToolDefinition } from "../contract/tools.ts";
 import type { FilesApi } from "../contract/workspace.ts";
+import { attachFile } from "../env/attach.ts";
 import { textDigest } from "../util/content.ts";
 import { lineDiff } from "../util/line-diff.ts";
 
@@ -685,15 +686,12 @@ async function upload(files: FilesApi, path: string): Promise<ToolContent> {
   const reader = await files.bytes(path);
 
   try {
-    const blob = await files.upload(reader.chunks());
     const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
 
-    return {
-      kind: "file",
-      blob,
+    return await attachFile(files, reader.chunks(), {
       mime: reader.mime ?? MIME_TYPES.get(extension) ?? "application/octet-stream",
       name: path.slice(path.lastIndexOf("/") + 1),
-    };
+    });
   } finally {
     await reader.close();
   }

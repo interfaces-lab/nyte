@@ -3,7 +3,7 @@ import type { CredentialAccounts, CredentialStore } from "@nyte-ai/ai/auth/types
 import { SdkError } from "@nyte-ai/schema";
 import { keyedSerial } from "@nyte-ai/schema/serial";
 import type { Json, Ref } from "@nyte-ai/schema";
-import { decodeKvValue, envelope, kvRef } from "@nyte-ai/core/store";
+import { decodeKvValue, envelope, kvRef, readHeld } from "@nyte-ai/core/store";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import { Type } from "typebox";
 import type { Static } from "typebox";
@@ -98,10 +98,8 @@ export function credentialStore(store: Store, secrets: SecretsSource): Credentia
 
         const rows = await Promise.all(
           refs.map(async (ref) => {
-            const sealed =
-              ref.target === null
-                ? null
-                : readSealedCredential(decodeKvValue(await connection.objects.get(ref.target)));
+            const held = await readHeld(connection, ref);
+            const sealed = held === null ? null : readSealedCredential(decodeKvValue(held.object));
 
             if (sealed === null) return [];
             const providerId = ref.name.slice(PREFIX.length);
@@ -263,14 +261,14 @@ async function recordAt(
   connection: StoreConnection,
   provider: string,
 ): Promise<{ readonly ref: Ref | null; readonly sealed: SealedCredential | null }> {
-  const ref = await connection.refs.get(kvRef("secret", "models", provider));
+  const held = await readHeld(
+    connection,
+    await connection.refs.get(kvRef("secret", "models", provider)),
+  );
 
   return {
-    ref,
-    sealed:
-      ref === null || ref.target === null
-        ? null
-        : readSealedCredential(decodeKvValue(await connection.objects.get(ref.target))),
+    ref: held?.ref ?? null,
+    sealed: held === null ? null : readSealedCredential(decodeKvValue(held.object)),
   };
 }
 

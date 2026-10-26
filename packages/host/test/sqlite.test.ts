@@ -6,7 +6,7 @@ import { composeHost } from "@nyte-ai/core/server";
 import { STORE_VERSION, envelope, memoryStore } from "@nyte-ai/core/store";
 import { asId, asSeq, readHunks } from "@nyte-ai/schema";
 import type { DurableEvent, Json, SessionId } from "@nyte-ai/schema";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { sqliteStore } from "../src/index.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 import { storeConformance } from "./store-conformance.ts";
@@ -209,7 +209,7 @@ storeConformance("sqliteStore on a file", async () =>
 );
 
 describe("sqliteStore", () => {
-  it("limits the WAL retained after a large blob and keeps the blob readable", async () => {
+  it("limits the WAL retained after large blobs and keeps them readable", async () => {
     const path = join(await folder(), "nyte.db");
     const store = sqliteStore({ path });
 
@@ -218,17 +218,26 @@ describe("sqliteStore", () => {
 
       const id = await objects.putBlob(
         (async function* () {
-          yield new Uint8Array(40 * 1024 * 1024).fill(23);
+          yield new Uint8Array(20 * 1024 * 1024).fill(23);
         })(),
       );
 
-      await objects.put({ next: true });
+      await objects.putBlob(
+        (async function* () {
+          yield new Uint8Array(20 * 1024 * 1024).fill(24);
+        })(),
+      );
 
-      expect((await stat(`${path}-wal`)).size).toBeLessThanOrEqual(32 * 1024 * 1024);
+      await vi.waitFor(async function writeAfterCheckpointTruncatesWal() {
+        await objects.put({ next: crypto.randomUUID() });
+
+        expect((await stat(`${path}-wal`)).size).toBeLessThanOrEqual(32 * 1024 * 1024);
+      });
+
       const blob = await objects.blob(id);
       assert(blob !== null);
 
-      expect(blob.size).toBe(41943040);
+      expect(blob.size).toBe(20971520);
 
       for await (const bytes of blob.chunks()) {
         expect(bytes[0]).toBe(23);
@@ -450,6 +459,10 @@ describe("sqliteStore", () => {
         { name: "sessions/s1/calls/c1", target: "old-call", revision: "r0" },
         { name: "sessions/s1/inbox", target: "old-inbox", revision: "r0" },
       ],
+      objects: [
+        { id: "old-call", body: JSON.stringify(call) },
+        { id: "old-inbox", body: JSON.stringify(inbox) },
+      ],
       log: [],
     });
 
@@ -584,6 +597,10 @@ describe("sqliteStore", () => {
       refs: [
         { name: "sessions/s1/calls/c1", target: "old-call", revision: "r1" },
         { name: "sessions/s1/parts/c1", target: "old-part", revision: "r2" },
+      ],
+      objects: [
+        { id: "old-call", body: JSON.stringify(call) },
+        { id: "old-part", body: JSON.stringify(part) },
       ],
       log: [{ session: "s1", seq: 1, event: JSON.stringify(settled) }],
     });

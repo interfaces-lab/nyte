@@ -1,5 +1,13 @@
 import { SdkError, SessionEventSchema } from "@nyte-ai/schema";
-import type { DurableEvent, Json, Ref, RefUpdate, SessionEvent, SessionId } from "@nyte-ai/schema";
+import type {
+  DurableEvent,
+  Json,
+  ObjectId,
+  Ref,
+  RefUpdate,
+  SessionEvent,
+  SessionId,
+} from "@nyte-ai/schema";
 import { parseSessionRef } from "./refs.ts";
 
 export function admits(update: RefUpdate, current: Ref | undefined): boolean {
@@ -12,6 +20,25 @@ export function admits(update: RefUpdate, current: Ref | undefined): boolean {
 
 export function fenceNames(updates: readonly RefUpdate[]): readonly string[] {
   return [...new Set(updates.flatMap((update) => update.fences ?? []))];
+}
+
+/** The objects `updates` move refs off, given each ref they name as it stood before them. A store deletes each one, in the same transaction, unless a ref still holds it once the updates apply or it is a commit, which history keeps. */
+export function replacedTargets(
+  updates: readonly RefUpdate[],
+  before: ReadonlyMap<string, Ref | undefined>,
+): readonly ObjectId[] {
+  const targets = new Map([...before].map(([name, ref]) => [name, ref?.target ?? null]));
+
+  return [
+    ...new Set(
+      updates.flatMap((update) => {
+        const left = targets.get(update.name) ?? null;
+        targets.set(update.name, update.target);
+
+        return left === null || left === update.target ? [] : [left];
+      }),
+    ),
+  ];
 }
 
 export function collectSessionEvents(

@@ -1,3 +1,4 @@
+import { attachFile } from "@nyte-ai/core";
 import { standard } from "@nyte-ai/schema";
 import type { BlobId } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -90,13 +91,15 @@ export function webFetch(fetch: Fetch): ToolDefinition<Static<typeof fetchParame
           ) {
             const bytes = await readCapped(response, MAX_RESPONSE_BYTES);
 
-            const blob = await invocation.env.files.upload(
+            const image = await attachFile(
+              invocation.env.files,
               (async function* () {
                 yield bytes;
               })(),
+              { mime },
             );
 
-            return { kind: "image", blob, mime };
+            return image.kind === "file" ? { kind: "image", blob: image.blob, mime } : image;
           }
 
           if (

@@ -1,8 +1,16 @@
-import { asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq, isJsonObject } from "@nyte-ai/schema";
 import type { BlobId, ObjectId, Ref, Revision, Seq, SessionId } from "@nyte-ai/schema";
 import type { FoldCheckpoint, Store, StoreConnection } from "../contract/store.ts";
 import { blobId, objectId } from "../util/content.ts";
-import { admits, collectSessionEvents, decodeObject, fenceNames, loggedEvent } from "./log.ts";
+import { collectBlob } from "./blobs.ts";
+import {
+  admits,
+  collectSessionEvents,
+  decodeObject,
+  fenceNames,
+  loggedEvent,
+  replacedTargets,
+} from "./log.ts";
 import { parseSessionRef } from "./refs.ts";
 import { projectSessionIndex, sessionIndexRef } from "./session-index.ts";
 import type { SessionIndexEntry } from "./session-index.ts";
@@ -11,6 +19,7 @@ export function memoryStore(): Store {
   const objects = new Map<ObjectId, string>();
   const blobs = new Map<BlobId, Uint8Array>();
   const refs = new Map<string, Ref>();
+  const holders = new Map<ObjectId, number>();
   const indexed = new Map<string, SessionIndexEntry>();
   const versions = new Map<SessionId, Revision>();
   const logs = new Map<
@@ -22,6 +31,14 @@ export function memoryStore(): Store {
   let minted = 0;
 
   const tail = (session: SessionId): Seq => logs.get(session)?.at(-1)?.seq ?? asSeq(0);
+
+  const hold = (id: ObjectId | null, by: number): void => {
+    if (id === null) return;
+    const count = (holders.get(id) ?? 0) + by;
+
+    if (count === 0) holders.delete(id);
+    else holders.set(id, count);
+  };
 
   const connection: StoreConnection = {
     sessions: {
@@ -96,17 +113,7 @@ export function memoryStore(): Store {
         return text === undefined ? null : decodeObject(text);
       },
       async putBlob(bytes) {
-        const chunks: Uint8Array[] = [];
-
-        for await (const chunk of bytes) chunks.push(chunk);
-        const joined = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
-        let offset = 0;
-
-        for (const chunk of chunks) {
-          joined.set(chunk, offset);
-          offset += chunk.byteLength;
-        }
-
+        const joined = await collectBlob(bytes);
         const id = await blobId(joined);
 
         if (!blobs.has(id)) blobs.set(id, joined);
@@ -149,6 +156,22 @@ export function memoryStore(): Store {
             revision: refs.get(stale.name)?.revision ?? null,
           };
 
+        const missing = updates.find(
+          (update) => update.target !== null && !objects.has(update.target),
+        );
+
+        if (missing !== undefined)
+          return {
+            kind: "stale",
+            name: missing.name,
+            revision: refs.get(missing.name)?.revision ?? null,
+          };
+
+        const replaced = replacedTargets(
+          updates,
+          new Map(updates.map((update) => [update.name, refs.get(update.name)])),
+        );
+
         const at = Date.now();
 
         const appended = logged.map(({ session, event }) => {
@@ -167,6 +190,9 @@ export function memoryStore(): Store {
 
           if (session !== null) versions.set(session, revision);
 
+          hold(refs.get(update.name)?.target ?? null, -1);
+          hold(update.target, 1);
+
           if (update.target === null) refs.delete(update.name);
           else refs.set(update.name, { name: update.name, target: update.target, revision });
 
@@ -183,6 +209,15 @@ export function memoryStore(): Store {
 
           return revision;
         });
+
+        for (const id of replaced) {
+          const text = objects.get(id);
+
+          if (holders.has(id) || text === undefined) continue;
+          const object = decodeObject(text);
+
+          if (!isJsonObject(object) || object.kind !== "commit") objects.delete(id);
+        }
 
         return { kind: "set", logged: appended, at, revisions };
       },

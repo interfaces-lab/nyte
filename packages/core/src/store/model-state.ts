@@ -7,6 +7,7 @@ import type { CredentialStatus, ModelState } from "../contract/host.ts";
 import { decodeKvValue } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { kvRef } from "./refs.ts";
+import { readHeld } from "./session.ts";
 
 interface Slot {
   readonly provider: Provider;
@@ -40,8 +41,10 @@ export async function readModelListings(
 
   const entries = await Promise.all(
     refs.map(async (ref): Promise<readonly (readonly [string, "hidden" | "favorite"])[]> => {
-      if (ref.target === null) return [];
-      const value = decodeKvValue(await store.objects.get(ref.target));
+      const held = await readHeld(store, ref);
+
+      if (held === null) return [];
+      const value = decodeKvValue(held.object);
 
       return Value.Check(SavedListingType, value)
         ? [[ref.name.slice(MODEL_LISTINGS.length), value]]
@@ -60,11 +63,9 @@ export async function readThinkingPreference(
   store: StoreConnection,
   model: ModelRef,
 ): Promise<Thinking | undefined> {
-  const ref = await store.refs.get(thinkingPreferenceRef(model));
+  const held = await readHeld(store, await store.refs.get(thinkingPreferenceRef(model)));
 
-  return ref === null || ref.target === null
-    ? undefined
-    : decodeThinking(await store.objects.get(ref.target));
+  return held === null ? undefined : decodeThinking(held.object);
 }
 
 export async function readThinkingPreferences(
@@ -74,8 +75,10 @@ export async function readThinkingPreferences(
 
   const entries = await Promise.all(
     refs.map(async (ref): Promise<readonly (readonly [string, Thinking])[]> => {
-      if (ref.target === null) return [];
-      const level = decodeThinking(await store.objects.get(ref.target));
+      const held = await readHeld(store, ref);
+
+      if (held === null) return [];
+      const level = decodeThinking(held.object);
 
       return level === undefined ? [] : [[ref.name.slice(THINKING_PREFERENCES.length), level]];
     }),
@@ -92,12 +95,8 @@ function decodeThinking(object: Json | null): Thinking | undefined {
 
 /** Reads the saved model without checking a provider. */
 export async function readModelSelection(store: StoreConnection): Promise<ModelRef | null> {
-  const ref = await store.refs.get(MODEL_PREFERENCE);
-
-  const value =
-    ref === null || ref.target === null
-      ? undefined
-      : decodeKvValue(await store.objects.get(ref.target));
+  const held = await readHeld(store, await store.refs.get(MODEL_PREFERENCE));
+  const value = held === null ? undefined : decodeKvValue(held.object);
 
   return Value.Check(ModelRefType, value) ? { provider: value.provider, id: value.id } : null;
 }

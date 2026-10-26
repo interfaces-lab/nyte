@@ -1,5 +1,5 @@
 import { asId, SdkError } from "@nyte-ai/schema";
-import type { ByteReader, Ref, Revision, SessionEvent } from "@nyte-ai/schema";
+import type { BlobId, ByteReader, Ref, Revision, SessionEvent } from "@nyte-ai/schema";
 import { loggedEvent } from "@nyte-ai/core/store";
 import type { LoggedRow, StoredObject, StoredRecord } from "@nyte-ai/core/store";
 
@@ -82,19 +82,34 @@ export function loggedRow(row: Readonly<Record<string, unknown>>): LoggedRow {
   return { seq: parseNumber(row.seq), event };
 }
 
-export async function collect(bytes: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
-  const chunks: Uint8Array[] = [];
+export function parseBytes(value: unknown): Uint8Array | null {
+  if (value === null || value === undefined) return null;
 
-  for await (const chunk of bytes) chunks.push(chunk);
-  const joined = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
-  let offset = 0;
+  if (value instanceof Uint8Array)
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 
-  for (const chunk of chunks) {
-    joined.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  throw new SdkError("internal", "A stored blob is malformed.");
+}
 
-  return joined;
+/** A blob of `size` bytes whose bytes `load` reads only once `chunks()` is iterated. */
+export function storedReader(
+  id: BlobId,
+  size: number,
+  load: () => Promise<Uint8Array | null>,
+): ByteReader {
+  return {
+    size,
+    mime: null,
+    async *chunks() {
+      const bytes = await load();
+
+      if (bytes === null) throw new SdkError("unknown", `Blob ${id} is no longer stored.`);
+
+      yield bytes;
+    },
+    close: async () => undefined,
+    [Symbol.asyncDispose]: async () => undefined,
+  };
 }
 
 export function memoryReader(bytes: Uint8Array): ByteReader {

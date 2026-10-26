@@ -13,10 +13,12 @@ import {
   fenceNames,
   assertStoreVersion,
   blobId,
+  collectBlob,
   decodeObject,
   collectSessionEvents,
   migrateStore,
   objectId,
+  replacedTargets,
   sessionIndexRef,
   parseSessionRef,
 } from "@nyte-ai/core/store";
@@ -24,17 +26,17 @@ import type { Store, StoreConnection } from "@nyte-ai/core";
 import type { MigrationTarget } from "@nyte-ai/core/store";
 import { Pool } from "pg";
 import {
-  collect,
   decodeEvent,
   loggedRow,
-  memoryReader,
   mintRevision,
+  parseBytes,
   parseNumber,
   prefixEnd,
   parseRef,
   parseStoredObject,
   parseStoredRecord,
   parseText,
+  storedReader,
 } from "./store-rows.ts";
 import {
   postgresSessionIndexQuery,
@@ -291,7 +293,7 @@ function connect(pool: PostgresPool): StoreConnection {
         return body === null ? null : decodeObject(body);
       },
       async putBlob(bytes) {
-        const joined = await collect(bytes);
+        const joined = await collectBlob(bytes);
         const id = await blobId(joined);
         await query(
           "INSERT INTO objects (id, bytes) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET bytes = excluded.bytes WHERE objects.bytes IS NULL",
@@ -301,10 +303,19 @@ function connect(pool: PostgresPool): StoreConnection {
         return id;
       },
       async blob(id) {
-        const { rows } = await query("SELECT bytes FROM objects WHERE id = $1", [id]);
-        const bytes = rows[0]?.bytes;
+        const { rows } = await query("SELECT length(bytes) AS size FROM objects WHERE id = $1", [
+          id,
+        ]);
 
-        return bytes instanceof Uint8Array ? memoryReader(new Uint8Array(bytes)) : null;
+        const size = rows[0]?.size;
+
+        return size === null || size === undefined
+          ? null
+          : storedReader(id, parseNumber(size), async () =>
+              parseBytes(
+                (await query("SELECT bytes FROM objects WHERE id = $1", [id])).rows[0]?.bytes,
+              ),
+            );
       },
     },
     refs: {
@@ -349,6 +360,7 @@ function connect(pool: PostgresPool): StoreConnection {
   };
 }
 
+/** Locks every object the batch points a ref at or moves one off, in id order, before reading them: a batch deleting one of them commits before this reads it, or waits for this commit and its delete, a later statement, then sees the ref that holds it. */
 async function publish(
   client: PostgresClient,
   updates: readonly RefUpdate[],
@@ -417,6 +429,36 @@ async function publish(
       };
     }
 
+    const replaced = replacedTargets(updates, before);
+
+    const objects = [
+      ...new Set([
+        ...updates.flatMap((update) => (update.target === null ? [] : [update.target])),
+        ...replaced,
+      ]),
+    ];
+
+    const { rows: present } =
+      objects.length === 0
+        ? { rows: [] }
+        : await client.query(
+            "SELECT id FROM objects WHERE id = ANY($1::text[]) AND body IS NOT NULL ORDER BY id FOR UPDATE",
+            [objects],
+          );
+
+    const stored = new Set(present.map((row) => parseText(row.id)));
+    const missing = updates.find((update) => update.target !== null && !stored.has(update.target));
+
+    if (missing !== undefined) {
+      await client.query("ROLLBACK");
+
+      return {
+        kind: "stale",
+        name: missing.name,
+        revision: before.get(missing.name)?.revision ?? null,
+      };
+    }
+
     const revisions: Revision[] = [];
     const touched = new Map<SessionId, Revision>();
 
@@ -442,6 +484,12 @@ async function publish(
         version,
         session,
       ]);
+
+    if (replaced.length > 0)
+      await client.query(
+        "DELETE FROM objects WHERE id = ANY($1::text[]) AND bytes IS NULL AND (body::json ->> 'kind') IS DISTINCT FROM 'commit' AND NOT EXISTS (SELECT 1 FROM refs WHERE refs.target = objects.id)",
+        [replaced],
+      );
 
     const at = Date.now();
     const tails = new Map<SessionId, number>();

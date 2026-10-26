@@ -131,6 +131,8 @@ export type {
   WorktreeRemoval,
 } from "./contract/workspace.ts";
 
+export { attachFile } from "./env/attach.ts";
+
 export { processEnvironment } from "./util/process-environment.ts";
 
 export { bashProperties } from "./builtins/environment.ts";

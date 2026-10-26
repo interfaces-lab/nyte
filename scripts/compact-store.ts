@@ -39,7 +39,7 @@ const SUPERSEDED_KINDS = [
 /** Version 15 holds `2026-10-16-ended-run-records`, the only migration that reads objects no ref targets. */
 const OLDEST_VERSION = 15;
 
-const NEWEST_VERSION = 23;
+const NEWEST_VERSION = 24;
 
 // Two of the host's 5 s presence beats, plus slack.
 const PRESENCE_WAIT_MS = 11_000;

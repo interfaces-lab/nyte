@@ -82,7 +82,7 @@ import { createFoldCache, createLogPublisher, pollStore } from "./fold/watch.ts"
 import { createModelState } from "./store/model-state.ts";
 import { createPartTable } from "./store/parts.ts";
 import { hostIdentityRef, kvRef } from "./store/refs.ts";
-import { readKv } from "./store/session.ts";
+import { readHeld, readKv } from "./store/session.ts";
 import { dev } from "./util/dev-log.ts";
 import { cleanWorktrees, sweepWorktrees, worktreesPlugin } from "./env/worktrees.ts";
 
@@ -595,9 +595,9 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
 }
 
 async function storedIdentity(store: StoreConnection): Promise<HostIdentity | null> {
-  const ref = await store.refs.get(hostIdentityRef());
+  const held = await readHeld(store, await store.refs.get(hostIdentityRef()));
 
-  return ref?.target ? decodeHostIdentity(await store.objects.get(ref.target)) : null;
+  return held === null ? null : decodeHostIdentity(held.object);
 }
 
 function createRunTable(bus: SessionBus): RunTable {

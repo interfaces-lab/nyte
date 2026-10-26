@@ -77,13 +77,29 @@ export async function load<T>(
   ref: Ref | null,
   decode: (object: Json | null) => T | null,
 ): Promise<Found<T> | null> {
-  if (ref === null || ref.target === null) return null;
-  const record = decode(await store.objects.get(ref.target));
+  const held = await readHeld(store, ref);
+
+  if (held === null) return null;
+  const record = decode(held.object);
 
   if (record === null)
-    throw new SdkError("internal", `${ref.name} does not hold the record its name says.`);
+    throw new SdkError("internal", `${held.ref.name} does not hold the record its name says.`);
 
-  return { ref, record };
+  return { ref: held.ref, record };
+}
+
+/** The object `ref` holds, with the ref it was read through: a write deletes the object it moves a ref off, so a missing object reads the ref again until it stops moving. Null when the ref is gone or holds nothing; the object is null only when an unmoved ref holds a missing object. */
+export async function readHeld(
+  store: StoreConnection,
+  ref: Ref | null,
+): Promise<{ readonly ref: Ref; readonly object: Json | null } | null> {
+  if (ref === null || ref.target === null) return null;
+  const object = await store.objects.get(ref.target);
+
+  if (object !== null) return { ref, object };
+  const moved = await store.refs.get(ref.name);
+
+  return moved?.revision === ref.revision ? { ref, object } : readHeld(store, moved);
 }
 
 export async function readSession(
@@ -453,9 +469,7 @@ export async function guard(
 }
 
 export async function readKv(store: StoreConnection, name: string): Promise<Json | undefined> {
-  const ref = await store.refs.get(name);
+  const held = await readHeld(store, await store.refs.get(name));
 
-  return ref === null || ref.target === null
-    ? undefined
-    : decodeKvValue(await store.objects.get(ref.target));
+  return held === null ? undefined : decodeKvValue(held.object);
 }

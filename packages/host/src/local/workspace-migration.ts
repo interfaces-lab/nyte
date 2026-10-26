@@ -1,5 +1,5 @@
 import { realpath, stat } from "node:fs/promises";
-import { decodeWorkspaceRecord, envelope } from "@nyte-ai/core/store";
+import { decodeWorkspaceRecord, envelope, readHeld } from "@nyte-ai/core/store";
 import type { StoreConnection } from "@nyte-ai/core";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { RefUpdate } from "@nyte-ai/schema";
@@ -13,9 +13,8 @@ const MigrationState = Type.Object({ pending: Type.Array(Type.String()) });
 
 export async function migrateLocalWorkspaceIdentities(connection: StoreConnection): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const marker = await connection.refs.get(MIGRATION);
-    const state = marker?.target == null ? null : await connection.objects.get(marker.target);
-    const pending = Value.Check(MigrationState, state) ? state.pending : null;
+    const marker = await readHeld(connection, await connection.refs.get(MIGRATION));
+    const pending = Value.Check(MigrationState, marker?.object) ? marker.object.pending : null;
 
     if (marker !== null && pending === null)
       throw new SdkError("internal", "The workspace identity migration state is malformed.");
@@ -30,12 +29,12 @@ export async function migrateLocalWorkspaceIdentities(connection: StoreConnectio
     const updates: RefUpdate[] = [];
     const remaining: string[] = [];
 
-    for (const ref of refs) {
-      if (ref === null) continue;
+    for (const listed of refs) {
+      const held = await readHeld(connection, listed);
 
-      const record = decodeWorkspaceRecord(
-        ref.target === null ? null : await connection.objects.get(ref.target),
-      );
+      if (held === null) continue;
+      const ref = held.ref;
+      const record = decodeWorkspaceRecord(held.object);
 
       if (record?.target.kind !== "local" || !("path" in record.target)) continue;
       const real = await realpath(record.target.path).catch(() => null);
@@ -84,7 +83,7 @@ export async function migrateLocalWorkspaceIdentities(connection: StoreConnectio
 
     updates.push({
       name: MIGRATION,
-      expect: marker?.revision ?? "absent",
+      expect: marker?.ref.revision ?? "absent",
       target: await connection.objects.put({ pending: remaining }),
     });
 

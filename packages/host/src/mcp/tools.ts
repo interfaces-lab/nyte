@@ -6,7 +6,7 @@ import type {
   ProgressNotification,
   Tool,
 } from "@earendil-works/pi-mcp";
-import { followedTrace, startSpan, traceparent } from "@nyte-ai/core";
+import { attachFile, followedTrace, startSpan, traceparent } from "@nyte-ai/core";
 import type { ExecutionEnv, ToolDefinition, ToolNamespace } from "@nyte-ai/core";
 import { isJson, isJsonObject } from "@nyte-ai/schema";
 import type {
@@ -251,13 +251,16 @@ function bridge(
       }
 
       ended({ failed: result.isError === true });
-      const content = await readToolContent(result, invocation.env, tool.name);
 
-      if (result.isError === true)
+      if (result.isError === true) {
+        const text = resultText(result);
+
         throw new Error(
-          content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n") ||
-            `${tool.name} failed.`,
+          text.length > RESULT_CHARS ? clip(text, "") : text || `${tool.name} failed.`,
         );
+      }
+
+      const content = await readToolContent(result, invocation.env, tool.name);
 
       const structured = result.structuredContent;
 
@@ -287,47 +290,56 @@ function toolProgress(update: ProgressNotification): ToolProgress {
 }
 
 /**
- * The result's blocks as tool content. Text past `RESULT_CHARS` in all keeps
- * its head and its longer tail around a marker, which is where logs put the
- * failure, and the whole text is attached once as a file.
+ * The result's blocks as tool content. Text past `RESULT_CHARS` in all is
+ * clipped (`clip`) and the whole text is attached once as a file.
  */
 async function readToolContent(
   result: CallToolResult,
   env: ExecutionEnv,
   tool: string,
 ): Promise<readonly ToolContent[]> {
-  const content: ToolContent[] = [];
+  const content = await Promise.all(
+    result.content.map(async (block): Promise<ToolContent> =>
+      block.type === "image"
+        ? attachFile(env.files, once(Uint8Array.fromBase64(block.data)), { mime: block.mimeType })
+        : { kind: "text", text: block.type === "text" ? block.text : JSON.stringify(block) },
+    ),
+  );
 
-  for (const block of result.content) {
-    if (block.type === "text") content.push({ kind: "text", text: block.text });
-    else if (block.type === "image")
-      content.push({
-        kind: "file",
-        blob: await env.files.upload(once(Uint8Array.fromBase64(block.data))),
-        mime: block.mimeType,
-      });
-    else content.push({ kind: "text", text: JSON.stringify(block) });
-  }
-
-  const text = content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n");
+  const text = resultText(result);
 
   if (text.length <= RESULT_CHARS) return content;
   const name = `${tool}.txt`;
-  const elided = (text.length - RESULT_CHARS).toLocaleString("en-US");
+
+  const whole = await attachFile(env.files, once(new TextEncoder().encode(text)), {
+    mime: "text/plain",
+    name,
+  });
 
   return [
     {
       kind: "text",
-      text: `${text.slice(0, HEAD_CHARS)}\n\n[${elided} characters cut from the middle; the whole result is attached as ${name}.]\n\n${text.slice(HEAD_CHARS - RESULT_CHARS)}`,
+      text: clip(text, whole.kind === "file" ? `; the whole result is attached as ${name}` : ""),
     },
-    {
-      kind: "file",
-      blob: await env.files.upload(once(new TextEncoder().encode(text))),
-      mime: "text/plain",
-      name,
-    },
-    ...content.filter((item) => item.kind === "file"),
+    whole,
+    ...content.filter((_, index) => result.content[index]?.type === "image"),
   ];
+}
+
+/** The result's text blocks, and its other blocks but images as JSON, one per line. */
+function resultText(result: CallToolResult): string {
+  return result.content
+    .flatMap((block) =>
+      block.type === "image" ? [] : [block.type === "text" ? block.text : JSON.stringify(block)],
+    )
+    .join("\n");
+}
+
+/** `text`'s head and its longer tail, which is where logs put the failure, around a marker ending in `note`. */
+function clip(text: string, note: string): string {
+  const elided = (text.length - RESULT_CHARS).toLocaleString("en-US");
+
+  return `${text.slice(0, HEAD_CHARS)}\n\n[${elided} characters cut from the middle${note}.]\n\n${text.slice(HEAD_CHARS - RESULT_CHARS)}`;
 }
 
 function passthrough(json: Tool["inputSchema"]): Schema<JsonObject> {

@@ -64,6 +64,7 @@ export interface SessionIndex {
 
 export interface ObjectStore {
   put(object: Json): Promise<ObjectId>;
+  /** Null for an object never put, or one `RefStore.set` deleted: read a ref's object with `readHeld`. */
   get(id: ObjectId): Promise<Json | null>;
   putBlob(bytes: AsyncIterable<Uint8Array>): Promise<BlobId>;
   blob(id: BlobId): Promise<ByteReader | null>;
@@ -73,6 +74,7 @@ export interface RefStore {
   get(name: string): Promise<Ref | null>;
   list(prefix: string): Promise<readonly Ref[]>;
 
+  /** One transaction: `fenced` or `stale` change nothing, and `stale` also names an update whose target object is missing, so the caller puts it again. Each object the updates move a ref off is deleted with them, unless a ref still holds it or it is a commit. */
   set(updates: readonly RefUpdate[]): Promise<SetOutcome>;
   log(session: SessionId, after: Seq, limit: number): Promise<readonly SessionEvent[]>;
   tail(session: SessionId): Promise<Seq>;

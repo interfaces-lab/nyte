@@ -1,3 +1,4 @@
+import { attachFile } from "@nyte-ai/core";
 import type { BrowserApi, Page, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
 import { asId, standard } from "@nyte-ai/schema";
 import type { Infer, PageOutcome, PageSnapshot } from "@nyte-ai/schema";
@@ -119,9 +120,13 @@ const capture: ToolDefinition<{ page?: string }> = {
       const image = await held.capture();
 
       try {
-        const blob = await invocation.env.files.upload(image.chunks());
-
-        return { content: [{ kind: "file", blob, mime: image.mime ?? "image/png" }] };
+        return {
+          content: [
+            await attachFile(invocation.env.files, image.chunks(), {
+              mime: image.mime ?? "image/png",
+            }),
+          ],
+        };
       } finally {
         await image.close();
       }

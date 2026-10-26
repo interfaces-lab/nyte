@@ -286,7 +286,18 @@ describe("execution", () => {
   });
 
   it("inspects a session's refs, objects and log, and verifies them", async () => {
-    const { kernel, host, script } = await setup();
+    const shared = await memoryStore().open();
+    const lost = new Set<string>();
+
+    const store: StoreConnection = {
+      ...shared,
+      objects: {
+        ...shared.objects,
+        get: async (id) => (lost.has(id) ? null : shared.objects.get(id)),
+      },
+    };
+
+    const { kernel, host, script } = await setup({ store });
     const owned = await host.execution.cover({ kind: "all" });
     const { session, receipt } = await host.sessions.start({ content: "Go." });
     const step = host.execution.advance({ session: session.id, head: main });
@@ -328,9 +339,14 @@ describe("execution", () => {
       "session",
     ]);
 
-    await kernel.store.refs.set([
-      { name: headRef(session.id, asId("broken")), target: asId("missing-object") },
-    ]);
+    expect(
+      await kernel.store.refs.set([
+        { name: headRef(session.id, asId("broken")), target: asId("missing-object") },
+      ]),
+    ).toMatchObject({ kind: "stale" });
+    const target = await kernel.store.objects.put({ kind: "lost" });
+    await kernel.store.refs.set([{ name: headRef(session.id, asId("broken")), target }]);
+    lost.add(target);
 
     expect(await inspect.verify()).toMatchObject({
       ok: false,

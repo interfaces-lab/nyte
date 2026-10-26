@@ -250,12 +250,12 @@ describe("principals", () => {
 
     const store: StoreConnection = {
       ...shared,
-      refs: {
-        ...shared.refs,
-        async get(name) {
-          const read = await shared.refs.get(name);
+      objects: {
+        ...shared.objects,
+        async get(id) {
+          const read = await shared.objects.get(id);
 
-          if (name === hostPrincipalsRef()) {
+          if (id === (await shared.refs.get(hostPrincipalsRef()))?.target) {
             const now = revoke;
             revoke = async () => undefined;
             await now();

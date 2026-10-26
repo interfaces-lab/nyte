@@ -11,27 +11,29 @@ import {
   fenceNames,
   assertStoreVersion,
   blobId,
+  collectBlob,
   decodeObject,
   collectSessionEvents,
   migrateStore,
   objectId,
+  replacedTargets,
   sessionIndexRef,
   parseSessionRef,
 } from "@nyte-ai/core/store";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import type { MigrationTarget, Relog } from "@nyte-ai/core/store";
 import {
-  collect,
   decodeEvent,
   loggedRow,
-  memoryReader,
   mintRevision,
+  parseBytes,
   parseNumber,
   prefixEnd,
   parseRef,
   parseStoredObject,
   parseStoredRecord,
   parseText,
+  storedReader,
 } from "./store-rows.ts";
 import { sqliteWorkers } from "./sqlite-workers.ts";
 import { sessionIndexChanges, sqlSessionIndex } from "./session-index.ts";
@@ -42,6 +44,10 @@ const BACKUPS_KEPT = 3;
 
 const PUT_BODY =
   "INSERT INTO objects (id, body) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET body = excluded.body WHERE objects.body IS NULL";
+
+/** Deletes an object a ref write moved a ref off, unless a ref still holds it, it is a commit, or it shares its row with a blob. */
+const DROP_REPLACED =
+  "DELETE FROM objects WHERE id = ?1 AND bytes IS NULL AND json_extract(body, '$.kind') IS NOT 'commit' AND NOT EXISTS (SELECT 1 FROM refs WHERE target = ?1)";
 
 /** The local store's file: `NYTE_DB` when set, so a source run keeps its own chats, else `.nyte/nyte.db` under `home`. */
 export function storePath(home: string): string {
@@ -269,6 +275,7 @@ function backup(
   mkdirSync(folder, { recursive: true, mode: 0o700 });
   const at = new Date().toISOString().replaceAll(":", "-");
   const read = database.prepare("SELECT name, target, revision FROM refs WHERE name = ?");
+  const readBody = database.prepare("SELECT body FROM objects WHERE id = ?");
 
   const rows = names.flatMap((name) => {
     const row = read.get(name);
@@ -276,10 +283,17 @@ function backup(
     return row === undefined ? [] : [parseRef(row)];
   });
 
+  const objects = [...new Set(rows.map((row) => row.target))].flatMap((id) => {
+    const body = id === null ? null : parseText(readBody.get(id)?.body);
+
+    return id === null || body === null ? [] : [{ id, body }];
+  });
+
   writeFileSync(
     join(folder, `store-${at}-${process.pid}-${crypto.randomUUID()}-v${from}-v${to}.json`),
     JSON.stringify({
       refs: rows,
+      objects,
       log: log.map((row) => ({ session: row.session, seq: row.seq, event: row.expect })),
     }),
     { mode: 0o600 },
@@ -304,6 +318,7 @@ function connect(
 
   const getBody = database.prepare("SELECT body FROM objects WHERE id = ?");
   const getBytes = database.prepare("SELECT bytes FROM objects WHERE id = ?");
+  const getSize = database.prepare("SELECT length(bytes) AS size FROM objects WHERE id = ?");
   const getRef = database.prepare("SELECT name, target, revision FROM refs WHERE name = ?");
 
   const listFrom = database.prepare(
@@ -319,6 +334,8 @@ function connect(
   );
 
   const deleteRef = database.prepare("DELETE FROM refs WHERE name = ?");
+  const hasBody = database.prepare("SELECT 1 FROM objects WHERE id = ? AND body IS NOT NULL");
+  const dropReplaced = database.prepare(DROP_REPLACED);
   const audit = auditing(database);
   const append = database.prepare("INSERT INTO log (session, seq, at, event) VALUES (?, ?, ?, ?)");
 
@@ -378,7 +395,7 @@ function connect(
         return body === null ? null : decodeObject(body);
       },
       async putBlob(bytes) {
-        const joined = await collect(bytes);
+        const joined = await collectBlob(bytes);
         const id = await blobId(joined);
         write(database, putBytes, id, joined);
         workers?.check();
@@ -386,9 +403,11 @@ function connect(
         return id;
       },
       async blob(id) {
-        const bytes = getBytes.get(id)?.bytes;
+        const size = getSize.get(id)?.size;
 
-        return bytes instanceof Uint8Array ? memoryReader(bytes) : null;
+        return size === null || size === undefined
+          ? null
+          : storedReader(id, parseNumber(size), async () => parseBytes(getBytes.get(id)?.bytes));
       },
     },
     refs: {
@@ -434,6 +453,21 @@ function connect(
             };
           }
 
+          const missing = updates.find(
+            (update) => update.target !== null && hasBody.get(update.target) === undefined,
+          );
+
+          if (missing !== undefined) {
+            database.exec("ROLLBACK");
+
+            return {
+              kind: "stale",
+              name: missing.name,
+              revision: before.get(missing.name)?.revision ?? null,
+            };
+          }
+
+          const replaced = replacedTargets(updates, before);
           const touched = new Map<SessionId, Revision>();
           const current = new Map([...before].map(([name, row]) => [name, row?.revision ?? null]));
 
@@ -464,6 +498,8 @@ function connect(
             database
               .prepare("UPDATE session_index SET version = ? WHERE session = ?")
               .run(version, session);
+
+          for (const id of replaced) dropReplaced.run(id);
 
           const at = Date.now();
           const tails = new Map<SessionId, number>();
