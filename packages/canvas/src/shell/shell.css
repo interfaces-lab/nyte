@@ -12,6 +12,17 @@
     display: none;
   }
 
+  /*
+   * Content wider than the frame scrolls sideways here rather than in the
+   * document: the iOS WebView turns its own scrolling off for a canvas that
+   * fits its height, and a scrolling element still pans there. Hiding the
+   * other axis keeps a vertical swipe for the chat around the canvas.
+   */
+  #root {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
   a {
     color: var(--nyte-content-interactive-primary);
     text-decoration-line: underline;

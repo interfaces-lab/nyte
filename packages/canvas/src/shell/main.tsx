@@ -331,6 +331,10 @@ function parse(text: string): unknown {
   }
 }
 
+/**
+ * Reports the root's height. It's observed by its border box, which counts a
+ * sideways scrollbar that appears while the content box keeps its size.
+ */
 function measure(): void {
   const height = Math.ceil(container.getBoundingClientRect().height);
 
@@ -371,7 +375,7 @@ document.addEventListener(
   true,
 );
 
-new ResizeObserver(measure).observe(container);
+new ResizeObserver(measure).observe(container, { box: "border-box" });
 
 paint();
 post(initializeRequest(1, CANVAS_RUNTIME));
