@@ -1,11 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import dialkit from "dialkit/styles.css?url";
-import { ProjectsPage } from "../projects/page";
+import { StacksPage } from "../stacks/page";
 
 export const Route = createFileRoute("/stacks")({
-  component: ProjectsPage,
-  head: () => ({
-    meta: [{ title: "Lab · Stacks" }],
-    links: [{ rel: "stylesheet", href: dialkit }],
-  }),
+  component: StacksPage,
+  head: () => ({ meta: [{ title: "Lab · Stacks" }] }),
 });

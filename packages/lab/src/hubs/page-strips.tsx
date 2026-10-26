@@ -17,6 +17,7 @@ import {
   plot,
   smooth,
   spectrum,
+  type Strength,
 } from "./strip";
 import { AdvancedStrip, BrowserStrip, EditorStrip, TerminalStrip } from "./tool-strips";
 
@@ -88,6 +89,101 @@ export function AppearanceStrip({
         );
       })}
     </Strip>
+  );
+}
+
+/** The helix: one full twist every `period` px, the strands `reach` px either side of the midline. */
+const HELIX = { period: 320, reach: 52 } as const;
+
+/** Every `RUNG_EVERY`th column a base pair joins the strands. */
+const RUNG_EVERY = 3;
+
+/** Where a strand crosses `x`: `side` 1 starts downward, -1 upward; `depth` is 1 at the front, 0 behind. */
+function strandAt(x: number, side: 1 | -1) {
+  const turn = (2 * Math.PI * (x - BOARD.cx)) / HELIX.period;
+  const depth = (1 + side * Math.cos(turn)) / 2;
+
+  return {
+    centre: BOARD.cy + side * HELIX.reach * Math.sin(turn),
+    slope: (side * HELIX.reach * Math.cos(turn) * 2 * Math.PI) / HELIX.period,
+    half: 10 + 8 * depth,
+    depth,
+  };
+}
+
+/** How far across its stroke (x, y) sits: 0 on the spine, 1 at the edge. */
+function across(y: number, at: ReturnType<typeof strandAt>): number {
+  return Math.abs(y - at.centre) / Math.hypot(1, at.slope) / at.half;
+}
+
+/**
+ * One strand of the helix, brushed like the Appearance stroke. Behind the
+ * other strand it parts around it, so the two weave where they cross.
+ */
+function strand(side: 1 | -1, seed: number): Strength {
+  return (x, y, column, row) => {
+    const at = strandAt(x, side);
+    const other = strandAt(x, side === 1 ? -1 : 1);
+    const reach = across(y, at);
+
+    if (reach >= 1) return 0;
+
+    if (at.depth < other.depth && across(y, other) < 1.4) return 0;
+    const bristle = noise(row, seed) < 0.22 ? 0.55 : 1;
+
+    return (
+      (1 - reach * reach) * bristle * (0.8 + 0.2 * noise(column, row)) * (0.55 + 0.45 * at.depth)
+    );
+  };
+}
+
+/** The base pairs: faint columns between the strands, clear of both. */
+function rung(x: number, y: number, column: number): number {
+  if (column % RUNG_EVERY !== 0) return 0;
+  const ends = [strandAt(x, 1), strandAt(x, -1)];
+
+  return ends.every((at) => across(y, at) > 1.4) &&
+    y > Math.min(...ends.map((at) => at.centre)) &&
+    y < Math.max(...ends.map((at) => at.centre))
+    ? 0.3
+    : 0;
+}
+
+/** Hue walks the wheel along its strand; intensity rises from gray to the picked strength along the other. */
+const HUE_STRAND = plot(strand(1, 3), () => 0.06);
+
+const INTENSITY_STRAND = plot(
+  (x, y, column, row) => Math.max(strand(-1, 5)(x, y, column, row), rung(x, y, column)),
+  () => 0.06,
+);
+
+/** Bands either side of the board's centre: with `spectrum`, -15 at the left edge to 15 at the right. */
+const BAND_REACH = 15;
+
+export function AppearanceWavesStrip({
+  hue,
+  intensity,
+}: {
+  readonly hue: number;
+  readonly intensity: number;
+}): ReactElement {
+  return (
+    <Strip
+      prism={spectrum(hue, HUE_STEP)}
+      backdrop={
+        <g>
+          <Field plot={HUE_STRAND} twinkle />
+          <Field
+            plot={INTENSITY_STRAND}
+            prism={spectrum(hue, 0)}
+            chroma={(band) =>
+              (intensity / 100) * Math.min(1, Math.max(0, (band + BAND_REACH) / (2 * BAND_REACH)))
+            }
+            twinkle
+          />
+        </g>
+      }
+    />
   );
 }
 

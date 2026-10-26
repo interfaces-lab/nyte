@@ -15,6 +15,7 @@ import { Route as HubsRouteImport } from './routes/hubs'
 import { Route as PeekRouteImport } from './routes/peek'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StacksRouteImport } from './routes/stacks'
+import { Route as StacksV1RouteImport } from './routes/stacks-v1'
 import { Route as TabsRouteImport } from './routes/tabs'
 import { Route as ProjectsExportSplatRouteImport } from './routes/projects-export.$'
 import { Route as VideoSplatRouteImport } from './routes/video.$'
@@ -49,6 +50,11 @@ const StacksRoute = StacksRouteImport.update({
   path: '/stacks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StacksV1Route = StacksV1RouteImport.update({
+  id: '/stacks-v1',
+  path: '/stacks-v1',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TabsRoute = TabsRouteImport.update({
   id: '/tabs',
   path: '/tabs',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/peek': typeof PeekRoute
   '/settings': typeof SettingsRoute
   '/stacks': typeof StacksRoute
+  '/stacks-v1': typeof StacksV1Route
   '/tabs': typeof TabsRoute
   '/projects-export/$': typeof ProjectsExportSplatRoute
   '/video/$': typeof VideoSplatRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/peek': typeof PeekRoute
   '/settings': typeof SettingsRoute
   '/stacks': typeof StacksRoute
+  '/stacks-v1': typeof StacksV1Route
   '/tabs': typeof TabsRoute
   '/projects-export/$': typeof ProjectsExportSplatRoute
   '/video/$': typeof VideoSplatRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/peek': typeof PeekRoute
   '/settings': typeof SettingsRoute
   '/stacks': typeof StacksRoute
+  '/stacks-v1': typeof StacksV1Route
   '/tabs': typeof TabsRoute
   '/projects-export/$': typeof ProjectsExportSplatRoute
   '/video/$': typeof VideoSplatRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/peek'
     | '/settings'
     | '/stacks'
+    | '/stacks-v1'
     | '/tabs'
     | '/projects-export/$'
     | '/video/$'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/peek'
     | '/settings'
     | '/stacks'
+    | '/stacks-v1'
     | '/tabs'
     | '/projects-export/$'
     | '/video/$'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/peek'
     | '/settings'
     | '/stacks'
+    | '/stacks-v1'
     | '/tabs'
     | '/projects-export/$'
     | '/video/$'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   PeekRoute: typeof PeekRoute
   SettingsRoute: typeof SettingsRoute
   StacksRoute: typeof StacksRoute
+  StacksV1Route: typeof StacksV1Route
   TabsRoute: typeof TabsRoute
   ProjectsExportSplatRoute: typeof ProjectsExportSplatRoute
   VideoSplatRoute: typeof VideoSplatRoute
@@ -191,6 +204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StacksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/stacks-v1': {
+      id: '/stacks-v1'
+      path: '/stacks-v1'
+      fullPath: '/stacks-v1'
+      preLoaderRoute: typeof StacksV1RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tabs': {
       id: '/tabs'
       path: '/tabs'
@@ -222,6 +242,7 @@ const rootRouteChildren: RootRouteChildren = {
   PeekRoute: PeekRoute,
   SettingsRoute: SettingsRoute,
   StacksRoute: StacksRoute,
+  StacksV1Route: StacksV1Route,
   TabsRoute: TabsRoute,
   ProjectsExportSplatRoute: ProjectsExportSplatRoute,
   VideoSplatRoute: VideoSplatRoute,

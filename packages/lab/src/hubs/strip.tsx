@@ -151,22 +151,34 @@ function splitBands(field: Plot, width: number, anchor: number): readonly Band[]
   }));
 }
 
-/** A ref that points an element's custom theme at `degrees`. */
-function hued(degrees: number): (node: ElementCSSInlineStyle | null) => void {
-  return (node) => node?.style.setProperty("--nyte-custom-hue", String(degrees));
+/** A ref that points an element's custom theme at `degrees`, and at `chroma` when given. */
+function hued(degrees: number, chroma?: number): (node: ElementCSSInlineStyle | null) => void {
+  return (node) => {
+    node?.style.setProperty("--nyte-custom-hue", String(degrees));
+
+    if (chroma !== undefined) node?.style.setProperty("--nyte-custom-chroma-scale", String(chroma));
+  };
 }
 
-/** A plot painted band by band, each band in its own hue from the strip's prism. */
+/**
+ * A plot painted band by band, each band in its own hue from the strip's prism,
+ * or from `prism` when given; `chroma` scales each band's tint by its index.
+ */
 export function Field({
   plot: field,
   cells = "dash",
   twinkle = false,
+  prism: own,
+  chroma,
 }: {
   readonly plot: Plot;
   readonly cells?: "dash" | "square";
   readonly twinkle?: boolean;
+  readonly prism?: Prism;
+  readonly chroma?: (band: number) => number;
 }): ReactElement {
-  const prism = use(PrismContext);
+  const strip = use(PrismContext);
+  const prism = own ?? strip;
 
   const bands = useMemo(
     () => splitBands(field, prism.width, prism.anchor),
@@ -178,7 +190,7 @@ export function Field({
       {bands.map((band) => (
         <g
           key={band.index}
-          ref={hued(prism.hue + band.index * prism.step)}
+          ref={hued(prism.hue + band.index * prism.step, chroma?.(band.index))}
           {...props(surfaceTheme.custom)}
         >
           {band.inks.map(
@@ -443,7 +455,7 @@ export function Strip({
   readonly dim?: boolean;
   readonly backdrop?: ReactNode;
   readonly clear?: readonly Area[];
-  readonly children: ReactNode;
+  readonly children?: ReactNode;
 }): ReactElement {
   const holes = `${useId()}-holes`;
 

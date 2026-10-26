@@ -11,7 +11,7 @@ import { settingsPatterns } from "@nyte-ai/app/theme/settings-patterns.stylex.ts
 import { Slider } from "@nyte-ai/ui/slider";
 import { SECTIONS } from "../settings/catalog";
 import { SettingRow } from "../settings/page";
-import { AppearanceStrip, PAGE_STRIPS } from "./page-strips";
+import { AppearanceStrip, AppearanceWavesStrip, PAGE_STRIPS } from "./page-strips";
 
 /** Which catalog groups a page shows: by section, and optionally by group title. */
 const CATALOG = {
@@ -26,6 +26,8 @@ const CATALOG = {
 >;
 
 export type StripPage = keyof typeof PAGE_STRIPS | "appearance";
+
+export type AppearanceArt = "brush" | "waves";
 
 function CatalogGroups({
   section,
@@ -99,13 +101,17 @@ function TintRow({
   );
 }
 
-function AppearancePage(): ReactElement {
+function AppearancePage({ art }: { readonly art: AppearanceArt }): ReactElement {
   const [hue, setHue] = useState(250);
   const [intensity, setIntensity] = useState(100);
 
   return (
     <>
-      <AppearanceStrip hue={hue} intensity={intensity} />
+      {art === "waves" ? (
+        <AppearanceWavesStrip hue={hue} intensity={intensity} />
+      ) : (
+        <AppearanceStrip hue={hue} intensity={intensity} />
+      )}
       <section {...props(settingsPatterns.section)}>
         <div {...props(settingsPatterns.sectionHeader)}>
           <h2 {...props(settingsPatterns.sectionTitle)}>Colors</h2>
@@ -153,8 +159,14 @@ function UsagePage(): ReactElement {
   );
 }
 
-export function StripPageBody({ page }: { readonly page: StripPage }): ReactElement {
-  if (page === "appearance") return <AppearancePage />;
+export function StripPageBody({
+  page,
+  appearanceArt,
+}: {
+  readonly page: StripPage;
+  readonly appearanceArt: AppearanceArt;
+}): ReactElement {
+  if (page === "appearance") return <AppearancePage art={appearanceArt} />;
   const PageStrip = PAGE_STRIPS[page];
 
   if (page === "usage") {

@@ -24,7 +24,7 @@ import { DISPLAY_MODES, useDisplayMode, type DisplayMode } from "../shell/displa
 import type { IconName } from "@nyte-ai/ui/icon";
 import { HubSettings } from "./hub-settings";
 import { SCENES, type Scene } from "./scenes";
-import { StripPageBody, type StripPage } from "./strip-pages";
+import { StripPageBody, type AppearanceArt, type StripPage } from "./strip-pages";
 
 type Page = {
   readonly id: string;
@@ -72,6 +72,11 @@ const ARTS = [
   { value: "hub", label: "Hub" },
 ] as const;
 
+const APPEARANCE_ARTS = [
+  { value: "brush", label: "Brush" },
+  { value: "waves", label: "Waves" },
+] as const;
+
 const LOAD_MS = 1400;
 
 const LOAD_STAGGER_MS = 350;
@@ -80,6 +85,7 @@ export function HubsPage(): ReactElement {
   const [scheme, setScheme] = useState<DisplayMode>("dark");
   const [active, setActive] = useState("providers");
   const [art, setArt] = useState<"strip" | "hub">("strip");
+  const [appearanceArt, setAppearanceArt] = useState<AppearanceArt>("waves");
   const [run, setRun] = useState(0);
   const current = PAGES.find((page) => page.id === active) ?? PAGES[0];
 
@@ -134,6 +140,23 @@ export function HubsPage(): ReactElement {
                     ))}
                   </ToggleGroup>
                 )}
+                {current?.id === "appearance" && (
+                  <ToggleGroup
+                    aria-label="Art"
+                    value={[appearanceArt]}
+                    onValueChange={(values) => {
+                      const next = APPEARANCE_ARTS.find((option) => option.value === values.at(-1));
+
+                      if (next !== undefined) setAppearanceArt(next.value);
+                    }}
+                  >
+                    {APPEARANCE_ARTS.map((option) => (
+                      <Toggle key={option.value} value={option.value} size="sm">
+                        {option.label}
+                      </Toggle>
+                    ))}
+                  </ToggleGroup>
+                )}
                 <ToggleGroup
                   aria-label="Scheme"
                   value={[scheme]}
@@ -171,7 +194,7 @@ export function HubsPage(): ReactElement {
                     art={art}
                   />
                 ) : (
-                  <StripPageBody page={page.page} />
+                  <StripPageBody page={page.page} appearanceArt={appearanceArt} />
                 )}
               </div>
             ))}
