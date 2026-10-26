@@ -97,7 +97,7 @@ it("shows a 0.0.18 chat's whole changed-files list after the store migrates", as
     );
   });
 
-  query(path, "UPDATE store_meta SET version = ? RETURNING version", String(STORE_VERSION - 2));
+  query(path, "UPDATE store_meta SET version = ? RETURNING version", "20");
 
   const whole = [file("a", 2), file("b", 1), file("c", 1)];
 

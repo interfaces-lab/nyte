@@ -117,7 +117,6 @@ const FoldCheckpointType = Type.Object({
         delivery: typed<Delivery>()(DeliveryType),
         schedule: typed<Schedule>()(ScheduleType),
         covered: Type.Boolean(),
-        configuration: typed<Configuration>()(ConfigurationType),
         replaced: nullable(
           Type.Object({ previous: message, stopped: nullable(idSchema<"run">()) }),
         ),

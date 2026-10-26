@@ -21,21 +21,18 @@ function label(schedule: ScheduleSpec, covered = true): string | null {
 describe("labels follow the schedule, never the delivery", () => {
   test("a steer scheduled for the next turn is labelled by its schedule", () => {
     const view = buildView((v) =>
-      v
-        .live("r1")
-        .pending("use tabs", { schedule: { kind: "next-turn", reason: "configuration" } }),
+      v.live("r1").pending("use tabs", { schedule: { kind: "next-turn", reason: "run-ended" } }),
     );
 
     const [row] = queueRows(followed(view), null);
 
-    expect(row === undefined ? null : placeLabel(row.place)).toBe("next turn · new model");
+    expect(row === undefined ? null : placeLabel(row.place)).toBe("after this run");
   });
 
   test.each([
     [{ kind: "next-turn", reason: "requested" }, "queued"],
     [{ kind: "next-turn", reason: "idle" }, "next"],
     [{ kind: "next-turn", reason: "run-ended" }, "after this run"],
-    [{ kind: "next-turn", reason: "configuration" }, "next turn · new model"],
     [{ kind: "attached" }, "attached"],
   ] satisfies [ScheduleSpec, string][])("%o reads %s", (schedule, expected) => {
     expect(label(schedule)).toBe(expected);

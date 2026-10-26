@@ -24,16 +24,7 @@ import type { Kernel, StepOutcome } from "../src/contract/kernel.ts";
 import type { ActionContext, ActionOutput, Durable } from "../src/index.ts";
 import type { CallRecord } from "../src/store.ts";
 import { kernelOver, world } from "./fake-env.ts";
-import {
-  completed,
-  configuration,
-  label,
-  livePart,
-  main,
-  setup,
-  startRun,
-  until,
-} from "../src/harness.ts";
+import { completed, label, livePart, main, setup, startRun, until } from "../src/harness.ts";
 
 /** The earliest time a wait on the main head is due, read from its parked calls. */
 async function nextWake(kernel: Kernel, session: SessionId): Promise<number | null> {
@@ -141,13 +132,7 @@ async function runWaiting(kernel: Kernel, session: SessionId, run: RunId) {
 }
 
 async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId> {
-  const run = await startRun(
-    kernel,
-    session,
-    main,
-    { kind: "continuation", from: "wake" },
-    configuration,
-  );
+  const run = await startRun(kernel, session, main, { kind: "continuation", from: "wake" });
 
   kernel.runs.end(run.id);
 
@@ -803,20 +788,8 @@ describe("durable steps", () => {
       .workspace((await parent.info()).workspace)
       .jobs.start({ command: "sleep 600", session: parent.id });
 
-    const own = await startRun(
-      kernel,
-      parent.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
-    const run = await startRun(
-      kernel,
-      child.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const own = await startRun(kernel, parent.id, main, { kind: "continuation", from: "wake" });
+    const run = await startRun(kernel, child.id, main, { kind: "continuation", from: "wake" });
     const call: CallId = asId("mixed");
     const targets: readonly WaitTarget[] = [
       { kind: "job", job: job.id },

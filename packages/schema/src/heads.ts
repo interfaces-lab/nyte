@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { ConfigurationPatchType, ConfigurationType } from "./configuration.ts";
+import { ConfigurationType } from "./configuration.ts";
 import { ValidationIssueType } from "./errors.ts";
 import { idSchema } from "./ids.ts";
 import { withJson } from "./json.ts";
@@ -123,7 +123,6 @@ export const SendOptionsType = Type.Object({
     ]),
   ),
   source: Type.Optional(MessageSourceType),
-  configuration: Type.Optional(Type.Union([ConfigurationType, ConfigurationPatchType])),
   id: Type.Optional(idSchema<"receipt">()),
 });
 

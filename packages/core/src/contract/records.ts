@@ -11,6 +11,7 @@ import {
   isJsonObject,
   JsonObjectType,
   JsonType,
+  ModelRefType,
   MoveOutcomeType,
   PartStatusType,
   PlacementType,
@@ -133,6 +134,7 @@ const PartRecordType = record({
   owner: nullable(Type.String()),
   run: nullable(idSchema<"run">()),
   status: typed<PartStatus>()(PartStatusType),
+  model: Type.Optional(ModelRefType),
   definition: Type.Optional(
     record({
       state: JsonObjectType,

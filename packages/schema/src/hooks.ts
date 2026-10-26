@@ -1,5 +1,4 @@
 import { Type } from "typebox";
-import { ConfigurationPatchType, ConfigurationType } from "./configuration.ts";
 import { idSchema } from "./ids.ts";
 import { JsonType, withJson } from "./json.ts";
 import { DeliveryType, MessageSourceType, UserContentType } from "./messages.ts";
@@ -17,7 +16,6 @@ export const SubmissionType = Type.Object({
   content: UserContentType,
   source: MessageSourceType,
   delivery: DeliveryType,
-  configuration: nullable(Type.Union([ConfigurationType, ConfigurationPatchType])),
   replace: nullable(idSchema<"message">()),
 });
 

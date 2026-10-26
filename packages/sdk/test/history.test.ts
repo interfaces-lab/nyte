@@ -200,15 +200,6 @@ it("refreshes a retained leading prompt from the host's newer record of the same
   const main: HeadName = asId("main");
   const side: HeadName = asId("side");
 
-  const configuration = {
-    kind: "exact",
-    model: { provider: "test", id: "model" },
-    thinking: "off",
-    agent: null,
-    settings: {},
-    settingsVersion: "1",
-  } as const;
-
   const user = (head: HeadName, message: string): DurableEvent => ({
     head,
     kind: "commit",
@@ -304,7 +295,6 @@ it("refreshes a retained leading prompt from the host's newer record of the same
         head: main,
         startedAt: 0,
         attempt: 1,
-        configuration,
         origin: { kind: "input", message: asId("p") },
       },
     },

@@ -3,7 +3,7 @@ import type { Json, PartId, ToolOutcome } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { executeCall } from "../src/agent/tool-runner.ts";
 import { LOCAL } from "../src/index.ts";
-import { completed, configuration, main, startRun, until } from "../src/harness.ts";
+import { completed, main, startRun, until } from "../src/harness.ts";
 import { caller, ok, echo, approve, approvals, loaded, readCall } from "./plugin-support.ts";
 
 afterEach(() => {
@@ -177,15 +177,8 @@ describe("hooks", () => {
       },
     ]);
 
-    const run = (
-      await startRun(
-        kernel,
-        session.id,
-        main,
-        { kind: "continuation", from: "wake" },
-        configuration,
-      )
-    ).id;
+    const run = (await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" }))
+      .id;
 
     const call = () =>
       executeCall(kernel, {
@@ -332,15 +325,8 @@ describe("hooks", () => {
       },
     ]);
 
-    const run = (
-      await startRun(
-        kernel,
-        session.id,
-        main,
-        { kind: "continuation", from: "wake" },
-        configuration,
-      )
-    ).id;
+    const run = (await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" }))
+      .id;
 
     const call = (id: string, args: Json) =>
       executeCall(kernel, {

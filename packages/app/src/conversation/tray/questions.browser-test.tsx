@@ -1,6 +1,6 @@
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { RunView, SessionView } from "@nyte-ai/sdk";
+import type { Configuration, SessionView } from "@nyte-ai/sdk";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useLayoutEffect } from "react";
 import type { ReactElement } from "react";
@@ -51,7 +51,7 @@ const UNREACHABLE = "The host is unreachable.";
 
 const ANSWER = "Only if it's open.";
 
-const CONFIGURATION: RunView["configuration"] = {
+const CONFIGURATION: Configuration = {
   kind: "exact",
   model: { provider: "test", id: "test" },
   thinking: "off",

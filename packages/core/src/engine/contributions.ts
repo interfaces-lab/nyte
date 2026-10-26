@@ -1,6 +1,7 @@
 import { SdkError } from "@nyte-ai/schema";
-import type { ConfigureOutcome } from "@nyte-ai/schema";
+import type { Configuration, ConfigureOutcome, HeadName, SessionId } from "@nyte-ai/schema";
 import type { Contributions, Kernel, PluginRuntime } from "../contract/kernel.ts";
+import { requireSession } from "../store/session.ts";
 
 export type Refusal = Exclude<ConfigureOutcome, { readonly kind: "configured" }>;
 
@@ -21,6 +22,29 @@ export function refusalError(refusal: Refusal): SdkError {
         { issues: refusal.issues },
       );
   }
+}
+
+export async function resolveHeadConfiguration(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+): Promise<Configuration> {
+  const found = await requireSession(kernel.store, session);
+  const entry = found.record.heads.find((current) => current.name === head);
+
+  if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
+
+  const result = await kernel.resolveConfiguration({
+    session,
+    head,
+    selected: entry.selected,
+    patch: null,
+    contributions: collectContributions(kernel.plugins.runtime(session)),
+  });
+
+  if (result.kind === "exact") return result;
+
+  throw refusalError(result);
 }
 
 export function collectContributions(runtime: PluginRuntime): Contributions {

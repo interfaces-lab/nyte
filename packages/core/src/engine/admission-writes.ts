@@ -1,5 +1,4 @@
 import type {
-  Configuration,
   Delivery,
   HeadName,
   MessageId,
@@ -26,7 +25,6 @@ export interface MessageRecord {
   readonly delivery: Delivery;
   readonly schedule: Schedule;
   readonly covered: boolean;
-  readonly configuration: Configuration;
   readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null;
   readonly position: number;
 }
@@ -80,7 +78,6 @@ export async function admitted(
         delivery: message.delivery,
         schedule: message.schedule,
         covered: message.covered,
-        configuration: message.configuration,
         replaced: message.replaced,
         requires: [...(kernel.presence?.member.capabilities ?? [])],
       },

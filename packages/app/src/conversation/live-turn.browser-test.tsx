@@ -2,7 +2,14 @@ import "../../test/window-bridge.ts";
 import { Activity } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import type { Message, PartStatus, RunView, SessionId, SessionView } from "@nyte-ai/sdk";
+import type {
+  Configuration,
+  Message,
+  PartStatus,
+  RunView,
+  SessionId,
+  SessionView,
+} from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
@@ -33,19 +40,20 @@ async function until(done: () => boolean, deadline: number) {
   while (!done() && performance.now() < deadline) await wait(50);
 }
 
+const CONFIGURATION: Configuration = {
+  kind: "exact",
+  model: { provider: "test", id: "test" },
+  thinking: "off",
+  agent: null,
+  settings: {},
+  settingsVersion: "1",
+};
+
 const RUN: RunView = {
   id: asId<"run">("live-turn-run"),
   head: asId<"head">("main"),
   startedAt: 0,
   attempt: 1,
-  configuration: {
-    kind: "exact",
-    model: { provider: "test", id: "test" },
-    thinking: "off",
-    agent: null,
-    settings: {},
-    settingsVersion: "1",
-  },
   origin: { kind: "input", message: asId<"message">("prompt") },
 };
 
@@ -66,7 +74,7 @@ function view(messages: readonly Message[]): SessionView {
     execution: { kind: "live", run: RUN, phase: "responding", stopping: false },
     reportsHeld: false,
     background: [],
-    configuration: { selected: RUN.configuration, effective: RUN.configuration },
+    configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
     context: { tokens: 0, window: 1_000, lastRequest: null },
     heads: [],
     changes: [],

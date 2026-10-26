@@ -252,6 +252,7 @@ describe("the store is the truth", () => {
         at: 0,
         head: main,
         kind: "request",
+        model: null,
         usage,
         context: { tokens, window: 1000, lastRequest: null },
         step: "assistant",

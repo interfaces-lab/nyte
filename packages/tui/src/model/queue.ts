@@ -91,8 +91,6 @@ function nextTurnLabel(reason: Extract<Place, { kind: "next-turn" }>["reason"]):
       return "next";
     case "run-ended":
       return "after this run";
-    case "configuration":
-      return "next turn · new model";
     default: {
       const _exhaustive: never = reason;
 

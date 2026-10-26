@@ -7,6 +7,7 @@ import type { CSSProperties, ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type {
+  Configuration,
   Delivery,
   Execution,
   HeldMessage,
@@ -39,19 +40,20 @@ import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../test/view-fixture
 import { Composer } from "./composer.tsx";
 import { conversationMessages } from "./transcript-rows.ts";
 
+const configuration: Configuration = {
+  kind: "exact",
+  model: { provider: "test", id: "test" },
+  thinking: "off",
+  agent: null,
+  settings: {},
+  settingsVersion: "1",
+};
+
 const liveRun: RunView = {
   id: asId<"run">("run"),
   head: asId<"head">("main"),
   startedAt: 0,
   attempt: 1,
-  configuration: {
-    kind: "exact",
-    model: { provider: "test", id: "test" },
-    thinking: "off",
-    agent: null,
-    settings: {},
-    settingsVersion: "1",
-  },
   origin: { kind: "input", message: asId<"message">("prompt") },
 };
 
@@ -123,7 +125,7 @@ function view(
     execution,
     reportsHeld: false,
     background: [],
-    configuration: { selected: liveRun.configuration, effective: liveRun.configuration },
+    configuration: { selected: configuration, effective: configuration },
     context: { tokens: 0, window: 1_000, lastRequest: null },
     heads: [],
     changes: [],

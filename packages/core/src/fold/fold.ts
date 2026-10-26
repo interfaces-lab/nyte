@@ -437,7 +437,6 @@ function admit(
     delivery: event.delivery,
     schedule: event.schedule,
     covered: event.covered,
-    configuration: event.configuration,
     replaced: event.replaced,
     requires: event.requires ?? null,
     landed: null,
@@ -703,6 +702,7 @@ function create(
     owner: event.owner,
     run,
     status,
+    model: event.model,
   };
 
   const role = transcriptRole(event.placement);

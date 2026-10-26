@@ -3,7 +3,7 @@ import "../../test/window-bridge.ts";
 import { Block } from "streamdown";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { showsText } from "@nyte-ai/plugin/client/presentation";
-import type { Message, RunView, SessionId, SessionView } from "@nyte-ai/sdk";
+import type { Configuration, Message, RunView, SessionId, SessionView } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
@@ -17,7 +17,7 @@ import { scriptedConnection, viewStream } from "../../test/scripted-connection.t
 import type { ViewStream } from "../../test/scripted-connection.ts";
 import { USAGE } from "../../test/view-fixtures.ts";
 import { installConnection, sessionWatch, showTranscript, useWatchSelect } from "../sdk.tsx";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { renderCount, resetRenders } from "./transcript-render-counter.ts";
 import { Prose } from "./prose.tsx";
 
@@ -47,19 +47,20 @@ const FADES = "[data-sd-animate]";
 
 type Draw = (markdown: string, streaming: boolean, mode?: "visible" | "hidden") => Promise<void>;
 
+const configuration: Configuration = {
+  kind: "exact",
+  model: { provider: "test", id: "test" },
+  thinking: "off",
+  agent: null,
+  settings: {},
+  settingsVersion: "1",
+};
+
 const liveRun: RunView = {
   id: asId<"run">("run"),
   head: asId<"head">("main"),
   startedAt: 0,
   attempt: 1,
-  configuration: {
-    kind: "exact",
-    model: { provider: "test", id: "test" },
-    thinking: "off",
-    agent: null,
-    settings: {},
-    settingsVersion: "1",
-  },
   origin: { kind: "input", message: asId<"message">("prompt") },
 };
 
@@ -75,7 +76,7 @@ const base = {
   execution: { kind: "live", run: liveRun, phase: "responding", stopping: false },
   reportsHeld: false,
   background: [],
-  configuration: { selected: liveRun.configuration, effective: liveRun.configuration },
+  configuration: { selected: configuration, effective: configuration },
   context: { tokens: 0, window: 1_000, lastRequest: null },
   heads: [],
   changes: [],

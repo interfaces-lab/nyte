@@ -26,15 +26,7 @@ import type { Plugin, StoreConnection } from "../src/index.ts";
 import type { PartRecord } from "../src/store.ts";
 import { kernelOver, world } from "./fake-env.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import {
-  completed,
-  configuration,
-  livePart,
-  main,
-  setup,
-  startRun,
-  until,
-} from "../src/harness.ts";
+import { completed, livePart, main, setup, startRun, until } from "../src/harness.ts";
 
 function park(
   kernel: Kernel,
@@ -139,13 +131,7 @@ describe("liveness across instances (D2)", () => {
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
     const { session } = await a.host.sessions.start({ content: "Hi." });
-    const run = await startRun(
-      a.kernel,
-      session.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const run = await startRun(a.kernel, session.id, main, { kind: "continuation", from: "wake" });
     const part = asId<"part">(`${run.id}:1:0`);
     await livePart(a.kernel, session.id, run.id, part, "Partial.");
     const hold = a.kernel.folds.acquire(session.id, asId("local"));
@@ -182,13 +168,7 @@ describe("liveness across instances (D2)", () => {
     const wrapped = interrupting(memory);
     const { kernel, host } = await setup({ store: wrapped.store });
     const { session } = await host.sessions.start({ content: "Hi." });
-    const run = await startRun(
-      kernel,
-      session.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const run = await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" });
     const woken: HeadName[] = [];
     kernel.wakes.subscribe((_session, head) => woken.push(head));
 
@@ -223,13 +203,7 @@ describe("liveness across instances (D2)", () => {
 
     const { session: parent } = await p.host.sessions.start({ content: "Hi." });
     const { session: child } = await p.host.sessions.start({ parent: parent.id, content: "Hi." });
-    const run = await startRun(
-      p.kernel,
-      child.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const run = await startRun(p.kernel, child.id, main, { kind: "continuation", from: "wake" });
     const call: CallId = asId("task");
 
     expect(
@@ -256,20 +230,8 @@ describe("liveness across instances (D2)", () => {
     const p = await setup({ store, execution: { kind: "admit-only" } });
     const { session: parent } = await p.host.sessions.start({ content: "Hi." });
     const { session: child } = await p.host.sessions.start({ parent: parent.id, content: "Hi." });
-    const own = await startRun(
-      p.kernel,
-      parent.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
-    const run = await startRun(
-      p.kernel,
-      child.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const own = await startRun(p.kernel, parent.id, main, { kind: "continuation", from: "wake" });
+    const run = await startRun(p.kernel, child.id, main, { kind: "continuation", from: "wake" });
     const call: CallId = asId("task");
 
     expect(
@@ -318,7 +280,7 @@ describe("liveness across instances (D2)", () => {
     });
 
     const { session } = await host.sessions.start({ content: "Hi." });
-    await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" }, configuration);
+    await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" });
     dispatched.splice(0);
     await session.send("Are you there?");
     await until(() => (dispatched.length > 0 ? true : undefined));
@@ -428,13 +390,7 @@ describe("liveness across instances (D2)", () => {
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
     const { session } = await b.host.sessions.start({ content: "Hi." });
-    const run = await startRun(
-      b.kernel,
-      session.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const run = await startRun(b.kernel, session.id, main, { kind: "continuation", from: "wake" });
 
     expect(await stopRun(a.kernel, session.id, run.id)).toEqual({ kind: "requested" });
     expect(a.kernel.runs.signal(run.id)).toBeNull();
@@ -498,20 +454,8 @@ describe("liveness across instances (D2)", () => {
     const job = await host
       .workspace(workspace)
       .jobs.start({ command: "sleep 600", session: parent.id });
-    const own = await startRun(
-      kernel,
-      parent.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
-    const run = await startRun(
-      kernel,
-      child.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const own = await startRun(kernel, parent.id, main, { kind: "continuation", from: "wake" });
+    const run = await startRun(kernel, child.id, main, { kind: "continuation", from: "wake" });
     const call: CallId = asId("mixed");
 
     const target = {
@@ -581,13 +525,10 @@ describe("liveness across instances (D2)", () => {
     const next = await session.send("Next.");
     await landing(b.kernel, session.id, main, [next.message], null);
     const target = (await session.tree()).tip;
-    const moved = await startRun(
-      b.kernel,
-      session.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const moved = await startRun(b.kernel, session.id, main, {
+      kind: "continuation",
+      from: "wake",
+    });
     const receipt = await move(a.kernel, session.id, main, target, { running: "stop" });
 
     expect(await receipt.settled()).toMatchObject({ kind: "moved" });
@@ -596,13 +537,10 @@ describe("liveness across instances (D2)", () => {
 
     const again = await session.send("Two.");
     await landing(b.kernel, session.id, main, [again.message], null);
-    const edited = await startRun(
-      b.kernel,
-      session.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const edited = await startRun(b.kernel, session.id, main, {
+      kind: "continuation",
+      from: "wake",
+    });
     await a.host.session(session.id).send("Edit.", { replace: again.message });
     await endRun(b.kernel, session.id, edited.id, { kind: "stopped" });
 

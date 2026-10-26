@@ -204,12 +204,8 @@ const outcome = await session.configure({
 ```
 
 `configure` takes a patch of what to change. It returns `unknown-model`, `unknown-agent` or
-`invalid` instead of throwing when the patch doesn't fit the catalog. To pin a configuration on one
-message, pass it to `send`:
-
-```ts
-await session.send("Explain the fix in one paragraph", { configuration: { thinking: "low" } });
-```
+`invalid` instead of throwing when the patch doesn't fit the catalog. The change applies from the
+next model request, including the next request of a run already going.
 
 `thinking` is one of `off`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`. `agent` selects
 an agent a plugin declared.

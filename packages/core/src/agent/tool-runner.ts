@@ -6,6 +6,7 @@ import {
   idSchema,
   isJson,
   JsonType,
+  ModelRefType,
   ToolOutcomeType,
   withJson,
 } from "@nyte-ai/schema";
@@ -19,6 +20,7 @@ import type {
   HeadName,
   Infer,
   Json,
+  ModelRef,
   Placement,
   RefUpdate,
   RunId,
@@ -76,6 +78,7 @@ const ToolInputType = Type.Object({
   ...ToolCallerType.properties,
   name: Type.String(),
   args: JsonType,
+  model: Type.Optional(ModelRefType),
 });
 
 type ToolInput = Static<typeof ToolInputType>;
@@ -126,6 +129,7 @@ interface Where {
   readonly released?: AbortSignal;
   readonly argumentsError?: string;
   readonly covered?: boolean;
+  readonly model?: ModelRef;
 }
 
 interface LiveCall {
@@ -473,6 +477,7 @@ async function partOpening(
     owner: null,
     run,
     status: { kind: "live", run },
+    model: where.model,
   };
 
   return [
@@ -492,6 +497,7 @@ async function partOpening(
           version: 1,
           run,
           owner: null,
+          model: where.model,
         },
         {
           head,

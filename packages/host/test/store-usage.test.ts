@@ -113,7 +113,6 @@ test("reads charged requests once, with workspace and session metadata, not run 
           head,
           startedAt: at,
           attempt: 0,
-          configuration,
           origin: { kind: "continuation", from: "wake" },
         },
       },
@@ -122,6 +121,7 @@ test("reads charged requests once, with workspace and session metadata, not run 
           ({
             head,
             kind: "request",
+            model: configuration.model,
             step,
             usage,
             context: { tokens: 20, window: 1000, lastRequest: usage },
@@ -225,7 +225,6 @@ test("a migrated store answers the usage read from the log kind index, not a log
       .map((row) => String(row.detail));
 
     expect(plan.filter((detail) => detail.includes("log"))).toEqual([
-      "SEARCH log USING INDEX log_kind (<expr>=?)",
       "SEARCH log USING INDEX log_kind (<expr>=?)",
     ]);
   } finally {

@@ -19,7 +19,7 @@ import type {
 } from "../src/index.ts";
 import { readInbox } from "../src/store/session.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
-import { configuration, main, setup, startRun, until, usage } from "../src/harness.ts";
+import { main, setup, startRun, until, usage } from "../src/harness.ts";
 import { toolPlugin } from "./tool-support.ts";
 
 const caller: ConnectionContext = {
@@ -58,13 +58,7 @@ describe("ADV A-3", () => {
     const b = await setup({ store, execution: { kind: "admit-only" } });
     const { session } = await a.host.sessions.start({ content: "Hi." });
 
-    const run = await startRun(
-      a.kernel,
-      session.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const run = await startRun(a.kernel, session.id, main, { kind: "continuation", from: "wake" });
 
     expect((await stopRun(b.kernel, session.id, run.id)).kind).toBe("requested");
 

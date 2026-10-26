@@ -6,6 +6,7 @@ import type {
   Failure,
   HeadName,
   Json,
+  ModelRef,
   Placement,
   RefUpdate,
   RunEnd,
@@ -30,6 +31,7 @@ import { decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord, RunRecord } from "../contract/records.ts";
 import { progressMark } from "../drive/interruptions.ts";
 import { unpaused } from "../drive/pause.ts";
+import { resolveHeadConfiguration } from "../engine/contributions.ts";
 import { intendedCall } from "../engine/durable.ts";
 import { stopRequested } from "../engine/fence.ts";
 import { awaitMcpServers } from "../env/mcp.ts";
@@ -70,6 +72,7 @@ interface AttemptState {
 
   readonly starts: Map<number, number>;
   merging: OpenPart | null;
+  model?: ModelRef;
 }
 
 interface Turn {
@@ -153,7 +156,6 @@ async function turn(
 ): Promise<RunEnd | { readonly kind: "parked" }> {
   const { kernel, models, session, head, signal } = context;
   const run = given.id;
-  const configuration = given.configuration;
   let state = await resumed(context, given);
   await boundary();
   let charged = { total: ZERO_USAGE, requests: 0 };
@@ -176,6 +178,7 @@ async function turn(
       try {
         await runtime.ready;
         await awaitMcpServers(kernel, runtime, session, signal);
+        const configuration = await resolveHeadConfiguration(kernel, session, head);
         const configured = modelInfo(models, configuration.model, runtime);
 
         if (configured === null)
@@ -268,6 +271,7 @@ async function turn(
       );
 
       const thinkingLevel = prepared.request.thinking;
+      state.model = prepared.info.ref;
 
       const streamed = startSpan("model.stream", followedTrace(session), {
         session,
@@ -311,6 +315,7 @@ async function turn(
             name: call.name,
             args: isJson(call.arguments) ? call.arguments : {},
             argumentsError: call.argumentsError,
+            model: state.model,
             context: CALLER,
             signal: called,
           }),
@@ -336,6 +341,7 @@ async function turn(
                   name: call.name,
                   args: isJson(call.arguments) ? call.arguments : {},
                   principal: CALLER.principal,
+                  model: prepared.info.ref,
                   position,
                   ...(call.argumentsError !== undefined && { argumentsError: call.argumentsError }),
                 };
@@ -621,6 +627,7 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
     owner: null,
     run,
     status: { kind: "live", run },
+    model: state.model,
   };
 
   const live = await commit(
@@ -642,6 +649,7 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
             version: 1,
             run,
             owner: null,
+            model: state.model,
           },
         ],
       },

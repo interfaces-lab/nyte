@@ -7,7 +7,14 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import type { FilesApi, Message, ModelCatalogView, RunView, SessionView } from "@nyte-ai/sdk";
+import type {
+  Configuration,
+  FilesApi,
+  Message,
+  ModelCatalogView,
+  RunView,
+  SessionView,
+} from "@nyte-ai/sdk";
 import { SdkError } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
@@ -71,19 +78,20 @@ interface Chat {
 }
 
 function chat(name: Name): Chat {
+  const configuration: Configuration = {
+    kind: "exact",
+    model: { provider: "test", id: "test" },
+    thinking: "off",
+    agent: null,
+    settings: {},
+    settingsVersion: "1",
+  };
+
   const run: RunView = {
     id: asId<"run">(`${name}-run`),
     head: asId<"head">("main"),
     startedAt: 0,
     attempt: 1,
-    configuration: {
-      kind: "exact",
-      model: { provider: "test", id: "test" },
-      thinking: "off",
-      agent: null,
-      settings: {},
-      settingsVersion: "1",
-    },
     origin: { kind: "input", message: asId<"message">(`${name}-prompt-${String(TURNS)}`) },
   };
 
@@ -155,7 +163,7 @@ function chat(name: Name): Chat {
     execution: { kind: "live", run, phase: "responding", stopping: false },
     reportsHeld: false,
     background: [],
-    configuration: { selected: run.configuration, effective: run.configuration },
+    configuration: { selected: configuration, effective: configuration },
     context: { tokens: 0, window: 1_000, lastRequest: null },
     heads: [],
     changes: [],

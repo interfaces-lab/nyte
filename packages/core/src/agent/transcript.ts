@@ -360,17 +360,15 @@ function readSteps(
 
       if (record === undefined) return [];
       const body = record.body;
+      const part = body.kind === "user" ? null : (state.parts.get(body.part) ?? null);
 
       return [
         {
           commit,
           record,
-          part: body.kind === "user" ? null : (state.parts.get(body.part) ?? null),
+          part,
           created: body.kind === "user" ? -1 : (created.get(body.part) ?? -1),
-          model:
-            record.run === null
-              ? null
-              : (state.runs.get(record.run)?.view.configuration.model ?? null),
+          model: part?.model ?? null,
         },
       ];
     });

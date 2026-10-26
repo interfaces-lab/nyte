@@ -23,7 +23,7 @@ import type { ActionContext, ActionOutput, Durable, ToolDefinition } from "../sr
 import type { CallRecord } from "../src/store.ts";
 import { commit } from "../src/fold/commit.ts";
 import { put } from "../src/store/session.ts";
-import { configuration, main, setup, startRun, until } from "../src/harness.ts";
+import { main, setup, startRun, until } from "../src/harness.ts";
 import { toolPlugin } from "./tool-support.ts";
 
 /** The earliest time a wait on the main head is due, read from its parked calls. */
@@ -235,13 +235,7 @@ function restart(kernel: Kernel): Kernel {
 }
 
 async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId> {
-  const run = await startRun(
-    kernel,
-    session,
-    main,
-    { kind: "continuation", from: "wake" },
-    configuration,
-  );
+  const run = await startRun(kernel, session, main, { kind: "continuation", from: "wake" });
 
   kernel.runs.end(run.id);
 
@@ -437,13 +431,10 @@ describe("waits as store facts", () => {
     const { kernel, host } = await setup();
     const { session } = await host.sessions.start({ content: "Hi." });
 
-    const { id: run } = await startRun(
-      kernel,
-      session.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const { id: run } = await startRun(kernel, session.id, main, {
+      kind: "continuation",
+      from: "wake",
+    });
 
     const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
     const record = await partRecord(kernel, session.id, part.id);

@@ -1,6 +1,5 @@
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
-import { ConfigurationType } from "./configuration.ts";
 import { FailureType } from "./errors.ts";
 import { idSchema } from "./ids.ts";
 import { JobEndType } from "./jobs.ts";
@@ -15,7 +14,6 @@ export const RunViewType = Type.Object({
   head: idSchema<"head">(),
   startedAt: Type.Number(),
   attempt: Type.Number(),
-  configuration: ConfigurationType,
   origin: Type.Union([
     Type.Object({ kind: Type.Literal("input"), message: idSchema<"message">() }),
     Type.Object({ kind: Type.Literal("continuation"), from: Type.Enum(["child", "job", "wake"]) }),

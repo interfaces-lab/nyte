@@ -5,7 +5,14 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import type { Message, ModelCatalogView, RunView, SessionView, TurnInfo } from "@nyte-ai/sdk";
+import type {
+  Configuration,
+  Message,
+  ModelCatalogView,
+  RunView,
+  SessionView,
+  TurnInfo,
+} from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import type { HostState } from "../nyte.ts";
@@ -30,19 +37,20 @@ const TURNS = 500;
 
 const DELTAS = 500;
 
+const configuration: Configuration = {
+  kind: "exact",
+  model: { provider: "test", id: "test" },
+  thinking: "off",
+  agent: null,
+  settings: {},
+  settingsVersion: "1",
+};
+
 const liveRun: RunView = {
   id: asId<"run">("live-run"),
   head: asId<"head">("main"),
   startedAt: 0,
   attempt: 1,
-  configuration: {
-    kind: "exact",
-    model: { provider: "test", id: "test" },
-    thinking: "off",
-    agent: null,
-    settings: {},
-    settingsVersion: "1",
-  },
   origin: { kind: "input", message: asId<"message">(`prompt-${String(TURNS)}`) },
 };
 
@@ -122,7 +130,7 @@ const unchanged = {
   execution: { kind: "live", run: liveRun, phase: "responding", stopping: false },
   reportsHeld: false,
   background: [],
-  configuration: { selected: liveRun.configuration, effective: liveRun.configuration },
+  configuration: { selected: configuration, effective: configuration },
   context: { tokens: 0, window: 1_000, lastRequest: null },
   heads: [],
   changes: [],

@@ -94,7 +94,7 @@ export type MessageSource = Decoded<typeof MessageSourceType>;
 
 const NextTurnScheduleType = Type.Object({
   kind: Type.Literal("next-turn"),
-  reason: Type.Enum(["requested", "idle", "run-ended", "configuration"]),
+  reason: Type.Enum(["requested", "idle", "run-ended"]),
 });
 
 const AttachedScheduleType = Type.Object({ kind: Type.Literal("attached") });

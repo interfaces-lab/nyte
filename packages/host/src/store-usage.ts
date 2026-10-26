@@ -6,7 +6,7 @@ import {
   decodeWorkspaceRecord,
   parseSessionRef,
 } from "@nyte-ai/core/store";
-import type { ModelRef, SessionId, Usage } from "@nyte-ai/schema";
+import type { SessionId, Usage } from "@nyte-ai/schema";
 import type {
   UsageEntry,
   UsageReport,
@@ -64,7 +64,7 @@ function add(totals: UsageTotals, usage: Usage): UsageTotals {
 }
 
 export const USAGE_EVENTS =
-  "SELECT session, seq, at, event FROM log WHERE json_extract(event, '$.kind') = 'request' OR (json_extract(event, '$.kind') = 'run' AND json_extract(event, '$.change') = 'started') ORDER BY session, seq";
+  "SELECT session, seq, at, event FROM log WHERE json_extract(event, '$.kind') = 'request' ORDER BY session, seq";
 
 export function localDay(at: number): string {
   const date = new Date(at);
@@ -263,8 +263,6 @@ export function readNyteUsage(home: string, window: UsageWindow): UsageReport {
       });
     }
 
-    const models = new Map<SessionId, Map<string | null, ModelRef>>();
-
     for (const row of database.prepare(USAGE_EVENTS).iterate()) {
       const session = parseSessionRef(`sessions/${parseText(row.session) ?? ""}`);
 
@@ -276,18 +274,8 @@ export function readNyteUsage(home: string, window: UsageWindow): UsageReport {
         parseText(row.event) ?? "",
       );
 
-      let heads = models.get(session);
-
-      if (heads === undefined) {
-        heads = new Map();
-        models.set(session, heads);
-      }
-
-      if (event.kind === "run" && event.change === "started")
-        heads.set(event.head, event.view.configuration.model);
-
       if (event.kind !== "request") continue;
-      const model = heads.get(event.head);
+      const model = event.model;
 
       const subject: UsageSubject =
         event.step === "compaction" || event.step === "summary"

@@ -46,7 +46,6 @@ import {
   readSession,
 } from "../store/session.ts";
 import type { Found } from "../store/session.ts";
-import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
@@ -211,7 +210,6 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
     session,
     head,
     due.origin,
-    due.input.configuration,
     due.input.requires ?? kernel.presence?.member.capabilities ?? [],
   );
 
@@ -684,6 +682,7 @@ async function resume(
         name: input.name,
         args: input.args,
         argumentsError: input.argumentsError,
+        model: input.model,
         runtime,
         context: {
           principal: input.principal,
@@ -814,16 +813,11 @@ async function boundary(
     inbox.messages.flatMap((id) => state.inputs.get(id) ?? []),
   );
 
-  const key = await objectId(run.configuration);
-  const due: LandedInput[] = [];
-
-  for (const input of inputs)
-    if (
-      input.delivery === "attach" ||
-      (input.schedule.kind === "joined" && input.schedule.run === run.id) ||
-      (input.delivery === "steer" && (await objectId(input.configuration)) === key)
-    )
-      due.push({ message: input.id, delivery: input.delivery, source: input.source });
+  const due = inputs.flatMap((input): readonly LandedInput[] =>
+    input.delivery === "attach" || input.delivery === "steer"
+      ? [{ message: input.id, delivery: input.delivery, source: input.source }]
+      : [],
+  );
 
   if (due.length === 0) return [];
 
@@ -868,17 +862,13 @@ async function dueInputs(
   const { hold } = inbox;
 
   if (hold?.message === start.input.id) return { kind: "held", until: hold.until };
-  const key = await objectId(start.input.configuration);
-  const ids: MessageId[] = [];
 
-  for (const input of inputs)
-    if (
-      input.id !== hold?.message &&
-      (input === start.input ||
-        input.delivery === "attach" ||
-        (input.delivery === "steer" && (await objectId(input.configuration)) === key))
-    )
-      ids.push(input.id);
+  const ids = inputs.flatMap((input) =>
+    input.id !== hold?.message &&
+    (input === start.input || input.delivery === "attach" || input.delivery === "steer")
+      ? [input.id]
+      : [],
+  );
 
   return { kind: "start", ...start, ids };
 }

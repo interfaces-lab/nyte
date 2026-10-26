@@ -1,6 +1,5 @@
 import { asId, isJsonObject, SdkError } from "@nyte-ai/schema";
 import type {
-  Configuration,
   HeadInfo,
   HeadName,
   PatchEvent,
@@ -46,12 +45,11 @@ export async function newRun(
   session: SessionId,
   head: HeadName,
   origin: RunView["origin"],
-  configuration: Configuration,
   requires: readonly string[] = [],
 ): Promise<{ readonly view: RunView; readonly updates: readonly RefUpdate[] }> {
   const id = asId<"run">(crypto.randomUUID());
   const startedAt = Date.now();
-  const view: RunView = { id, head, startedAt, attempt: 1, configuration, origin };
+  const view: RunView = { id, head, startedAt, attempt: 1, origin };
 
   const record: RunRecord = {
     view,

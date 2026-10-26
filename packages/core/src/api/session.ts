@@ -443,7 +443,6 @@ async function start(
         },
         ...(await admitDeciding(kernel, id, {
           content: input.content,
-          configuration: effective,
           covered: await coversRecord(kernel, record),
           at,
           digest,

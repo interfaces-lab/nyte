@@ -27,7 +27,6 @@ const everySchedule = buildView((v) =>
       { delivery: "queue" },
     )
     .pending("after the run", { schedule: { kind: "next-turn", reason: "run-ended" } })
-    .pending("on the new model", { schedule: { kind: "next-turn", reason: "configuration" } })
     .pending("ride along", { schedule: { kind: "attached" } })
     .pending("nobody runs this", {
       schedule: { kind: "next-turn", reason: "requested" },
@@ -57,7 +56,6 @@ describe("labels", () => {
     expect(findRow(frame, "asked for later")).toContain("queued");
     expect(findRow(frame, "when idle")).toContain("next");
     expect(findRow(frame, "after the run")).toContain("after this run");
-    expect(findRow(frame, "on the new model")).toContain("next turn · new model");
     expect(findRow(frame, "ride along")).toContain("attached");
     expect(findRow(frame, "nobody runs this")).toContain("waiting for a host");
     expect(findRow(frame, "on its way")).toContain("sending…");

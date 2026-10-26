@@ -127,7 +127,6 @@ export const runView: RunView = {
   head,
   startedAt: 1,
   attempt: 0,
-  configuration,
   origin: { kind: "input", message },
 };
 
@@ -300,7 +299,6 @@ export const sendOptions: SendOptions = {
   expect: revision,
   position: { kind: "before", message },
   source: { kind: "user" },
-  configuration,
   id: receipt,
 };
 
@@ -411,7 +409,6 @@ export const events = {
       delivery: "attach",
       schedule: { kind: "attached" },
       covered: true,
-      configuration,
       replaced: null,
     },
     {
@@ -529,7 +526,16 @@ export const events = {
     { seq: asSeq(26), at: 1, head, kind: "configured", selected: configuration, effective: null },
   ],
   request: [
-    { seq: asSeq(27), at: 1, head, kind: "request", usage, context: contextView, step: "plugin" },
+    {
+      seq: asSeq(27),
+      at: 1,
+      head,
+      kind: "request",
+      model: modelRef,
+      usage,
+      context: contextView,
+      step: "plugin",
+    },
   ],
   changes: [{ seq: asSeq(28), at: 1, head: null, kind: "changes", files: [fileChange] }],
   session: [{ seq: asSeq(29), at: 1, head: null, kind: "session", info: sessionInfo }],

@@ -178,7 +178,6 @@ export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionVie
     head: asId("main"),
     startedAt: turns.find((turn) => turn.run === run)?.startedAt ?? clock,
     attempt: 0,
-    configuration: CONFIGURATION,
     origin: { kind: "continuation", from: "wake" },
   });
 

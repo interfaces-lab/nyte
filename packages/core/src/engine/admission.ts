@@ -1,8 +1,6 @@
 import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   CommitId,
-  Configuration,
-  ConfigurationPatch,
   Decision,
   HeadName,
   MessageId,
@@ -52,7 +50,7 @@ import { dev } from "../util/dev-log.ts";
 import { admitted, buildMessage, pendingReceipt } from "./admission-writes.ts";
 import type { MessageRecord } from "./admission-writes.ts";
 import { holdSummary, summarizedMove } from "./branch-summary.ts";
-import { collectContributions, refusalError } from "./contributions.ts";
+import { resolveHeadConfiguration } from "./contributions.ts";
 import { fence, finishFence } from "./fence.ts";
 import { freezeMentions } from "./mentions.ts";
 import { known, reserve, sendReceipt, settleReceipt } from "./receipts.ts";
@@ -90,7 +88,6 @@ type ReviseInput = {
 interface Gated {
   readonly previous: FoldInput | undefined;
   readonly submission: Submission;
-  readonly configured: () => Promise<Configuration>;
 }
 
 const USER: MessageSource = { kind: "user" };
@@ -353,7 +350,6 @@ async function admit(sending: Sending): Promise<SendReceipt> {
     content: sending.content,
     source: options.source ?? USER,
     delivery: options.delivery ?? "steer",
-    configuration: options.configuration ?? null,
     replace: null,
   });
 
@@ -363,15 +359,14 @@ async function admit(sending: Sending): Promise<SendReceipt> {
     const [inbox, run, configuration] = await Promise.all([
       readInbox(kernel.store, session, head),
       liveRun(kernel.store, session, head),
-      resolve(sending, submission.configuration),
+      resolveHeadConfiguration(kernel, session, head),
     ]);
 
-    const landing = landed(kernel, submission, run?.record ?? null);
+    const landing = landed(kernel, submission, run?.record ?? null, configuration.model);
 
     const message = buildMessage(asId<"message">(id), landing, {
-      schedule: await chooseSendSchedule(landing.delivery, configuration, run?.record ?? null),
+      schedule: chooseSendSchedule(landing.delivery, run?.record ?? null),
       covered,
-      configuration,
       replaced: null,
       position: inbox.messages.length,
     });
@@ -402,30 +397,22 @@ async function gateRevision(sending: Sending, target: MessageId) {
     content: sending.content,
     source: options.source ?? previous?.source ?? USER,
     delivery: options.delivery ?? previous?.delivery ?? "steer",
-    configuration: options.configuration ?? null,
     replace: target,
   });
 
-  return {
-    previous,
-    submission,
-    configured: async () =>
-      submission.configuration === null && previous !== undefined
-        ? previous.configuration
-        : resolve(sending, submission.configuration),
-  };
+  return { previous, submission };
 }
 
 async function revise(sending: Sending, target: MessageId, gated: Gated, keyed: Keyed | null) {
   const { kernel, session, head, options } = sending;
-  const { previous, submission, configured } = gated;
+  const { previous, submission } = gated;
   const covered = await coveredHere(kernel, session);
 
   return attempt(`Revising ${target}`, async () => {
     const [inbox, run, configuration] = await Promise.all([
       readInbox(kernel.store, session, head),
       liveRun(kernel.store, session, head),
-      configured(),
+      resolveHeadConfiguration(kernel, session, head),
     ]);
 
     const current = inbox.messages.findIndex((message) => message === target);
@@ -434,12 +421,11 @@ async function revise(sending: Sending, target: MessageId, gated: Gated, keyed: 
     const rest = inbox.messages.filter((message) => message !== target);
     const position = findInsertionIndex(options.position, rest, current);
 
-    const landing = landed(kernel, submission, run?.record ?? null);
+    const landing = landed(kernel, submission, run?.record ?? null, configuration.model);
 
     const message = buildMessage(target, landing, {
-      schedule: await chooseSendSchedule(landing.delivery, configuration, run?.record ?? null),
+      schedule: chooseSendSchedule(landing.delivery, run?.record ?? null),
       covered,
-      configuration,
       replaced: previous?.replaced ?? null,
       position,
     });
@@ -497,48 +483,37 @@ async function revise(sending: Sending, target: MessageId, gated: Gated, keyed: 
 }
 
 async function edit(sending: Sending, target: MessageId, keyed: Keyed): Promise<SendReceipt> {
-  const { kernel, session, options } = sending;
+  const { options } = sending;
   const { id, digest } = keyed;
-  const previous = await withFold(kernel, session, (state) => state.inputs.get(target));
 
   const submission = await gate(sending, asId<"message">(id), {
     content: sending.content,
     source: options.source ?? USER,
     delivery: options.delivery ?? "steer",
-    configuration: options.configuration ?? previous?.configuration ?? null,
     replace: target,
   });
 
-  return editGated(sending, target, {
-    id,
-    digest,
-    submission,
-    configured: () => resolve(sending, submission.configuration),
-  });
+  return editGated(sending, target, { id, digest, submission });
 }
 
 async function editGated(
   sending: Sending,
   target: MessageId,
-  gated: Keyed & {
-    readonly submission: Submission;
-    readonly configured: () => Promise<Configuration>;
-  },
+  gated: Keyed & { readonly submission: Submission },
 ): Promise<SendReceipt> {
   const { kernel, session, head, options } = sending;
-  const { id, digest, submission, configured } = gated;
+  const { id, digest, submission } = gated;
   const covered = await coveredHere(kernel, session);
   const abandoned = options.abandoned;
   const running = options.running ?? "stop";
 
-  const message = async (stopped: RunId | null, position: number): Promise<MessageRecord> =>
+  const message = (stopped: RunId | null, position: number): MessageRecord =>
     buildMessage(asId<"message">(id), submission, {
       schedule:
         submission.delivery === "attach"
           ? { kind: "attached" }
           : { kind: "next-turn", reason: "idle" },
       covered,
-      configuration: await configured(),
       replaced: { previous: target, stopped },
       position,
     });
@@ -574,7 +549,7 @@ async function editGated(
       };
     const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);
     const stopped = fenced === null || fenced.kind === "ended" ? null : checked.run;
-    const record = await message(stopped, checked.inbox.messages.length);
+    const record = message(stopped, checked.inbox.messages.length);
 
     const outcome = await commit(kernel, [
       ...(fenced?.kind === "live" ? fenced.updates : []),
@@ -638,7 +613,7 @@ async function editGated(
         instructions: edited.instructions,
         running,
         updates: async ({ inbox, receipt, stopped }) => {
-          const record = await message(stopped, inbox.messages.length);
+          const record = message(stopped, inbox.messages.length);
 
           return [
             await admitted(kernel, session, head, inbox, [...inbox.messages, record.id], record),
@@ -686,7 +661,6 @@ export async function admitDeciding(
   session: SessionId,
   first: {
     readonly content: UserContent;
-    readonly configuration: Configuration;
     readonly covered: boolean;
     readonly at: number;
     readonly digest: string;
@@ -703,7 +677,6 @@ export async function admitDeciding(
     delivery: "steer",
     schedule: { kind: "deciding" },
     covered: first.covered,
-    configuration: first.configuration,
     replaced: null,
     position: 0,
   };
@@ -753,16 +726,14 @@ export async function readmitDeciding(
     content: input.content,
     source: input.source,
     delivery: input.delivery,
-    configuration: null,
     replace: null,
   });
 
   const covered = await coveredHere(kernel, session);
 
   return attempt(`Starting ${session}`, async () => {
-    const [inbox, configuration, deciding] = await Promise.all([
+    const [inbox, deciding] = await Promise.all([
       readInbox(kernel.store, session, MAIN),
-      resolve(sending, submission.configuration),
       withFold(
         kernel,
         session,
@@ -777,9 +748,8 @@ export async function readmitDeciding(
     if (!deciding) return input.id;
 
     const message = buildMessage(input.id, submission, {
-      schedule: await chooseSendSchedule(submission.delivery, configuration, null),
+      schedule: chooseSendSchedule(submission.delivery, null),
       covered,
-      configuration,
       replaced: null,
       position,
     });
@@ -931,25 +901,6 @@ function undecided(closing: AbortSignal): SdkError {
     : new SdkError("invalid", "The send was stopped before before_send decided.");
 }
 
-async function resolve(
-  sending: Sending,
-  patch: Configuration | ConfigurationPatch | null,
-): Promise<Configuration> {
-  const found = await requireSession(sending.kernel.store, sending.session);
-
-  const result = await sending.kernel.resolveConfiguration({
-    session: sending.session,
-    head: sending.head,
-    selected: found.record.heads.find((entry) => entry.name === sending.head)?.selected ?? null,
-    patch,
-    contributions: collectContributions(sending.kernel.plugins.runtime(sending.session)),
-  });
-
-  if (result.kind === "exact") return result;
-
-  throw refusalError(result);
-}
-
 function hashSendRequest(sending: Sending): Promise<string> {
   const { options } = sending;
 
@@ -963,7 +914,7 @@ function hashSendRequest(sending: Sending): Promise<string> {
     expect: options.expect ?? null,
     position: options.position ?? null,
     source: options.source ?? null,
-    configuration: options.configuration ?? null,
+    configuration: null,
   });
 }
 

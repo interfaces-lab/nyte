@@ -16,7 +16,6 @@ import type { Plugin, Store, StoreConnection } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import {
   completed,
-  configuration,
   label,
   livePart,
   main,
@@ -161,13 +160,7 @@ describe("the stop fence (ADV round 2)", () => {
       for (let index = 0; index < count; index += 1)
         await livePart(kernel, session.id, old, asId(`old:1:${index}`), "Old.");
 
-      const run = await startRun(
-        kernel,
-        session.id,
-        main,
-        { kind: "continuation", from: "wake" },
-        configuration,
-      );
+      const run = await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" });
 
       await livePart(kernel, session.id, run.id, asId(`${run.id}:1:0`), "Live.");
       gets = 0;

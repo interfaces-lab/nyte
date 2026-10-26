@@ -11,19 +11,13 @@ import type { StoredRecord } from "../src/store.ts";
 import type { StoreChange } from "../src/store/migrations.ts";
 import { callRef, endedRunRef, liveRef, partRef, runRef, sessionRef } from "../src/store/refs.ts";
 import { wokenIndex } from "../src/store/wait-index.ts";
-import { configuration, main, setup, startRun } from "../src/harness.ts";
+import { main, setup, startRun } from "../src/harness.ts";
 
 it("gives an older store's unstopped runs their live ref and its parked calls their wait index", async () => {
   const { kernel, host } = await setup();
   const { session } = await host.sessions.start({ content: "Hi." });
 
-  const run = await startRun(
-    kernel,
-    session.id,
-    main,
-    { kind: "continuation", from: "wake" },
-    configuration,
-  );
+  const run = await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" });
 
   await runStep<Json>(kernel, {
     session: session.id,
@@ -109,13 +103,7 @@ it("keeps an older store's ended runs' last snapshot records under their ended r
   const { kernel, host } = await setup();
   const { session } = await host.sessions.start({ content: "Hi." });
 
-  const run = await startRun(
-    kernel,
-    session.id,
-    main,
-    { kind: "continuation", from: "wake" },
-    configuration,
-  );
+  const run = await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" });
 
   const live = await kernel.store.refs.get(runRef(session.id, run.id));
   const stored = live?.target ? await kernel.store.objects.get(live.target) : null;
@@ -180,13 +168,7 @@ it("moves a tool call's name and args to its part alone, which recovery then rep
   const { kernel, host } = await setup();
   const { session } = await host.sessions.start({ content: "Hi." });
 
-  const run = await startRun(
-    kernel,
-    session.id,
-    main,
-    { kind: "continuation", from: "wake" },
-    configuration,
-  );
+  const run = await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" });
 
   const call = asId<"call">(`${run.id}:7:toolu_01`);
   const args = { command: "sed -n 100,112p open.ts", description: "Read the wiring" };
@@ -268,13 +250,7 @@ it("gives an older Nyte's unopened tool call position 0, so recovery still owes 
   const { kernel, host } = await setup();
   const { session } = await host.sessions.start({ content: "Hi." });
 
-  const run = await startRun(
-    kernel,
-    session.id,
-    main,
-    { kind: "continuation", from: "wake" },
-    configuration,
-  );
+  const run = await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" });
 
   const call = asId<"call">(`${run.id}:1:toolu_01`);
   const intent = { name: "bash", args: { command: "ls" }, principal: "local" };

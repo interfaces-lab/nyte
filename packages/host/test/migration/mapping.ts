@@ -223,6 +223,19 @@ export const MAPPING = [
     change: "empties fold_checkpoints (sqlite only)",
     covers: ["from 21"],
   },
+  {
+    version: 23,
+    step: "2026-10-26-models-per-request",
+    target: "logged part, request and input events",
+    change:
+      "a text, thinking or tool part's `created` event without `model` gains the model of its run's `started` view, when that view names one; a `request` event without `model` gains the model of the latest run started on its head before it, or null; an input event's schedule with reason `configuration` takes reason `run-ended`",
+    covers: [
+      "from 22",
+      "field log part/created /model",
+      "field log request /model",
+      "field log input/scheduled /schedule/reason",
+    ],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {
@@ -459,8 +472,47 @@ export function migratedLog(from: number, events: readonly Json[]): readonly Jso
   );
 
   const paired = runs(from, 8) ? intentsInParts(unified) : unified;
+  const listed = runs(from, 21) ? wholeChangeLists(paired) : paired;
 
-  return runs(from, 21) ? wholeChangeLists(paired) : paired;
+  return runs(from, 23) ? requestModels(listed) : listed;
+}
+
+function requestModels(events: readonly Json[]): readonly Json[] {
+  const byRun = new Map<Json, Json>();
+  const byHead = new Map<Json, Json>();
+  const next: Json[] = [];
+
+  for (const event of events) {
+    if (!isJsonObject(event)) {
+      next.push(event);
+      continue;
+    }
+
+    const view: JsonObject = isJsonObject(event.view) ? event.view : {};
+    const configuration: JsonObject = isJsonObject(view.configuration) ? view.configuration : {};
+    const schedule: JsonObject = isJsonObject(event.schedule) ? event.schedule : {};
+    const model = configuration.model;
+
+    if (event.kind === "run" && event.change === "started" && isJsonObject(model)) {
+      byRun.set(event.run ?? null, model);
+      byHead.set(event.head ?? null, model);
+      next.push(event);
+    } else if (
+      event.kind === "part" &&
+      event.change === "created" &&
+      !("model" in event) &&
+      (event.partKind === "text" || event.partKind === "thinking" || event.partKind === "tool") &&
+      byRun.has(event.run ?? null)
+    )
+      next.push({ ...event, model: byRun.get(event.run ?? null) ?? null });
+    else if (event.kind === "request" && !("model" in event))
+      next.push({ ...event, model: byHead.get(event.head ?? null) ?? null });
+    else if (event.kind === "input" && schedule.reason === "configuration")
+      next.push({ ...event, schedule: { ...schedule, reason: "run-ended" } });
+    else next.push(event);
+  }
+
+  return next;
 }
 
 function intentsInParts(events: readonly Json[]): readonly Json[] {

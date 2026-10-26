@@ -8,7 +8,7 @@ import { callRef, decodeCallRecord, decodeRunRecord, runRef } from "../src/store
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { ConnectionContext, Plugin, Session, ToolDefinition } from "../src/index.ts";
 import type { CallRecord } from "../src/store.ts";
-import { configuration, main, setup, startRun } from "../src/harness.ts";
+import { main, setup, startRun } from "../src/harness.ts";
 
 export const caller: ConnectionContext = {
   principal: LOCAL,
@@ -54,13 +54,7 @@ export function slowTool(started: string[]) {
 }
 
 export async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId> {
-  const run = await startRun(
-    kernel,
-    session,
-    main,
-    { kind: "continuation", from: "wake" },
-    configuration,
-  );
+  const run = await startRun(kernel, session, main, { kind: "continuation", from: "wake" });
 
   return run.id;
 }

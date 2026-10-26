@@ -19,16 +19,7 @@ import {
 } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { StoreConnection } from "../src/index.ts";
-import {
-  completed,
-  configuration,
-  label,
-  livePart,
-  main,
-  settledChat,
-  setup,
-  startRun,
-} from "../src/harness.ts";
+import { completed, label, livePart, main, settledChat, setup, startRun } from "../src/harness.ts";
 
 describe("runs", () => {
   it("settles the receipts of a run's landed inputs in its end set, so a crash right after it leaves none pending", async () => {
@@ -172,13 +163,7 @@ describe("runs", () => {
     const { kernel, host, script: turns } = await setup();
     const session = await settledChat(host, turns);
 
-    const run = await startRun(
-      kernel,
-      session.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const run = await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" });
 
     kernel.runs.end(run.id);
     const ref = await kernel.store.refs.get(runRef(session.id, run.id));
@@ -215,13 +200,7 @@ describe("runs", () => {
     const { kernel, host, script: turns } = await setup();
     const session = await settledChat(host, turns);
 
-    const run = await startRun(
-      kernel,
-      session.id,
-      main,
-      { kind: "input", message: asId("m1") },
-      configuration,
-    );
+    const run = await startRun(kernel, session.id, main, { kind: "input", message: asId("m1") });
 
     kernel.runs.end(run.id);
     const driver = driveInProcess(kernel, { kind: "all" });
@@ -283,13 +262,7 @@ describe("runs", () => {
     const { kernel, host } = await setup({ execution: { kind: "admit-only" } });
     const { session: parent } = await host.sessions.start({ content: "Hi." });
     const { session: child } = await host.sessions.start({ parent: parent.id, content: "Hi." });
-    const run = await startRun(
-      kernel,
-      child.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const run = await startRun(kernel, child.id, main, { kind: "continuation", from: "wake" });
 
     const waited = runStep<Json>(kernel, {
       session: parent.id,
@@ -322,13 +295,7 @@ describe("runs", () => {
     const { session: parent } = await x.host.sessions.start({ content: "Hi." });
     const { session: child } = await x.host.sessions.start({ parent: parent.id, content: "Hi." });
 
-    const run = await startRun(
-      x.kernel,
-      child.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const run = await startRun(x.kernel, child.id, main, { kind: "continuation", from: "wake" });
 
     const call: CallId = asId("wait-child");
     const target: WaitTarget = { kind: "run", session: child.id, run: run.id };

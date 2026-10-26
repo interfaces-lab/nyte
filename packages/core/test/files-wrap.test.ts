@@ -9,7 +9,7 @@ import { decodeReceiptRecord, receiptRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { ConnectionContext, FilesApi } from "../src/index.ts";
 import { collect, world } from "./fake-env.ts";
-import { configuration, main, startRun, until } from "../src/harness.ts";
+import { main, startRun, until } from "../src/harness.ts";
 
 const caller: ConnectionContext = {
   principal: LOCAL,
@@ -34,13 +34,7 @@ async function sessionFiles(options?: Parameters<typeof world>[0]) {
 }
 
 async function tools(kernel: Kernel, session: SessionId) {
-  const run = await startRun(
-    kernel,
-    session,
-    main,
-    { kind: "continuation", from: "wake" },
-    configuration,
-  );
+  const run = await startRun(kernel, session, main, { kind: "continuation", from: "wake" });
 
   let calls = 0;
 

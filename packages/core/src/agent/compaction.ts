@@ -39,7 +39,7 @@ import type {
 import { compaction } from "../contract/parts.ts";
 import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { PartRecord } from "../contract/records.ts";
-import { collectContributions } from "../engine/contributions.ts";
+import { resolveHeadConfiguration } from "../engine/contributions.ts";
 import { modelInfo } from "../extend/models.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
@@ -52,7 +52,6 @@ import {
   readPositionCommit,
   readRefExpectation,
   readTip,
-  requireSession,
   STALE,
   START,
   toCommitObjectId,
@@ -139,7 +138,8 @@ async function latestCompaction(
 export function createCompactor(kernel: Kernel, models: Models): Compactor {
   return async ({ session, head, instructions }) => {
     const runtime = kernel.plugins.runtime(session);
-    const configuration = await resolveHeadConfiguration(kernel, runtime, session, head);
+    await runtime.ready;
+    const configuration = await resolveHeadConfiguration(kernel, session, head);
     const { model } = configuration;
     const info = modelInfo(models, model, runtime);
 
@@ -231,7 +231,8 @@ export function createSummarizer(kernel: Kernel, models: Models): Summarizer {
 
     try {
       const runtime = kernel.plugins.runtime(session);
-      const configuration = await resolveHeadConfiguration(kernel, runtime, session, head);
+      await runtime.ready;
+      const configuration = await resolveHeadConfiguration(kernel, session, head);
 
       const lines = await withFold(kernel, session, (state) =>
         commits.flatMap((id): readonly string[] => {
@@ -750,32 +751,6 @@ async function findReplacedCommits(
     ...older,
     ...summarised.flatMap((index) => (older.includes(path[index]) ? [] : [path[index]])),
   ];
-}
-
-async function resolveHeadConfiguration(
-  kernel: Kernel,
-  runtime: PluginRuntime,
-  session: SessionId,
-  head: HeadName,
-): Promise<Configuration> {
-  const found = await requireSession(kernel.store, session);
-  const entry = found.record.heads.find((current) => current.name === head);
-
-  if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
-  await runtime.ready;
-
-  const resolved = await kernel.resolveConfiguration({
-    session,
-    head,
-    selected: entry.selected,
-    patch: null,
-    contributions: collectContributions(runtime),
-  });
-
-  if (resolved.kind !== "exact")
-    throw new SdkError("invalid", `The head's configuration is ${resolved.kind}.`);
-
-  return resolved;
 }
 
 function transcriptText(messages: readonly Message[]): string {

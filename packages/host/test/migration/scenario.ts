@@ -9,6 +9,7 @@ import {
   HunkType,
   isJsonObject,
   JsonType,
+  ModelRefType,
   ToolClassType,
   WaitOutcomeType,
   WaitTargetType,
@@ -27,15 +28,15 @@ function body(kind: Exclude<RecordKind, "kv">): fc.Arbitrary<JsonObject> {
   ).filter(isJsonObject);
 }
 
-function variant(kind: string, change: string): TSchema {
+function variant(kind: string, change?: string): TSchema {
   const found = DurableEventType.anyOf.find(
     (schema) =>
       schema.properties.kind.const === kind &&
-      "change" in schema.properties &&
-      schema.properties.change.const === change,
+      (change === undefined ||
+        ("change" in schema.properties && schema.properties.change.const === change)),
   );
 
-  if (found === undefined) throw new TypeError(`No ${kind}/${change} event.`);
+  if (found === undefined) throw new TypeError(`No ${kind}/${change ?? ""} event.`);
 
   return withJson(found);
 }
@@ -319,6 +320,14 @@ const partCreated = schemaArbitrary(variant("part", "created")).filter(isJsonObj
 
 const callSettled = schemaArbitrary(variant("call", "settled")).filter(isJsonObject);
 
+const requested = schemaArbitrary(variant("request")).filter(isJsonObject);
+
+const modelRef = schemaArbitrary(withJson(ModelRefType));
+
+function withoutModel(event: JsonObject): JsonObject {
+  return Object.fromEntries(Object.entries(event).filter(([key]) => key !== "model"));
+}
+
 function events(from: number): fc.Arbitrary<readonly Json[]> {
   const intentPair = fc
     .tuple(
@@ -370,12 +379,57 @@ function events(from: number): fc.Arbitrary<readonly Json[]> {
       lists.map((files) => ({ head: null, kind: "changes", files })),
     );
 
+  const configuredRun = fc
+    .tuple(
+      ID,
+      ID,
+      ID,
+      modelRef,
+      partCreated,
+      fc.constantFrom("text", "thinking", "tool"),
+      requested,
+    )
+    .map(([run, head, message, model, created, partKind, asked]): readonly Json[] => [
+      {
+        head,
+        kind: "run",
+        run,
+        change: "started",
+        view: {
+          id: run,
+          head,
+          startedAt: 0,
+          attempt: 1,
+          configuration: {
+            kind: "exact",
+            model,
+            thinking: "off",
+            agent: null,
+            settings: {},
+            settingsVersion: "1",
+          },
+          origin: { kind: "continuation", from: "wake" },
+        },
+      },
+      { ...withoutModel(created), head, run, partKind },
+      { ...withoutModel(asked), head },
+      {
+        head,
+        kind: "input",
+        message,
+        change: "scheduled",
+        schedule: { kind: "next-turn", reason: "configuration" },
+        position: 0,
+      },
+    ]);
+
   return fc
     .array(
       fc.oneof(
         durableEvent.map((event) => [event]),
         ...(older(from, 8) ? [intentPair] : []),
         ...(older(from, 21) ? [callChanges] : []),
+        ...(older(from, 23) ? [configuredRun] : []),
         ...(older(from, 7)
           ? [
               fc

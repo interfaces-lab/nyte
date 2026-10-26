@@ -95,7 +95,6 @@ function admitted(
     delivery,
     schedule: { kind: "next-turn", reason: "idle" },
     covered: true,
-    configuration,
     replaced:
       replaced === null
         ? null
@@ -148,7 +147,6 @@ function started(run: string, message: string, startedAt: number): DurableEvent 
       head: main,
       startedAt,
       attempt: 1,
-      configuration,
       origin: { kind: "input", message: asId(message) },
     },
   };
@@ -364,6 +362,7 @@ describe("fold", () => {
       {
         head: main,
         kind: "request",
+        model: configuration.model,
         usage,
         context: { tokens: 120, window: 1000, lastRequest: usage },
         step: "assistant",
@@ -626,7 +625,6 @@ describe("fold", () => {
           head: main,
           startedAt: 1,
           attempt: 1,
-          configuration,
           origin: { kind: "continuation", from: "wake" },
         },
       },

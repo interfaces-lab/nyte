@@ -722,6 +722,55 @@ const foldCheckpointsCleared: SchemaStep = {
   sql: { sqlite: ["DELETE FROM fold_checkpoints"], postgres: [] },
 };
 
+const RESPONSE_PARTS = new Set<Json>(["text", "thinking", "tool"]);
+
+const modelsPerRequest: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-26-models-per-request",
+  rewriteLog(events) {
+    const runs = new Map<Json, Json>();
+    const heads = new Map<Json, Json>();
+
+    return events.map((event) => {
+      if (!isJsonObject(event)) return null;
+
+      if (event.kind === "run" && event.change === "started") {
+        const configuration = isJsonObject(event.view) ? event.view.configuration : undefined;
+        const model = isJsonObject(configuration) ? configuration.model : undefined;
+
+        if (!isJsonObject(model)) return null;
+        runs.set(event.run ?? null, model);
+        heads.set(event.head ?? null, model);
+
+        return null;
+      }
+
+      if (
+        event.kind === "part" &&
+        event.change === "created" &&
+        event.model === undefined &&
+        RESPONSE_PARTS.has(event.partKind ?? null)
+      ) {
+        const model = runs.get(event.run ?? null);
+
+        return model === undefined ? null : { ...event, model };
+      }
+
+      if (event.kind === "request" && event.model === undefined)
+        return { ...event, model: heads.get(event.head ?? null) ?? null };
+
+      if (
+        event.kind === "input" &&
+        isJsonObject(event.schedule) &&
+        event.schedule.reason === "configuration"
+      )
+        return { ...event, schedule: { ...event.schedule, reason: "run-ended" } };
+
+      return null;
+    });
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -745,6 +794,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   sessionSnapshotDropped,
   changesAsWholeList,
   foldCheckpointsCleared,
+  modelsPerRequest,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

@@ -262,9 +262,8 @@ export async function startRun(
   session: SessionId,
   head: HeadName,
   origin: RunView["origin"],
-  runConfiguration: Configuration,
 ): Promise<RunView> {
-  const started = await newRun(kernel.store, session, head, origin, runConfiguration);
+  const started = await newRun(kernel.store, session, head, origin);
   const outcome = await kernel.store.refs.set(started.updates);
 
   if (outcome.kind !== "set") throw new Error(`Run ${started.view.id} already exists.`);

@@ -98,6 +98,7 @@ export function requestEvent(
   return {
     head,
     kind: "request",
+    model: info.ref,
     usage,
     step,
     context: {

@@ -9,7 +9,7 @@ import { envelope, headRef, inboxRef, leaseRef, memoryStore } from "../src/store
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { Durable, StoreConnection } from "../src/index.ts";
 import { coveredHere } from "../src/store/session.ts";
-import { completed, configuration, main, setup, startRun, until } from "../src/harness.ts";
+import { completed, main, setup, startRun, until } from "../src/harness.ts";
 
 function counting(store: StoreConnection): {
   readonly store: StoreConnection;
@@ -222,13 +222,7 @@ describe("coverage (§42a, §42t)", () => {
     const { session } = await host.sessions.start({ content: "Hi." });
     const owned = await host.execution.cover({ kind: "all" });
 
-    const run = await startRun(
-      kernel,
-      session.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const run = await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" });
 
     kernel.runs.end(run.id);
     const until = Date.now() + 60_000;
@@ -475,13 +469,10 @@ describe("poll (§42h, §42u)", () => {
       content: "Hi.",
     });
 
-    const run = await startRun(
-      writer.kernel,
-      child.id,
-      main,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
+    const run = await startRun(writer.kernel, child.id, main, {
+      kind: "continuation",
+      from: "wake",
+    });
 
     const notified: string[] = [];
     reader.kernel.wakes.subscribe((woken, head) => notified.push(`${woken}/${head}`));

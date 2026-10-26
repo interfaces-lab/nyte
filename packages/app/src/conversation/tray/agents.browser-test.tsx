@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import type { Message, ModelCatalogView, RunView, SessionView } from "@nyte-ai/sdk";
+import type { Configuration, Message, ModelCatalogView, RunView, SessionView } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import type { HostState } from "../../nyte.ts";
@@ -42,20 +42,21 @@ function latest(key: AgentKey): string {
   return `Reporting on ${key}:`;
 }
 
+const configuration: Configuration = {
+  kind: "exact",
+  model: { provider: "test", id: "test" },
+  thinking: "off",
+  agent: null,
+  settings: {},
+  settingsVersion: "1",
+};
+
 function agentRun(key: string): RunView {
   return {
     id: asId<"run">(`${key}-run`),
     head: asId<"head">("main"),
     startedAt: 0,
     attempt: 1,
-    configuration: {
-      kind: "exact",
-      model: { provider: "test", id: "test" },
-      thinking: "off",
-      agent: null,
-      settings: {},
-      settingsVersion: "1",
-    },
     origin: { kind: "input", message: asId<"message">(`${key}-prompt`) },
   };
 }
@@ -144,8 +145,8 @@ function view(
     reportsHeld: false,
     background: [],
     configuration: {
-      selected: agentRun(key).configuration,
-      effective: agentRun(key).configuration,
+      selected: configuration,
+      effective: configuration,
     },
     context: { tokens: 0, window: 1_000, lastRequest: null },
     heads: [],

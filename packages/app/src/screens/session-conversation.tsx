@@ -4,9 +4,16 @@ import { modelConfiguration } from "./model-configuration.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { useDeferredValue, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { ReactElement } from "react";
-import type { CommitId, Revision, SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
+import { useDeferredValue, useRef, useState, useSyncExternalStore } from "react";
+import type { ReactElement, ReactNode } from "react";
+import type {
+  Activation,
+  CommitId,
+  Revision,
+  SessionId,
+  SessionView,
+  UserContent,
+} from "@nyte-ai/sdk";
 import { Composer } from "../conversation/composer.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "../conversation/turn-view.tsx";
@@ -22,6 +29,7 @@ import {
 import type { PaneId } from "../layout/pane-layout.ts";
 import {
   useCatalog,
+  useChildSessions,
   useSessionActions,
   useHostState,
   useRenameSession,
@@ -39,7 +47,7 @@ import {
 import type { WatchStore } from "../sdk.tsx";
 import type { DesktopModelOption } from "../catalog.ts";
 
-import { BackgroundWork } from "../conversation/tray/terminals.tsx";
+import { BackgroundWork, useHasLiveTerminals } from "../conversation/tray/terminals.tsx";
 import { Timeline } from "../conversation/timeline.tsx";
 import { TranscriptProvider, useTranscriptControls } from "../conversation/transcript.tsx";
 import { ApprovalTray } from "../conversation/approval-tray.tsx";
@@ -53,11 +61,15 @@ import {
 } from "../workbench/controller.ts";
 import type { WorkbenchViewKey } from "../workbench/controller.ts";
 import { openJobTerminal } from "../workbench/terminal-store.ts";
-import { SubagentTray, type SubagentTrayView } from "../conversation/tray/agents.tsx";
+import {
+  listSubagents,
+  SubagentTray,
+  type SubagentTrayView,
+} from "../conversation/tray/agents.tsx";
 import { subagentSessions, SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
-import { useReleaseStartupReads } from "../startup.ts";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { StartupReadsRelease } from "../startup.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../work-counts.ts";
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
@@ -84,22 +96,22 @@ async function applyMessageEdit({
   if (revision == null)
     throw new Error("The conversation is updating. Try editing this message again.");
 
-  const options = { replace: message.id, running: "stop", expect: revision } as const;
+  const session = connection().session(sessionId);
 
-  const receipt = await connection()
-    .session(sessionId)
-    .send(
-      content,
-      choice.model === undefined
-        ? options
-        : {
-            ...options,
-            configuration: modelConfiguration(
-              modelRefFor(choice.model, choice.fast),
-              choice.thinkingLevel,
-            ),
-          },
+  if (choice.model !== undefined) {
+    const configured = await session.configure(
+      modelConfiguration(modelRefFor(choice.model, choice.fast), choice.thinkingLevel),
     );
+
+    if (configured.kind !== "configured")
+      throw new Error("That model setting is no longer available");
+  }
+
+  const receipt = await session.send(content, {
+    replace: message.id,
+    running: "stop",
+    expect: revision,
+  });
 
   const landed = await receipt.landed();
 
@@ -171,14 +183,23 @@ function RunAnnouncer({ working }: { readonly working: boolean }): ReactElement 
   );
 }
 
-function ComposerPaging({ column }: { readonly column: HTMLElement | null }): null {
+function TranscriptColumn({
+  paging,
+  onColumn,
+  children,
+}: {
+  readonly paging: boolean;
+  readonly onColumn: (column: HTMLDivElement | null) => void;
+  readonly children: ReactNode;
+}): ReactElement {
   const controls = useTranscriptControls();
 
-  useLayoutEffect(() => {
-    if (column === null) return undefined;
+  const attach = (column: HTMLDivElement): (() => void) => {
+    onColumn(column);
 
     const page = (event: KeyboardEvent): void => {
       if (
+        !paging ||
         event.defaultPrevented ||
         event.altKey ||
         event.ctrlKey ||
@@ -195,8 +216,21 @@ function ComposerPaging({ column }: { readonly column: HTMLElement | null }): nu
 
     column.addEventListener("keydown", page);
 
-    return () => column.removeEventListener("keydown", page);
-  }, [column, controls]);
+    return () => {
+      column.removeEventListener("keydown", page);
+      onColumn(null);
+    };
+  };
+
+  return (
+    <div ref={attach} {...props(sessionScreenStyles.conversation)}>
+      {children}
+    </div>
+  );
+}
+
+function ActivationNotice({ activation }: { readonly activation: Activation }): null {
+  useMountEffect(() => observeActivation(activation));
 
   return null;
 }
@@ -279,6 +313,15 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     kind: "closed",
   });
 
+  const hasTerminals = useHasLiveTerminals(presentation === "full" ? sessionId : undefined);
+  const childSessions = useChildSessions(sessionId).data ?? [];
+
+  const trayEmptied =
+    (trayView.kind === "terminals" && !hasTerminals) ||
+    (trayView.kind === "list" && listSubagents(childSessions, trayView).listed.length === 0);
+
+  if (trayEmptied) setTrayView({ kind: "closed" });
+
   const deferredTrayView = useDeferredValue(trayView);
   const shownTrayView = trayView.kind === "detail" ? deferredTrayView : trayView;
 
@@ -302,12 +345,8 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const activation = useWatchSelect(store, (state) => state.value?.activation);
   const messages = useWatchSelect(store, projector.messages);
   const choice = useSessionChoice(sessionId);
-  useReleaseStartupReads((ready && sessionName !== undefined) || failed);
 
   const viewStore = usePaneViewStateStore();
-  useLayoutEffect(() => {
-    if (activation !== undefined && presentation === "full") observeActivation(activation);
-  }, [activation, presentation]);
   useMountEffect(() => childrenWatch(sessionId).subscribe(() => undefined));
   useMountEffect(() => showTranscript(sessionId));
   const working = navigating || messages.working;
@@ -427,15 +466,18 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
         )}
 
         <div {...props(sessionScreenStyles.body)}>
-          <div ref={setColumn} {...props(sessionScreenStyles.conversation)}>
-            <TranscriptProvider
-              paneId={paneId}
-              sessionId={sessionId}
-              viewportRef={setScroll}
-              loadEarlier={loadEarlier}
-            >
+          <TranscriptProvider
+            paneId={paneId}
+            sessionId={sessionId}
+            viewportRef={setScroll}
+            loadEarlier={loadEarlier}
+          >
+            <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
               <MarkSeen sessionId={sessionId} store={store} viewKey={workbenchViewKey(cwd)} />
-              {presentation === "full" && <ComposerPaging column={column} />}
+              {((ready && sessionName !== undefined) || failed) && <StartupReadsRelease />}
+              {presentation === "full" && activation !== undefined && (
+                <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
+              )}
               {presentation === "full" && <RunAnnouncer working={working} />}
               <Timeline
                 store={store}
@@ -522,8 +564,8 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                   inputRef={attachComposer}
                 />
               )}
-            </TranscriptProvider>
-          </div>
+            </TranscriptColumn>
+          </TranscriptProvider>
         </div>
         {presentation === "full" && deletion.kind === "open" && (
           <ConfirmDialog

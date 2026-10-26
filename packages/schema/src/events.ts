@@ -6,7 +6,7 @@ import { FileChangeType } from "./files.ts";
 import { idSchema, SeqType } from "./ids.ts";
 import { JsonType, withJson } from "./json.ts";
 import { DeliveryType, MessageSourceType, ScheduleType, UserContentType } from "./messages.ts";
-import { ContextViewType, UsageType } from "./models.ts";
+import { ContextViewType, ModelRefType, UsageType } from "./models.ts";
 import { PlacementType, ToolChangesType } from "./parts.ts";
 import { BackgroundItemType, RunEndType, RunViewType, WaitTargetType } from "./runs.ts";
 import { standard } from "./schema.ts";
@@ -88,7 +88,6 @@ function durableEvent<Common extends TProperties>(common: Common) {
       delivery: DeliveryType,
       schedule: ScheduleType,
       covered: Type.Boolean(),
-      configuration: ConfigurationType,
       replaced: REPLACED,
       requires: Type.Optional(Type.Array(Type.String())),
     }),
@@ -141,6 +140,7 @@ function durableEvent<Common extends TProperties>(common: Common) {
       version: Type.Number(),
       run: nullable(idSchema<"run">()),
       owner: nullable(Type.String()),
+      model: Type.Optional(ModelRefType),
     }),
     Type.Object({
       ...common,
@@ -184,6 +184,7 @@ function durableEvent<Common extends TProperties>(common: Common) {
     Type.Object({
       ...common,
       kind: Type.Literal("request"),
+      model: nullable(ModelRefType),
       usage: UsageType,
       context: ContextViewType,
       step: Type.Enum(["assistant", "compaction", "summary", "plugin"]),

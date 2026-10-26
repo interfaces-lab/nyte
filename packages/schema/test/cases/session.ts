@@ -341,7 +341,6 @@ export const sessionCases = {
       content: "hi",
       source: { kind: "user" },
       delivery: "steer",
-      configuration: { thinking: "high", settings: {} },
       replace: null,
     },
     { content: "hi", source: { kind: "user" }, delivery: "steer" },

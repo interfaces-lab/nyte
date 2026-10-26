@@ -33,15 +33,6 @@ const bob: PrincipalId = asId("bob");
 
 const main: HeadName = asId("main");
 
-const configuration = {
-  kind: "exact",
-  model: { provider: "test", id: "model" },
-  thinking: "off",
-  agent: null,
-  settings: {},
-  settingsVersion: "1",
-} as const;
-
 async function createMemoryKernel(): Promise<Kernel> {
   return createKernel({
     hostId: asId("h1"),
@@ -139,7 +130,6 @@ async function admit(kernel: Kernel, session: SessionId, message: string): Promi
           delivery: "steer",
           schedule: { kind: "next-turn", reason: "idle" },
           covered: true,
-          configuration,
           replaced: null,
         },
       ],

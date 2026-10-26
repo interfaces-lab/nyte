@@ -317,7 +317,13 @@ async function print(flags: RunFlags, source: HostSource): Promise<PrintOutcome>
   const resumed = await targetSession(host, flags.resume);
   signal.throwIfAborted();
   const content = flags.rest.join(" ");
-  const options = configuration === undefined ? {} : { configuration };
+
+  if (resumed !== null && configuration !== undefined) {
+    const configured = await resumed.configure(configuration);
+
+    if (configured.kind !== "configured")
+      throw new Error(`Couldn't apply the model settings: ${configured.kind}`);
+  }
 
   const { session, receipt } =
     resumed === null
@@ -325,9 +331,9 @@ async function print(flags: RunFlags, source: HostSource): Promise<PrintOutcome>
           workspace: await addFolder(host, process.cwd()),
           content,
           contextFiles: flags.contextFiles,
-          ...options,
+          configuration,
         })
-      : { session: resumed, receipt: await resumed.send(content, options) };
+      : { session: resumed, receipt: await resumed.send(content) };
 
   invocation.sessionId = session.id;
 
