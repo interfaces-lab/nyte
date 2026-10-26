@@ -5,6 +5,7 @@ export const shell = defineConsts({
   titlebarHeight: "var(--nyte-titlebar-height)",
   trafficLightInset: "var(--nyte-titlebar-traffic-light-inset)",
   cardInset: "var(--nyte-shell-card-inset)",
+  cardRadius: "var(--nyte-shell-card-radius)",
 });
 
 export const conversation = defineConsts({
@@ -33,6 +34,10 @@ export const tray = defineConsts({
 export const sidebar = defineConsts({
   width: "var(--nyte-sidebar-width)",
   handleWidth: "var(--nyte-sidebar-handle-width)",
+  floatInset: "var(--nyte-sidebar-float-inset)",
+  floatRadius: "var(--nyte-sidebar-float-radius)",
+  slideDuration: "var(--nyte-sidebar-slide-duration)",
+  slideEasing: "var(--nyte-sidebar-slide-easing)",
   rowHeight: "var(--nyte-sidebar-row-height)",
   askRowHeight: "var(--nyte-sidebar-ask-row-height)",
   gutter: "var(--nyte-sidebar-gutter)",

@@ -3,7 +3,7 @@ import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
-import { useId, useLayoutEffect, useState } from "react";
+import { useId, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { StatusDot } from "../../components/ui.tsx";
@@ -49,6 +49,33 @@ function agentTitle(agent: SessionInfo | undefined, sessionId: SessionId): strin
   return agent?.name ?? sessionId;
 }
 
+export function listSubagents(agents: readonly SessionInfo[], view: SubagentTrayView) {
+  const pinnedId =
+    view.kind === "detail"
+      ? view.sessionId
+      : view.kind === "list"
+        ? view.retainedSessionId
+        : undefined;
+
+  const active = agents
+    .filter((agent) => subagentTrayState(agent) !== "inactive")
+    .toSorted((left, right) => {
+      const attention =
+        Number(subagentTrayState(left) !== "attention") -
+        Number(subagentTrayState(right) !== "attention");
+
+      return (
+        attention || right.lastActivityAt - left.lastActivityAt || left.id.localeCompare(right.id)
+      );
+    });
+
+  const settled = agents.find(
+    (agent) => agent.id === pinnedId && subagentTrayState(agent) === "inactive",
+  );
+
+  return { active, listed: settled === undefined ? active : [...active, settled] };
+}
+
 export function SubagentTray({
   parentSessionId,
   view,
@@ -72,13 +99,6 @@ export function SubagentTray({
   const trayId = useId();
   const [stopCandidates, setStopCandidates] = useState<readonly SessionId[]>();
 
-  const pinnedId =
-    view.kind === "detail"
-      ? view.sessionId
-      : view.kind === "list"
-        ? view.retainedSessionId
-        : undefined;
-
   const stop = useMutation({
     mutationFn: (sessionId: SessionId) => connection().session(sessionId).stop(),
   });
@@ -88,25 +108,10 @@ export function SubagentTray({
       Promise.all(sessionIds.map((sessionId) => connection().session(sessionId).stop())),
   });
 
-  const active = agents
-    .filter((agent) => subagentTrayState(agent) !== "inactive")
-    .toSorted((left, right) => {
-      const attention =
-        Number(subagentTrayState(left) !== "attention") -
-        Number(subagentTrayState(right) !== "attention");
-
-      return (
-        attention || right.lastActivityAt - left.lastActivityAt || left.id.localeCompare(right.id)
-      );
-    });
-
+  const roster = listSubagents(agents, view);
+  const active = roster.active;
+  const listed = roster.listed;
   const running = active.filter((agent) => subagentTrayState(agent) === "working");
-
-  const settled = agents.find(
-    (agent) => agent.id === pinnedId && subagentTrayState(agent) === "inactive",
-  );
-
-  const listed = settled === undefined ? active : [...active, settled];
   const selectedId = view.kind === "detail" ? view.sessionId : undefined;
   const selectedSession = useSession(selectedId ?? parentSessionId);
 
@@ -117,13 +122,15 @@ export function SubagentTray({
 
   const pendingAction = stop.isPending || stopAll.isPending;
 
-  useLayoutEffect(() => {
-    if (view.kind !== "list" || listed.length > 0) return;
-    const held = root?.contains(document.activeElement) === true;
-    onViewChange({ kind: "closed" });
+  const attachRoot = (element: HTMLDivElement): (() => void) => {
+    ref(element);
 
-    if (held) onRelease();
-  }, [listed.length, onRelease, onViewChange, root, view.kind]);
+    return () => {
+      ref(null);
+
+      if (element.contains(document.activeElement)) onRelease();
+    };
+  };
 
   const close = (): void => {
     setStopCandidates(undefined);
@@ -140,7 +147,7 @@ export function SubagentTray({
   if (view.kind === "list" && listed.length === 0) return null;
 
   return (
-    <div ref={ref} {...props(trayParts.root)}>
+    <div ref={attachRoot} {...props(trayParts.root)}>
       {view.kind === "closed" && (
         <TrayPill
           label={`Agents, ${String(active.length)} active`}

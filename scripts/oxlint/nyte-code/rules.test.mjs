@@ -87,6 +87,37 @@ export function use(list: string[], value: number, entry: Entry) {
 }`,
   },
   {
+    rule: "nyte-code/no-direct-effect",
+    rejected: `useEffect(() => subscribe(), []);
+useLayoutEffect(() => measure(node), [node]);
+useInsertionEffect(() => inject(sheet));
+React.useEffect(() => sync(value), [value]);`,
+    rejectedLines: [1, 2, 3, 4],
+    accepted: `useMountEffect(() => subscribe());
+useEffectEvent(() => sync(value));
+const useEffectLike = () => null;
+useEffectLike();
+hooks["useEffect"](() => sync(value), [value]);
+// oxlint-disable-next-line nyte-code/no-direct-effect -- keeps the native view in step with value
+useEffect(() => sync(value), [value]);`,
+  },
+  {
+    rule: "nyte-code/require-suppression-reason",
+    rejected: `// oxlint-disable-next-line no-console
+console.log(value);
+/* eslint-disable no-console */
+console.log(value); // oxlint-disable-line no-console
+// oxlint-disable-next-line no-console --
+console.log(value);`,
+    rejectedLines: [1, 3, 4, 5],
+    accepted: `// oxlint-disable-next-line no-console -- the CLI prints its result
+console.log(value);
+/* eslint-disable no-console -- a script that only prints */
+console.log(value);
+/* eslint-enable no-console */
+console.log(value); // oxlint-disable-line no-console -- prints the result`,
+  },
+  {
     rule: "nyte-code/no-cross-package-relative-imports",
     directory: "packages/app/src",
     packageRoots: ["packages/app", "packages/app/modules/native", "packages/core"],

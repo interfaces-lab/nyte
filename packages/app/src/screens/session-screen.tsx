@@ -1,6 +1,6 @@
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { PaneHost } from "./pane-host.tsx";
-import { SplitSash } from "./split-sash.tsx";
+import { fitSplitRatio, SplitSash } from "./split-sash.tsx";
 import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { useRef, useState } from "react";
@@ -104,7 +104,8 @@ function SessionPanes({
   readonly maximized: boolean;
   readonly floatingMount: HTMLDivElement | null;
 }): ReactElement {
-  const { layout } = usePaneControllerSnapshot();
+  const [availableWidth, setAvailableWidth] = useState(Number.NaN);
+  const layout = fitSplitRatio(usePaneControllerSnapshot().layout, availableWidth);
   const containerRef = useRef<HTMLDivElement>(null);
   const dropTarget = useSessionDropTarget();
   const [dragRatio, setDragRatio] = useState<number | undefined>();
@@ -143,6 +144,8 @@ function SessionPanes({
           ratio={layout.ratio}
           dragRatio={dragRatio}
           onDragRatio={setDragRatio}
+          availableWidth={availableWidth}
+          onAvailableWidth={setAvailableWidth}
           containerRef={containerRef}
         />
       )}

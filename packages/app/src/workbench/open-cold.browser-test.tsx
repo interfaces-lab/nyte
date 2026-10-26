@@ -7,7 +7,7 @@ import { Deferred, publishDeferred, readDeferred } from "../deferred.tsx";
 import deferredUrls from "../deferred-urls.ts";
 import { createAppRouter } from "../router.tsx";
 import { runWindowCommand } from "../shell/window-commands.ts";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { ChangesPanel } from "./changes-panel.tsx";
 import {
   useWorkbenchSnapshot,

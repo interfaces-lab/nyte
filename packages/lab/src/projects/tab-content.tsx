@@ -218,7 +218,7 @@ export function LaneTab({
   readonly onOpen: (chat: string) => void;
 }): ReactElement {
   return (
-    <Pane title={lane.name} meta="Lane">
+    <Pane title={lane.name} meta="Stack">
       <p {...props(styles.lead)}>{lane.intent}</p>
       {happened !== null && <p {...props(styles.happened)}>{happened}</p>}
       {asks.map((ask) => (
@@ -273,14 +273,14 @@ export function ChatTab({
     <Pane title={chat.title} meta={inLane ? "In Polish" : (chat.model ?? undefined)}>
       {inLane && happened !== null && <p {...props(styles.happened)}>{happened}</p>}
       {!inLane && move !== undefined && (
-        <div role="group" aria-label="Move to Polish" {...props(styles.question)}>
+        <div role="group" aria-label="Add to Polish" {...props(styles.question)}>
           <p {...props(styles.questionText)}>
             Polish can carry this chat&apos;s pull requests from here: it watches CI, fixes what is
             theirs, and asks you only to merge.
           </p>
           <div>
             <Button variant="solid" tone="primary" size="sm" icon="layers" onClick={move}>
-              Move to Polish
+              Add to Polish
             </Button>
           </div>
         </div>

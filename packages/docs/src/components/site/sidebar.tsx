@@ -1,5 +1,6 @@
 import { Link, useMatchRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import type { NavSection } from "~/lib/docs";
 
@@ -28,10 +29,11 @@ export function DocNav({
   onNavigate?: () => void;
 }) {
   const matchRoute = useMatchRoute();
-  const current = useCurrentHeading(toc);
+  const [current, setCurrent] = useState<string | null>(null);
 
   return (
     <nav className={className} aria-label="Docs">
+      <HeadingSpy key={toc.map((entry) => entry.url).join(" ")} toc={toc} onPass={setCurrent} />
       {sections.map((section) => (
         <div key={section.label ?? section.items[0].href}>
           {section.label ? (
@@ -72,23 +74,22 @@ export function DocNav({
   );
 }
 
-function useCurrentHeading(toc: readonly TocEntry[]) {
-  const [current, setCurrent] = useState<string | null>(null);
-
-  useEffect(() => {
-    const headings = toc.flatMap((entry) => {
-      const heading = document.getElementById(entry.url.slice(1));
-
-      return heading === null ? [] : [heading];
-    });
-
-    if (headings.length === 0) return;
-
+/** Remounts per toc, so a new page's headings are picked as soon as it renders. */
+function HeadingSpy(props: { toc: readonly TocEntry[]; onPass: (url: string) => void }) {
+  useMountEffect(() => {
     const pick = () => {
+      const headings = props.toc.flatMap((entry) => {
+        const heading = document.getElementById(entry.url.slice(1));
+
+        return heading === null ? [] : [heading];
+      });
+
+      if (headings.length === 0) return;
+
       const line = window.innerHeight / 3;
       const passed = headings.findLast((heading) => heading.getBoundingClientRect().top <= line);
 
-      setCurrent(`#${(passed ?? headings[0]).id}`);
+      props.onPass(`#${(passed ?? headings[0]).id}`);
     };
 
     pick();
@@ -99,7 +100,7 @@ function useCurrentHeading(toc: readonly TocEntry[]) {
       window.removeEventListener("scroll", pick, { capture: true });
       window.removeEventListener("resize", pick);
     };
-  }, [toc]);
+  });
 
-  return current;
+  return null;
 }

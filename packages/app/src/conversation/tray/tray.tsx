@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
 import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/react";
 import { useLayoutEffect, useRef, useState } from "react";
-import type { ReactElement, ReactNode, Ref } from "react";
+import type { ReactElement, ReactNode, Ref, RefObject } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
@@ -11,6 +11,7 @@ import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { occludes } from "../../workbench/browser-occlusion.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 export const trayParts = create({
   root: {
@@ -46,6 +47,7 @@ export function useTrayRoot(viewport: HTMLElement | null) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [availableHeight, setAvailableHeight] = useState(260);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the tray against the viewport before paint
   useLayoutEffect(() => {
     if (root === null || viewport === null) return undefined;
 
@@ -118,6 +120,12 @@ export function TrayIconAction({
   );
 }
 
+function FocusSection({ within }: { readonly within: RefObject<HTMLDivElement | null> }): null {
+  useMountEffect(() => within.current?.closest("section")?.focus({ preventScroll: true }));
+
+  return null;
+}
+
 function TrayContent({
   focusKey,
   children,
@@ -128,13 +136,9 @@ function TrayContent({
   const isPresent = useIsPresent();
   const ref = useRef<HTMLDivElement>(null);
 
-  useLayoutEffect(() => {
-    if (focusKey === undefined) return;
-    ref.current?.closest("section")?.focus({ preventScroll: true });
-  }, [focusKey]);
-
   return (
     <div ref={ref} inert={!isPresent} {...props(trayParts.presence)}>
+      {focusKey !== undefined && <FocusSection key={focusKey} within={ref} />}
       {children}
     </div>
   );

@@ -1,10 +1,10 @@
-// oxlint-disable-next-line no-restricted-imports -- the exit animation keys on the leaving flag
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { AccessibilityInfo, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
+  type SharedValue,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -90,7 +90,7 @@ function subscribe(listener: () => void) {
 
 /**
  * One toast. Reduced motion swaps the slide for a fade, so the enter still reads as an arrival; the exit
- * is an animated transition keyed on the leaving flag, while a drag moves the card directly.
+ * runs once the store marks it leaving, while a drag moves the card directly.
  */
 function ToastCard({ item }: { item: ToastItem }) {
   const theme = useTheme();
@@ -105,16 +105,6 @@ function ToastCard({ item }: { item: ToastItem }) {
 
     return () => clearTimeout(timer);
   });
-
-  useEffect(() => {
-    if (item.leaving !== true) return;
-    opacity.set(withTiming(0, { duration: EXIT_MS }));
-    offset.set(
-      withTiming(reduceMotion ? 0 : ENTER_OFFSET / 2, { duration: EXIT_MS }, () =>
-        runOnJS(remove)(item.id),
-      ),
-    );
-  }, [item.leaving, item.id, offset, opacity, reduceMotion]);
 
   const gesture = Gesture.Race(
     Gesture.Pan()
@@ -146,6 +136,9 @@ function ToastCard({ item }: { item: ToastItem }) {
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View style={animatedStyle}>
+        {item.leaving === true ? (
+          <ToastExit id={item.id} offset={offset} opacity={opacity} reduceMotion={reduceMotion} />
+        ) : null}
         <html.div role="alert" style={styles.card}>
           {icon === undefined ? null : (
             <SymbolView
@@ -172,6 +165,27 @@ function ToastCard({ item }: { item: ToastItem }) {
       </Animated.View>
     </GestureDetector>
   );
+}
+
+/** Mounted once the store marks the toast leaving: fades it out, then removes it. */
+function ToastExit(props: {
+  id: number;
+  offset: SharedValue<number>;
+  opacity: SharedValue<number>;
+  reduceMotion: boolean;
+}) {
+  useMountEffect(() => {
+    const id = props.id;
+
+    props.opacity.set(withTiming(0, { duration: EXIT_MS }));
+    props.offset.set(
+      withTiming(props.reduceMotion ? 0 : ENTER_OFFSET / 2, { duration: EXIT_MS }, () =>
+        runOnJS(remove)(id),
+      ),
+    );
+  });
+
+  return null;
 }
 
 /** Mounts once under the root layout; renders above the composer. */

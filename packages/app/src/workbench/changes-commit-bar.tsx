@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -458,10 +458,6 @@ export function ChangesCommitBar({
   const [branchName, setBranchName] = useState("");
   const [branchPrompt, setBranchPrompt] = useState<CommitAction | undefined>(undefined);
   const branchField = useRef<HTMLInputElement>(null);
-
-  useLayoutEffect(() => {
-    if (branchPrompt !== undefined) branchField.current?.focus();
-  }, [branchPrompt]);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<CommitBarResult | undefined>(undefined);
   const [interrupted, setInterrupted] = useState<CommitAction | undefined>(undefined);
@@ -569,6 +565,7 @@ export function ChangesCommitBar({
         <div {...props(styles.actions)}>
           <Input
             ref={branchField}
+            autoFocus
             type="text"
             aria-label="New branch name"
             placeholder="fix/tab-close"

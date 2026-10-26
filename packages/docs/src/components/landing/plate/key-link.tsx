@@ -1,5 +1,6 @@
 import { HrefLink } from "~/components/site/href-link";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { useEffectEvent, useRef, type ReactNode } from "react";
 
 interface KeyLinkProps {
   href: string;
@@ -13,23 +14,24 @@ interface KeyLinkProps {
 export function KeyLink({ href, shortcut, className, kbdClassName, children }: KeyLinkProps) {
   const ref = useRef<HTMLAnchorElement>(null);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.repeat)
-        return;
-      if (event.key.toLowerCase() !== shortcut.toLowerCase()) return;
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable || target.closest("input, textarea, select, [role=dialog]"))
-      )
-        return;
-      event.preventDefault();
-      ref.current?.click();
-    };
+  const onKey = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.repeat)
+      return;
+    if (event.key.toLowerCase() !== shortcut.toLowerCase()) return;
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.isContentEditable || target.closest("input, textarea, select, [role=dialog]"))
+    )
+      return;
+    event.preventDefault();
+    ref.current?.click();
+  });
+
+  useMountEffect(() => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [shortcut]);
+  });
 
   return (
     <HrefLink ref={ref} href={href} aria-keyshortcuts={shortcut} className={className}>

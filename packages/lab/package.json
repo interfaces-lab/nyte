@@ -14,6 +14,7 @@
     "video:ending": "remotion render video/src/index.ts ending video/out/ending.mp4 --public-dir video/public --crf=16"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
     "@fontsource-variable/inter": "^5.3.0",
@@ -24,7 +25,6 @@
     "@nyte-ai/sdk": "workspace:*",
     "@nyte-ai/ui": "workspace:*",
     "@pierre/diffs": "^1.6.0",
-    "@remotion/player": "^4.0.537",
     "@stylexjs/stylex": "^0.19.1",
     "@tanstack/react-query": "^5.104.5",
     "@tanstack/react-router": "^1.170.45",

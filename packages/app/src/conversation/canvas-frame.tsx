@@ -23,7 +23,7 @@ import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { media, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { patchDigest } from "../workbench/changes-viewed.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
@@ -219,6 +219,7 @@ export function CanvasFrame({
   const reportedHeight =
     reported?.key === heightKey ? reported.height : measuredHeights.get(heightKey);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- iframe shell messages, answered with the current module, theme and files
   useLayoutEffect(() => {
     const receive = (event: MessageEvent<unknown>): void => {
       const frame = frameRef.current;
@@ -271,6 +272,7 @@ export function CanvasFrame({
     return () => window.removeEventListener("message", receive);
   }, [theme, runtime, code, title, known, report, heightKey, citable, opener]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- posts changed code to the running iframe shell
   useLayoutEffect(() => {
     if (shell.current.initialized)
       post(frameRef.current, renderNotification({ runtime, code, title }));

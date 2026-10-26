@@ -1,5 +1,4 @@
-// oxlint-disable-next-line no-restricted-imports -- the attachments menu springs shut when the suggestion menu opens
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSharedValue, withSpring, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { MAX_ATTACHMENTS, type StagedImage } from "../media/attachments.ts";
@@ -39,19 +38,16 @@ function springShut(
 /**
  * The photos staged on the composer and the attachments menu that adds them. `blocked` is true while
  * another step holds the composer (sending, choosing a model); staging photos holds it too, and
- * `onStaging` reports that to the screen. The menu closes whenever the suggestion menu opens. A sent
- * photo is withdrawn from the strip at once but keeps its marks until `release`, so a refused message
- * can be restored whole.
+ * `onStaging` reports that to the screen. A sent photo is withdrawn from the strip at once but keeps
+ * its marks until `release`, so a refused message can be restored whole.
  */
 export function useComposerAttachments({
   blocked,
-  suggesting,
   geometry,
   reportError,
   onStaging,
 }: {
   blocked: boolean;
-  suggesting: boolean;
   geometry: Omit<Parameters<typeof useAttachmentFlight>[0], "close">;
   reportError: (message: string | undefined) => void;
   onStaging: ((staging: boolean) => void) | undefined;
@@ -65,10 +61,6 @@ export function useComposerAttachments({
   const flight = useAttachmentFlight({ ...geometry, close: () => setVisible(false) });
   const remaining = MAX_ATTACHMENTS - images.length;
   const disabled = blocked || staging || remaining <= 0;
-
-  useEffect(() => {
-    if (suggesting) springShut(progress, extend, setVisible);
-  }, [suggesting, progress, extend]);
 
   const loadPhotos = () =>
     readRecentPhotos(PHOTO_PAGE)

@@ -23,6 +23,7 @@ import {
 import { useCallback, useMemo } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { usePaneViewStateStore } from "../layout/pane-context.tsx";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { ScrollViewState } from "../layout/session-view-state.ts";
@@ -396,6 +397,7 @@ export function TranscriptContent({
   const virtualRows = virtualizer.getVirtualItems();
   const settleRows = useEffectEvent((): void => settle(virtualizer));
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures virtual rows and syncs sticky headers before paint
   useLayoutEffect(() => {
     const scroll = virtualizer.scrollElement;
     stretchSpans(virtualizer, sticky.ends);
@@ -407,6 +409,7 @@ export function TranscriptContent({
     }
   }, [dock, dockHeight, ready, sticky, virtualRows, virtualizer]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- installs the virtualizer's scroll adjustment before it measures
   useLayoutEffect(() => {
     virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
       const current = mode.current;
@@ -475,10 +478,12 @@ export function TranscriptContent({
     if (index !== undefined) virtualizer.scrollToIndex(index, { align: "start" });
   });
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- restores the reading anchor before paint once rows are ready
   useLayoutEffect(() => {
     if (ready) restoreAnchor();
   }, [ready]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- saves virtualizer measurements to the view store on unmount
   useLayoutEffect(
     () => () => {
       const scroll = scrollport.current;
@@ -521,6 +526,7 @@ export function TranscriptContent({
     [measuredKey, paneId, sessionId, viewStore, virtualizer],
   );
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- publishes scroll controls for the current viewport and virtualizer
   useLayoutEffect(() => {
     if (viewport === null) return undefined;
 
@@ -543,85 +549,22 @@ export function TranscriptContent({
     };
   }, [controlsRef, hold, keep, release, viewport, virtualizer]);
 
-  const holdRow = useEffectEvent(hold);
-  const releaseHeld = useEffectEvent(release);
-  const presentRows = useEffectEvent((): void => present(virtualizer));
+  const selectRow = (): void => {
+    const selection = document.getSelection();
+    const node = selection?.anchorNode;
+    const current = mode.current;
+    const anchor = current.kind === "reading" ? current.anchor : null;
 
-  useLayoutEffect(() => {
-    const scroll = viewport;
+    const row = (node instanceof Element ? node : node?.parentElement)?.closest("[data-row-key]");
 
-    if (scroll === null) return undefined;
-
-    const resize = new ResizeObserver((entries) => {
-      for (const entry of entries)
-        if (entry.target === dock) setDockHeight(entry.target.getBoundingClientRect().height);
-
-      presentRows();
-    });
-
-    resize.observe(scroll);
-
-    if (dock !== null) {
-      setDockHeight(dock.getBoundingClientRect().height);
-      resize.observe(dock);
-    }
-
-    const pressed = (event: PointerEvent): void => {
-      if (event.target === scroll) releaseHeld();
-    };
-
-    const keyed = (event: KeyboardEvent): void => {
-      if (navigates(event)) releaseHeld();
-    };
-
-    const clicked = (event: MouseEvent): void => {
-      const control =
-        event.target instanceof Element
-          ? event.target.closest("[aria-expanded], [data-step-preview] *")
-          : null;
-
-      if (control !== null) holdRow(control);
-    };
-
-    const selected = (): void => {
-      const selection = document.getSelection();
-      const node = selection?.anchorNode;
-      const current = mode.current;
-      const anchor = current.kind === "reading" ? current.anchor : null;
-
-      const row = (node instanceof Element ? node : node?.parentElement)?.closest("[data-row-key]");
-
-      if (
-        selection?.isCollapsed === false &&
-        row instanceof Element &&
-        content.current?.contains(row) === true &&
-        anchor?.element !== row
-      )
-        holdRow(row);
-    };
-
-    const wheeledDock = (event: WheelEvent): void => {
-      if (dock === null || scrollsWithin(event.target, dock)) return;
-      releaseHeld();
-      virtualizer.scrollBy(event.deltaY);
-    };
-
-    const listeners = new AbortController();
-    const { signal } = listeners;
-    scroll.addEventListener("scroll", () => presentRows(), { passive: true, signal });
-    scroll.addEventListener("wheel", () => releaseHeld(), { passive: true, signal });
-    scroll.addEventListener("touchmove", () => releaseHeld(), { passive: true, signal });
-    scroll.addEventListener("pointerdown", pressed, { signal });
-    scroll.addEventListener("keydown", keyed, { signal });
-    content.current?.addEventListener("click", clicked, { capture: true, signal });
-    document.addEventListener("selectionchange", selected, { signal });
-    dock?.addEventListener("wheel", wheeledDock, { passive: true, signal });
-
-    return () => {
-      listeners.abort();
-      resize.disconnect();
-    };
-  }, [dock, viewport, virtualizer]);
+    if (
+      selection?.isCollapsed === false &&
+      row instanceof Element &&
+      content.current?.contains(row) === true &&
+      anchor?.element !== row
+    )
+      hold(row);
+  };
 
   return (
     <div
@@ -632,6 +575,29 @@ export function TranscriptContent({
       data-nyte-scrollport="balanced"
       {...props(messageScrollerStyles.viewport)}
     >
+      {viewport !== null && (
+        <ViewportInput
+          viewport={viewport}
+          content={content}
+          onPresent={() => present(virtualizer)}
+          onHold={hold}
+          onRelease={release}
+          onSelectionChange={selectRow}
+        />
+      )}
+      {viewport !== null && dock !== null && (
+        <DockInput
+          dock={dock}
+          onResize={(height) => {
+            setDockHeight(height);
+            present(virtualizer);
+          }}
+          onWheel={(delta) => {
+            release();
+            virtualizer.scrollBy(delta);
+          }}
+        />
+      )}
       <div ref={attachContent} {...props(text.lg, messageScrollerStyles.content)}>
         {virtualRows.map((virtualRow) => {
           const row = rows[virtualRow.index];
@@ -665,6 +631,104 @@ export function TranscriptContent({
       </div>
     </div>
   );
+}
+
+/** Mounted once the viewport exists: its size and the reader's input steer the transcript's scroll mode. */
+function ViewportInput({
+  viewport,
+  content,
+  onPresent,
+  onHold,
+  onRelease,
+  onSelectionChange,
+}: {
+  readonly viewport: HTMLDivElement;
+  readonly content: RefObject<HTMLDivElement | null>;
+  readonly onPresent: () => void;
+  readonly onHold: (element: Element) => void;
+  readonly onRelease: () => void;
+  readonly onSelectionChange: () => void;
+}): null {
+  const present = useEffectEvent(onPresent);
+  const hold = useEffectEvent(onHold);
+  const release = useEffectEvent(onRelease);
+  const select = useEffectEvent(onSelectionChange);
+
+  useMountEffect(() => {
+    const resize = new ResizeObserver(() => present());
+    resize.observe(viewport);
+
+    const pressed = (event: PointerEvent): void => {
+      if (event.target === viewport) release();
+    };
+
+    const keyed = (event: KeyboardEvent): void => {
+      if (navigates(event)) release();
+    };
+
+    const clicked = (event: MouseEvent): void => {
+      const control =
+        event.target instanceof Element
+          ? event.target.closest("[aria-expanded], [data-step-preview] *")
+          : null;
+
+      if (control !== null) hold(control);
+    };
+
+    const listeners = new AbortController();
+    const signal = listeners.signal;
+    viewport.addEventListener("scroll", () => present(), { passive: true, signal });
+    viewport.addEventListener("wheel", () => release(), { passive: true, signal });
+    viewport.addEventListener("touchmove", () => release(), { passive: true, signal });
+    viewport.addEventListener("pointerdown", pressed, { signal });
+    viewport.addEventListener("keydown", keyed, { signal });
+    content.current?.addEventListener("click", clicked, { capture: true, signal });
+    document.addEventListener("selectionchange", () => select(), { signal });
+
+    return () => {
+      listeners.abort();
+      resize.disconnect();
+    };
+  });
+
+  return null;
+}
+
+/** Mounted while the composer dock exists: its height pads the transcript, and wheeling over it scrolls the transcript. */
+function DockInput({
+  dock,
+  onResize,
+  onWheel,
+}: {
+  readonly dock: HTMLDivElement;
+  readonly onResize: (height: number) => void;
+  readonly onWheel: (delta: number) => void;
+}): null {
+  const resized = useEffectEvent(onResize);
+  const wheeled = useEffectEvent(onWheel);
+
+  useMountEffect(() => {
+    const resize = new ResizeObserver(() => resized(dock.getBoundingClientRect().height));
+    resize.observe(dock);
+    resized(dock.getBoundingClientRect().height);
+
+    const listeners = new AbortController();
+
+    dock.addEventListener(
+      "wheel",
+      (event) => {
+        if (!scrollsWithin(event.target, dock)) wheeled(event.deltaY);
+      },
+      { passive: true, signal: listeners.signal },
+    );
+
+    return () => {
+      listeners.abort();
+      resize.disconnect();
+    };
+  });
+
+  return null;
 }
 
 export function TranscriptButton(): ReactElement | null {

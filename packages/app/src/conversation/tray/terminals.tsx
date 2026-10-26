@@ -4,9 +4,9 @@ import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { useMutation } from "@tanstack/react-query";
 import type { JobEnd, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
 import { Row } from "@nyte-ai/ui/row";
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useSession, useWorkspaceJobs } from "../../queries.ts";
-import { connection } from "../../sdk.tsx";
+import { connection, jobsWatch, useWatchSelect } from "../../sdk.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
@@ -43,6 +43,19 @@ interface BackgroundWorkProps {
   readonly viewport: HTMLElement | null;
 }
 
+function runsInBackground(job: JobView, sessionId: SessionId | undefined): boolean {
+  return job.session === sessionId && job.state.kind === "running" && !job.foreground;
+}
+
+export function useHasLiveTerminals(sessionId: SessionId | undefined): boolean {
+  const workspace = useSession(sessionId, (session) => session.workspace).data ?? undefined;
+
+  return useWatchSelect(
+    workspace === undefined ? undefined : jobsWatch(workspace),
+    (state) => state.value?.some((job) => runsInBackground(job, sessionId)) === true,
+  );
+}
+
 export function BackgroundWork({
   sessionId,
   open,
@@ -71,7 +84,7 @@ export function BackgroundWork({
   });
 
   const liveTerminals = (jobs ?? [])
-    .filter((job) => job.session === sessionId && job.state.kind === "running" && !job.foreground)
+    .filter((job) => runsInBackground(job, sessionId))
     .toSorted((left, right) => right.startedAt - left.startedAt);
 
   const hasTerminals = liveTerminals.length > 0;
@@ -79,10 +92,6 @@ export function BackgroundWork({
   const pendingAction = cancel.isPending || stopAll.isPending;
   const count = String(liveTerminals.length);
   const noun = liveTerminals.length === 1 ? "Terminal" : "Terminals";
-
-  useLayoutEffect(() => {
-    if (open && !hasTerminals) onOpenChange(false);
-  }, [hasTerminals, onOpenChange, open]);
 
   const close = () => {
     const held = root?.contains(document.activeElement) === true;

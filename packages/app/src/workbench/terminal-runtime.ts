@@ -154,6 +154,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   const fit = new FitAddon();
   terminal.loadAddon(fit);
   terminal.open(element);
+  terminal.pauseRendering();
 
   if (commandOutput) terminal.write("\u001b[?25l");
   element.removeAttribute("contenteditable");
@@ -366,12 +367,13 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
 export function mountTerminal(id: string, container: HTMLDivElement, visible: boolean): () => void {
   let detached = false;
-  let element: HTMLDivElement | undefined;
+  let mounted: TerminalView | undefined;
   void createView(id)
     .then((view) => {
       if (detached || view === undefined || !visible) return;
-      element = view.element;
+      mounted = view;
       container.append(view.element);
+      view.terminal.resumeRendering();
       view.fit();
 
       if (container.checkVisibility()) view.terminal.textarea?.focus({ preventScroll: true });
@@ -380,7 +382,10 @@ export function mountTerminal(id: string, container: HTMLDivElement, visible: bo
 
   return () => {
     detached = true;
-    element?.remove();
+
+    if (mounted === undefined) return;
+    mounted.element.remove();
+    mounted.terminal.pauseRendering();
   };
 }
 

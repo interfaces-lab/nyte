@@ -11,6 +11,7 @@ export function usePlanningTime(planning: boolean, newest: MessageId | undefined
   if (period.planning !== planning || period.newest !== newest)
     setPeriod({ planning, newest, id: id + 1 });
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- planning timers for the current period
   useLayoutEffect(() => {
     if (!planning) return undefined;
     const now = performance.now();

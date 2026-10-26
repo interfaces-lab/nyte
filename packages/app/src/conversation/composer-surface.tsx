@@ -8,7 +8,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
 import type { EditorContentProps, ReactNodeViewProps } from "@tiptap/react";
 import { useLayoutEffect, useState } from "react";
-import type { ReactElement } from "react";
+import type { KeyboardEvent, MouseEvent, ReactElement } from "react";
 import { ComposerChipView } from "./composer-chip.tsx";
 import {
   ComposerDocument,
@@ -26,7 +26,7 @@ import { openConversationLink } from "./external-link.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import type { ReferenceOpener } from "./reference-opener.tsx";
 import { composerStyles } from "./composer.stylex.ts";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 const URL_PATTERN =
   /((https?:\/\/(www\.)?)|(www\.))[-\p{L}\p{N}@:%._+~#=]{1,256}\.[\p{L}\p{N}]{1,6}(?:[-\p{L}\p{N}()@:%_+.~#?&//=]*[\p{L}\p{N}()@_~#?&//=])?/gu;
@@ -107,10 +107,8 @@ function composerLinks(): Plugin {
   });
 }
 
-function registerComposerLinkClicks(
-  root: HTMLElement,
-  opener: ReferenceOpener | undefined,
-): () => void {
+/** Links in the editor open through the host; Enter on one reaches neither ProseMirror nor the composer. */
+function composerLinkHandlers(opener: ReferenceOpener | undefined) {
   const intercept = (event: MouseEvent): void => {
     const target = event.target;
 
@@ -122,22 +120,15 @@ function registerComposerLinkClicks(
     openConversationLink(link.href, opener);
   };
 
-  const onAuxClick = (event: MouseEvent): void => {
-    if (event.button === 1) intercept(event);
-  };
-
-  const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === "Enter" && event.target instanceof HTMLAnchorElement) event.stopPropagation();
-  };
-
-  root.addEventListener("click", intercept);
-  root.addEventListener("auxclick", onAuxClick);
-  root.addEventListener("keydown", onKeyDown, true);
-
-  return () => {
-    root.removeEventListener("click", intercept);
-    root.removeEventListener("auxclick", onAuxClick);
-    root.removeEventListener("keydown", onKeyDown, true);
+  return {
+    onClick: intercept,
+    onAuxClick: (event: MouseEvent): void => {
+      if (event.button === 1) intercept(event);
+    },
+    onKeyDownCapture: (event: KeyboardEvent): void => {
+      if (event.key === "Enter" && event.target instanceof HTMLAnchorElement)
+        event.stopPropagation();
+    },
   };
 }
 
@@ -186,8 +177,6 @@ export function useComposerSurface({
   readonly files: () => ReadonlyMap<string, MentionFile>;
   readonly editable: boolean;
 }): Editor {
-  const opener = useReferenceOpener();
-
   const [editor] = useState(() => {
     const chip = (nodeView: ReactNodeViewProps) => (
       <ReferenceChip {...nodeView} removable={editable} />
@@ -239,16 +228,11 @@ export function useComposerSurface({
     );
   });
 
-  useLayoutEffect(() => {
-    const root = editorRoot(editor);
-
-    return root === null ? undefined : registerComposerLinkClicks(root, opener);
-  }, [editor, opener]);
-
   return editor;
 }
 
 function EditorViewLifetime({ editor }: { readonly editor: Editor }): null {
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- remounts a reused, destroyed Tiptap view before paint
   useLayoutEffect(() => {
     if (editor.isDestroyed) editor.mount(document.createElement("div"));
   }, [editor]);
@@ -261,10 +245,12 @@ export function ComposerSurfaceContent({
   editor,
   ...content
 }: Omit<EditorContentProps, "editor" | "ref"> & { readonly editor: Editor }): ReactElement {
+  const opener = useReferenceOpener();
+
   return (
     <>
       <EditorViewLifetime editor={editor} />
-      <EditorContent editor={editor} {...content} />
+      <EditorContent editor={editor} {...content} {...composerLinkHandlers(opener)} />
     </>
   );
 }

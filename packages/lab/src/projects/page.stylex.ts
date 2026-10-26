@@ -1,7 +1,7 @@
 import { create } from "@stylexjs/stylex";
 import { conversation, shell, sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { radius } from "@nyte-ai/ui/styles/schema.stylex";
-import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const styles = create({
   shell: {
@@ -47,7 +47,7 @@ export const styles = create({
     minHeight: 0,
     marginInlineEnd: shell.cardInset,
     marginBlockEnd: shell.cardInset,
-    borderRadius: radius.card,
+    borderRadius: shell.cardRadius,
     backgroundColor: role.bgBase,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
     overflow: "clip",
@@ -186,10 +186,121 @@ export const styles = create({
     transitionProperty: "background-color, box-shadow",
     transitionDuration: motion.durationFast,
   },
+  dropReady: { boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}` },
   dropActive: {
     backgroundColor: role.bgInteractivePrimaryTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.contentInteractivePrimary}`,
   },
+  /** Children start under the parent's label; the guide runs down from the parent's glyph. */
+  nested: {
+    position: "relative",
+    paddingInlineStart: `calc(${sidebar.iconSlot} + ${sidebar.rowGap})`,
+    "::before": {
+      content: "''",
+      position: "absolute",
+      insetBlock: 2,
+      insetInlineStart: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} / 2)`,
+      width: 1,
+      backgroundColor: role.borderSecondaryTranslucent,
+    },
+  },
+  dragging: { opacity: 0.5 },
+  dragOverlay: {
+    display: "flex",
+    alignItems: "center",
+    width: "100%",
+    height: "100%",
+    paddingInline: sidebar.rowPaddingInline,
+    borderRadius: radius.control,
+    backgroundColor: role.bgElevated,
+    boxShadow: shadow.shadowMdOutline,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    cursor: "grabbing",
+    userSelect: "none",
+  },
+  dragOverlayTitle: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  journey: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    width: 320,
+    flexShrink: 0,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingInlineEnd: shell.cardInset,
+    paddingBlock: "4px 64px",
+  },
+  journeyTitle: {
+    margin: 0,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    fontWeight: 600,
+  },
+  journeyHeading: {
+    margin: 0,
+    marginBlockStart: 12,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+    fontWeight: 600,
+  },
+  journeySteps: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  journeyEntry: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    width: "100%",
+    padding: 8,
+    borderRadius: radius.control,
+  },
+  journeyStep: {
+    borderWidth: 0,
+    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    color: "inherit",
+    fontFamily: "inherit",
+    textAlign: "start",
+    cursor: "pointer",
+    transitionProperty: "background-color",
+    transitionDuration: motion.durationFast,
+  },
+  journeyStepCurrent: {
+    backgroundColor: { default: role.bgBase, ":hover": role.bgBase },
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+  },
+  journeyStepAhead: { opacity: 0.6 },
+  journeyLabel: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 8,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+    fontWeight: 500,
+  },
+  journeyClock: {
+    color: role.contentTertiary,
+    fontVariantNumeric: "tabular-nums",
+    fontWeight: 400,
+  },
+  journeyCaption: {
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+    textWrap: "pretty",
+  },
+  journeyOther: { display: "flex", flexDirection: "column", gap: 8 },
   empty: {
     display: "flex",
     flexDirection: "column",

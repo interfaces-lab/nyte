@@ -1,4 +1,5 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 /** Mirrors ACCOUNT_SCHEMES in packages/desktop/src/account/scheme.ts. */
 const APPS = new Set(["nyte-desktop", "nyte-desktop-test", "nyte-desktop-dev"]);
@@ -25,10 +26,9 @@ export function SignedIn() {
       ? `${app}://account/${query === "" ? "" : `?${query}`}`
       : undefined;
 
-  useEffect(() => {
+  useMountEffect(() => {
     if (deepLink !== undefined) window.location.replace(deepLink);
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- mount-only is the contract
-  }, []);
+  });
 
   return (
     <div className="flex flex-col items-start gap-3">

@@ -18,7 +18,7 @@ import { Row } from "@nyte-ai/ui/row";
 import { Toaster } from "@nyte-ai/ui/toast";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { DISPLAY_MODES, useDisplayMode, type DisplayMode } from "../shell/display-mode";
 import type { IconName } from "@nyte-ai/ui/icon";
@@ -198,7 +198,7 @@ const styles = create({
   card: {
     marginInlineEnd: frame.cardInset,
     marginBlockEnd: frame.cardInset,
-    borderRadius: radius.card,
+    borderRadius: frame.cardRadius,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
   toolbar: { display: "flex", alignItems: "center", gap: space.s2 },

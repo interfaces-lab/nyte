@@ -74,6 +74,11 @@ function buildChat(
   };
 }
 
+/** A stack carries pull requests, so a chat can join one once it has opened a pull request that is still open. */
+export function stackable(chat: Chat): boolean {
+  return chat.units.some((unit) => unit.kind === "pull-request" && unit.status !== "merged");
+}
+
 export function laneChats(world: World, units: readonly Unit[], lane: string): readonly Chat[] {
   const asks = openAsks(world);
 

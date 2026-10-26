@@ -19,7 +19,6 @@ export default defineConfig({
       "motion/react",
       "@pierre/diffs",
       "@pierre/diffs/react",
-      "@remotion/player",
       "react-grab",
     ],
   },

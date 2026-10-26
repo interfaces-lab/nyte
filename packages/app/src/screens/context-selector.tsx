@@ -1,6 +1,6 @@
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffectEvent, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconProps } from "@nyte-ai/ui/icon";
@@ -15,6 +15,7 @@ import {
   resolveClientAction,
 } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { contextStyles } from "./context-selector.stylex.ts";
 
 function ContextHint({
@@ -58,31 +59,19 @@ export function ContextSelector({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  useLayoutEffect(() => {
-    if (!active) return;
-
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (
-        resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host))?.id !==
-        action.id
-      )
-        return;
-
-      event.preventDefault();
-      triggerRef.current?.focus();
-      setOpen(true);
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      setOpen(false);
-    };
-  }, [action, active, mac]);
-
   return (
     <Menu open={open} onOpenChange={setOpen}>
+      {active && (
+        <ContextShortcut
+          action={action}
+          mac={mac}
+          onShortcut={() => {
+            triggerRef.current?.focus();
+            setOpen(true);
+          }}
+          onInactive={() => setOpen(false)}
+        />
+      )}
       <Tooltip disabled={open}>
         <TooltipTrigger
           render={
@@ -117,4 +106,41 @@ export function ContextSelector({
       </MenuContent>
     </Menu>
   );
+}
+
+/** Mounted while the selector is active: its shortcut opens the menu, and going inactive closes it. */
+function ContextShortcut({
+  action,
+  mac,
+  onShortcut,
+  onInactive,
+}: {
+  readonly action: (typeof clientActions)["selectWorkspace" | "selectEnvironment"];
+  readonly mac: boolean;
+  readonly onShortcut: () => void;
+  readonly onInactive: () => void;
+}): null {
+  const onKeyDown = useEffectEvent((event: KeyboardEvent): void => {
+    if (
+      resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host))?.id !== action.id
+    )
+      return;
+
+    event.preventDefault();
+    onShortcut();
+  });
+
+  const release = useEffectEvent(onInactive);
+
+  useMountEffect(() => {
+    const listener = (event: KeyboardEvent): void => onKeyDown(event);
+    window.addEventListener("keydown", listener);
+
+    return () => {
+      window.removeEventListener("keydown", listener);
+      release();
+    };
+  });
+
+  return null;
 }

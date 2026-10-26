@@ -189,6 +189,11 @@
       "types": "./dist/tooltip.d.ts",
       "default": "./dist/tooltip.js"
     },
+    "./use-mount-effect": {
+      "nyte-source": "./src/use-mount-effect.ts",
+      "types": "./dist/use-mount-effect.d.ts",
+      "default": "./dist/use-mount-effect.js"
+    },
     "./stylex": {
       "types": "./stylex.d.mts",
       "default": "./stylex.mjs"

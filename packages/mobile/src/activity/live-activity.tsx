@@ -1,7 +1,6 @@
 import { Voltra } from "@use-voltra/ios";
 import { useLiveActivity } from "@use-voltra/ios-client";
 import { resolveScheme } from "expo-linking";
-// oxlint-disable-next-line no-restricted-imports -- the Live Activity follows session state
 import { useEffect } from "react";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { liveRun } from "../view-helpers.ts";
@@ -137,6 +136,7 @@ export function useWorkLiveActivitySync(
   const live = working.length + attention.length;
   const activeKey = [...attention, ...working].map((session) => session.id).join(",");
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- starts, updates and ends the native Live Activity
   useEffect(() => {
     if (live === 0) {
       if (liveActive) void end().catch(() => undefined);

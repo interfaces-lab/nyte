@@ -173,6 +173,7 @@ catalogs:
 
 patchedDependencies:
   '@pierre/diffs@1.6.0': 6ed50fdf41a68636b61305291c497b0e58903d479ddf720f6f472558d63fe4c5
+  ghostty-web@0.3.0: 22e723a7e416378c3e2d805d1ec15d83c4de327ad8614eadacc945c163de7782
   react-native-view-shot@6.1.1: fc4910ae3c520ebd39858b80de1313225f911504d98d466bae5fc27bf12d2374
 
 importers:
@@ -307,8 +308,8 @@ importers:
         specifier: ^1.1.3
         version: 1.1.3
       ghostty-web:
-        specifier: github:anomalyco/ghostty-web#83c0a07b8628b748aed073b232cb4b52a6ca11c1
-        version: https://codeload.github.com/anomalyco/ghostty-web/tar.gz/83c0a07b8628b748aed073b232cb4b52a6ca11c1
+        specifier: github:anomalyco/ghostty-web#e91e38a9ceb13c566ddfa15185a9393849f712a9
+        version: https://codeload.github.com/anomalyco/ghostty-web/tar.gz/e91e38a9ceb13c566ddfa15185a9393849f712a9(patch_hash=22e723a7e416378c3e2d805d1ec15d83c4de327ad8614eadacc945c163de7782)
       motion:
         specifier: ^14.5.0
         version: 14.5.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -966,6 +967,9 @@ importers:
 
   packages/lab:
     dependencies:
+      '@dnd-kit/core':
+        specifier: ^6.3.1
+        version: 6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@fontsource-variable/geist':
         specifier: ^5.3.0
         version: 5.3.0
@@ -996,9 +1000,6 @@ importers:
       '@pierre/diffs':
         specifier: ^1.6.0
         version: 1.6.0(patch_hash=6ed50fdf41a68636b61305291c497b0e58903d479ddf720f6f472558d63fe4c5)(@shikijs/themes@4.4.3)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@remotion/player':
-        specifier: ^4.0.537
-        version: 4.0.537(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@stylexjs/stylex':
         specifier: ^0.19.1
         version: 0.19.1
@@ -9786,8 +9787,8 @@ packages:
     resolution: {integrity: sha512-VilgtJj/ALgGY77fiLam5iD336eSWi96Q15JSAG1zi8NRBysm3LXKdGnHb4m5cuyxvOLQQKWpBZAT6ni4FI2iQ==}
     engines: {node: '>=6'}
 
-  ghostty-web@https://codeload.github.com/anomalyco/ghostty-web/tar.gz/83c0a07b8628b748aed073b232cb4b52a6ca11c1:
-    resolution: {gitHosted: true, integrity: sha512-yjn1vfQRVFt6k2/yyIyKyxPY+LKaB7Y33cTzhPv+1wpDMdqPdJE6uoCXORb6VIXgrPb4R8vi71M2G6/aN3g/CQ==, tarball: https://codeload.github.com/anomalyco/ghostty-web/tar.gz/83c0a07b8628b748aed073b232cb4b52a6ca11c1}
+  ghostty-web@https://codeload.github.com/anomalyco/ghostty-web/tar.gz/e91e38a9ceb13c566ddfa15185a9393849f712a9:
+    resolution: {gitHosted: true, integrity: sha512-kSmwh5cyPGzbnNekRyjHa30PFOwjHQ/KZ6fw5ah81G+XuLW3InvjKTa+z5S4X6+QQOxJ5leRgVBX1+swkWDDkA==, tarball: https://codeload.github.com/anomalyco/ghostty-web/tar.gz/e91e38a9ceb13c566ddfa15185a9393849f712a9}
     version: 0.3.0
 
   giget@3.3.1:
@@ -23214,7 +23215,7 @@ snapshots:
 
   getenv@2.0.0: {}
 
-  ghostty-web@https://codeload.github.com/anomalyco/ghostty-web/tar.gz/83c0a07b8628b748aed073b232cb4b52a6ca11c1: {}
+  ghostty-web@https://codeload.github.com/anomalyco/ghostty-web/tar.gz/e91e38a9ceb13c566ddfa15185a9393849f712a9(patch_hash=22e723a7e416378c3e2d805d1ec15d83c4de327ad8614eadacc945c163de7782): {}
 
   giget@3.3.1: {}
 

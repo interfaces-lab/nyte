@@ -6,9 +6,9 @@ import { Row } from "@nyte-ai/ui/row";
 import { BubbleContent } from "@nyte-ai/ui/bubble";
 import { Message } from "@nyte-ai/ui/message";
 import { AttachmentGroup } from "@nyte-ai/ui/attachment";
-// oxlint-disable-next-line no-restricted-imports -- the outside-click listener lives only while an edit can dismiss
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import type { ReactElement, ReactNode } from "react";
+import { useEffectEvent, useId, useLayoutEffect, useRef, useState } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { flushSync } from "react-dom";
 import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
 import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
@@ -73,6 +73,7 @@ function UserMessagePreview({
   const [overflowing, setOverflowing] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the message before paint for the expand control
   useLayoutEffect(() => {
     const content = contentRef.current;
 
@@ -177,7 +178,6 @@ export function UserMessageView({
   const transcript = useTranscriptControls();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const original = contentDraftText(content);
-  const editing = edit !== undefined;
 
   const canDismissEdit =
     edit !== undefined &&
@@ -187,36 +187,9 @@ export function UserMessageView({
     edit.attachments.length === 0 &&
     edit.kept.length === messageFiles(content).length;
 
-  useEffect(() => {
-    const row = rowRef.current;
+  const keepWhileEditing = (element: HTMLDivElement | null): (() => void) | undefined =>
+    element === null ? undefined : transcript.keep(element);
 
-    if (!editing || row === null) return;
-
-    return transcript.keep(row);
-  }, [editing, transcript]);
-
-  useEffect(() => {
-    const row = rowRef.current;
-
-    if (!canDismissEdit || row === null) return;
-
-    const dismiss = (event: MouseEvent): void => {
-      if (event.defaultPrevented || event.button !== 0 || event.composedPath().includes(row))
-        return;
-      const target = event.target;
-
-      if (
-        target instanceof Element &&
-        target.closest('[role="menu"], [role="listbox"], [role="dialog"], [data-base-ui-inert]')
-      )
-        return;
-      setEdit(undefined);
-    };
-
-    row.ownerDocument.addEventListener("click", dismiss);
-
-    return () => row.ownerDocument.removeEventListener("click", dismiss);
-  }, [canDismissEdit]);
   const pluginCatalog = usePluginCatalog(useTranscriptScope()?.sessionId);
   const workspaceFiles = useMentionFiles(edit !== undefined);
 
@@ -382,7 +355,14 @@ export function UserMessageView({
             )}
           </BubbleContent>
         ) : (
-          <div aria-busy={edit.saving || undefined} {...props(turnStyles.userEdit)}>
+          <div
+            ref={keepWhileEditing}
+            aria-busy={edit.saving || undefined}
+            {...props(turnStyles.userEdit)}
+          >
+            {canDismissEdit && (
+              <DismissOnOutsideClick rowRef={rowRef} onDismiss={() => setEdit(undefined)} />
+            )}
             {edit.error !== undefined && (
               <Tooltip>
                 <TooltipTrigger
@@ -430,6 +410,42 @@ export function UserMessageView({
       </Message>
     </div>
   );
+}
+
+/** Mounted while the edit is unchanged: a primary click outside the row ends it. */
+function DismissOnOutsideClick({
+  rowRef,
+  onDismiss,
+}: {
+  readonly rowRef: RefObject<HTMLDivElement | null>;
+  readonly onDismiss: () => void;
+}): null {
+  const dismiss = useEffectEvent(onDismiss);
+
+  useMountEffect(() => {
+    const row = rowRef.current;
+
+    if (row === null) return;
+
+    const listener = (event: MouseEvent): void => {
+      if (event.defaultPrevented || event.button !== 0 || event.composedPath().includes(row))
+        return;
+      const target = event.target;
+
+      if (
+        target instanceof Element &&
+        target.closest('[role="menu"], [role="listbox"], [role="dialog"], [data-base-ui-inert]')
+      )
+        return;
+      dismiss();
+    };
+
+    row.ownerDocument.addEventListener("click", listener);
+
+    return () => row.ownerDocument.removeEventListener("click", listener);
+  });
+
+  return null;
 }
 
 function HistoryDisclosure({

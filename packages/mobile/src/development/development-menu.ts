@@ -3,7 +3,6 @@ import type { Connection, SessionInfo } from "@nyte-ai/sdk";
 import { isLiveActivityActive, startLiveActivity, stopLiveActivity } from "@use-voltra/ios-client";
 import { registerDevMenuItems } from "expo-dev-client";
 import { router, useGlobalSearchParams } from "expo-router";
-// oxlint-disable-next-line no-restricted-imports -- dev menu items re-register when the client or conversation changes
 import { useEffect } from "react";
 import { Alert } from "react-native";
 import { appLink, workLiveActivityVariants } from "../activity/live-activity.tsx";
@@ -83,6 +82,7 @@ export function DevelopmentMenu({ client }: { client: Connection | undefined }) 
   const { id } = useGlobalSearchParams<{ id?: string | string[] }>();
   const currentId = Array.isArray(id) ? id[0] : id;
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- re-registers native dev menu items per client and conversation
   useEffect(() => {
     if (!__DEV__) return;
 

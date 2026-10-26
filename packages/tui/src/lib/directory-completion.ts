@@ -3,7 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
-// eslint-disable-next-line no-control-regex
+// eslint-disable-next-line no-control-regex -- rejecting control characters is the point
 const CONTROL_CHARACTERS = /[\x00-\x1f\x7f]/;
 
 interface DirectoryQuery {

@@ -31,6 +31,7 @@ allowBuilds:
 minimumReleaseAge: 0
 patchedDependencies:
   "@pierre/diffs@1.6.0": patches/@pierre__diffs@1.6.0.patch
+  ghostty-web@0.3.0: patches/ghostty-web@0.3.0.patch
   react-native-view-shot@6.1.1: patches/react-native-view-shot@6.1.1.patch
 permissions:
   "@central-icons-react/round-filled-radius-2-stroke-1.5":

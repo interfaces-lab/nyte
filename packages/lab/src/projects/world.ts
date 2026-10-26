@@ -180,11 +180,6 @@ export function polishLane(at: number, knobs: Knobs = DEFAULT_KNOBS): Lane {
         pollPendingSeconds: knobs.pollPendingSeconds,
         pollSettledSeconds: knobs.pollSettledSeconds,
       },
-      decisions: [
-        "docs/adr/0002-one-writer-per-checkout.md",
-        "docs/adr/0003-never-lose-work.md",
-        "docs/adr/0006-trigger-contract.md",
-      ],
       requires: { cli: ["gh"], mcp: [] },
     },
   };

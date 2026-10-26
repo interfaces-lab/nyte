@@ -1,4 +1,3 @@
-// oxlint-disable-next-line no-restricted-imports -- a recycled cell snaps its selection while a toggled one animates it in Reanimated
 import { useEffect, useRef } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { LegendList } from "@legendapp/list/react-native";
@@ -30,6 +29,7 @@ function PhotoCell({
   const press = useSharedValue(1);
   const selection = useSharedValue(selected ? 1 : 0);
   const previous = useRef(photo.id);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- drives the selection value: recycled cells snap, toggled ones animate
   useEffect(() => {
     if (previous.current !== photo.id) {
       previous.current = photo.id;

@@ -7,7 +7,7 @@ import { keys, loadLocalResources, queryClient } from "./queries.ts";
 import { Shell } from "./router.tsx";
 import type { AppRouter } from "./router.tsx";
 import { nyte } from "./nyte.ts";
-import { useMountEffect } from "./use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { windowTabs } from "./tabs/window-tabs.ts";
 import { activeSelection } from "./layout/pane-layout.ts";
 import {

@@ -80,6 +80,7 @@ function useSteadyLabel(label: string | undefined): string {
   const [shown, setShown] = useState(label ?? PLANNING_LABEL);
   const changedAt = useRef<number | undefined>(undefined);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- label throttle timer, restarted per label
   useLayoutEffect(() => {
     const now = performance.now();
     const changed = changedAt.current ?? now;
@@ -210,13 +211,11 @@ export function StepGroupView({
   const expanded = content === "open";
   const panelId = useId();
 
-  const viewportRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const callsRef = useRef<HTMLDivElement>(null);
   const pinRef = useRef(PINNED);
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
 
+  const followPreview = (viewport: HTMLDivElement | null): (() => void) | undefined => {
     if (viewport === null || !preview) {
       pinRef.current = PINNED;
 
@@ -271,7 +270,7 @@ export function StepGroupView({
       listeners.abort();
       observer.disconnect();
     };
-  }, [preview]);
+  };
 
   const summaryLine = (
     <>
@@ -328,7 +327,7 @@ export function StepGroupView({
       {content !== "closed" && (
         <Collapsible.Preview
           id={panelId}
-          ref={viewportRef}
+          ref={followPreview}
           data-nyte-scrollport={preview || undefined}
           data-step-preview={preview || undefined}
           xstyle={[stepGroupStyles.panel, preview && stepGroupStyles.preview]}

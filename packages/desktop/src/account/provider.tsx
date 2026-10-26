@@ -7,6 +7,7 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { CatchBoundary } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { loadDeferred } from "@nyte-ai/app/deferred.tsx";
 import type { ReactElement, ReactNode } from "react";
 import type { accountRuntime } from "./clerk.tsx";
@@ -94,7 +95,7 @@ function AccountLoader(): ReactElement {
   const ready = state.kind === "ready";
   const finishing = prompt !== undefined && returned === prompt.id;
 
-  useEffect(() => {
+  useMountEffect(() => {
     let timer: number | undefined;
 
     const stop = bridge.onReturn(() => {
@@ -107,8 +108,9 @@ function AccountLoader(): ReactElement {
       window.clearTimeout(timer);
       stop();
     };
-  }, []);
+  });
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- bridge command subscription, restarted per retry until ready
   useEffect(() => {
     if (ready) return;
     let disposed = false;
@@ -236,16 +238,14 @@ function AccountDialog({
 function AccountUnavailable({ reset }: { readonly reset: () => void }): ReactElement {
   const [prompt, setPrompt] = useState<AccountCommand>();
 
-  useEffect(
-    () =>
-      bridge.onCommand((command) => {
-        setPrompt(command?.kind === "token" ? command : undefined);
+  useMountEffect(() =>
+    bridge.onCommand((command) => {
+      setPrompt(command?.kind === "token" ? command : undefined);
 
-        if (command?.kind === "sign_out") {
-          bridge.answer({ id: command.id, kind: "failed", reason: "sign_out_failed" });
-        }
-      }),
-    [],
+      if (command?.kind === "sign_out") {
+        bridge.answer({ id: command.id, kind: "failed", reason: "sign_out_failed" });
+      }
+    }),
   );
 
   return (

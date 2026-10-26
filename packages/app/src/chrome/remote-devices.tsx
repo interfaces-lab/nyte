@@ -12,7 +12,7 @@ import { keys } from "../queries.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { PairingCode, pairingPayload } from "./pairing-code.tsx";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { CopyButton, shareStyles } from "./remote-share.tsx";
 
 export function useRevokeDevice() {

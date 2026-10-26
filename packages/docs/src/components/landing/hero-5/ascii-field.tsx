@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as const;
 
@@ -83,7 +84,7 @@ function layout(width: number, height: number, cellWidth: number): Cell[][] {
 export function AsciiField({ className }: { className?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
+  useMountEffect(() => {
     const canvas = ref.current;
     const host = canvas?.parentElement;
     const context = canvas?.getContext("2d");
@@ -197,7 +198,7 @@ export function AsciiField({ className }: { className?: string }) {
       host.removeEventListener("pointerleave", onLeave);
       motion.removeEventListener("change", onLeave);
     };
-  }, []);
+  });
 
   return <canvas ref={ref} aria-hidden="true" className={className} />;
 }

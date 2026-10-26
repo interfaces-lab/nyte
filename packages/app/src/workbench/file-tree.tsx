@@ -1,6 +1,6 @@
 import { FileTree } from "@pierre/trees/react";
 import type { FileTreeProps } from "@pierre/trees/react";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import type { ReactElement } from "react";
 
 export function WorkspaceFileTree(properties: FileTreeProps): ReactElement {

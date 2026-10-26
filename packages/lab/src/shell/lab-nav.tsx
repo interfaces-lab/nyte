@@ -2,8 +2,9 @@ import { create, props } from "@stylexjs/stylex";
 import { Link } from "@tanstack/react-router";
 
 const PAGES = [
-  ["/projects", "Projects"],
+  ["/stacks", "Stacks"],
   ["/tabs", "Tabs"],
+  ["/peek", "Peek"],
   ["/changes", "Changes"],
   ["/settings", "Settings"],
   ["/hubs", "Hubs"],

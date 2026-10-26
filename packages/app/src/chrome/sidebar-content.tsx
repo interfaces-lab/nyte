@@ -3,7 +3,8 @@ import { useMatch } from "@tanstack/react-router";
 import { LayoutGroup, motion, MotionConfig } from "motion/react";
 import type { Transition } from "motion/react";
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { SettingsNavigation, type SettingsSection } from "../settings/index.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 
@@ -17,10 +18,14 @@ let archiveSettle: "single" | "burst" | undefined;
 
 let lastArchiveAt = -ARCHIVE_BURST_MS;
 
+/** The archive re-renders the list synchronously from the same event, so the flag is spent by the next frame. */
 export function recordArchive(count: number): void {
   const at = performance.now();
   archiveSettle = count === 1 && at - lastArchiveAt > ARCHIVE_BURST_MS ? "single" : "burst";
   lastArchiveAt = at;
+  requestAnimationFrame(() => {
+    archiveSettle = undefined;
+  });
 }
 
 function sidebarLayoutTransition(node: HTMLElement, durationVariable: string): Transition {
@@ -55,6 +60,7 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
 
   if (openSection !== undefined && openSection !== section) setSection(openSection);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- reads the CSS motion tokens before the first frame
   useLayoutEffect(() => {
     const node = contentRef.current;
 
@@ -77,24 +83,14 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
     return () => reducedMotion.removeEventListener("change", update);
   }, []);
 
-  const settle = archiveSettle;
-  useLayoutEffect(() => {
-    archiveSettle = undefined;
-  });
-
   const transition =
-    settle === undefined ? transitions.list : settle === "single" ? transitions.archive : INSTANT;
+    archiveSettle === undefined
+      ? transitions.list
+      : archiveSettle === "single"
+        ? transitions.archive
+        : INSTANT;
 
   const shift = transitions.list === INSTANT ? 0 : LAYER_SHIFT;
-
-  useLayoutEffect(() => {
-    const node = contentRef.current;
-
-    if (node === null || !node.contains(document.activeElement)) return;
-    node
-      .querySelector<HTMLElement>("[data-sidebar-layer]:not([inert]) [data-sidebar-return]")
-      ?.focus({ preventScroll: true });
-  }, [settingsOpen]);
 
   return (
     <nav
@@ -102,6 +98,7 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
       aria-label={settingsOpen ? "Settings" : "Sessions and workspaces"}
       {...props(styles.content)}
     >
+      <LayerFocus key={settingsOpen ? "settings" : "workspace"} contentRef={contentRef} />
       <motion.div
         data-sidebar-layer="workspace"
         inert={settingsOpen}
@@ -128,4 +125,18 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
       </motion.div>
     </nav>
   );
+}
+
+/** Keyed by the visible layer: moves focus that was in the sidebar into the layer just shown. */
+function LayerFocus({ contentRef }: { readonly contentRef: RefObject<HTMLElement | null> }): null {
+  useMountEffect(() => {
+    const node = contentRef.current;
+
+    if (node === null || !node.contains(document.activeElement)) return;
+    node
+      .querySelector<HTMLElement>("[data-sidebar-layer]:not([inert]) [data-sidebar-return]")
+      ?.focus({ preventScroll: true });
+  });
+
+  return null;
 }

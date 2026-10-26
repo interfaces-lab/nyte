@@ -40,6 +40,7 @@ import { ComposerActions } from "./composer-actions.tsx";
 import { useComposerModel } from "./use-composer-model.ts";
 import { useComposerAttachments } from "./use-composer-attachments.ts";
 import { useComposerSubmit } from "./use-composer-submit.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 
 const INPUT_LINE_HEIGHT = 24;
 
@@ -81,6 +82,7 @@ export function Composer({
   const fieldRef = useRef<TextInputInstance>(null);
   const selectionOnCommit = useRef<{ draft: string; caret: number } | undefined>(undefined);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- restores the TextInput caret before paint
   useLayoutEffect(() => {
     const selection = selectionOnCommit.current;
     selectionOnCommit.current = undefined;
@@ -124,7 +126,6 @@ export function Composer({
 
   const attachments = useComposerAttachments({
     blocked: sending || model.selecting,
-    suggesting: completion !== undefined,
     geometry: { cardDock, cardHeight, windowHeight, cardLeft: gutters.left },
     reportError: setLocalError,
     onStaging: target.kind === "new" ? onBusyChange : undefined,
@@ -202,12 +203,15 @@ export function Composer({
           </html.p>
         )}
         {completion === undefined ? null : (
-          <SuggestionMenu
-            completion={completion}
-            onAccept={accept}
-            cardHeight={menuObstructionHeight}
-            cardDock={cardDock}
-          />
+          <>
+            <SuggestionMenu
+              completion={completion}
+              onAccept={accept}
+              cardHeight={menuObstructionHeight}
+              cardDock={cardDock}
+            />
+            <ClosesOnMount close={attachments.close} />
+          </>
         )}
         <ComposerControls
           target={target}
@@ -367,6 +371,13 @@ export function Composer({
       ) : null}
     </Animated.View>
   );
+}
+
+/** Opening the suggestion menu springs the attachments menu shut. */
+function ClosesOnMount(props: { close: () => void }) {
+  useMountEffect(props.close);
+
+  return null;
 }
 
 const field = StyleSheet.create({

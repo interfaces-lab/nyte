@@ -16,7 +16,7 @@ import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { asId } from "@nyte-ai/schema";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import {
   readGitPatches,
   readRecordedPatches,
@@ -245,10 +245,12 @@ function usePatchLoader(
 ): ReturnType<typeof createPatchLoader> {
   const [patches] = useState(createPatchLoader);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- points the patch loader cache at the source before children read it
   useLayoutEffect(() => {
     if (source !== undefined) patches.setSource(source);
   }, [patches, source]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- tells the patch loader cache which paths to prefetch
   useLayoutEffect(() => {
     patches.prepare(preparedPaths);
   }, [patches, preparedPaths]);

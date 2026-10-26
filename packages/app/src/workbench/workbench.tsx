@@ -48,7 +48,7 @@ import { CanvasPanel } from "./canvas-panel.tsx";
 import { Deferred, loadDeferred } from "../deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { usePaneControllerSnapshot } from "../layout/pane-context.tsx";
 import { activeSelection } from "../layout/pane-layout.ts";
 
@@ -69,6 +69,12 @@ function subscribeVisited(listener: () => void): () => void {
   visitedListeners.add(listener);
 
   return () => visitedListeners.delete(listener);
+}
+
+function VisitView({ viewKey }: { readonly viewKey: WorkbenchViewKey }): null {
+  useMountEffect(() => visitWorkbenchView(viewKey));
+
+  return null;
 }
 
 const tabIcons = {
@@ -579,6 +585,7 @@ function WorkbenchViewHost({
   const panelVisible = current && view.expanded;
   const panelShown = panelVisible && !chatShowing;
   const panelHidden = !current || (panelVisible && chatShowing);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the panel before paint and observes its size
   useLayoutEffect(() => {
     const panel = panelRef.current;
 
@@ -751,9 +758,9 @@ export function Workbench({
     () => recentViews,
   );
 
-  useLayoutEffect(() => visitWorkbenchView(viewKey), [viewKey]);
   const views = (visited.includes(viewKey) ? visited : [...visited, viewKey]).toSorted();
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the stage before paint and observes its size
   useLayoutEffect(() => {
     const stage = rootRef.current?.parentElement;
 
@@ -774,6 +781,7 @@ export function Workbench({
 
   return (
     <aside ref={rootRef} {...props(workbenchStyles.root)} aria-label="Workbench">
+      <VisitView key={viewKey} viewKey={viewKey} />
       {views.map((key) => {
         const current = key === viewKey;
         const viewWorkspacePath = key === WORKBENCH_HOME_VIEW_KEY ? undefined : key;

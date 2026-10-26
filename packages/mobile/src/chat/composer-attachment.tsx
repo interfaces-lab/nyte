@@ -1,4 +1,3 @@
-// oxlint-disable-next-line no-restricted-imports -- the enter spring and the flight reveal follow props into Reanimated
 import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { SymbolView } from "expo-symbols";
@@ -37,9 +36,10 @@ export function ComposerAttachment({
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const removing = useRef(false);
 
-  useEffect(() => {
+  useMountEffect(() => {
     if (!landing) enter.set(withSpring(1, { damping: 16, stiffness: 140, mass: 0.7 }));
-  }, [enter, landing]);
+  });
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- reveals the thumbnail when the flight lands this image
   useEffect(() => {
     if (landing && flight.revealedId === image.id) reveal.set(1);
   }, [flight.revealedId, image.id, landing, reveal]);

@@ -1,5 +1,6 @@
 import { Link, useRouter } from "@tanstack/react-router";
-import { useEffect, useId, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { create } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Input } from "@nyte-ai/ui/input";
@@ -93,8 +94,9 @@ export function SiteSearch() {
   const listId = useId();
   const trimmed = query.trim();
   const results = trimmed === "" ? [] : (response?.results ?? []);
+  const pending = useRef<AbortController | null>(null);
 
-  useEffect(() => {
+  useMountEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -103,23 +105,26 @@ export function SiteSearch() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  });
 
-  useEffect(() => {
-    if (!open || trimmed === "") return;
+  const search = (value: string) => {
+    setQuery(value);
+    const next = value.trim();
+    if (next === trimmed) return;
+    pending.current?.abort();
+    pending.current = null;
+    if (next === "") return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
-      const found = await searchSite(trimmed, controller.signal);
+      const found = await searchSite(next, controller.signal);
 
       if (controller.signal.aborted) return;
-      setResponse({ query: trimmed, results: found });
+      setResponse({ query: next, results: found });
       setActive(0);
     }, 89);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [open, trimmed]);
+    controller.signal.addEventListener("abort", () => clearTimeout(timer));
+    pending.current = controller;
+  };
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "ArrowDown") {
@@ -168,7 +173,7 @@ export function SiteSearch() {
             aria-controls={listId}
             value={query}
             onKeyDown={onKeyDown}
-            onValueChange={setQuery}
+            onValueChange={search}
           />
           {results.length > 0 ? (
             <ul

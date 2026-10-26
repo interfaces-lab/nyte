@@ -213,6 +213,7 @@ export function ComposerFrame({
 
   const resizeEditor = useEffectEvent((): void => resize());
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- observes frame and textarea sizes before paint
   useLayoutEffect(() => {
     const area = areaRef.current?.readElement();
     const frame = frameRef.current;

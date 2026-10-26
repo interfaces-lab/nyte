@@ -38,7 +38,8 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
 import { FindWidget } from "./find-widget.tsx";
-import { useMountEffect } from "../use-mount-effect.ts";
+import type { FindWidgetHandle } from "./find-widget.tsx";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-stack-code-view.ts";
 import { diffRangeExcerpt } from "./diff-range.ts";
 import type { ChangesLayout } from "./changes-view-options.ts";
@@ -166,11 +167,10 @@ export function ChangesStack({
   const sources = useRef(model.sourceById);
   const mac = nyte.platform === "darwin";
 
-  const [find, setFind] = useState<{
-    readonly search: CodeViewSearch;
-    readonly revision: number;
-  }>();
+  const [find, setFind] = useState<CodeViewSearch>();
+  const findWidget = useRef<FindWidgetHandle>(null);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest sources for viewer callbacks, which run outside render
   useLayoutEffect(() => {
     sources.current = model.sourceById;
   }, [model.sourceById]);
@@ -187,26 +187,6 @@ export function ChangesStack({
 
     return true;
   };
-
-  const addSelectedRange = useEffectEvent(addRange);
-
-  useLayoutEffect(() => {
-    if (selection === null) return undefined;
-
-    const add = (event: KeyboardEvent): void => {
-      const owner = keyOwner();
-
-      if (event.defaultPrevented || !addsToChat(event, mac)) return;
-
-      if (owner !== undefined && owner.closest("[data-changes-stack]") === null) return;
-
-      if (addSelectedRange(selection.id, selection.range)) event.preventDefault();
-    };
-
-    window.addEventListener("keydown", add);
-
-    return () => window.removeEventListener("keydown", add);
-  }, [mac, selection]);
 
   const options = {
     ...PIERRE_HIGHLIGHTER_OPTIONS,
@@ -230,6 +210,7 @@ export function ChangesStack({
     },
   } satisfies CodeViewReactOptions<string, undefined>;
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- restores the imperative viewer's scroll before paint
   useLayoutEffect(() => {
     const pending = restore.current;
 
@@ -238,6 +219,7 @@ export function ChangesStack({
     restore.current = undefined;
   }, [model.items]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- scrolls the imperative viewer to the focused file before paint
   useLayoutEffect(() => {
     if (
       focusRevision === 0 ||
@@ -324,17 +306,31 @@ export function ChangesStack({
 
         if (next === undefined) return;
         event.preventDefault();
-        setFind((current) => ({ search: next, revision: (current?.revision ?? 0) + 1 }));
+        findWidget.current?.focus();
+        setFind(next);
       }}
     >
+      {selection !== null && (
+        <WindowKeyDown
+          onKeyDown={(event) => {
+            const owner = keyOwner();
+
+            if (event.defaultPrevented || !addsToChat(event, mac)) return;
+
+            if (owner !== undefined && owner.closest("[data-changes-stack]") === null) return;
+
+            if (addRange(selection.id, selection.range)) event.preventDefault();
+          }}
+        />
+      )}
       {find !== undefined && (
         <FindWidget
+          ref={findWidget}
           label="Find in changes"
-          target={find.search}
-          focusRevision={find.revision}
+          target={find}
           placement={styles.findPlacement}
           onClose={() => {
-            find.search.clear();
+            find.clear();
             setFind(undefined);
             viewer.current?.getInstance()?.getContainerElement()?.focus({ preventScroll: true });
           }}
@@ -463,6 +459,24 @@ function PatchDemand({
   readonly demand: (path: string) => () => void;
 }): null {
   useMountEffect(() => demand(path));
+
+  return null;
+}
+
+function WindowKeyDown({
+  onKeyDown,
+}: {
+  readonly onKeyDown: (event: KeyboardEvent) => void;
+}): null {
+  const handle = useEffectEvent(onKeyDown);
+
+  useMountEffect(() => {
+    const listener = (event: KeyboardEvent): void => handle(event);
+
+    window.addEventListener("keydown", listener);
+
+    return () => window.removeEventListener("keydown", listener);
+  });
 
   return null;
 }

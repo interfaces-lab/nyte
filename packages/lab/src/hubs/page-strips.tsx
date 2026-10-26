@@ -1,531 +1,388 @@
-/**
- * Strips for the settings pages that don't connect anything: one emblem per
- * page in its own hue. Appearance paints with the hue the user picks; the
- * rest are still lifes with a little motion, all of it off under reduced
- * motion.
- */
 import { create, keyframes, props } from "@stylexjs/stylex";
 import { useReducedMotion } from "motion/react";
-import { useContext, type ReactElement } from "react";
-import type { IconName } from "@nyte-ai/ui/icon";
-import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import type { ReactElement } from "react";
 import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
-import { rounded } from "./hub-art";
-import { BOARD, Falloff, Glyph, Strip, ink, seeded } from "./strip";
+import {
+  BOARD,
+  CELL,
+  Chip,
+  Field,
+  Frame,
+  Label,
+  Level,
+  SPREAD,
+  Strip,
+  ink,
+  noise,
+  plot,
+  smooth,
+  spectrum,
+} from "./strip";
 import { AdvancedStrip, BrowserStrip, EditorStrip, TerminalStrip } from "./tool-strips";
 
-/** One well of paint in its own hue: the custom ramp reads the hue where its class lands. */
-function Well({
-  x,
-  y,
-  r,
-  degrees,
-  chroma,
-  chosen,
-}: {
-  readonly x: number;
-  readonly y: number;
-  readonly r: number;
-  readonly degrees: number;
-  readonly chroma: number;
-  readonly chosen: boolean;
-}): ReactElement {
-  return (
-    <g
-      ref={(node) => {
-        node?.style.setProperty("--nyte-custom-hue", String(((degrees % 360) + 360) % 360));
-        node?.style.setProperty("--nyte-custom-chroma-scale", String(chroma));
-      }}
-      {...props(surfaceTheme.custom)}
-    >
-      {chosen && <circle cx={x} cy={y} r={r + 5} {...props(ink.accent, appearance.chosenRing)} />}
-      <circle cx={x} cy={y} r={r} {...props(ink.accentFill, appearance.paint)} />
-      <ellipse
-        cx={x - r * 0.32}
-        cy={y - r * 0.36}
-        rx={r * 0.34}
-        ry={r * 0.2}
-        {...props(appearance.gloss)}
-      />
-    </g>
-  );
+const PICKER = { x: 73 * CELL, y: 60, w: 5 * CELL, h: 84 } as const;
+
+/** Degrees between bands here: a hue picker shows the whole wheel. */
+const HUE_STEP = 18;
+
+const RULER = [-4, -2, 0, 2, 4] as const;
+
+/** Ruler ticks and their labels sit on the same two lines in every strip. */
+const TICK = { top: 172, bottom: 177, label: 187 } as const;
+
+function brush(x: number, y: number, column: number, row: number): number {
+  const centre = 100 + 24 * Math.sin((x - 600) / 140) + 7 * Math.sin((x - 600) / 47);
+  const half = 36 - 12 * Math.abs(Math.sin((x - 600) / 260));
+  const across = Math.abs(y - centre) / half;
+
+  if (across >= 1) return 0;
+  const bristle = noise(row, 3) < 0.22 ? 0.55 : 1;
+
+  return (1 - across * across) * bristle * (0.8 + 0.2 * noise(column, row));
 }
 
-const PALETTE =
-  "M486,98 C480,52 548,28 614,30 C684,32 726,64 718,100 C712,124 688,124 672,128 C652,133 664,162 632,170 C590,180 492,152 486,98 Z";
+/** The picked band glitters more than the rest. */
+const STROKE = plot(brush, (column) =>
+  column * CELL >= PICKER.x && column * CELL < PICKER.x + PICKER.w ? 0.2 : 0.04,
+);
 
-const WELLS = [-75, -50, -25, 0, 25, 50, 75].map((offset, index, all) => {
-  const angle = Math.PI * (0.92 - (0.84 * index) / (all.length - 1));
-
-  return { offset, x: 604 + 84 * Math.cos(angle), y: 98 - 44 * Math.sin(angle) };
-});
-
-/** Paint chips fanned from one rivet, from no chroma to full; the one nearest the intensity stands out. */
-const CHIPS = [0.2, 0.4, 0.6, 0.8, 1];
+function hueLabel(value: number): string {
+  return `${String(((Math.round(value) % 360) + 360) % 360)}°`;
+}
 
 export function AppearanceStrip({
   hue,
   intensity,
 }: {
   readonly hue: number;
-  /** 0 to 100. */
   readonly intensity: number;
 }): ReactElement {
-  const chroma = intensity / 100;
-
-  const nearest = CHIPS.reduce((best, chip) =>
-    Math.abs(chip - chroma) < Math.abs(best - chroma) ? chip : best,
-  );
+  const centre = PICKER.x + PICKER.w / 2;
 
   return (
     <Strip
-      tint="custom"
-      hue={{ degrees: hue, chroma }}
-      caption={`Hue ${String(hue)}° · Intensity ${String(intensity)}%`}
+      prism={spectrum(hue, HUE_STEP)}
+      chroma={intensity / 100}
+      backdrop={<Field plot={STROKE} twinkle />}
     >
-      <g {...props(appearance.swoosh)}>
-        <path d="M-40,150 C260,50 480,200 780,96 S1080,20 1240,64" {...props(appearance.stroke)} />
-        {[-14, -8, 9, 15].map((shift) => (
-          <path
-            key={shift}
-            d={`M-40,${150 + shift} C260,${50 + shift} 480,${200 + shift} 780,${96 + shift} S1080,${20 + shift} 1240,${64 + shift}`}
-            {...props(appearance.bristle)}
-          />
-        ))}
-      </g>
-
-      <g>
-        {CHIPS.map((chip, index) => (
-          <g key={chip} transform={`rotate(${-44 + index * 10} 430 170)`}>
-            <g
-              ref={(node) => node?.style.setProperty("--nyte-custom-chroma-scale", String(chip))}
-              {...props(surfaceTheme.custom)}
-            >
-              <rect
-                x={417}
-                y={72}
-                width={26}
-                height={104}
-                rx={5}
-                {...props(ink.solid, chip === nearest && appearance.chipChosen)}
-              />
-              <rect x={420} y={75} width={20} height={58} rx={3} {...props(ink.accentFill)} />
-              <rect x={421} y={140} width={12} height={3} rx={1.5} {...props(ink.mutedFill)} />
-              <rect x={421} y={147} width={8} height={3} rx={1.5} {...props(ink.mutedFill)} />
-            </g>
-          </g>
-        ))}
-        <circle cx={430} cy={166} r={3} {...props(ink.solid)} />
-      </g>
-
-      <path
-        d={PALETTE}
-        transform="translate(5 8)"
-        {...props(ink.primaryFill, ink.bloom, appearance.shadow)}
-      />
-      <path d={PALETTE} {...props(ink.solid, appearance.palette)} />
-      <circle cx={540} cy={128} r={11} {...props(ink.line, appearance.thumb)} />
-      <path
-        d="M590,148 C604,136 628,140 640,146 C650,152 632,160 614,158 C600,157 584,154 590,148 Z"
-        {...props(ink.accentFill, appearance.smear)}
-      />
-      {WELLS.map((well) => (
-        <Well
-          key={well.offset}
-          x={well.x}
-          y={well.y}
-          r={well.offset === 0 ? 15 : 11}
-          degrees={hue + well.offset}
-          chroma={Math.max(chroma, 0.04)}
-          chosen={well.offset === 0}
-        />
-      ))}
-
-      <g transform="translate(636 146) rotate(-36)">
-        <path d="M0,0 C6,-6 18,-5 24,-4.5 L24,4.5 C18,5 6,6 0,0 Z" {...props(ink.accentFill)} />
-        <rect x={24} y={-5} width={18} height={10} rx={1.5} {...props(ink.solid)} />
-        <path d="M27,-5 L27,5 M31,-5 L31,5" {...props(ink.faint)} />
-        <path
-          d="M42,-4.5 L150,-2.6 C154,-2.5 154,2.5 150,2.6 L42,4.5 Z"
-          {...props(ink.solid, appearance.handle)}
-        />
-      </g>
-    </Strip>
-  );
-}
-
-const FADERS = [
-  { x: 432, at: 74, drift: 0 },
-  { x: 456, at: 112, drift: 1 },
-  { x: 480, at: 90, drift: 2 },
-  { x: 504, at: 126, drift: 1 },
-  { x: 528, at: 82, drift: 0 },
-] as const;
-
-const SWITCHES = [
-  { y: 58, on: true },
-  { y: 92, on: false },
-  { y: 126, on: true },
-] as const;
-
-function Knob({
-  x,
-  y,
-  value,
-}: {
-  readonly x: number;
-  readonly y: number;
-  readonly value: number;
-}): ReactElement {
-  const start = Math.PI * 0.75;
-  const sweep = Math.PI * 1.5;
-  const end = start + sweep * value;
-
-  const point = (angle: number, radius: number) => ({
-    x: x + radius * Math.cos(angle),
-    y: y + radius * Math.sin(angle),
-  });
-
-  const from = point(start, 22);
-  const to = point(end, 22);
-  const tip = point(end, 11);
-
-  return (
-    <g>
-      {Array.from({ length: 11 }, (_, index) => {
-        const angle = start + (sweep * index) / 10;
-        const outer = point(angle, 28);
-        const inner = point(angle, 26);
+      <Frame x={PICKER.x} y={PICKER.y} w={PICKER.w} h={PICKER.h} />
+      <Chip x={PICKER.x} y={PICKER.y + 9} label={hueLabel(hue)} />
+      <Label x={centre} y={PICKER.y + PICKER.h + 13} align="middle">
+        {`Intensity ${String(intensity)}%`}
+      </Label>
+      {RULER.map((offset) => {
+        const x = centre + offset * PICKER.w;
 
         return (
-          <path
-            key={index}
-            d={`M${inner.x},${inner.y} L${outer.x},${outer.y}`}
-            {...props(ink.strong)}
-          />
+          <g key={offset}>
+            <path
+              d={`M${x} ${TICK.top}V${TICK.bottom}`}
+              {...props(offset === 0 ? ink.mark : ink.faint)}
+            />
+            {offset !== 0 && (
+              <Label x={x} y={TICK.label} align="middle">
+                {hueLabel(hue + offset * HUE_STEP)}
+              </Label>
+            )}
+          </g>
         );
       })}
-      <path
-        d={`M${from.x},${from.y} A22,22 0 ${sweep * value > Math.PI ? 1 : 0} 1 ${to.x},${to.y}`}
-        {...props(ink.accent, general.arc)}
-      />
-      <circle cx={x} cy={y} r={16} {...props(ink.solid)} />
-      <path d={`M${x},${y} L${tip.x},${tip.y}`} {...props(ink.line, general.pointer)} />
-    </g>
+    </Strip>
   );
 }
+
+/** The run General draws: framed while it works, flat and asleep on either side. */
+const RUN = { x: 424, y: 40, w: 360, h: 120 } as const;
+
+const NOTIFIED = { x: 812, y: BOARD.cy } as const;
+
+/**
+ * A chat run as a waveform. Outside the run there is only a faint pulse; in
+ * it each column is a bar of its own height under a swelling envelope, bright
+ * at its spine and fading at its tips.
+ */
+function pulse(x: number, y: number, column: number, row: number): number {
+  const end = RUN.x + RUN.w;
+  const awake = smooth(RUN.x, RUN.x + 56, x) * (1 - smooth(end - 56, end, x));
+  const phrase = 0.5 + 0.5 * Math.sin((x - RUN.x) / 11 + 1.2 * Math.sin((x - RUN.x) / 43));
+  const grain = 0.3 + 0.7 * noise(column, 1);
+  const swell = 6 + 54 * awake * (0.4 + 0.6 * phrase) * grain;
+  const blip = noise(column, 7) > 0.88 ? 10 + 8 * noise(column, 8) : 0;
+  const reach = Math.max(swell, blip * (1 - awake));
+  const off = Math.abs(y - BOARD.cy);
+  const ping = Math.exp(-((x - NOTIFIED.x) ** 2 + (y - NOTIFIED.y) ** 2) / 100);
+
+  if (off > reach) return ping;
+  const bar = 0.5 + 0.5 * (1 - off / reach) ** 0.5;
+  const wave = bar * (0.3 + 0.7 * awake) * (0.85 + 0.15 * noise(column, row));
+
+  return Math.max(ping, wave);
+}
+
+const PULSE = plot(pulse, () => 0.14);
+
+const RUN_TICKS = Array.from({ length: RUN.w / 40 + 1 }, (_, index) => RUN.x + index * 40);
 
 export function GeneralStrip(): ReactElement {
-  const falloff = useContext(Falloff);
-
   return (
-    <Strip tint="brown">
-      <g mask={`url(#${falloff})`}>
-        {Array.from({ length: 40 }, (_, index) => {
-          const column = index % 10;
-          const row = Math.floor(index / 10);
-          const x = column < 5 ? 40 + column * 64 : 850 + (column - 5) * 64;
-          const on = (column * 7 + row * 3) % 5 < 2;
-
-          return (
-            <g key={index} transform={`translate(${x} ${30 + row * 40})`}>
-              <rect width={30} height={16} rx={8} {...props(on ? general.trackOn : ink.faint)} />
-              <circle
-                cx={on ? 22 : 8}
-                cy={8}
-                r={5}
-                {...props(on ? ink.accentFill : ink.strongFill)}
-              />
-            </g>
-          );
-        })}
-      </g>
-
-      <rect x={400} y={34} width={400} height={132} rx={16} {...props(ink.solid)} />
-      {[
-        [412, 46],
-        [788, 46],
-        [412, 154],
-        [788, 154],
-      ].map(([x = 0, y = 0]) => (
-        <g key={`${x},${y}`}>
-          <circle cx={x} cy={y} r={3.2} {...props(ink.line)} />
-          <path d={`M${x - 1.8},${y + 1.8} L${x + 1.8},${y - 1.8}`} {...props(ink.line)} />
-        </g>
-      ))}
-
-      {FADERS.map((fader) => (
-        <g key={fader.x}>
-          <path d={`M${fader.x},56 L${fader.x},146`} {...props(general.slot)} />
-          {Array.from({ length: 7 }, (_, index) => (
-            <path
-              key={index}
-              d={`M${fader.x + 8},${58 + index * 14.5} L${fader.x + 11},${58 + index * 14.5}`}
-              {...props(ink.faint)}
-            />
-          ))}
-          <g {...props(general.fader, general[`drift${fader.drift}`])}>
-            <rect
-              x={fader.x - 8}
-              y={fader.at - 5}
-              width={16}
-              height={10}
-              rx={2.5}
-              {...props(ink.solid)}
-            />
-            <path
-              d={`M${fader.x - 5},${fader.at} L${fader.x + 5},${fader.at}`}
-              {...props(ink.accent)}
-            />
-          </g>
-        </g>
-      ))}
-
-      <path d="M556,50 L556,150" {...props(ink.faint)} />
-      <Knob x={600} y={76} value={0.68} />
-      <Knob x={600} y={130} value={0.32} />
-      <path d="M644,50 L644,150" {...props(ink.faint)} />
-
-      {SWITCHES.map((toggle) => (
-        <g key={toggle.y}>
-          <rect
-            x={660}
-            y={toggle.y}
-            width={36}
-            height={20}
-            rx={10}
-            {...props(toggle.on ? general.trackOn : ink.solid)}
-          />
-          <circle cx={toggle.on ? 686 : 670} cy={toggle.y + 10} r={7} {...props(ink.solid)} />
-          <rect
-            x={708}
-            y={toggle.y + 5}
-            width={toggle.on ? 52 : 40}
-            height={4}
-            rx={2}
-            {...props(ink.mutedFill)}
-          />
-          <rect
-            x={708}
-            y={toggle.y + 12}
-            width={30}
-            height={3}
-            rx={1.5}
-            {...props(ink.mutedFill)}
-          />
-          <circle
-            cx={774}
-            cy={toggle.y + 10}
-            r={2.6}
-            {...props(toggle.on ? ink.accentFill : ink.strongFill)}
-          />
-        </g>
-      ))}
+    <Strip prism={spectrum(70)} backdrop={<Field plot={PULSE} twinkle />}>
+      <Frame x={RUN.x} y={RUN.y} w={RUN.w} h={RUN.h} />
+      <Chip x={RUN.x} y={RUN.y + 9} label="Kept awake" />
+      <circle cx={NOTIFIED.x} cy={NOTIFIED.y} r={5} {...props(ink.mark, styles.ping)} />
+      <Label x={NOTIFIED.x} y={NOTIFIED.y - 20} align="middle">
+        Notified
+      </Label>
+      <path
+        d={RUN_TICKS.map((x) => `M${x} ${TICK.top}V${TICK.bottom - 2}`).join("")}
+        {...props(ink.faint)}
+      />
+      <path
+        d={`M${RUN.x} ${TICK.top}V${TICK.bottom}M${RUN.x + RUN.w} ${TICK.top}V${TICK.bottom}`}
+        {...props(ink.mark)}
+      />
+      <Label x={RUN.x} y={TICK.label} align="middle">
+        9:41
+      </Label>
+      <Label x={RUN.x + RUN.w} y={TICK.label} align="middle">
+        9:45
+      </Label>
     </Strip>
   );
 }
 
-const BAR = { count: 72, width: 10, base: 170 } as const;
+const TODAY = 100;
 
-const WEEK = { from: 432, to: 768 } as const;
+const FLOOR = 160;
 
-const BARS = (() => {
-  const random = seeded(21);
-  const step = BOARD.w / BAR.count;
+const DAYS = Array.from({ length: TODAY + 1 }, (_, day) => {
+  const weekend = day % 7 === 0 || day % 7 === 6;
 
-  return Array.from({ length: BAR.count }, (_, index) => {
-    const x = index * step + (step - BAR.width) / 2;
+  const level =
+    0.42 +
+    (0.3 * day) / TODAY +
+    0.12 * Math.sin(day * 0.29 + 1.3) +
+    0.22 * (noise(day, 5) - 0.5) -
+    (weekend ? 0.24 : 0);
 
-    const wave =
-      0.5 +
-      0.3 * Math.sin(index * 0.42) +
-      0.2 * Math.sin(index * 0.13 + 1) +
-      (random() - 0.5) * 0.3;
+  const cells = Math.max(1, Math.min(14, Math.round(level * 14)));
+  const opus = Math.round(cells * (0.46 + 0.12 * noise(day, 9)));
+  const gpt = Math.round(cells * (0.2 + 0.08 * noise(day, 11)));
 
-    const height = 14 + 96 * Math.min(1, Math.max(0, wave));
-    const week = x >= WEEK.from && x + BAR.width <= WEEK.to;
+  return { cells, bands: [opus, opus + gpt, opus + gpt + Math.round(cells * 0.16)] } as const;
+});
 
-    return { x, height, week, index };
-  });
+function forecast(column: number): number {
+  return Math.max(
+    1,
+    Math.min(
+      14,
+      Math.round((0.42 + (0.3 * column) / TODAY + 0.12 * Math.sin(column * 0.29 + 1.3)) * 14),
+    ),
+  );
+}
+
+/** One column a day, stacked by model; after today, a dotted forecast. */
+const TERRAIN = plot(
+  (_x, _y, column, row) => {
+    const height = FLOOR / CELL - 1 - row;
+    const day = DAYS[column];
+
+    if (height < 0) return 0;
+
+    if (day === undefined) return height === forecast(column) - 1 ? 0.5 : 0;
+
+    if (height >= day.cells) return 0;
+
+    if (height < day.bands[0]) return 1;
+
+    if (height < day.bands[1]) return 0.75;
+
+    return height < day.bands[2] ? 0.5 : 0.25;
+  },
+  () => 0.06,
+);
+
+const AVERAGE = FLOOR - (DAYS.reduce((total, day) => total + day.cells, 0) / DAYS.length) * CELL;
+
+/** This week: one band of the prism, with room above its tallest day for the chip. */
+const WEEK = (() => {
+  const tallest = Math.max(...DAYS.slice(-7).map((day) => day.cells));
+  const top = FLOOR - (tallest + 3) * CELL;
+
+  return { x: (TODAY - 6) * CELL, y: top, w: 7 * CELL, h: FLOOR - top };
 })();
 
-const WEEK_BARS = BARS.filter((bar) => bar.week);
+const LATEST = { x: TODAY * CELL + CELL / 2, y: FLOOR - (DAYS[TODAY]?.cells ?? 1) * CELL - 4 };
+
+const DAY_TICKS = Array.from({ length: BOARD.w / CELL }, (_, column) => {
+  const x = column * CELL + CELL / 2;
+
+  return (TODAY - column) % 7 === 0
+    ? `M${x} ${FLOOR + 2}V${FLOOR + 7}`
+    : `M${x} ${FLOOR + 2}V${FLOOR + 4}`;
+}).join("");
+
+const MONTHS = [
+  { column: 60, label: "Sep" },
+  { column: 90, label: "Oct" },
+] as const;
 
 export function UsageStrip(): ReactElement {
-  const falloff = useContext(Falloff);
-  const tops = WEEK_BARS.map((bar) => ({ x: bar.x + BAR.width / 2, y: BAR.base - bar.height - 8 }));
-  const last = tops.at(-1) ?? { x: WEEK.to, y: BOARD.cy };
-
   return (
-    <Strip tint="orange" caption="1.2M tokens · last 7 days">
-      <path d={`M0,${BAR.base + 0.5} L${BOARD.w},${BAR.base + 0.5}`} {...props(ink.strong)} />
-      <g mask={`url(#${falloff})`}>
-        {BARS.filter((bar) => !bar.week).map((bar) => (
-          <rect
-            key={bar.index}
-            x={bar.x}
-            y={BAR.base - bar.height}
-            width={BAR.width}
-            height={bar.height}
-            rx={2.5}
-            {...props(ink.mutedFill, usage.bar, usage.delay(`${bar.index * 14}ms`))}
-          />
-        ))}
-      </g>
-      <rect
-        x={WEEK.from - 8}
-        y={20}
-        width={WEEK.to - WEEK.from + 16}
-        height={164}
-        rx={10}
-        {...props(usage.window)}
-      />
-      {WEEK_BARS.map((bar) => (
-        <rect
-          key={bar.index}
-          x={bar.x}
-          y={BAR.base - bar.height}
-          width={BAR.width}
-          height={bar.height}
-          rx={2.5}
-          {...props(ink.accentFill, usage.bar, usage.delay(`${bar.index * 14}ms`))}
-        />
+    <Strip
+      prism={{ hue: 35, step: SPREAD, width: 7, anchor: TODAY - 6 }}
+      backdrop={
+        <g>
+          <Field plot={TERRAIN} />
+          <path d={`M0 ${FLOOR + 0.5}H${BOARD.w}`} {...props(ink.strong)} />
+          <path d={DAY_TICKS} {...props(ink.faint, styles.butt)} />
+          <Level from={{ x: 0, y: AVERAGE }} to={{ x: WEEK.x, y: AVERAGE }} />
+        </g>
+      }
+    >
+      {MONTHS.map((month) => (
+        <Label key={month.label} x={month.column * CELL + 1} y={FLOOR + 16}>
+          {month.label}
+        </Label>
       ))}
-      <path d={rounded(tops, 6, false)} {...props(ink.line, usage.line)} />
-      {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => (
-        <text
-          key={index}
-          x={WEEK.from + ((WEEK.to - WEEK.from) / 7) * (index + 0.5)}
-          y={186}
-          {...props(ink.mono, ink.tertiaryFill, usage.day)}
-        >
-          {day}
-        </text>
-      ))}
-      <circle cx={last.x} cy={last.y} r={4} {...props(ink.accent, usage.ping)} />
-      <circle cx={last.x} cy={last.y} r={3.4} {...props(ink.solid, usage.dot)} />
-      <g transform={`translate(${last.x - 66} ${last.y - 30})`}>
-        <rect width={58} height={18} rx={9} {...props(ink.solid)} />
-        <text x={29} y={12.5} {...props(ink.mono, ink.primaryFill, usage.tag)}>
-          $12.40
-        </text>
-      </g>
+      <Chip x={352} y={AVERAGE - 12} label="Avg 171K a day" tone="lit" />
+      <Frame x={WEEK.x} y={WEEK.y} w={WEEK.w} h={WEEK.h} />
+      <Chip x={WEEK.x} y={WEEK.y + 9} label="$12.40" />
+      <Label x={WEEK.x + WEEK.w / 2} y={FLOOR + 16} align="middle">
+        7 days
+      </Label>
+      <circle cx={LATEST.x} cy={LATEST.y} r={4} {...props(ink.mark, styles.ping)} />
+      <circle cx={LATEST.x} cy={LATEST.y} r={2.4} {...props(ink.markFill)} />
     </Strip>
   );
 }
 
-interface Orbit {
-  readonly rx: number;
-  readonly ry: number;
-  readonly seconds: number;
-  readonly riders: readonly IconName[];
-}
+const PLANET = { x: 604, y: BOARD.cy, r: 30 } as const;
 
-const ORBITS: readonly Orbit[] = [
-  { rx: 118, ry: 38, seconds: 16, riders: ["file-text", "search"] },
-  { rx: 206, ry: 62, seconds: 26, riders: ["console", "globe", "pencil"] },
-  { rx: 300, ry: 86, seconds: 40, riders: ["git-branch", "mcp", "skills", "pull-request"] },
-];
+/**
+ * One ring per reasoning effort, innermost first; the lit ones are the effort
+ * in use. Only the innermost passes behind the planet; the others clear it by
+ * a row, so their far arcs never merge into its outline.
+ */
+const ORBITS = [
+  { rx: 92, ry: 22, label: "Low", lit: true },
+  { rx: 140, ry: 40, label: "Medium", lit: true },
+  { rx: 190, ry: 56, label: "High", lit: false },
+] as const;
 
-const TWINKLES = (() => {
-  const random = seeded(5);
+type Orbit = (typeof ORBITS)[number];
 
-  return Array.from({ length: 26 }, (_, index) => ({
-    x: index % 2 === 0 ? 30 + random() * 330 : 840 + random() * 330,
-    y: 16 + random() * 168,
-    size: 2 + random() * 4,
-    delay: `${(random() * 3).toFixed(2)}s`,
-  }));
+const EFFORT = ORBITS[1];
+
+const SUN = (() => {
+  const length = Math.hypot(0.55, 0.62, 0.56);
+
+  return { x: -0.55 / length, y: -0.62 / length, z: 0.56 / length };
 })();
 
-function sparkle(x: number, y: number, size: number): string {
-  const waist = size * 0.22;
+/** About how far (x, y) sits from an orbit, in pixels: the ellipse's value over its slope. */
+function orbitDistance(x: number, y: number, orbit: Orbit): number {
+  const dx = x - PLANET.x;
+  const dy = y - PLANET.y;
+  const slope = 2 * Math.hypot(dx / orbit.rx ** 2, dy / orbit.ry ** 2);
 
-  return `M${x},${y - size} Q${x + waist},${y - waist} ${x + size},${y} Q${x + waist},${y + waist} ${x},${y + size} Q${x - waist},${y + waist} ${x - size},${y} Q${x - waist},${y - waist} ${x},${y - size} Z`;
+  return slope === 0
+    ? Number.POSITIVE_INFINITY
+    : Math.abs((dx / orbit.rx) ** 2 + (dy / orbit.ry) ** 2 - 1) / slope;
 }
 
-function ellipsePath(rx: number, ry: number): string {
-  return `M${BOARD.cx - rx},${BOARD.cy} a${rx},${ry} 0 1,0 ${rx * 2},0 a${rx},${ry} 0 1,0 ${-rx * 2},0`;
-}
+/**
+ * The model as a lit planet and its reasoning as rings. A ring's far half
+ * passes behind the planet; its near half crosses in front, with a gap cut
+ * around it so it reads as in front.
+ */
+const SYSTEM = plot(
+  (x, y) => {
+    const dx = (x - PLANET.x) / PLANET.r;
+    const dy = (y - PLANET.y) / PLANET.r;
+    const reach = dx * dx + dy * dy;
+    const near = y >= PLANET.y;
+    const distances = ORBITS.map((orbit) => orbitDistance(x, y, orbit));
 
-/** A small token that rides `path`, or rests at `share` of it under reduced motion. */
-function Rider({
-  icon,
-  orbit,
-  share,
-}: {
-  readonly icon: IconName;
-  readonly orbit: Orbit;
-  readonly share: number;
-}): ReactElement {
-  const still = useReducedMotion() === true;
-  const angle = Math.PI - share * Math.PI * 2;
+    const ring =
+      reach < 1 && !near
+        ? 0
+        : Math.max(
+            ...ORBITS.map(
+              (orbit, index) =>
+                (orbit.lit ? 1.3 : 0.45) *
+                (near ? 1 : 0.7) *
+                Math.exp(-((distances[index] ?? Number.POSITIVE_INFINITY) ** 2) / 25),
+            ),
+          );
 
-  const rest = still
-    ? `translate(${BOARD.cx + orbit.rx * Math.cos(angle)} ${BOARD.cy - orbit.ry * Math.sin(angle)})`
-    : undefined;
+    if (reach >= 1) return ring;
+    const gap = near ? Math.min(...distances.map((distance) => smooth(4, 10, distance))) : 1;
+    const lambert = Math.max(0, dx * SUN.x + dy * SUN.y + Math.sqrt(1 - reach) * SUN.z);
 
-  return (
-    <g transform={rest}>
-      {!still && (
-        <animateMotion
-          dur={`${orbit.seconds}s`}
-          begin={`${(-share * orbit.seconds).toFixed(2)}s`}
-          repeatCount="indefinite"
-          path={ellipsePath(orbit.rx, orbit.ry)}
-        />
-      )}
-      <g transform="rotate(8)">
-        <circle r={12} {...props(ink.solid)} />
-        <Glyph name={icon} x={0} y={0} size={13} />
-      </g>
-    </g>
-  );
-}
+    return Math.max(ring, (0.16 + 0.84 * lambert) * gap);
+  },
+  () => 0.2,
+);
+
+const MODEL = { x: 556, y: 52, w: 96, h: 96 } as const;
+
+/** The reasoning scale under the rings: Off at the planet, then each ring's outer edge. */
+const STOPS = [
+  { x: PLANET.x, label: "Off" },
+  ...ORBITS.map((orbit) => ({ x: PLANET.x + orbit.rx, label: orbit.label })),
+];
+
+const RIDER_PATH = `M${PLANET.x - EFFORT.rx},${PLANET.y} a${EFFORT.rx},${EFFORT.ry} 0 1,0 ${2 * EFFORT.rx},0 a${EFFORT.rx},${EFFORT.ry} 0 1,0 ${-2 * EFFORT.rx},0`;
+
+const RIDER_SECONDS = 14;
+
+/** Where riders wait when motion is reduced: on the near side, either side of the planet. */
+const RESTING = [0.35, 0.8].map((turn) => ({
+  x: PLANET.x + EFFORT.rx * Math.cos(Math.PI * turn),
+  y: PLANET.y + EFFORT.ry * Math.sin(Math.PI * turn),
+}));
 
 export function AgentStrip(): ReactElement {
+  const still = useReducedMotion() === true;
+
   return (
-    <Strip tint="purple">
-      {TWINKLES.map((star) => (
-        <path
-          key={`${star.x},${star.y}`}
-          d={sparkle(star.x, star.y, star.size)}
-          {...props(ink.accentFill, agent.twinkle, agent.delay(star.delay))}
-        />
-      ))}
-      <g transform={`rotate(-8 ${BOARD.cx} ${BOARD.cy})`}>
-        {ORBITS.map((orbit) => (
-          <path
-            key={orbit.rx}
-            d={ellipsePath(orbit.rx, orbit.ry)}
-            {...props(ink.strong, agent.orbit)}
-          />
-        ))}
-        {ORBITS.flatMap((orbit) =>
-          orbit.riders.map((icon, index) => (
-            <Rider
-              key={icon}
-              icon={icon}
-              orbit={orbit}
-              share={(index + 0.25 * orbit.riders.length) / orbit.riders.length}
+    <Strip prism={spectrum(295)} backdrop={<Field plot={SYSTEM} twinkle />}>
+      {RESTING.map((rest, index) => (
+        <g key={index} transform={still ? `translate(${rest.x} ${rest.y})` : undefined}>
+          {!still && (
+            <animateMotion
+              dur={`${String(RIDER_SECONDS)}s`}
+              begin={`${String((-index * RIDER_SECONDS) / RESTING.length)}s`}
+              repeatCount="indefinite"
+              path={RIDER_PATH}
             />
-          )),
-        )}
-      </g>
-      <circle
-        cx={BOARD.cx}
-        cy={BOARD.cy}
-        r={34}
-        {...props(ink.accentFill, ink.bloom, agent.corona)}
-      />
-      <circle cx={BOARD.cx} cy={BOARD.cy} r={26} {...props(ink.strongAccentFill)} />
-      <circle cx={BOARD.cx} cy={BOARD.cy} r={31} {...props(ink.accent, agent.halo)} />
-      <Glyph name="agent" x={BOARD.cx} y={BOARD.cy} size={22} tone="inverse" />
+          )}
+          <circle r={3.2} {...props(styles.rider)} />
+        </g>
+      ))}
+      <Frame x={MODEL.x} y={MODEL.y} w={MODEL.w} h={MODEL.h} />
+      <Chip x={MODEL.x} y={MODEL.y + 9} label="Opus 4.5" icon="model-anthropic" />
+      {STOPS.map((stop) => (
+        <g key={stop.label}>
+          <path
+            d={`M${stop.x} ${TICK.top}V${TICK.bottom}`}
+            {...props(stop.label === EFFORT.label ? ink.mark : ink.faint)}
+          />
+          <Label
+            x={stop.x}
+            y={TICK.label}
+            align="middle"
+            tone={stop.label === EFFORT.label ? "primary" : "tertiary"}
+          >
+            {stop.label}
+          </Label>
+        </g>
+      ))}
     </Strip>
   );
 }
 
-/** The still strips, by settings page. Hub pages and Appearance draw theirs from live state. */
 export const PAGE_STRIPS = {
   general: GeneralStrip,
   usage: UsageStrip,
@@ -536,109 +393,22 @@ export const PAGE_STRIPS = {
   advanced: AdvancedStrip,
 } as const;
 
-const driftA = keyframes({
-  "0%, 100%": { transform: "translateY(0)" },
-  "50%": { transform: "translateY(14px)" },
-});
-
-const driftB = keyframes({
-  "0%, 100%": { transform: "translateY(0)" },
-  "50%": { transform: "translateY(-18px)" },
-});
-
-const twinkle = keyframes({
-  "0%, 100%": { opacity: 0.15, transform: "scale(0.6)" },
-  "50%": { opacity: 0.9, transform: "scale(1)" },
-});
-
-const grow = keyframes({ from: { transform: "scaleY(0)" }, to: { transform: "scaleY(1)" } });
-
 const ripple = keyframes({
   from: { transform: "scale(1)", opacity: 0.8 },
-  to: { transform: "scale(4)", opacity: 0 },
+  to: { transform: "scale(3.2)", opacity: 0 },
 });
-
-const spinOnce = keyframes({ from: { strokeDashoffset: 0 }, to: { strokeDashoffset: -40 } });
 
 const reduced = "@media (prefers-reduced-motion: reduce)";
 
-const appearance = create({
-  swoosh: { opacity: 0.5 },
-  stroke: { fill: "none", stroke: role.chartSeries, strokeWidth: 34, opacity: 0.35 },
-  bristle: { fill: "none", stroke: role.chartSeries, strokeWidth: 2, opacity: 0.4 },
-  palette: { strokeWidth: 1.4 },
-  shadow: { opacity: 0.12 },
-  thumb: { fill: role.bgMuted },
-  smear: { opacity: 0.75 },
-  paint: { transitionProperty: "fill", transitionDuration: motion.durationNormal },
-  gloss: { fill: role.bgBase, opacity: 0.55 },
-  chosenRing: { strokeWidth: 1.4 },
-  chipChosen: { stroke: role.chartSeries, strokeWidth: 2 },
-  handle: { fill: role.bgMuted },
-});
-
-const general = create({
-  slot: { fill: "none", stroke: role.borderStrong, strokeWidth: 3 },
-  fader: {
-    transformBox: "fill-box",
-    animationIterationCount: "infinite",
-    animationTimingFunction: motion.easeInOutStrong,
-  },
-  drift0: { animationName: { default: driftA, [reduced]: "none" }, animationDuration: "5s" },
-  drift1: { animationName: { default: driftB, [reduced]: "none" }, animationDuration: "7s" },
-  drift2: {
-    animationName: { default: driftA, [reduced]: "none" },
-    animationDuration: "9s",
-    animationDelay: "-3s",
-  },
-  arc: { strokeWidth: 2.4 },
-  pointer: { strokeWidth: 2 },
-  trackOn: { fill: role.chartSeries, stroke: role.chartSeries, strokeWidth: 1 },
-});
-
-const usage = create({
-  bar: {
-    transformBox: "fill-box",
-    transformOrigin: "bottom",
-    animationName: { default: grow, [reduced]: "none" },
-    animationDuration: "0.9s",
-    animationFillMode: "backwards",
-    animationTimingFunction: motion.easeOutQuint,
-  },
-  delay: (delay: string) => ({ animationDelay: delay }),
-  window: { fill: role.bgBase, opacity: 0.5, stroke: role.borderPrimary, strokeWidth: 1 },
-  line: { strokeWidth: 1.4, strokeDasharray: "3 3" },
-  day: { fontSize: 8, textAnchor: "middle" },
-  dot: { stroke: role.chartSeries, strokeWidth: 2 },
+const styles = create({
+  butt: { strokeLinecap: "butt" },
   ping: {
     transformBox: "fill-box",
     transformOrigin: "center",
     animationName: { default: ripple, [reduced]: "none" },
     animationDuration: "2s",
     animationIterationCount: "infinite",
+    animationTimingFunction: motion.easeOut,
   },
-  tag: { fontSize: 9, textAnchor: "middle", fontVariantNumeric: "tabular-nums" },
-});
-
-const agent = create({
-  twinkle: {
-    transformBox: "fill-box",
-    transformOrigin: "center",
-    opacity: 0.4,
-    animationName: { default: twinkle, [reduced]: "none" },
-    animationDuration: "3s",
-    animationIterationCount: "infinite",
-  },
-  delay: (delay: string) => ({ animationDelay: delay }),
-  orbit: { strokeDasharray: "1 5" },
-  corona: { opacity: 0.7 },
-  halo: {
-    strokeWidth: 1,
-    opacity: 0.6,
-    strokeDasharray: "2 4",
-    animationName: { default: spinOnce, [reduced]: "none" },
-    animationDuration: "6s",
-    animationIterationCount: "infinite",
-    animationTimingFunction: "linear",
-  },
+  rider: { fill: role.contentPrimary, stroke: role.bgBase, strokeWidth: 1.5 },
 });

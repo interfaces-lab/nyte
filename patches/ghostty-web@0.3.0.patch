@@ -1,0 +1,57 @@
+diff --git a/dist/ghostty-web.js b/dist/ghostty-web.js
+index e5efac501b9ad1f2740c8b10a233c23d41c533ba..f37285099c932e7f2a9e4f36f8a2927a0614640f 100644
+--- a/dist/ghostty-web.js
++++ b/dist/ghostty-web.js
+@@ -3247,7 +3247,7 @@ class wA {
+    * Start the render loop
+    */
+   startRenderLoop() {
+-    if (this.animationFrameId)
++    if (this.animationFrameId || this.renderingPaused)
+       return;
+     const A = () => {
+       if (!this.isDisposed && this.isOpen) {
+@@ -3258,6 +3258,24 @@ class wA {
+     };
+     A();
+   }
++  /**
++   * Stop drawing frames and blinking the cursor until resumeRendering(); writes still reach the buffer
++   */
++  pauseRendering() {
++    this.renderingPaused = !0, this.cancelRenderLoop(), this.renderer && this.renderer.stopCursorBlink();
++  }
++  /**
++   * Redraw everything and start drawing frames again after pauseRendering()
++   */
++  resumeRendering() {
++    if (!this.renderingPaused)
++      return;
++    if (this.renderingPaused = !1, this.isDisposed || !this.isOpen)
++      return;
++    this.renderer.cursorBlink && this.renderer.cursorBlinkInterval === void 0 && this.renderer.startCursorBlink();
++    this.renderer.render(this.wasmTerm, !0, this.viewportY, this, this.scrollbarOpacity);
++    this.startRenderLoop();
++  }
+   /**
+    * Get a line from native WASM scrollback buffer
+    * Implements IScrollbackProvider
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index ba99f04dc989344654c14c433d5ebf7454691691..b237b09bb98bda5640b79cad08f6cec45e838ff6 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -1783,6 +1783,14 @@ export declare class Terminal implements ITerminalCore {
+      * Resize terminal
+      */
+     resize(cols: number, rows: number): void;
++    /**
++     * Stop drawing frames and blinking the cursor until resumeRendering(); writes still reach the buffer
++     */
++    pauseRendering(): void;
++    /**
++     * Redraw everything and start drawing frames again after pauseRendering()
++     */
++    resumeRendering(): void;
+     /**
+      * Clear terminal screen
+      */

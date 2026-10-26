@@ -35,7 +35,8 @@ import {
 import { preferences, useSetting } from "../preferences/index.ts";
 import { watchFamily } from "../sdk.tsx";
 import { FindWidget } from "./find-widget.tsx";
-import { useMountEffect } from "../use-mount-effect.ts";
+import type { FindWidgetHandle } from "./find-widget.tsx";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -323,10 +324,12 @@ export function TextFileEditor({
     });
 
   const autosave = useRef({ enabled: autoSave, save });
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest autosave settings for the buffer timer, which runs outside render
   useLayoutEffect(() => {
     autosave.current = { enabled: autoSave, save };
   });
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- buffer subscription that mirrors drafts into the file store
   useLayoutEffect(() => {
     let timer: number | undefined;
 
@@ -373,14 +376,17 @@ export function TextFileEditor({
     };
   }, [buffer, file.path, viewKey]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- hands the disk document to the buffer to detect outside edits
   useLayoutEffect(() => {
     buffer.observeDisk(document);
   }, [buffer, document]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- re-renders the imperative viewer when the code font changes
   useLayoutEffect(() => {
     viewer.current?.getInstance()?.render(true);
   }, [codeFont, codeFontSize]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- writes buffer contents into the imperative editor before paint
   useLayoutEffect(() => {
     const editor = viewer.current?.getEditor(file.path);
 
@@ -425,6 +431,7 @@ export function TextFileEditor({
 
   const attachCurrentEditor = useEffectEvent(attachEditor);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- applies line navigation to the imperative editor before paint
   useLayoutEffect(() => {
     navigation.current = {
       active,
@@ -586,13 +593,26 @@ function EditorFind({
   readonly onClose: () => void;
 }): ReactElement {
   const snapshot = useSyncExternalStore(search.subscribe, search.getSnapshot);
+  const widget = useRef<FindWidgetHandle>(null);
+
+  useMountEffect(() => {
+    let revision = search.getSnapshot().openRevision;
+
+    return search.subscribe(() => {
+      const next = search.getSnapshot().openRevision;
+
+      if (next === revision) return;
+      revision = next;
+      widget.current?.focus();
+    });
+  });
 
   return (
     <FindWidget
+      ref={widget}
       label="Find in file"
       target={search}
       initialText={snapshot.defaultQuery}
-      focusRevision={snapshot.openRevision}
       replace={{
         target: search,
         open: snapshot.mode === "replace",

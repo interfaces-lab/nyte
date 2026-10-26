@@ -10,6 +10,7 @@ export const DISPLAY_MODES = [
 
 /** Paint the page in `mode` the way the app does; leaving it returns the lab to light. */
 export function useDisplayMode(mode: DisplayMode): void {
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- paints the document root in the chosen mode
   useEffect(() => {
     applyDisplayMode(mode);
 

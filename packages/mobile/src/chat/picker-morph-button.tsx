@@ -4,7 +4,6 @@ import type { AnimationConfig } from "./picker-animated-text-types.ts";
 import type { GlassViewProps } from "expo-glass-effect";
 import { AnimatedGlass } from "./composer-glass.tsx";
 import type React from "react";
-// oxlint-disable-next-line no-restricted-imports -- a background change starts a Reanimated color tween from the color on screen
 import { useEffect, useRef } from "react";
 import {
   Pressable,
@@ -52,6 +51,7 @@ const MorphButton: React.FC<IMorphButton> & React.FunctionComponent<IMorphButton
   const to = useSharedValue<string>(bg);
   const isFirstColor = useRef<boolean>(true);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- tweens from the on-screen color to the new background
   useEffect(() => {
     if (isFirstColor.current) {
       isFirstColor.current = false;

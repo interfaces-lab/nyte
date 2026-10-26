@@ -539,6 +539,7 @@ export function useComposerSuggestions({
   const activeIndex = Math.min(index, Math.max(0, suggestions.length - 1));
   const activeSuggestion = menu === undefined ? undefined : suggestions[activeIndex];
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- scrolls the active suggestion into view before paint
   useLayoutEffect(() => {
     if (activeOption !== null) revealSuggestion(listRef.current, activeOption);
   }, [activeOption]);

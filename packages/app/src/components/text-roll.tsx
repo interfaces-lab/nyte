@@ -1,6 +1,5 @@
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
-// oxlint-disable-next-line no-restricted-imports -- the roll timer follows the incoming text
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
@@ -61,6 +60,7 @@ export function TextRoll({
     at: performance.now(),
   }));
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- roll timer, restarted per incoming text and finished roll
   useEffect(() => {
     if (text === shown.text) return undefined;
 

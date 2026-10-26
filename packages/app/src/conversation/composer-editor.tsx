@@ -237,10 +237,12 @@ export function ComposerEditor({
   useImperativeHandle(ref, () => handle, [handle]);
   useImperativeHandle(inputRef, () => handle, [handle]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest onFilesSelected for Tiptap's paste handler, which outlives renders
   useLayoutEffect(() => {
     onFilesSelectedRef.current = onFilesSelected;
   }, [onFilesSelected]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes editable state and aria attributes into Tiptap before paint
   useLayoutEffect(
     () =>
       editor.setOptions({
@@ -294,6 +296,7 @@ export function ComposerEditor({
     [className, combobox, disabled, editor, label, onFilesSelected, onKeyDown, placeholder],
   );
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- Tiptap transaction subscription with the current callbacks
   useLayoutEffect(() => {
     const report = (external: boolean): void => {
       const { state } = editor;
@@ -336,11 +339,13 @@ export function ComposerEditor({
     };
   }, [editor, onDocumentChange, onReferencesChange]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- refreshes reference chips in Tiptap before paint
   useLayoutEffect(() => {
     catalogRef.current = catalog;
     refreshReferences(editor, catalog);
   }, [catalog, editor]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- writes an outside draft into Tiptap before paint
   useLayoutEffect(() => {
     const current = observed.current;
 
@@ -348,6 +353,7 @@ export function ComposerEditor({
     restoreDocument(editor, externalDocument);
   }, [editor, externalDocument]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- draws the custom caret from the DOM selection before paint
   useLayoutEffect(() => {
     const root = editor.view.dom;
     const caret = caretRef.current;

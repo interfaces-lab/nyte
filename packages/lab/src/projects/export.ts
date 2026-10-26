@@ -483,6 +483,34 @@ const EditArgs = Type.Object({ edits: Type.Array(Type.Object({ oldText: Text, ne
 
 const restoreDirectory = join(OUT, "restore");
 
+const rootWorkspaces = new Set(
+  workspaces.flatMap((workspace) =>
+    workspace.isolation === null && workspace.target.path === REPOSITORY ? [workspace.id] : [],
+  ),
+);
+
+const handRebuild = select(
+  Type.Object({ session: Text, run: Text, ended: Count }),
+  `select r.session, r.run, r.end_at ended from run_cost r
+   join humans h on h.session = r.session and h.message = r.origin_message
+   where h.at between ${wipe.at} and ${wipe.at} + 50 * 60 * 1000
+     and (h.content like 'Another session%' or h.content like '%/tmp/stack/patches%')
+     and r.end_at is not null
+   order by r.end_at desc`,
+).flatMap((row) => {
+  const workspace = records.find((record) => record.id === row.session)?.workspace;
+
+  const tree = snapshotTree(
+    runRecords.find((entry) => entry.run.view.id === row.run)?.run.lastSnapshot ?? null,
+  );
+
+  if (tree === null || workspace === undefined || !rootWorkspaces.has(workspace)) return [];
+
+  return [{ session: row.session, at: row.ended, snapshot: `git:${tree}`, tree }];
+})[0];
+
+if (handRebuild === undefined) throw new Error("No recovery run left a snapshot of the checkout");
+
 interface LineCount {
   readonly added: number;
   readonly removed: number;
@@ -503,19 +531,26 @@ const restored: readonly RestoredFile[] = lost.flatMap((file): readonly Restored
   if (!file.whole) return [];
 
   const target = join(restoreDirectory, file.path);
-  const current = join(REPOSITORY, file.path);
+  const rebuiltFile = join(restoreDirectory, ".hand-rebuild", file.path);
 
   mkdirSync(dirname(target), { recursive: true });
+  mkdirSync(dirname(rebuiltFile), { recursive: true });
   writeFileSync(target, git(["show", `${before.slice(4)}:${file.path}`]));
-  const difference = numstat(target, current);
+
+  const present =
+    spawnSync("git", ["cat-file", "-e", `${handRebuild.tree}:${file.path}`], { env: ENV })
+      .status === 0;
+
+  writeFileSync(rebuiltFile, present ? git(["show", `${handRebuild.tree}:${file.path}`]) : "");
+  const difference = numstat(target, rebuiltFile);
 
   if (difference.added + difference.removed === 0)
     return [{ path: file.path, differingLines: 0, laterEdit: null }];
-  const today = readFileSync(current, "utf8");
+  const rebuilt = readFileSync(rebuiltFile, "utf8");
 
   const edits = select(
     Type.Object({ session: Text, at: Count, args: Text }),
-    `select session, at, args from calls where tool = 'edit' and at > ${wipe.at} and path like '%${file.path}' order by at`,
+    `select session, at, args from calls where tool = 'edit' and at > ${wipe.at} and at <= ${handRebuild.at} and path like '%${file.path}' order by at`,
   );
 
   const explaining = edits.find((edit) => {
@@ -524,7 +559,7 @@ const restored: readonly RestoredFile[] = lost.flatMap((file): readonly Restored
       readFileSync(target, "utf8"),
     );
 
-    return applied === today;
+    return applied === rebuilt;
   });
 
   return [
@@ -859,6 +894,11 @@ const evidence: Evidence = {
     asked,
     restored,
     restoreDirectory,
+    handRebuild: {
+      session: handRebuild.session,
+      at: handRebuild.at,
+      snapshot: handRebuild.snapshot,
+    },
   },
   ciFixes,
   prices,

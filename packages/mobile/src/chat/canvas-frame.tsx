@@ -1,4 +1,3 @@
-// oxlint-disable-next-line no-restricted-imports -- the shell is an external system: it learns the module and the scheme only through injected messages
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, View, useColorScheme } from "react-native";
 import { WebView } from "react-native-webview";
@@ -62,6 +61,7 @@ export function CanvasFrame({
   const [failure, setFailure] = useState<{ code: string; message: string; fatal: boolean }>();
   const shown = failure?.code === item.code ? failure : undefined;
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- injects the module into the WebView shell on load and change
   useEffect(() => {
     if (!ready) return;
     inject(
@@ -70,6 +70,7 @@ export function CanvasFrame({
     );
   }, [ready, item.runtime, item.code, item.title]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- injects the color scheme into the WebView shell
   useEffect(() => {
     if (ready) inject(webView.current, hostContextChangedNotification({ theme: scheme }));
   }, [ready, scheme]);

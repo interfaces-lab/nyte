@@ -46,6 +46,7 @@ import { PLANNING_LABEL } from "./step-group-presentation.ts";
 import { TranscriptButton, useTranscriptControls, useTranscriptDock } from "./transcript.tsx";
 import { QuestionDockContext, useQuestionDock } from "./tray/questions-state.ts";
 import { useCommitCount } from "../work-counts.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 
@@ -83,6 +84,15 @@ const EDIT_ENDED_NOTICES = {
   missing: "That message is no longer queued.",
   lapsed: "Couldn't keep the message on hold.",
 } satisfies Record<Awaited<HeldMessage["lost"]>["kind"], string>;
+
+/**
+ * A queued message held on the host while it is edited. `held` stays unset until the host grants
+ * the hold; the object's identity marks the current attempt. Hiding the session (Activity) or
+ * closing it lets the hold go, and showing it again takes it back.
+ */
+interface EditHold {
+  held: HeldMessage | undefined;
+}
 
 export function Composer({
   sessionId,
@@ -164,6 +174,7 @@ export function Composer({
     slot.append(portalHost);
   };
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- moves the portal host between DOM mounts before paint
   useLayoutEffect(() => {
     const destination = floatingMount ?? inlineSlot.current;
 
@@ -199,7 +210,22 @@ export function Composer({
     setTarget(next);
   };
 
+  const editHold = useRef<EditHold | undefined>(undefined);
+  const shown = useRef(false);
+
+  const takeHold = (): HeldMessage | undefined => {
+    const held = editHold.current?.held;
+    editHold.current = undefined;
+
+    return held;
+  };
+
+  const releaseHold = (): void => {
+    void takeHold()?.release();
+  };
+
   const endEdit = (restored: ComposerViewState): void => {
+    releaseHold();
     retarget({ kind: "new" });
     setAttachmentError(undefined);
     updateViewState((current) => ({ ...restored, focused: current.focused }));
@@ -219,54 +245,56 @@ export function Composer({
     setFeedback({ kind: "error", message: notice });
   };
 
-  const editHold = useRef<HeldMessage | undefined>(undefined);
+  const startHold = (message: MessageId): void => {
+    releaseHold();
 
-  const holding = target.kind === "queued" && !savingEdit ? target.message.id : undefined;
+    if (!shown.current) return;
+    const hold: EditHold = { held: undefined };
+    editHold.current = hold;
 
-  const loseHold = useEffectEvent(leaveEdit);
-
-  useLayoutEffect(() => {
-    if (holding === undefined) return undefined;
-    let active = true;
+    const lose = (notice: string): void => {
+      if (editHold.current !== hold) return;
+      editHold.current = undefined;
+      leaveEdit(message, notice);
+    };
 
     connection()
       .session(sessionId)
-      .hold(holding)
+      .hold(message)
       .then(
         (outcome) => {
           if (outcome.kind !== "held") {
-            if (active) loseHold(holding, EDIT_ENDED_NOTICES[outcome.kind]);
+            lose(EDIT_ENDED_NOTICES[outcome.kind]);
 
             return;
           }
 
-          if (!active) {
+          if (editHold.current !== hold) {
             void outcome.release();
 
             return;
           }
 
-          editHold.current = outcome;
-          void outcome.lost.then((lost) => {
-            if (editHold.current !== outcome) return;
-            editHold.current = undefined;
-            loseHold(holding, EDIT_ENDED_NOTICES[lost.kind]);
-          });
+          hold.held = outcome;
+          void outcome.lost.then((lost) => lose(EDIT_ENDED_NOTICES[lost.kind]));
         },
-        (cause: unknown) => {
-          if (active) loseHold(holding, `Couldn't hold the message: ${errorMessage(cause)}`);
-        },
+        (cause: unknown) => lose(`Couldn't hold the message: ${errorMessage(cause)}`),
       );
+  };
+
+  const resumeHold = useEffectEvent(() => {
+    if (target.kind === "queued" && !savingEdit) startHold(target.message.id);
+  });
+
+  useMountEffect(() => {
+    shown.current = true;
+    resumeHold();
 
     return () => {
-      active = false;
-      const held = editHold.current;
-
-      if (held === undefined) return;
-      editHold.current = undefined;
-      void held.release();
+      shown.current = false;
+      releaseHold();
     };
-  }, [holding, sessionId]);
+  });
 
   const attachInput = (handle: ComposerEditorHandle | null) => {
     editorRef.current = handle;
@@ -290,16 +318,6 @@ export function Composer({
       })
       .finally(() => setAttachmentReads((count) => count - 1));
   };
-
-  const dropFiles = useEffectEvent((files: readonly File[]) => {
-    void addFiles(files);
-  });
-
-  useLayoutEffect(() => {
-    if (fileDropRoot === undefined || fileDropRoot === null) return undefined;
-
-    return bindComposerFileDrop({ element: fileDropRoot, onFiles: dropFiles });
-  }, [fileDropRoot]);
 
   const setRowAction = (change: string, action: PendingRowAction): void => {
     setRowActions((current) => {
@@ -394,8 +412,7 @@ export function Composer({
   ): Promise<void> => {
     if (attachmentReads !== 0) return;
     const session = connection().session(sessionId);
-    const held = editHold.current;
-    editHold.current = undefined;
+    const held = takeHold();
     setSavingEdit(true);
 
     const saved = await deliverEdit({
@@ -417,9 +434,12 @@ export function Composer({
 
       switch (saved.kind) {
         case "empty":
+          startHold(edit.message.id);
+
           return;
         case "kept":
         case "refused":
+          startHold(edit.message.id);
           setFeedback({ kind: "error", message: saved.message });
 
           return;
@@ -533,6 +553,7 @@ export function Composer({
     if (!canBeginEdit || item.source.kind === "action") return;
     const draft = contentDraftText(item.content);
     retarget({ kind: "queued", message: item, stash: latestViewState.current });
+    startHold(item.id);
     setFeedback(undefined);
     setAttachmentError(undefined);
     updateViewState((current) => ({
@@ -756,6 +777,24 @@ export function Composer({
     <>
       <div ref={attachInlineSlot} {...props(composerStyles.portalSlot)} />
       {createPortal(dock, portalHost)}
+      {fileDropRoot !== undefined && fileDropRoot !== null && (
+        <FileDrop element={fileDropRoot} onFiles={(files) => void addFiles(files)} />
+      )}
     </>
   );
+}
+
+/** The drop root wraps the composer, so it never changes while this is mounted. */
+function FileDrop({
+  element,
+  onFiles,
+}: {
+  readonly element: HTMLElement;
+  readonly onFiles: (files: readonly File[]) => void;
+}): null {
+  const drop = useEffectEvent(onFiles);
+
+  useMountEffect(() => bindComposerFileDrop({ element, onFiles: drop }));
+
+  return null;
 }

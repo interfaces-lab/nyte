@@ -142,8 +142,6 @@ const keeperFixes =
 
 const restored = evidence.incident.restored;
 
-const queries = restored.find((file) => file.path.endsWith("app/src/queries.ts"));
-
 const identical = restored.filter((file) => file.differingLines === 0);
 
 const cap = 2;
@@ -309,10 +307,14 @@ const results: readonly CheckResult[] = [
     title: "The restore dry run rebuilds the five wiped files and matches the hand rebuild",
     pass:
       restored.length === 5 &&
-      identical.length === 4 &&
-      queries?.differingLines === 18 &&
-      queries.laterEdit !== null,
-    detail: `${String(identical.length)} of ${String(restored.length)} files from ${evidence.incident.before} equal today's tree; queries.ts differs by ${String(queries?.differingLines ?? 0)} lines, which ${queries?.laterEdit === null || queries?.laterEdit === undefined ? "nothing explains" : `are chat ${queries.laterEdit.session.slice(0, 8)}'s edit at ${new Date(queries.laterEdit.at).toISOString().slice(11, 19)} UTC (−${String(queries.laterEdit.removed)} +${String(queries.laterEdit.added)}), applied to the rebuilt file to give today's exactly`}. Files are in ${evidence.incident.restoreDirectory}.`,
+      restored.every((file) => file.differingLines === 0 || file.laterEdit !== null),
+    detail: `${String(identical.length)} of ${String(restored.length)} files from ${evidence.incident.before} equal the hand rebuild, the checkout's snapshot ${evidence.incident.handRebuild.snapshot.slice(0, 16)} when chat ${evidence.incident.handRebuild.session.slice(0, 8)}'s recovery run ended at ${new Date(evidence.incident.handRebuild.at).toISOString().slice(11, 19)} UTC.${restored
+      .filter((file) => file.differingLines > 0)
+      .map(
+        (file) =>
+          ` ${file.path.split("/").at(-1) ?? file.path} differs by ${String(file.differingLines)} lines, which ${file.laterEdit === null ? "nothing explains" : `are chat ${file.laterEdit.session.slice(0, 8)}'s edit at ${new Date(file.laterEdit.at).toISOString().slice(11, 19)} UTC (−${String(file.laterEdit.removed)} +${String(file.laterEdit.added)}), applied to the restored file to give the rebuild exactly`}.`,
+      )
+      .join("")} Files are in ${evidence.incident.restoreDirectory}.`,
     sql: null,
   },
   {

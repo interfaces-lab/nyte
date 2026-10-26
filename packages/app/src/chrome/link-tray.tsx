@@ -8,7 +8,8 @@ import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { motion, useReducedMotion } from "motion/react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import type { ReactElement, ReactNode } from "react";
 import type { ConnectBridge } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
@@ -48,7 +49,7 @@ function Morph({ children }: { readonly children: ReactNode }): ReactElement {
   const [height, setHeight] = useState<number | undefined>(undefined);
   const reducedMotion = useReducedMotion();
 
-  useLayoutEffect(() => {
+  useMountEffect(() => {
     const node = inner.current;
 
     if (node === null) return undefined;
@@ -56,7 +57,7 @@ function Morph({ children }: { readonly children: ReactNode }): ReactElement {
     observer.observe(node);
 
     return () => observer.disconnect();
-  }, []);
+  });
 
   return (
     <motion.div

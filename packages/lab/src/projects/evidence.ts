@@ -229,6 +229,7 @@ export const EvidenceType = record({
     asked: list(RecoveryAskType),
     restored: list(RestoredFileType),
     restoreDirectory: Text,
+    handRebuild: record({ session: Text, at: Count, snapshot: Text }),
   }),
   ciFixes: list(CiFixFactType),
   prices: list(PriceFactType),

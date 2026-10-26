@@ -1,28 +1,44 @@
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { props } from "@stylexjs/stylex";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef } from "react";
 import type { PointerEvent, ReactElement, RefObject } from "react";
 import { usePaneActions } from "../layout/pane-context.tsx";
 import { clampSplitRatio, clampSplitRatioForSize } from "../layout/pane-layout.ts";
-import type { SplitDirection } from "../layout/pane-layout.ts";
+import type { PaneLayout, SplitDirection } from "../layout/pane-layout.ts";
+
+/** The split as shown at `width`: the stored ratio stays put so it returns when the window grows. */
+export function fitSplitRatio(layout: PaneLayout, width: number): PaneLayout {
+  if (layout.kind !== "split") return layout;
+
+  const ratio =
+    layout.direction === "right"
+      ? clampSplitRatioForSize(layout.ratio, width)
+      : clampSplitRatio(layout.ratio);
+
+  return ratio === layout.ratio ? layout : { ...layout, ratio };
+}
 
 export function SplitSash({
   direction,
   ratio,
   dragRatio,
   onDragRatio,
+  availableWidth,
+  onAvailableWidth,
   containerRef,
 }: {
   direction: SplitDirection;
   ratio: number;
   dragRatio: number | undefined;
   onDragRatio: (ratio: number | undefined) => void;
+  availableWidth: number;
+  onAvailableWidth: (width: number) => void;
   containerRef: RefObject<HTMLDivElement | null>;
 }): ReactElement {
   const actions = usePaneActions();
   const sashRef = useRef<HTMLDivElement>(null);
-  const [availableWidth, setAvailableWidth] = useState(Number.NaN);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- observes the split's size before paint, rebound per direction
   useLayoutEffect(() => {
     const container = containerRef.current;
     const sash = sashRef.current;
@@ -30,7 +46,7 @@ export function SplitSash({
     if (container === null || sash === null) return;
 
     const measure = (): void => {
-      setAvailableWidth(
+      onAvailableWidth(
         container.getBoundingClientRect().width -
           (direction === "right" ? sash.getBoundingClientRect().width : 0),
       );
@@ -42,19 +58,10 @@ export function SplitSash({
     observer.observe(sash);
 
     return () => observer.disconnect();
-  }, [containerRef, direction]);
+  }, [containerRef, direction, onAvailableWidth]);
 
   const clampRatio = (nextRatio: number, width: number): number =>
     direction === "right" ? clampSplitRatioForSize(nextRatio, width) : clampSplitRatio(nextRatio);
-
-  useLayoutEffect(() => {
-    const clamped =
-      direction === "right"
-        ? clampSplitRatioForSize(ratio, availableWidth)
-        : clampSplitRatio(ratio);
-
-    if (clamped !== ratio) actions.resize(clamped);
-  }, [actions, availableWidth, direction, ratio]);
 
   const ratioFromPointer = (event: PointerEvent<HTMLDivElement>): number | undefined => {
     const container = containerRef.current;

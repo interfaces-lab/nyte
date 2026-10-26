@@ -14,7 +14,7 @@ import { modelIcon, providerIcon } from "../conversation/model-picker-state.ts";
 import { nyte } from "../nyte.ts";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../catalog.ts";
 import { useCatalog, useSetListing, useSetPreference } from "../queries.ts";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { connection } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionMenu, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";

@@ -1,7 +1,6 @@
 import { useFocusEffect } from "expo-router";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 import type { ExpoSpeechRecognitionErrorCode } from "expo-speech-recognition";
-// oxlint-disable-next-line no-restricted-imports -- the elapsed clock runs only while recording
 import { useEffect, useRef, useState } from "react";
 
 const WAVEFORM_LEVELS = 8;
@@ -102,6 +101,7 @@ export function useDictation(onTranscript: (transcript: string) => void) {
       ExpoSpeechRecognitionModule.abort();
     };
   });
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- elapsed-time interval while recording; recognizer events also stop it
   useEffect(() => {
     if (!recording) return;
     const timer = setInterval(() => setElapsed((value) => value + 1), 1000);

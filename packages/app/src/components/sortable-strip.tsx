@@ -5,7 +5,7 @@ import type { StyleXStyles } from "@stylexjs/stylex";
 import { createContext, use, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import { motion } from "@nyte-ai/ui/styles/vars.stylex";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 const styles = create({
   sorting: {

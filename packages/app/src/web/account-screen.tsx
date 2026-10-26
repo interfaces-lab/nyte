@@ -13,7 +13,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { AccountScope, accountAppearance } from "../account/appearance.tsx";
 import { connectionProblem, hostChanged } from "../sdk.tsx";
 import type { Connection } from "./bridge.ts";

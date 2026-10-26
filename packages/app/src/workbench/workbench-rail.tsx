@@ -100,6 +100,7 @@ export function WorkbenchRail({ children }: { readonly children: ReactNode }): R
   const [resizing, setResizing] = useState(false);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the row before paint and observes its size
   useLayoutEffect(() => {
     const row = seatRef.current?.parentElement;
 

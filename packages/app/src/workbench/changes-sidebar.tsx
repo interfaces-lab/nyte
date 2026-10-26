@@ -154,6 +154,7 @@ export function ChangesSidebar({
   const [viewedMode, setViewedMode] = useState<ViewedFilterMode>("all");
   const fileByPath = new Map(files.map((file) => [file.path, file]));
   const current = useRef({ fileByPath, onRevealPath });
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest files and callback for tree callbacks, which run outside render
   useLayoutEffect(() => {
     current.current = { fileByPath, onRevealPath };
   });
@@ -199,6 +200,7 @@ export function ChangesSidebar({
         : { mode: viewedMode, isViewed: (path) => fileByPath.get(path)?.viewed === "viewed" },
   });
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- applies path changes to the imperative Pierre tree
   useLayoutEffect(() => {
     const next = new Set(
       shownPaths.flatMap((path) => {
@@ -238,6 +240,7 @@ export function ChangesSidebar({
     if (activePath !== undefined) model.getItem(activePath)?.select();
     syncing.current = false;
   }, [model, shownPaths, activePath]);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes change statuses into the imperative Pierre tree
   useLayoutEffect(() => {
     model.setGitStatus(
       files.map((file) => {

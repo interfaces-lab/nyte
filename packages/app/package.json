@@ -42,7 +42,7 @@
     "@tiptap/pm": "^3.32.0",
     "@tiptap/react": "^3.32.0",
     "beautiful-mermaid": "^1.1.3",
-    "ghostty-web": "github:anomalyco/ghostty-web#83c0a07b8628b748aed073b232cb4b52a6ca11c1",
+    "ghostty-web": "github:anomalyco/ghostty-web#e91e38a9ceb13c566ddfa15185a9393849f712a9",
     "motion": "^14.5.0",
     "qrcode-generator": "^2.0.4",
     "react": "^19.3.1",

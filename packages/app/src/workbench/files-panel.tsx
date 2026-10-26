@@ -133,6 +133,7 @@ export function FilesPanel({
   const shown = workspaceActive && visible;
   const files = useMentionFiles(shown);
   const fileEntries = useRef(files.data);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest file list for tree callbacks, which run outside render
   useLayoutEffect(() => {
     fileEntries.current = files.data;
   }, [files.data]);
@@ -154,6 +155,7 @@ export function FilesPanel({
   const searchRef = useRef<HTMLDivElement>(null);
   const editors = useRef(new Map<string, FileEditorHandle>());
   const hostState = useRef(host.data);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest host state for tree callbacks, which run outside render
   useLayoutEffect(() => {
     hostState.current = host.data;
   }, [host.data]);
@@ -287,7 +289,9 @@ export function FilesPanel({
   );
 
   const revealed = useRef(0);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes paths into the imperative Pierre tree
   useLayoutEffect(() => model.resetPaths(paths), [model, paths]);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- reveals the requested path once the Pierre tree has it
   useLayoutEffect(() => {
     if (tabs.revealPath === undefined || revealed.current === tabs.revealRevision) return;
     const item = model.getItem(tabs.revealPath);
@@ -299,6 +303,7 @@ export function FilesPanel({
     item.select();
     model.scrollToPath(tabs.revealPath, { offset: "nearest" });
   }, [model, paths, tabs.revealPath, tabs.revealRevision]);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes worktree statuses into the imperative Pierre tree
   useLayoutEffect(() => {
     model.setGitStatus(
       changes?.map((file) => ({ path: file.path, status: treeStatus(file.kind) })),
@@ -694,6 +699,7 @@ function BreadcrumbTree({
     search: false,
   });
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes paths into the imperative Pierre tree
   useLayoutEffect(() => model.resetPaths(paths), [model, paths]);
 
   const openFile = (event: Event): void => {

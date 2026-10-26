@@ -1,4 +1,4 @@
-import { useLayoutEffect } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import type { AppRouter } from "./router.tsx";
 
 interface RendererStartupOptions {
@@ -57,10 +57,11 @@ function releaseStartupReads(): void {
   });
 }
 
-export function useReleaseStartupReads(ready: boolean): void {
-  useLayoutEffect(() => {
-    if (ready) releaseStartupReads();
-  }, [ready]);
+/** Render once the first screen is ready: mounting it releases the startup read hold. */
+export function StartupReadsRelease(): null {
+  useMountEffect(releaseStartupReads);
+
+  return null;
 }
 
 function mark(name: string): void {

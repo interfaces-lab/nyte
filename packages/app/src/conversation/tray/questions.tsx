@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import { useContext, useId, useLayoutEffect, useRef, useState } from "react";
+import { useContext, useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import {
@@ -57,25 +57,21 @@ function QuestionCard({
   const blocked = disabled || dock.pending || dock.settled;
   const multiple = dock.field.multiple === true;
   const fieldName = `${dock.request.part}:${dock.current}`;
-  const form = useRef<HTMLFormElement>(null);
   const restoreFocus = useRef(false);
-  useLayoutEffect(() => {
-    const element = form.current;
 
-    if (restoreFocus.current)
-      element
-        ?.querySelector<HTMLInputElement>("input:not(:disabled)")
-        ?.focus({ preventScroll: true });
+  const carryFocus = (form: HTMLFormElement): (() => void) => {
+    if (restoreFocus.current && !form.contains(document.activeElement))
+      form.querySelector<HTMLInputElement>("input:not(:disabled)")?.focus({ preventScroll: true });
 
     return () => {
-      restoreFocus.current = element?.contains(document.activeElement) ?? false;
+      restoreFocus.current = form.contains(document.activeElement);
     };
-  }, [fieldName]);
+  };
 
   return (
     <Questionnaire
       key={fieldName}
-      ref={form}
+      ref={carryFocus}
       aria-labelledby={`${id}-title`}
       item={fieldName}
       items={[

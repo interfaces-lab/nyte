@@ -1,19 +1,18 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
-// oxlint-disable-next-line no-restricted-imports -- job query results sync into the terminal store
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
+import type { SessionId, WorkspaceId } from "@nyte-ai/sdk";
 import { ADD_TO_CHAT_LABEL } from "../conversation/add-to-chat.ts";
 import { errorMessage } from "../errors";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { useSession, useWorkspaceJobs } from "../queries.ts";
-import { connection } from "../sdk.tsx";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useSession } from "../queries.ts";
+import { connection, jobsWatch } from "../sdk.tsx";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import type { WorkbenchTabId } from "./controller.ts";
 import { nyte } from "../nyte.ts";
 import {
@@ -25,16 +24,6 @@ import {
 import { getTerminal, terminalActions, useTerminal } from "./terminal-store";
 import type { TerminalTab } from "./terminal-store";
 import { terminalStyles } from "./terminal.stylex";
-
-const startingStyles = create({
-  overlay: {
-    position: "absolute",
-    insetBlockStart: 0,
-    insetInline: 0,
-    zIndex: 1,
-    backgroundColor: role.bgBase,
-  },
-});
 
 const chatStyles = create({
   action: {
@@ -153,11 +142,6 @@ function TerminalStatus({
 
   switch (tab.state.kind) {
     case "starting":
-      return (
-        <div role="status" {...props(text.sm, terminalStyles.state, startingStyles.overlay)}>
-          Starting terminal…
-        </div>
-      );
     case "running":
       return null;
     case "failed":
@@ -211,7 +195,6 @@ export function TerminalPanel({
 
   const jobSessionId = tab !== undefined && tab.kind === "job" ? tab.sessionId : undefined;
   const workspace = useSession(jobSessionId).data?.workspace;
-  const jobs = useWorkspaceJobs(jobSessionId === undefined ? undefined : workspace);
 
   const cancellation = useMutation({
     mutationFn: (current: TerminalTab) => {
@@ -222,13 +205,6 @@ export function TerminalPanel({
     },
   });
 
-  useEffect(() => {
-    if (jobSessionId === undefined || jobs === undefined) return;
-    terminalActions.syncJobs(
-      jobSessionId,
-      jobs.filter((job) => job.session === jobSessionId),
-    );
-  }, [jobSessionId, jobs]);
   const [error, setError] = useState<string>();
 
   const restart = async (current: TerminalTab): Promise<void> => {
@@ -244,6 +220,13 @@ export function TerminalPanel({
 
   return (
     <section aria-label="Terminal" {...props(terminalStyles.root)}>
+      {jobSessionId !== undefined && workspace !== undefined && (
+        <JobSync
+          key={`${workspace}:${jobSessionId}`}
+          workspace={workspace}
+          sessionId={jobSessionId}
+        />
+      )}
       {tab === undefined ? (
         <div {...props(text.base, terminalStyles.empty)}>
           <Icon name="console" size={24} />
@@ -305,4 +288,32 @@ export function TerminalPanel({
       )}
     </section>
   );
+}
+
+function JobSync({
+  workspace,
+  sessionId,
+}: {
+  readonly workspace: WorkspaceId;
+  readonly sessionId: SessionId;
+}): null {
+  useMountEffect(() => {
+    const jobs = jobsWatch(workspace);
+
+    const sync = (): void => {
+      const value = jobs.value;
+
+      if (value === undefined) return;
+      terminalActions.syncJobs(
+        sessionId,
+        value.filter((job) => job.session === sessionId),
+      );
+    };
+
+    sync();
+
+    return jobs.subscribe(sync);
+  });
+
+  return null;
 }

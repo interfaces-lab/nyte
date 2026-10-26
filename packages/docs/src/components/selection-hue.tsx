@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 const HUES = [216.5, 268.3, 294.6, 349.9] as const;
 const DRIFT = 0.36;
@@ -58,7 +58,7 @@ function selectionCenter(selection: Selection) {
 }
 
 export function SelectionHue() {
-  useEffect(() => {
+  useMountEffect(() => {
     const root = document.documentElement;
     let frame = 0;
     let last = "";
@@ -101,7 +101,7 @@ export function SelectionHue() {
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
     };
-  }, []);
+  });
 
   return null;
 }

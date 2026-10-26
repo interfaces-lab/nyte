@@ -365,6 +365,7 @@ function FollowScroll({
 }): ReactElement {
   const ref = useRef<HTMLDivElement>(null);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- pins the output to the bottom before paint
   useLayoutEffect(() => {
     const element = ref.current;
 
@@ -388,6 +389,7 @@ function OutputPreview({ output }: { readonly output: string }): ReactElement {
   const textRef = useRef<HTMLSpanElement>(null);
   const tail = outputTail(output);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- observes the output size for the overflow fade
   useLayoutEffect(() => {
     const root = rootRef.current;
     const text = textRef.current;

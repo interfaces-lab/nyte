@@ -1,37 +1,77 @@
-import { useSettingsOpen } from "./use-settings-open.ts";
 import { create, props } from "@stylexjs/stylex";
+import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar } from "../theme/schema.stylex.ts";
+import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { layer, media } from "@nyte-ai/ui/styles/schema.stylex";
-import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion as motionTokens, role } from "@nyte-ai/ui/styles/vars.stylex";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { preferences, SIDEBAR_WIDTH, useSetting } from "../preferences/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
+import { occludes } from "../workbench/browser-occlusion.ts";
 import { applySidebarWidth, clampSidebarWidth, shellActions } from "./shell-state.ts";
+import { useSidebar } from "./use-sidebar.ts";
+
+const FLOAT_OMEGA = (2 * Math.PI) / 0.18;
+
+const FLOAT_SPRING = {
+  type: "spring",
+  stiffness: FLOAT_OMEGA ** 2,
+  damping: 2 * 0.8 * FLOAT_OMEGA,
+} as const;
+
+const REVEAL_EDGE = 8;
+
+const HOLD_SLACK = 24;
+
+const HIDE_DELAY = 0.12;
 
 const styles = create({
   seat: {
     position: "relative",
-    display: "flex",
     width: sidebar.width,
     minWidth: 0,
     minHeight: 0,
     flexShrink: 0,
     overflow: "clip",
+    transitionProperty: "width",
+    transitionDuration: sidebar.slideDuration,
+    transitionTimingFunction: sidebar.slideEasing,
   },
   seatHidden: {
     width: 0,
     pointerEvents: "none",
   },
+  seatFloating: { overflow: "visible" },
+  still: { transitionDuration: "0s" },
   rail: {
+    position: "absolute",
+    insetBlock: 0,
+    insetInlineEnd: 0,
     display: "flex",
     width: sidebar.width,
-    minWidth: sidebar.width,
     minHeight: 0,
-    flexShrink: 0,
-    opacity: 1,
+    visibility: "visible",
+    transitionProperty: "visibility",
+    transitionDuration: sidebar.slideDuration,
+    transitionTimingFunction: sidebar.slideEasing,
   },
-  railHidden: { opacity: 0 },
+  railAway: { visibility: "hidden" },
+  railFloating: {
+    position: "absolute",
+    zIndex: layer.chrome,
+    insetBlock: sidebar.floatInset,
+    insetInlineStart: sidebar.floatInset,
+    insetInlineEnd: "auto",
+    borderRadius: sidebar.floatRadius,
+    overflow: "clip",
+    pointerEvents: "auto",
+    transform: {
+      default: "translateX(calc(var(--_float, 1) * (-100% - 12px)))",
+      "@media (prefers-reduced-motion: reduce)": "none",
+    },
+  },
   handle: {
     position: "fixed",
     zIndex: layer.sash,
@@ -51,8 +91,8 @@ const styles = create({
       width: 1,
       backgroundColor: "transparent",
       transitionProperty: "background-color",
-      transitionDuration: motion.durationFast,
-      transitionTimingFunction: motion.easeOut,
+      transitionDuration: motionTokens.durationFast,
+      transitionTimingFunction: motionTokens.easeOut,
     },
     ":hover::after": {
       backgroundColor: {
@@ -73,12 +113,57 @@ interface ResizeState {
 }
 
 export function SidebarPane({ children }: { readonly children: ReactNode }): ReactElement {
-  const sidebarVisible = useSetting(preferences.sidebarVisible);
+  const docked = useSidebar().state === "expanded";
   const sidebarWidth = useSetting(preferences.sidebarWidth);
+  const rail = useRef<HTMLDivElement | null>(null);
+  const [float, setFloat] = useState<"in" | "out">();
+  const [docksInPlace, setDocksInPlace] = useState(false);
 
-  const settingsOpen = useSettingsOpen();
+  if (docked && float !== undefined) {
+    setFloat(undefined);
+    setDocksInPlace(true);
+  }
 
-  const visible = sidebarVisible || settingsOpen;
+  if (!docked && docksInPlace) setDocksInPlace(false);
+
+  const presentation = docked ? "expanded" : float === undefined ? "collapsed" : "floating";
+  const floating = presentation === "floating";
+  const away = presentation === "collapsed";
+
+  useMountEffect(() => {
+    const root = document.documentElement;
+
+    const follow = (event: globalThis.PointerEvent): void => {
+      const element = rail.current;
+
+      if (element === null || element.dataset.state === "expanded") return;
+
+      const panel =
+        element.dataset.state === "floating" && event.type === "pointermove"
+          ? element.getBoundingClientRect()
+          : undefined;
+
+      const near =
+        event.clientX < REVEAL_EDGE ||
+        (panel !== undefined &&
+          (event.clientX < panel.right + HOLD_SLACK ||
+            (event.target instanceof Element &&
+              event.target.closest("[data-base-ui-portal]") !== null)));
+
+      setFloat((current) => (near ? "in" : current === undefined ? undefined : "out"));
+    };
+
+    window.addEventListener("pointermove", follow);
+    root.addEventListener("pointerleave", follow);
+    const release = occludes(rail.current);
+
+    return () => {
+      window.removeEventListener("pointermove", follow);
+      root.removeEventListener("pointerleave", follow);
+      release?.();
+    };
+  });
+
   const [resizing, setResizing] = useState(false);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
 
@@ -141,15 +226,34 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
   };
 
   return (
-    <div {...props(styles.seat, !visible && styles.seatHidden)}>
-      <div
-        aria-hidden={!visible}
-        inert={visible ? undefined : true}
-        {...props(styles.rail, !visible && styles.railHidden)}
+    <div
+      {...props(
+        styles.seat,
+        !docked && styles.seatHidden,
+        floating && styles.seatFloating,
+        (resizing || docksInPlace) && styles.still,
+      )}
+    >
+      <motion.div
+        ref={rail}
+        data-state={presentation}
+        aria-hidden={away}
+        inert={away ? true : undefined}
+        {...props(
+          styles.rail,
+          away && styles.railAway,
+          floating && [floatingSurfaceStyles.popup, styles.railFloating],
+        )}
+        initial={false}
+        animate={{ "--_float": float === "in" ? 0 : 1 }}
+        transition={{ ...FLOAT_SPRING, delay: float === "out" ? HIDE_DELAY : 0 }}
+        onAnimationComplete={() => {
+          if (float === "out") setFloat(undefined);
+        }}
       >
         {children}
-      </div>
-      {visible && (
+      </motion.div>
+      {docked && (
         <div
           role="separator"
           tabIndex={0}

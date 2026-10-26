@@ -86,6 +86,7 @@ export interface SpinnerProps {
 export function Spinner({ className, style, xstyle }: SpinnerProps = {}): ReactElement {
   const root = useRef<HTMLSpanElement>(null);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- sets the animation phase before the first frame paints
   useLayoutEffect(() => {
     root.current?.style.setProperty("--moon-sync", `${performance.now() % LOOP_MS}ms`);
   }, []);

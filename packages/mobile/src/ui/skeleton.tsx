@@ -1,4 +1,3 @@
-// oxlint-disable-next-line no-restricted-imports -- the pulse loop follows the reduced-motion setting
 import { useEffect } from "react";
 import { View } from "react-native";
 import type { DimensionValue, StyleProp, ViewStyle } from "react-native";
@@ -34,6 +33,7 @@ function Skeleton({
   const theme = useTheme();
   const reduceMotion = useReducedMotion();
   const pulse = useSharedValue(reduceMotion ? 0.6 : PULSE_LOW);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- Reanimated pulse loop, restarted per reduced-motion setting
   useEffect(() => {
     if (reduceMotion) return;
     pulse.set(

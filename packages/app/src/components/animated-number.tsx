@@ -17,6 +17,7 @@ export function AnimatedNumber({ value }: { readonly value: number }) {
   const element = useRef<HTMLSpanElement>(null);
   const morph = useRef<TextMorph | null>(null);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- creates the torph morph on the node before the value effect writes to it
   useLayoutEffect(() => {
     const node = element.current;
 
@@ -38,6 +39,7 @@ export function AnimatedNumber({ value }: { readonly value: number }) {
     };
   }, []);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- animates the torph morph to the new value before paint
   useLayoutEffect(() => {
     if (morph.current !== null) morph.current.update(String(value));
     else if (element.current !== null) element.current.textContent = String(value);

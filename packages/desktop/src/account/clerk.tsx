@@ -1,7 +1,7 @@
 import { AccountScope, accountAppearance } from "@nyte-ai/app/account/appearance.tsx";
 import { publishDeferred } from "@nyte-ai/app/deferred.tsx";
 import { ClerkLoading, ClerkProvider, SignIn, useClerk } from "@clerk/electron/react";
-import { useEffect } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import type { ReactElement, ReactNode } from "react";
 import type { AccountAnswer, AccountCommand, AccountReport } from "./protocol.ts";
 
@@ -137,7 +137,7 @@ function Account({
 }): null {
   const clerk = useClerk();
 
-  useEffect(() => connect(clerk, onPrompt), [clerk, onPrompt]);
+  useMountEffect(() => connect(clerk, onPrompt));
 
   return null;
 }

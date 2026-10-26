@@ -2,14 +2,7 @@ import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import {
-  useEffectEvent,
-  useLayoutEffect,
-  useReducer,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useReducer, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { CommandInfo, Delivery } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
@@ -37,7 +30,7 @@ import type { PaneId } from "../layout/pane-layout.ts";
 import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts";
 import { useCatalog, useHostState, useMentionFiles, useWorkspaceCatalog } from "../queries.ts";
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
-import { useReleaseStartupReads } from "../startup.ts";
+import { StartupReadsRelease } from "../startup.ts";
 
 const NO_COMMANDS: readonly CommandInfo[] = [];
 
@@ -82,7 +75,6 @@ export function BlankConversation({
   const workspaceFiles = useMentionFiles(workspace !== undefined);
   const workspaceCatalog = useWorkspaceCatalog(workspace?.id);
   const actions = usePaneActions();
-  useReleaseStartupReads(true);
   const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useBlankViewBinding(paneId);
   const { status } = viewState;
@@ -92,7 +84,6 @@ export function BlankConversation({
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string>();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
-  const blankRef = useRef<HTMLDivElement>(null);
 
   const attachInput = (handle: ComposerEditorHandle | null) => {
     editorRef.current = handle;
@@ -152,29 +143,21 @@ export function BlankConversation({
       .finally(() => setAttachmentReads((count) => count - 1));
   };
 
-  const dropDisabled = held;
-
-  const dropFiles = useEffectEvent((files: readonly File[]): void => {
-    void addFiles(files);
-  });
-
-  useLayoutEffect(() => {
-    const element = blankRef.current;
-
-    if (element === null) return undefined;
-
-    return bindComposerFileDrop({
-      element,
-      disabled: dropDisabled,
-      onFiles: dropFiles,
-    });
-  }, [dropDisabled]);
+  const bindFileDrop = (element: HTMLDivElement | null): (() => void) | undefined =>
+    element === null
+      ? undefined
+      : bindComposerFileDrop({
+          element,
+          disabled: held,
+          onFiles: (files) => void addFiles(files),
+        });
 
   return (
     <div {...props(sessionScreenStyles.screen)}>
+      <StartupReadsRelease />
       {layout.kind === "split" && <PaneHeader paneId={paneId} title="New chat" />}
       <div
-        ref={blankRef}
+        ref={bindFileDrop}
         {...props(sessionScreenStyles.blank)}
         onKeyDown={(event) => {
           if (event.key !== "Escape" || status.kind !== "waiting") return;

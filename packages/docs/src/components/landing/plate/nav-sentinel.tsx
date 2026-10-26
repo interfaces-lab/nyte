@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 /**
  * Sits on the top edge of the preview. Once that edge passes under the nav,
@@ -7,7 +8,7 @@ import { useEffect, useRef } from "react";
 export function NavSentinel() {
   const ref = useRef<HTMLSpanElement>(null);
 
-  useEffect(() => {
+  useMountEffect(() => {
     const sentinel = ref.current;
     if (!sentinel) return;
     const root = document.documentElement;
@@ -31,7 +32,7 @@ export function NavSentinel() {
       observer.disconnect();
       root.removeAttribute("data-nav-stuck");
     };
-  }, []);
+  });
 
   return (
     <span

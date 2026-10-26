@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
 import { loadDeferred } from "../deferred.tsx";
 import { keys } from "../query-keys.ts";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { codeBlockStyles } from "./prose.stylex.ts";
 
 interface HighlightedCode {

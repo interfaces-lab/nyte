@@ -485,7 +485,7 @@ const styles = create({
   card: {
     marginInlineEnd: frame.cardInset,
     marginBlockEnd: frame.cardInset,
-    borderRadius: radius.card,
+    borderRadius: frame.cardRadius,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
     scrollPaddingBlockStart: 24,
   },

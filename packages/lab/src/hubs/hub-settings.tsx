@@ -5,7 +5,14 @@
  * through each source's steps, and toasts go through the app's toaster.
  */
 import { create, keyframes, props } from "@stylexjs/stylex";
-import { useEffect, useReducer, useState, type ActionDispatch, type ReactElement } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useReducer,
+  useState,
+  type ActionDispatch,
+  type ReactElement,
+} from "react";
 import { ConnectionMenu, ConnectionRow } from "@nyte-ai/app/chrome/connection-list.tsx";
 import { settingsStyles } from "@nyte-ai/app/settings/settings.stylex.ts";
 import { settingsPatterns } from "@nyte-ai/app/theme/settings-patterns.stylex.ts";
@@ -22,9 +29,8 @@ import { plural, type Copy, type Scene, type Source } from "./scenes";
 
 const TICK_MS = 50;
 
-/** A toast the reducer decided on; an effect hands it to the toaster. */
+/** A toast a tick decided on; the tick posts it to the toaster. */
 interface Announcement {
-  readonly id: number;
   readonly type: "success" | "error";
   readonly title: string;
   readonly description: string;
@@ -33,16 +39,13 @@ interface Announcement {
 interface State {
   readonly loading: boolean;
   readonly links: Readonly<Record<string, Link>>;
-  readonly announcements: readonly Announcement[];
-  readonly nextAnnouncement: number;
 }
 
 type Action =
   | { readonly kind: "loaded" }
   | { readonly kind: "start"; readonly id: string }
   | { readonly kind: "stop"; readonly id: string }
-  | { readonly kind: "tick"; readonly ms: number }
-  | { readonly kind: "announced"; readonly through: number };
+  | { readonly kind: "tick"; readonly ms: number };
 
 const IDLE: Link = { kind: "idle" };
 
@@ -50,8 +53,6 @@ function initial(scene: Scene): State {
   return {
     loading: true,
     links: Object.fromEntries(scene.sources.map((source) => [source.id, IDLE])),
-    announcements: [],
-    nextAnnouncement: 0,
   };
 }
 
@@ -63,9 +64,8 @@ function attempts(link: Link): number {
   return link.kind === "working" ? link.attempt : link.kind === "failed" ? 2 : 1;
 }
 
-function advance(scene: Scene, state: State, ms: number): State {
+function advance(scene: Scene, state: State, ms: number) {
   const announcements: Announcement[] = [];
-  let next = state.nextAnnouncement;
 
   const links = Object.fromEntries(
     scene.sources.map((source): [string, Link] => {
@@ -76,7 +76,6 @@ function advance(scene: Scene, state: State, ms: number): State {
 
       if (source.failsOnce !== undefined && link.attempt === 1 && progress >= 0.62) {
         announcements.push({
-          id: next++,
           type: "error",
           title: `Couldn't connect ${source.title}`,
           description: source.failsOnce,
@@ -87,7 +86,6 @@ function advance(scene: Scene, state: State, ms: number): State {
 
       if (progress < 1) return [source.id, { ...link, progress }];
       announcements.push({
-        id: next++,
         type: "success",
         title: `Connected ${source.title}`,
         description: source.result,
@@ -97,12 +95,7 @@ function advance(scene: Scene, state: State, ms: number): State {
     }),
   );
 
-  return {
-    ...state,
-    links,
-    announcements: [...state.announcements, ...announcements],
-    nextAnnouncement: next,
-  };
+  return { links, announcements };
 }
 
 function reducer(scene: Scene) {
@@ -127,12 +120,7 @@ function reducer(scene: Scene) {
       case "stop":
         return { ...state, links: { ...state.links, [action.id]: IDLE } };
       case "tick":
-        return advance(scene, state, action.ms);
-      case "announced":
-        return {
-          ...state,
-          announcements: state.announcements.filter((entry) => entry.id > action.through),
-        };
+        return { ...state, links: advance(scene, state, action.ms).links };
       default: {
         const _exhaustive: never = action;
 
@@ -265,35 +253,25 @@ export function HubSettings({
   const copy = headline(scene, state, summary);
   const syncing = summary.working > 0;
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- fake load timer, restarted per load time
   useEffect(() => {
     const timer = window.setTimeout(() => dispatch({ kind: "loaded" }), loadMs);
 
     return () => window.clearTimeout(timer);
   }, [loadMs]);
 
+  const tick = useEffectEvent(() => {
+    for (const entry of advance(scene, state, TICK_MS).announcements) toast.add(entry);
+    dispatch({ kind: "tick", ms: TICK_MS });
+  });
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- progress interval while an item syncs
   useEffect(() => {
     if (!syncing) return;
-    const timer = window.setInterval(() => dispatch({ kind: "tick", ms: TICK_MS }), TICK_MS);
+    const timer = window.setInterval(tick, TICK_MS);
 
     return () => window.clearInterval(timer);
   }, [syncing]);
-
-  useEffect(() => {
-    const last = state.announcements.at(-1);
-
-    if (last === undefined) return;
-
-    for (const entry of state.announcements) {
-      toast.add({
-        id: `${scene.id}-${entry.id}`,
-        type: entry.type,
-        title: entry.title,
-        description: entry.description,
-      });
-    }
-
-    dispatch({ kind: "announced", through: last.id });
-  }, [scene.id, state.announcements]);
 
   const traceRow = (list: HTMLElement, target: EventTarget | null): void => {
     if (!(target instanceof Node)) return;

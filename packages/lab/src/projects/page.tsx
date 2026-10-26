@@ -1,12 +1,16 @@
 import { props } from "@stylexjs/stylex";
+import { DialRoot } from "dialkit";
 import { useState, type ReactElement } from "react";
 import type { WindowTabItem } from "@nyte-ai/app/tabs/window-tab-strip.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
-import { folderChats, laneChats, openAsks } from "./chats.ts";
+import { useDisplayMode } from "../shell/display-mode";
+import { folderChats, laneChats, openAsks, stackable } from "./chats.ts";
 import type { Ask } from "./chats.ts";
 import { EXPORT_COMMAND, useEvidence } from "./data.ts";
+import { useProjectDials } from "./dials.ts";
 import type { Evidence } from "./evidence.ts";
 import { styles } from "./page.stylex";
+import { Journey } from "./journey.tsx";
 import { ProjectsSidebar, StatusGlyph } from "./sidebar.tsx";
 import { ChatTab, LaneTab } from "./tab-content.tsx";
 import type { Answer, Next } from "./tab-content.tsx";
@@ -72,7 +76,10 @@ function happened(step: Step, title: string, pulls: number, runs: number): strin
 
 function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
   const [shell, setShell] = useState(START);
-  const journey = scenarios(evidence).find((scenario) => scenario.id === "drag");
+  const dials = useProjectDials();
+  useDisplayMode(dials.scheme);
+  const all = scenarios(evidence, dials.knobs);
+  const journey = all.find((scenario) => scenario.id === "drag");
   const step = journey?.steps[Math.min(shell.step, journey.steps.length - 1)];
 
   if (journey === undefined || step === undefined)
@@ -80,7 +87,7 @@ function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
   const lane = step.world.lanes[0];
 
   if (lane === undefined)
-    return <Missing pending={false} error="This export has no lane to show." />;
+    return <Missing pending={false} error="This export has no stack to show." />;
   const units = deriveView(step.world, evidence.checkout.folder);
   const members = laneChats(step.world, units, lane.id);
   const loose = folderChats(step.world, units, DRAGGED_SESSION);
@@ -92,7 +99,7 @@ function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
   const title = dragged?.title ?? DRAGGED_SESSION.slice(0, 8);
   const pulls = dragged?.opened.length ?? 0;
   const chats = [...members, ...loose];
-  const movable = step.id === "before" ? DRAGGED_SESSION : null;
+  const movable = loose.filter(stackable).map((candidate) => candidate.id);
   const tabs = shell.tabs.filter((id) => id === LANE || chats.some((chat) => chat.id === id));
   const active = tabs.includes(shell.active) ? shell.active : LANE;
   const chat = chats.find((candidate) => candidate.id === active);
@@ -140,7 +147,7 @@ function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
     return {
       id,
       title: found?.title ?? lane.name,
-      tooltip: found?.title ?? `${lane.name} lane`,
+      tooltip: found?.title ?? `${lane.name} stack`,
       glyph:
         found === undefined ? (
           <Icon name="layers" size={14} />
@@ -216,12 +223,21 @@ function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
               answer={answer}
               happened={said}
               next={next}
-              move={chat.id === movable ? () => move(chat.id) : undefined}
+              move={movable.includes(chat.id) ? () => move(chat.id) : undefined}
               prompts={prompts.filter((prompt) => prompt.to.includes(chat.id))}
             />
           )}
         </main>
+        {dials.journey && (
+          <Journey
+            played={journey}
+            others={all.filter((scenario) => scenario.id !== journey.id)}
+            at={shell.step}
+            onStep={(index) => setShell((current) => ({ ...current, step: index }))}
+          />
+        )}
       </div>
+      <DialRoot position="bottom-right" defaultOpen={false} />
     </div>
   );
 }

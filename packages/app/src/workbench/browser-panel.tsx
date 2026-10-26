@@ -1,7 +1,6 @@
 import { button, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
-// oxlint-disable-next-line no-restricted-imports -- the native surface follows its surface, workspace, and url
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent, ReactElement, ReactNode, RefObject } from "react";
 import type {
@@ -28,6 +27,7 @@ import { AddressField } from "./browser-address-field.tsx";
 import type { AddressFieldHandle } from "./browser-address-field.tsx";
 import { useBrowserHistory } from "./browser-history.ts";
 import { keyOwner } from "../shell/focus-owner.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { overlayCovers, subscribeOverlayRects } from "./browser-occlusion.ts";
 import {
   applyBrowserEvent,
@@ -224,6 +224,7 @@ function useSurfacePlacement(
   const lastRef = useRef<BrowserBoundsMessage | undefined>(undefined);
   const pageFocus = useRef(false);
   const placeRef = useRef<() => void>(() => undefined);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- keeps the native view's bounds on the slot, measured before paint
   useLayoutEffect(() => {
     const element = slot.current;
 
@@ -351,6 +352,20 @@ function blockedPermissionsLabel(permissions: readonly string[]): string {
 
 const PNG_DATA_URL = "data:image/png;base64,";
 
+function FocusAddressNextFrame({
+  address,
+}: {
+  readonly address: RefObject<AddressFieldHandle | null>;
+}): null {
+  useMountEffect(() => {
+    const frame = requestAnimationFrame(() => address.current?.focus());
+
+    return () => cancelAnimationFrame(frame);
+  });
+
+  return null;
+}
+
 function addElementToChat(picked: BrowserElementPick): void {
   const image =
     picked.image?.startsWith(PNG_DATA_URL) === true
@@ -411,6 +426,7 @@ export function BrowserPanel({
 
   const holdRef = useRef<SurfaceHold | undefined>(undefined);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- holds the native surface for this surface and workspace
   useEffect(() => {
     const hold: SurfaceHold = { opened: false, url: undefined, released: false };
     holdRef.current = hold;
@@ -422,6 +438,7 @@ export function BrowserPanel({
     };
   }, [surface, workspacePath]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- opens the requested URL when the native surface drifts from it
   useEffect(() => {
     const hold = holdRef.current;
 
@@ -461,12 +478,14 @@ export function BrowserPanel({
     };
   }, [surface, url, stateUrl, workspacePath]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- clears native page focus when the panel hides or the surface changes
   useEffect(() => {
     if (!visible) return;
 
     return () => browserBridge().setFocus({ surface, focused: false });
   }, [surface, visible]);
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- key events forwarded from the native surface, resubscribed per surface
   useEffect(
     () =>
       onBrowserKey(surface, (key) => {
@@ -476,13 +495,6 @@ export function BrowserPanel({
       }),
     [surface],
   );
-
-  useEffect(() => {
-    if (!visible || !blank) return;
-    const frame = requestAnimationFrame(() => addressRef.current?.focus());
-
-    return () => cancelAnimationFrame(frame);
-  }, [visible, blank]);
 
   const navigate = (action: BrowserNavigationAction): void => {
     void browserBridge()
@@ -642,6 +654,7 @@ export function BrowserPanel({
         event.preventDefault();
       }}
     >
+      {visible && blank && <FocusAddressNextFrame address={addressRef} />}
       <div {...props(workbenchStyles.toolbar, styles.toolbar)}>
         <Button
           iconOnly

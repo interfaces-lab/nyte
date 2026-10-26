@@ -3,7 +3,7 @@ import { keyOwner } from "../shell/focus-owner.ts";
 import { BlankConversation } from "./blank-conversation.tsx";
 import { SessionConversation } from "./session-conversation.tsx";
 import { props } from "@stylexjs/stylex";
-import { Activity, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Activity, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement, RefObject } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { receiveChatExcerpts } from "../conversation/add-to-chat.ts";
@@ -18,7 +18,7 @@ import type { PaneState } from "../layout/pane-layout.ts";
 import { useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
 import { useHostState } from "../queries.ts";
 import { sessionsWatch, sessionWatch, useWatchSelect } from "../sdk.tsx";
-import { useMountEffect } from "../use-mount-effect.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
 import { workbenchViewKey } from "../workbench/controller.ts";
@@ -65,6 +65,19 @@ function ReceiveExcerpts({
       if (image !== undefined) input.current?.attachFiles([image]);
     }),
   );
+
+  return null;
+}
+
+function FocusComposer({
+  input,
+}: {
+  readonly input: RefObject<ComposerEditorHandle | null>;
+}): null {
+  useMountEffect(() => {
+    if (keyOwner()?.closest("[data-nyte-pane-id]") === null) return;
+    input.current?.focus();
+  });
 
   return null;
 }
@@ -136,12 +149,6 @@ export function PaneHost({
     workspacePath,
   });
 
-  useLayoutEffect(() => {
-    if (focusRequest.paneId !== pane.id || keyOwner()?.closest("[data-nyte-pane-id]") === null)
-      return;
-    inputRef.current?.focus();
-  }, [focusRequest.paneId, focusRequest.revision, pane.id]);
-
   return (
     <section
       ref={attachDropTarget}
@@ -156,6 +163,9 @@ export function PaneHost({
       onPointerDown={() => actions.focus(pane.id)}
       onFocusCapture={() => actions.focus(pane.id)}
     >
+      {focusRequest.paneId === pane.id && (
+        <FocusComposer key={focusRequest.revision} input={inputRef} />
+      )}
       {activePane(layout).id === pane.id && (
         <>
           <TypeToCompose input={inputRef} />

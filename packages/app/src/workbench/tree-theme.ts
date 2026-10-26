@@ -27,6 +27,7 @@ export function useTreeStatusTheme() {
     deleted: role.contentSecondary,
   });
 
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- reads computed theme colors before paint and watches the root's attributes
   useLayoutEffect(() => {
     const root = document.documentElement;
     const probe = document.createElement("span");

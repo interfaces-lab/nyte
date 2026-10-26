@@ -1,4 +1,3 @@
-// oxlint-disable-next-line no-restricted-imports -- the hatch itself
 import { useEffect } from "react";
 
 /**
@@ -7,6 +6,6 @@ import { useEffect } from "react";
  * value is derived state, an event, or a query — not a mount.
  */
 export function useMountEffect(effect: () => void | (() => void)): void {
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once, by definition
+  // oxlint-disable-next-line nyte-code/no-direct-effect, react-hooks/exhaustive-deps -- the hatch itself
   useEffect(effect, []);
 }

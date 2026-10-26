@@ -74,7 +74,6 @@ export interface LaneRules {
   readonly asks: readonly { readonly workflow: string; readonly question: string }[];
   readonly triggers: readonly Trigger[];
   readonly limits: Limits;
-  readonly decisions: readonly string[];
   readonly requires: {
     readonly cli: readonly string[];
     readonly mcp: readonly { readonly name: string; readonly url: string }[];

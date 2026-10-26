@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "@tanstack/react-router";
 import { IconBarsTwo, IconCrossSmall } from "central-icons";
@@ -42,27 +43,6 @@ export function SiteMobileNav({
   const toc = findPage(pathname)?.toc.filter((entry) => entry.depth === 2) ?? [];
   const close = () => setOpenedOn(null);
 
-  useEffect(() => {
-    if (!open) return;
-
-    const root = document.documentElement;
-
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setOpenedOn(null);
-      toggle.current?.focus();
-    };
-
-    root.dataset.menuOpen = "";
-    panel.current?.focus();
-    document.addEventListener("keydown", onKey);
-
-    return () => {
-      delete root.dataset.menuOpen;
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
   return (
     <>
       <button
@@ -77,6 +57,7 @@ export function SiteMobileNav({
       >
         {open ? <IconCrossSmall size={16} /> : <IconBarsTwo size={16} />}
       </button>
+      {open ? <OpenMenu panel={panel} toggle={toggle} onClose={close} /> : null}
       {onClient
         ? createPortal(
             <div
@@ -135,4 +116,32 @@ export function SiteMobileNav({
         : null}
     </>
   );
+}
+
+/** Mounted while the menu is open: locks the page, focuses the panel and closes on Escape. */
+function OpenMenu(props: {
+  panel: RefObject<HTMLDivElement | null>;
+  toggle: RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+}) {
+  useMountEffect(() => {
+    const root = document.documentElement;
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      props.onClose();
+      props.toggle.current?.focus();
+    };
+
+    root.dataset.menuOpen = "";
+    props.panel.current?.focus();
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      delete root.dataset.menuOpen;
+      document.removeEventListener("keydown", onKey);
+    };
+  });
+
+  return null;
 }

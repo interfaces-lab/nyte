@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
-import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { ReactElement } from "react";
+import { useImperativeHandle, useRef, useState, useSyncExternalStore } from "react";
+import type { ReactElement, Ref } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -9,6 +9,7 @@ import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.style
 import { layer, space, target as targetSize } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 export interface FindQuery {
   readonly text: string;
@@ -33,6 +34,10 @@ export interface ReplaceTarget {
   setReplaceText(text: string): void;
   replace(): void;
   replaceAll(): void;
+}
+
+export interface FindWidgetHandle {
+  focus(): void;
 }
 
 const styles = create({
@@ -81,14 +86,15 @@ function countLabel(query: string, snapshot: ReturnType<FindTarget["getSnapshot"
 }
 
 export function FindWidget({
+  ref,
   label,
   target,
   replace,
   initialText = "",
-  focusRevision,
   placement,
   onClose,
 }: {
+  readonly ref?: Ref<FindWidgetHandle>;
   readonly label: string;
   readonly target: FindTarget;
   readonly replace?: {
@@ -97,7 +103,6 @@ export function FindWidget({
     readonly onOpenChange: (open: boolean) => void;
   };
   readonly initialText?: string;
-  readonly focusRevision: number;
   readonly placement?: StyleXStyles<{ insetBlockStart?: string }>;
   readonly onClose: () => void;
 }): ReactElement {
@@ -113,10 +118,13 @@ export function FindWidget({
   const [replaceText, setReplaceText] = useState("");
   const snapshot = useSyncExternalStore(target.subscribe, target.getSnapshot);
 
-  useLayoutEffect(() => {
+  const focus = (): void => {
     findInput.current?.focus();
     findInput.current?.select();
-  }, [focusRevision]);
+  };
+
+  useImperativeHandle(ref, () => ({ focus }));
+  useMountEffect(focus);
 
   const search = (next: FindQuery): void => {
     setQuery(next);

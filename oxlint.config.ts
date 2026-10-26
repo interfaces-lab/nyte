@@ -9,13 +9,6 @@ const rendererCoreImports = [
   },
 ];
 
-const mountEffectImport = {
-  name: "react",
-  importNames: ["useEffect"],
-  message:
-    "No direct useEffect: derive inline, fetch with useQuery, act in the event handler, remount via key, or useMountEffect for mount-time external sync.",
-};
-
 const compilerMemoImport = {
   name: "react",
   importNames: ["useMemo", "useCallback", "memo"],
@@ -95,14 +88,18 @@ export default defineConfig({
     "eslint/max-lines": ["error", { max: 1000, skipBlankLines: false, skipComments: false }],
     "nyte-code/declarative-comments": "error",
     "nyte-code/no-cross-package-relative-imports": "error",
+    // Effects sync outside systems; each direct one says which.
+    "nyte-code/no-direct-effect": "error",
     "nyte-code/no-is-helper-names": "error",
     "nyte-code/no-of-lookup-names": "error",
     "nyte-code/no-one-off-boolean-helpers": "error",
+    "nyte-code/require-suppression-reason": "error",
   },
   options: {
     typeAware: true,
   },
   settings: {
+    "react-hooks": { additionalEffectHooks: "(useMountEffect)" },
     shadcn: { ui: "@nyte-ai/ui" },
     tailwindcss: { callees: ["clsx", "cva", "cn"] },
   },
@@ -254,6 +251,13 @@ export default defineConfig({
       },
     },
     {
+      // Test harnesses drive components from effects.
+      files: ["**/*.test.{ts,tsx}", "**/*.browser-test.tsx", "**/e2e/**", "**/test/**"],
+      rules: {
+        "nyte-code/no-direct-effect": "off",
+      },
+    },
+    {
       files: ["packages/schema/src/model/model.ts"],
       rules: {
         "typescript/no-redundant-type-constituents": "off",
@@ -270,12 +274,7 @@ export default defineConfig({
         "eslint/no-restricted-imports": [
           "error",
           {
-            paths: [
-              ...rendererCoreImports,
-              mountEffectImport,
-              compilerMemoImport,
-              ...runtimeLoadImports,
-            ],
+            paths: [...rendererCoreImports, compilerMemoImport, ...runtimeLoadImports],
             patterns: uiLibraryImports,
           },
         ],
@@ -379,20 +378,6 @@ export default defineConfig({
       files: ["packages/app/src/chrome/pairing-code.tsx"],
       rules: {
         "nyte-design/no-raw-colors": "off",
-      },
-    },
-    {
-      /**
-       * Effects exist to synchronize with an external system; derived state,
-       * fetching (TanStack Query), event relays, and per-prop resets each have
-       * a better primitive. Legitimate survivors carry an inline disable.
-       */
-      files: ["packages/mobile/src/**/*.{ts,tsx}"],
-      rules: {
-        "eslint/no-restricted-imports": [
-          "error",
-          { paths: [mountEffectImport, ...runtimeLoadImports], patterns: uiLibraryImports },
-        ],
       },
     },
     {
