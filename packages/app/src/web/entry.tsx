@@ -7,6 +7,7 @@ import "../theme/focus-modality.ts";
 import "../theme/global.css";
 import { createBrowserHistory } from "@tanstack/react-router";
 import { focusManager } from "@tanstack/react-query";
+import { Button } from "@nyte-ai/ui/button";
 import { StrictMode } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -25,6 +26,7 @@ import { releaseStoredAccountDevice } from "./account-connection.ts";
 import { readAccountDevice } from "./account-device.ts";
 import { accountConfig } from "./account-config.ts";
 import { AccountScreen } from "./account-screen.tsx";
+import { DesktopFrame } from "./desktop-frame.tsx";
 import { LinkScreen } from "./link-screen.tsx";
 import {
   displayAddress,
@@ -93,10 +95,30 @@ function mountApp(
   });
 }
 
-function start(
-  connection: Connection,
-  mount: (shell: ReactNode) => void = (shell) => root.render(shell),
-): void {
+/** Mounts the app for an address and token under a bar whose Disconnect forgets them. */
+function mountManual(connection: Connection): (shell: ReactNode) => void {
+  return (shell) =>
+    root.render(
+      <DesktopFrame
+        name={displayAddress(connection)}
+        actions={
+          <Button
+            size="xs"
+            onClick={() => {
+              forgetConnection();
+              location.replace("/");
+            }}
+          >
+            Disconnect
+          </Button>
+        }
+      >
+        {shell}
+      </DesktopFrame>,
+    );
+}
+
+function start(connection: Connection, mount = mountManual(connection)): void {
   seedFirstFrame(connection.url);
   mountApp(connection, mount, async () => undefined);
 }
@@ -132,20 +154,16 @@ async function resume(connection: Connection, fromLink: boolean): Promise<void> 
   if (fromLink) await releaseStoredAccountDevice(accountConfig);
 
   if (!fromLink && seedFirstFrame(connection.url)) {
-    mountApp(
-      connection,
-      (shell) => root.render(shell),
-      () =>
-        connectAddress(connection, false).then(
-          () => saveConnection(connection),
-          (cause: unknown) => {
-            const problem = connectionProblem(cause).kind;
+    mountApp(connection, mountManual(connection), () =>
+      connectAddress(connection, false).then(
+        () => saveConnection(connection),
+        (cause: unknown) => {
+          const problem = connectionProblem(cause).kind;
 
-            if (problem === "authentication" || hostChanged(cause))
-              refuse(connection, false, cause);
-            throw cause;
-          },
-        ),
+          if (problem === "authentication" || hostChanged(cause)) refuse(connection, false, cause);
+          throw cause;
+        },
+      ),
     );
 
     return;
