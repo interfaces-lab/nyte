@@ -1,16 +1,13 @@
 import type { ExcerptSource, Thinking, ToolClass, UserContent } from "@nyte-ai/sdk";
 import { formatDuration, toolTitle } from "@nyte-ai/plugin/client/presentation";
 import type { ToolTense } from "@nyte-ai/plugin/client/presentation";
-import type { RemoteFacts } from "../model/state.ts";
 import { GLYPHS } from "./constants.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
 
-/** Lower-cases a phrase's first letter: the terminal speaks tool verbs in lower case. */
 export function lowerFirst(phrase: string): string {
   return `${phrase.charAt(0).toLowerCase()}${phrase.slice(1)}`;
 }
 
-/** A tool's title in the terminal's voice: "reading src/app.ts", or "src/app.ts read" without a verb. */
 export function toolLine(toolClass: ToolClass, tense: ToolTense): string {
   const title = toolTitle(toolClass, tense);
 
@@ -88,7 +85,6 @@ export function unchangedLinesLabel(omitted: number): string {
     : `${GLYPHS.ellipsis} ${String(omitted)} unchanged lines`;
 }
 
-/** An excerpt by where it came from: `a.ts:4-6`, `Terminal pnpm test`, `Element main > a`. */
 export function excerptLabel(source: ExcerptSource, text: string): string {
   switch (source.kind) {
     case "diff": {
@@ -173,17 +169,15 @@ export interface PowerlineState {
   readonly tokens: number;
   readonly window: number;
   readonly pct: number;
-  readonly remote: RemoteFacts;
 }
 
-type PowerlineTone = "workspace" | "model" | "effort" | "queue" | "usage" | "remote";
+type PowerlineTone = "workspace" | "model" | "effort" | "queue" | "usage";
 
 type UsageLevel = "ok" | "warning" | "error";
 
 export type PowerlineSegment =
-  | { readonly text: string; readonly tone: Exclude<PowerlineTone, "usage" | "remote"> }
-  | { readonly text: string; readonly tone: "usage"; readonly level: UsageLevel }
-  | { readonly text: string; readonly tone: "remote"; readonly remote: RemoteFacts["kind"] };
+  | { readonly text: string; readonly tone: Exclude<PowerlineTone, "usage"> }
+  | { readonly text: string; readonly tone: "usage"; readonly level: UsageLevel };
 
 function usageLevel(pct: number): UsageLevel {
   if (pct > 90) return "error";
@@ -237,32 +231,8 @@ export function powerlineSegments(state: Partial<PowerlineState>): PowerlineSegm
 
   if (state.queued !== undefined && state.queued > 0)
     segments.push({ text: `${String(state.queued)} queued`, tone: "queue" });
-  const remote = state.remote === undefined ? undefined : remoteText(state.remote);
-
-  if (remote !== undefined && state.remote !== undefined)
-    segments.push({ text: remote, tone: "remote", remote: state.remote.kind });
 
   return segments;
-}
-
-function remoteText(remote: RemoteFacts): string | undefined {
-  switch (remote.kind) {
-    case "off":
-      return undefined;
-    case "connecting":
-      return "sharing…";
-    case "shared":
-      return remote.devices === 0
-        ? "shared"
-        : `shared · ${String(remote.devices)} ${remote.devices === 1 ? "device" : "devices"}`;
-    case "interrupted":
-      return "sharing paused";
-    default: {
-      const _exhaustive: never = remote;
-
-      return _exhaustive;
-    }
-  }
 }
 
 function joinSegments(segments: readonly PowerlineSegment[]): string {
@@ -274,7 +244,7 @@ export function fitPowerlineSegments(
   maxWidth: number,
 ): PowerlineSegment[] {
   let kept = [...segments];
-  const droppable: readonly PowerlineTone[] = ["usage", "workspace", "queue", "effort", "remote"];
+  const droppable: readonly PowerlineTone[] = ["usage", "workspace", "queue", "effort"];
 
   for (const tone of droppable) {
     if (displayWidth(joinSegments(kept)) <= maxWidth) break;
@@ -303,7 +273,6 @@ export function terminalTitle(name: string | undefined): string {
   return `${TERMINAL_TITLE_BASE} - ${truncateDisplay(clean, room, "…")}`;
 }
 
-/** The message of a thrown value, which need not be an `Error`. */
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

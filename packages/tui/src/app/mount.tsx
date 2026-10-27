@@ -1,5 +1,4 @@
 import type { Connection, SessionId } from "@nyte-ai/sdk";
-import type { LocalEndpoint } from "@nyte-ai/service";
 import { CliRenderEvents, MouseButton, engine, maybeMakeRenderable } from "@opentui/core";
 import type { CliRenderer, Renderable } from "@opentui/core";
 import { RendererContext, _render, createComponent } from "@opentui/solid";
@@ -14,7 +13,6 @@ import type { HostPort, PluginsPort, Ports } from "../effects/ports.ts";
 import { createRunner } from "../effects/runner.ts";
 import { exitStatus } from "../lifecycle.ts";
 import { installMiniScrollback } from "../mini/scrollback.tsx";
-import { followRemote } from "../local-host.ts";
 import type { Msg } from "../model/msg.ts";
 import { followedSession, initialState } from "../model/state.ts";
 import { waitingMessages } from "../model/table-input.ts";
@@ -35,9 +33,7 @@ export type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
 
 export interface HostLink {
   readonly connection: Connection;
-  readonly endpoint: LocalEndpoint | null;
   readonly folder: string | null;
-  /** `false` starts this run's new sessions without context files (`--no-context-files`). */
   readonly contextFiles?: false;
 }
 
@@ -181,7 +177,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   void store.runner.exited.then(({ code }) => closing.resolve(code));
 
   const opening = options.host.then(async (link) => {
-    const host = await openHost(link, options, store.dispatch, controller.signal);
+    const host = await openHost(link, options, store.dispatch);
     opened = host;
     hostOpened.resolve();
     store.dispatch({ kind: "host-opened" });
@@ -385,28 +381,10 @@ async function openHost(
   link: HostLink,
   options: AppOptions,
   dispatch: (msg: Msg) => void,
-  signal: AbortSignal,
 ): Promise<OpenedHost> {
-  const remote = new AbortController();
-  signal.addEventListener("abort", () => remote.abort(), { once: true });
-
-  if (link.endpoint !== null)
-    followRemote(
-      link.endpoint,
-      remote.signal,
-      (facts) => dispatch({ kind: "remote", remote: facts }),
-      (cause) => options.ports.log.write("watch", cause),
-    );
-
-  const plugins = await (
-    options.plugins === undefined
-      ? terminalPlugins(link, options.ports, dispatch)
-      : options.plugins(link, dispatch)
-  ).catch((cause: unknown) => {
-    remote.abort();
-
-    throw cause;
-  });
+  const plugins = await (options.plugins === undefined
+    ? terminalPlugins(link, options.ports, dispatch)
+    : options.plugins(link, dispatch));
 
   return {
     host: hostPort(link.connection, link.folder, () => nextFrame(options.renderer), {
@@ -414,7 +392,6 @@ async function openHost(
     }),
     plugins,
     async close() {
-      remote.abort();
       await plugins.dispose();
     },
   };

@@ -66,7 +66,6 @@ export function footerFor(state: State, queued: number): FooterModel {
         context === undefined || context.window <= 0
           ? 0
           : Math.round((context.tokens / context.window) * 100),
-      remote: state.facts.remote,
     },
   };
 }
@@ -75,13 +74,8 @@ function hintText(hint: Hint): string {
   return `${hint.keycap} ${hint.label}`;
 }
 
-/** The hints `hintsFor` last fitted, by the inputs they were fitted from. */
 let fitted: { readonly key: string; readonly hints: readonly Hint[] } | null = null;
 
-/**
- * The footer hints for these interactions at this width. Fitting measures every hint, and the
- * inputs rarely change between frames, so the last result is kept by what it was fitted from.
- */
 export function hintsFor(interactions: Interactions, width: number): readonly Hint[] {
   const key = HINT_ORDER.reduce((built, { command }) => {
     const interaction = interactions[command];
