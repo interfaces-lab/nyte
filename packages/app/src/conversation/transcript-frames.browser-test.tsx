@@ -163,7 +163,7 @@ export async function run(): Promise<string> {
   const background = mode === "dark" ? "#111" : "#fff";
   document.body.style.backgroundColor = background;
   queryClient.clear();
-  queryClient.setQueryData(keys.mentionFiles, []);
+  queryClient.setQueryData(keys.mentionFiles(undefined), []);
   const container = document.createElement("div");
   container.style.cssText = `display:flex;width:760px;height:540px;color:${foreground};background:${background}`;
   document.body.append(container);

@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { ComposerEditor } from "./composer-editor.tsx";
 import { UserMessageText } from "./message-content.tsx";
-import { ReferenceOpenerProvider } from "./reference-opener.tsx";
+import { ReferenceOpenerContext } from "./reference-opener.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
@@ -38,7 +38,7 @@ export async function run(): Promise<string> {
   const render = (text: string, editable = false): void =>
     flushSync(() =>
       root.render(
-        <ReferenceOpenerProvider
+        <ReferenceOpenerContext
           value={() => () => {
             opened += 1;
           }}
@@ -68,7 +68,7 @@ export async function run(): Promise<string> {
               <UserMessageText text={text} />
             )}
           </div>
-        </ReferenceOpenerProvider>,
+        </ReferenceOpenerContext>,
       ),
     );
 

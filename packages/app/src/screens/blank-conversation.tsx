@@ -31,6 +31,8 @@ import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts"
 import { useCatalog, useHostState, useMentionFiles, useWorkspaceCatalog } from "../queries.ts";
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
 import { StartupReadsRelease } from "../startup.ts";
+import { useChatFolder } from "../conversation/chat-folder.ts";
+import { ChatScope } from "./chat-scope.tsx";
 
 const NO_COMMANDS: readonly CommandInfo[] = [];
 
@@ -61,18 +63,25 @@ function useBlankViewBinding(
   return [state, update];
 }
 
-export function BlankConversation({
-  paneId,
-  inputRef,
-}: {
-  paneId: PaneId;
-  inputRef: (element: ComposerEditorHandle | null) => void;
-}): ReactElement {
-  const host = useHostState();
+interface BlankConversationProps {
+  readonly paneId: PaneId;
+  readonly inputRef: (element: ComposerEditorHandle | null) => void;
+}
+
+/** A new chat starts in the folder the window has open, so that is the folder it reads. */
+export function BlankConversation(conversation: BlankConversationProps): ReactElement {
+  return (
+    <ChatScope folder={useHostState().data.workspace}>
+      <BlankScreen {...conversation} />
+    </ChatScope>
+  );
+}
+
+function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement {
   const { layout } = usePaneControllerSnapshot();
-  const workspace = host.data.workspace;
+  const workspace = useChatFolder();
   const catalog = useCatalog();
-  const workspaceFiles = useMentionFiles(workspace !== undefined);
+  const workspaceFiles = useMentionFiles(workspace, workspace !== undefined);
   const workspaceCatalog = useWorkspaceCatalog(workspace?.id);
   const actions = usePaneActions();
   const viewStore = usePaneViewStateStore();

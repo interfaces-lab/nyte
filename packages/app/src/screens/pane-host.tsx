@@ -16,13 +16,8 @@ import {
 import { activePane } from "../layout/pane-layout.ts";
 import type { PaneState } from "../layout/pane-layout.ts";
 import { useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
-import { useHostState } from "../queries.ts";
 import { sessionsWatch, sessionWatch, useWatchSelect } from "../sdk.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-
-import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
-import { workbenchViewKey } from "../workbench/controller.ts";
-import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
 
 function TypeToCompose({
   input,
@@ -141,14 +136,6 @@ export function PaneHost({
     inputRef.current = element;
   };
 
-  const host = useHostState();
-  const workspacePath = host.data.workspace?.path;
-
-  const referenceOpener = workbenchReferenceOpener({
-    viewKey: workbenchViewKey(workspacePath),
-    workspacePath,
-  });
-
   return (
     <section
       ref={attachDropTarget}
@@ -175,26 +162,22 @@ export function PaneHost({
       {hotSessions.map((sessionId) => (
         <HoldSession key={sessionId} sessionId={sessionId} />
       ))}
-      <ReferenceOpenerProvider value={referenceOpener}>
-        {hotSessions.toSorted().map((sessionId) => (
-          <Activity key={sessionId} mode={sessionId === shownSession ? "visible" : "hidden"}>
-            <SessionConversation
-              presentation="full"
-              floatingMount={
-                sessionId === shownSession && activePane(layout).id === pane.id
-                  ? floatingMount
-                  : null
-              }
-              paneId={pane.id}
-              sessionId={sessionId}
-              inputRef={attachInput}
-            />
-          </Activity>
-        ))}
-        {shownSession === undefined && (
-          <BlankConversation key={blankDraftId} paneId={pane.id} inputRef={attachInput} />
-        )}
-      </ReferenceOpenerProvider>
+      {hotSessions.toSorted().map((sessionId) => (
+        <Activity key={sessionId} mode={sessionId === shownSession ? "visible" : "hidden"}>
+          <SessionConversation
+            presentation="full"
+            floatingMount={
+              sessionId === shownSession && activePane(layout).id === pane.id ? floatingMount : null
+            }
+            paneId={pane.id}
+            sessionId={sessionId}
+            inputRef={attachInput}
+          />
+        </Activity>
+      ))}
+      {shownSession === undefined && (
+        <BlankConversation key={blankDraftId} paneId={pane.id} inputRef={attachInput} />
+      )}
     </section>
   );
 }

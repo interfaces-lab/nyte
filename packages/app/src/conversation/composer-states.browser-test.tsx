@@ -628,7 +628,7 @@ function seedQueries(): void {
     providers: [],
     default: { provider: "test", id: "test" },
   } satisfies ModelCatalogView);
-  queryClient.setQueryData(keys.mentionFiles, []);
+  queryClient.setQueryData(keys.mentionFiles(undefined), []);
 }
 
 function LoneComposer({ state }: { readonly state: ComposerState }): ReactElement {

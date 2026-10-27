@@ -3,7 +3,7 @@ import { RouterContextProvider } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Toaster, toast } from "@nyte-ai/ui/toast";
-import { keys, loadLocalResources, queryClient } from "./queries.ts";
+import { commitHostWorkspace, keys, queryClient } from "./queries.ts";
 import { Shell } from "./router.tsx";
 import type { AppRouter } from "./router.tsx";
 import { nyte } from "./nyte.ts";
@@ -28,7 +28,7 @@ function focusedSession(): SessionId | undefined {
   return selection.kind === "session" ? selection.sessionId : undefined;
 }
 
-function useHostEvents(router: AppRouter): void {
+function useHostEvents(): void {
   useMountEffect(() => {
     const unsubscribe = nyte.host.onEvent((event) => {
       switch (event.kind) {
@@ -37,10 +37,12 @@ function useHostEvents(router: AppRouter): void {
 
           return;
         case "workspace_opened":
+          commitHostWorkspace(event.workspace);
+          void queryClient.invalidateQueries({ queryKey: keys.workspaces, exact: true });
+
+          return;
         case "workspace_closed":
-          void loadLocalResources()
-            .then(() => router.invalidate())
-            .catch(() => undefined);
+          commitHostWorkspace(undefined);
 
           return;
         case "update_changed":
@@ -117,7 +119,7 @@ function useSavedShells(): void {
 }
 
 export function App({ appIcon, router }: { appIcon: string; router: AppRouter }): ReactElement {
-  useHostEvents(router);
+  useHostEvents();
   useClientPlugins();
   useSavedShells();
   useMountEffect(() => {

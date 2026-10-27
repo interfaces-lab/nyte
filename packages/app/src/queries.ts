@@ -157,38 +157,57 @@ export function selectedWorkspaceId(): WorkspaceId | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
 }
 
-export function sessionFolderPath(sessionId: SessionId): string | null | undefined {
+/** Where a chat runs: `pending` until the chat and the folder list have arrived, `home` without a reachable local folder. */
+export type SessionFolder =
+  | { readonly kind: "pending" }
+  | { readonly kind: "home" }
+  | { readonly kind: "folder"; readonly path: string };
+
+export function findSessionFolder(sessionId: SessionId): SessionFolder {
   const session = findListedSession(sessionId);
   const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
 
-  if (session === undefined || workspaces === undefined) return undefined;
+  if (session === undefined || workspaces === undefined) return { kind: "pending" };
   const workspace = workspaces.find((candidate) => candidate.id === session.workspace);
 
-  return workspace === undefined || workspace.availability.kind === "unavailable"
-    ? null
-    : workspacePath(workspace);
+  const path =
+    workspace === undefined || workspace.availability.kind === "unavailable"
+      ? null
+      : workspacePath(workspace);
+
+  return path === null ? { kind: "home" } : { kind: "folder", path };
 }
 
-export async function workspaceFiles(): Promise<FilesApi> {
-  const id = selectedWorkspaceId();
+const NO_FOLDER_FILES = "Open a workspace to read its files";
 
-  if (id === undefined) throw new Error("Open a workspace to read its files");
-  const capability = await (await connected()).workspace(id).files();
+/** The files of `workspace`; without one it throws. */
+export async function folderFiles(workspace: WorkspaceId | undefined): Promise<FilesApi> {
+  if (workspace === undefined) throw new Error(NO_FOLDER_FILES);
+  const capability = await (await connected()).workspace(workspace).files();
 
   if (capability.kind !== "available") throw new Error(capability.reason);
 
   return capability.api;
 }
 
-export async function workspaceGit(): Promise<GitApi> {
-  const id = selectedWorkspaceId();
-
-  if (id === undefined) throw new Error("Open a workspace to read its repository");
-  const capability = await (await connected()).workspace(id).git();
+/** The repository of `workspace`; without one it throws. */
+export async function folderGit(workspace: WorkspaceId | undefined): Promise<GitApi> {
+  if (workspace === undefined) throw new Error("Open a workspace to read its repository");
+  const capability = await (await connected()).workspace(workspace).git();
 
   if (capability.kind !== "available") throw new Error(capability.reason);
 
   return capability.api;
+}
+
+/** The files of the folder the window has open, for the workbench that shows it. */
+export function workspaceFiles(): Promise<FilesApi> {
+  return folderFiles(selectedWorkspaceId());
+}
+
+/** The repository of the folder the window has open, for the workbench that shows it. */
+export function workspaceGit(): Promise<GitApi> {
+  return folderGit(selectedWorkspaceId());
 }
 
 export const readSession = async (sessionId: SessionId) =>
@@ -408,6 +427,13 @@ export function useSession<S>(
   return { ...read, data: row === UNLISTED ? read.data : row };
 }
 
+/** The folder a chat runs in, whatever folder the window has open; undefined for Home, an unreachable folder, or while the lists load. */
+export function useSessionFolder(sessionId: SessionId): SelectedWorkspace | undefined {
+  const workspace = useSession(sessionId, (session) => session.workspace).data;
+
+  return useWorkspaces().data?.find((folder) => folder.id === workspace && folder.available);
+}
+
 export function useSessionView(sessionId: SessionId | undefined): SessionView | undefined {
   return useWatch(sessionId === undefined ? undefined : sessionWatch(sessionId)).value;
 }
@@ -458,7 +484,7 @@ export function useVcsChanges(
     queryFn: async () => {
       if (scope === undefined) throw new Error("Choose what to compare");
 
-      return (await workspaceGit()).changes(scope, { ignoreWhitespace });
+      return (await folderGit(workspace)).changes(scope, { ignoreWhitespace });
     },
     enabled: enabled && scope !== undefined && workspace !== undefined,
     placeholderData: (previous) => previous,
@@ -475,7 +501,7 @@ export function useVcsLog(
   return useQuery({
     queryKey: keys.gitLog(workspace, input.limit, input.cursor),
     queryFn: async () =>
-      (await workspaceGit()).log({
+      (await folderGit(workspace)).log({
         limit: input.limit,
         ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
       }),
@@ -543,17 +569,15 @@ export async function readRecordedPatches(
   );
 }
 
-async function scanFiles(): Promise<readonly MentionFile[]> {
+async function scanFiles(folder: SelectedWorkspace | undefined): Promise<readonly MentionFile[]> {
+  if (folder === undefined) throw new Error(NO_FOLDER_FILES);
   await startupReadsReleased();
-  const root = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
-  const files = await workspaceFiles();
+  const files = await folderFiles(folder.id);
   const entries: MentionFile[] = [];
-
-  if (root === undefined) return entries;
 
   for await (const frame of files.scan({ ignored: "exclude" })) {
     if (frame.kind === "entries")
-      entries.push(...frame.entries.map((entry) => mentionFile(root, entry)));
+      entries.push(...frame.entries.map((entry) => mentionFile(folder.path, entry)));
   }
 
   return entries;
@@ -565,7 +589,7 @@ export async function refreshVcs(): Promise<void> {
   if (workspace !== undefined) gitStatusWatch(workspace).retry();
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["git"] }),
-    queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true }),
+    queryClient.invalidateQueries({ queryKey: keys.mentionFiles(workspace), exact: true }),
     queryClient.invalidateQueries({ queryKey: ["files", "document"] }),
   ]);
 }
@@ -580,10 +604,11 @@ export function useVcsSnapshot(enabled: boolean) {
   };
 }
 
-export function mentionFilesOptions(enabled: boolean) {
+/** Every file and folder in `folder`, for mentions and citations. */
+export function mentionFilesOptions(folder: SelectedWorkspace | undefined, enabled: boolean) {
   return {
-    queryKey: keys.mentionFiles,
-    queryFn: scanFiles,
+    queryKey: keys.mentionFiles(folder?.id),
+    queryFn: () => scanFiles(folder),
     enabled,
     staleTime: 10_000,
     refetchOnMount: true,
@@ -591,8 +616,8 @@ export function mentionFilesOptions(enabled: boolean) {
   } as const;
 }
 
-export function useMentionFiles(enabled: boolean) {
-  return useQuery(mentionFilesOptions(enabled));
+export function useMentionFiles(folder: SelectedWorkspace | undefined, enabled: boolean) {
+  return useQuery(mentionFilesOptions(folder, enabled));
 }
 
 export function useWorkspaceCatalog(workspace: WorkspaceId | undefined) {
@@ -623,11 +648,11 @@ export function useWorkspaceFile(path: string | undefined) {
   });
 }
 
-async function searchWorkspace(input: SearchInput) {
+async function searchWorkspace(workspace: WorkspaceId | undefined, input: SearchInput) {
   const matches: Extract<SearchFrame, { readonly kind: "match" }>[] = [];
   let truncated = false;
 
-  for await (const frame of (await workspaceFiles()).search(input)) {
+  for await (const frame of (await folderFiles(workspace)).search(input)) {
     if (frame.kind === "match") matches.push(frame);
 
     if (frame.kind === "truncated") truncated = true;
@@ -645,7 +670,7 @@ export function useWorkspaceSearch(input: SearchInput | undefined, enabled = tru
     queryFn: () => {
       if (input === undefined) throw new Error("Type to search");
 
-      return searchWorkspace(input);
+      return searchWorkspace(workspace, input);
     },
     enabled: enabled && workspace !== undefined && input !== undefined && input.query.length > 0,
     retry: false,
@@ -856,8 +881,6 @@ export function useSetPreference() {
   });
 }
 
-let localLoadVersion = 0;
-
 export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): void {
   queryClient.setQueryData<HostState>(keys.host, (host) => ({ ...host, workspace }));
 }
@@ -887,8 +910,8 @@ export function connectLocalHost(): Promise<Connection> {
   return connecting;
 }
 
+/** Fills the host state, the folder list and the model catalog when the web app connects. */
 export async function loadLocalResources(): Promise<void> {
-  const version = ++localLoadVersion;
   const host = hostWatch("host");
   const directory = sessionsWatch("roots");
 
@@ -902,14 +925,9 @@ export async function loadLocalResources(): Promise<void> {
       : undefined,
   ]);
 
-  if (version !== localLoadVersion) return;
-  const workspaceScopes = new Set(["git", "files", "github", "customize"]);
   queryClient.setQueryData(keys.workspaces, workspaces);
   queryClient.setQueryData(keys.modelCatalog(catalog.generation), catalog);
   queryClient.setQueryData(keys.host, state);
-  void queryClient.resetQueries({
-    predicate: (query) => workspaceScopes.has(String(query.queryKey[0])),
-  });
 }
 
 export function useConfigureSession(sessionId: SessionId) {

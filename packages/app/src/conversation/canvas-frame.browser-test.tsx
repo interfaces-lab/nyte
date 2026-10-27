@@ -11,7 +11,7 @@ import { CanvasFrame } from "./canvas-frame.tsx";
 import type { DrawnCanvas } from "./canvas-frame.tsx";
 import { mentionFile } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
-import { ReferenceOpenerProvider } from "./reference-opener.tsx";
+import { ReferenceOpenerContext } from "./reference-opener.tsx";
 import type { ReferenceOpener } from "./reference-opener.tsx";
 
 declare global {
@@ -52,7 +52,7 @@ export async function run(): Promise<string> {
   document.body.append(host);
   const root = createRoot(host);
   const client = new QueryClient();
-  client.setQueryData(keys.mentionFiles, [
+  client.setQueryData(keys.mentionFiles(undefined), [
     mentionFile("/repo", { path: "src/ci.ts", kind: "file" }),
   ]);
   const opened: MessageReference[] = [];
@@ -65,9 +65,9 @@ export async function run(): Promise<string> {
   const draw = (state: DrawnCanvas): void =>
     root.render(
       <QueryClientProvider client={client}>
-        <ReferenceOpenerProvider value={opener}>
+        <ReferenceOpenerContext value={opener}>
           <CanvasFrame state={state} report={(message) => reported.push(message)} remembered />
-        </ReferenceOpenerProvider>
+        </ReferenceOpenerContext>
       </QueryClientProvider>,
     );
 

@@ -15,7 +15,11 @@ export const keys = {
   modelCatalog: (generation: string) => ["catalog", "models", generation] as const,
   accountLimits: (generation: string) => ["account-limits", generation] as const,
   usage: (sinceDay: string | null, untilDay: string) => ["usage", sinceDay, untilDay] as const,
+  githubAccount: ["github-account"] as const,
   github: ["github"] as const,
+  githubCapability: (workspace: WorkspaceId | undefined) =>
+    ["github", "capability", workspace] as const,
+  githubState: (workspace: WorkspaceId | undefined) => ["github", "state", workspace] as const,
   server: ["server"] as const,
   remoteAccess: ["remote-access"] as const,
   connect: ["remote-access", "connect"] as const,
@@ -33,7 +37,7 @@ export const keys = {
     source: ChangeSource | undefined,
     live: boolean,
   ) => ["git", "recorded", workspace, source, live ? "live" : "settled"] as const,
-  mentionFiles: ["files", "mentions"] as const,
+  mentionFiles: (workspace: WorkspaceId | undefined) => ["files", "mentions", workspace] as const,
   workspaceFile: (path: string) => ["files", "document", path] as const,
   workspaceSearch: (workspace: string, input: { readonly query: string } | undefined) =>
     ["files", "search", workspace, input] as const,

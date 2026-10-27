@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { SubagentCallView } from "./subagent-call.tsx";
-import { SubagentSessionsProvider } from "./subagent-sessions.ts";
+import { SubagentSessionsContext } from "./subagent-sessions.ts";
 import { transcriptRows } from "./transcript-rows.ts";
 import { TurnItemView } from "./turn-view.tsx";
 import { endedTurn, listedChildren, sessionRow, settledTool } from "../../test/view-fixtures.ts";
@@ -56,9 +56,7 @@ test("a create call finds its child by the call that made it", () => {
 
   const html = renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <SubagentSessionsProvider
-        value={{ children: listedChildren([childSession]), open: () => {} }}
-      >
+      <SubagentSessionsContext value={{ children: listedChildren([childSession]), open: () => {} }}>
         {transcriptRows({
           loading: false,
           failed: false,
@@ -79,7 +77,7 @@ test("a create call finds its child by the call that made it", () => {
             />
           ) : null,
         )}
-      </SubagentSessionsProvider>
+      </SubagentSessionsContext>
     </QueryClientProvider>,
   );
 
@@ -93,7 +91,7 @@ test("a running create call whose child is not listed yet is starting up", () =>
 
   const html = renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <SubagentSessionsProvider value={{ children: listedChildren([]), open: () => {} }}>
+      <SubagentSessionsContext value={{ children: listedChildren([]), open: () => {} }}>
         <SubagentCallView
           title="Map the workbench"
           message={{
@@ -103,7 +101,7 @@ test("a running create call whose child is not listed yet is starting up", () =>
           }}
           cwd={undefined}
         />
-      </SubagentSessionsProvider>
+      </SubagentSessionsContext>
     </QueryClientProvider>,
   );
 

@@ -24,6 +24,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { useMentionFiles, usePluginCatalog } from "../queries.ts";
+import { useChatFolder } from "./chat-folder.ts";
 import { Prose } from "./prose.tsx";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { SubagentGroupView, SubagentReportLine } from "./subagent-call.tsx";
@@ -191,7 +192,7 @@ export function UserMessageView({
     element === null ? undefined : transcript.keep(element);
 
   const pluginCatalog = usePluginCatalog(useTranscriptScope()?.sessionId);
-  const workspaceFiles = useMentionFiles(edit !== undefined);
+  const workspaceFiles = useMentionFiles(useChatFolder(), edit !== undefined);
 
   const begin = (): void => {
     if (rowRef.current !== null) transcript.hold(rowRef.current);

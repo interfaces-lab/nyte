@@ -26,7 +26,7 @@ import {
 import { Button, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { openExternal } from "../open-external.ts";
-import { keys, queryClient, refreshVcs, workspaceGit } from "../queries.ts";
+import { folderGit, keys, queryClient, refreshVcs, selectedWorkspaceId } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -357,20 +357,24 @@ interface CommitRun {
   readonly onPushInterrupted: () => void;
 }
 
+/** Runs every step against the folder open when the run started, even if the window moves to another folder mid-run. */
 async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
   const { options } = run;
   const plan = commitActionPlan(run.action);
   let expect: GitRevision = asId<"git-revision">(run.revision);
   const reported: string[] = [];
+  const workspace = selectedWorkspaceId();
 
   const settle = (outcome: CommitBarResult): CommitBarResult =>
     reported.length === 0 ? outcome : { ...outcome, text: `${reported.join(" ")} ${outcome.text}` };
 
   try {
+    const git = await folderGit(workspace);
+
     if (plan.branch && options.skipBranch !== true) {
       const name = options.branchName ?? "";
 
-      const created = await (await workspaceGit()).branch({ name, checkout: true }, { expect });
+      const created = await git.branch({ name, checkout: true }, { expect });
       const outcome = createBranchResultMessage(created, name);
 
       if (created.kind !== "applied") return settle(outcome);
@@ -381,9 +385,10 @@ async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
     }
 
     if (plan.commit && options.skipCommit !== true) {
-      const committed = await (
-        await workspaceGit()
-      ).commit({ message: run.message, files: commitTargetFor(run.scope) }, { expect });
+      const committed = await git.commit(
+        { message: run.message, files: commitTargetFor(run.scope) },
+        { expect },
+      );
 
       const outcome = commitResultMessage(committed);
 
@@ -395,9 +400,7 @@ async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
     }
 
     if (plan.push) {
-      const pushed = await (
-        await workspaceGit()
-      ).push({ setUpstream: options.setUpstream === true }, { expect });
+      const pushed = await git.push({ setUpstream: options.setUpstream === true }, { expect });
 
       const outcome = pushResultMessage(pushed);
 
@@ -408,7 +411,7 @@ async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
       }
 
       reported.push(outcome.text);
-      void queryClient.invalidateQueries({ queryKey: keys.github });
+      void queryClient.invalidateQueries({ queryKey: keys.githubState(workspace) });
     }
 
     if (plan.pullRequest) {
@@ -421,7 +424,7 @@ async function runCommitAction(run: CommitRun): Promise<CommitBarResult> {
 
       if (outcome.tone === "success") {
         void refreshVcs();
-        void queryClient.invalidateQueries({ queryKey: keys.github });
+        void queryClient.invalidateQueries({ queryKey: keys.githubState(workspace) });
       }
 
       return settle(outcome);

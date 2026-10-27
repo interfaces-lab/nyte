@@ -96,9 +96,9 @@ function render(state: GitHubAccountState, connect: ConnectView | undefined): st
   client.setQueryData(keys.host, {
     workspace: { id: asId<"workspace">("repo"), path: "/srv/repo", name: "repo" },
   } satisfies HostState);
-  client.setQueryData([...keys.github, "capability", asId<"workspace">("repo")], github);
-  client.setQueryData([...keys.github, "account"], state);
-  client.setQueryData([...keys.github, "/srv/repo"], folder);
+  client.setQueryData(keys.githubCapability(asId<"workspace">("repo")), github);
+  client.setQueryData(keys.githubAccount, state);
+  client.setQueryData(keys.githubState(asId<"workspace">("repo")), folder);
 
   if (connect !== undefined) client.setQueryData(keys.connect, connect);
 

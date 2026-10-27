@@ -12,7 +12,6 @@ import { Button } from "@nyte-ai/ui/button";
 import {
   useCatalog,
   useHostLink,
-  useHostState,
   useMentionFiles,
   usePluginCatalog,
   useSessionActions,
@@ -47,6 +46,7 @@ import { TranscriptButton, useTranscriptControls, useTranscriptDock } from "./tr
 import { QuestionDockContext, useQuestionDock } from "./tray/questions-state.ts";
 import { useCommitCount } from "../work-counts.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { useChatFolder } from "./chat-folder.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 
@@ -141,7 +141,7 @@ export function Composer({
   const stopping = execution?.kind === "live" && execution.stopping;
   const [target, setTarget] = useState<ComposerTarget>({ kind: "new" });
   const [savingEdit, setSavingEdit] = useState(false);
-  const host = useHostState();
+  const folder = useChatFolder();
   const mac = nyte.platform === "darwin";
   const link = useHostLink();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
@@ -159,7 +159,7 @@ export function Composer({
 
   const inlineSlot = useRef<HTMLDivElement | null>(null);
   const focusAfterMove = useRef(false);
-  const cwd = host.data.workspace?.path;
+  const cwd = folder?.path;
   const activity = useSessionActivity(floating ? sessionId : undefined, cwd);
 
   const attachInlineSlot = (slot: HTMLDivElement | null): void => {
@@ -188,7 +188,7 @@ export function Composer({
 
   const suggestionCatalog = composerSource(pluginCatalog.data, pluginCatalog.isError);
 
-  const workspaceFiles = useMentionFiles(true);
+  const workspaceFiles = useMentionFiles(folder, true);
   const mentionFiles = composerSource(workspaceFiles.data, workspaceFiles.isError);
   const latestViewState = useRef(currentViewState);
   const latestTarget = useRef(target);

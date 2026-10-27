@@ -201,7 +201,7 @@ test("sign-in and sign-out from different observers never change the login concu
 
 test("an error from sign-in rejects, clears the busy state, and a retry succeeds", async () => {
   const client = fixture();
-  client.setQueryData([...keys.github, "account"], signedOut);
+  client.setQueryData(keys.githubAccount, signedOut);
   const found = probe(client);
 
   account.signIn.mockResolvedValueOnce({ kind: "error", message: "GitHub authentication failed" });
@@ -216,7 +216,7 @@ test("an error from sign-in rejects, clears the busy state, and a retry succeeds
 
 test("signing out cancels a login read started before it, so the old login never comes back", async () => {
   const client = fixture();
-  client.setQueryData([...keys.github, "account"], ready);
+  client.setQueryData(keys.githubAccount, ready);
   const staleRead = Promise.withResolvers<GitHubAccountState>();
   account.account.mockReturnValueOnce(staleRead.promise).mockResolvedValueOnce(signedOut);
   account.signOut.mockResolvedValueOnce(signedOut);

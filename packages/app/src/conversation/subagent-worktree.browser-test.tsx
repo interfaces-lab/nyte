@@ -9,7 +9,7 @@ import { asId } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { keys, queryClient } from "../queries.ts";
 import { SubagentCitation } from "./subagent-call.tsx";
-import { SubagentSessionsProvider } from "./subagent-sessions.ts";
+import { SubagentSessionsContext } from "./subagent-sessions.ts";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { listedChildren, sessionRow } from "../../test/view-fixtures.ts";
@@ -53,13 +53,13 @@ function Stage(): ReactElement {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-        <SubagentSessionsProvider
+        <SubagentSessionsContext
           value={{ children: listedChildren([child]), open: () => undefined }}
         >
           <p>
             The login fix runs in <SubagentCitation session={child.id} label="Fix login" />.
           </p>
-        </SubagentSessionsProvider>
+        </SubagentSessionsContext>
       </TooltipProvider>
     </QueryClientProvider>
   );

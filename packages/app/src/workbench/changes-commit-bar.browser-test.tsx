@@ -130,10 +130,10 @@ function seed(
   queryClient.setQueryData(keys.host, {
     workspace: { id: WORKSPACE, path: "/srv/hello", name: "hello" },
   });
-  queryClient.setQueryData([...keys.github, "capability", WORKSPACE], api);
-  queryClient.setQueryData([...keys.github, "account"], account);
+  queryClient.setQueryData(keys.githubCapability(WORKSPACE), api);
+  queryClient.setQueryData(keys.githubAccount, account);
 
-  if (state !== undefined) queryClient.setQueryData([...keys.github, "/srv/hello"], state);
+  if (state !== undefined) queryClient.setQueryData(keys.githubState(WORKSPACE), state);
 }
 
 function mount(root: Root): void {

@@ -1,5 +1,5 @@
 import type { SessionId } from "@nyte-ai/sdk";
-import { createContext, useContext, useSyncExternalStore } from "react";
+import { createContext, use, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { PaneController, PaneControllerSnapshot } from "./pane-controller.ts";
 import { activePane, canSplitPane } from "./pane-layout.ts";
@@ -24,7 +24,7 @@ export function PaneControllerProvider({
 
   const value = controller ?? windowTabs.controller(tabId);
 
-  return <PaneControllerContext.Provider value={value}>{children}</PaneControllerContext.Provider>;
+  return <PaneControllerContext value={value}>{children}</PaneControllerContext>;
 }
 
 export function hideFromPanes(sessionId: SessionId): () => boolean {
@@ -48,7 +48,7 @@ export function focusNextPane(controller: PaneController): boolean {
 }
 
 function useController(): PaneController {
-  const controller = useContext(PaneControllerContext);
+  const controller = use(PaneControllerContext);
 
   if (controller === undefined) throw new Error("Pane controller is missing");
 

@@ -247,6 +247,9 @@ importers:
 
   packages/app:
     dependencies:
+      '@chenglou/pretext':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@clerk/react':
         specifier: ^6.18.0
         version: 6.18.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -2330,6 +2333,9 @@ packages:
 
   '@cfworker/json-schema@4.1.1':
     resolution: {integrity: sha512-gAmrUZSGtKc3AiBL71iNWxDsyUC5uMaKKGdvzYsBoTW/xi42JQHl7eKV2OYzCUqvc+D2RCcf7EXY2iCyFIk6og==}
+
+  '@chenglou/pretext@1.0.0':
+    resolution: {integrity: sha512-BxKiDMxWJhyzL8asvcgg3T9YnUU7OUFsKO8oRaR2SYAPX4Sh2wM9gqTBjrBaZ4fnl84cEQ8czC0Q1M83z3chsA==}
 
   '@clerk/backend@3.26.0':
     resolution: {integrity: sha512-YSrWNakOSPzY03/vkwm21RoGjTH/ejSKJLTixOQjOQu6N51MgHI/Weo3j1RYqicR4YJqj/5qGKFR6ixJbqFaWQ==}
@@ -14958,6 +14964,8 @@ snapshots:
       react: 19.3.1
 
   '@cfworker/json-schema@4.1.1': {}
+
+  '@chenglou/pretext@1.0.0': {}
 
   '@clerk/backend@3.26.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:

@@ -10,17 +10,23 @@ import {
 } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
 import { intent } from "@nyte-ai/ui/surface-theme";
+import { Toggle } from "@nyte-ai/ui/toggle";
 import { props } from "@stylexjs/stylex";
+import { useRouter } from "@tanstack/react-router";
 import type { GitHubAccountState } from "@nyte-ai/sdk";
+import { useRef } from "react";
 import type { ReactElement, RefObject } from "react";
-import type { ConnectBridge } from "../bridge.ts";
+import type { ConnectBridge, ConnectView } from "../bridge.ts";
+import { clientActionAriaShortcut, clientActions } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
 import { openExternal } from "../open-external.ts";
 import { useUpdateState } from "../queries.ts";
+import { closeSettings, type SettingsSection } from "../settings/index.ts";
 import { updateLabel } from "../updates.ts";
 import { useConnectAction, useConnectView } from "./connect-view.ts";
-import { useGitHubAuth } from "./github-account.ts";
+import { useGitHubAccountState, useGitHubAuth } from "./github-account.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
+import { useSettingsOpen } from "./use-settings-open.ts";
 
 const FEEDBACK_URL = "https://github.com/interfaces-lab/nyte/issues/new/choose";
 
@@ -60,20 +66,21 @@ function GitHubGroup({
   );
 }
 
+type NyteAccount = Exclude<
+  Extract<ConnectView, { readonly account: unknown }>["account"],
+  { readonly kind: "unavailable" }
+>;
+
 function NyteGroup({
+  account,
   connect,
   onOpenProfile,
 }: {
+  readonly account: NyteAccount;
   readonly connect: ConnectBridge;
   readonly onOpenProfile: () => void;
-}): ReactElement | null {
-  const view = useConnectView(connect).data;
+}): ReactElement {
   const signIn = useConnectAction(() => connect.openAccount(), "Couldn’t sign in");
-
-  if (view === undefined || view.kind === "unavailable" || view.account.kind === "unavailable")
-    return null;
-
-  const { account } = view;
 
   return (
     <MenuGroup>
@@ -96,13 +103,89 @@ function NyteGroup({
   );
 }
 
+/** The menu's account groups and the separator after them, mounted only while the menu is open, so the Nyte account is read only then. */
+function AccountGroups({
+  account,
+  github,
+  connect,
+  onOpenProfile,
+}: {
+  readonly account: GitHubAccountState | undefined;
+  readonly github: ReturnType<typeof useGitHubAuth>;
+  readonly connect: ConnectBridge;
+  readonly onOpenProfile: () => void;
+}): ReactElement | null {
+  const view = useConnectView(connect).data;
+
+  const nyteAccount =
+    view === undefined || view.kind === "unavailable" || view.account.kind === "unavailable"
+      ? undefined
+      : view.account;
+
+  if (account === undefined && nyteAccount === undefined) return null;
+
+  return (
+    <>
+      {account !== undefined && (
+        <GitHubGroup state={account} github={github} onOpenProfile={onOpenProfile} />
+      )}
+      {nyteAccount !== undefined && (
+        <NyteGroup account={nyteAccount} connect={connect} onOpenProfile={onOpenProfile} />
+      )}
+      <MenuSeparator inset />
+    </>
+  );
+}
+
+/**
+ * The sidebar's footer: the account menu and the Settings toggle. It shows from the first frame;
+ * the GitHub login fills in when `gh` answers and never decides whether the footer exists.
+ */
+export function SidebarFooter({
+  onOpenSettings,
+}: {
+  readonly onOpenSettings: (section: SettingsSection) => void;
+}): ReactElement {
+  const router = useRouter();
+  const account = useGitHubAccountState().data ?? undefined;
+  const settingsOpen = useSettingsOpen();
+  const anchor = useRef<HTMLDivElement>(null);
+
+  return (
+    <div {...props(styles.footer)}>
+      <div ref={anchor} {...props(styles.footerRow)}>
+        <AccountFooterMenu
+          account={account}
+          connect={nyte.host.connect}
+          anchor={anchor}
+          onOpenProfile={() => onOpenSettings("profile")}
+        />
+        <Toggle
+          iconOnly
+          icon="settings"
+          aria-label="Settings"
+          aria-keyshortcuts={clientActionAriaShortcut(
+            clientActions.settings,
+            nyte.platform === "darwin",
+          )}
+          pressed={settingsOpen}
+          onPressedChange={(pressed) =>
+            pressed ? onOpenSettings("general") : closeSettings(router)
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+/** `account` is the machine's GitHub login, undefined while `gh` answers or where the host serves none. */
 export function AccountFooterMenu({
   account,
   connect,
   anchor,
   onOpenProfile,
 }: {
-  readonly account: GitHubAccountState;
+  readonly account: GitHubAccountState | undefined;
   readonly connect: ConnectBridge;
   readonly anchor: RefObject<HTMLDivElement | null>;
   readonly onOpenProfile: () => void;
@@ -111,7 +194,7 @@ export function AccountFooterMenu({
   const update = useUpdateState().data ?? { kind: "idle" };
   const busy = update.kind === "downloading" || update.kind === "installing";
   const attention = update.kind !== "idle" && !busy;
-  const signedIn = account.kind === "ready" ? account.account : undefined;
+  const signedIn = account?.kind === "ready" ? account.account : undefined;
 
   return (
     <Menu highlightItemOnHover={false}>
@@ -157,9 +240,12 @@ export function AccountFooterMenu({
             <MenuSeparator inset />
           </>
         )}
-        <GitHubGroup state={account} github={github} onOpenProfile={onOpenProfile} />
-        <NyteGroup connect={connect} onOpenProfile={onOpenProfile} />
-        <MenuSeparator inset />
+        <AccountGroups
+          account={account}
+          github={github}
+          connect={connect}
+          onOpenProfile={onOpenProfile}
+        />
         <MenuItem icon="bubble-heart" variant="quiet" onClick={() => openExternal(FEEDBACK_URL)}>
           Give Feedback
         </MenuItem>

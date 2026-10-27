@@ -35,6 +35,7 @@ import {
   useRenameSession,
   useSession,
   useSessionChoice,
+  useSessionFolder,
 } from "../queries.ts";
 import {
   childrenWatch,
@@ -59,14 +60,15 @@ import {
   workbenchShowsChat,
   workbenchViewKey,
 } from "../workbench/controller.ts";
-import type { WorkbenchViewKey } from "../workbench/controller.ts";
 import { openJobTerminal } from "../workbench/terminal-store.ts";
 import {
   listSubagents,
   SubagentTray,
   type SubagentTrayView,
 } from "../conversation/tray/agents.tsx";
-import { subagentSessions, SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
+import { subagentSessions, SubagentSessionsContext } from "../conversation/subagent-sessions.ts";
+import { useChatFolder } from "../conversation/chat-folder.ts";
+import { ChatScope } from "./chat-scope.tsx";
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
 import { StartupReadsRelease } from "../startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -247,15 +249,16 @@ function subscribeAttention(notice: () => void): () => void {
   };
 }
 
+/** Marks the chat seen while it is on screen: the window's workbench, not the chat's, is the one that can cover it. */
 function MarkSeen({
   sessionId,
   store,
-  viewKey,
 }: {
   readonly sessionId: SessionId;
   readonly store: WatchStore<SessionView>;
-  readonly viewKey: WorkbenchViewKey;
 }): ReactElement | null {
+  const viewKey = workbenchViewKey(useHostState().data.workspace?.path);
+
   const tip = useWatchSelect(store, ({ value }) => {
     const drawn = value === undefined ? undefined : mainHead(value)?.tip;
 
@@ -295,10 +298,19 @@ function SeeTip({
   return null;
 }
 
+/** A chat inside its own folder, so a hidden or split chat never reads the folder the window has open. */
 export function SessionConversation(conversation: SessionConversationProps): ReactElement {
+  return (
+    <ChatScope folder={useSessionFolder(conversation.sessionId)}>
+      <ConversationScreen {...conversation} />
+    </ChatScope>
+  );
+}
+
+function ConversationScreen(conversation: SessionConversationProps): ReactElement {
   useCommitCount("render:conversation");
   const { paneId, presentation, sessionId } = conversation;
-  const host = useHostState();
+  const cwd = useChatFolder()?.path;
   const paneActions = usePaneActions();
   const { layout } = usePaneControllerSnapshot();
   const sessionName = useSession(sessionId, (session) => session.name).data;
@@ -350,7 +362,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   useMountEffect(() => childrenWatch(sessionId).subscribe(() => undefined));
   useMountEffect(() => showTranscript(sessionId));
   const working = navigating || messages.working;
-  const cwd = host.data.workspace?.path;
 
   const loadEarlier = () => loadEarlierMessages(sessionId, HISTORY_PAGE);
 
@@ -418,7 +429,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const subagents = subagentSessions(sessionId, openSubagentTray);
 
   return (
-    <SubagentSessionsProvider value={subagents}>
+    <SubagentSessionsContext value={subagents}>
       <div
         {...props(
           sessionScreenStyles.screen,
@@ -473,7 +484,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
             loadEarlier={loadEarlier}
           >
             <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
-              <MarkSeen sessionId={sessionId} store={store} viewKey={workbenchViewKey(cwd)} />
+              <MarkSeen sessionId={sessionId} store={store} />
               {((ready && sessionName !== undefined) || failed) && <StartupReadsRelease />}
               {presentation === "full" && activation !== undefined && (
                 <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
@@ -586,6 +597,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
           />
         )}
       </div>
-    </SubagentSessionsProvider>
+    </SubagentSessionsContext>
   );
 }

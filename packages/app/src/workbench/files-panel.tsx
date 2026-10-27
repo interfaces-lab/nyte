@@ -2,10 +2,9 @@ import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
-import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { worktreeFiles } from "../view-helpers.ts";
-import type { MentionFile } from "../conversation/message-references.ts";
 import { errorMessage } from "../errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import {
@@ -18,7 +17,7 @@ import {
 } from "@nyte-ai/ui/menu";
 import type { HostBridge } from "../bridge.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
-import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
+import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { selectionWithin } from "@nyte-ai/ui/selection";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -30,11 +29,11 @@ import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../qu
 import { workbench } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
+import { FileBreadcrumbs } from "./file-breadcrumbs.tsx";
 import { WorkspaceFileEditor } from "./file-editor.tsx";
 import { FilesEmptyState } from "./files-empty-state.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
 import { fileActions, useFileTabs } from "./file-store.ts";
-import { Popover } from "@nyte-ai/ui/popover";
 import { WorkspaceSearch } from "./workspace-search.tsx";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
 import { treeItemHeight, treeStatus, useTreeStatusTheme } from "./tree-theme.ts";
@@ -131,7 +130,8 @@ export function FilesPanel({
 }): ReactElement {
   const treeStatusTheme = useTreeStatusTheme();
   const shown = workspaceActive && visible;
-  const files = useMentionFiles(shown);
+  const host = useHostState();
+  const files = useMentionFiles(host.data.workspace, shown);
   const fileEntries = useRef(files.data);
   // oxlint-disable-next-line nyte-code/no-direct-effect -- latest file list for tree callbacks, which run outside render
   useLayoutEffect(() => {
@@ -141,7 +141,6 @@ export function FilesPanel({
 
   const changes = vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : undefined;
 
-  const host = useHostState();
   const tabs = useFileTabs(viewKey);
   const autoSave = useSetting(preferences.fileAutoSave);
   const [sidebar, setSidebar] = useState<"explorer" | "search">("explorer");
@@ -562,168 +561,5 @@ export function FilesPanel({
         onConfirm={() => void discard()}
       />
     </section>
-  );
-}
-
-const breadcrumbStyles = create({
-  path: {
-    display: "flex",
-    alignItems: "center",
-    flex: 1,
-    minWidth: 0,
-    overflow: "clip",
-    color: role.contentSecondary,
-    fontSize: type.fontBase,
-    whiteSpace: "nowrap",
-  },
-  crumb: { minWidth: 0, flexShrink: 1 },
-  label: { overflow: "hidden", textOverflow: "ellipsis" },
-  separator: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
-  current: { flexShrink: 0, maxWidth: "100%" },
-  popup: { width: "min(320px, var(--available-width))", padding: 0 },
-  tree: { display: "block", height: "min(320px, var(--available-height))", width: "100%" },
-});
-
-function FileBreadcrumbs({
-  path,
-  files,
-  onOpen,
-}: {
-  readonly path: string | undefined;
-  readonly files: readonly MentionFile[] | undefined;
-  readonly onOpen: (file: MentionFile) => void;
-}): ReactElement {
-  return (
-    <nav aria-label="File path" {...props(breadcrumbStyles.path)}>
-      {path === undefined
-        ? "Files"
-        : path.split("/").map((segment, index, segments) => (
-            <Fragment key={segments.slice(0, index + 1).join("/")}>
-              {index > 0 && (
-                <span aria-hidden="true" {...props(breadcrumbStyles.separator)}>
-                  <Icon name="chevron-right" size={10} />
-                </span>
-              )}
-              <FileCrumb
-                label={segment}
-                path={segments.slice(0, index + 1).join("/")}
-                directory={segments
-                  .slice(0, index === segments.length - 1 ? index : index + 1)
-                  .join("/")}
-                current={index === segments.length - 1}
-                files={files}
-                onOpen={onOpen}
-              />
-            </Fragment>
-          ))}
-    </nav>
-  );
-}
-
-function FileCrumb({
-  label,
-  path,
-  directory,
-  current,
-  files,
-  onOpen,
-}: {
-  readonly label: string;
-  readonly path: string;
-  readonly directory: string;
-  readonly current: boolean;
-  readonly files: readonly MentionFile[] | undefined;
-  readonly onOpen: (file: MentionFile) => void;
-}): ReactElement {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger
-        render={
-          <Button
-            title={path}
-            aria-current={current ? "page" : undefined}
-            xstyle={[breadcrumbStyles.crumb, current && breadcrumbStyles.current]}
-          >
-            <span {...props(breadcrumbStyles.label)}>{label}</span>
-          </Button>
-        }
-      />
-      <Popover.Portal>
-        <Popover.Positioner align="start">
-          <Popover.Popup
-            aria-label={directory || "Workspace files"}
-            xstyle={breadcrumbStyles.popup}
-          >
-            {open && (
-              <BreadcrumbTree
-                directory={directory}
-                files={files}
-                onOpen={(file) => {
-                  setOpen(false);
-                  onOpen(file);
-                }}
-              />
-            )}
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
-  );
-}
-
-function BreadcrumbTree({
-  directory,
-  files,
-  onOpen,
-}: {
-  readonly directory: string;
-  readonly files: readonly MentionFile[] | undefined;
-  readonly onOpen: (file: MentionFile) => void;
-}): ReactElement {
-  const prefix = directory === "" ? "" : `${directory}/`;
-
-  const paths = (files ?? [])
-    .filter((file) => file.displayPath.startsWith(prefix))
-    .map((file) => file.displayPath.slice(prefix.length));
-
-  const [itemHeight] = useState(treeItemHeight);
-
-  const { model } = useFileTree({
-    paths: [],
-    density: "compact",
-    itemHeight,
-    unsafeCSS: PIERRE_TREE_CSS,
-    initialExpansion: 0,
-    search: false,
-  });
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes paths into the imperative Pierre tree
-  useLayoutEffect(() => model.resetPaths(paths), [model, paths]);
-
-  const openFile = (event: Event): void => {
-    const row = event
-      .composedPath()
-      .find((target) => target instanceof HTMLElement && target.dataset.type === "item");
-
-    if (!(row instanceof HTMLElement) || row.dataset.itemType !== "file") return;
-
-    const file = files?.find(
-      (candidate) => candidate.displayPath === `${prefix}${row.dataset.itemPath}`,
-    );
-
-    if (file !== undefined) onOpen(file);
-  };
-
-  return (
-    <WorkspaceFileTree
-      model={model}
-      onClick={(event) => openFile(event.nativeEvent)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") openFile(event.nativeEvent);
-      }}
-      {...props(workbenchStyles.treeTheme, breadcrumbStyles.tree)}
-    />
   );
 }

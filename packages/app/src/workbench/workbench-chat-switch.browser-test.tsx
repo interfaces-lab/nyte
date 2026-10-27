@@ -14,6 +14,7 @@ import type {
   ModelCatalogView,
   RunView,
   SessionView,
+  WorkspaceInfo,
 } from "@nyte-ai/sdk";
 import { SdkError } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
@@ -288,7 +289,22 @@ export async function run(): Promise<string> {
   queryClient.clear();
   queryClient.setQueryData(keys.host, host);
   queryClient.setQueryData(keys.modelCatalog("initial"), catalog);
-  queryClient.setQueryData(keys.mentionFiles, [FILE]);
+  queryClient.setQueryData(keys.workspaces, [
+    {
+      id: WORKSPACE.id,
+      target: { kind: "local", path: WORKSPACE.path },
+      identity: asId<"environment-identity">("fixture"),
+      availability: { kind: "available" },
+      projectResources: null,
+      trusted: true,
+      projectSources: [],
+      addedBy: asId<"principal">("tester"),
+      sessions: 0,
+      writers: [],
+      isolation: null,
+    },
+  ] satisfies readonly WorkspaceInfo[]);
+  queryClient.setQueryData(keys.mentionFiles(WORKSPACE.id), [FILE]);
   queryClient.setQueryData(keys.workspaceFile(FILE.path), {
     kind: "text",
     path: FILE.path,

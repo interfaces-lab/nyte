@@ -17,6 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./external-link.ts";
 import { useQuery } from "@tanstack/react-query";
 import { mentionFilesOptions } from "../queries.ts";
+import { useChatFolder } from "./chat-folder.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -60,7 +61,7 @@ const InsideLink = createContext(false);
 
 export function useCitableFiles(enabled: boolean) {
   return useQuery({
-    ...mentionFilesOptions(enabled),
+    ...mentionFilesOptions(useChatFolder(), enabled),
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });

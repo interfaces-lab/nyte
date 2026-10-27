@@ -18,8 +18,6 @@ const CHECKS_POLL_MS = 15_000;
 
 const AUTH_KEY = ["github-auth"];
 
-const ACCOUNT_KEY = [...keys.github, "account"];
-
 export function signOutDescription(login: string): string {
   return nyte.clientSurface === "web"
     ? `This removes the CLI login for @${login} on the machine running the server. Terminal commands and other apps using this login there will also be signed out.`
@@ -37,7 +35,7 @@ export function useGitHub(): GitHubApi | undefined {
   const workspace = useHostState().data.workspace?.id;
 
   const capability = useQuery({
-    queryKey: [...keys.github, "capability", workspace],
+    queryKey: keys.githubCapability(workspace),
     queryFn:
       workspace === undefined
         ? skipToken
@@ -52,10 +50,10 @@ export function useGitHub(): GitHubApi | undefined {
 }
 
 export function useGitHubState(github: GitHubApi | undefined) {
-  const host = useHostState();
+  const workspace = useHostState().data.workspace?.id;
 
   return useQuery({
-    queryKey: [...keys.github, host.data.workspace?.path ?? null],
+    queryKey: keys.githubState(workspace),
     queryFn:
       github === undefined
         ? skipToken
@@ -79,7 +77,7 @@ export function useGitHubState(github: GitHubApi | undefined) {
 
 export function useGitHubAccountState() {
   return useQuery({
-    queryKey: ACCOUNT_KEY,
+    queryKey: keys.githubAccount,
     queryFn: async (): Promise<GitHubAccountState | null> => {
       try {
         return await (await connected()).github.account();
@@ -107,8 +105,16 @@ export function useGitHubAuth() {
 
       return state;
     },
-    onMutate: () => client.cancelQueries({ queryKey: keys.github }),
-    onSettled: () => client.invalidateQueries({ queryKey: keys.github }),
+    onMutate: () =>
+      Promise.all([
+        client.cancelQueries({ queryKey: keys.githubAccount }),
+        client.cancelQueries({ queryKey: keys.github }),
+      ]),
+    onSettled: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.githubAccount }),
+        client.invalidateQueries({ queryKey: keys.github }),
+      ]),
   });
 
   const pending = usePendingAuth();

@@ -182,7 +182,7 @@ async function checkSends(): Promise<string> {
   queryClient.clear();
   queryClient.setQueryData(keys.host, { workspace: undefined });
   queryClient.setQueryData(keys.modelCatalog("initial"), catalog("configured"), { updatedAt: 0 });
-  queryClient.setQueryData(keys.mentionFiles, []);
+  queryClient.setQueryData(keys.mentionFiles(undefined), []);
   const container = document.createElement("div");
   container.style.cssText = "display:flex;width:900px;height:700px";
   document.body.append(container);

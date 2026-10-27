@@ -1,4 +1,3 @@
-import { useSettingsOpen } from "./use-settings-open.ts";
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -7,7 +6,6 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Row } from "@nyte-ai/ui/row";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { Toggle } from "@nyte-ai/ui/toggle";
 import { props } from "@stylexjs/stylex";
 import { Link, useRouter } from "@tanstack/react-router";
 import { motion } from "motion/react";
@@ -23,7 +21,7 @@ import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import {
-  sessionFolderPath,
+  findSessionFolder,
   useForgetWorkspace,
   useHostState,
   useRenameSession,
@@ -35,11 +33,11 @@ import {
   type RailWorkspace,
 } from "../queries.ts";
 import { localSessions } from "../session-list.ts";
-import { closeSettings, type SettingsSection } from "../settings/index.ts";
+import type { SettingsSection } from "../settings/index.ts";
 import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { AccountFooterMenu } from "./account-footer.tsx";
-import { useGitHub, useGitHubAccountState, useGitHubState } from "./github-account.ts";
+import { SidebarFooter } from "./account-footer.tsx";
+import { useGitHub, useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { shellActions, useOverlays, useStagePage } from "./shell-state.ts";
@@ -78,8 +76,15 @@ type SidebarConfirmation =
       readonly sessionIds: readonly SessionId[];
     };
 
+/** A folder that has not loaded yet is left to the window tabs, which open it once it arrives. */
 async function showSession(sessionId: SessionId, target: OpenTarget | "beside"): Promise<void> {
-  if (target !== "background" && !(await activateWorkspace(sessionFolderPath(sessionId) ?? null)))
+  const folder = findSessionFolder(sessionId);
+
+  if (
+    target !== "background" &&
+    folder.kind !== "pending" &&
+    !(await activateWorkspace(folder.kind === "folder" ? folder.path : null))
+  )
     return;
 
   if (target !== "beside") {
@@ -158,14 +163,9 @@ export function Sidebar(): ReactElement {
   const paletteOpen = useOverlays().search;
   const homeVisible = useSetting(preferences.homeVisible);
   const router = useRouter();
-
-  const settingsOpen = useSettingsOpen();
-
   const githubState = useGitHubState(useGitHub());
-  const githubAccount = useGitHubAccountState().data;
   const openFolder = folderPicker();
   const reveal = useListReveal();
-  const footerRowRef = useRef<HTMLDivElement>(null);
   const confirmationReturnRef = useRef<HTMLButtonElement>(null);
   const [confirmation, setConfirmation] = useState<SidebarConfirmation>({ kind: "closed" });
   const [collectionExpanded, setCollectionExpanded] = useState(true);
@@ -557,28 +557,7 @@ export function Sidebar(): ReactElement {
         </motion.div>
       </SidebarContent>
 
-      {githubAccount !== undefined && githubAccount !== null && (
-        <div {...props(styles.footer)}>
-          <div ref={footerRowRef} {...props(styles.footerRow)}>
-            <AccountFooterMenu
-              account={githubAccount}
-              connect={nyte.host.connect}
-              anchor={footerRowRef}
-              onOpenProfile={() => openSettings("profile")}
-            />
-            <Toggle
-              iconOnly
-              icon="settings"
-              aria-label="Settings"
-              aria-keyshortcuts={clientActionAriaShortcut(clientActions.settings, mac)}
-              pressed={settingsOpen}
-              onPressedChange={(pressed) =>
-                pressed ? openSettings("general") : closeSettings(router)
-              }
-            />
-          </div>
-        </div>
-      )}
+      <SidebarFooter onOpenSettings={openSettings} />
       {confirmation.kind === "delete-session" && (
         <ConfirmDialog
           open

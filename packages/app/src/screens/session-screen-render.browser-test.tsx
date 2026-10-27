@@ -92,7 +92,7 @@ panes.selectSession(ID);
 function mount(container: HTMLElement): Root {
   queryClient.setQueryData(keys.host, host);
   queryClient.setQueryData(keys.modelCatalog("initial"), catalog);
-  queryClient.setQueryData(keys.mentionFiles, []);
+  queryClient.setQueryData(keys.mentionFiles(undefined), []);
   renderFailure = undefined;
 
   const router = createAppRouter({

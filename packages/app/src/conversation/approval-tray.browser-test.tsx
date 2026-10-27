@@ -254,7 +254,7 @@ export async function run(): Promise<string> {
     providers: [],
     default: { provider: "test", id: "test" },
   } satisfies ModelCatalogView);
-  queryClient.setQueryData(keys.mentionFiles, []);
+  queryClient.setQueryData(keys.mentionFiles(undefined), []);
 
   const root = createRoot(stage, {
     onUncaughtError: (error) => {

@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, use } from "react";
 import type { PartId, SessionId } from "@nyte-ai/sdk";
 import type { MessageReference } from "./message-references.ts";
 
@@ -15,10 +15,8 @@ export type OpenableReference =
 
 export type ReferenceOpener = (reference: OpenableReference) => (() => void) | undefined;
 
-const ReferenceOpenerContext = createContext<ReferenceOpener | undefined>(undefined);
-
-export const ReferenceOpenerProvider = ReferenceOpenerContext.Provider;
+export const ReferenceOpenerContext = createContext<ReferenceOpener | undefined>(undefined);
 
 export function useReferenceOpener(): ReferenceOpener | undefined {
-  return useContext(ReferenceOpenerContext);
+  return use(ReferenceOpenerContext);
 }

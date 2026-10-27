@@ -4,11 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import { asId } from "@nyte-ai/schema";
 import { childrenWatch, installConnection } from "../sdk.tsx";
-import {
-  subagentSessions,
-  SubagentSessionsProvider,
-  useChildSession,
-} from "./subagent-sessions.ts";
+import { subagentSessions, SubagentSessionsContext, useChildSession } from "./subagent-sessions.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 
@@ -42,9 +38,9 @@ test("agent cards read their parent's current child list after a hidden conversa
   }
 
   const html = renderToStaticMarkup(
-    <SubagentSessionsProvider value={subagents}>
+    <SubagentSessionsContext value={subagents}>
       <ChildName />
-    </SubagentSessionsProvider>,
+    </SubagentSessionsContext>,
   );
   hold();
 

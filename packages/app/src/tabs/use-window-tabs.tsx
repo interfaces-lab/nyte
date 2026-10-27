@@ -1,3 +1,4 @@
+import { hashKey } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
@@ -6,9 +7,9 @@ import { activateWorkspace } from "../chrome/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
 import { nyte } from "../nyte.ts";
 import {
+  findSessionFolder,
   keys,
   queryClient,
-  sessionFolderPath,
   useWorkingSessionIds,
   useWorkspaceSessions,
 } from "../queries.ts";
@@ -22,6 +23,8 @@ import type { Place, WindowState } from "./model.ts";
 import { locationPlace, navigateTo, pageSection, samePlaceAt } from "./places.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
 import { windowTabs } from "./window-tabs.ts";
+
+const WORKSPACES_HASH = hashKey(keys.workspaces);
 
 export function useWindowTabsState(): WindowState {
   return useSyncExternalStore(windowTabs.subscribe, windowTabs.getSnapshot, windowTabs.getSnapshot);
@@ -61,13 +64,14 @@ export function useWindowTabsSync(): void {
         return;
       }
 
-      const folder = sessionFolderPath(place.sessionId);
+      const folder = findSessionFolder(place.sessionId);
 
-      if (folder === undefined) return;
+      if (folder.kind === "pending") return;
+      const path = folder.kind === "folder" ? folder.path : null;
       followed = focus;
-      wanted = folder;
+      wanted = path;
       switching = switching
-        .then(() => (wanted === folder ? activateWorkspace(folder) : undefined))
+        .then(() => (wanted === path ? activateWorkspace(path) : undefined))
         .then(
           () => undefined,
           () => undefined,
@@ -98,7 +102,7 @@ export function useWindowTabsSync(): void {
     const unsubscribeSessions = sessionsWatch("roots").subscribe(follow);
 
     const unsubscribeWorkspaces = queryClient.getQueryCache().subscribe((event) => {
-      if (event.query.queryKey[0] === keys.workspaces[0]) follow();
+      if (event.type === "updated" && event.query.queryHash === WORKSPACES_HASH) follow();
     });
 
     return () => {
