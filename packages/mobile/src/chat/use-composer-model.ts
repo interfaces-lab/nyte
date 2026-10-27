@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Connection, Head, ModelInfo } from "@nyte-ai/sdk";
 import { describeHostError } from "../connection/connection.ts";
+import { useHost } from "../connection/host-context.tsx";
 import { openHead, type ComposerTarget } from "./composer-target.ts";
 import { useModelCatalog } from "./remote-models.ts";
 import { supportedThinkingLevel, thinkingLevelsFor, type ThinkingLevel } from "./thinking.ts";
@@ -8,6 +9,7 @@ import { supportedThinkingLevel, thinkingLevelsFor, type ThinkingLevel } from ".
 async function configureHead(
   head: Head,
   next: { model?: ModelInfo; thinking?: ThinkingLevel },
+  newerHost: boolean,
   reportError: (message: string) => void,
 ): Promise<boolean> {
   try {
@@ -35,7 +37,7 @@ async function configureHead(
       }
     }
   } catch (cause: unknown) {
-    reportError(describeHostError(cause));
+    reportError(describeHostError(cause, newerHost));
 
     return false;
   }
@@ -46,6 +48,7 @@ export function useComposerModel(
   target: ComposerTarget,
   reportError: (message: string) => void,
 ) {
+  const { newerHost } = useHost();
   const { catalog } = useModelCatalog(client);
   const [model, setModel] = useState<ModelInfo>();
   const [thinking, setThinking] = useState<ThinkingLevel>();
@@ -95,6 +98,7 @@ export function useComposerModel(
     const applied = await configureHead(
       openHead(client, target),
       { model: choice, thinking: choice.defaultThinking },
+      newerHost,
       reportError,
     );
 
@@ -112,7 +116,7 @@ export function useComposerModel(
     setThinking(choice);
 
     if (target.kind !== "session") return;
-    void configureHead(openHead(client, target), { thinking: choice }, reportError).then(
+    void configureHead(openHead(client, target), { thinking: choice }, newerHost, reportError).then(
       (applied) => {
         if (!applied) setThinking(sessionThinking);
       },

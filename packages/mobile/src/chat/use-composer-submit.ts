@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { randomUUID } from "expo-crypto";
 import type { CommandInfo, Connection, Delivery, ModelRef, SessionId } from "@nyte-ai/sdk";
 import { describeHostError } from "../connection/connection.ts";
+import { useHost } from "../connection/host-context.tsx";
 import {
   MAX_ATTACHMENTS,
   type DraftContent,
@@ -77,6 +78,7 @@ export function useComposerSubmit({
   onBusyChange: ((busy: boolean) => void) | undefined;
   reportError: (message: string | undefined) => void;
 }) {
+  const { newerHost } = useHost();
   const scope = useChatScope();
   const startSender = useStartSender();
   const [notice, setNotice] = useState<string>();
@@ -212,7 +214,7 @@ export function useComposerSubmit({
         : startConversation(submitted, submittedImages, content);
 
     void submission
-      .catch((cause: unknown) => reportError(describeHostError(cause)))
+      .catch((cause: unknown) => reportError(describeHostError(cause, newerHost)))
       .finally(() => {
         submissionActive.current = false;
         setStarting(false);

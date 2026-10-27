@@ -30,7 +30,7 @@ import { seeWhileForeground } from "./seen.ts";
  * answered here as well as in the subagent's own conversation, which takes no messages of its own.
  */
 export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
-  const { client } = useHost();
+  const { client, newerHost } = useHost();
   const insets = useSafeAreaInsets();
   const [head, setHead] = useState<HeadName>();
   const chat = useRemoteChat(client, sessionId, head);
@@ -78,7 +78,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   };
 
   const report = (title: string) => (cause: unknown) => {
-    toast.error(title, describeHostError(cause));
+    toast.error(title, describeHostError(cause, newerHost));
   };
 
   const answer = (asked: AskedQuestion, answers: QuestionAnswers) =>

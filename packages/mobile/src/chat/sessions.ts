@@ -3,6 +3,7 @@ import { useState } from "react";
 import { sessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import { describeHostError } from "../connection/connection.ts";
+import { useHost } from "../connection/host-context.tsx";
 import { useWatch } from "../connection/use-watch.ts";
 import type { Theme } from "../theme.ts";
 import { hasRun } from "../view-helpers.ts";
@@ -90,6 +91,7 @@ export function markTone(mark: SessionMark, theme: Theme) {
 }
 
 export function useSessionList(client: Connection, search = "") {
+  const { newerHost } = useHost();
   const [limit, setLimit] = useState(PAGE);
 
   const [watched, restart] = useWatch({
@@ -117,11 +119,13 @@ export function useSessionList(client: Connection, search = "") {
           next: rows.length >= limit ? limit + PAGE : undefined,
         }
       : watched.kind === "failed"
-        ? { kind: "failed", message: describeHostError(watched.error) }
+        ? { kind: "failed", message: describeHostError(watched.error, newerHost) }
         : { kind: "loading" };
 
   const error =
-    watched.kind === "failed" && rows !== undefined ? describeHostError(watched.error) : undefined;
+    watched.kind === "failed" && rows !== undefined
+      ? describeHostError(watched.error, newerHost)
+      : undefined;
 
   const refresh = () => {
     setSeen(undefined);
