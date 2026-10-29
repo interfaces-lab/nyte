@@ -24,7 +24,6 @@ import type { UnreadEvent, UnreadVisit } from "./transcript-unread.ts";
 import { NewMessages, UnreadDivider } from "./transcript-unread-view.tsx";
 import { countWork, useCommitCount } from "../work-counts.ts";
 import { useChatWindow } from "../window/index.ts";
-import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 type EditUserMessage = (
   message: UserMessage,
@@ -146,6 +145,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
   }
 });
 
+/** A chat's transcript. Its unread visit lasts while the window shows the chat: none opens off screen, and leaving ends it. */
 export function Timeline({
   sessionId,
   store,
@@ -167,12 +167,12 @@ export function Timeline({
   const replies = useWatchSelect(store, projector.replies);
   const seenThrough = useWatchSelect(store, (state) => state.value?.seenThrough);
   const [visit, setVisit] = useState<UnreadVisit>();
-
-  useMountEffect(() => () => setVisit(undefined));
-
-  const opened = visit ?? (seenThrough === undefined ? undefined : openVisit(seenThrough));
-
+  const shown = useChatWindow((snapshot) => snapshot.shown.has(sessionId));
   const looking = useChatWindow((snapshot) => snapshot.looking.has(sessionId));
+
+  const opened = !shown
+    ? undefined
+    : (visit ?? (seenThrough === undefined ? undefined : openVisit(seenThrough)));
 
   const observed =
     opened === undefined

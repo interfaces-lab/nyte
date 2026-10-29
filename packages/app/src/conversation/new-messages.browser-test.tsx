@@ -9,12 +9,12 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import type { HostState } from "../nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
-import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
 import { SessionScreen } from "../screens/session-screen.tsx";
 import { createAppRouter } from "../router.tsx";
+import { windowTabs } from "../tabs/window-tabs.ts";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
@@ -159,7 +159,7 @@ export async function run(): Promise<string> {
   });
 
   const root = createRoot(container);
-  const panes = new PaneController({ storageKey: "new-messages-test" });
+  const panes = windowTabs.controller();
   panes.selectSession(ID);
 
   flushSync(() =>
