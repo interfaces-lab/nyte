@@ -199,7 +199,12 @@ interface Change {
 }
 
 function header(box: HTMLElement): string {
-  return box.querySelector("button")?.firstElementChild?.textContent ?? "";
+  return Array.from(
+    (box.querySelector("button") ?? box.querySelector("[aria-busy]"))?.children ?? [],
+  )
+    .map((part) => part.textContent)
+    .filter((part) => part !== "")
+    .join(" ");
 }
 
 function recordLabels(box: HTMLElement, label: () => string) {
@@ -244,12 +249,12 @@ async function startSlowProbe() {
       ),
     );
 
-  render([read("probe", 0, true)]);
+  render([thought("probe", "Weighing the probe", 0, true)]);
   await settle();
-  check(header(lane) === "Exploring", "A live group names the read in flight");
+  check(header(lane) === "Thinking", "A live thought names itself");
   const labels = recordLabels(lane, () => header(lane));
   const settled = performance.now();
-  const probe = read("probe", 0);
+  const probe = thought("probe", "Weighing the probe", 0);
   render([probe]);
 
   return async () => {
@@ -267,7 +272,7 @@ async function startSlowProbe() {
         planning?.label === "Planning next moves" &&
         planning.at - settled >= 200 &&
         planning.at - settled <= 200 + STALL_MS,
-      `A finished step keeps its verb for 200 ms, then the header plans: ${seen}`,
+      `A finished thought keeps its label for 200 ms, then the header plans: ${seen}`,
     );
     check(
       slow?.label === "Taking longer than expected…" &&
@@ -276,13 +281,16 @@ async function startSlowProbe() {
       `After 15 s of planning the header says it is taking longer: ${seen}`,
     );
 
-    render([probe, read("hidden", 1, true)], "hidden");
-    await until(() => (lane.textContent ?? "").includes("hidden.ts"), performance.now() + STALL_MS);
-    render([probe, read("hidden", 1)], "hidden");
+    render([probe, thought("hidden", "Hidden work", 1, true)], "hidden");
+    await until(
+      () => (lane.textContent ?? "").includes("Hidden work"),
+      performance.now() + STALL_MS,
+    );
+    render([probe, thought("hidden", "Hidden work", 1)], "hidden");
     await settle();
     const replans = recordLabels(lane, () => header(lane));
     const revealed = performance.now();
-    render([probe, read("hidden", 1)]);
+    render([probe, thought("hidden", "Hidden work", 1)]);
     await until(() => replans.changes.length > 1, revealed + 200 + STALL_MS);
     replans.stop();
     flushSync(() => root.unmount());
@@ -301,7 +309,7 @@ async function startSlowProbe() {
 async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMessage[]) => void) {
   render([read("quick-a", 0, true)]);
   await wait(300);
-  check(header(outer) === "Exploring", "A live group names the read in flight");
+  check(header(outer) === "Exploring quick-a.ts", "A live group counts the read in flight");
   const labels = recordLabels(outer, () => header(outer));
   const a = read("quick-a", 0);
   const b = tool("quick-b", SHELL, 1);
@@ -314,7 +322,8 @@ async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMe
     [a, b],
     [a, b, read("quick-c", 2, true)],
     [a, b, c],
-    [a, b, c, tool("quick-d", EDIT, 3, true)],
+    [a, b, c, thought("quick-t", "Weighing the edit", 3, true)],
+    [a, b, c, tool("quick-d", EDIT, 4, true)],
   ]) {
     render(messages);
     await frame();
@@ -323,43 +332,37 @@ async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMe
   await wait(450);
   labels.stop();
   const seen = timeline(labels.changes, started);
-  const changes = labels.changes.slice(1);
 
   check(
-    changes.every((change) => ["Exploring", "Running", "Editing"].includes(change.label)),
-    `Quick steps never flash a planning label: ${seen}`,
+    labels.changes.map((change) => change.label).join(" → ") ===
+      [
+        "Exploring quick-a.ts",
+        "Exploring quick-a.ts, ran 1 command",
+        "Exploring 2 files, ran 1 command",
+        "Editing lease.ts, explored 2 files, ran 1 command",
+      ].join(" → "),
+    `A live group keeps its verb and counts while calls come and go: ${seen}`,
   );
-  check(
-    changes.slice(1).every((change, index) => change.at - (changes[index]?.at ?? 0) >= 190),
-    `The header changes at most once per 200 ms: ${seen}`,
-  );
-  check(labels.changes.at(-1)?.label === "Editing", `The header lands on the newest step: ${seen}`);
 }
 
 async function planningSteps(
   outer: HTMLElement,
   render: (messages: readonly StepMessage[]) => void,
 ) {
-  const a = read("plan-a", 0);
-  const b = tool("plan-b", SHELL, 1);
-  render([a]);
+  render([thought("plan-a", "Weighing the lease", 0)]);
   await settle();
   check(
     header(outer) === "Planning next moves",
     `A live group with nothing in flight says it is planning (saw ${header(outer)})`,
   );
   await wait(300);
-  render([a, tool("plan-b", SHELL, 1, true)]);
-  await settle();
-  check(header(outer) === "Running", `A running command names its verb (saw ${header(outer)})`);
-  await wait(300);
-  render([a, b, thought("plan-c", "Weighing the lease", 2, true)]);
+  render([thought("plan-a", "Weighing the lease", 0), thought("plan-b", "And the hold", 1, true)]);
   await settle();
   check(header(outer) === "Thinking", `Live thinking names itself (saw ${header(outer)})`);
   await wait(300);
   const labels = recordLabels(outer, () => header(outer));
   const settled = performance.now();
-  render([a, b, thought("plan-c", "Weighing the lease", 2)]);
+  render([thought("plan-a", "Weighing the lease", 0), thought("plan-b", "And the hold", 1)]);
   await until(
     () => labels.changes.some((change) => change.label === "Planning next moves"),
     settled + 200 + STALL_MS,

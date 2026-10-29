@@ -20,12 +20,7 @@ import { nextPin, PINNED } from "./step-group-pin.ts";
 import type { StepGroupPinEvent } from "./step-group-pin.ts";
 import { useStepGroupOpen } from "./step-group-open.ts";
 import { stepGroupContent } from "./step-group-content.ts";
-import {
-  durableStepGroupPresentation,
-  liveStatusLabel,
-  liveStepGroupPresentation,
-  PLANNING_LABEL,
-} from "./step-group-presentation.ts";
+import { liveStatusLabel, PLANNING_LABEL, stepGroupLine } from "./step-group-presentation.ts";
 import type { LiveStatus } from "./step-group-presentation.ts";
 import { usePlanningTime } from "./planning-time.ts";
 
@@ -116,7 +111,7 @@ function LiveStepVerb({
   status: LiveStatus;
   newest: StepMessage["id"] | undefined;
 }): ReactElement {
-  const planningMs = usePlanningTime(status.kind === "planning", newest);
+  const planningMs = usePlanningTime(status === "planning", newest);
   const label = useSteadyLabel(liveStatusLabel(status, planningMs));
 
   return <span {...props(stepGroupStyles.verb, activityStyles.shimmer)}>{label}</span>;
@@ -145,13 +140,7 @@ export function StepGroupView({
   const durationMs =
     first === undefined ? 0 : Math.max(0, (running ? now : (lastAt ?? first.at)) - first.at);
 
-  const presentation = liveStepGroupPresentation({
-    durable: durableStepGroupPresentation({ messages, durationMs, added, removed, running }),
-    messages,
-  });
-
-  const active = presentation.active;
-  const summary = presentation.summary;
+  const line = stepGroupLine({ messages, durationMs, running });
 
   const thinkingOnly = messages.every(showsThinking);
 
@@ -189,7 +178,7 @@ export function StepGroupView({
   const [showEarlier, setShowEarlier] = useState(false);
   const earlier = showEarlier ? 0 : Math.max(0, entries.length - STEP_LIMIT);
   const [onlyThought] = messages;
-  const titled = !active && thinkingOnly && messages.length === 1 && onlyThought !== undefined;
+  const titled = !running && thinkingOnly && messages.length === 1 && onlyThought !== undefined;
 
   const hasContent =
     entries.length > 0 &&
@@ -201,7 +190,7 @@ export function StepGroupView({
 
   const content = stepGroupContent({
     density,
-    active,
+    active: running,
     open,
     hasContent,
     thinkingOnly,
@@ -274,24 +263,24 @@ export function StepGroupView({
 
   const summaryLine = (
     <>
-      {presentation.active ? (
-        <LiveStepVerb status={presentation.status} newest={last?.id} />
+      {line.kind === "status" ? (
+        <LiveStepVerb status={line.status} newest={last?.id} />
       ) : (
-        <span {...props(stepGroupStyles.verb)}>{presentation.summary.verb}</span>
+        <span {...props(stepGroupStyles.verb, running && activityStyles.shimmer)}>{line.verb}</span>
       )}
-      {!presentation.active && presentation.summary.detail !== undefined && (
-        <span {...props(stepGroupStyles.summary)}>{presentation.summary.detail}</span>
+      {line.kind === "summary" && line.detail !== undefined && (
+        <span {...props(stepGroupStyles.summary)}>{line.detail}</span>
       )}
-      {(summary.added > 0 || summary.removed > 0) && (
+      {(added > 0 || removed > 0) && (
         <span {...props(stepGroupStyles.stats)}>
-          {summary.added > 0 && (
+          {added > 0 && (
             <span {...props(intent.success, stepGroupStyles.added)}>
-              +<AnimatedNumber value={summary.added} />
+              +<AnimatedNumber value={added} />
             </span>
           )}
-          {summary.removed > 0 && (
+          {removed > 0 && (
             <span {...props(intent.danger, stepGroupStyles.removed)}>
-              -<AnimatedNumber value={summary.removed} />
+              -<AnimatedNumber value={removed} />
             </span>
           )}
         </span>
@@ -301,7 +290,10 @@ export function StepGroupView({
 
   if (!hasContent) {
     return (
-      <div aria-busy={active || undefined} {...props(stepGroupStyles.root, stepGroupStyles.status)}>
+      <div
+        aria-busy={running || undefined}
+        {...props(stepGroupStyles.root, stepGroupStyles.status)}
+      >
         {summaryLine}
       </div>
     );
@@ -317,7 +309,7 @@ export function StepGroupView({
     <Collapsible.Root
       open={expanded}
       onOpenChange={setOpen}
-      aria-busy={active || undefined}
+      aria-busy={running || undefined}
       xstyle={stepGroupStyles.root}
     >
       <Collapsible.Trigger ref={triggerRef} {...disclosure}>
@@ -358,7 +350,7 @@ export function StepGroupView({
                 density={density}
                 thinkingOnly={thinkingOnly}
                 titled={titled}
-                live={active}
+                live={running}
               />
             ))}
           </div>

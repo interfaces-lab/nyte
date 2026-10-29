@@ -2,11 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { PartStatus, ToolClass, ToolPartState } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import {
-  durableStepGroupPresentation,
-  liveStatusLabel,
-  liveStepGroupPresentation,
-} from "./step-group-presentation.ts";
+import { liveStatusLabel, stepGroupLine } from "./step-group-presentation.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 
 type Outcome = Extract<ToolPartState, { readonly phase: "settled" }>["outcome"] | "running";
@@ -66,43 +62,29 @@ function thought(live: boolean): StepMessage {
   };
 }
 
-function liveLabel(messages: readonly StepMessage[], planningMs: number) {
-  const presentation = liveStepGroupPresentation({
-    durable: durableStepGroupPresentation({
-      messages,
-      durationMs: 0,
-      added: 0,
-      removed: 0,
-      running: true,
-    }),
-    messages,
-  });
+function line(messages: readonly StepMessage[], running: boolean) {
+  return stepGroupLine({ messages, durationMs: 0, running });
+}
 
-  assert.equal(presentation.active, true);
+function liveLine(messages: readonly StepMessage[]) {
+  const live = line(messages, true);
 
-  return presentation.active ? liveStatusLabel(presentation.status, planningMs) : undefined;
+  return live.kind === "summary" ? [live.verb, live.detail].filter(Boolean).join(" ") : live;
 }
 
 function summary(messages: readonly StepMessage[]) {
-  const presentation = durableStepGroupPresentation({
-    messages,
-    durationMs: 0,
-    added: 0,
-    removed: 0,
-    running: false,
-  });
+  const settled = line(messages, false);
 
-  assert.equal(presentation.active, false);
+  assert.equal(settled.kind, "summary");
 
-  return presentation.active ? undefined : presentation.summary;
+  return settled.kind === "summary" ? settled : undefined;
 }
 
 test("a step whose calls all succeeded keeps its verb", () => {
   assert.deepEqual(summary([shell("pnpm test", SUCCESS), shell("pnpm lint", SUCCESS)]), {
+    kind: "summary",
     verb: "Ran",
     detail: "2 commands",
-    added: 0,
-    removed: 0,
   });
 });
 
@@ -130,43 +112,61 @@ test("a step whose every call failed or stopped never merges the two", () => {
   assert.equal(summary([shell("a", STOPPED), shell("b", STOPPED)])?.verb, "2 calls stopped");
 });
 
-test("a live step names the call in flight, newest first, over thinking", () => {
-  assert.equal(liveLabel([call({ kind: "read", path: "/w/a.ts" }, "running")], 0), "Exploring");
-  assert.equal(liveLabel([call({ kind: "list", path: "/w" }, "running")], 0), "Exploring");
+test("a live step counts its calls under the group's verb, which only climbs", () => {
+  const a = call({ kind: "read", path: "/w/a.ts" }, SUCCESS);
+  const b = call({ kind: "read", path: "/w/b.ts" }, "running");
+
+  assert.equal(liveLine([a]), "Exploring a.ts");
+  assert.equal(liveLine([a, b]), "Exploring 2 files");
+  assert.equal(liveLine([a, b, shell("pnpm test", "running")]), "Exploring 2 files, ran 1 command");
   assert.equal(
-    liveLabel([shell("pnpm test", SUCCESS), shell("pnpm lint", "running")], 0),
-    "Running",
+    liveLine([a, b, shell("pnpm test", SUCCESS), thought(true)]),
+    "Exploring 2 files, ran 1 command",
   );
   assert.equal(
-    liveLabel([call({ kind: "edit", path: "/w/a.ts" }, "running"), shell("pnpm lint", SUCCESS)], 0),
-    "Editing",
+    liveLine([
+      a,
+      call({ kind: "edit", path: "/w/lease.ts" }, "running"),
+      shell("pnpm lint", SUCCESS),
+    ]),
+    "Editing lease.ts, explored a.ts, ran 1 command",
   );
-  assert.equal(liveLabel([shell("pnpm test", "running"), thought(true)], 0), "Running");
-  assert.equal(liveLabel([shell("pnpm test", SUCCESS), thought(true)], 20_000), "Thinking");
+  assert.equal(
+    liveLine([shell("pnpm test", SUCCESS), shell("pnpm lint", "running")]),
+    "Running 2 commands",
+  );
+});
+
+test("a live step leaves failed calls out of its counts until it settles", () => {
+  const steps = [call({ kind: "read", path: "/w/a.ts" }, SUCCESS), shell("pnpm test", EXIT)];
+
+  assert.equal(liveLine(steps), "Exploring a.ts");
+  assert.equal(summary(steps)?.verb, "1 file read, 1 failed");
+});
+
+test("a finished step counts each path once", () => {
+  const read = { kind: "read", path: "/w/a.ts" } as const;
+
+  assert.deepEqual(
+    summary([
+      call(read, SUCCESS),
+      call(read, SUCCESS),
+      call({ kind: "list", path: "/w" }, SUCCESS),
+    ]),
+    { kind: "summary", verb: "Explored", detail: "1 directory, 1 file" },
+  );
+});
+
+test("a live step without calls names what the agent is doing", () => {
+  assert.deepEqual(line([thought(true)], true), { kind: "status", status: "thinking" });
+  assert.deepEqual(line([thought(false)], true), { kind: "status", status: "planning" });
+  assert.equal(liveStatusLabel("thinking", 20_000), "Thinking");
 });
 
 test("a live step with nothing in flight plans after 200 ms and slows at 15 s", () => {
-  const settled = [shell("pnpm test", SUCCESS), thought(false)];
-
-  assert.equal(liveLabel(settled, 0), undefined);
-  assert.equal(liveLabel(settled, 199), undefined);
-  assert.equal(liveLabel(settled, 200), "Planning next moves");
-  assert.equal(liveLabel(settled, 14_999), "Planning next moves");
-  assert.equal(liveLabel(settled, 15_000), "Taking longer than expected…");
-});
-
-test("a running step lists only the calls still open", () => {
-  const presentation = durableStepGroupPresentation({
-    messages: [shell("pnpm test", SUCCESS), shell("pnpm lint", "running")],
-    durationMs: 0,
-    added: 0,
-    removed: 0,
-    running: true,
-  });
-
-  assert.equal(presentation.active, true);
-
-  if (presentation.active) {
-    assert.deepEqual(presentation.runningClasses, [{ kind: "shell", command: "pnpm lint" }]);
-  }
+  assert.equal(liveStatusLabel("planning", 0), undefined);
+  assert.equal(liveStatusLabel("planning", 199), undefined);
+  assert.equal(liveStatusLabel("planning", 200), "Planning next moves");
+  assert.equal(liveStatusLabel("planning", 14_999), "Planning next moves");
+  assert.equal(liveStatusLabel("planning", 15_000), "Taking longer than expected…");
 });

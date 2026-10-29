@@ -1,39 +1,12 @@
-import type { ToolClass } from "@nyte-ai/sdk";
 import {
   formatWholeDuration,
   showsThinking,
   showsTool,
   toolStatus,
-  toolTitle,
-  toolVerbs,
 } from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { reasoningHeading } from "./reasoning-heading.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
-
-interface StepGroupPresentationInput {
-  readonly messages: readonly StepMessage[];
-  readonly durationMs: number;
-  readonly added: number;
-  readonly removed: number;
-  readonly running: boolean;
-}
-
-type DurableStepGroupPresentation =
-  | {
-      readonly active: false;
-      readonly summary: {
-        readonly verb: string;
-        readonly detail: string | undefined;
-        readonly added: number;
-        readonly removed: number;
-      };
-    }
-  | {
-      readonly active: true;
-      readonly runningClasses: readonly ToolClass[];
-      readonly added: number;
-      readonly removed: number;
-    };
 
 export const PLANNING_DELAY_MS = 200;
 
@@ -41,94 +14,88 @@ export const SLOW_PLANNING_MS = 15_000;
 
 export const PLANNING_LABEL = "Planning next moves";
 
-export type LiveStatus =
-  | { readonly kind: "tool"; readonly toolClass: ToolClass }
-  | { readonly kind: "thinking" }
-  | { readonly kind: "planning" };
+export type LiveStatus = "thinking" | "planning";
 
-function activityLabel(toolClass: ToolClass): string {
-  switch (toolClass.kind) {
-    case "read":
-    case "list":
-      return "Exploring";
-    case "shell":
-      return "Running";
-    case "edit":
-      return "Editing";
-    case "delegate":
-      return toolVerbs(toolClass).running;
-    case "custom":
-      return toolTitle(toolClass, "running");
-    default: {
-      const _exhaustive: never = toolClass;
+type StepGroupLine =
+  | { readonly kind: "summary"; readonly verb: string; readonly detail: string | undefined }
+  | { readonly kind: "status"; readonly status: LiveStatus };
 
-      return _exhaustive;
-    }
+type Lead = "edit" | "explore" | "run";
+
+const LEAD_VERBS = {
+  edit: { live: "Editing", past: "Edited" },
+  explore: { live: "Exploring", past: "Explored" },
+  run: { live: "Running", past: "Ran" },
+} as const satisfies Record<Lead, Record<"live" | "past", string>>;
+
+interface Work {
+  readonly changed: ReadonlySet<string>;
+  readonly read: ReadonlySet<string>;
+  readonly listed: ReadonlySet<string>;
+  readonly commands: number;
+  readonly tools: number;
+}
+
+/** A live group without a tool call has no work to count, so its line names what the agent is doing instead. */
+export function showsLiveStatus(messages: readonly StepMessage[]): boolean {
+  return !messages.some(showsTool);
+}
+
+export function stepGroupLine({
+  messages,
+  durationMs,
+  running,
+}: {
+  readonly messages: readonly StepMessage[];
+  readonly durationMs: number;
+  readonly running: boolean;
+}): StepGroupLine {
+  if (!running) return { kind: "summary", ...settledSummary(messages, durationMs) };
+
+  if (showsLiveStatus(messages)) {
+    const newest = messages.at(-1);
+
+    return {
+      kind: "status",
+      status:
+        newest !== undefined && showsThinking(newest) && newest.status.kind === "live"
+          ? "thinking"
+          : "planning",
+    };
   }
+
+  const calls = messages.filter(showsTool);
+  const lead = leadingWork(calls);
+
+  const detail = workDetail(
+    tallyWork(calls.filter((call) => !["failure", "stopped"].includes(toolStatus(call).tone))),
+    lead,
+  );
+
+  return {
+    kind: "summary",
+    verb: LEAD_VERBS[lead].live,
+    detail: detail === "" ? undefined : detail,
+  };
 }
 
-function basename(path: string): string {
-  return path.split(/[\\/]/u).at(-1) ?? path;
-}
+export function liveStatusLabel(status: LiveStatus, planningMs: number): string | undefined {
+  if (status === "thinking") return "Thinking";
 
-function count(n: number, noun: string, plural = `${noun}s`): string {
-  return `${String(n)} ${n === 1 ? noun : plural}`;
+  if (planningMs < PLANNING_DELAY_MS) return undefined;
+
+  return planningMs < SLOW_PLANNING_MS ? PLANNING_LABEL : "Taking longer than expected…";
 }
 
 function settledSummary(messages: readonly StepMessage[], durationMs: number) {
-  const changed = new Set<string>();
-  const read = new Set<string>();
-  const listed = new Set<string>();
-  let commands = 0;
-  let tools = 0;
-  let failed = 0;
-  let stopped = 0;
+  const calls = messages.filter(showsTool);
+  const tones = calls.map((call) => toolStatus(call).tone);
+  const done = calls.filter((_, index) => tones[index] === "success");
+  const failed = tones.filter((tone) => tone === "failure").length;
+  const stopped = tones.filter((tone) => tone === "stopped").length;
+  const work = tallyWork(done);
 
-  for (const message of messages) {
-    if (!showsTool(message)) continue;
-    const { tone } = toolStatus(message);
-    const toolClass = message.state.class;
-
-    if (tone === "failure") {
-      failed += 1;
-      continue;
-    }
-
-    if (tone === "stopped") {
-      stopped += 1;
-      continue;
-    }
-
-    if (tone !== "success") continue;
-
-    switch (toolClass.kind) {
-      case "edit":
-        changed.add(toolClass.path);
-        break;
-      case "read":
-        read.add(toolClass.path);
-        break;
-      case "list":
-        listed.add(toolClass.path);
-        break;
-      case "shell":
-        commands += 1;
-        break;
-      case "delegate":
-      case "custom":
-        tools += 1;
-        break;
-      default: {
-        const _exhaustive: never = toolClass;
-
-        return _exhaustive;
-      }
-    }
-  }
-
-  const did = changed.size + read.size + listed.size + commands + tools;
-
-  if (did + failed + stopped === 0) {
+  if (done.length + failed + stopped === 0) {
     const { title } = reasoningHeading(
       messages
         .map((message) => (showsThinking(message) ? message.state.markdown : ""))
@@ -147,7 +114,7 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
 
   if (stopped > 0) trouble.push(["stopped", stopped]);
 
-  if (did === 0) {
+  if (done.length === 0) {
     return {
       verb: trouble
         .map(([what, n], index) => `${index === 0 ? count(n, "call") : String(n)} ${what}`)
@@ -158,11 +125,13 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
 
   if (trouble.length > 0) {
     const landed = [
-      changed.size > 0 ? `${count(changed.size, "file")} edited` : undefined,
-      read.size > 0 ? `${count(read.size, "file")} read` : undefined,
-      listed.size > 0 ? `${count(listed.size, "directory", "directories")} listed` : undefined,
-      commands > 0 ? `${count(commands, "command")} succeeded` : undefined,
-      tools > 0 ? `${count(tools, "tool")} succeeded` : undefined,
+      work.changed.size > 0 ? `${count(work.changed.size, "file")} edited` : undefined,
+      work.read.size > 0 ? `${count(work.read.size, "file")} read` : undefined,
+      work.listed.size > 0
+        ? `${count(work.listed.size, "directory", "directories")} listed`
+        : undefined,
+      work.commands > 0 ? `${count(work.commands, "command")} succeeded` : undefined,
+      work.tools > 0 ? `${count(work.tools, "tool")} succeeded` : undefined,
     ].filter((text) => text !== undefined);
 
     return {
@@ -171,116 +140,79 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
     };
   }
 
-  const explored = read.size + listed.size > 0;
-  const verb = changed.size > 0 ? "Edited" : explored ? "Explored" : "Ran";
-  const details: string[] = [];
+  const lead = leadingWork(done);
 
-  if (changed.size > 0) {
-    const [only] = changed;
+  return { verb: LEAD_VERBS[lead].past, detail: workDetail(work, lead) };
+}
 
-    details.push(
-      changed.size === 1 && only !== undefined ? basename(only) : count(changed.size, "file"),
+/** The work a group's verb names: any edit outranks exploring, which outranks running, so the verb only climbs as calls arrive. */
+function leadingWork(calls: readonly ToolMessage[]): Lead {
+  const kinds = new Set(calls.map((call) => call.state.class.kind));
+
+  if (kinds.has("edit")) return "edit";
+
+  return kinds.has("read") || kinds.has("list") ? "explore" : "run";
+}
+
+/** Counts unique paths, not calls: two reads of one file read one file. */
+function tallyWork(calls: readonly ToolMessage[]): Work {
+  const paths = (kind: "edit" | "read" | "list") =>
+    new Set(
+      calls.flatMap((call) => (call.state.class.kind === kind ? [call.state.class.path] : [])),
     );
-  }
 
-  if (explored) {
-    const [only] = read;
+  return {
+    changed: paths("edit"),
+    read: paths("read"),
+    listed: paths("list"),
+    commands: calls.filter((call) => call.state.class.kind === "shell").length,
+    tools: calls.filter((call) => ["delegate", "custom"].includes(call.state.class.kind)).length,
+  };
+}
 
-    const files =
-      read.size === 1 && listed.size === 0 && only !== undefined
-        ? basename(only)
-        : read.size > 0
-          ? count(read.size, "file")
-          : undefined;
+function workDetail(work: Work, lead: Lead): string {
+  const [edited] = work.changed;
+  const [read] = work.read;
 
-    const directories =
-      listed.size > 0 ? count(listed.size, "directory", "directories") : undefined;
+  const changed =
+    work.changed.size === 0
+      ? undefined
+      : work.changed.size === 1 && edited !== undefined
+        ? basename(edited)
+        : count(work.changed.size, "file");
 
-    const first = [directories, files].filter((text) => text !== undefined).join(", ");
+  const files =
+    work.read.size === 1 && work.listed.size === 0 && read !== undefined
+      ? basename(read)
+      : work.read.size > 0
+        ? count(work.read.size, "file")
+        : undefined;
 
-    details.push(verb === "Edited" ? `explored ${first}` : first);
-  }
+  const directories =
+    work.listed.size > 0 ? count(work.listed.size, "directory", "directories") : undefined;
+
+  const explored = [directories, files].filter((text) => text !== undefined).join(", ");
 
   const ran = [
-    commands > 0 ? count(commands, "command") : undefined,
-    tools > 0 ? count(tools, "tool") : undefined,
+    work.commands > 0 ? count(work.commands, "command") : undefined,
+    work.tools > 0 ? count(work.tools, "tool") : undefined,
   ]
     .filter((text) => text !== undefined)
     .join(", ");
 
-  if (ran !== "") details.push(verb === "Ran" ? ran : `ran ${ran}`);
-
-  return { verb, detail: details.join(", ") };
+  return [
+    changed,
+    explored === "" ? undefined : lead === "explore" ? explored : `explored ${explored}`,
+    ran === "" ? undefined : lead === "run" ? ran : `ran ${ran}`,
+  ]
+    .filter((text) => text !== undefined)
+    .join(", ");
 }
 
-export function durableStepGroupPresentation({
-  messages,
-  durationMs,
-  added,
-  removed,
-  running,
-}: StepGroupPresentationInput): DurableStepGroupPresentation {
-  const runningClasses: ToolClass[] = [];
-
-  for (const message of messages) {
-    if (!showsTool(message)) continue;
-
-    if (toolStatus(message).tense === "running") runningClasses.push(message.state.class);
-  }
-
-  if (!running) {
-    return {
-      active: false,
-      summary: { ...settledSummary(messages, durationMs), added, removed },
-    };
-  }
-
-  return { active: true, runningClasses, added, removed };
+function basename(path: string): string {
+  return path.split(/[\\/]/u).at(-1) ?? path;
 }
 
-export function liveStepGroupPresentation({
-  durable,
-  messages,
-}: {
-  readonly durable: DurableStepGroupPresentation;
-  readonly messages: readonly StepMessage[];
-}):
-  | Extract<DurableStepGroupPresentation, { readonly active: false }>
-  | {
-      readonly active: true;
-      readonly status: LiveStatus;
-      readonly summary: { readonly added: number; readonly removed: number };
-    } {
-  if (!durable.active) return durable;
-  const toolClass = durable.runningClasses.at(-1);
-  const newest = messages.at(-1);
-
-  return {
-    active: true,
-    status:
-      toolClass !== undefined
-        ? { kind: "tool", toolClass }
-        : newest !== undefined && showsThinking(newest) && newest.status.kind === "live"
-          ? { kind: "thinking" }
-          : { kind: "planning" },
-    summary: { added: durable.added, removed: durable.removed },
-  };
-}
-
-export function liveStatusLabel(status: LiveStatus, planningMs: number): string | undefined {
-  switch (status.kind) {
-    case "tool":
-      return activityLabel(status.toolClass);
-    case "thinking":
-      return "Thinking";
-    case "planning":
-      if (planningMs < PLANNING_DELAY_MS) return undefined;
-
-      return planningMs < SLOW_PLANNING_MS ? PLANNING_LABEL : "Taking longer than expected…";
-    default: {
-      const _exhaustive: never = status;
-
-      return _exhaustive;
-    }
-  }
+function count(n: number, noun: string, plural = `${noun}s`): string {
+  return `${String(n)} ${n === 1 ? noun : plural}`;
 }

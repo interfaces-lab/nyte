@@ -1,5 +1,10 @@
 import type { Message } from "@nyte-ai/sdk";
-import { showsText, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
+import {
+  formatWholeDuration,
+  showsText,
+  showsThinking,
+  showsTool,
+} from "@nyte-ai/plugin/client/presentation";
 import type {
   TextMessage,
   ThinkingMessage,
@@ -9,7 +14,7 @@ import { messageParts, referenceLabel } from "./message-references.ts";
 
 export type StepMessage = ThinkingMessage | ToolMessage;
 
-type TranscriptDisplayPart =
+export type TranscriptDisplayPart =
   | { readonly kind: "part"; readonly message: Message }
   | { readonly kind: "step"; readonly messages: readonly StepMessage[] }
   | { readonly kind: "agents"; readonly messages: readonly ToolMessage[] }
@@ -114,4 +119,28 @@ export function userDisplayText(source: string): string {
   return messageParts(source.replaceAll(/\n{3,}/gu, "\n\n"), { complete: true })
     .map((part) => (part.kind === "text" ? part.text : referenceLabel(part.reference)))
     .join("");
+}
+
+/** A finished turn's wall-clock work, rounded up to the second: "Worked for 2m 47s". */
+export function workedFor(ms: number): string {
+  return `Worked for ${formatWholeDuration(Math.ceil(ms / 1000) * 1000)}`;
+}
+
+/** How long ago a reply was sent: "Just now" under a minute, then "4m ago" through "1y ago". */
+export function replyAge(at: number, now: number): string {
+  const minutes = Math.floor(Math.max(0, now - at) / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (minutes < 1) return "Just now";
+
+  if (hours < 1) return `${String(minutes)}m ago`;
+
+  if (days < 1) return `${String(hours)}h ago`;
+
+  if (days < 30) return `${String(days)}d ago`;
+
+  return days < 365
+    ? `${String(Math.floor(days / 30))}mo ago`
+    : `${String(Math.floor(days / 365))}y ago`;
 }

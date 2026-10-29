@@ -37,7 +37,7 @@ function PlanningLine(): ReactElement {
   const planning = useWatchSelect(store, (state) => state.value?.activity.kind === "idle");
   const newest = useWatchSelect(store, (state) => state.value?.messages.at(-1)?.id);
   const planningMs = usePlanningTime(planning, newest);
-  const label = planning ? liveStatusLabel({ kind: "planning" }, planningMs) : undefined;
+  const label = planning ? liveStatusLabel("planning", planningMs) : undefined;
 
   return (
     <div {...props(liveTurnStyles.root)}>
