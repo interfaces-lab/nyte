@@ -80,7 +80,7 @@ test("a held response can be stopped", async ({ desktop }, testInfo) => {
   await expect(stop).toBeVisible();
   await expect(messages(page).getByRole("paragraph").last()).toContainText("Holding");
   await expect(
-    page.getByRole("tab", { selected: true }).getByRole("img", { name: "Running" }),
+    page.getByRole("tab", { selected: true }).getByRole("img", { name: "Working" }),
   ).toBeVisible();
   await stop.click();
   await expect(stop).toBeHidden();

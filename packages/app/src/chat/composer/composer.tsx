@@ -5,7 +5,7 @@ import { createPortal, flushSync } from "react-dom";
 import type { ReactElement, ReactNode } from "react";
 import type { Delivery, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { PLANNING_LABEL, runMark, runStatusLabel } from "@nyte-ai/plugin/client/presentation";
+import { PLANNING_LABEL, runMark, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -40,7 +40,7 @@ import { deliveryChoices, nextToSteer } from "./composer-keys.ts";
 import { deliverEdit, deliverSubmission } from "./composer-send.ts";
 import { contentDraftText } from "../../references/message-references.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
-import { StatusDot } from "../../components/ui.tsx";
+import { TaskMark } from "../../components/task-mark.tsx";
 import { workbenchViewKey } from "../../workbench/paths.ts";
 import { workbench } from "../../workbench/store.ts";
 import { composerStyles } from "./composer.stylex.ts";
@@ -689,10 +689,10 @@ export function Composer({
                 <>
                   {liveRun !== undefined && (
                     <span {...props(text.base, composerStyles.floatingStatus)}>
-                      <StatusDot mark={runMark(status)} />
+                      <TaskMark state={runMark(status)} />
                       <span {...props(composerStyles.floatingStatusText, markerStyles.shimmer)}>
                         {status.kind === "waiting-for-approval"
-                          ? runStatusLabel(status)
+                          ? taskLabel(runMark(status))
                           : (activity ?? PLANNING_LABEL)}
                       </span>
                     </span>

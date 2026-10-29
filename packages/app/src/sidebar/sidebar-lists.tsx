@@ -11,7 +11,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
 import { useState, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { StatusDot } from "../components/ui.tsx";
+import { TaskMark } from "../components/task-mark.tsx";
 import { usePaneControllerSnapshot, usePaneViewStateStore } from "../panes/pane-context.tsx";
 import { activePane } from "../panes/pane-layout.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
@@ -277,14 +277,14 @@ export function ChatsList({
         {inbox.length === 0 && drafts.length === 0 && rows.length > 0 && (
           <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>Nothing new</div>
         )}
-        {shelfPanel("working", "Working", <StatusDot mark="working" />, false)}
+        {shelfPanel("working", "Working", <TaskMark state="working" />, false)}
         {shelfPanel("done", "Done", <Icon name="inbox-checked" size={14} />, true)}
         {shelfPanel("archived", "Archived", <Icon name="archive" size={14} />, true)}
       </div>
     );
   }
 
-  const live = rows.filter(({ session }) => chatMark(session, rail.chats) !== "idle").length;
+  const live = rows.filter(({ session }) => chatMark(session, rail.chats) !== "done").length;
 
   const page = sessionPage(
     rows.length,

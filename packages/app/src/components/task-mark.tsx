@@ -5,7 +5,8 @@ import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
+import { taskLabel } from "@nyte-ai/plugin/client/presentation";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 
 const MOON = Array.from({ length: 25 }, (_, index) => ({ x: index % 5, y: Math.floor(index / 5) }))
   .filter(({ x, y }) => (x - 2) ** 2 + (y - 2) ** 2 < 6.25)
@@ -63,20 +64,11 @@ const styles = create({
   statusUnread: { width: glyph.box, height: glyph.box, backgroundColor: "transparent" },
 });
 
-const STATUS_MARK_LABEL = {
-  idle: "Idle",
-  working: "Running",
-  background: "Working in the background",
-  waiting: "Needs attention",
-  retry: "Retrying",
-  failed: "Failed",
-} as const satisfies Readonly<Record<SessionMark, string>>;
-
-function statusMarkStyle(mark: SessionMark) {
-  switch (mark) {
+function statusMarkStyle(state: TaskState) {
+  switch (state) {
     case "working":
       return [intent.primary, styles.statusSpinner];
-    case "retry":
+    case "retrying":
       return [intent.warning, styles.statusSpinner];
     case "waiting":
       return [intent.warning, styles.statusWaiting];
@@ -84,50 +76,51 @@ function statusMarkStyle(mark: SessionMark) {
       return styles.statusBackground;
     case "failed":
       return [intent.danger, styles.statusFailed];
-    case "idle":
+    case "done":
       return styles.statusIdle;
     default: {
-      const _exhaustive: never = mark;
+      const _exhaustive: never = state;
 
       return _exhaustive;
     }
   }
 }
 
-export function StatusDot({
-  mark,
+/**
+ * The one mark for where a task stands, in every list, tab, tray and transcript row: a chat, a
+ * subagent or a job. A done task draws nothing unless its reply is unread; screen readers hear
+ * the task's word.
+ */
+export function TaskMark({
+  state,
   unread = false,
 }: {
-  mark: SessionMark;
-  unread?: boolean;
+  readonly state: TaskState;
+  readonly unread?: boolean;
 }): ReactElement | null {
-  if (mark === "idle" && !unread) return null;
+  if (state === "done" && !unread) return null;
 
   return (
     <span
       role="img"
-      aria-label={mark === "idle" ? "Completed, unread" : STATUS_MARK_LABEL[mark]}
-      {...props(styles.statusDot, mark === "idle" ? styles.statusUnread : statusMarkStyle(mark))}
+      aria-label={state === "done" ? "Unread" : taskLabel(state)}
+      {...props(styles.statusDot, state === "done" ? styles.statusUnread : statusMarkStyle(state))}
     >
-      {mark === "idle" && <UnreadMark />}
-      {(mark === "working" || mark === "retry") && <Spinner />}
-      {mark === "waiting" && <Icon name="bubble-question" size={14} variant="filled" />}
-      {mark === "background" && <Icon name="layers" size={14} />}
-      {mark === "failed" && <Icon name="warning" size={14} variant="filled" />}
+      {state === "done" && (
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 15 15"
+          fill="currentColor"
+          shapeRendering="crispEdges"
+          {...props(surfaceTheme.blue, styles.unreadMark)}
+        >
+          <path d={MOON} />
+        </svg>
+      )}
+      {(state === "working" || state === "retrying") && <Spinner />}
+      {state === "waiting" && <Icon name="bubble-question" size={14} variant="filled" />}
+      {state === "background" && <Icon name="layers" size={14} />}
+      {state === "failed" && <Icon name="warning" size={14} variant="filled" />}
     </span>
-  );
-}
-
-export function UnreadMark(): ReactElement {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 15 15"
-      fill="currentColor"
-      shapeRendering="crispEdges"
-      {...props(surfaceTheme.blue, styles.unreadMark)}
-    >
-      <path d={MOON} />
-    </svg>
   );
 }

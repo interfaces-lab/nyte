@@ -1,6 +1,6 @@
 import type { Failure } from "@nyte-ai/schema";
 import type { Plugin } from "@nyte-ai/plugin/client";
-import { endedStatus, sessionTitle } from "./presentation.ts";
+import { endedStatus, sessionTitle, taskLabel } from "./presentation.ts";
 
 /**
  * Tells the user when a run ends in a session this client can see but nobody
@@ -24,9 +24,13 @@ export default {
       const status = endedStatus(event.end);
 
       if (status.kind === "completed")
-        api.ui.notify({ title, message: "Run finished", level: "info" });
+        api.ui.notify({ title, message: taskLabel("done"), level: "info" });
       else if (status.kind === "failed")
-        api.ui.notify({ title, message: `Run failed: ${line(status.failure)}`, level: "error" });
+        api.ui.notify({
+          title,
+          message: `${taskLabel("failed")}: ${line(status.failure)}`,
+          level: "error",
+        });
     },
   },
 } satisfies Plugin;

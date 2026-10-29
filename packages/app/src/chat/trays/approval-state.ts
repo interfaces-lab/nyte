@@ -2,9 +2,7 @@ import { openApprovals } from "@nyte-ai/plugin/approvals/schema";
 import type { ApprovalDecision, OpenApproval } from "@nyte-ai/plugin/approvals/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import { useMutation } from "@tanstack/react-query";
-// oxlint-disable-next-line no-restricted-imports -- the child-session subscription must keep its identity; the compiler drops its memo because the waiting list is read after useSyncExternalStore
-import { useMemo, useSyncExternalStore } from "react";
-import { useChildSessions } from "../../data/sessions.ts";
+import { useWaitingDescendants } from "../../chats/index.ts";
 import { connection } from "../../data/connection.ts";
 import { sessionWatch } from "../../data/watches.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
@@ -15,67 +13,21 @@ export interface ApprovalRequest {
   readonly origin: string | undefined;
 }
 
-function watchChildViews(stores: readonly ReturnType<typeof sessionWatch>[]) {
-  let views = stores.map((store) => store.value);
-
-  return {
-    subscribe: (notify: () => void) => {
-      const leave = stores.map((store) => store.subscribe(notify));
-
-      return () => {
-        for (const unsubscribe of leave) unsubscribe();
-      };
-    },
-    snapshot: () => {
-      const next = stores.map((store) => store.value);
-
-      if (next.some((view, index) => view !== views[index])) views = next;
-
-      return views;
-    },
-  };
-}
-
+/** The approval the chat's composer answers: its own first, else the first a chat below it at any depth waits on. */
 export function useApprovalRequest(sessionId: SessionId): ApprovalRequest | undefined {
   const parts = useWatchSelect(sessionWatch(sessionId), (state) => state.value?.parts);
-  const children = useChildSessions(sessionId);
-
-  const waiting = useMemo(
-    () =>
-      (children.data ?? []).flatMap((child) => {
-        const execution = child.heads[0]?.execution;
-
-        return execution?.kind === "waiting" && execution.on.kind === "part"
-          ? [{ child, store: sessionWatch(child.id) }]
-          : [];
-      }),
-    [children.data],
-  );
-
-  const observation = useMemo(() => watchChildViews(waiting.map(({ store }) => store)), [waiting]);
-
-  const childViews = useSyncExternalStore(
-    observation.subscribe,
-    observation.snapshot,
-    observation.snapshot,
-  );
-
+  const waiting = useWaitingDescendants(sessionId);
   const [own] = openApprovals({ parts: parts ?? [] });
 
   if (own !== undefined) return { sessionId, approval: own, origin: undefined };
 
-  for (const [index, waiter] of waiting.entries()) {
-    const [first] = openApprovals(childViews[index]);
+  return waiting.flatMap((entry) => {
+    const [first] = openApprovals(entry.view);
 
-    if (first !== undefined)
-      return {
-        sessionId: waiter.child.id,
-        approval: first,
-        origin: waiter.child.name ?? "a subagent",
-      };
-  }
-
-  return undefined;
+    return first === undefined
+      ? []
+      : [{ sessionId: entry.chat.id, approval: first, origin: entry.chat.title }];
+  })[0];
 }
 
 export function useAnswerApproval() {

@@ -9,10 +9,12 @@ import { asId } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { SubagentCitation } from "./subagent-call.tsx";
-import { SubagentSessionsProvider } from "./subagent-sessions.ts";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import { listedChildren, sessionRow } from "../../../test/view-fixtures.ts";
+import { sessionRow } from "../../../test/view-fixtures.ts";
+import { installConnection } from "../../data/connection.ts";
+import { sessionsWatch } from "../../data/watches.ts";
+import { scriptedConnection } from "../../../test/scripted-connection.ts";
 
 declare global {
   interface Window {
@@ -49,17 +51,15 @@ const child = sessionRow("fixer", {
   workspace: WORKTREE,
 });
 
+installConnection(scriptedConnection({ sessions: [child] }).connection);
+
 function Stage(): ReactElement {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-        <SubagentSessionsProvider
-          value={{ children: listedChildren([child]), open: () => undefined }}
-        >
-          <p>
-            The login fix runs in <SubagentCitation session={child.id} label="Fix login" />.
-          </p>
-        </SubagentSessionsProvider>
+        <p>
+          The login fix runs in <SubagentCitation session={child.id} label="Fix login" />.
+        </p>
       </TooltipProvider>
     </QueryClientProvider>
   );
@@ -117,6 +117,9 @@ export async function run(): Promise<string> {
     }),
   ]);
 
+  const listing = sessionsWatch("all").subscribe(() => undefined);
+  await sessionsWatch("all").first();
+
   const root = createRoot(stage, {
     onUncaughtError: (error) => {
       renderFailure = error;
@@ -152,6 +155,7 @@ export async function run(): Promise<string> {
   applyDisplayMode("light");
 
   flushSync(() => root.unmount());
+  listing();
   stage.remove();
 
   return failures.length === 0 ? "passed" : failures.join("\n");

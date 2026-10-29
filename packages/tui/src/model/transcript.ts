@@ -1,6 +1,6 @@
 import type { Failure, Message, SessionView, TurnId, TurnInfo } from "@nyte-ai/sdk";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
-import { runStatus, runStatusLabel, showsTool } from "@nyte-ai/plugin/client/presentation";
+import { runMark, runStatus, showsTool, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { MIN_REPORTED_DURATION_MS } from "../lib/constants.ts";
 import { promptMessages, pendingReports } from "../lib/view-helpers.ts";
@@ -352,7 +352,7 @@ export function turnStatus(
     case "waiting":
       return info.state.on.kind === "part" || openQuestions(view).length > 0
         ? { kind: "waiting", question: true }
-        : { kind: "working", activity: runStatusLabel(runStatus(execution)), startedAt };
+        : { kind: "working", activity: taskLabel(runMark(runStatus(execution))), startedAt };
     case "working": {
       if (info.run === null)
         return blocks.some((message) => message.kind === "user") ? { kind: "unanswered" } : null;
@@ -371,7 +371,8 @@ export function turnStatus(
 
       return {
         kind: "working",
-        activity: info.state.activity ?? (streaming ? runStatusLabel(runStatus(execution)) : null),
+        activity:
+          info.state.activity ?? (streaming ? taskLabel(runMark(runStatus(execution))) : null),
         startedAt,
       };
     }

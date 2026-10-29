@@ -52,3 +52,76 @@ test("a new chat shows the reply and takes its title from the provider", async (
   await expect(page.getByRole("form", { name: "Message", exact: true })).toBeVisible();
   expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
 });
+
+test("without a tab strip a child chat opens in the pane and the title bar's back control returns", async ({
+  page,
+}, testInfo) => {
+  const errors = collectErrors(page);
+  await page.goto(pairingLink(E2E_TOKEN));
+  await page.getByRole("button", { name: /New Chat/u }).click();
+  const composer = page.getByRole("combobox", { name: "Message" });
+  await composer.fill("Start an agent.");
+  await composer.press("Enter");
+
+  const pane = page.getByRole("region", { name: "Active chat pane" });
+  const banner = page.getByRole("banner");
+  const card = pane.getByRole("button", { name: /^Map the core/u }).first();
+  const back = banner.getByRole("link", { name: "Back to parent chat" });
+  await expect(back, "a root chat has no back control").toHaveCount(0);
+  await card.click();
+  await expect(
+    pane
+      .getByRole("region", { name: "Messages" })
+      .getByText("Echo: Trace part 1.", { exact: true }),
+  ).toBeVisible();
+  await expect(back).toBeVisible();
+
+  const title = banner.getByText("Map the core", { exact: true });
+  const actions = banner.getByRole("button", { name: "Chat actions" });
+
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+
+    const centres = await back.evaluate((link, label) => {
+      const bar = link.closest("header");
+      const text = [...(bar?.querySelectorAll("span") ?? [])].find(
+        (span) => span.textContent === label,
+      );
+      const range = document.createRange();
+
+      if (text !== undefined) range.selectNodeContents(text);
+      const centre = (box: DOMRect | undefined): number =>
+        box === undefined ? Number.NaN : box.top + box.height / 2;
+
+      return {
+        bar: centre(bar?.getBoundingClientRect()),
+        button: centre(link.getBoundingClientRect()),
+        title: centre(text?.getBoundingClientRect()),
+        glyphs: centre(range.getBoundingClientRect()),
+      };
+    }, "Map the core");
+
+    await testInfo.attach(`title-bar-centres-${scheme}`, {
+      body: JSON.stringify(centres),
+      contentType: "application/json",
+    });
+    await banner.screenshot({ path: testInfo.outputPath(`title-bar-child-${scheme}.png`) });
+
+    for (const [name, centre] of Object.entries(centres))
+      expect(
+        Math.abs(centre - centres.bar),
+        `${name} sits on the title bar's centre line`,
+      ).toBeLessThanOrEqual(0.5);
+  }
+
+  await expect(title).toBeVisible();
+  expect(
+    (await back.boundingBox())?.height,
+    "the back control has the title bar's control height",
+  ).toBe((await actions.boundingBox())?.height);
+
+  await back.click();
+  await expect(card, "the back control returns to the parent in the same pane").toBeVisible();
+  await expect(back).toHaveCount(0);
+  expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
+});

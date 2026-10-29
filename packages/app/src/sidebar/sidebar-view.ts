@@ -1,5 +1,5 @@
 import { rowMark } from "@nyte-ai/plugin/client/presentation";
-import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type { ChatDirectory } from "../chats/index.ts";
 import {
@@ -37,11 +37,11 @@ export const COLLAPSED_SESSION_LIMIT = 5;
 
 const SESSION_PAGE_SIZE = 8;
 
-/** The mark a listed chat draws; a chat the directory doesn't have yet draws none. */
-export function chatMark(session: SessionInfo, chats: ChatDirectory): SessionMark {
+/** The state a listed chat draws; a chat the directory doesn't have yet is done. */
+export function chatMark(session: SessionInfo, chats: ChatDirectory): TaskState {
   const chat = chats.get(session.id);
 
-  return chat === undefined ? "idle" : rowMark(chat.status, chat.background);
+  return chat === undefined ? "done" : rowMark(chat.status, chat.background);
 }
 
 /** A chat's status in the sidebar; `unread` is the window's answer, which leaves out chats the user is looking at. */
@@ -56,11 +56,11 @@ function deriveSessionStatus(
     case "waiting":
     case "failed":
       return "needs-attention";
-    case "retry":
+    case "retrying":
     case "working":
       return "working";
     case "background":
-    case "idle":
+    case "done":
       return unread.has(session.id) ? "unread" : "done";
     default: {
       const _exhaustive: never = mark;
@@ -74,7 +74,7 @@ function deriveSessionStatus(
 export function sessionIsRunning(session: SessionInfo, chats: ChatDirectory): boolean {
   const mark = chatMark(session, chats);
 
-  return mark === "working" || mark === "retry" || mark === "waiting";
+  return mark === "working" || mark === "retrying" || mark === "waiting";
 }
 
 export interface ShelfHold {
@@ -135,11 +135,11 @@ function stageRank(session: SessionInfo, chats: ChatDirectory): number {
     case "waiting":
     case "failed":
       return 0;
-    case "retry":
+    case "retrying":
     case "working":
       return 1;
     case "background":
-    case "idle":
+    case "done":
       return 2;
     default: {
       const _exhaustive: never = mark;

@@ -1,4 +1,4 @@
-import { asId, asSeq, foldJobChange, SdkError } from "@nyte-ai/schema";
+import { asId, asSeq, foldJobChange, jobTaskState, SdkError } from "@nyte-ai/schema";
 import type {
   BackgroundItem,
   CallId,
@@ -814,18 +814,12 @@ function createOutput(shell: { orphaned(): void } | null): JobOutput {
 
 function createJobBackgroundItem(entry: JobEntry): BackgroundItem | null {
   if (entry.owner === null) return null;
-  const state = entry.view.state;
 
   return {
     kind: "job",
     id: entry.view.id,
     title: entry.view.title,
-    state:
-      state.kind === "running"
-        ? "working"
-        : state.kind === "exited" && state.code === 0
-          ? "done"
-          : "failed",
+    state: jobTaskState(entry.view.state),
     startedBy: entry.owner.startedBy,
   };
 }

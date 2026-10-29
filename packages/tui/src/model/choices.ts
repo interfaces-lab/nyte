@@ -1,5 +1,5 @@
 import type { SessionInfo } from "@nyte-ai/sdk";
-import { mainHead, rowLabel, rowMark, runStatus } from "@nyte-ai/plugin/client/presentation";
+import { mainHead, rowMark, runStatus, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import { CHAT_KEYBINDS, GLYPHS } from "../lib/constants.ts";
 import type { ChatCommand } from "../lib/constants.ts";
 import { shortId } from "../lib/format.ts";
@@ -8,7 +8,7 @@ import {
   taskActivity,
   taskAgent,
   taskConfiguration,
-  taskLabel,
+  taskTitle,
   taskStatus,
   taskTiming,
   unfinishedTask,
@@ -82,7 +82,7 @@ function taskChoices(state: State, section: "active" | "finished"): readonly Cho
       .map((task) => {
         return choice(
           task.id,
-          `${taskAgent(task)} · ${taskLabel(task)}`,
+          `${taskAgent(task)} · ${taskTitle(task)}`,
           task.kind === "agent" ? taskConfiguration(task) : "",
           {
             timing: taskTiming(task),
@@ -282,10 +282,10 @@ function sessionStanding(session: SessionInfo): Partial<Pick<Choice, "status" | 
   const status = runStatus(head?.execution);
   const background = head?.background ?? { working: 0, waiting: 0 };
   const mark = rowMark(status, background);
-  const text = rowLabel(status, background);
+  const text = taskLabel(mark);
 
   switch (mark) {
-    case "idle":
+    case "done":
       return {};
     case "working":
       return { mark: { glyph: GLYPHS.bullet, tone: "running" }, status: { text, tone: "muted" } };
@@ -294,7 +294,7 @@ function sessionStanding(session: SessionInfo): Partial<Pick<Choice, "status" | 
         mark: { glyph: GLYPHS.background, tone: "running" },
         status: { text, tone: "muted" },
       };
-    case "retry":
+    case "retrying":
     case "waiting":
       return { mark: { glyph: GLYPHS.bullet, tone: "warning" }, status: { text, tone: "warning" } };
     case "failed":

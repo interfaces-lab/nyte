@@ -13,7 +13,7 @@ import { props } from "@stylexjs/stylex";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { clientActionKeys, clientActions } from "@nyte-ai/app/contract/client-actions.ts";
 import { sidebarStyles } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
-import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
+import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -31,11 +31,11 @@ export function StatusGlyph({ status }: { readonly status: Status | null }): Rea
     case null:
       return null;
     case "needs-you":
-      return <StatusDot mark="waiting" />;
+      return <TaskMark state="waiting" />;
     case "failing":
-      return <StatusDot mark="failed" />;
+      return <TaskMark state="failed" />;
     case "working":
-      return <StatusDot mark="working" />;
+      return <TaskMark state="working" />;
     case "watching":
       return <Icon name="eye" size={14} label="Watching" />;
     case "ready":

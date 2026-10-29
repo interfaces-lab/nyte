@@ -4,7 +4,7 @@ import { projectSessionChoice, sessionConfigurationOptions } from "./session-con
 import type { PendingConfiguration } from "./session-configuration.ts";
 import { groupByWorkspace } from "./session-list.ts";
 import { useRootRows } from "./session-rows.ts";
-import { childrenWatch, sessionWatch } from "./watches.ts";
+import { sessionWatch } from "./watches.ts";
 import { useWatch, useWatchSelect } from "./watch-store.ts";
 import { subagentActivity } from "./session-activity.ts";
 import { useSessionActions } from "./session-actions.ts";
@@ -60,12 +60,6 @@ export function useSessionChoice(sessionId: SessionId) {
   });
 
   return configuration === undefined ? undefined : projectSessionChoice({ configuration }, pending);
-}
-
-export function useChildSessions(sessionId: SessionId | undefined) {
-  const children = useWatch(sessionId === undefined ? undefined : childrenWatch(sessionId)).value;
-
-  return { data: children };
 }
 
 export function useConfigureSession(sessionId: SessionId) {

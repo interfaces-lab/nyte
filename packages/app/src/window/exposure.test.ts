@@ -161,11 +161,10 @@ test("a tray's agent is looked at instead of the chat it covers", () => {
 });
 
 test("each chat has one tray view, and only an open agent covers the chat under it", () => {
-  const listed = reduceTrays(new Map(), {
-    kind: "tray",
-    parent: left,
-    view: { kind: "list", retainedSessionId: undefined, openedOver: [agent] },
-  });
+  const listed = reduceTrays(
+    { views: new Map(), cleared: new Map() },
+    { kind: "tray", parent: left, view: { kind: "list", openedOver: [agent] } },
+  );
 
   const detail = reduceTrays(listed, { kind: "tray", parent: left, view: showsAgent });
 
@@ -175,12 +174,16 @@ test("each chat has one tray view, and only an open agent covers the chat under 
     view: { kind: "terminals", openedOver: [] },
   });
 
-  expect(sorted(expose(view(split, { trays: listed })).looking)).toEqual([left, right]);
-  expect(sorted(expose(view(split, { trays: detail })).looking)).toEqual([agent, right]);
-  expect(detail.get(left), "an agent replaces the list it was opened from").toBe(showsAgent);
-  expect(sorted(expose(view(split, { trays: terminals })).shown)).toEqual([left, right]);
+  const cleared = reduceTrays(terminals, { kind: "clear", parent: left, tasks: [agent] });
+
+  expect(sorted(expose(view(split, { trays: listed.views })).looking)).toEqual([left, right]);
+  expect(sorted(expose(view(split, { trays: detail.views })).looking)).toEqual([agent, right]);
+  expect(detail.views.get(left), "an agent replaces the list it was opened from").toBe(showsAgent);
+  expect(sorted(expose(view(split, { trays: terminals.views })).shown)).toEqual([left, right]);
+  expect(cleared.views, "clearing finished tasks leaves the open tray alone").toBe(terminals.views);
+  expect([...(cleared.cleared.get(left) ?? [])]).toEqual([agent]);
   expect(
-    reduceTrays(terminals, { kind: "tray", parent: left, view: { kind: "closed" } }).size,
+    reduceTrays(terminals, { kind: "tray", parent: left, view: { kind: "closed" } }).views.size,
   ).toBe(0);
 });
 

@@ -18,9 +18,27 @@ const { models } = fakeModels({
     credentials: new InMemoryCredentialStore(),
     modelsStore: new InMemoryModelsStore(),
   }),
-  fallback: (request) => ({
-    content: [{ type: "text", text: `Echo: ${titleReply(request) ?? lastUserText(request)}` }],
-  }),
+  fallback: (request) => {
+    const title = titleReply(request);
+
+    if (
+      title === null &&
+      lastUserText(request) === "Start an agent." &&
+      request.context.messages.at(-1)?.role !== "toolResult"
+    )
+      return {
+        content: [
+          {
+            type: "toolCall",
+            id: "agent-core",
+            name: "create",
+            arguments: { title: "Map the core", prompt: "Trace part 1." },
+          },
+        ],
+      };
+
+    return { content: [{ type: "text", text: `Echo: ${title ?? lastUserText(request)}` }] };
+  },
 });
 
 const appRoot = join(import.meta.dirname, "../../dist");

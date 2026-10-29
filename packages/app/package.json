@@ -13,7 +13,7 @@
     "./chat/transcript/turns.ts": "./src/chat/transcript/turns.ts",
     "./components/connection-list.tsx": "./src/components/connection-list.tsx",
     "./components/file-type-icon.tsx": "./src/components/file-type-icon.tsx",
-    "./components/ui.tsx": "./src/components/ui.tsx",
+    "./components/task-mark.tsx": "./src/components/task-mark.tsx",
     "./data/catalog.ts": "./src/data/catalog.ts",
     "./data/query-client.ts": "./src/data/query-client.ts",
     "./lib/deferred-entries.ts": "./src/lib/deferred-entries.ts",

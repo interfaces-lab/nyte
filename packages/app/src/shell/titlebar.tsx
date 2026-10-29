@@ -68,29 +68,35 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
 
 const SessionLink = createLink(ButtonLink);
 
+/** Back to the chat that started this one, through the window tabs' open, as the child's own links came here. */
+function ParentLink({ parent }: { readonly parent: SessionId }): ReactElement {
+  return (
+    <SessionLink
+      iconOnly
+      icon="arrow-left"
+      aria-label="Back to parent chat"
+      to="/session/$sessionId"
+      params={{ sessionId: parent }}
+      preload={false}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        windowTabs.openChat(parent, "preview");
+      }}
+    />
+  );
+}
+
 function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   const chat = useChat(sessionId);
   const parentSessionId = chat.kind === "ready" ? (chat.chat.parent ?? undefined) : undefined;
   const title = chatTitle(chat.kind === "ready" ? chat.chat : undefined);
-  const panes = usePaneActions();
 
   return (
     <span {...props(titlebarStyles.sessionTitleGroup)}>
       {parentSessionId !== undefined && (
         <span {...props(titlebarStyles.sessionBack)}>
-          <SessionLink
-            iconOnly
-            icon="arrow-left"
-            aria-label="Back to parent chat"
-            to="/session/$sessionId"
-            params={{ sessionId: parentSessionId }}
-            preload={false}
-            onClick={(event) => {
-              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-              event.preventDefault();
-              panes.openSession(parentSessionId);
-            }}
-          />
+          <ParentLink parent={parentSessionId} />
         </span>
       )}
       <SessionLocation sessionId={sessionId} />
@@ -110,6 +116,7 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
       onActivate={(tabId) => windowTabs.dispatch({ kind: "activate-tab", tabId })}
       onClose={(tabId) => windowTabs.dispatch({ kind: "close-tab", tabId })}
       onKeep={(tabId) => windowTabs.dispatch({ kind: "keep-tab", tabId })}
+      onOpenParent={(parent) => windowTabs.openChat(parent, "permanent")}
       onNewTab={() => windowTabs.dispatch({ kind: "new-tab" })}
       onReorder={(tabIds, tabId) => windowTabs.dispatch({ kind: "reorder", tabIds, tabId })}
       onCloseOthers={(tabId) => windowTabs.dispatch({ kind: "close-others", tabId })}

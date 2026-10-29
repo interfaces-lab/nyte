@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { sidebarStyles as rail } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
-import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
+import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { shell, sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -132,7 +132,7 @@ function newTab(state: TabState): TabState {
     kind: "chat",
     title,
     icon: "new-chat",
-    mark: "idle",
+    mark: "done",
     unread: false,
   };
 
@@ -179,7 +179,7 @@ function inboxMark(needs: readonly Need[], design: NeedsDesign): Pick<ShellTab, 
   if (needs.some((need) => need.kind === "failed")) return { mark: "failed", unread: false };
 
   return {
-    mark: "idle",
+    mark: "done",
     unread: design.finished && needs.some((need) => need.kind === "finished"),
   };
 }
@@ -238,7 +238,7 @@ function OpenRow({
       >
         <Row.Leading xstyle={rail.rowIcon}>
           {tab.kind === "chat" ? (
-            <StatusDot mark={tab.mark} unread={tab.unread} />
+            <TaskMark state={tab.mark} unread={tab.unread} />
           ) : (
             <Icon name={tab.icon} size={14} />
           )}
@@ -640,8 +640,8 @@ export function TabsPage(): ReactElement {
                       key={tab.id}
                       icon={tab.icon}
                       leading={
-                        tab.mark !== "idle" || tab.unread ? (
-                          <StatusDot mark={tab.mark} unread={tab.unread} />
+                        tab.mark !== "done" || tab.unread ? (
+                          <TaskMark state={tab.mark} unread={tab.unread} />
                         ) : undefined
                       }
                       meta={tab.id === state.active ? "Current" : undefined}

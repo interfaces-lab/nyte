@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
+import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
@@ -179,8 +179,8 @@ export function Tile({
 export function StatusGlyph({ status }: { readonly status: Status }): ReactElement {
   return (
     <span {...props(styles.glyph)}>
-      {status === "needs-you" && <StatusDot mark="waiting" />}
-      {status === "working" && <StatusDot mark="working" />}
+      {status === "needs-you" && <TaskMark state="waiting" />}
+      {status === "working" && <TaskMark state="working" />}
       {status === "watching" && <Icon name="eye" size={14} label="Watching" />}
       {status === "merged" && <Icon name="merged" size={14} label="Merged" />}
       {status === "done" && <Icon name="checkmark" size={14} label="Done" />}

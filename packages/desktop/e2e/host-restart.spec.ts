@@ -56,7 +56,7 @@ test("a killed host restarts on the same endpoint, and a message sent during the
     "Echo: Before the crash",
   ]);
   await expect(
-    page.getByRole("tab", { selected: true }).getByRole("img", { name: "Running" }),
+    page.getByRole("tab", { selected: true }).getByRole("img", { name: "Working" }),
   ).toBeHidden();
 
   const killed = await nextHost(application);

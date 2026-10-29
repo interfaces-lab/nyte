@@ -19,7 +19,7 @@ import {
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import type { IconName } from "@nyte-ai/ui/icon";
-import { StatusDot } from "../components/ui.tsx";
+import { TaskMark } from "../components/task-mark.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -222,9 +222,9 @@ export function WorkspaceControls({
                     checked={value.statuses.includes(status)}
                     leading={
                       status === "needs-attention" ? (
-                        <StatusDot mark="waiting" />
+                        <TaskMark state="waiting" />
                       ) : status === "working" ? (
-                        <StatusDot mark="working" />
+                        <TaskMark state="working" />
                       ) : undefined
                     }
                     onCheckedChange={(checked) =>

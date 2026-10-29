@@ -1,43 +1,27 @@
-import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { rowLabel, rowMark } from "@nyte-ai/plugin/client/presentation";
-import type { BackgroundWork, RunStatus, SessionMark } from "@nyte-ai/plugin/client/presentation";
-import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
-import { useChats } from "../../chats/index.ts";
-import type { ChatDirectory } from "../../chats/index.ts";
-import { StatusDot } from "../../components/ui.tsx";
+import { taskEnded, taskLabel } from "@nyte-ai/plugin/client/presentation";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
+import type { SessionId } from "@nyte-ai/sdk";
+import { childTitle, trayTasks } from "../../chats/index.ts";
+import type { ChildTask, Task } from "../../chats/index.ts";
+import { TaskMark } from "../../components/task-mark.tsx";
 import { Button } from "@nyte-ai/ui/button";
-import { useChildSessions } from "../../data/sessions.ts";
 import { connection } from "../../data/connection.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 import { useCommitCount } from "../../lib/work-counts.ts";
+import { windowTabs } from "../../tabs/window-tabs.ts";
+import { chatWindow, useChatWindow } from "../../window/index.ts";
 import type { TrayView } from "../../window/index.ts";
 
 export type SubagentTrayView = Exclude<TrayView, { readonly kind: "terminals" }>;
 
-interface ListedAgent {
-  readonly session: SessionInfo;
-  readonly title: string;
-  readonly status: RunStatus;
-  readonly background: BackgroundWork;
-  readonly mark: SessionMark;
-}
-
 const styles = create({
-  attentionDot: {
-    display: "block",
-    width: 6,
-    height: 6,
-    borderRadius: radius.pill,
-    backgroundColor: role.contentInteractiveTertiary,
-  },
   detail: (height: number) => ({
     minHeight: 0,
     height: `min(70dvh, max(220px, ${String(height)}px))`,
@@ -45,73 +29,66 @@ const styles = create({
   detailBody: { display: "flex", flex: 1, minHeight: 0, overflow: "clip" },
 });
 
-const NO_AGENTS: readonly SessionInfo[] = [];
-
-/** The agents the tray lists: those running or waiting on the user, then failed ones, and the one it holds open. */
-export function listSubagents(
-  agents: readonly SessionInfo[],
-  view: SubagentTrayView,
-  chats: ChatDirectory,
-) {
-  const pinnedId =
-    view.kind === "detail"
-      ? view.sessionId
-      : view.kind === "list"
-        ? view.retainedSessionId
-        : undefined;
-
-  const known = agents.flatMap((session): readonly ListedAgent[] => {
-    const chat = chats.get(session.id);
-
-    return chat === undefined
-      ? []
-      : [
-          {
-            session,
-            title: chat.title,
-            status: chat.status,
-            background: chat.background,
-            mark: rowMark(chat.status, chat.background),
-          },
-        ];
-  });
-
-  const shown = known
-    .filter((agent) => agent.mark !== "idle")
-    .toSorted(
-      (left, right) =>
-        Number(left.mark !== "waiting") - Number(right.mark !== "waiting") ||
-        right.session.lastActivityAt - left.session.lastActivityAt ||
-        left.session.id.localeCompare(right.session.id),
-    );
-
-  const active = shown.filter((agent) => agent.mark !== "failed");
-
-  const settled = known.find((agent) => agent.session.id === pinnedId && agent.mark === "idle");
-
-  return { active, listed: settled === undefined ? shown : [...shown, settled] };
+/** The agents a chat's tray lists, by the one tray rule. */
+export function listAgents(
+  tasks: readonly Task[],
+  cleared: ReadonlySet<string>,
+): readonly ChildTask[] {
+  return trayTasks(
+    tasks.filter((task): task is ChildTask => task.kind === "child"),
+    cleared,
+  );
 }
 
+/** The one mark a pill draws for what it lists: work still going, then work waiting on the user, then a failure. */
+export function pillState(tasks: readonly Task[]): TaskState {
+  const states = tasks.map((task) => task.state);
+
+  if (states.some((state) => state === "working" || state === "retrying" || state === "background"))
+    return "working";
+
+  if (states.includes("waiting")) return "waiting";
+
+  return states.includes("failed") ? "failed" : "done";
+}
+
+/** How a pill counts what it lists: those still going, then those ended, by how they ended. */
+export function pillCounts(tasks: readonly Task[]): string {
+  const going = tasks.filter((task) => !taskEnded(task.state)).length;
+  const failed = tasks.filter((task) => task.state === "failed").length;
+  const done = tasks.length - going - failed;
+
+  return [
+    `${String(going)} active`,
+    ...(done === 0 ? [] : [`${String(done)} ${taskLabel("done").toLowerCase()}`]),
+    ...(failed === 0 ? [] : [`${String(failed)} ${taskLabel("failed").toLowerCase()}`]),
+  ].join(", ");
+}
+
+/**
+ * The chat's agents over its composer: a pill, the list, and one agent's chat as a preview. Every
+ * agent still going is listed, and each ended one until the user clears it.
+ */
 export function SubagentTray({
   parentSessionId,
+  agents,
   view,
   onViewChange,
-  onExpand,
   onRelease,
   viewport,
   detail,
 }: {
   readonly parentSessionId: SessionId;
+  /** The agents the tray lists. */
+  readonly agents: readonly ChildTask[];
   readonly view: SubagentTrayView;
   readonly onViewChange: (view: SubagentTrayView) => void;
-  readonly onExpand: (sessionId: SessionId) => void;
   readonly onRelease: () => void;
   readonly viewport: HTMLElement | null;
   readonly detail: ReactNode;
 }): ReactElement | null {
   useCommitCount("render:agents-tray");
-  const agents = useChildSessions(parentSessionId).data ?? NO_AGENTS;
-  const chats = useChats((directory) => directory);
+  const unread = useChatWindow((snapshot) => snapshot.unread);
   const { root, ref, availableHeight } = useTrayRoot(viewport);
   const trayId = useId();
   const [stopCandidates, setStopCandidates] = useState<readonly SessionId[]>();
@@ -125,17 +102,11 @@ export function SubagentTray({
       Promise.all(sessionIds.map((sessionId) => connection().session(sessionId).stop())),
   });
 
-  const roster = listSubagents(agents, view, chats);
-  const active = roster.active;
-  const running = active.filter((agent) => "run" in agent.status);
-  const listed = roster.listed;
-  const failed = listed.length - active.length;
+  const live = agents.filter((agent) => agent.live);
+  const ended = agents.filter((agent) => taskEnded(agent.state));
   const selectedId = view.kind === "detail" ? view.sessionId : undefined;
-  const selected = selectedId === undefined ? undefined : chats.get(selectedId);
-  const selectedTitle = selected?.title ?? "Subagent";
-
-  const selectedRuns = selected !== undefined && "run" in selected.status;
-
+  const selected = agents.find((agent) => agent.id === selectedId);
+  const selectedTitle = selected?.title ?? childTitle(undefined);
   const pendingAction = stop.isPending || stopAll.isPending;
 
   const attachRoot = (element: HTMLDivElement): (() => void) => {
@@ -158,41 +129,29 @@ export function SubagentTray({
     if (held) onRelease();
   };
 
-  if (view.kind === "closed" && listed.length === 0) return null;
-
-  if (view.kind === "list" && listed.length === 0) return null;
+  if (view.kind !== "detail" && agents.length === 0) return null;
 
   return (
     <div ref={attachRoot} {...props(trayParts.root)}>
       {view.kind === "closed" && (
         <TrayPill
-          label={`Agents, ${String(active.length)} active${failed === 0 ? "" : `, ${String(failed)} failed`}`}
+          label={`Agents, ${pillCounts(agents)}`}
           controls={trayId}
           onClick={() =>
-            onViewChange({
-              kind: "list",
-              retainedSessionId: undefined,
-              openedOver: listed.map((agent) => agent.session.id),
-            })
+            onViewChange({ kind: "list", openedOver: agents.map((agent) => agent.id) })
           }
         >
           <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
-            {running.some((agent) => agent.mark !== "waiting") ? (
-              <StatusDot mark="working" />
-            ) : active.some((agent) => agent.mark === "waiting") ? (
-              <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
-            ) : (
-              <StatusDot mark={active.length > 0 ? "background" : "failed"} />
-            )}
+            <TaskMark state={pillState(agents)} />
           </span>
           <span>Agents</span>
           <span aria-hidden="true" {...props(trayParts.pillCount)}>
-            {String(listed.length)}
+            {String(agents.length)}
           </span>
         </TrayPill>
       )}
       <Tray
-        open={view.kind !== "closed" && (view.kind === "detail" || listed.length > 0)}
+        open={view.kind !== "closed"}
         id={trayId}
         label={selectedId === undefined ? "Agents" : selectedTitle}
         focusKey={view.kind}
@@ -208,7 +167,20 @@ export function SubagentTray({
           <>
             <div {...props(trayStyles.header)}>
               <span {...props(trayStyles.title)}>Agents</span>
-              {running.length > 0 && (
+              {ended.length > 0 && (
+                <Button
+                  onClick={() =>
+                    chatWindow.act({
+                      kind: "clear",
+                      parent: parentSessionId,
+                      tasks: ended.map((agent) => agent.id),
+                    })
+                  }
+                >
+                  Clear Finished
+                </Button>
+              )}
+              {live.length > 0 && (
                 <Button
                   aria-description={
                     stopCandidates === undefined
@@ -220,16 +192,14 @@ export function SubagentTray({
                   disabled={stop.isPending}
                   onClick={() => {
                     if (stopCandidates === undefined) {
-                      setStopCandidates(running.map((agent) => agent.session.id));
+                      setStopCandidates(live.map((agent) => agent.id));
 
                       return;
                     }
 
                     const candidates = new Set(stopCandidates);
                     stopAll.mutate(
-                      running.flatMap((agent) =>
-                        candidates.has(agent.session.id) ? [agent.session.id] : [],
-                      ),
+                      live.flatMap((agent) => (candidates.has(agent.id) ? [agent.id] : [])),
                     );
                     setStopCandidates(undefined);
                   }}
@@ -249,31 +219,23 @@ export function SubagentTray({
               data-nyte-scrollport
               {...props(trayStyles.list, trayParts.listHeight(availableHeight))}
             >
-              {listed.map((agent) => {
-                const title = agent.title;
-
-                return (
-                  <Row key={agent.session.id} xstyle={trayParts.row} interactive>
-                    <Row.Primary
-                      aria-label={`Open ${title}`}
-                      onClick={() => {
-                        setStopCandidates(undefined);
-                        onViewChange({ kind: "detail", sessionId: agent.session.id });
-                      }}
-                    >
-                      <Row.Leading aria-hidden="true">
-                        {agent.mark === "waiting" ? (
-                          <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
-                        ) : (
-                          <StatusDot mark={agent.mark} />
-                        )}
-                      </Row.Leading>
-                      <Row.Label>{title}</Row.Label>
-                    </Row.Primary>
-                    <Row.Meta>{rowLabel(agent.status, agent.background)}</Row.Meta>
-                  </Row>
-                );
-              })}
+              {agents.map((agent) => (
+                <Row key={agent.id} xstyle={trayParts.row} interactive>
+                  <Row.Primary
+                    aria-label={`Open ${agent.title}`}
+                    onClick={() => {
+                      setStopCandidates(undefined);
+                      onViewChange({ kind: "detail", sessionId: agent.id });
+                    }}
+                  >
+                    <Row.Leading aria-hidden="true">
+                      <TaskMark state={agent.state} unread={unread.has(agent.id)} />
+                    </Row.Leading>
+                    <Row.Label>{agent.title}</Row.Label>
+                  </Row.Primary>
+                  <Row.Meta>{taskLabel(agent.state)}</Row.Meta>
+                </Row>
+              ))}
             </div>
             {(stop.isError || stopAll.isError) && (
               <div role="alert" {...props(intent.danger, trayParts.notice, trayParts.error)}>
@@ -289,17 +251,13 @@ export function SubagentTray({
                 icon="arrow-left"
                 label="Back to agents"
                 onClick={() =>
-                  onViewChange({
-                    kind: "list",
-                    retainedSessionId: view.sessionId,
-                    openedOver: listed.map((agent) => agent.session.id),
-                  })
+                  onViewChange({ kind: "list", openedOver: agents.map((agent) => agent.id) })
                 }
               />
               <span title={selectedTitle} {...props(trayStyles.title)}>
                 {selectedTitle}
               </span>
-              {selectedRuns && (
+              {selected?.live === true && (
                 <Button
                   tone="danger"
                   loading={pendingAction}
@@ -312,7 +270,10 @@ export function SubagentTray({
                 icon="expand"
                 size={15}
                 label="Open as full chat"
-                onClick={() => onExpand(selectedId)}
+                onClick={() => {
+                  onViewChange({ kind: "closed" });
+                  windowTabs.openChat(selectedId, "next-to-parent");
+                }}
               />
               <TrayIconAction icon="close" label="Close agents" onClick={close} />
             </div>

@@ -2,10 +2,10 @@ import {
   backgroundLabel,
   failureNotice,
   rowMark,
-  runStatusLabel,
   sessionTitle,
+  taskLabel,
 } from "@nyte-ai/plugin/client/presentation";
-import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
 import { Button } from "@nyte-ai/ui/button";
@@ -34,7 +34,7 @@ import { useNowMinute } from "../lib/use-now-minute.ts";
 import { sessionWatch, warmSession } from "../data/watches.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { useChatWindow } from "../window/index.ts";
-import { StatusGlyph } from "../components/status-glyph.tsx";
+import { TaskMark } from "../components/task-mark.tsx";
 
 const WARM_DELAY_MS = 50;
 
@@ -161,7 +161,7 @@ export function SessionRow({
   const onPin = (): void => rail.pin(session);
   const onArchive = (): void => rail.archive(session);
   const onDelete = (): void => rail.remove(session.id);
-  const mark = shown === undefined ? "idle" : rowMark(shown.status, shown.background);
+  const mark = shown === undefined ? "done" : rowMark(shown.status, shown.background);
   const title = sessionTitle(session);
 
   const ask = shown === undefined ? undefined : askLine(shown, mark);
@@ -196,7 +196,7 @@ export function SessionRow({
     return (
       <Row xstyle={[styles.rowSurface, styles.sessionRenameRow]}>
         <Row.Leading xstyle={styles.rowIcon}>
-          <StatusGlyph mark={mark} unread={unread} />
+          <TaskMark state={mark} unread={unread} />
         </Row.Leading>
         <Row.Label>
           <Input
@@ -289,7 +289,7 @@ export function SessionRow({
         {...listeners}
       >
         <Row.Leading xstyle={[styles.rowIcon, ask !== undefined && styles.rowIconAsk]}>
-          <StatusGlyph mark={mark} unread={unread} />
+          <TaskMark state={mark} unread={unread} />
         </Row.Leading>
         {ask === undefined ? (
           titleLine
@@ -387,8 +387,8 @@ export function NeighbourWarm({
 }
 
 /** The second line a row adds when the chat needs the user: an approval, a question below it, or its own failure. */
-function askLine(chat: Chat, mark: SessionMark): string | undefined {
-  if (chat.status.kind === "waiting-for-approval") return runStatusLabel(chat.status);
+function askLine(chat: Chat, mark: TaskState): string | undefined {
+  if (chat.status.kind === "waiting-for-approval") return taskLabel(mark);
 
   if (mark === "waiting") return backgroundLabel(chat.background);
 

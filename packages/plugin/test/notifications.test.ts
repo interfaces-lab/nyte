@@ -30,7 +30,7 @@ it("notifies once when a root session's run fails and stays quiet for a stop or 
   await handler({ session: child.id, run: asId("r2"), end: { kind: "stopped" } }, context);
 
   expect(notified).toEqual([
-    { title: "Release", message: "Run failed: Rate limited.", level: "error" },
+    { title: "Release", message: "Failed: Rate limited.", level: "error" },
   ]);
 });
 
@@ -67,5 +67,5 @@ it("stays quiet for every session someone is looking at, in either pane", async 
   await handler({ session: beside.id, run: asId("r2"), end: completed }, context);
   await handler({ session: behind.id, run: asId("r3"), end: completed }, context);
 
-  expect(notified).toEqual([{ title: "New chat", message: "Run finished", level: "info" }]);
+  expect(notified).toEqual([{ title: "New chat", message: "Done", level: "info" }]);
 });

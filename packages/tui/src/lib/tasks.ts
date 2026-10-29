@@ -1,6 +1,15 @@
-import type { Execution, JobView, RunEnd, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
-import { showsText, showsTool, toolStatus } from "@nyte-ai/plugin/client/presentation";
-import type { ReportMessage, ToolTone } from "@nyte-ai/plugin/client/presentation";
+import type { Execution, JobView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
+import {
+  jobTaskState,
+  runMark,
+  runStatus,
+  showsText,
+  showsTool,
+  taskEnded,
+  taskLabel,
+  toolStatus,
+} from "@nyte-ai/plugin/client/presentation";
+import type { ReportMessage, TaskState, ToolTone } from "@nyte-ai/plugin/client/presentation";
 import { GLYPHS } from "./constants.ts";
 import { toolLine, userText } from "./format.ts";
 import type { Timing } from "./format.ts";
@@ -14,40 +23,47 @@ export type Task =
     }
   | { readonly kind: "job"; readonly id: string; readonly job: JobView };
 
-export type TaskStatus =
-  | "queued"
-  | "running"
-  | "waiting"
-  | "retrying"
-  | "stopping"
-  | "stopped"
-  | "done"
-  | "failed";
-
 interface StatusMark {
   readonly glyph: string;
   readonly tone: "dim" | "running" | "warning" | "ok" | "error";
 }
 
-export function statusMark(status: TaskStatus): StatusMark {
-  switch (status) {
-    case "queued":
-      return { glyph: GLYPHS.diamond, tone: "dim" };
-    case "running":
+export function statusMark(state: TaskState): StatusMark {
+  switch (state) {
+    case "working":
       return { glyph: GLYPHS.bullet, tone: "running" };
+    case "background":
+      return { glyph: GLYPHS.background, tone: "running" };
     case "waiting":
     case "retrying":
       return { glyph: GLYPHS.bullet, tone: "warning" };
-    case "stopping":
-      return { glyph: GLYPHS.bullet, tone: "dim" };
-    case "stopped":
-      return { glyph: GLYPHS.cross, tone: "dim" };
     case "done":
       return { glyph: GLYPHS.check, tone: "ok" };
     case "failed":
       return { glyph: GLYPHS.cross, tone: "error" };
     default: {
-      const _exhaustive: never = status;
+      const _exhaustive: never = state;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/** A tool line's mark: a stopped or interrupted call is dimmed, not done. */
+export function toneMark(tone: ToolTone): StatusMark {
+  switch (tone) {
+    case "running":
+      return statusMark("working");
+    case "attention":
+      return statusMark("waiting");
+    case "success":
+      return statusMark("done");
+    case "failure":
+      return statusMark("failed");
+    case "stopped":
+      return { glyph: GLYPHS.cross, tone: "dim" };
+    default: {
+      const _exhaustive: never = tone;
 
       return _exhaustive;
     }
@@ -58,83 +74,10 @@ function agentExecution(task: Extract<Task, { kind: "agent" }>): Execution | und
   return task.view?.execution ?? task.info.heads.find((head) => head.name === "main")?.execution;
 }
 
-export function taskStatus(task: Task): TaskStatus {
-  if (task.kind === "agent") return executionStatus(agentExecution(task));
-  const { state } = task.job;
-
-  switch (state.kind) {
-    case "running":
-      return "running";
-    case "exited":
-      return state.reason === "exited" ? (state.code === 0 ? "done" : "failed") : "stopped";
-    case "lost":
-      return "stopped";
-    default: {
-      const _exhaustive: never = state;
-
-      return _exhaustive;
-    }
-  }
-}
-
-export function toneStatus(tone: ToolTone): TaskStatus {
-  switch (tone) {
-    case "running":
-      return "running";
-    case "attention":
-      return "waiting";
-    case "success":
-      return "done";
-    case "failure":
-      return "failed";
-    case "stopped":
-      return "stopped";
-    default: {
-      const _exhaustive: never = tone;
-
-      return _exhaustive;
-    }
-  }
-}
-
-function executionStatus(execution: Execution | undefined): TaskStatus {
-  if (execution === undefined) return "queued";
-
-  switch (execution.kind) {
-    case "idle": {
-      const end = execution.lastRun?.end;
-
-      return end === undefined ? "queued" : endStatus(end.kind);
-    }
-
-    case "live":
-      return execution.stopping ? "stopping" : "running";
-    case "waiting":
-      return "waiting";
-    case "retrying":
-      return "retrying";
-    default: {
-      const _exhaustive: never = execution;
-
-      return _exhaustive;
-    }
-  }
-}
-
-function endStatus(end: RunEnd["kind"]): TaskStatus {
-  switch (end) {
-    case "completed":
-      return "done";
-    case "stopped":
-      return "stopped";
-    case "failed":
-      return "failed";
-    default: {
-      const _exhaustive: never = end;
-
-      return _exhaustive;
-    }
-  }
+export function taskStatus(task: Task): TaskState {
+  return task.kind === "agent"
+    ? runMark(runStatus(agentExecution(task)))
+    : jobTaskState(task.job.state);
 }
 
 export function canStopTask(task: Task): boolean {
@@ -152,12 +95,6 @@ interface ReportRow {
   readonly task: Task | undefined;
 }
 
-const REPORT_VERBS = {
-  completed: "Finished",
-  failed: "Failed",
-  stopped: "Stopped",
-} satisfies Record<RunEnd["kind"], string>;
-
 export function reportRow(report: ReportMessage, tasks: readonly Task[]): ReportRow {
   const { source } = report;
 
@@ -172,10 +109,11 @@ export function reportRow(report: ReportMessage, tasks: readonly Task[]): Report
   }
 
   const task = tasks.find((candidate) => candidate.id === source.session);
+  const state = source.end === "failed" ? "failed" : "done";
 
   return {
-    mark: statusMark(endStatus(source.end)),
-    title: `${REPORT_VERBS[source.end]} ${task === undefined ? "subagent" : taskLabel(task)}`,
+    mark: statusMark(state),
+    title: `${taskLabel(state)} ${task === undefined ? "subagent" : taskTitle(task)}`,
     task,
   };
 }
@@ -184,7 +122,7 @@ export function taskAgent(task: Task): string {
   return task.kind === "agent" ? "subagent" : "command";
 }
 
-export function taskLabel(task: Task): string {
+export function taskTitle(task: Task): string {
   if (task.kind === "job") return task.job.title === "" ? task.job.command : task.job.title;
 
   return task.info.name ?? (task.view === undefined ? undefined : taskPrompt(task.view)) ?? task.id;
@@ -221,7 +159,6 @@ export function taskActivity(task: Task): string {
 }
 
 interface TaskStep {
-  readonly status: TaskStatus;
   readonly text: string;
 }
 
@@ -237,7 +174,6 @@ function taskSteps(view: SessionView): TaskStep[] {
       const title = toolLine(message.state.class, status.tense);
 
       steps.push({
-        status: toneStatus(status.tone),
         text: oneLine(
           progress !== undefined && progress !== ""
             ? progress
@@ -247,10 +183,7 @@ function taskSteps(view: SessionView): TaskStep[] {
         ),
       });
     } else if (showsText(message) && message.state.markdown !== "") {
-      steps.push({
-        status: message.status.kind === "settled" ? "done" : "running",
-        text: oneLine(message.state.markdown),
-      });
+      steps.push({ text: oneLine(message.state.markdown) });
     }
   }
 
@@ -271,5 +204,5 @@ export function taskTiming(task: Task): Timing | null {
 }
 
 export function unfinishedTask(task: Task): boolean {
-  return !["done", "failed", "stopped"].includes(taskStatus(task));
+  return !taskEnded(taskStatus(task));
 }

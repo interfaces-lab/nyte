@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import type { PartId, SessionId, ToolClass } from "@nyte-ai/sdk";
+import type { JobView, PartId, SessionId, ToolClass } from "@nyte-ai/sdk";
 import {
   condensedCommand,
   formatDuration,
@@ -25,6 +25,8 @@ import type { ReactElement, ReactNode } from "react";
 import { errorMessage } from "../../contract/errors.ts";
 import type { ToolCallDensity } from "../../preferences/index.ts";
 import { activityStyles } from "../transcript/activity.stylex.ts";
+import { useTask } from "../../chats/index.ts";
+import { openJobOutput } from "./job-output.ts";
 import { moveToBackground } from "./shell-background.ts";
 import { terminalText } from "./terminal-text.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
@@ -142,7 +144,9 @@ const styles = create({
     whiteSpace: "nowrap",
     userSelect: "none",
   },
-  headerWithBackground: { paddingInlineEnd: `calc(${space.s8} + ${space.s6})` },
+  headerRoom: (actions: number) => ({
+    paddingInlineEnd: `calc(${space.s8} + ${String(actions)} * ${space.s6})`,
+  }),
   iconSwap: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
   iconDefault: { display: "var(--_icon-default)" },
   iconHover: { display: "var(--_icon-hover)" },
@@ -354,6 +358,35 @@ function MoveToBackground({
   );
 }
 
+/** Opens the job a shell call started in a terminal, in the foreground or the background, running or ended. */
+function OpenJobOutput({
+  sessionId,
+  job,
+  size,
+}: {
+  readonly sessionId: SessionId;
+  readonly job: JobView;
+  readonly size: ButtonSize;
+}): ReactElement {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size={size}
+            iconOnly
+            icon="console"
+            aria-label="Open in terminal"
+            onClick={() => openJobOutput(sessionId, job)}
+          />
+        }
+      />
+      <TooltipContent>Open in terminal</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function FollowScroll({
   follow,
   height,
@@ -437,9 +470,13 @@ export function ShellCallView({
   const [open, setOpen] = useState(false);
   const { state } = message;
   const sessionId = useTranscriptScope()?.sessionId;
+  const task = useTask(sessionId, { kind: "job", call: state.call });
+  const job = task?.kind === "job" ? task.job : undefined;
 
   const movable =
     sessionId !== undefined && state.phase === "running" && message.status.kind === "live";
+
+  const opens = sessionId !== undefined && job !== undefined && job !== null;
 
   const raw = running
     ? state.phase === "running"
@@ -482,7 +519,7 @@ export function ShellCallView({
             xstyle={[
               text.base,
               styles.header,
-              movable && styles.headerWithBackground,
+              styles.headerRoom(Number(movable) + Number(opens)),
               status.tone === "stopped" && toolLineStyles.dimmedText,
               focus.ringInset,
             ]}
@@ -500,6 +537,7 @@ export function ShellCallView({
           </Collapsible.Trigger>
           <span {...props(styles.headerActions)}>
             {movable && <MoveToBackground sessionId={sessionId} part={message.part} size="xs" />}
+            {opens && <OpenJobOutput sessionId={sessionId} job={job} size="xs" />}
             <CopyCommand command={toolClass.command} />
           </span>
         </div>
@@ -523,7 +561,7 @@ export function ShellCallView({
         toolLineStyles.line,
         toolLineStyles.clickable,
         status.tone === "stopped" && toolLineStyles.dimmed,
-        movable && styles.lineInRow,
+        (movable || opens) && styles.lineInRow,
         focus.ringInset,
       ]}
     >
@@ -538,10 +576,11 @@ export function ShellCallView({
 
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} xstyle={toolLineStyles.root}>
-      {movable ? (
+      {movable || opens ? (
         <div {...props(styles.lineRow)}>
           {line}
-          <MoveToBackground sessionId={sessionId} part={message.part} size="2xs" />
+          {movable && <MoveToBackground sessionId={sessionId} part={message.part} size="2xs" />}
+          {opens && <OpenJobOutput sessionId={sessionId} job={job} size="2xs" />}
         </div>
       ) : (
         line

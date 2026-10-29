@@ -7,7 +7,7 @@ import { Command } from "@nyte-ai/ui/command";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { formatTimeAgo } from "../lib/format.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
-import { StatusGlyph } from "../components/status-glyph.tsx";
+import { TaskMark } from "../components/task-mark.tsx";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { sessionTitle } from "@nyte-ai/plugin/client/presentation";
@@ -201,7 +201,7 @@ export function SearchPalette({
         <Command.Item
           key={session.id}
           value={session.id}
-          leading={<StatusGlyph mark={chatMark(session, chats)} unread={unread.has(session.id)} />}
+          leading={<TaskMark state={chatMark(session, chats)} unread={unread.has(session.id)} />}
           meta={formatTimeAgo(session.lastActivityAt, now)}
           onClick={() => run(() => onOpenSession(session.id))}
         >

@@ -128,7 +128,7 @@ export function chatWithNeeds(
 
   if (working.has(chat.id)) return { ...chat, mark: "working", unread: false };
 
-  return { ...chat, mark: "idle", unread: own.some((need) => need.kind === "finished") };
+  return { ...chat, mark: "done", unread: own.some((need) => need.kind === "finished") };
 }
 
 const BLOCKED = new Set<Need["kind"]>(["approval", "question"]);

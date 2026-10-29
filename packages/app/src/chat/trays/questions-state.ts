@@ -2,9 +2,8 @@ import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import type { OpenQuestion, QuestionAnswers, QuestionInfo } from "@nyte-ai/plugin/question/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import { useMutation } from "@tanstack/react-query";
-// oxlint-disable-next-line no-restricted-imports -- the child-session subscription must keep its identity; the compiler drops its memo because the waiting list is read after useSyncExternalStore
-import { createContext, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useChildSessions } from "../../data/sessions.ts";
+import { createContext, useRef, useState } from "react";
+import { useWaitingDescendants } from "../../chats/index.ts";
 import { connection } from "../../data/connection.ts";
 import { sessionWatch } from "../../data/watches.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
@@ -117,53 +116,9 @@ export interface QuestionDock {
 
 export const QuestionDockContext = createContext<QuestionDock | undefined>(undefined);
 
-function observeQuestionViews(stores: readonly ReturnType<typeof sessionWatch>[]) {
-  let views = stores.map((store) => store.value);
-
-  return {
-    subscribe: (notify: () => void) => {
-      const leave = stores.map((store) => store.subscribe(notify));
-
-      return () => {
-        for (const unsubscribe of leave) unsubscribe();
-      };
-    },
-    snapshot: () => {
-      const next = stores.map((store) => store.value);
-
-      if (next.some((view, index) => view !== views[index])) views = next;
-
-      return views;
-    },
-  };
-}
-
 export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined {
   const parts = useWatchSelect(sessionWatch(sessionId), (state) => state.value?.parts);
-  const children = useChildSessions(sessionId);
-
-  const watched = useMemo(
-    () =>
-      (children.data ?? []).flatMap((child) => {
-        const execution = child.heads[0]?.execution;
-
-        return execution?.kind === "waiting" && execution.on.kind === "part"
-          ? [{ child, store: sessionWatch(child.id) }]
-          : [];
-      }),
-    [children.data],
-  );
-
-  const observation = useMemo(
-    () => observeQuestionViews(watched.map(({ store }) => store)),
-    [watched],
-  );
-
-  const childViews = useSyncExternalStore(
-    observation.subscribe,
-    observation.snapshot,
-    observation.snapshot,
-  );
+  const waiting = useWaitingDescendants(sessionId);
 
   const [stored, setStored] = useState<readonly RequestDraft[]>([]);
 
@@ -189,11 +144,11 @@ export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined 
 
   const requests = [
     ...own.map((request) => ({ sessionId, request, origin: undefined })),
-    ...watched.flatMap(({ child }, index) =>
-      openQuestions(childViews[index]).map((request) => ({
-        sessionId: child.id,
+    ...waiting.flatMap((entry) =>
+      openQuestions(entry.view).map((request) => ({
+        sessionId: entry.chat.id,
         request,
-        origin: child.name ?? "a subagent",
+        origin: entry.chat.title,
       })),
     ),
   ];

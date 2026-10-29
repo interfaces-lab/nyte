@@ -16,45 +16,41 @@ import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import {
   hideFromPanes,
-  usePaneActions,
   usePaneControllerSnapshot,
   usePaneViewStateStore,
 } from "../panes/pane-context.tsx";
 import type { PaneId } from "../panes/pane-layout.ts";
 import { useCatalog } from "../data/catalog.ts";
-import { useChildSessions, useRenameSession, useSessionChoice } from "../data/sessions.ts";
+import { useRenameSession, useSessionChoice } from "../data/sessions.ts";
 import { useSessionActions } from "../data/session-actions.ts";
 import { useHostState } from "../data/host.ts";
-import { childrenWatch, loadEarlierMessages, sessionWatch } from "../data/watches.ts";
+import { loadEarlierMessages, sessionWatch } from "../data/watches.ts";
 import { connection } from "../data/connection.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import type { WatchStore } from "../data/watch-store.ts";
 import type { DesktopModelOption } from "../data/catalog.ts";
 
-import { BackgroundWork, useLiveTerminals } from "./trays/terminals.tsx";
+import { BackgroundWork, listTerminals } from "./trays/terminals.tsx";
 import { Timeline } from "./transcript/timeline.tsx";
 import { TranscriptProvider, useTranscriptControls } from "./transcript/transcript.tsx";
 import { ApprovalTray } from "./trays/approval-tray.tsx";
 import { QuestionTray } from "./trays/questions.tsx";
 import { transcriptProjector } from "./transcript/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { useSessionRow } from "../data/session-rows.ts";
-import { openJobTerminal } from "../workbench/commands.ts";
-import { workbenchViewKey } from "../workbench/paths.ts";
-import { listSubagents, SubagentTray, type SubagentTrayView } from "./trays/agents.tsx";
-import { subagentSessions, SubagentSessionsProvider } from "./tools/subagent-sessions.ts";
+import { listAgents, SubagentTray, type SubagentTrayView } from "./trays/agents.tsx";
 import { modelRefFor, selectedModelOption } from "./composer/model-picker-state.ts";
 import { StartupReadsRelease } from "../data/startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../lib/work-counts.ts";
-import { windowTabs } from "../tabs/window-tabs.ts";
-import { chatTitle, useChat, useChats } from "../chats/index.ts";
+import { chatTitle, useChat, useChats, useChatTasks } from "../chats/index.ts";
 import { chatWindow, showTray, useChatWindow } from "../window/index.ts";
 import type { TrayView } from "../window/index.ts";
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 
 const CLOSED_TRAY: TrayView = { kind: "closed" };
+
+const NONE_CLEARED: ReadonlySet<string> = new Set();
 
 const HISTORY_PAGE = 200;
 
@@ -146,7 +142,6 @@ type SessionConversationProps =
       readonly presentation: "tray";
       readonly paneId: PaneId;
       readonly sessionId: SessionId;
-      readonly onOpenSubagentTray: (sessionId: SessionId) => void;
     };
 
 const ANNOUNCEMENTS = {
@@ -249,7 +244,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   useCommitCount("render:conversation");
   const { paneId, presentation, sessionId } = conversation;
   const host = useHostState();
-  const paneActions = usePaneActions();
   const { layout } = usePaneControllerSnapshot();
   const chat = useChat(sessionId);
   const catalog = useCatalog(sessionId);
@@ -266,18 +260,15 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const setTrayView = (view: TrayView): void =>
     chatWindow.act({ kind: "tray", parent: sessionId, view });
 
-  const live = useLiveTerminals(presentation === "full" ? sessionId : undefined);
-  const childSessions = useChildSessions(sessionId).data ?? [];
+  const tasks = useChatTasks(presentation === "full" ? sessionId : undefined);
+  const cleared = useChatWindow((snapshot) => snapshot.cleared.get(sessionId) ?? NONE_CLEARED);
+  const agents = listAgents(tasks, cleared);
+  const terminals = listTerminals(tasks, cleared);
 
-  const trayView = useChats((chats) =>
-    showTray(kept, {
-      listed:
-        kept.kind === "list"
-          ? listSubagents(childSessions, kept, chats).listed.map((agent) => agent.session.id)
-          : [],
-      live,
-    }),
-  );
+  const trayView = showTray(kept, {
+    agents: agents.map((agent) => agent.id),
+    terminals: terminals.map((terminal) => terminal.id),
+  });
 
   const deferredTrayView = useDeferredValue(trayView);
   const shownTrayView = trayView.kind === "detail" ? deferredTrayView : trayView;
@@ -304,9 +295,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const choice = useSessionChoice(sessionId);
 
   const viewStore = usePaneViewStateStore();
-  useMountEffect(() => childrenWatch(sessionId).subscribe(() => undefined));
   const cwd = host.data.workspace?.path;
-  const workspace = useSessionRow(sessionId, (session) => session.workspace);
 
   const loadEarlier = () => loadEarlierMessages(sessionId, HISTORY_PAGE);
 
@@ -359,191 +348,162 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
       .finally(() => setNavigating(false));
   };
 
-  const forwardSubagentTray = presentation === "tray" ? conversation.onOpenSubagentTray : undefined;
-
-  const openSubagentTray = (childSessionId: SessionId): void => {
-    if (forwardSubagentTray !== undefined) {
-      forwardSubagentTray(childSessionId);
-
-      return;
-    }
-
-    setTrayView({ kind: "detail", sessionId: childSessionId });
-  };
-
-  const expandChild = (childSessionId: SessionId): void => {
-    if (windowTabs.strip) windowTabs.openChat(childSessionId, "next-to-parent");
-    else paneActions.openSessionInPane(paneId, childSessionId);
-  };
-
-  const subagents = subagentSessions(sessionId, windowTabs.strip ? expandChild : openSubagentTray);
-
   return (
-    <SubagentSessionsProvider value={subagents}>
-      <div
-        {...props(
-          sessionScreenStyles.screen,
-          presentation === "full"
-            ? sessionScreenStyles.paneScreen
-            : sessionScreenStyles.embeddedScreen,
-        )}
-        aria-busy={!ready && !failed}
-      >
-        {presentation === "full" && layout.kind === "split" && (
-          <PaneHeader
-            paneId={paneId}
-            menuTriggerRef={paneMenuTrigger}
-            title={
-              draftName === undefined ? (
-                title
-              ) : (
-                <Input
-                  aria-label="Chat name"
-                  xstyle={sessionScreenStyles.renameInput}
-                  value={draftName}
-                  onValueChange={setDraftName}
-                  onBlur={commitRename}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") commitRename();
+    <div
+      {...props(
+        sessionScreenStyles.screen,
+        presentation === "full"
+          ? sessionScreenStyles.paneScreen
+          : sessionScreenStyles.embeddedScreen,
+      )}
+      aria-busy={!ready && !failed}
+    >
+      {presentation === "full" && layout.kind === "split" && (
+        <PaneHeader
+          paneId={paneId}
+          menuTriggerRef={paneMenuTrigger}
+          title={
+            draftName === undefined ? (
+              title
+            ) : (
+              <Input
+                aria-label="Chat name"
+                xstyle={sessionScreenStyles.renameInput}
+                value={draftName}
+                onValueChange={setDraftName}
+                onBlur={commitRename}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") commitRename();
 
-                    if (event.key === "Escape") setDraftName(undefined);
-                  }}
-                />
-              )
-            }
-            sessionItems={
-              <>
-                <MenuSeparator />
-                <MenuItem icon="pencil" onClick={() => setDraftName(title)}>
-                  Rename Chat…
-                </MenuItem>
-                <MenuSeparator />
-                <MenuItem icon="trash" variant="danger" onClick={requestDelete}>
-                  Delete Chat…
-                </MenuItem>
-              </>
-            }
-          />
-        )}
-
-        <div {...props(sessionScreenStyles.body)}>
-          <TranscriptProvider
-            paneId={paneId}
-            sessionId={sessionId}
-            viewportRef={setScroll}
-            loadEarlier={loadEarlier}
-            focusComposer={() => composerRef.current?.focus({ preventScroll: true })}
-          >
-            <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
-              <MarkSeen sessionId={sessionId} />
-              {((ready && chat.kind !== "loading") || failed) && <StartupReadsRelease />}
-              {presentation === "full" && activation !== undefined && (
-                <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
-              )}
-              {presentation === "full" && <RunAnnouncer status={status} />}
-              <Timeline
-                sessionId={sessionId}
-                store={store}
-                projector={projector}
-                ready={ready}
-                navigating={navigating}
-                cwd={cwd}
-                branchModel={branchModel}
-                onEditUser={editUserMessage}
-                onRetry={store.retry}
+                  if (event.key === "Escape") setDraftName(undefined);
+                }}
               />
+            )
+          }
+          sessionItems={
+            <>
+              <MenuSeparator />
+              <MenuItem icon="pencil" onClick={() => setDraftName(title)}>
+                Rename Chat…
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem icon="trash" variant="danger" onClick={requestDelete}>
+                Delete Chat…
+              </MenuItem>
+            </>
+          }
+        />
+      )}
 
-              {presentation === "full" && (
-                <Composer
-                  sessionId={sessionId}
-                  floatingMount={conversation.floatingMount}
-                  backgroundWork={{
-                    content: (
-                      <>
-                        <ApprovalTray
-                          sessionId={sessionId}
-                          disabled={failed || navigating}
-                          viewport={scroll}
-                        />
-                        <QuestionTray disabled={failed || navigating} viewport={scroll} />
-                        <SubagentTray
-                          parentSessionId={sessionId}
-                          view={subagentTray}
-                          onViewChange={setTrayView}
-                          onExpand={(childSessionId) => {
-                            setTrayView({ kind: "closed" });
-                            expandChild(childSessionId);
-                          }}
-                          onRelease={() => composerRef.current?.focus({ preventScroll: true })}
-                          viewport={scroll}
-                          detail={
-                            subagentTray.kind === "detail" ? (
-                              <SessionConversation
-                                key={subagentTray.sessionId}
-                                presentation="tray"
-                                paneId={paneId}
-                                sessionId={subagentTray.sessionId}
-                                onOpenSubagentTray={openSubagentTray}
-                              />
-                            ) : null
-                          }
-                        />
-                        <BackgroundWork
-                          sessionId={sessionId}
-                          open={shownTrayView.kind === "terminals"}
-                          onViewChange={setTrayView}
-                          onOpenTerminal={(job) =>
-                            workspace === undefined || workspace === null
-                              ? ""
-                              : openJobTerminal(workbenchViewKey(cwd), workspace, job)
-                          }
-                          viewport={scroll}
-                        />
-                      </>
-                    ),
-                    onEscape: () => {
-                      if (trayView.kind === "closed") return false;
-                      setTrayView({ kind: "closed" });
+      <div {...props(sessionScreenStyles.body)}>
+        <TranscriptProvider
+          paneId={paneId}
+          sessionId={sessionId}
+          viewportRef={setScroll}
+          loadEarlier={loadEarlier}
+          focusComposer={() => composerRef.current?.focus({ preventScroll: true })}
+        >
+          <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
+            <MarkSeen sessionId={sessionId} />
+            {((ready && chat.kind !== "loading") || failed) && <StartupReadsRelease />}
+            {presentation === "full" && activation !== undefined && (
+              <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
+            )}
+            {presentation === "full" && <RunAnnouncer status={status} />}
+            <Timeline
+              sessionId={sessionId}
+              store={store}
+              projector={projector}
+              ready={ready}
+              navigating={navigating}
+              cwd={cwd}
+              branchModel={branchModel}
+              onEditUser={editUserMessage}
+              onRetry={store.retry}
+            />
 
-                      return true;
-                    },
-                  }}
-                  status={status}
-                  pending={messages.queued}
-                  unsent={messages.unsent}
-                  fileDropRoot={column}
-                  initialViewState={viewStore.readSession(sessionId, paneId).composer}
-                  onViewStateChange={(composer) =>
-                    viewStore.updateSession(sessionId, paneId, (current) => ({
-                      ...current,
-                      composer,
-                    }))
-                  }
-                  inputRef={attachComposer}
-                />
-              )}
-            </TranscriptColumn>
-          </TranscriptProvider>
-        </div>
-        {presentation === "full" && deletion.kind === "open" && (
-          <ConfirmDialog
-            open
-            title="Delete Chat"
-            confirmLabel="Delete Chat"
-            description="The chat disappears now. Undo from the notification before it closes."
-            finalFocus={paneMenuTrigger}
-            onOpenChange={(nextOpen) => {
-              if (nextOpen) return;
-              setDeletion({ kind: "closed" });
-            }}
-            onConfirm={() => {
-              const { sessionId: targetSessionId } = deletion;
-              setDeletion({ kind: "closed" });
-              sessionActions.delete(targetSessionId, hideFromPanes);
-            }}
-          />
-        )}
+            {presentation === "full" && (
+              <Composer
+                sessionId={sessionId}
+                floatingMount={conversation.floatingMount}
+                backgroundWork={{
+                  content: (
+                    <>
+                      <ApprovalTray
+                        sessionId={sessionId}
+                        disabled={failed || navigating}
+                        viewport={scroll}
+                      />
+                      <QuestionTray disabled={failed || navigating} viewport={scroll} />
+                      <SubagentTray
+                        parentSessionId={sessionId}
+                        agents={agents}
+                        view={subagentTray}
+                        onViewChange={setTrayView}
+                        onRelease={() => composerRef.current?.focus({ preventScroll: true })}
+                        viewport={scroll}
+                        detail={
+                          subagentTray.kind === "detail" ? (
+                            <SessionConversation
+                              key={subagentTray.sessionId}
+                              presentation="tray"
+                              paneId={paneId}
+                              sessionId={subagentTray.sessionId}
+                            />
+                          ) : null
+                        }
+                      />
+                      <BackgroundWork
+                        sessionId={sessionId}
+                        terminals={terminals}
+                        open={shownTrayView.kind === "terminals"}
+                        onViewChange={setTrayView}
+                        viewport={scroll}
+                      />
+                    </>
+                  ),
+                  onEscape: () => {
+                    if (trayView.kind === "closed") return false;
+                    setTrayView({ kind: "closed" });
+
+                    return true;
+                  },
+                }}
+                status={status}
+                pending={messages.queued}
+                unsent={messages.unsent}
+                fileDropRoot={column}
+                initialViewState={viewStore.readSession(sessionId, paneId).composer}
+                onViewStateChange={(composer) =>
+                  viewStore.updateSession(sessionId, paneId, (current) => ({
+                    ...current,
+                    composer,
+                  }))
+                }
+                inputRef={attachComposer}
+              />
+            )}
+          </TranscriptColumn>
+        </TranscriptProvider>
       </div>
-    </SubagentSessionsProvider>
+      {presentation === "full" && deletion.kind === "open" && (
+        <ConfirmDialog
+          open
+          title="Delete Chat"
+          confirmLabel="Delete Chat"
+          description="The chat disappears now. Undo from the notification before it closes."
+          finalFocus={paneMenuTrigger}
+          onOpenChange={(nextOpen) => {
+            if (nextOpen) return;
+            setDeletion({ kind: "closed" });
+          }}
+          onConfirm={() => {
+            const { sessionId: targetSessionId } = deletion;
+            setDeletion({ kind: "closed" });
+            sessionActions.delete(targetSessionId, hideFromPanes);
+          }}
+        />
+      )}
+    </div>
   );
 }

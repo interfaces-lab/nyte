@@ -1,46 +1,49 @@
-import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import type {
-  MessageSource,
-  RunEnd,
-  SessionId,
-  SessionInfo,
-  ToolClass,
-  UserContent,
-} from "@nyte-ai/sdk";
-import { sessionTitle, toolNoun, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
-import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
+import type { MessageSource, SessionId, ToolClass, UserContent } from "@nyte-ai/sdk";
+import {
+  agentGroupSummary,
+  callTaskState,
+  rowMark,
+  taskEnded,
+  taskLabel,
+  toolNoun,
+  toolStatus,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
+import type { TaskState, ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { TextRoll } from "../../components/text-roll.tsx";
-import { UnreadMark } from "../../components/ui.tsx";
+import { TaskMark } from "../../components/task-mark.tsx";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
-import { Spinner } from "@nyte-ai/ui/spinner";
 import { Row } from "@nyte-ai/ui/row";
 import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useCatalog } from "../../data/catalog.ts";
-import { useChildSessions, useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
-import { useSessionRow } from "../../data/session-rows.ts";
-import { useWorkspaces } from "../../data/workspaces.ts";
-import { useChats } from "../../chats/index.ts";
+import { useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
+import {
+  childTitle,
+  delegateKey,
+  findTask,
+  useChat,
+  useChatTasks,
+  useChildTasks,
+  useTask,
+} from "../../chats/index.ts";
+import type { Chat, ChildTask, Task } from "../../chats/index.ts";
+import { windowTabs } from "../../tabs/window-tabs.ts";
 import { useChatWindow } from "../../window/index.ts";
 import { modelDisplayName, modelIcon, THINKING_LABELS } from "../composer/model-picker-state.ts";
 import { activityStyles } from "../transcript/activity.stylex.ts";
+import { useTranscriptScope } from "../transcript/transcript.tsx";
 import { proseStyles } from "../markdown/prose.stylex.ts";
+import { openJobOutput } from "./job-output.ts";
 import { subagentCallStyles } from "./subagent-call.stylex.ts";
-import {
-  useCalledChild,
-  useChildSession,
-  useOpenSubagentTray,
-  useSubagentChildren,
-} from "./subagent-sessions.ts";
-import { callStatus, subagentStatus } from "./subagent-status.ts";
-import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 import { useCommitCount } from "../../lib/work-counts.ts";
 
@@ -105,20 +108,14 @@ const lineStyles = create({
   },
 });
 
-/** A child the directory doesn't list yet: nothing to say about it. */
-const UNKNOWN: SubagentStatus = { indicator: "done", text: "" };
-
-function sameItems<T>(previous: readonly T[], next: readonly T[]): boolean {
-  return previous.length === next.length && previous.every((item, index) => item === next[index]);
+/** Opens a child chat from a link in its parent: a preview tab right after the parent's with a tab strip, else the chat in its pane. */
+function openChild(child: SessionId): void {
+  windowTabs.openChat(child, "next-to-parent");
 }
 
-type SubagentSubject =
-  | { readonly kind: "session"; readonly session: SessionInfo }
-  | { readonly kind: "call"; readonly status: SubagentStatus };
-
-function SubagentModel({ session }: { readonly session: SessionInfo }): ReactElement | null {
+function SubagentModel({ session }: { readonly session: SessionId }): ReactElement | null {
   const catalog = useCatalog();
-  const choice = useSessionChoice(session.id);
+  const choice = useSessionChoice(session);
   const name = modelDisplayName(catalog.data, choice?.model);
 
   if (name === undefined) return null;
@@ -127,103 +124,81 @@ function SubagentModel({ session }: { readonly session: SessionInfo }): ReactEle
 }
 
 function SubagentStatusLine({
-  status,
+  state,
+  words,
   watched,
   cwd,
 }: {
-  readonly status: SubagentStatus;
+  readonly state: TaskState;
+  readonly words: string;
   readonly watched: SessionId | undefined;
   readonly cwd: string | undefined;
 }): ReactElement {
   const activity = useSessionActivity(watched, cwd);
-  const running = status.indicator === "running";
 
   return (
     <span
       {...props(
         subagentCallStyles.status,
-        status.indicator === "attention" && intent.warning,
-        status.indicator === "attention" && subagentCallStyles.statusAttention,
+        state === "waiting" && intent.warning,
+        state === "waiting" && subagentCallStyles.statusAttention,
       )}
     >
       <TextRoll
-        text={activity ?? status.text}
-        itemStyle={running ? activityStyles.shimmer : undefined}
+        text={activity ?? words}
+        itemStyle={state === "working" ? activityStyles.shimmer : undefined}
       />
     </span>
   );
 }
 
+/** A child's row: its task once the host lists it, else what its call says, starting up while it runs. */
 function SubagentRow({
   title,
-  subject,
+  task,
+  callState,
   cwd,
-  open,
   xstyle,
 }: {
   readonly title: string;
-  readonly subject: SubagentSubject;
+  readonly task: ChildTask | undefined;
+  readonly callState: TaskState;
   readonly cwd: string | undefined;
-  readonly open: (() => void) | undefined;
   readonly xstyle: StyleXStyles;
 }): ReactElement {
   useCommitCount("render:agent-row");
-  const sessionId = subject.kind === "session" ? subject.session.id : undefined;
-  const chat = useChats((chats) => (sessionId === undefined ? undefined : chats.get(sessionId)));
-
-  const unread = useChatWindow(
-    (snapshot) => sessionId !== undefined && snapshot.unread.has(sessionId),
-  );
-
-  const status =
-    subject.kind === "call"
-      ? subject.status
-      : chat === undefined
-        ? UNKNOWN
-        : subagentStatus(chat.status, unread);
+  const id = task?.id;
+  const unread = useChatWindow((snapshot) => id !== undefined && snapshot.unread.has(id));
+  const state = task?.state ?? callState;
+  const words = task === undefined && state === "working" ? "Starting up" : taskLabel(state);
 
   const content = (
     <>
       <span aria-hidden="true" {...props(subagentCallStyles.indicator)}>
-        {status.indicator === "running" ? (
-          <Spinner />
-        ) : status.indicator === "unread" ? (
-          <UnreadMark />
-        ) : (
-          <span
-            {...props(
-              status.indicator === "attention" && surfaceTheme.yellow,
-              status.indicator === "failed" && surfaceTheme.red,
-              subagentCallStyles.dot,
-              subagentCallStyles[status.indicator],
-            )}
-          />
-        )}
+        <TaskMark state={state} unread={unread} />
       </span>
       <span {...props(subagentCallStyles.text)}>
         <span {...props(subagentCallStyles.titleRow)}>
           <span {...props(subagentCallStyles.title)}>{title}</span>
-          {subject.kind === "session" && <SubagentModel session={subject.session} />}
+          {id !== undefined && <SubagentModel session={id} />}
         </span>
-        {status.text !== "" && (
-          <SubagentStatusLine
-            status={status}
-            watched={
-              subject.kind === "session" && status.indicator === "running"
-                ? subject.session.id
-                : undefined
-            }
-            cwd={cwd}
-          />
-        )}
+        <SubagentStatusLine
+          state={state}
+          words={words}
+          watched={state === "working" ? id : undefined}
+          cwd={cwd}
+        />
       </span>
     </>
   );
 
-  if (open === undefined) return <div {...props(subagentCallStyles.row, xstyle)}>{content}</div>;
+  if (id === undefined) return <div {...props(subagentCallStyles.row, xstyle)}>{content}</div>;
 
   return (
-    <Row.Primary onClick={open} xstyle={[subagentCallStyles.row, xstyle, focus.ring]}>
+    <Row.Primary
+      onClick={() => openChild(id)}
+      xstyle={[subagentCallStyles.row, xstyle, focus.ring]}
+    >
       {content}
     </Row.Primary>
   );
@@ -236,57 +211,53 @@ function SubagentNestedRows({
   readonly session: SessionId;
   readonly cwd: string | undefined;
 }): ReactElement | null {
-  const children = useChildSessions(session);
-  const openTray = useOpenSubagentTray();
+  const children = useChildTasks(session);
 
-  if (children.data === undefined || children.data.length === 0) return null;
+  if (children.length === 0) return null;
 
   return (
     <div {...props(subagentCallStyles.nested)}>
-      {children.data
-        .toSorted((left, right) => left.createdAt - right.createdAt)
-        .map((child) => (
-          <SubagentRow
-            key={child.id}
-            title={sessionTitle(child)}
-            subject={{ kind: "session", session: child }}
-            cwd={cwd}
-            open={openTray === undefined ? undefined : () => openTray(child.id)}
-            xstyle={subagentCallStyles.nestedRow}
-          />
-        ))}
+      {children.map((child) => (
+        <SubagentRow
+          key={child.id}
+          title={child.title}
+          task={child}
+          callState={child.state}
+          cwd={cwd}
+          xstyle={subagentCallStyles.nestedRow}
+        />
+      ))}
     </div>
   );
 }
 
+function asChild(task: Task | undefined): ChildTask | undefined {
+  return task?.kind === "child" ? task : undefined;
+}
+
 export function SubagentCallView({
-  title,
   message,
+  toolClass,
   cwd,
 }: {
-  readonly title: string;
   readonly message: ToolMessage;
+  readonly toolClass: DelegateToolClass;
   readonly cwd: string | undefined;
 }): ReactElement {
   useCommitCount("render:agent-call");
-  const child = useCalledChild(message.state.call);
-  const tray = useOpenSubagentTray();
-  const open = child === undefined || tray === undefined ? undefined : () => tray(child.id);
+  const session = useTranscriptScope()?.sessionId;
+  const task = asChild(useTask(session, delegateKey(toolClass, message.state.call)));
 
   return (
     <div {...props(subagentCallStyles.root)}>
       <SubagentRow
-        title={child?.name ?? title}
-        subject={
-          child === undefined
-            ? { kind: "call", status: callStatus(toolStatus(message)) }
-            : { kind: "session", session: child }
-        }
+        title={task?.title ?? childTitle(undefined, toolClass.title)}
+        task={task}
+        callState={callTaskState(toolStatus(message))}
         cwd={cwd}
-        open={open}
         xstyle={subagentCallStyles.header}
       />
-      {child !== undefined && <SubagentNestedRows session={child.id} cwd={cwd} />}
+      {task !== undefined && <SubagentNestedRows session={task.id} cwd={cwd} />}
     </div>
   );
 }
@@ -299,70 +270,41 @@ export function SubagentGroupView({
   readonly cwd: string | undefined;
 }): ReactElement {
   useCommitCount("render:agent-group");
-  const called = useSubagentChildren(
-    (children) =>
-      messages.map(
-        (message) => children.find((candidate) => candidate.call === message.state.call)?.id,
-      ),
-    sameItems,
-  );
+  const session = useTranscriptScope()?.sessionId;
+  const tasks = useChatTasks(session);
 
-  const indicators = useChats(
-    (chats) =>
-      messages.map((message, index) => {
-        const id = called[index];
-        const chat = id === undefined ? undefined : chats.get(id);
+  const states = messages.map((message) => {
+    const toolClass = message.state.class;
 
-        return chat === undefined
-          ? callStatus(toolStatus(message)).indicator
-          : subagentStatus(chat.status, false).indicator;
-      }),
-    sameItems,
-  );
+    const task =
+      toolClass.kind === "delegate"
+        ? findTask(tasks, delegateKey(toolClass, message.state.call))
+        : undefined;
 
-  const total = messages.length;
+    return task?.state ?? callTaskState(toolStatus(message));
+  });
 
-  const running = indicators.filter(
-    (indicator) => indicator === "running" || indicator === "attention",
-  ).length;
-
-  const failed = indicators.filter((indicator) => indicator === "failed").length;
-
-  const title =
-    running > 0
-      ? `Running ${String(total)} agents…`
-      : `${String(total)} agents ${failed === 0 ? "completed" : "finished"}`;
-
-  const detail =
-    running > 0
-      ? running === total
-        ? undefined
-        : `(${String(total - running)} done)`
-      : failed === 0
-        ? undefined
-        : `· ${String(failed)} failed`;
+  const summary = agentGroupSummary(states);
+  const going = states.some((state) => !taskEnded(state));
 
   return (
     <div {...props(subagentCallStyles.root)}>
-      {total > 1 && (
+      {messages.length > 1 && (
         <div {...props(toolLineStyles.line)}>
-          <span {...props(toolLineStyles.action, running > 0 && activityStyles.shimmer)}>
-            {title}
+          <span {...props(toolLineStyles.action, going && activityStyles.shimmer)}>
+            {summary.title}
           </span>
-          {detail !== undefined && <span {...props(toolLineStyles.outcome)}>{detail}</span>}
+          {summary.detail !== undefined && (
+            <span {...props(toolLineStyles.outcome)}>{summary.detail}</span>
+          )}
         </div>
       )}
       {messages.map((message) => {
         const toolClass = message.state.class;
 
-        return (
-          <SubagentCallView
-            key={message.id}
-            title={toolClass.kind === "delegate" ? (toolClass.title ?? "Subagent") : "Subagent"}
-            message={message}
-            cwd={cwd}
-          />
-        );
+        return toolClass.kind === "delegate" ? (
+          <SubagentCallView key={message.id} message={message} toolClass={toolClass} cwd={cwd} />
+        ) : null;
       })}
     </div>
   );
@@ -379,11 +321,10 @@ export function SubagentLineView({
 }): ReactElement {
   const status = toolStatus(message);
   const running = status.tense === "running";
-  const session = toolClass.child ?? undefined;
-  const child = useChildSession(session)?.name ?? undefined;
-  const tray = useOpenSubagentTray();
-  const openTray = session === undefined ? undefined : tray;
-  const label = child ?? toolClass.title ?? "agent";
+  const session = useTranscriptScope()?.sessionId;
+  const task = asChild(useTask(session, delegateKey(toolClass, message.state.call)));
+  const child = task?.id ?? toolClass.child ?? undefined;
+  const label = task?.title ?? childTitle(undefined, toolClass.title);
   const verb = status.tense === "none" ? undefined : toolVerbs(toolClass)[status.tense];
   const expandable = output.trim() !== "";
 
@@ -400,7 +341,7 @@ export function SubagentLineView({
     <div
       {...props(
         toolLineStyles.line,
-        (expandable || openTray !== undefined) && toolLineStyles.clickable,
+        (expandable || child !== undefined) && toolLineStyles.clickable,
         status.tone === "stopped" && toolLineStyles.dimmed,
       )}
     >
@@ -418,13 +359,11 @@ export function SubagentLineView({
           <span {...props(toolLineStyles.action, running && activityStyles.shimmer)}>{verb}</span>
         ))}
       <span {...props(toolLineStyles.details, lineStyles.detailsRow)}>
-        {openTray === undefined ? (
+        {child === undefined ? (
           <span {...props(lineStyles.agent)}>{agent}</span>
         ) : (
           <Row.Primary
-            onClick={() => {
-              if (session !== undefined) openTray(session);
-            }}
+            onClick={() => openChild(child)}
             xstyle={[lineStyles.agent, lineStyles.agentButton, focus.ring]}
           >
             {agent}
@@ -459,12 +398,20 @@ export function SubagentLineView({
   );
 }
 
-const REPORT_VERBS = {
-  completed: "Finished",
-  failed: "Failed",
-  stopped: "Stopped",
-} satisfies Readonly<Record<RunEnd["kind"], string>>;
+/** The words a job's report starts with: its first line. */
+function reportTitle(content: UserContent): string {
+  const words =
+    typeof content === "string"
+      ? content
+      : content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("");
 
+  return words.split("\n")[0] ?? "";
+}
+
+/**
+ * The line a child's or a job's report shows: how it ended and what it is, opening the child's
+ * chat or the job's output. A job the host no longer keeps says its output is gone.
+ */
 export function SubagentReportLine({
   source,
   content,
@@ -474,11 +421,26 @@ export function SubagentReportLine({
   readonly content: UserContent;
   readonly held: boolean;
 }): ReactElement {
-  const child = useChildSession(source.kind === "child" ? source.session : undefined);
-  const tray = useOpenSubagentTray();
+  const session = useTranscriptScope()?.sessionId;
+
+  const task = useTask(
+    session,
+    source.kind === "child"
+      ? { kind: "child", id: source.session }
+      : { kind: "job", id: source.job },
+  );
+
+  const job = task?.kind === "job" ? task.job : undefined;
+
+  const state =
+    source.kind === "child" ? (source.end === "failed" ? "failed" : "done") : task?.state;
 
   const open =
-    source.kind === "child" && tray !== undefined ? () => tray(source.session) : undefined;
+    source.kind === "child"
+      ? () => openChild(source.session)
+      : job === undefined || job === null || session === undefined
+        ? undefined
+        : () => openJobOutput(session, job);
 
   const label =
     source.kind === "child" ? (
@@ -486,26 +448,17 @@ export function SubagentReportLine({
         <span aria-hidden="true" {...props(lineStyles.agentIcon)}>
           <Icon name="agent" size={14} />
         </span>
-        {child?.name ?? "Subagent"}
+        {task?.title ?? childTitle(undefined)}
       </>
     ) : (
-      ((typeof content === "string"
-        ? content
-        : content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("")
-      ).split("\n")[0] ?? "")
+      (task?.title ?? reportTitle(content))
     );
 
   return (
-    <div
-      {...props(
-        toolLineStyles.line,
-        open !== undefined && toolLineStyles.clickable,
-        source.kind === "child" && source.end === "stopped" && toolLineStyles.dimmed,
-      )}
-    >
-      {source.kind === "child" && (
-        <span {...props(source.end === "failed" && intent.danger, toolLineStyles.action)}>
-          {REPORT_VERBS[source.end]}
+    <div {...props(toolLineStyles.line, open !== undefined && toolLineStyles.clickable)}>
+      {state !== undefined && (
+        <span {...props(state === "failed" && intent.danger, toolLineStyles.action)}>
+          {taskLabel(state)}
         </span>
       )}
       <span {...props(toolLineStyles.details, lineStyles.detailsRow)}>
@@ -520,6 +473,9 @@ export function SubagentReportLine({
           </Row.Primary>
         )}
       </span>
+      {source.kind === "job" && (task === undefined || job === null) && (
+        <span {...props(toolLineStyles.outcome)}>· Output no longer available</span>
+      )}
       {held && (
         <span {...props(intent.warning, toolLineStyles.outcome)}>
           · Held until your next message
@@ -547,9 +503,9 @@ const citationStyles = create({
   detailText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 });
 
-function CitationModel({ session }: { readonly session: SessionInfo }): ReactElement | null {
+function CitationModel({ session }: { readonly session: SessionId }): ReactElement | null {
   const catalog = useCatalog();
-  const choice = useSessionChoice(session.id);
+  const choice = useSessionChoice(session);
   const model = choice?.model;
   const thinkingLevel = choice?.thinking;
   const name = modelDisplayName(catalog.data, model);
@@ -568,14 +524,16 @@ function CitationModel({ session }: { readonly session: SessionInfo }): ReactEle
   );
 }
 
-function CitationFolder({ session }: { readonly session: SessionInfo }): ReactElement {
-  const workspace = useWorkspaces().data?.find((candidate) => candidate.id === session.workspace);
-  const branch = workspace?.worktree?.branch;
+function CitationFolder({ chat }: { readonly chat: Chat }): ReactElement | null {
+  const location = chat.location;
+
+  if (location.kind !== "folder") return null;
+  const branch = location.worktree?.branch;
 
   return (
-    <span title={workspace?.path} {...props(citationStyles.detail)}>
+    <span title={location.path} {...props(citationStyles.detail)}>
       <Icon name={branch === undefined ? "folder" : "git-branch"} size={12} />
-      <span {...props(citationStyles.detailText)}>{branch ?? workspace?.name ?? ""}</span>
+      <span {...props(citationStyles.detailText)}>{branch ?? location.name}</span>
     </span>
   );
 }
@@ -587,13 +545,11 @@ export function SubagentCitation({
   readonly session: SessionId;
   readonly label: string;
 }): ReactElement {
-  const listed = useChildSession(session);
-  const read = useSessionRow(session, (row) => row);
-  const child = listed ?? read ?? undefined;
-  const openTray = useOpenSubagentTray();
-  const title = child?.name ?? undefined;
-  const name = label === "" || label === session ? (title ?? session) : label;
-  const status = useChats((chats) => chats.get(session)?.status);
+  const found = useChat(session);
+  const chat = found.kind === "ready" ? found.chat : undefined;
+  const title = childTitle(chat);
+  const name = label === "" || label === session ? title : label;
+  const state = chat === undefined ? "done" : rowMark(chat.status, chat.background);
 
   const link = (
     <a
@@ -603,32 +559,28 @@ export function SubagentCitation({
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        openTray?.(session);
+        openChild(session);
       }}
     >
       <span {...props(proseStyles.linkLead)}>
         <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
-          {status !== undefined && subagentStatus(status, false).indicator === "running" ? (
-            <Spinner />
-          ) : (
-            <Icon name="agent" size={12} />
-          )}
+          {state === "done" ? <Icon name="agent" size={12} /> : <TaskMark state={state} />}
         </span>
         {name}
       </span>
     </a>
   );
 
-  if (child === undefined) return link;
+  if (chat === undefined) return link;
 
   return (
     <PreviewCard>
       <PreviewCardTrigger delay={400} render={link} />
       <PreviewCardContent side="bottom" align="start" xstyle={citationStyles.popup}>
         <div {...props(text.sm, citationStyles.card)}>
-          <span {...props(citationStyles.title)}>{title ?? name}</span>
-          <CitationFolder session={child} />
-          <CitationModel session={child} />
+          <span {...props(citationStyles.title)}>{title}</span>
+          <CitationFolder chat={chat} />
+          <CitationModel session={session} />
         </div>
       </PreviewCardContent>
     </PreviewCard>
