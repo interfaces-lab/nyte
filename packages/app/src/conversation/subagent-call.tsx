@@ -587,7 +587,11 @@ export function SubagentCitation({
     >
       <span {...props(proseStyles.linkLead)}>
         <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
-          <Icon name="agent" size={12} />
+          {child !== undefined && sessionStatus(child, false).indicator === "running" ? (
+            <Spinner />
+          ) : (
+            <Icon name="agent" size={12} />
+          )}
         </span>
         {name}
       </span>
