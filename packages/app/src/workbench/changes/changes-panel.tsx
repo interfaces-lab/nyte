@@ -26,7 +26,7 @@ import {
   useVcsSnapshot,
   workspaceGit,
 } from "../../data/vcs.ts";
-import { useSession } from "../../data/sessions.ts";
+import { useSessionRow } from "../../data/session-rows.ts";
 import { conversationTurns } from "../../chat/transcript/turns.ts";
 import { sessionWatch } from "../../data/watches.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
@@ -912,7 +912,7 @@ function SessionChangesPanel(
   );
 
   const sessionChanges = useWatchSelect(store, ({ value }) => value?.changes);
-  const workspace = useSession(props.sessionId, (session) => session.workspace);
+  const workspace = useSessionRow(props.sessionId, (session) => session.workspace);
 
   return (
     <ChangesPanelView
@@ -920,7 +920,7 @@ function SessionChangesPanel(
       turnOptions={turnOptions}
       turnsError={null}
       liveRun={liveRun}
-      workspace={workspace.data ?? undefined}
+      workspace={workspace ?? undefined}
       sessionChanges={sessionChanges}
     />
   );

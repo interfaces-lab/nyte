@@ -7,7 +7,7 @@ import type { ReactElement } from "react";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { queryClient } from "./query-client.ts";
-import { useSession } from "./sessions.ts";
+import { useSessionRow } from "./session-rows.ts";
 import { installConnection } from "./connection.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
@@ -35,19 +35,19 @@ installConnection(
 );
 
 function ShownTitle(): ReactElement {
-  const name = useSession(SHOWN, (session) => session.name).data;
+  const name = useSessionRow(SHOWN, (session) => session.name);
 
   return <span data-title="shown">{name ?? "New chat"}</span>;
 }
 
 function ShownRow(): null {
-  useSession(SHOWN);
+  useSessionRow(SHOWN, (session) => session);
 
   return null;
 }
 
 function UnlistedTitle(): ReactElement {
-  const name = useSession(UNLISTED, (session) => session.name).data;
+  const name = useSessionRow(UNLISTED, (session) => session.name);
 
   return <span data-title="unlisted">{name === undefined ? "Loading" : (name ?? "Missing")}</span>;
 }

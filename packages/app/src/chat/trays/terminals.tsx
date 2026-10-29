@@ -5,7 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import type { JobEnd, JobId, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
 import { Row } from "@nyte-ai/ui/row";
 import { useId, useRef, useState } from "react";
-import { useSession } from "../../data/sessions.ts";
+import { useSessionRow } from "../../data/session-rows.ts";
 import { useWorkspaceJobs } from "../../data/workspaces.ts";
 import { connection } from "../../data/connection.ts";
 import { jobsWatch } from "../../data/watches.ts";
@@ -57,7 +57,7 @@ const NO_JOBS: readonly JobId[] = [];
 
 /** The chat's terminals running in the background now. */
 export function useLiveTerminals(sessionId: SessionId | undefined): readonly JobId[] {
-  const workspace = useSession(sessionId, (session) => session.workspace).data ?? undefined;
+  const workspace = useSessionRow(sessionId, (session) => session.workspace) ?? undefined;
 
   return useWatchSelect(
     workspace === undefined ? undefined : jobsWatch(workspace),
@@ -75,7 +75,7 @@ export function BackgroundWork({
   onOpenTerminal,
   viewport,
 }: BackgroundWorkProps) {
-  const workspace = useSession(sessionId, (session) => session.workspace).data ?? undefined;
+  const workspace = useSessionRow(sessionId, (session) => session.workspace) ?? undefined;
   const jobs = useWorkspaceJobs(workspace);
 
   const { root, ref, availableHeight } = useTrayRoot(viewport);
