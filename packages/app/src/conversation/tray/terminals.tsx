@@ -13,7 +13,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { readDeferred } from "../../deferred.tsx";
-import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
+import { Tray, TrayIconAction, trayParts, useTrayRoot } from "./tray.tsx";
 
 const styles = create({
   actions: { marginInlineEnd: `calc(${space.s1} + ${tray.rowInset} - ${tray.paddingInline})` },
@@ -97,34 +97,13 @@ export function BackgroundWork({
     const held = root?.contains(document.activeElement) === true;
     onOpenChange(false);
 
-    if (held) requestAnimationFrame(() => pillRef.current?.focus());
+    if (held) pillRef.current?.focus();
   };
 
   if (!hasTerminals) return null;
 
   return (
     <div ref={ref} {...props(trayParts.root)}>
-      {!trayOpen && hasTerminals && (
-        <TrayPill
-          ref={pillRef}
-          label={`Open terminals (${count})`}
-          controls={trayId}
-          onClick={() => {
-            setStopCandidates(undefined);
-            cancel.reset();
-            stopAll.reset();
-            onOpenChange(true);
-          }}
-        >
-          <span {...props(trayParts.pillIndicator)}>
-            <Spinner />
-          </span>
-          <span aria-hidden="true" {...props(trayParts.pillCount)}>
-            {liveTerminals.length}
-          </span>
-          <span>{noun}</span>
-        </TrayPill>
-      )}
       <Tray open={trayOpen} id={trayId} label="Terminals" focusKey="terminals" onClose={close}>
         <div {...props(trayStyles.header)}>
           <span {...props(trayStyles.title)}>{`${count} ${noun.toLowerCase()}`}</span>
@@ -217,6 +196,37 @@ export function BackgroundWork({
           </div>
         )}
       </Tray>
+      <div {...props(trayParts.pills)}>
+        <Button
+          ref={pillRef}
+          variant="outline"
+          pill
+          size="sm"
+          aria-description={`Open terminals (${count})`}
+          aria-controls={trayId}
+          aria-expanded={trayOpen}
+          onClick={() => {
+            if (trayOpen) {
+              onOpenChange(false);
+
+              return;
+            }
+
+            setStopCandidates(undefined);
+            cancel.reset();
+            stopAll.reset();
+            onOpenChange(true);
+          }}
+        >
+          <span {...props(trayParts.pillIndicator)}>
+            <Spinner />
+          </span>
+          <span aria-hidden="true" {...props(trayParts.pillCount)}>
+            {liveTerminals.length}
+          </span>
+          <span>{noun}</span>
+        </Button>
+      </div>
     </div>
   );
 }
