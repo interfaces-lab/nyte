@@ -2,7 +2,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { useMutation } from "@tanstack/react-query";
-import type { JobEnd, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
+import type { JobEnd, JobId, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
 import { Row } from "@nyte-ai/ui/row";
 import { useId, useRef, useState } from "react";
 import { useSession, useWorkspaceJobs } from "../../queries.ts";
@@ -14,6 +14,9 @@ import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { readDeferred } from "../../deferred.tsx";
 import { Tray, TrayIconAction, trayParts, useTrayRoot } from "./tray.tsx";
+import type { TrayView } from "../../window/index.ts";
+
+export type TerminalsTrayView = Extract<TrayView, { readonly kind: "closed" | "terminals" }>;
 
 const styles = create({
   actions: { marginInlineEnd: `calc(${space.s1} + ${tray.rowInset} - ${tray.paddingInline})` },
@@ -38,7 +41,7 @@ function jobActionMessage(outcome: StopOutcome<JobEnd>): string {
 interface BackgroundWorkProps {
   readonly sessionId: SessionId;
   readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
+  readonly onViewChange: (view: TerminalsTrayView) => void;
   readonly onOpenTerminal: (job: JobView) => string;
   readonly viewport: HTMLElement | null;
 }
@@ -47,19 +50,25 @@ function runsInBackground(job: JobView, sessionId: SessionId | undefined): boole
   return job.session === sessionId && job.state.kind === "running" && !job.foreground;
 }
 
-export function useHasLiveTerminals(sessionId: SessionId | undefined): boolean {
+const NO_JOBS: readonly JobId[] = [];
+
+/** The chat's terminals running in the background now. */
+export function useLiveTerminals(sessionId: SessionId | undefined): readonly JobId[] {
   const workspace = useSession(sessionId, (session) => session.workspace).data ?? undefined;
 
   return useWatchSelect(
     workspace === undefined ? undefined : jobsWatch(workspace),
-    (state) => state.value?.some((job) => runsInBackground(job, sessionId)) === true,
+    (state) =>
+      state.value?.flatMap((job) => (runsInBackground(job, sessionId) ? [job.id] : [])) ?? NO_JOBS,
+    (previous, next) =>
+      previous.length === next.length && previous.every((id, index) => id === next[index]),
   );
 }
 
 export function BackgroundWork({
   sessionId,
   open,
-  onOpenChange,
+  onViewChange,
   onOpenTerminal,
   viewport,
 }: BackgroundWorkProps) {
@@ -95,7 +104,7 @@ export function BackgroundWork({
 
   const close = () => {
     const held = root?.contains(document.activeElement) === true;
-    onOpenChange(false);
+    onViewChange({ kind: "closed" });
 
     if (held) pillRef.current?.focus();
   };
@@ -151,7 +160,7 @@ export function BackgroundWork({
                   const terminal = onOpenTerminal(job);
 
                   readDeferred("workbench")?.focusTerminal(terminal);
-                  onOpenChange(false);
+                  onViewChange({ kind: "closed" });
                 }}
               >
                 <Row.Leading aria-hidden="true">
@@ -207,7 +216,7 @@ export function BackgroundWork({
           aria-expanded={trayOpen}
           onClick={() => {
             if (trayOpen) {
-              onOpenChange(false);
+              onViewChange({ kind: "closed" });
 
               return;
             }
@@ -215,7 +224,7 @@ export function BackgroundWork({
             setStopCandidates(undefined);
             cancel.reset();
             stopAll.reset();
-            onOpenChange(true);
+            onViewChange({ kind: "terminals", openedOver: liveTerminals.map((job) => job.id) });
           }}
         >
           <span {...props(trayParts.pillIndicator)}>

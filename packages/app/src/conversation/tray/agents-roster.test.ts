@@ -58,7 +58,11 @@ test("the agents tray keeps a failed agent listed after those waiting on the use
     "failed",
   ]);
 
-  const held = listSubagents(agents, { kind: "list", retainedSessionId: stopped.id }, chats);
+  const held = listSubagents(
+    agents,
+    { kind: "list", retainedSessionId: stopped.id, openedOver: [stopped.id] },
+    chats,
+  );
 
   expect(held.listed.at(-1)).toMatchObject({ title: "stopped", status: { kind: "stopped" } });
 });

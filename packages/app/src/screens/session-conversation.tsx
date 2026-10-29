@@ -39,7 +39,7 @@ import {
 import type { WatchStore } from "../sdk.tsx";
 import type { DesktopModelOption } from "../catalog.ts";
 
-import { BackgroundWork, useHasLiveTerminals } from "../conversation/tray/terminals.tsx";
+import { BackgroundWork, useLiveTerminals } from "../conversation/tray/terminals.tsx";
 import { Timeline } from "../conversation/timeline.tsx";
 import { TranscriptProvider, useTranscriptControls } from "../conversation/transcript.tsx";
 import { ApprovalTray } from "../conversation/approval-tray.tsx";
@@ -60,7 +60,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../work-counts.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { chatTitle, useChat, useChats } from "../chats/index.ts";
-import { chatWindow, useChatWindow } from "../window/index.ts";
+import { chatWindow, showTray, useChatWindow } from "../window/index.ts";
 import type { TrayView } from "../window/index.ts";
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
@@ -249,13 +249,6 @@ function MarkSeen({ sessionId }: { readonly sessionId: SessionId }): ReactElemen
   return tip === undefined || !looking ? null : <SeeTip key={tip} sessionId={sessionId} />;
 }
 
-/** Forgets a tray left with nothing to show, so it doesn't open again by itself when work returns. */
-function CloseTray({ parent }: { readonly parent: SessionId }): null {
-  useMountEffect(() => chatWindow.act({ kind: "tray", parent, view: CLOSED_TRAY }));
-
-  return null;
-}
-
 function SeeTip({ sessionId }: { readonly sessionId: SessionId }): null {
   useMountEffect(() => {
     void chatWindow.markRead([sessionId]);
@@ -285,16 +278,19 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const setTrayView = (view: TrayView): void =>
     chatWindow.act({ kind: "tray", parent: sessionId, view });
 
-  const hasTerminals = useHasLiveTerminals(presentation === "full" ? sessionId : undefined);
+  const live = useLiveTerminals(presentation === "full" ? sessionId : undefined);
   const childSessions = useChildSessions(sessionId).data ?? [];
 
-  const listEmptied = useChats(
-    (chats) =>
-      kept.kind === "list" && listSubagents(childSessions, kept, chats).listed.length === 0,
+  const trayView = useChats((chats) =>
+    showTray(kept, {
+      listed:
+        kept.kind === "list"
+          ? listSubagents(childSessions, kept, chats).listed.map((agent) => agent.session.id)
+          : [],
+      live,
+    }),
   );
 
-  const trayEmptied = (kept.kind === "terminals" && !hasTerminals) || listEmptied;
-  const trayView = trayEmptied ? CLOSED_TRAY : kept;
   const deferredTrayView = useDeferredValue(trayView);
   const shownTrayView = trayView.kind === "detail" ? deferredTrayView : trayView;
 
@@ -450,7 +446,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
             focusComposer={() => composerRef.current?.focus({ preventScroll: true })}
           >
             <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
-              {trayEmptied && <CloseTray parent={sessionId} />}
               <MarkSeen sessionId={sessionId} />
               {((ready && chat.kind !== "loading") || failed) && <StartupReadsRelease />}
               {presentation === "full" && activation !== undefined && (
@@ -507,9 +502,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                         <BackgroundWork
                           sessionId={sessionId}
                           open={shownTrayView.kind === "terminals"}
-                          onOpenChange={(open) =>
-                            setTrayView({ kind: open ? "terminals" : "closed" })
-                          }
+                          onViewChange={setTrayView}
                           onOpenTerminal={(job) =>
                             openJobTerminal({
                               controller: workbenchController,

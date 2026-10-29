@@ -162,7 +162,7 @@ test("each chat has one tray view, and only an open agent covers the chat under 
   const listed = reduceTrays(new Map(), {
     kind: "tray",
     parent: left,
-    view: { kind: "list", retainedSessionId: undefined },
+    view: { kind: "list", retainedSessionId: undefined, openedOver: [agent] },
   });
 
   const detail = reduceTrays(listed, { kind: "tray", parent: left, view: showsAgent });
@@ -170,7 +170,7 @@ test("each chat has one tray view, and only an open agent covers the chat under 
   const terminals = reduceTrays(detail, {
     kind: "tray",
     parent: left,
-    view: { kind: "terminals" },
+    view: { kind: "terminals", openedOver: [] },
   });
 
   expect(sorted(expose(view(split, { trays: listed })).looking)).toEqual([left, right]);

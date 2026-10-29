@@ -160,7 +160,7 @@ function Stage({
             <BackgroundWork
               sessionId={SESSION}
               open={open}
-              onOpenChange={setOpen}
+              onViewChange={(view) => setOpen(view.kind === "terminals")}
               onOpenTerminal={() => "terminal"}
               viewport={viewport}
             />

@@ -30,7 +30,7 @@ export interface WindowSnapshot {
   readonly covered: boolean;
 }
 
-export type { TrayView } from "./tray.ts";
+export { showTray, type TrayView } from "./tray.ts";
 
 /** What this window holds itself; the rest of its view it reads from the stores it listens to. */
 interface Own {

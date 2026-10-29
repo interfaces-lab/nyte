@@ -158,7 +158,13 @@ export function SubagentTray({
         <TrayPill
           label={`Agents, ${String(active.length)} active${failed === 0 ? "" : `, ${String(failed)} failed`}`}
           controls={trayId}
-          onClick={() => onViewChange({ kind: "list", retainedSessionId: undefined })}
+          onClick={() =>
+            onViewChange({
+              kind: "list",
+              retainedSessionId: undefined,
+              openedOver: listed.map((agent) => agent.session.id),
+            })
+          }
         >
           <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
             {active.some((agent) => agent.mark !== "waiting") ? (
@@ -272,7 +278,13 @@ export function SubagentTray({
               <TrayIconAction
                 icon="arrow-left"
                 label="Back to agents"
-                onClick={() => onViewChange({ kind: "list", retainedSessionId: view.sessionId })}
+                onClick={() =>
+                  onViewChange({
+                    kind: "list",
+                    retainedSessionId: view.sessionId,
+                    openedOver: listed.map((agent) => agent.session.id),
+                  })
+                }
               />
               <span title={selectedTitle} {...props(trayStyles.title)}>
                 {selectedTitle}
