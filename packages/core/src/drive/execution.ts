@@ -20,12 +20,13 @@ import type { FoldInput } from "../contract/fold.ts";
 import { PARTICIPANT_AUTHORITY } from "../contract/host.ts";
 import type { ExecutionState, Kernel, LandedInput } from "../contract/kernel.ts";
 import { decodeLease, decodeRunRecord } from "../contract/records.ts";
-import type { RunRecord } from "../contract/records.ts";
+import type { RunRecord, SessionRecord } from "../contract/records.ts";
 import { landing, selectRunStart } from "../engine/admission.ts";
 import { LEASE_MS } from "../engine/durable.ts";
 import { stopRequested } from "../engine/fence.ts";
 import { holdLease } from "../engine/lease.ts";
 import { recoverMoves } from "../engine/move.ts";
+import { readChildState } from "../engine/children.ts";
 import { begin, endRun, newRun } from "../engine/runs.ts";
 import { reapJobs } from "../engine/jobs.ts";
 import { BEAT_MS } from "../engine/presence.ts";
@@ -132,8 +133,7 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
 
     if (records !== null && kernel.execution.kind === "run")
       for (const record of records)
-        for (const head of await recover(kernel, record.id, record.heads))
-          kernel.wakes.notify(record.id, head);
+        for (const head of await recover(kernel, record)) kernel.wakes.notify(record.id, head);
   } catch (error) {
     await close();
 
@@ -162,7 +162,7 @@ export async function advance(
 
     if (found === null || !found.record.heads.some((entry) => entry.name === head))
       return { kind: "idle" };
-    kernel.children.link(found.record);
+    kernel.children.link(found.record, null);
     await kernel.plugins.runtime(session).ready;
     const refused = await claim(kernel, session, head);
 
@@ -269,7 +269,7 @@ async function owedPage(
     const found = await readSession(kernel.store, session);
 
     if (found !== null)
-      for (const head of await recover(kernel, session, found.record.heads, operations))
+      for (const head of await recover(kernel, found.record, operations))
         runnable.push({ session, head });
   }
 
@@ -286,18 +286,22 @@ async function owedPage(
 
 async function recover(
   kernel: Kernel,
-  session: SessionId,
-  heads: readonly { readonly name: HeadName }[],
+  record: SessionRecord,
   operations = true,
 ): Promise<readonly HeadName[]> {
+  const session = record.id;
+
   if (operations) {
+    if (record.parent !== null)
+      kernel.children.link(record, await readChildState(kernel.store, record));
     await recoverMoves(kernel, session);
     await recoverStarts(kernel, session);
   }
 
   const runnable: HeadName[] = [];
 
-  for (const head of heads) if (await owed(kernel, session, head.name)) runnable.push(head.name);
+  for (const head of record.heads)
+    if (await owed(kernel, session, head.name)) runnable.push(head.name);
 
   return runnable;
 }

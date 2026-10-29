@@ -2,7 +2,9 @@ import { asSeq } from "@nyte-ai/schema";
 import type { BackgroundItem, CallId, HeadName, SessionEvent, SessionId } from "@nyte-ai/schema";
 import type { ChildTable, Kernel } from "../contract/kernel.ts";
 import { backgroundItems } from "../fold/background.ts";
-import { MAIN } from "../store/session.ts";
+import type { SessionRecord } from "../contract/records.ts";
+import type { StoreConnection } from "../contract/store.ts";
+import { liveRun, MAIN } from "../store/session.ts";
 
 interface Child {
   readonly parent: SessionId;
@@ -61,16 +63,23 @@ export function createChildTable(
   });
 
   return {
-    link(record) {
-      if (record.parent === null || children.has(record.id)) return;
-      children.set(record.id, {
+    link(record, own) {
+      if (record.parent === null) return;
+
+      const child = children.get(record.id) ?? {
         parent: record.parent,
         head: record.origin?.head ?? MAIN,
         startedBy: record.origin?.call ?? null,
         title: record.name ?? CHILD_TITLE,
         own: null,
         item: null,
-      });
+      };
+
+      children.set(record.id, child);
+
+      if (child.own !== null || own === null) return;
+      child.own = own;
+      refresh(record.id, child);
     },
     background: (session) =>
       [...children.values()].flatMap((child) =>
@@ -82,6 +91,21 @@ export function createChildTable(
 }
 
 const CHILD_TITLE = "Subagent";
+
+/** How a child's own run stands in the store: its main head's live run, else how its last run ended; null for a child that never ran. */
+export async function readChildState(
+  store: StoreConnection,
+  record: SessionRecord,
+): Promise<BackgroundItem["state"] | null> {
+  const live = await liveRun(store, record.id, MAIN);
+
+  if (live !== null) return live.record.waiting?.kind === "part" ? "waiting" : "working";
+  const end = record.heads.find((head) => head.name === MAIN)?.lastRun?.end;
+
+  if (end === undefined) return null;
+
+  return end.kind === "failed" ? "failed" : "done";
+}
 
 function runState(event: Extract<SessionEvent, { readonly kind: "run" }>): BackgroundItem["state"] {
   switch (event.change) {
