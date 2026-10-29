@@ -800,6 +800,9 @@
       "--nyte-sidebar-width",
       "--nyte-suggestion-item-gap",
       "--nyte-suggestion-item-height",
+      "--nyte-tab-max-width",
+      "--nyte-tab-min-width",
+      "--nyte-tab-strip-edge-fade",
       "--nyte-titlebar-height",
       "--nyte-titlebar-traffic-light-inset",
       "--nyte-tray-gap",
@@ -1094,6 +1097,7 @@
       "trailingWidth",
       "width"
     ],
+    "app/src/theme/schema.stylex.ts tab": ["maxWidth", "minWidth", "stripEdgeFade"],
     "app/src/theme/schema.stylex.ts tray": [
       "gap",
       "headerHeight",
