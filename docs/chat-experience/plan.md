@@ -98,7 +98,7 @@ Status: `todo`, `doing`, `done`, `deferred`.
 | ID | Item | Proven by | Status |
 | --- | --- | --- | --- |
 | E1 | One chat hover card for sidebar rows and tabs: title, `owner/repo` and branch, `~` path, machine ("Local"), click to copy, 250 ms delay | renderer test | done |
-| E2 | The "Run finished" toast appears only when the chat isn't visible in any pane | plugin or app test | partly: quiet for the focused pane; other split pane needs a visible-chats API |
+| E2 | The "Run finished" toast appears only when the chat isn't visible in any pane | plugin or app test | done (client plugins read the window's looking set, H3) |
 | E3 | The agents tray distinguishes failed from completed | unit test | done |
 | E4 | Right panel defaults to 50 % with a 384 px minimum, stored as a ratio | controller unit test | done |
 | E5 | The Changes rail entry shows `+N −N` line totals | renderer test | done |
@@ -134,16 +134,24 @@ The goal is a faithful port of Glass's behaviour and practices, with clearer log
 | Ground | `architecture/grounding.md`: traced model of today's shell with file:line | done |
 | Sketch | Three candidate designs from different models, screened against the red flags | done (`architecture/candidates/`) |
 | Synthesize | `architecture/rationale.md` and the type sketch: module map, types, signatures | done: Sol base, Opus and Astra grafts |
-| Implement | H1–H3 below, on `chat-experience` after the six packages merge | doing |
-| Scrap check | Record whether implementation fought the sketch, and the redesign if so | todo |
+| Implement | H1–H3 below, on `chat-experience` after the six packages merge | done |
+| Scrap check | Record whether implementation fought the sketch, and the redesign if so | done: no scrap; deviations below |
 
 ### H. Architecture (this branch)
 
 | ID | Item | Proven by | Status |
 | --- | --- | --- | --- |
-| H1 | One chat directory: a `Chat` per id with title, parent, location and run status, joined once from the session list, views and workspaces; folder boundary enforced by lint | unit tests on the directory; existing renderer and e2e suites | todo |
-| H2 | One run status every surface reads (sidebar row, tab, tray, composer, announcer, toast); the per-surface mappings are deleted. Stopped, failed, completed and approval stay distinct | unit tests on the status refinement; agents tray and sidebar tests | todo |
-| H3 | One "looking" projection over window state, tray detail, workbench cover and window focus; it gates marking read, the divider boundary, unread suppression and the finished-run toast (completes E2 for split panes) | unit tests on the projection; transcript unread and notification tests | todo |
+| H1 | One chat directory: a `Chat` per id with title, parent, location and run status, joined once from the session list, views and workspaces; folder boundary enforced by lint | unit tests on the directory; existing renderer and e2e suites | done |
+| H2 | One run status every surface reads (sidebar row, tab, tray, composer, announcer, toast); the per-surface mappings are deleted. Stopped, failed, completed and approval stay distinct | unit tests on the status refinement; agents tray and sidebar tests | done |
+| H3 | One "looking" projection over window state, tray detail, workbench cover and window focus; it gates marking read, the divider boundary, unread suppression and the finished-run toast (completes E2 for split panes) | unit tests on the projection; transcript unread and notification tests | done |
+
+Deviations from the sketch, kept for the next branch to weigh:
+
+- `RunStatus` lives in `@nyte-ai/plugin/client/presentation` beside `executionMark`, not in `chats/`, because the run toast is a plugin and can't import the app. It is one union whose active kinds carry their run, so `OwnRun` and `ChatRun` collapsed into it; `retrying` is its own kind to keep its glyph. The composer and announcer read the open view's own run (`runStatus(view.execution)`), the sketch's `run.self`; every other surface reads `Chat.status`.
+- `Chat` has no `pinned`, `archived` or timestamps yet: no surface reads them from it. `ChatLocation` has no machine or repository: the hover card still enriches git and GitHub per workspace, and its machine line comes from the client surface.
+- `ChatResult` has no `failed` kind; a list that fails to load stays `loading`.
+- `useChats` and `useChatWindow` take a selector, so a row re-renders only when its own answer changes.
+- The window's looking projection reads today's window tabs, the tray's open agent (moved into the window store, keyed by parent chat), the workbench, settings and focus. The toast filter stays in the notifications plugin; the plugin api gained `looking` instead of the sketch's app-only completion plugin.
 
 ### Next branch
 
