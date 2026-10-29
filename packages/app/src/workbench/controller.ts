@@ -25,9 +25,9 @@ import {
 } from "./model.ts";
 import {
   type WorkbenchPersistence,
-  browserPersistence,
   persistable,
   restoreSnapshot,
+  workbenchPersistence,
 } from "./persistence.ts";
 import { shareWidth } from "./width.ts";
 
@@ -162,14 +162,14 @@ export function createWorkbenchController(
   >();
 
   const read = (): WorkbenchSnapshot =>
-    (restored ??= restoreSnapshot(persistence?.read(), capabilities));
+    (restored ??= restoreSnapshot(persistence?.get(), capabilities));
 
   const publish = (key: WorkbenchViewKey, view: WorkbenchViewState): void => {
     const views = new Map(read().views);
     views.set(key, freezeView(view));
     const snapshot = Object.freeze({ views });
     restored = snapshot;
-    persistence?.write(persistable(snapshot));
+    persistence?.set(persistable(snapshot));
 
     for (const listener of listeners) listener();
   };
@@ -381,7 +381,7 @@ export function createWorkbenchController(
 
 export const workbenchController = createWorkbenchController(
   () => clientCapabilities(nyte.host),
-  browserPersistence(),
+  workbenchPersistence(),
   {
     ready: () => readDeferred("workbench") !== undefined,
     load: async () => {

@@ -10,7 +10,6 @@ import type {
 } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { Type } from "typebox";
-import { Value } from "typebox/value";
 import { useSyncExternalStore } from "react";
 import { errorMessage } from "../../contract/errors.ts";
 import { connected } from "../../data/connection.ts";
@@ -18,6 +17,7 @@ import { hostWatch } from "../../data/watches.ts";
 import { workspacePath as pathOfWorkspace } from "../../data/workspaces.ts";
 import type { WorkbenchController } from "../controller.ts";
 import type { WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
+import { persisted } from "../persistence.ts";
 
 type ShellTerminalState =
   | { readonly kind: "starting" }
@@ -228,8 +228,8 @@ async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
   }
 }
 
-function savedKey(id: WorkbenchTabId): string {
-  return SAVED_PREFIX + id;
+function savedOutput(id: WorkbenchTabId) {
+  return persisted(SAVED_PREFIX + id, savedShell, null);
 }
 
 function save(id: WorkbenchTabId): void {
@@ -238,19 +238,11 @@ function save(id: WorkbenchTabId): void {
   const feed = feeds.get(id);
 
   if (feed === undefined) return;
-
-  try {
-    window.localStorage.setItem(
-      savedKey(id),
-      JSON.stringify({
-        workspace: feed.workspace,
-        key: feed.job.key,
-        printed: feed.printed.join("").slice(-KEPT_OUTPUT),
-      }),
-    );
-  } catch {
-    return;
-  }
+  savedOutput(id).set({
+    workspace: feed.workspace,
+    key: feed.job.key,
+    printed: feed.printed.join("").slice(-KEPT_OUTPUT),
+  });
 }
 
 function scheduleSave(id: WorkbenchTabId): void {
@@ -261,25 +253,10 @@ function scheduleSave(id: WorkbenchTabId): void {
   );
 }
 
-function readSaved(id: WorkbenchTabId) {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(savedKey(id)) ?? "null");
-
-    return Value.Check(savedShell, parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 function forgetSaved(id: WorkbenchTabId): void {
   clearTimeout(saving.get(id));
   saving.delete(id);
-
-  try {
-    window.localStorage.removeItem(savedKey(id));
-  } catch {
-    return;
-  }
+  savedOutput(id).remove();
 }
 
 if (globalThis.window !== undefined)
@@ -415,7 +392,7 @@ export function reattachShells(
   shells: Iterable<{ readonly id: WorkbenchTabId; readonly workspacePath: string | null }>,
 ): void {
   for (const { id, workspacePath } of shells) {
-    const saved = readSaved(id);
+    const saved = savedOutput(id).get();
 
     if (saved === null || saved.key === null || snapshot.tabs.has(id) || creating.has(id)) continue;
     const { key } = saved;
@@ -548,7 +525,7 @@ export const terminalActions = {
       );
 
     if (snapshot.tabs.has(id)) return Promise.resolve();
-    const saved = readSaved(id);
+    const saved = savedOutput(id).get();
 
     return startShell(
       id,

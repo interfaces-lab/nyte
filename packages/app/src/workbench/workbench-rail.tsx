@@ -3,6 +3,8 @@ import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar, workbench } from "../theme/schema.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { Type } from "typebox";
+import { persisted } from "./persistence.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const WIDTH_DEFAULT = 200;
@@ -15,8 +17,6 @@ const WIDTH_STEP = 8;
 
 const MAIN_WIDTH_MIN = 240;
 
-const STORAGE_KEY = "nyte.desktop.workbench-rail-width.v1";
-
 const WIDTH_VARIABLE = "--nyte-workbench-file-list-width";
 
 function clampWidth(width: number, max: number): number {
@@ -25,42 +25,22 @@ function clampWidth(width: number, max: number): number {
   return Math.min(max, Math.max(WIDTH_MIN, Math.round(width)));
 }
 
-function storage(): Storage | undefined {
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
 function applyWidth(width: number): void {
   document.documentElement.style.setProperty(WIDTH_VARIABLE, `${String(width)}px`);
 }
 
-let width = clampWidth(Number(storage()?.getItem(STORAGE_KEY) ?? WIDTH_DEFAULT), WIDTH_MAX);
+const storedWidth = persisted(
+  "nyte.desktop.workbench-rail-width.v1",
+  Type.Number({ minimum: WIDTH_MIN, maximum: WIDTH_MAX }),
+  WIDTH_DEFAULT,
+);
 
-applyWidth(width);
-
-const listeners = new Set<() => void>();
+applyWidth(storedWidth.get());
 
 function setWidth(next: number): void {
-  if (next === width) return;
-  width = next;
+  if (next === storedWidth.get()) return;
   applyWidth(next);
-
-  try {
-    storage()?.setItem(STORAGE_KEY, String(next));
-  } catch {}
-
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-
-  return () => {
-    listeners.delete(listener);
-  };
+  storedWidth.set(next);
 }
 
 const styles = create({
@@ -94,7 +74,7 @@ interface ResizeState {
 }
 
 export function WorkbenchRail({ children }: { readonly children: ReactNode }): ReactElement {
-  const current = useSyncExternalStore(subscribe, () => width);
+  const current = useSyncExternalStore(storedWidth.subscribe, storedWidth.get);
   const seatRef = useRef<HTMLDivElement>(null);
   const [max, setMax] = useState(WIDTH_MAX);
   const [resizing, setResizing] = useState(false);

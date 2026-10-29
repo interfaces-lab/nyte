@@ -278,11 +278,11 @@ describe("shell terminals", () => {
   });
 
   test("the workbench keeps a user's shell tab across a reload and drops an agent's", () => {
-    let stored: Parameters<WorkbenchPersistence["write"]>[0] | undefined;
+    let stored: Parameters<WorkbenchPersistence["set"]>[0] | undefined;
 
     const persistence: WorkbenchPersistence = {
-      read: () => stored,
-      write: (value) => {
+      get: () => stored,
+      set: (value) => {
         stored = value;
       },
     };

@@ -106,11 +106,13 @@ test.each(["successful", "failed"] as const)(
 );
 
 test("the panel takes half the stage, at least 384 px, and keeps its share as the window grows", () => {
-  const stored: Parameters<WorkbenchPersistence["write"]>[0][] = [];
+  const stored: Parameters<WorkbenchPersistence["set"]>[0][] = [];
 
   const controller = createWorkbenchController(() => ({ browser: true }), {
-    read: () => undefined,
-    write: (value) => stored.push(value),
+    get: () => undefined,
+    set: (value) => {
+      stored.push(value);
+    },
   });
 
   const view = "/workspace";
@@ -124,8 +126,8 @@ test("the panel takes half the stage, at least 384 px, and keeps its share as th
   expect(stored.at(-1)?.views).toMatchObject([{ key: view, share: 0.25 }]);
 
   const reopened = createWorkbenchController(() => ({ browser: true }), {
-    read: () => stored.at(-1),
-    write: () => undefined,
+    get: () => stored.at(-1),
+    set: () => undefined,
   });
 
   expect(workbenchPanelWidth(reopened.getView(view).width, 2000)).toBe(500);
@@ -134,13 +136,13 @@ test("the panel takes half the stage, at least 384 px, and keeps its share as th
 test("a width stored in pixels stays until the next resize, and the old 400 px default becomes half", () => {
   const pixels = (width: number) =>
     createWorkbenchController(() => ({ browser: true }), {
-      read: () => ({
+      get: () => ({
         version: 7,
         views: [
           { key: "/workspace", tabs: [], active: null, expanded: true, maximized: false, width },
         ],
       }),
-      write: () => undefined,
+      set: () => undefined,
     });
 
   const resized = pixels(520);

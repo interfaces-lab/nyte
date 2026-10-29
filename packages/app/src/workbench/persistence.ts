@@ -1,6 +1,6 @@
 import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import type { Static } from "typebox";
+import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import {
@@ -17,12 +17,61 @@ import { DEFAULT_WIDTH, type WorkbenchWidth, shareWidth } from "./width.ts";
 /** What every panel was stored with before panels stored a share: the old default, not a width anyone chose. */
 const LEGACY_DEFAULT_PIXELS = 400;
 
-export interface WorkbenchPersistence {
-  read(): PersistedWorkbenchSnapshot | undefined;
-  write(value: PersistedWorkbenchSnapshot): void;
+/** A value the workbench keeps in local storage, checked against its schema when read. */
+export interface Persisted<T> {
+  readonly get: () => T;
+  readonly set: (value: T) => void;
+  readonly remove: () => void;
+  readonly subscribe: (listener: () => void) => () => void;
 }
 
-const STORAGE_KEY = "nyte:desktop:workbench:v7";
+/** Reads `key` once, on first use; a stored value that fails `schema` reads as `fallback`. */
+export function persisted<S extends TSchema, Fallback>(
+  key: string,
+  schema: S,
+  fallback: Fallback,
+): Persisted<Static<S> | Fallback> {
+  const storage = globalThis.window === undefined ? undefined : window.localStorage;
+  const listeners = new Set<() => void>();
+  let loaded: { readonly value: Static<S> | Fallback } | undefined;
+
+  const read = (): Static<S> | Fallback => {
+    const raw = storage?.getItem(key) ?? null;
+
+    if (raw === null) return fallback;
+    const parsed: unknown = JSON.parse(raw);
+
+    return Value.Check(schema, parsed) ? parsed : fallback;
+  };
+
+  const publish = (value: Static<S> | Fallback): void => {
+    loaded = { value };
+
+    for (const listener of listeners) listener();
+  };
+
+  return {
+    get: () => (loaded ??= { value: read() }).value,
+    set(value) {
+      storage?.setItem(key, JSON.stringify(value));
+      publish(value);
+    },
+    remove() {
+      storage?.removeItem(key);
+      publish(fallback);
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+export type WorkbenchPersistence = Pick<
+  Persisted<PersistedWorkbenchSnapshot | undefined>,
+  "get" | "set"
+>;
 
 const strict = { additionalProperties: false };
 
@@ -145,29 +194,6 @@ function restoreWidth(stored: Static<typeof persistedWorkbenchView>): WorkbenchW
     : { kind: "pixels", pixels: stored.width };
 }
 
-function decodePersistedWorkbenchSnapshot(
-  serialized: string,
-): PersistedWorkbenchSnapshot | undefined {
-  try {
-    const parsed: unknown = JSON.parse(serialized);
-
-    if (!Value.Check(persistedWorkbenchSnapshot, parsed)) return undefined;
-
-    const valid = parsed.views.every((view) => {
-      const ids = new Set(view.tabs.map((tab) => tab.id));
-
-      return (
-        ids.size === view.tabs.length &&
-        (view.active === null ? view.tabs.length === 0 : ids.has(view.active))
-      );
-    });
-
-    return valid ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export function restoreSnapshot(
   persisted: PersistedWorkbenchSnapshot | undefined,
   capabilities: () => ClientCapabilities,
@@ -178,8 +204,10 @@ export function restoreSnapshot(
   const available = capabilities();
 
   for (const stored of persisted.views) {
-    const tabs: readonly WorkbenchTab[] = stored.tabs.filter((tab) =>
-      workbenchTabAvailable({ kind: "project" }, tab.kind, available),
+    const tabs: readonly WorkbenchTab[] = stored.tabs.filter(
+      (tab, index) =>
+        workbenchTabAvailable({ kind: "project" }, tab.kind, available) &&
+        stored.tabs.findIndex((candidate) => candidate.id === tab.id) === index,
     );
 
     const active = tabs.some((tab) => tab.id === stored.active)
@@ -228,25 +256,6 @@ export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnap
   };
 }
 
-export function browserPersistence(): WorkbenchPersistence | undefined {
-  if (globalThis.window === undefined) return undefined;
-
-  return {
-    read() {
-      try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
-
-        return raw === null ? undefined : decodePersistedWorkbenchSnapshot(raw);
-      } catch {
-        return undefined;
-      }
-    },
-    write(value) {
-      try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-      } catch {
-        return;
-      }
-    },
-  };
+export function workbenchPersistence(): WorkbenchPersistence {
+  return persisted("nyte:desktop:workbench:v7", persistedWorkbenchSnapshot, undefined);
 }

@@ -1,10 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { Value } from "typebox/value";
 import { preferences, useSetting } from "../../preferences/index.ts";
-
-const STORAGE_KEY = "nyte.desktop.changes-view-options.v1";
+import { persisted } from "../persistence.ts";
 
 const MAX_SCOPES = 32;
 
@@ -25,127 +23,79 @@ const scopedOptionsSchema = Type.Object(
   { additionalProperties: false },
 );
 
-const storedOptionsSchema = Type.Record(Type.String(), scopedOptionsSchema);
-
 export type ChangesLayout = Static<typeof changesViewOptionsSchema>["layout"];
 
 export type ChangesViewOptions = Static<typeof changesViewOptionsSchema>;
 
-type StoredChangesViewOptions = Static<typeof storedOptionsSchema>;
+type StoredChangesViewOptions = Static<typeof scopedOptionsSchema>["options"];
 
-const EMPTY_CHANGES_VIEW_OPTIONS: StoredChangesViewOptions = {};
+const EMPTY_CHANGES_VIEW_OPTIONS: Readonly<Record<string, Static<typeof scopedOptionsSchema>>> = {};
 
-type OptionsStorage = Pick<Storage, "getItem" | "setItem">;
+const stored = persisted(
+  "nyte.desktop.changes-view-options.v1",
+  Type.Record(Type.String(), scopedOptionsSchema),
+  EMPTY_CHANGES_VIEW_OPTIONS,
+);
 
-interface ChangesViewOptionsStoreOptions {
-  readonly storage?: OptionsStorage;
-  readonly now?: () => number;
-  readonly maxScopes?: number;
-}
+/** Keeps the scopes changed most recently, so the record stays small. */
+function evictOldest(
+  scopes: Readonly<Record<string, Static<typeof scopedOptionsSchema>>>,
+): Readonly<Record<string, Static<typeof scopedOptionsSchema>>> {
+  const entries = Object.entries(scopes);
 
-function decodeChangesViewOptions(serialized: string | null): StoredChangesViewOptions {
-  if (serialized === null) return EMPTY_CHANGES_VIEW_OPTIONS;
+  if (entries.length <= MAX_SCOPES) return scopes;
 
-  try {
-    const parsed: unknown = JSON.parse(serialized);
-
-    return Value.Check(storedOptionsSchema, parsed) ? parsed : EMPTY_CHANGES_VIEW_OPTIONS;
-  } catch {
-    return EMPTY_CHANGES_VIEW_OPTIONS;
-  }
-}
-
-class ChangesViewOptionsStore {
-  readonly #storage: OptionsStorage | undefined;
-  readonly #now: () => number;
-  readonly #maxScopes: number;
-  readonly #listeners = new Set<() => void>();
-  #stored: StoredChangesViewOptions = EMPTY_CHANGES_VIEW_OPTIONS;
-
-  constructor(options: ChangesViewOptionsStoreOptions = {}) {
-    this.#storage = options.storage;
-    this.#now = options.now ?? Date.now;
-    this.#maxScopes = options.maxScopes ?? MAX_SCOPES;
-
-    try {
-      this.#stored = decodeChangesViewOptions(this.#storage?.getItem(STORAGE_KEY) ?? null);
-    } catch {}
-  }
-
-  getSnapshot = (): StoredChangesViewOptions => this.#stored;
-
-  subscribe = (listener: () => void): (() => void) => {
-    this.#listeners.add(listener);
-
-    return () => this.#listeners.delete(listener);
-  };
-
-  setOptions(scopeId: string, changes: Partial<ChangesViewOptions>): void {
-    const current = this.#stored[scopeId]?.options ?? {};
-    const next = { ...current, ...changes };
-
-    if (
-      next.layout === current.layout &&
-      next.ignoreWhitespace === current.ignoreWhitespace &&
-      next.wordWrap === current.wordWrap &&
-      this.#stored[scopeId] !== undefined
-    ) {
-      return;
-    }
-
-    this.#commit({ ...this.#stored, [scopeId]: { options: next, updatedAt: this.#now() } });
-  }
-
-  reset(scopeId: string): void {
-    if (this.#stored[scopeId] === undefined) return;
-    const next = { ...this.#stored };
-    delete next[scopeId];
-    this.#commit(next);
-  }
-
-  #commit(stored: StoredChangesViewOptions): void {
-    this.#stored = this.#evictOldest(stored);
-
-    try {
-      this.#storage?.setItem(STORAGE_KEY, JSON.stringify(this.#stored));
-    } catch {}
-
-    for (const listener of this.#listeners) listener();
-  }
-
-  #evictOldest(stored: StoredChangesViewOptions): StoredChangesViewOptions {
-    const entries = Object.entries(stored);
-
-    if (entries.length <= this.#maxScopes) return stored;
-
-    const kept = entries
+  return Object.fromEntries(
+    entries
       .toSorted(([, left], [, right]) => right.updatedAt - left.updatedAt)
-      .slice(0, this.#maxScopes);
-
-    return Object.fromEntries(kept);
-  }
+      .slice(0, MAX_SCOPES),
+  );
 }
 
-function browserStorage(): OptionsStorage | undefined {
-  try {
-    return typeof window === "undefined" ? undefined : window.localStorage;
-  } catch {
-    return undefined;
-  }
-}
+export function setChangesViewOptions(scopeId: string, changes: StoredChangesViewOptions): void {
+  const scopes = stored.get();
+  const current = scopes[scopeId]?.options ?? {};
+  const next = { ...current, ...changes };
 
-export const changesViewOptions = new ChangesViewOptionsStore({ storage: browserStorage() });
+  if (
+    next.layout === current.layout &&
+    next.ignoreWhitespace === current.ignoreWhitespace &&
+    next.wordWrap === current.wordWrap &&
+    scopes[scopeId] !== undefined
+  ) {
+    return;
+  }
+
+  stored.set(evictOldest({ ...scopes, [scopeId]: { options: next, updatedAt: Date.now() } }));
+}
 
 export function useChangesViewOptions(scopeId: string): ChangesViewOptions {
-  const stored = useSyncExternalStore(
-    changesViewOptions.subscribe,
-    changesViewOptions.getSnapshot,
-    changesViewOptions.getSnapshot,
-  );
-
+  const scopes = useSyncExternalStore(stored.subscribe, stored.get, stored.get);
   const layout = useSetting(preferences.changesLayout);
   const ignoreWhitespace = useSetting(preferences.changesIgnoreWhitespace);
   const wordWrap = useSetting(preferences.changesWordWrap);
 
-  return { layout, ignoreWhitespace, wordWrap, ...stored[scopeId]?.options };
+  return { layout, ignoreWhitespace, wordWrap, ...scopes[scopeId]?.options };
 }
+
+export const COMMIT_ACTIONS = [
+  "branch-commit",
+  "branch-commit-push",
+  "branch",
+  "commit",
+  "commit-push",
+  "commit-pull-request",
+  "push",
+  "pull-request",
+] as const;
+
+export type CommitAction = (typeof COMMIT_ACTIONS)[number];
+
+export const DEFAULT_COMMIT_ACTION: CommitAction = "commit-push";
+
+/** The commit bar's last chosen action. */
+export const storedCommitAction = persisted(
+  "nyte.desktop.changes-commit-action.v2",
+  Type.Enum(COMMIT_ACTIONS),
+  DEFAULT_COMMIT_ACTION,
+);

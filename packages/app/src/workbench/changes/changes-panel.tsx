@@ -56,7 +56,7 @@ import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 import { createPatchLoader } from "../../diff/changes-patches.ts";
 import type { PatchEntry, PatchSource } from "../../diff/changes-patches.ts";
 import { ChangesToolbar, changesShortcutAction } from "./changes-toolbar.tsx";
-import { changesViewOptions, useChangesViewOptions } from "./changes-view-options.ts";
+import { setChangesViewOptions, useChangesViewOptions } from "./changes-view-options.ts";
 import { changesViewed, patchDigest } from "../../diff/changes-viewed.ts";
 import type { ViewedState } from "../../diff/changes-viewed.ts";
 import type { WorkbenchChangesScope } from "../model.ts";
@@ -783,7 +783,7 @@ function ChangesPanelView({
           return;
         }
 
-        changesViewOptions.setOptions(optionsScopeId, {
+        setChangesViewOptions(optionsScopeId, {
           ignoreWhitespace: !options.ignoreWhitespace,
         });
       }}
@@ -807,7 +807,7 @@ function ChangesPanelView({
         fileTreeVisible={fileTreeVisible}
         onScopeChange={onScopeChange}
         onViewOptionsChange={(changes) => {
-          changesViewOptions.setOptions(optionsScopeId, changes);
+          setChangesViewOptions(optionsScopeId, changes);
         }}
         onToggleFileTree={onToggleFileTree}
         onRefresh={() => refresh.mutate()}

@@ -192,7 +192,10 @@ function typeMessage(text: string): void {
 
 export async function run(): Promise<string> {
   applyDisplayMode("light");
-  window.localStorage.setItem("nyte.desktop.changes-commit-action.v1", "pull-request");
+  window.localStorage.setItem(
+    "nyte.desktop.changes-commit-action.v2",
+    JSON.stringify("pull-request"),
+  );
   connect();
   const container = document.createElement("div");
   container.style.cssText = "width:380px";
