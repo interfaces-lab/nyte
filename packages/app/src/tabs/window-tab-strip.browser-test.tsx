@@ -40,7 +40,15 @@ async function drag(from: Element, distance: number): Promise<void> {
 }
 
 function tab(id: string, title: string): WindowTabItem {
-  return { id, title, tooltip: title, glyph: undefined, unread: false, split: undefined };
+  return {
+    id,
+    title,
+    tooltip: title,
+    sessions: [],
+    glyph: undefined,
+    unread: false,
+    split: undefined,
+  };
 }
 
 export async function run(): Promise<string> {

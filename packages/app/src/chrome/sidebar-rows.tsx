@@ -6,13 +6,13 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { MouseEvent, ReactElement } from "react";
 import type { GitHubRepository } from "@nyte-ai/sdk";
+import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
 import { formatTimeAgo } from "../components/ui.tsx";
 import { draftPreviewText } from "../conversation/message-references.ts";
 import type { ChatDraft } from "../layout/session-view-state.ts";
@@ -168,7 +168,6 @@ export function SessionRow({
   const onPin = (): void => rail.pin(session);
   const onArchive = (): void => rail.archive(session);
   const onDelete = (): void => rail.remove(session.id);
-  const repository = place.workspace === rail.openWorkspace ? rail.repository : undefined;
   const mark = sessionActivityMark(session, working);
   const title = sessionTitle(session);
   const ask = mark === "waiting" || mark === "failed" ? sessionAsk(session) : undefined;
@@ -333,35 +332,13 @@ export function SessionRow({
   );
 
   return (
-    <Tooltip disableHoverablePopup>
+    <PreviewCard>
       <ContextMenu>
-        <ContextMenuTrigger render={<TooltipTrigger render={row} />} />
+        <ContextMenuTrigger render={<ChatCardTrigger render={row} />} />
         <ContextMenuContent aria-label={`Options for ${title}`}>{menuItems}</ContextMenuContent>
       </ContextMenu>
-      <TooltipContent side="right" align="start" alignOffset={-4} sideOffset={4} variant="card">
-        <div {...props(styles.previewTitle)}>{title}</div>
-        {place.path !== null && (
-          <div {...props(styles.previewDetails)}>
-            {repository !== undefined && (
-              <div {...props(text.sm, styles.previewDetail)}>
-                <span {...props(styles.previewDetailIcon)}>
-                  <Icon name="git-branch" size={14} />
-                </span>
-                <span {...props(styles.previewDetailText)}>
-                  {repository.owner}/{repository.name}
-                </span>
-              </div>
-            )}
-            <div {...props(text.sm, styles.previewDetail)}>
-              <span {...props(styles.previewDetailIcon)}>
-                <Icon name="folder" size={14} />
-              </span>
-              <span {...props(styles.previewDetailText)}>{place.path}</span>
-            </div>
-          </div>
-        )}
-      </TooltipContent>
-    </Tooltip>
+      <ChatCardContent placement="row" label={title} sessions={[session.id]} />
+    </PreviewCard>
   );
 }
 

@@ -12,7 +12,10 @@ import {
 import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Tabs } from "@nyte-ai/ui/tabs";
+import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+import type { SessionId } from "@nyte-ai/sdk";
+import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
 import { SortableItem, SortableList } from "../components/sortable-strip.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { stripStyles } from "./window-tab-strip.stylex.ts";
@@ -23,6 +26,8 @@ export interface WindowTabItem {
   readonly id: string;
   readonly title: string;
   readonly tooltip: string;
+  /** The chats in the tab's panes, the focused pane's first. */
+  readonly sessions: readonly SessionId[];
   readonly glyph: ReactNode;
   readonly unread: boolean;
   readonly split: WindowTabSplit | undefined;
@@ -119,8 +124,8 @@ function TabItem({
           />
         }
       >
-        <Tooltip>
-          <TooltipTrigger
+        <PreviewCard>
+          <ChatCardTrigger
             render={
               <Tabs.Tab
                 variant="bare"
@@ -138,19 +143,21 @@ function TabItem({
               </span>
             )}
             {tab.unread && <span aria-hidden="true" {...props(stripStyles.unread)} />}
-          </TooltipTrigger>
-          <TooltipContent>
-            <span {...props(stripStyles.shortcut)}>
-              {tab.tooltip}
-              {digit !== undefined && (
+          </ChatCardTrigger>
+          <ChatCardContent
+            placement="tab"
+            label={tab.tooltip}
+            sessions={tab.sessions}
+            footer={
+              digit === undefined ? undefined : (
                 <span {...props(stripStyles.keys)}>
                   <Kbd keys={[strip.mac ? "⌘" : "Ctrl"]} held={modifierHeld} />
                   <Kbd keys={[digit]} held={held.digit === digit} />
                 </span>
-              )}
-            </span>
-          </TooltipContent>
-        </Tooltip>
+              )
+            }
+          />
+        </PreviewCard>
         {closable && (
           <span {...props(stripStyles.close, active && stripStyles.closeVisible)}>
             <Button

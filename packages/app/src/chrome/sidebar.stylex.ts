@@ -1,4 +1,4 @@
-import { glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { sidebar } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -373,37 +373,5 @@ export const sidebarStyles = create({
     height: 6,
     borderRadius: radius.pill,
     backgroundColor: role.bgInteractivePrimary,
-  },
-  previewTitle: {
-    overflow: "hidden",
-    fontWeight: type.weightMedium,
-    whiteSpace: "nowrap",
-    textOverflow: "ellipsis",
-  },
-  previewDetails: {
-    display: "flex",
-    flexDirection: "column",
-    gap: space.s1,
-    marginBlockStart: space.s1_5,
-  },
-  previewDetail: {
-    display: "grid",
-    gridTemplateColumns: "14px minmax(0, 1fr)",
-    alignItems: "center",
-    gap: space.s1_5,
-    color: role.contentSecondary,
-  },
-  previewDetailIcon: {
-    display: "grid",
-    placeItems: "center",
-    width: glyph.sm,
-    height: type.leadingSm,
-    color: role.contentTertiary,
-  },
-  previewDetailText: {
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
 });
