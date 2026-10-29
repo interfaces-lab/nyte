@@ -7,6 +7,7 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Row } from "@nyte-ai/ui/row";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { toast } from "@nyte-ai/ui/toast";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { props } from "@stylexjs/stylex";
 import { Link, useRouter } from "@tanstack/react-router";
@@ -35,6 +36,8 @@ import {
   type RailWorkspace,
 } from "../queries.ts";
 import { localSessions } from "../session-list.ts";
+import { sessionHasUnreadCompletion } from "../session-read-state.ts";
+import { connection } from "../sdk.tsx";
 import { closeSettings, type SettingsSection } from "../settings/index.ts";
 import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -48,22 +51,24 @@ import { WorkspaceControls } from "./sidebar-filter.tsx";
 import {
   ChatsList,
   FolderList,
+  PinnedSection,
   useDrafts,
   useListReveal,
   WorkspaceRow,
   type ListContext,
   type ListedSession,
 } from "./sidebar-lists.tsx";
-import { NeighbourWarm, type RailRows, type SessionPlace } from "./sidebar-rows.tsx";
+import { moveSidebarFocus } from "./sidebar-navigation.ts";
+import { NeighbourWarm, SessionRow, type RailRows, type SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
   clearSessionFilters,
-  DEFAULT_SESSION_VIEW,
+  folderView,
+  sessionIsRunning,
   sessionOrder,
   sessionsForNavigation,
   sessionsForView,
   deriveShelf,
-  type SessionViewSettings,
   type ShelfHold,
 } from "./sidebar-view.ts";
 import { activateWorkspace } from "./use-show-session.ts";
@@ -72,6 +77,7 @@ import { useNowMinute } from "../use-now-minute.ts";
 type SidebarConfirmation =
   | { readonly kind: "closed" }
   | { readonly kind: "delete-session"; readonly sessionId: SessionId }
+  | { readonly kind: "archive-working"; readonly sessionId: SessionId }
   | {
       readonly kind: "archive-all";
       readonly workspaceName: string;
@@ -91,6 +97,23 @@ async function showSession(sessionId: SessionId, target: OpenTarget | "beside"):
   shellActions.showWorkspace();
   const controller = windowTabs.controller();
   controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
+}
+
+function markRead(sessions: readonly SessionInfo[]): void {
+  for (const session of sessions)
+    for (const head of session.heads)
+      if (head.unread && head.tip.kind === "commit")
+        void connection()
+          .session(session.id)
+          .head(head.name)
+          .see(head.tip.id)
+          .catch(() =>
+            toast.add({
+              type: "error",
+              title: "Couldn't mark this chat as read. Try again.",
+              id: "session-mark-read-error",
+            }),
+          );
 }
 
 function listedNeighbours(
@@ -170,13 +193,10 @@ export function Sidebar(): ReactElement {
   const [confirmation, setConfirmation] = useState<SidebarConfirmation>({ kind: "closed" });
   const [collectionExpanded, setCollectionExpanded] = useState(true);
   const [cloudCollapsed, setCloudCollapsed] = useState(false);
-  const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
+  const view = useSetting(preferences.sidebarView);
+  const folded = useSetting(preferences.sidebarFolded);
   const [hold, setHold] = useState<ShelfHold | undefined>();
   const [listedWhenBlank, setListedWhenBlank] = useState<ReadonlySet<SessionId>>();
-
-  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<WorkspaceId | null>>(
-    () => new Set(),
-  );
 
   const cloudFailure =
     server.data?.kind === "unavailable" ? server.data.problem.message : undefined;
@@ -219,16 +239,11 @@ export function Sidebar(): ReactElement {
     if (paneSession !== undefined) setListedWhenBlank(undefined);
   }
 
-  const setExpanded = (workspace: WorkspaceId | null, expanded: boolean): void => {
-    setCollapsedWorkspaces((current) => {
-      const next = new Set(current);
-
-      if (expanded) next.delete(workspace);
-      else next.add(workspace);
-
-      return next;
-    });
-  };
+  const setExpanded = (workspace: WorkspaceId | null, expanded: boolean): void =>
+    preferences.sidebarFolded.set([
+      ...folded.filter((candidate) => candidate !== workspace),
+      ...(expanded ? [] : [workspace]),
+    ]);
 
   const openSettings = (section: SettingsSection): void => {
     const replace = router.state.matches.some((match) => match.routeId === "/settings/$section");
@@ -255,9 +270,15 @@ export function Sidebar(): ReactElement {
     open: (sessionId, target) => void showSession(sessionId, target),
     rename: (sessionId, name) => renameSession.mutate({ sessionId, name }),
     pin: (session) => sessionActions.pin({ sessionId: session.id, pinned: !session.pinned }),
+    markRead,
     archive: (session) => {
-      recordArchive(1);
-      sessionActions.archive([session.id], !session.archived, hideFromPanes);
+      if (!session.archived && sessionIsRunning(session, workingSessions)) {
+        setConfirmation({ kind: "archive-working", sessionId: session.id });
+
+        return;
+      }
+
+      archive(session.id, !session.archived);
     },
     remove: (sessionId) => setConfirmation({ kind: "delete-session", sessionId }),
     openDraft: (draftId) => windowTabs.showDraft(draftId),
@@ -265,8 +286,8 @@ export function Sidebar(): ReactElement {
   };
 
   const showDrafts =
+    !view.archived &&
     (view.statuses.length === 0 || view.statuses.includes("draft")) &&
-    (view.pullRequests.length === 0 || view.pullRequests.includes("none")) &&
     (view.environments.length === 0 || view.environments.includes("local"));
 
   const context: ListContext = {
@@ -274,7 +295,7 @@ export function Sidebar(): ReactElement {
     showDrafts,
     rail,
     reveal,
-    onClearFilters: () => setSessionView(clearSessionFilters(view)),
+    onClearFilters: () => preferences.sidebarView.set(clearSessionFilters(view)),
   };
 
   const order = sessionOrder(view.sort, workingSessions);
@@ -293,6 +314,8 @@ export function Sidebar(): ReactElement {
         .map((session) => ({ place, session }));
     })
     .toSorted((left, right) => order(left.session, right.session));
+
+  const pinned = flat ? [] : (listed ?? []).filter(({ session }) => session.pinned);
 
   const activeWorkspace =
     paneSession === undefined
@@ -342,7 +365,16 @@ export function Sidebar(): ReactElement {
         : localSessions(workspaceSessions.data, place.workspace);
 
     const name = entry.kind === "home" ? "Home" : entry.name;
-    const expanded = !collapsedWorkspaces.has(place.workspace);
+    const expanded = !folded.includes(place.workspace);
+
+    const kept =
+      expanded || sessions === undefined
+        ? undefined
+        : folderView(sessions, view, now, workingSessions)
+            .flatMap((group) => group.sessions)
+            .find((session) => session.id === activeSessionId);
+
+    const unread = sessionsForNavigation(sessions ?? []).filter(sessionHasUnreadCompletion);
 
     return (
       <WorkspaceRow
@@ -356,6 +388,7 @@ export function Sidebar(): ReactElement {
         onNewChat={
           entry.kind === "home" || entry.available ? () => void newWorkspaceChat(place) : undefined
         }
+        onMarkAllRead={unread.length === 0 ? undefined : () => markRead(unread)}
         onArchiveAll={
           sessions === undefined
             ? undefined
@@ -371,11 +404,12 @@ export function Sidebar(): ReactElement {
             ? () => preferences.homeVisible.set(false)
             : () => forgetWorkspace.mutate(entry.id)
         }
+        retained={kept && <SessionRow session={kept} place={place} rail={rail} />}
       >
         <FolderList
           listId={`${sessionListId}-${encodeURIComponent(`local:${place.workspace ?? "home"}`)}`}
           place={place}
-          sessions={sessions}
+          sessions={kept === undefined ? sessions : sessions?.filter((session) => session !== kept)}
           open={place.workspace === (open?.id ?? null)}
           context={context}
         />
@@ -384,6 +418,11 @@ export function Sidebar(): ReactElement {
   });
 
   const closeConfirmation = (): void => setConfirmation({ kind: "closed" });
+
+  const archive = (sessionId: SessionId, archived: boolean): void => {
+    recordArchive(1);
+    sessionActions.archive([sessionId], archived, hideFromPanes);
+  };
 
   return (
     <aside {...props(styles.rail)}>
@@ -481,15 +520,23 @@ export function Sidebar(): ReactElement {
           </Row>
         </div>
 
-        <motion.div layoutScroll data-nyte-scrollport {...props(styles.scroll)}>
+        <motion.div
+          layoutScroll
+          data-nyte-scrollport
+          onKeyDown={moveSidebarFocus}
+          {...props(styles.scroll)}
+        >
+          {pinned.length > 0 && <PinnedSection rows={pinned} rail={rail} />}
           <section aria-label={flat ? "Chats" : "Workspaces"} {...props(styles.section)}>
             <Collapsible.Root
               open={collectionExpanded}
               onOpenChange={setCollectionExpanded}
+              data-sidebar-group=""
               {...props(styles.section)}
             >
               <div {...props(styles.sectionHeader)}>
                 <Collapsible.Trigger
+                  data-sidebar-header=""
                   aria-controls={workspaceCollectionID}
                   xstyle={[styles.sectionToggle, focus.ringInset]}
                 >
@@ -501,15 +548,13 @@ export function Sidebar(): ReactElement {
                   homeVisible={homeVisible}
                   onHomeVisibleChange={preferences.homeVisible.set}
                   filterDisabled={workspaceSessions.data === undefined}
-                  onChange={setSessionView}
+                  onChange={preferences.sidebarView.set}
                   onOpenFolder={openFolder}
                   onCollapseAll={() =>
                     flat
                       ? setCollectionExpanded(false)
-                      : setCollapsedWorkspaces(
-                          new Set(
-                            entries.map((entry) => (entry.kind === "home" ? null : entry.id)),
-                          ),
+                      : preferences.sidebarFolded.set(
+                          entries.map((entry) => (entry.kind === "home" ? null : entry.id)),
                         )
                   }
                 />
@@ -592,6 +637,22 @@ export function Sidebar(): ReactElement {
           onConfirm={() => {
             closeConfirmation();
             sessionActions.delete(confirmation.sessionId, hideFromPanes);
+          }}
+        />
+      )}
+      {confirmation.kind === "archive-working" && (
+        <ConfirmDialog
+          open
+          finalFocus={confirmationReturnRef}
+          title="Archive Working Chat"
+          description="It keeps working in the archive. Restore it from the Archived filter."
+          confirmLabel="Archive Chat"
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) closeConfirmation();
+          }}
+          onConfirm={() => {
+            closeConfirmation();
+            archive(confirmation.sessionId, true);
           }}
         />
       )}

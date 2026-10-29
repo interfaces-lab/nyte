@@ -1,6 +1,7 @@
 import { typed } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import type { ThemePreference } from "../bridge.ts";
+import { DEFAULT_SESSION_VIEW, SessionViewSchema } from "../chrome/sidebar-view.ts";
 import { CodeFontSchema, UiFontSchema } from "../theme/fonts.ts";
 import { definePreference } from "./store.ts";
 import type { Preference } from "./store.ts";
@@ -124,9 +125,26 @@ export const preferences = {
   sidebarWidth: definePreference(
     { key: SIDEBAR, field: "width" },
     integer(SIDEBAR_WIDTH.min, SIDEBAR_WIDTH.max),
-    220,
+    256,
   ),
   homeVisible: definePreference({ key: SIDEBAR, field: "homeVisible" }, Type.Boolean(), true),
+  sidebarView: definePreference(
+    { key: SIDEBAR, field: "view" },
+    SessionViewSchema,
+    DEFAULT_SESSION_VIEW,
+  ),
+  /** Folded workspace ids; `null` is Home. */
+  sidebarFolded: definePreference(
+    { key: SIDEBAR, field: "folded" },
+    Type.Array(Type.Union([Type.String(), Type.Null()])),
+    [],
+  ),
+  /** Rows each list shows past its first page, by list key. */
+  sidebarRevealed: definePreference(
+    { key: SIDEBAR, field: "revealed" },
+    Type.Record(Type.String(), Type.Integer({ minimum: 0 })),
+    {},
+  ),
 } as const;
 
 type ValueOf<P> = P extends Preference<infer T> ? T : never;

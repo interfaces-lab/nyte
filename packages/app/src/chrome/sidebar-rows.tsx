@@ -18,6 +18,7 @@ import { draftPreviewText } from "../conversation/message-references.ts";
 import type { ChatDraft } from "../layout/session-view-state.ts";
 import { useSessionDraggable } from "../layout/session-dnd.tsx";
 import { sessionActivityMark } from "../session-activity.ts";
+import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
@@ -88,7 +89,7 @@ export function DraftRow({
         xstyle={styles.rowActionsBesideMeta}
       >
         <Button
-          size="2xs"
+          size="sm"
           iconOnly
           icon="trash"
           aria-label={`Delete Draft: ${title}`}
@@ -142,6 +143,7 @@ export interface RailRows {
   readonly open: (sessionId: SessionId, target: OpenTarget | "beside") => void;
   readonly rename: (sessionId: SessionId, name: string) => void;
   readonly pin: (session: SessionInfo) => void;
+  readonly markRead: (sessions: readonly SessionInfo[]) => void;
   readonly archive: (session: SessionInfo) => void;
   readonly remove: (sessionId: SessionId) => void;
   readonly openDraft: (draftId: string) => void;
@@ -207,6 +209,7 @@ export function SessionRow({
         <Row.Label>
           <Input
             aria-label={`Rename ${title}`}
+            autoFocus
             xstyle={styles.sessionRenameInput}
             value={draftName}
             onFocus={(event) => event.currentTarget.select()}
@@ -231,6 +234,11 @@ export function SessionRow({
       <MenuItem icon="pencil" onClick={() => setDraftName(title)}>
         Rename Chat…
       </MenuItem>
+      {sessionHasUnreadCompletion(session) && (
+        <MenuItem icon="eye" onClick={() => rail.markRead([session])}>
+          Mark as Read
+        </MenuItem>
+      )}
       <MenuItem icon="split-right" onClick={onOpenBeside}>
         Open Chat to the Side
       </MenuItem>
@@ -276,6 +284,7 @@ export function SessionRow({
         xstyle={unreachable && styles.sessionUnreachable}
         aria-current={selected ? "page" : undefined}
         onClick={(event) => onOpen(openTarget(event))}
+        onDoubleClick={() => setDraftName(title)}
         onPointerEnter={() => {
           cancelWarm();
           warming.current = setTimeout(warm, WARM_DELAY_MS);
@@ -312,14 +321,14 @@ export function SessionRow({
         ]}
       >
         <Button
-          size="2xs"
+          size="sm"
           iconOnly
           icon={session.pinned ? "unpin" : "pin"}
           aria-label={`${session.pinned ? "Unpin" : "Pin"} ${title}`}
           onClick={onPin}
         />
         <Button
-          size="2xs"
+          size="sm"
           iconOnly
           aria-label={`${session.archived ? "Restore" : "Archive"} ${title}`}
           onClick={onArchive}

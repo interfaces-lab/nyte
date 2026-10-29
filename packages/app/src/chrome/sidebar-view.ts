@@ -1,4 +1,6 @@
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import { typed } from "@nyte-ai/schema/model";
+import { Type } from "typebox";
 import { sessionActivityMark } from "../session-activity.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 
@@ -19,11 +21,9 @@ export const SORTS = ["created", "updated", "status"] as const;
 
 export const SHELVES = ["inbox", "working", "done", "archived"] as const;
 
-export const SHOW_FIELDS = ["updated", "environment", "pr", "branch", "machine"] as const;
+export const SHOW_FIELDS = ["updated"] as const;
 
 export const STATUSES = ["needs-attention", "unread", "working", "draft", "done"] as const;
-
-export const PULL_REQUESTS = ["draft", "open", "merged", "closed", "none"] as const;
 
 export const ENVIRONMENTS = ["cloud", "local"] as const;
 
@@ -35,8 +35,6 @@ export type SessionShowField = (typeof SHOW_FIELDS)[number];
 
 export type SessionStatus = (typeof STATUSES)[number];
 
-export type SessionPullRequest = (typeof PULL_REQUESTS)[number];
-
 export type SessionEnvironment = (typeof ENVIRONMENTS)[number];
 
 export type SessionShelf = (typeof SHELVES)[number];
@@ -46,7 +44,6 @@ export interface SessionViewSettings {
   readonly sort: SessionSort;
   readonly show: readonly SessionShowField[];
   readonly statuses: readonly SessionStatus[];
-  readonly pullRequests: readonly SessionPullRequest[];
   readonly environments: readonly SessionEnvironment[];
   readonly archived: boolean;
 }
@@ -57,15 +54,38 @@ export interface SessionViewGroup {
   readonly sessions: readonly SessionInfo[];
 }
 
+export const SessionViewSchema = typed<SessionViewSettings>()(
+  Type.Object({
+    grouping: Type.Enum(GROUPINGS),
+    sort: Type.Enum(SORTS),
+    show: Type.Immutable(Type.Array(Type.Enum(SHOW_FIELDS))),
+    statuses: Type.Immutable(Type.Array(Type.Enum(STATUSES))),
+    environments: Type.Immutable(Type.Array(Type.Enum(ENVIRONMENTS))),
+    archived: Type.Boolean(),
+  }),
+);
+
 export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
   grouping: "none",
   sort: "created",
-  show: ["updated", "environment", "pr"] as const,
+  show: ["updated"] as const,
   statuses: [],
-  pullRequests: [],
   environments: [],
   archived: false,
 });
+
+/** Days back through which each Updated bucket reaches, counted in local calendar days. */
+const UPDATED_BUCKETS = [
+  ["today", "Today", 0],
+  ["yesterday", "Yesterday", 1],
+  ["week", "Last 7 Days", 6],
+  ["month", "Last 30 Days", 29],
+  ["older", "Older", Infinity],
+] as const;
+
+export const COLLAPSED_SESSION_LIMIT = 5;
+
+const SESSION_PAGE_SIZE = 8;
 
 function deriveSessionStatus(
   session: SessionInfo,
@@ -88,6 +108,13 @@ function deriveSessionStatus(
       return _exhaustive;
     }
   }
+}
+
+/** Whether a run is going in the chat or one of its subagents, including one waiting on the user. */
+export function sessionIsRunning(session: SessionInfo, working: ReadonlySet<SessionId>): boolean {
+  const mark = sessionActivityMark(session, working.has(session.id));
+
+  return mark === "working" || mark === "retry" || mark === "waiting";
 }
 
 export interface ShelfHold {
@@ -219,19 +246,16 @@ function groupSessions(
     }
 
     case "updated": {
-      const groups = [
-        ["day", "Past day", (session: SessionInfo) => session.lastActivityAt >= now - DAY_MS],
-        [
-          "week",
-          "Past week",
-          (session: SessionInfo) =>
-            session.lastActivityAt < now - DAY_MS && session.lastActivityAt >= now - 7 * DAY_MS,
-        ],
-        ["earlier", "Earlier", (session: SessionInfo) => session.lastActivityAt < now - 7 * DAY_MS],
-      ] as const;
+      const today = startOfDay(now);
 
-      return groups.flatMap(([key, label, predicate]) => {
-        const members = sessions.filter(predicate);
+      const bucket = (session: SessionInfo) => {
+        const days = Math.round((today - startOfDay(session.lastActivityAt)) / DAY_MS);
+
+        return UPDATED_BUCKETS.find(([, , through]) => days <= through)?.[0];
+      };
+
+      return UPDATED_BUCKETS.flatMap(([key, label]) => {
+        const members = sessions.filter((session) => bucket(session) === key);
 
         return members.length === 0 ? [] : [{ key, label, sessions: members }];
       });
@@ -245,13 +269,12 @@ function groupSessions(
   }
 }
 
-export function sessionsForNavigation(
-  sessions: readonly SessionInfo[],
-  includeArchived = false,
-): readonly SessionInfo[] {
-  return sessions.filter(
-    (session) => session.parent === null && (includeArchived || !session.archived),
-  );
+function startOfDay(time: number): number {
+  return new Date(time).setHours(0, 0, 0, 0);
+}
+
+export function sessionsForNavigation(sessions: readonly SessionInfo[]): readonly SessionInfo[] {
+  return sessions.filter((session) => session.parent === null && !session.archived);
 }
 
 export function sessionsForView(
@@ -261,16 +284,14 @@ export function sessionsForView(
   now: number,
   working: ReadonlySet<SessionId> = NO_WORKING_SESSIONS,
 ): readonly SessionViewGroup[] {
-  if (
-    (settings.pullRequests.length > 0 && !settings.pullRequests.includes("none")) ||
-    (settings.environments.length > 0 && !settings.environments.includes(environment))
-  )
-    return [];
+  if (settings.environments.length > 0 && !settings.environments.includes(environment)) return [];
 
-  const filtered = sessionsForNavigation(sessions, settings.archived).filter(
+  const filtered = sessions.filter(
     (session) =>
-      settings.statuses.length === 0 ||
-      settings.statuses.includes(deriveSessionStatus(session, working)),
+      session.parent === null &&
+      session.archived === settings.archived &&
+      (settings.statuses.length === 0 ||
+        settings.statuses.includes(deriveSessionStatus(session, working))),
   );
 
   const ordered = filtered.toSorted(sessionOrder(settings.sort, working));
@@ -278,20 +299,59 @@ export function sessionsForView(
   return groupSessions(ordered, settings.grouping, environment, now, working);
 }
 
-export function hasSessionFilters(settings: SessionViewSettings): boolean {
-  return (
-    settings.archived ||
-    settings.statuses.length > 0 ||
-    settings.pullRequests.length > 0 ||
-    settings.environments.length > 0
+/** A workspace's chats in a grouped view: pinned chats leave it for the Pinned section above. */
+export function folderView(
+  sessions: readonly SessionInfo[],
+  settings: SessionViewSettings,
+  now: number,
+  working: ReadonlySet<SessionId>,
+): readonly SessionViewGroup[] {
+  return sessionsForView(
+    sessions.filter((session) => !session.pinned),
+    settings,
+    "local",
+    now,
+    working,
   );
+}
+
+export interface SessionPage {
+  readonly visible: number;
+  readonly next: number;
+  /** What the list's revealed count becomes when "Show More" is pressed. */
+  readonly revealed: number;
+}
+
+/**
+ * Pages a list of `total` rows that shows `base` of them before anything is revealed. `selected`
+ * is the open chat's index or -1; an open chat past the fold raises the page to include it. A
+ * single leftover row is shown rather than hidden behind "Show 1 More".
+ */
+export function sessionPage(
+  total: number,
+  base: number,
+  revealed: number,
+  selected: number,
+): SessionPage {
+  const fit = (count: number): number => (total - count <= 1 ? total : count);
+  const shown = Math.max(base + revealed, selected + 1);
+  const visible = fit(shown);
+
+  return {
+    visible,
+    next: fit(shown + SESSION_PAGE_SIZE) - visible,
+    revealed: shown + SESSION_PAGE_SIZE - base,
+  };
+}
+
+export function hasSessionFilters(settings: SessionViewSettings): boolean {
+  return settings.archived || settings.statuses.length > 0 || settings.environments.length > 0;
 }
 
 export function clearSessionFilters(settings: SessionViewSettings): SessionViewSettings {
   return {
     ...settings,
     statuses: [],
-    pullRequests: [],
     environments: [],
     archived: false,
   };

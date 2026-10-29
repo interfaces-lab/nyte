@@ -15,14 +15,17 @@ import { StatusDot } from "../components/ui.tsx";
 import { usePaneControllerSnapshot, usePaneViewStateStore } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
 import type { ChatDraft } from "../layout/session-view-state.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 import { useStagePage } from "./shell-state.ts";
 import { DraftRow, SessionRow, type RailRows, type SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
-  hasSessionFilters,
-  sessionsForView,
+  COLLAPSED_SESSION_LIMIT,
   deriveShelf,
+  folderView,
+  hasSessionFilters,
+  sessionPage,
   type SessionShelf,
   type SessionViewGroup,
   type SessionViewSettings,
@@ -36,7 +39,8 @@ export interface ListedSession {
 
 export interface ListReveal {
   readonly revealed: (key: string) => number;
-  readonly reveal: (key: string, listId: string, visibleCount: number) => void;
+  /** Stores the list's new revealed count and focuses the first row it shows. */
+  readonly reveal: (key: string, count: number, listId: string, visibleCount: number) => void;
 }
 
 export interface ListContext {
@@ -52,26 +56,13 @@ interface OpenDrafts {
   readonly activeDraftId: string | undefined;
 }
 
-const COLLAPSED_SESSION_LIMIT = 5;
-
-const SESSION_PAGE_SIZE = 8;
-
-function sessionPage(total: number, base: number, revealed: number) {
-  const fit = (count: number): number => (total - count <= 1 ? total : count);
-  const visible = fit(base + revealed);
-
-  return { visible, next: fit(base + revealed + SESSION_PAGE_SIZE) - visible };
-}
-
 export function useListReveal(): ListReveal {
-  const [revealed, setRevealed] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const revealed = useSetting(preferences.sidebarRevealed);
 
   return {
-    revealed: (key) => revealed.get(key) ?? 0,
-    reveal: (key, listId, visibleCount) => {
-      setRevealed((current) =>
-        new Map(current).set(key, (current.get(key) ?? 0) + SESSION_PAGE_SIZE),
-      );
+    revealed: (key) => revealed[key] ?? 0,
+    reveal: (key, count, listId, visibleCount) => {
+      preferences.sidebarRevealed.set({ ...revealed, [key]: count });
       window.requestAnimationFrame(() => {
         document
           .getElementById(listId)
@@ -123,7 +114,7 @@ function EmptyList({
   readonly onClearFilters: () => void;
 }): ReactElement {
   if (!filtered)
-    return <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>No sessions yet</div>;
+    return <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>No chats yet</div>;
 
   return (
     <>
@@ -240,8 +231,13 @@ export function ChatsList({
       const open = openShelves.has(shelf);
 
       const page = capped
-        ? sessionPage(members.length, COLLAPSED_SESSION_LIMIT, reveal.revealed(shelf))
-        : { visible: members.length, next: 0 };
+        ? sessionPage(
+            members.length,
+            COLLAPSED_SESSION_LIMIT,
+            reveal.revealed(shelf),
+            members.findIndex(({ session }) => session.id === rail.activeSessionId),
+          )
+        : { visible: members.length, next: 0, revealed: 0 };
 
       const visible = members.slice(0, page.visible);
 
@@ -268,7 +264,7 @@ export function ChatsList({
             <ShowMore
               listId={panelId}
               count={page.next}
-              onClick={() => reveal.reveal(shelf, panelId, visible.length)}
+              onClick={() => reveal.reveal(shelf, page.revealed, panelId, visible.length)}
             />
           )}
         </Shelf>
@@ -293,7 +289,13 @@ export function ChatsList({
     ({ session }) => sessionActivityMark(session, rail.working.has(session.id)) !== "idle",
   ).length;
 
-  const page = sessionPage(rows.length, live + COLLAPSED_SESSION_LIMIT, reveal.revealed("chats"));
+  const page = sessionPage(
+    rows.length,
+    live + COLLAPSED_SESSION_LIMIT,
+    reveal.revealed("chats"),
+    rows.findIndex(({ session }) => session.id === rail.activeSessionId),
+  );
+
   const visible = rows.slice(0, page.visible);
 
   return (
@@ -304,7 +306,9 @@ export function ChatsList({
         <ShowMore
           listId={listId}
           count={page.next}
-          onClick={() => reveal.reveal("chats", listId, visible.length + drafts.length)}
+          onClick={() =>
+            reveal.reveal("chats", page.revealed, listId, visible.length + drafts.length)
+          }
         />
       )}
     </div>
@@ -331,12 +335,18 @@ export function FolderList({
 
   if (sessions === undefined && drafts.length === 0) return null;
 
-  const groups =
-    sessions === undefined ? [] : sessionsForView(sessions, view, "local", now, rail.working);
-
-  const listedCount = groups.reduce((count, group) => count + group.sessions.length, drafts.length);
+  const groups = sessions === undefined ? [] : folderView(sessions, view, now, rail.working);
+  const listed = groups.flatMap((group) => group.sessions);
+  const selected = listed.findIndex((session) => session.id === rail.activeSessionId);
   const key = `local:${place.workspace ?? "home"}`;
-  const page = sessionPage(listedCount, COLLAPSED_SESSION_LIMIT, reveal.revealed(key));
+
+  const page = sessionPage(
+    drafts.length + listed.length,
+    COLLAPSED_SESSION_LIMIT,
+    reveal.revealed(key),
+    selected === -1 ? -1 : drafts.length + selected,
+  );
+
   const visibleDrafts = drafts.slice(0, page.visible);
   const visibleGroups = groupsWithin(groups, page.visible - visibleDrafts.length);
 
@@ -350,7 +360,7 @@ export function FolderList({
           <Drafts drafts={visibleDrafts} activeDraftId={activeDraftId} rail={rail} />
         </div>
       )}
-      {sessions !== undefined && listedCount === 0 && (
+      {sessions !== undefined && drafts.length + listed.length === 0 && (
         <EmptyList filtered={hasSessionFilters(view)} onClearFilters={context.onClearFilters} />
       )}
       {visibleGroups.map((group) => (
@@ -365,10 +375,27 @@ export function FolderList({
         <ShowMore
           listId={listId}
           count={page.next}
-          onClick={() => reveal.reveal(key, listId, page.visible)}
+          onClick={() => reveal.reveal(key, page.revealed, listId, page.visible)}
         />
       )}
     </div>
+  );
+}
+
+export function PinnedSection({
+  rows,
+  rail,
+}: {
+  readonly rows: readonly ListedSession[];
+  readonly rail: RailRows;
+}): ReactElement {
+  return (
+    <section aria-label="Pinned" {...props(styles.section)}>
+      <div {...props(styles.sectionHeader, styles.sectionTitle)}>
+        <span {...props(styles.sectionLabel)}>Pinned</span>
+      </div>
+      <ListedRows rows={rows} rail={rail} />
+    </section>
   );
 }
 
@@ -381,8 +408,10 @@ export function WorkspaceRow({
   expanded,
   onExpandedChange,
   onNewChat,
+  onMarkAllRead,
   onArchiveAll,
   onRemove,
+  retained,
   children,
 }: {
   readonly name: string;
@@ -393,8 +422,11 @@ export function WorkspaceRow({
   readonly expanded: boolean;
   readonly onExpandedChange: (expanded: boolean) => void;
   readonly onNewChat: (() => void) | undefined;
+  readonly onMarkAllRead?: () => void;
   readonly onArchiveAll: (() => void) | undefined;
   readonly onRemove: () => void;
+  /** The open chat, kept under the header while the workspace is folded. */
+  readonly retained?: ReactNode;
   readonly children: ReactNode;
 }): ReactElement {
   const menuItems = (
@@ -406,6 +438,11 @@ export function WorkspaceRow({
       >
         New Chat
       </MenuItem>
+      {onMarkAllRead !== undefined && (
+        <MenuItem icon="eye" onClick={onMarkAllRead}>
+          Mark All as Read
+        </MenuItem>
+      )}
       {onArchiveAll !== undefined && (
         <MenuItem icon="archive" onClick={onArchiveAll}>
           Archive All Chats…
@@ -428,6 +465,7 @@ export function WorkspaceRow({
         render={
           <Collapsible.Trigger
             variant="plain"
+            data-sidebar-header=""
             title={available ? path : `${path} (${unavailableDetail})`}
             aria-current={active ? "location" : undefined}
           />
@@ -459,12 +497,18 @@ export function WorkspaceRow({
   );
 
   return (
-    <Collapsible.Root open={expanded} onOpenChange={onExpandedChange} {...props(styles.section)}>
+    <Collapsible.Root
+      open={expanded}
+      onOpenChange={onExpandedChange}
+      data-sidebar-group=""
+      {...props(styles.section)}
+    >
       <ContextMenu>
         <ContextMenuTrigger render={row} />
         <ContextMenuContent aria-label={`Options for ${name}`}>{menuItems}</ContextMenuContent>
       </ContextMenu>
       <Collapsible.Panel {...props(styles.sessionList)}>{children}</Collapsible.Panel>
+      {retained}
     </Collapsible.Root>
   );
 }
@@ -487,9 +531,15 @@ function Shelf({
   readonly children: ReactNode;
 }): ReactElement {
   return (
-    <Collapsible.Root open={open} onOpenChange={onOpenChange} xstyle={styles.section}>
+    <Collapsible.Root
+      open={open}
+      onOpenChange={onOpenChange}
+      data-sidebar-group=""
+      xstyle={styles.section}
+    >
       <Collapsible.Trigger
         variant="plain"
+        data-sidebar-header=""
         aria-controls={panelId}
         xstyle={[text.base, styles.shelf, focus.ringInset]}
       >
