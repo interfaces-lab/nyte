@@ -10,6 +10,7 @@ import type { WatchStore } from "../sdk.tsx";
 import { CHANGES_VISIBLE_FILES } from "../workbench/change-tree.ts";
 import { conversationTurns } from "../view-helpers.ts";
 import type { TurnMessages } from "../view-helpers.ts";
+import { showsLiveStatus } from "./step-group-presentation.ts";
 import { displayTranscriptParts, transcriptSlot } from "./transcript-presentation.ts";
 import type { StepMessage, TranscriptSlot } from "./transcript-presentation.ts";
 
@@ -57,6 +58,7 @@ export type TranscriptRow =
   | (RowLayout & {
       readonly kind: "live";
       readonly working: boolean;
+      /** The turn ends in a step group whose own line names the live status, so this row draws nothing. */
       readonly settledWork: boolean;
     })
   | (RowLayout & {
@@ -214,7 +216,9 @@ function turnRows(
       failure: state.end.failure,
     });
 
-  return { rows, settledWork: display.at(-1)?.kind === "step" };
+  const end = display.at(-1);
+
+  return { rows, settledWork: end?.kind === "step" && showsLiveStatus(end.messages) };
 }
 
 export function transcriptRows({
