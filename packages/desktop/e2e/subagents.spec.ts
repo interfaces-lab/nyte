@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures.ts";
-import { chatPane, messages, openNewChat, send } from "./ui.ts";
+import { chatPane, menuShortcut, messages, openNewChat, primaryKey, send } from "./ui.ts";
 
 test.use({ chapter: "subagents" });
 
@@ -30,9 +30,11 @@ test("background agents share one block, report in one line each, and wake the p
 
   const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
   const child = log.getByRole("button", { name: /^Map the core/u }).first();
-  const back = chatPane(page).getByRole("link", { name: "Back to parent chat" });
+  const tabMenu = async (index: number, item: string): Promise<void> => {
+    await tabs.nth(index).click({ button: "right" });
+    await page.getByRole("menuitem", { name: item, exact: true }).click();
+  };
   await expect(tabs).toHaveCount(1);
-  await expect(back, "a root chat has no parent link").toHaveCount(0);
   await child.click();
   await expect(tabs, "the child opens next to its parent, not in its place").toHaveCount(2);
   await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "false");
@@ -41,15 +43,20 @@ test("background agents share one block, report in one line each, and wake the p
   await expect(messages(page).getByText("Echo: Trace part 1.")).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("agents-child.png") });
 
-  await back.click();
-  await expect(tabs, "the parent link returns to the parent's tab").toHaveCount(2);
-  await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
+  await tabs.nth(0).click();
   await expect(log.getByText("2 agents done")).toBeVisible();
   await child.click();
   await expect(tabs, "an open child is shown in its tab").toHaveCount(2);
   await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
-  await tabs.nth(0).click();
+
+  await tabMenu(0, `Close Tab ${menuShortcut(primaryKey, "W")}`);
+  await expect(tabs).toHaveCount(1);
+  await tabMenu(0, "Open Parent Chat");
+  await expect(tabs, "a child's tab menu reopens its parent").toHaveCount(2);
+  await expect(page.getByRole("tab", { name: "/agents" })).toHaveAttribute("aria-selected", "true");
   await expect(log.getByText("2 agents done")).toBeVisible();
+  await tabMenu(0, `Close Tab ${menuShortcut(primaryKey, "W")}`);
+  await expect(tabs).toHaveCount(1);
 });
 
 test("the agents tray previews a finished agent, opens it as a full chat, and clears finished ones", async ({
@@ -67,7 +74,7 @@ test("the agents tray previews a finished agent, opens it as a full chat, and cl
   await pane.getByRole("button", { name: "Open Map the app", exact: true }).click();
   const expand = pane.getByRole("button", { name: "Open as full chat" });
   await expect(expand, "a tray row opens the tray's preview").toBeVisible();
-  await expect(tabs).toHaveCount(2);
+  await expect(tabs).toHaveCount(1);
   await expect(pane.getByText("Echo: Trace part 2.")).toBeVisible();
 
   await expand.click();

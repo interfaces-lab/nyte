@@ -124,6 +124,7 @@ function Stage({ panes }: { readonly panes: PaneController }): ReactElement {
           onClose={() => undefined}
           onNewTab={() => undefined}
           onKeep={() => undefined}
+          onOpenParent={() => undefined}
           onReorder={() => undefined}
           onCloseOthers={() => undefined}
           onCloseToRight={() => undefined}

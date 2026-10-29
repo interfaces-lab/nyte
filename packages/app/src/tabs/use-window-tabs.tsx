@@ -172,6 +172,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
       title: placeTitle(place, chats),
       tooltip: places.map((candidate) => placeTitle(candidate, chats)).join(" | "),
       sessions,
+      parent: chat?.parent ?? undefined,
       glyph,
       unread: tabUnread,
       preview: view.kind === "preview",

@@ -29,6 +29,8 @@ export interface WindowTabItem {
   readonly tooltip: string;
   /** The chats in the tab's panes, the focused pane's first. */
   readonly sessions: readonly SessionId[];
+  /** The chat that started the focused pane's chat; absent for a root chat or a page. */
+  readonly parent?: SessionId;
   readonly glyph: ReactNode;
   readonly unread: boolean;
   readonly preview: boolean;
@@ -42,6 +44,7 @@ export interface WindowTabStripProps {
   readonly onActivate: (tabId: string) => void;
   readonly onClose: (tabId: string) => void;
   readonly onKeep: (tabId: string) => void;
+  readonly onOpenParent: (parent: SessionId) => void;
   readonly onNewTab: () => void;
   readonly onReorder: (tabIds: readonly string[], tabId: string) => void;
   readonly onCloseOthers: (tabId: string) => void;
@@ -108,6 +111,7 @@ function TabItem({
   const digit = position < 9 ? String(position + 1) : undefined;
   const shortcut = (key: string): string => (strip.mac ? `⌘${key}` : `Ctrl+${key}`);
   const modifierHeld = strip.mac ? held.meta : held.ctrl;
+  const parent = tab.parent;
 
   return (
     <ContextMenu>
@@ -186,6 +190,11 @@ function TabItem({
         {tab.preview && (
           <ContextMenuItem icon="pin" onClick={() => strip.onKeep(tab.id)}>
             Keep Open
+          </ContextMenuItem>
+        )}
+        {parent !== undefined && (
+          <ContextMenuItem icon="arrow-left" onClick={() => strip.onOpenParent(parent)}>
+            Open Parent Chat
           </ContextMenuItem>
         )}
         <ContextMenuItem icon="plus" meta={shortcut("T")} onClick={strip.onNewTab}>

@@ -2,11 +2,12 @@ import { useSettingsOpen } from "../tabs/use-settings-open.ts";
 import { titlebarStyles } from "./titlebar.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
+import { createLink } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
-import { Button } from "@nyte-ai/ui/button";
+import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import {
@@ -15,7 +16,6 @@ import {
   usePaneControllerSnapshot,
 } from "../panes/pane-context.tsx";
 import { activePane } from "../panes/pane-layout.ts";
-import { ParentLink } from "../panes/pane-header.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
@@ -67,6 +67,27 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
   );
 }
 
+const SessionLink = createLink(ButtonLink);
+
+/** Back to the chat that started this one, through the window tabs' open, as the child's own links came here. */
+function ParentLink({ parent }: { readonly parent: SessionId }): ReactElement {
+  return (
+    <SessionLink
+      iconOnly
+      icon="arrow-left"
+      aria-label="Back to parent chat"
+      to="/session/$sessionId"
+      params={{ sessionId: parent }}
+      preload={false}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        windowTabs.openChat(parent, "preview");
+      }}
+    />
+  );
+}
+
 function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   const chat = useChat(sessionId);
   const parentSessionId = chat.kind === "ready" ? (chat.chat.parent ?? undefined) : undefined;
@@ -96,6 +117,7 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
       onActivate={(tabId) => windowTabs.dispatch({ kind: "activate-tab", tabId })}
       onClose={(tabId) => windowTabs.dispatch({ kind: "close-tab", tabId })}
       onKeep={(tabId) => windowTabs.dispatch({ kind: "keep-tab", tabId })}
+      onOpenParent={(parent) => windowTabs.openChat(parent, "permanent")}
       onNewTab={() => windowTabs.dispatch({ kind: "new-tab" })}
       onReorder={(tabIds, tabId) => windowTabs.dispatch({ kind: "reorder", tabIds, tabId })}
       onCloseOthers={(tabId) => windowTabs.dispatch({ kind: "close-others", tabId })}

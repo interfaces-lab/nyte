@@ -72,6 +72,7 @@ export async function run(): Promise<string> {
         root.render(<WindowTabStrip {...strip} tabs={tabs.filter((item) => item.id !== id)} />);
       },
       onKeep: (id) => calls.push(`keep ${id}`),
+      onOpenParent: (id) => calls.push(`parent ${id}`),
       onNewTab: () => calls.push("new"),
       onReorder: (ids, id) => calls.push(`reorder ${ids.join(",")} moving ${id}`),
       onCloseOthers: (id) => calls.push(`close-others ${id}`),

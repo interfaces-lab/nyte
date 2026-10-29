@@ -43,7 +43,6 @@ import { StartupReadsRelease } from "../data/startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../lib/work-counts.ts";
 import { chatTitle, useChat, useChats, useChatTasks } from "../chats/index.ts";
-import { windowTabs } from "../tabs/window-tabs.ts";
 import { chatWindow, showTray, useChatWindow } from "../window/index.ts";
 import type { TrayView } from "../window/index.ts";
 
@@ -318,7 +317,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   };
 
   const title = chatTitle(chat.kind === "ready" ? chat.chat : undefined);
-  const parent = chat.kind === "ready" ? (chat.chat.parent ?? undefined) : undefined;
 
   const commitRename = (): void => {
     if (draftName === undefined) return;
@@ -360,44 +358,42 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
       )}
       aria-busy={!ready && !failed}
     >
-      {presentation === "full" &&
-        (layout.kind === "split" || (windowTabs.strip && parent !== undefined)) && (
-          <PaneHeader
-            paneId={paneId}
-            parent={parent}
-            menuTriggerRef={paneMenuTrigger}
-            title={
-              draftName === undefined ? (
-                title
-              ) : (
-                <Input
-                  aria-label="Chat name"
-                  xstyle={sessionScreenStyles.renameInput}
-                  value={draftName}
-                  onValueChange={setDraftName}
-                  onBlur={commitRename}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") commitRename();
+      {presentation === "full" && layout.kind === "split" && (
+        <PaneHeader
+          paneId={paneId}
+          menuTriggerRef={paneMenuTrigger}
+          title={
+            draftName === undefined ? (
+              title
+            ) : (
+              <Input
+                aria-label="Chat name"
+                xstyle={sessionScreenStyles.renameInput}
+                value={draftName}
+                onValueChange={setDraftName}
+                onBlur={commitRename}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") commitRename();
 
-                    if (event.key === "Escape") setDraftName(undefined);
-                  }}
-                />
-              )
-            }
-            sessionItems={
-              <>
-                <MenuSeparator />
-                <MenuItem icon="pencil" onClick={() => setDraftName(title)}>
-                  Rename Chat…
-                </MenuItem>
-                <MenuSeparator />
-                <MenuItem icon="trash" variant="danger" onClick={requestDelete}>
-                  Delete Chat…
-                </MenuItem>
-              </>
-            }
-          />
-        )}
+                  if (event.key === "Escape") setDraftName(undefined);
+                }}
+              />
+            )
+          }
+          sessionItems={
+            <>
+              <MenuSeparator />
+              <MenuItem icon="pencil" onClick={() => setDraftName(title)}>
+                Rename Chat…
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem icon="trash" variant="danger" onClick={requestDelete}>
+                Delete Chat…
+              </MenuItem>
+            </>
+          }
+        />
+      )}
 
       <div {...props(sessionScreenStyles.body)}>
         <TranscriptProvider
