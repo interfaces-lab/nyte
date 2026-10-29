@@ -20,6 +20,7 @@ function sessionInfo(id: string, at: number): SessionInfo {
         stack: null,
         execution: { kind: "idle", lastRun: null },
         unread: false,
+        background: { working: 0, waiting: 0 },
       },
     ],
   };

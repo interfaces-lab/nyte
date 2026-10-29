@@ -36,7 +36,14 @@ export function sessionRow(
     archived: false,
     activation: { kind: "active" },
     heads: [
-      { name: asId<"head">("main"), tip: { kind: "start" }, stack: null, execution, unread: false },
+      {
+        name: asId<"head">("main"),
+        tip: { kind: "start" },
+        stack: null,
+        execution,
+        unread: false,
+        background: { working: 0, waiting: 0 },
+      },
     ],
     createdAt: 1,
     lastActivityAt: 2,

@@ -121,6 +121,7 @@ function atTip(view: SessionView, commit: string): SessionView {
         stack: null,
         execution: view.execution,
         unread: true,
+        background: { working: 0, waiting: 0 },
       },
     ],
   };

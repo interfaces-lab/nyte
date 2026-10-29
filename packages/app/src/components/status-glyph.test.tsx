@@ -30,7 +30,14 @@ const FAILED: Execution = {
 function unread(id: string, execution: Execution, change: Partial<SessionInfo> = {}): SessionInfo {
   return sessionRow(id, {
     heads: [
-      { name: asId<"head">("main"), tip: { kind: "start" }, stack: null, execution, unread: true },
+      {
+        name: asId<"head">("main"),
+        tip: { kind: "start" },
+        stack: null,
+        execution,
+        unread: true,
+        background: { working: 0, waiting: 0 },
+      },
     ],
     ...change,
   });

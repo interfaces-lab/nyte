@@ -243,6 +243,13 @@ export const MAPPING = [
     change: "creates the refs_target index",
     covers: ["from 23"],
   },
+  {
+    version: 25,
+    step: "2026-10-29-head-background",
+    target: "logged session events",
+    change: "each head row without `background` gains `{ working: 0, waiting: 0 }`",
+    covers: ["from 24", "field log session /info/heads/*/background"],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {
@@ -481,7 +488,25 @@ export function migratedLog(from: number, events: readonly Json[]): readonly Jso
   const paired = runs(from, 8) ? intentsInParts(unified) : unified;
   const listed = runs(from, 21) ? wholeChangeLists(paired) : paired;
 
-  return runs(from, 23) ? requestModels(listed) : listed;
+  const modelled = runs(from, 23) ? requestModels(listed) : listed;
+
+  return runs(from, 25) ? modelled.map(countedBackground) : modelled;
+}
+
+function countedBackground(event: Json): Json {
+  if (!isJsonObject(event) || event.kind !== "session" || !isJsonObject(event.info)) return event;
+  const heads = event.info.heads;
+
+  if (!Array.isArray(heads)) return event;
+  const counted = heads.map((head) =>
+    isJsonObject(head) && !("background" in head)
+      ? { ...head, background: { working: 0, waiting: 0 } }
+      : head,
+  );
+
+  return Value.Equal(counted, heads)
+    ? event
+    : { ...event, info: { ...event.info, heads: counted } };
 }
 
 function requestModels(events: readonly Json[]): readonly Json[] {

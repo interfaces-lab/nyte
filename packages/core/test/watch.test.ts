@@ -105,6 +105,7 @@ async function createSession(
                 stack: null,
                 execution: { kind: "idle", lastRun: null },
                 unread: false,
+                background: { working: 0, waiting: 0 },
               },
             ],
           },

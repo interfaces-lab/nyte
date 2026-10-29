@@ -29,6 +29,7 @@ function unreadHeads(execution: Execution = COMPLETED): readonly HeadInfo[] {
       stack: null,
       execution,
       unread: true,
+      background: { working: 0, waiting: 0 },
     },
   ];
 }

@@ -1,5 +1,6 @@
 import type {
   Activation,
+  BackgroundItem,
   CallId,
   CommitId,
   Configuration,
@@ -63,7 +64,7 @@ import type {
   SettingsRegistry,
 } from "./plugin.ts";
 import type { Presence } from "../engine/presence.ts";
-import type { CallRecord } from "./records.ts";
+import type { CallRecord, SessionRecord } from "./records.ts";
 import type { Session } from "./session.ts";
 import type { StoreConnection } from "./store.ts";
 import type { ToolDefinition } from "./tools.ts";
@@ -139,6 +140,8 @@ export interface Kernel {
 
   readonly pages: PageTable;
 
+  readonly children: ChildTable;
+
   readonly connections: ConnectionRegistry;
 
   request<T>(session: SessionId, input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
@@ -205,6 +208,14 @@ interface Handles {
   session(context: ConnectionContext, session: SessionId): Session;
 
   activationSession(context: ConnectionContext, session: SessionId): Session;
+}
+
+export interface ChildTable {
+  /** Follows the child `record` describes from its next run change on; a session without a parent is not a child. */
+  link(record: SessionRecord): void;
+  background(
+    session: SessionId,
+  ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];
 }
 
 export interface RunTable {
