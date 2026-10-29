@@ -341,8 +341,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       const image = await contents.capturePage(undefined, { stayHidden: true });
 
       if (image.isEmpty()) return undefined;
-      const width = Math.min(image.getSize().width, surface.view.getBounds().width);
-      const frame = image.resize({ width, quality: "good" }).toJPEG(FRAME_QUALITY);
+      const frame = image.toJPEG(FRAME_QUALITY);
 
       return `data:image/jpeg;base64,${frame.toString("base64")}`;
     } catch {
