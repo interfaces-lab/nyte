@@ -11,7 +11,8 @@ import { toast } from "@nyte-ai/ui/toast";
 import { canvasRenderers } from "./canvas-frame.tsx";
 import { PartOrigin } from "../conversation/part-origin.ts";
 import { RawPartView } from "../conversation/raw-part.tsx";
-import { connected, connection, sessionsWatch } from "../sdk.tsx";
+import { connected, connection } from "../data/connection.ts";
+import { sessionsWatch } from "../data/watches.ts";
 import { chatWindow } from "../window/index.ts";
 
 let mounting: Promise<ClientPlugins> | undefined;

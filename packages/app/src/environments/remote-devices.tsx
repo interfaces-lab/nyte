@@ -8,7 +8,7 @@ import type { RemotePairing } from "../contract/bridge.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../contract/nyte.ts";
-import { keys } from "../queries.ts";
+import { keys } from "../data/query-client.ts";
 import { modelsSettingsStyles as styles } from "../settings/models-settings.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { PairingCode, pairingPayload } from "./pairing-code.tsx";

@@ -25,12 +25,14 @@ import type { ShellSearch } from "../tabs/search.ts";
 import { nyte } from "../contract/nyte.ts";
 import {
   useApplyPluginSetting,
-  useHostState,
   usePluginSettingsProjection,
   useWorkspaceCatalog,
-} from "../queries.ts";
-import { keys } from "../query-keys.ts";
-import { connected, hostWatch, mcpWatch, sessionWatch, useWatch, useWatchSelect } from "../sdk.tsx";
+} from "../data/plugins.ts";
+import { useHostState } from "../data/host.ts";
+import { keys } from "../data/query-client.ts";
+import { connected } from "../data/connection.ts";
+import { hostWatch, mcpWatch, sessionWatch } from "../data/watches.ts";
+import { useWatch, useWatchSelect } from "../data/watch-store.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { settingsStyles as page } from "../settings/settings.stylex.ts";
 import { ConnectionRow, ConnectionStatus } from "../components/connection-list.tsx";

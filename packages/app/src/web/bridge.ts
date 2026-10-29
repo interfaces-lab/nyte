@@ -6,8 +6,8 @@ import type {
   SelectedWorkspace,
 } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
-import { workspaceName } from "../view-helpers.ts";
-import { connectHost } from "../sdk.tsx";
+import { workspaceName } from "../data/workspaces.ts";
+import { connectHost } from "../data/connection.ts";
 import type { HostEndpoint } from "../contract/connection.ts";
 import { requestFolderPath } from "./add-folder.tsx";
 

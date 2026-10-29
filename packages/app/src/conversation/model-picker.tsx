@@ -30,7 +30,7 @@ import {
 import { Button } from "@nyte-ai/ui/button";
 import { menu, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
+import type { DesktopCatalog, DesktopModelOption } from "../data/catalog.ts";
 import { showsSettingsSection } from "../settings/index.ts";
 import {
   modelIcon,

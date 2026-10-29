@@ -26,7 +26,8 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../preferences/index.ts";
-import { useMentionFiles, usePluginCatalog } from "../queries.ts";
+import { useMentionFiles } from "../data/files.ts";
+import { usePluginCatalog } from "../data/plugins.ts";
 import { Prose } from "./prose.tsx";
 import { useReferenceOpener } from "../references/reference-opener.tsx";
 import { SubagentGroupView, SubagentReportLine } from "./subagent-call.tsx";
@@ -66,7 +67,7 @@ import { conversation } from "../theme/schema.stylex.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 import type { PromptRow, TurnItemRow } from "./transcript-rows.ts";
 import { errorMessage } from "../contract/errors.ts";
-import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
+import type { DesktopCatalog, DesktopModelOption } from "../data/catalog.ts";
 
 function UserMessagePreview({
   expandable,

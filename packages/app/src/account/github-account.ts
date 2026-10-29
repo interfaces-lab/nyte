@@ -7,10 +7,11 @@ import {
 } from "@tanstack/react-query";
 import { SdkError } from "@nyte-ai/sdk";
 import type { GitHubAccountState, GitHubApi } from "@nyte-ai/sdk";
-import { keys, useHostState } from "../queries.ts";
+import { keys } from "../data/query-client.ts";
+import { useHostState } from "../data/host.ts";
 import { nyte } from "../contract/nyte.ts";
-import { connected } from "../sdk.tsx";
-import { startupReadsReleased } from "../startup.ts";
+import { connected } from "../data/connection.ts";
+import { startupReadsReleased } from "../data/startup.ts";
 
 const SIGNING_IN_POLL_MS = 2_000;
 

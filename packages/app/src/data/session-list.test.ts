@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
-import { sessionRow } from "../test/view-fixtures.ts";
+import { sessionRow } from "../../test/view-fixtures.ts";
 import { groupByWorkspace, localSessions } from "./session-list.ts";
 
 it("keeps each workspace's sessions when two registrations have the same path", () => {

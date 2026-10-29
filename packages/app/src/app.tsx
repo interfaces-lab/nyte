@@ -3,7 +3,7 @@ import { RouterContextProvider } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Toaster } from "@nyte-ai/ui/toast";
-import { queryClient } from "./queries.ts";
+import { queryClient } from "./data/query-client.ts";
 import { Shell } from "./shell/shell.tsx";
 import type { AppRouter } from "./shell/routes.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -12,7 +12,7 @@ import { activeSelection } from "./panes/pane-layout.ts";
 import { WORKBENCH_HOME_VIEW_KEY, workbenchController } from "./workbench/controller.ts";
 import { reattachShells } from "./workbench/terminal-store.ts";
 import { watchClientPlugins } from "./canvas/client-plugins.tsx";
-import { paceTranscripts } from "./sdk.tsx";
+import { paceTranscripts } from "./data/watches.ts";
 import { chatWindow, followStage } from "./window/index.ts";
 import { useHostEvents } from "./shell/host-events.ts";
 

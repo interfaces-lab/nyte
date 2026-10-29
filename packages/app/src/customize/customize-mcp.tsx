@@ -9,7 +9,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Switch } from "@nyte-ai/ui/switch";
 import { toast } from "@nyte-ai/ui/toast";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { connection } from "../sdk.tsx";
+import { connection } from "../data/connection.ts";
 import { ConnectionRow, ConnectionStatus } from "../components/connection-list.tsx";
 import {
   Chips,

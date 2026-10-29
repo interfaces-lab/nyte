@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { ConnectBridge, ConnectView } from "../contract/bridge.ts";
-import { keys } from "../queries.ts";
+import { keys } from "../data/query-client.ts";
 import { RemoteAccess } from "./server-settings.tsx";
 
 declare global {

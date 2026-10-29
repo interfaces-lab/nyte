@@ -4,12 +4,12 @@ import { QueryClient } from "@tanstack/react-query";
 import { toast } from "@nyte-ai/ui/toast";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { ActionToasts } from "./lib/action-toasts.ts";
+import { ActionToasts } from "../lib/action-toasts.ts";
 import { SessionActions } from "./session-actions.ts";
-import { PaneController } from "./panes/pane-controller.ts";
-import { activeSelection } from "./panes/pane-layout.ts";
-import { keys } from "./query-keys.ts";
-import { scriptedConnection } from "../test/scripted-connection.ts";
+import { PaneController } from "../panes/pane-controller.ts";
+import { activeSelection } from "../panes/pane-layout.ts";
+import { keys } from "./query-client.ts";
+import { scriptedConnection } from "../../test/scripted-connection.ts";
 
 function chat(id: string): SessionInfo {
   return {

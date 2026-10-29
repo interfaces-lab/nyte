@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { expect, test } from "vitest";
-import { testRenderer } from "../test/renderer.ts";
+import { testRenderer } from "../../test/renderer.ts";
 
 const Report = Type.Object({
   snapshots: Type.Number(),

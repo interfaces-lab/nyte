@@ -27,17 +27,11 @@ import {
 import { activePane } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
-import {
-  useForgetWorkspace,
-  useHostState,
-  useRenameSession,
-  useServerState,
-  useSessionActions,
-  useWorkspaceSessions,
-  useWorkspaces,
-  type RailWorkspace,
-} from "../queries.ts";
-import { localSessions } from "../session-list.ts";
+import { useForgetWorkspace, useWorkspaces, type RailWorkspace } from "../data/workspaces.ts";
+import { useHostState, useServerState } from "../data/host.ts";
+import { useRenameSession, useWorkspaceSessions } from "../data/sessions.ts";
+import { useSessionActions } from "../data/session-actions.ts";
+import { localSessions } from "../data/session-list.ts";
 import { chatFolderPath, useChats } from "../chats/index.ts";
 import { chatWindow, useChatWindow } from "../window/index.ts";
 import { closeSettings, type SettingsSection } from "../settings/index.ts";

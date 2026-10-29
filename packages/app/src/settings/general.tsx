@@ -11,7 +11,7 @@ import { hostSetting, preferences, useSetting } from "../preferences/index.ts";
 import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 import { nyte } from "../contract/nyte.ts";
-import { keys } from "../query-keys.ts";
+import { keys } from "../data/query-client.ts";
 import { errorMessage } from "../contract/errors.ts";
 
 const STARTUP = [

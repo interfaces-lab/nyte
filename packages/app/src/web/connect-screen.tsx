@@ -9,7 +9,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { errorMessage } from "../contract/errors.ts";
-import { connectionProblem, hostChanged } from "../sdk.tsx";
+import { connectionProblem, hostChanged } from "../data/connection.ts";
 import type { Connection } from "./bridge.ts";
 import { parseConnection, saveConnection } from "./connection.ts";
 import { webBridge } from "./install.ts";

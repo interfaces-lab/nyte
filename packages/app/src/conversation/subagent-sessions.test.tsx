@@ -3,7 +3,8 @@ import { test } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import { asId } from "@nyte-ai/schema";
-import { childrenWatch, installConnection } from "../sdk.tsx";
+import { childrenWatch } from "../data/watches.ts";
+import { installConnection } from "../data/connection.ts";
 import {
   subagentSessions,
   SubagentSessionsProvider,

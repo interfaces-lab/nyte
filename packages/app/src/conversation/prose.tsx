@@ -16,7 +16,7 @@ import type { Components, ExtraProps, StreamdownProps, UrlTransform } from "stre
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./external-link.ts";
 import { useQuery } from "@tanstack/react-query";
-import { mentionFilesOptions } from "../queries.ts";
+import { mentionFilesOptions } from "../data/files.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -28,7 +28,7 @@ import {
   referenceTitle,
 } from "../references/message-references.ts";
 import type { MessageReference } from "../references/message-references.ts";
-import type { MentionFile } from "../references/message-references.ts";
+import type { MentionFile } from "../data/files.ts";
 import { asId } from "@nyte-ai/schema";
 import { useReferenceOpener } from "../references/reference-opener.tsx";
 import { proseStyles } from "./prose.stylex.ts";

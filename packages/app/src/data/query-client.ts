@@ -1,3 +1,4 @@
+import { QueryClient } from "@tanstack/react-query";
 import type { ChangeSource, GitScope, SessionId, WorkspaceId } from "@nyte-ai/sdk";
 
 export const keys = {
@@ -42,3 +43,15 @@ export const keys = {
   mermaid: (source: string) => ["mermaid", source] as const,
   highlight: (language: string, code: string) => ["highlight", language, code] as const,
 };
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      staleTime: Infinity,
+      retry: false,
+    },
+  },
+});

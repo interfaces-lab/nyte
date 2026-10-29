@@ -10,7 +10,7 @@ import { props } from "@stylexjs/stylex";
 import { Fragment, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Deferred } from "../lib/deferred.tsx";
-import { useAccountLimits, useUsageReport } from "../queries.ts";
+import { useAccountLimits, useUsageReport } from "../data/usage.ts";
 import { useChromeTab } from "../tabs/use-chrome-tab.ts";
 import { amongOptions } from "../sidebar/sidebar-view.ts";
 import { skeletonStyles as bone, usageStyles as styles } from "./usage-settings.stylex.ts";

@@ -6,10 +6,10 @@ import type {
   UserMessage,
 } from "@nyte-ai/plugin/client/presentation";
 import type { ToolCallDensity } from "../preferences/index.ts";
-import type { WatchStore } from "../sdk.tsx";
+import type { WatchStore } from "../data/watch-store.ts";
 import { CHANGES_VISIBLE_FILES } from "../diff/change-tree.ts";
-import { conversationTurns } from "../view-helpers.ts";
-import type { TurnMessages } from "../view-helpers.ts";
+import { conversationTurns } from "../chat/transcript/turns.ts";
+import type { TurnMessages } from "../chat/transcript/turns.ts";
 import { showsLiveStatus } from "./step-group-presentation.ts";
 import { displayTranscriptParts, transcriptSlot } from "./transcript-presentation.ts";
 import type {

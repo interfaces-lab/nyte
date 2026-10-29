@@ -5,7 +5,7 @@ import { folderPicker } from "../panes/open-workspace.tsx";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import { focusNextPane, splitPanes } from "../panes/pane-context.tsx";
 import { nyte } from "../contract/nyte.ts";
-import { keys, queryClient } from "../queries.ts";
+import { keys, queryClient } from "../data/query-client.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import {

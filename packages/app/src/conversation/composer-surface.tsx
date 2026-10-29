@@ -21,7 +21,7 @@ import {
   composerReference,
   composerReferencesPlugin,
 } from "./composer-document.ts";
-import type { MentionFile } from "../references/message-references.ts";
+import type { MentionFile } from "../data/files.ts";
 import { openConversationLink } from "./external-link.ts";
 import { useReferenceOpener } from "../references/reference-opener.tsx";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";

@@ -10,7 +10,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { PaneController } from "../panes/pane-controller.ts";
-import { keys, queryClient } from "../queries.ts";
+import { keys, queryClient } from "../data/query-client.ts";
 import { TranscriptContent, TranscriptProvider } from "./transcript.tsx";
 import type { RowLayout } from "./transcript-rows.ts";
 import { UserMessageView } from "./turn-view.tsx";

@@ -4,7 +4,7 @@ import type { PartView, SessionView } from "@nyte-ai/sdk";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { asId } from "@nyte-ai/schema";
 import { answerQuestion } from "./questions-state.ts";
-import { installConnection } from "../../sdk.tsx";
+import { installConnection } from "../../data/connection.ts";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
 
 function part(id: string, change: Partial<PartView> = {}): PartView {

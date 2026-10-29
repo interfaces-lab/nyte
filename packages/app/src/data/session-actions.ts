@@ -1,10 +1,13 @@
+import { useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
 import { keyedSerial } from "@nyte-ai/schema/serial";
 import type { Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
-import { ActionToasts } from "./lib/action-toasts.ts";
-import { keys } from "./query-keys.ts";
-import { connection, findListedSession } from "./sdk.tsx";
+import { ActionToasts } from "../lib/action-toasts.ts";
+import { keys, queryClient } from "./query-client.ts";
+import { connection } from "./connection.ts";
+import { findListedSession } from "./watches.ts";
 
 type SessionChange =
   | { readonly kind: "archive"; readonly archived: boolean }
@@ -271,4 +274,35 @@ export class SessionActions {
         : (applyChange(session, change) ?? session),
     );
   }
+}
+
+const sessionActionsByClient = new WeakMap<QueryClient, SessionActions>();
+
+function actionsFor(client: QueryClient): SessionActions {
+  const existing = sessionActionsByClient.get(client);
+
+  if (existing !== undefined) return existing;
+  const actions = new SessionActions({ client });
+  sessionActionsByClient.set(client, actions);
+
+  return actions;
+}
+
+/** The app's session actions, for readers outside React. */
+export function appSessionActions(): SessionActions {
+  return actionsFor(queryClient);
+}
+
+export function useSessionActions(): SessionActions {
+  return actionsFor(useQueryClient());
+}
+
+export function useSessionProjection() {
+  const actions = useSessionActions();
+  const pending = useSyncExternalStore(actions.subscribe, actions.getSnapshot, actions.getSnapshot);
+
+  return {
+    session: (session: SessionInfo) => actions.projectSession(session, pending),
+    list: (sessions: readonly SessionInfo[]) => actions.projectList(sessions, pending),
+  };
 }

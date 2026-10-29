@@ -10,17 +10,14 @@ import type { RunStatus, UserMessage } from "@nyte-ai/plugin/client/presentation
 import { errorMessage } from "../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import {
-  useCatalog,
-  useHostLink,
-  useHostState,
-  useMentionFiles,
-  usePluginCatalog,
-  useSessionActions,
-  useSessionActivity,
-  useSessionChoice,
-} from "../queries.ts";
-import { connection, sessionWatch } from "../sdk.tsx";
+import { useCatalog } from "../data/catalog.ts";
+import { useHostLink, useHostState } from "../data/host.ts";
+import { useMentionFiles } from "../data/files.ts";
+import { usePluginCatalog } from "../data/plugins.ts";
+import { useSessionActions } from "../data/session-actions.ts";
+import { useSessionActivity, useSessionChoice } from "../data/sessions.ts";
+import { connection } from "../data/connection.ts";
+import { sessionWatch } from "../data/watches.ts";
 import { nyte } from "../contract/nyte.ts";
 import { clientActionAriaShortcut, clientActions } from "../contract/client-actions.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../panes/session-view-state.ts";

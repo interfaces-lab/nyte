@@ -1,37 +1,9 @@
-import type { FileEntryView, UserContent } from "@nyte-ai/sdk";
+import type { UserContent } from "@nyte-ai/sdk";
 import { ExcerptSourceType } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-
-const mentionFileSchema = Type.ReadonlyObject(
-  Type.Object({
-    path: Type.String(),
-    url: Type.String(),
-    displayPath: Type.String(),
-    label: Type.String(),
-  }),
-);
-
-export type MentionFile = Static<typeof mentionFileSchema>;
-
-export function mentionFile(
-  root: string,
-  entry: Pick<FileEntryView, "path" | "kind">,
-): MentionFile {
-  const folder = entry.kind === "directory" ? "/" : "";
-  const path = `${root.replace(/\/$/u, "")}/${entry.path}`;
-  const url = new URL("file:///");
-  url.pathname = `${path}${folder}`;
-  const name = entry.path.split("/").at(-1) ?? entry.path;
-
-  return {
-    path: `${path}${folder}`,
-    url: url.href,
-    displayPath: `${entry.path}${folder}`,
-    label: `${name}${folder}`,
-  };
-}
+import { type MentionFile, mentionFileSchema } from "../data/files.ts";
 
 export const messageReferenceSchema = Type.Union([
   Type.ReadonlyObject(

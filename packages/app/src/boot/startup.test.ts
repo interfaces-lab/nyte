@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { startRendererStartup, startupConnection } from "./startup.ts";
+import { startRendererStartup } from "./startup.ts";
+import { startupConnection } from "../data/startup.ts";
 
 const fonts = { load: vi.fn(async () => []) };
 

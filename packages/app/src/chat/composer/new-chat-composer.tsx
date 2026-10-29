@@ -28,9 +28,12 @@ import {
 import { activePane } from "../../panes/pane-layout.ts";
 import type { PaneId } from "../../panes/pane-layout.ts";
 import type { BlankViewState, ChatDraft } from "../../panes/session-view-state.ts";
-import { useCatalog, useHostState, useMentionFiles, useWorkspaceCatalog } from "../../queries.ts";
+import { useCatalog } from "../../data/catalog.ts";
+import { useHostState } from "../../data/host.ts";
+import { useMentionFiles } from "../../data/files.ts";
+import { useWorkspaceCatalog } from "../../data/plugins.ts";
 import { modelRefFor, selectedModelOption } from "../../conversation/model-picker-state.ts";
-import { StartupReadsRelease } from "../../startup.ts";
+import { StartupReadsRelease } from "../../data/startup.ts";
 
 const NO_COMMANDS: readonly CommandInfo[] = [];
 

@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { Message, SessionView } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
-import { installConnection, loadEarlierMessages, sessionWatch } from "./sdk.tsx";
-import { scriptedConnection } from "../test/scripted-connection.ts";
-import { COMPLETED, USAGE } from "../test/view-fixtures.ts";
+import { installConnection } from "./connection.ts";
+import { loadEarlierMessages, sessionWatch } from "./watches.ts";
+import { scriptedConnection } from "../../test/scripted-connection.ts";
+import { COMPLETED, USAGE } from "../../test/view-fixtures.ts";
 
 function prompt(id: string): Message {
   return {

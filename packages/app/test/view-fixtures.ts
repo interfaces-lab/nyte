@@ -3,8 +3,8 @@ import { asId } from "@nyte-ai/schema";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { joinChats } from "../src/chats/directory.ts";
 import type { ChatDirectory, ChatSources } from "../src/chats/directory.ts";
-import type { WatchSource } from "../src/sdk.tsx";
-import type { TurnMessages } from "../src/view-helpers.ts";
+import type { WatchSource } from "../src/data/watch-store.ts";
+import type { TurnMessages } from "../src/chat/transcript/turns.ts";
 
 export const USAGE = {
   input: 1,

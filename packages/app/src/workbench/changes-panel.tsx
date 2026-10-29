@@ -22,13 +22,14 @@ import {
   readRecordedPatches,
   refreshVcs,
   useRecordedChanges,
-  useSession,
   useVcsChanges,
   useVcsSnapshot,
   workspaceGit,
-} from "../queries.ts";
-import { conversationTurns } from "../view-helpers.ts";
-import { sessionWatch, useWatchSelect } from "../sdk.tsx";
+} from "../data/vcs.ts";
+import { useSession } from "../data/sessions.ts";
+import { conversationTurns } from "../chat/transcript/turns.ts";
+import { sessionWatch } from "../data/watches.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
 import { usePaneControllerSnapshot } from "../panes/pane-context.tsx";
 import { activeSelection } from "../panes/pane-layout.ts";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";

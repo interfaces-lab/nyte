@@ -1,7 +1,8 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../theme/schema.stylex.ts";
-import { sessionWatch, useWatchSelect } from "../sdk.tsx";
+import { sessionWatch } from "../data/watches.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
 import { activityStyles } from "./activity.stylex.ts";
 import { usePlanningTime } from "./planning-time.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";

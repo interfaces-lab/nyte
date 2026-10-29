@@ -11,7 +11,8 @@ import { Button } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { useHostState, useVcsSnapshot } from "../queries.ts";
+import { useHostState } from "../data/host.ts";
+import { useVcsSnapshot } from "../data/vcs.ts";
 import { BranchRow, ChangesRow, SessionStatusRows } from "./rail-status.tsx";
 import {
   clampWorkbenchWidthToBounds,

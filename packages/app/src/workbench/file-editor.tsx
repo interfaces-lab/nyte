@@ -25,15 +25,11 @@ import {
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "../lib/pierre-worker-provider.tsx";
-import {
-  keys,
-  useSaveWorkspaceFile,
-  useWorkspaceFile,
-  workspaceFiles,
-  workspaceGit,
-} from "../queries.ts";
+import { keys } from "../data/query-client.ts";
+import { useSaveWorkspaceFile, useWorkspaceFile, workspaceFiles } from "../data/files.ts";
+import { workspaceGit } from "../data/vcs.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
-import { watchFamily } from "../sdk.tsx";
+import { watchFamily } from "../data/watch-store.ts";
 import { FindWidget } from "./find-widget.tsx";
 import type { FindWidgetHandle } from "./find-widget.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";

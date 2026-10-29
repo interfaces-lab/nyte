@@ -4,7 +4,7 @@ import { closeHistory } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 import { useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, Ref } from "react";
-import type { MentionFile } from "../references/message-references.ts";
+import type { MentionFile } from "../data/files.ts";
 import {
   clearComposerHistory,
   COMPOSER_RESTORE,

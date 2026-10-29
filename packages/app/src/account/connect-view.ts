@@ -8,7 +8,7 @@ import type {
   ConnectView,
 } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
-import { keys } from "../queries.ts";
+import { keys } from "../data/query-client.ts";
 import type { ConnectionStanding } from "../components/connection-list.tsx";
 
 export type LinkedView = Extract<ConnectView, { kind: "linked" }>;

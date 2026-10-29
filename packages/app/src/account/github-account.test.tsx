@@ -7,8 +7,8 @@ import { afterEach, beforeEach, test, vi } from "vitest";
 import { SdkError } from "@nyte-ai/sdk";
 import type { GitHubAccountApi, GitHubAccountState, GitHubApi, GitHubState } from "@nyte-ai/sdk";
 import type { HostState } from "../contract/bridge.ts";
-import { keys } from "../query-keys.ts";
-import { installConnection } from "../sdk.tsx";
+import { keys } from "../data/query-client.ts";
+import { installConnection } from "../data/connection.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { useGitHubAccount, useGitHubState } from "./github-account.ts";
 

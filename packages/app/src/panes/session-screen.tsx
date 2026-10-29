@@ -11,7 +11,7 @@ import { activePane, orderedPanes } from "./pane-layout.ts";
 import type { PaneId, PaneLayout } from "./pane-layout.ts";
 import { useSessionDropTarget } from "./session-dnd.tsx";
 import type { SessionDropTarget } from "./session-dnd.tsx";
-import { useHostState } from "../queries.ts";
+import { useHostState } from "../data/host.ts";
 import { nyte } from "../contract/nyte.ts";
 
 import {

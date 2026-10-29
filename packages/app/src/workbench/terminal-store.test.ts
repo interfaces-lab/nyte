@@ -11,7 +11,7 @@ import {
 import { createWorkbenchController, workbenchViewKey } from "./controller.ts";
 import type { WorkbenchPersistence } from "./controller.ts";
 import type { TerminalOutput } from "./terminal-store.ts";
-import { installConnection } from "../sdk.tsx";
+import { installConnection } from "../data/connection.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 

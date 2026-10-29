@@ -2,10 +2,13 @@ import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { SessionId, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { QueryObserver, skipToken } from "@tanstack/react-query";
-import { derivedStore } from "../derived-store.ts";
-import type { StoreSource } from "../derived-store.ts";
-import { appSessionActions, keys, queryClient, sessionQuery, workspacesQuery } from "../queries.ts";
-import { openViews, sessionsWatch, subscribeOpenViews } from "../sdk.tsx";
+import { derivedStore } from "../data/derived-store.ts";
+import type { StoreSource } from "../data/derived-store.ts";
+import { appSessionActions } from "../data/session-actions.ts";
+import { keys, queryClient } from "../data/query-client.ts";
+import { sessionQuery } from "../data/sessions.ts";
+import { workspacesQuery } from "../data/workspaces.ts";
+import { openViews, sessionsWatch, subscribeOpenViews } from "../data/watches.ts";
 import { joinChats } from "./directory.ts";
 import type { Chat, ChatDirectory } from "./directory.ts";
 

@@ -1,5 +1,6 @@
 import { nyte } from "../contract/nyte.ts";
-import { commitHostWorkspace, keys, queryClient } from "../queries.ts";
+import { commitHostWorkspace } from "../data/workspaces.ts";
+import { keys, queryClient } from "../data/query-client.ts";
 import type { HostState } from "../contract/nyte.ts";
 import { handleOpenOutcome } from "../panes/open-workspace.tsx";
 

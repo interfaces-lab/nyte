@@ -4,7 +4,8 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { formatTokens } from "../lib/format.ts";
-import { sessionWatch, useWatchSelect } from "../sdk.tsx";
+import { sessionWatch } from "../data/watches.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
 
 const styles = create({
   ring: { flexShrink: 0, width: glyph.md, height: glyph.md, fill: "none" },

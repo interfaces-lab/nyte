@@ -14,8 +14,8 @@ import type {
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
-import { keys, queryClient } from "../queries.ts";
-import { installConnection } from "../sdk.tsx";
+import { keys, queryClient } from "../data/query-client.ts";
+import { installConnection } from "../data/connection.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { ChangesCommitBar } from "./changes-commit-bar.tsx";
 import "../theme/tokens.stylex.ts";

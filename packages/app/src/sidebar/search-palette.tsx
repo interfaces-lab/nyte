@@ -15,7 +15,7 @@ import { useChats } from "../chats/index.ts";
 import { useChatWindow } from "../window/index.ts";
 
 import { amongOptions, chatMark, sessionsForNavigation } from "./sidebar-view.ts";
-import { useSessionSearch } from "../queries.ts";
+import { useSessionSearch } from "../data/sessions.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";

@@ -30,7 +30,7 @@ import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../contract/nyte.ts";
-import { useHostState } from "../queries.ts";
+import { useHostState } from "../data/host.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { patchDigest } from "../diff/changes-viewed.ts";
 import {
@@ -43,7 +43,7 @@ import type { CanvasPost } from "./canvas-frame.ts";
 import { readCanvasTheme, subscribeCanvasTheme } from "./canvas-theme.ts";
 import type { CanvasTheme } from "./canvas-theme.ts";
 import { openConversationLink } from "../conversation/external-link.ts";
-import type { MentionFile } from "../references/message-references.ts";
+import type { MentionFile } from "../data/files.ts";
 import { PartOrigin } from "../conversation/part-origin.ts";
 import { linkReference, useCitableFiles } from "../conversation/prose.tsx";
 import { useReferenceOpener } from "../references/reference-opener.tsx";

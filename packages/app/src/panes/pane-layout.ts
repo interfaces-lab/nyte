@@ -1,7 +1,7 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { sessionId } from "../schemas.ts";
+import { sessionId } from "../data/schemas.ts";
 
 export type PaneId = "primary" | "secondary";
 

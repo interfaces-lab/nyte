@@ -2,7 +2,8 @@ import { isPart, tool } from "@nyte-ai/plugin/client";
 import { CANVAS_RENDER_TOOL } from "@nyte-ai/plugin/canvas/schema";
 import { isJsonObject } from "@nyte-ai/schema";
 import type { PartId, SessionId } from "@nyte-ai/sdk";
-import { sessionWatch, useWatchSelect } from "../sdk.tsx";
+import { sessionWatch } from "../data/watches.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
 
 /** Whether the agent is rewriting a canvas: a `canvas_render` call naming it has not settled in its chat. */
 export function useCanvasEditing(sessionId: SessionId, part: PartId): boolean {

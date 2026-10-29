@@ -14,7 +14,7 @@ import type { StepMessage } from "./transcript-presentation.ts";
 import { asId } from "@nyte-ai/schema";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { PaneController } from "../panes/pane-controller.ts";
-import { queryClient } from "../queries.ts";
+import { queryClient } from "../data/query-client.ts";
 import { TranscriptProvider } from "./transcript.tsx";
 
 function check(condition: boolean, message: string): void {

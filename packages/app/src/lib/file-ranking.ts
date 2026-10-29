@@ -1,4 +1,4 @@
-import type { MentionFile } from "../references/message-references.ts";
+import type { MentionFile } from "../data/files.ts";
 
 interface SearchableFile {
   readonly file: MentionFile;

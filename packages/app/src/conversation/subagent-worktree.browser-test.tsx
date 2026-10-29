@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import type { WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
-import { keys, queryClient } from "../queries.ts";
+import { keys, queryClient } from "../data/query-client.ts";
 import { SubagentCitation } from "./subagent-call.tsx";
 import { SubagentSessionsProvider } from "./subagent-sessions.ts";
 import "../theme/tokens.stylex.ts";

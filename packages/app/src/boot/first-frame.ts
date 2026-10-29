@@ -10,13 +10,14 @@ import { hashKey } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { HostState } from "./contract/bridge.ts";
-import { keys, newestModelCatalog, queryClient } from "./queries.ts";
-import { sessionsWatch, sessionWatch } from "./sdk.tsx";
-import { sessionId } from "./schemas.ts";
-import { startupConnection } from "./startup.ts";
-import { activeTab, tabPlace } from "./tabs/model.ts";
-import { windowTabs } from "./tabs/window-tabs.ts";
+import type { HostState } from "../contract/bridge.ts";
+import { keys, queryClient } from "../data/query-client.ts";
+import { newestModelCatalog } from "../data/catalog.ts";
+import { sessionsWatch, sessionWatch } from "../data/watches.ts";
+import { sessionId } from "../data/schemas.ts";
+import { startupConnection } from "../data/startup.ts";
+import { activeTab, tabPlace } from "../tabs/model.ts";
+import { windowTabs } from "../tabs/window-tabs.ts";
 
 const FIRST_FRAME_KEY = "nyte.first-frame.v1";
 

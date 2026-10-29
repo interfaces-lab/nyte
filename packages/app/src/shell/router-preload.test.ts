@@ -5,7 +5,7 @@ import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { test } from "vitest";
 import { readRouteSession, routeSessionExists } from "./route-session.ts";
-import { keys } from "../query-keys.ts";
+import { keys } from "../data/query-client.ts";
 
 function session(id: SessionId): SessionInfo {
   return {

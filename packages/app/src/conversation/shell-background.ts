@@ -1,5 +1,5 @@
 import type { PartId, SessionId } from "@nyte-ai/sdk";
-import { connection } from "../sdk.tsx";
+import { connection } from "../data/connection.ts";
 
 export async function moveToBackground(sessionId: SessionId, part: PartId): Promise<void> {
   const outcome = await connection().session(sessionId).part(part).act("background", {});

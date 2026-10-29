@@ -6,7 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { errorMessage } from "../contract/errors.ts";
-import { connected } from "../sdk.tsx";
+import { connected } from "../data/connection.ts";
 import { showsSettingsSection } from "../settings/index.ts";
 import { SessionModelChip } from "./composer-model-chip.tsx";
 import { compactSession } from "./composer-send.ts";

@@ -4,7 +4,7 @@ import { getSchema, getTextBetween, getTextSerializersFromSchema } from "@tiptap
 import { closeHistory, history, redo, undo } from "@tiptap/pm/history";
 import { EditorState } from "@tiptap/pm/state";
 import type { Transaction } from "@tiptap/pm/state";
-import type { MentionFile } from "../references/message-references.ts";
+import type { MentionFile } from "../data/files.ts";
 import {
   clearComposerHistory,
   ComposerDocument,

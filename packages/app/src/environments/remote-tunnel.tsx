@@ -10,7 +10,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { nyte } from "../contract/nyte.ts";
-import { keys } from "../queries.ts";
+import { keys } from "../data/query-client.ts";
 import {
   ConnectionMenu,
   ConnectionRow,

@@ -2,7 +2,7 @@ import { useLayoutEffect } from "react";
 import type { ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { useWatch, WatchStore } from "./sdk.tsx";
+import { useWatch, WatchStore } from "./watch-store.ts";
 
 function numbers() {
   const queued: number[] = [];

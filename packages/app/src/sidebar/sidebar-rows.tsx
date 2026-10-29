@@ -29,7 +29,7 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../lib/use-debounced-value.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useNowMinute } from "../lib/use-now-minute.ts";
-import { sessionWatch, warmSession } from "../sdk.tsx";
+import { sessionWatch, warmSession } from "../data/watches.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { useChatWindow } from "../window/index.ts";
 import { StatusGlyph } from "../components/status-glyph.tsx";

@@ -1,7 +1,8 @@
 import { createContext, useContext } from "react";
 import type { CallId, SessionId, SessionInfo } from "@nyte-ai/sdk";
-import { childrenWatch, useWatchSelect } from "../sdk.tsx";
-import type { WatchSource } from "../sdk.tsx";
+import { childrenWatch } from "../data/watches.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
+import type { WatchSource } from "../data/watch-store.ts";
 
 interface SubagentSessions {
   readonly children: WatchSource<readonly SessionInfo[]>;

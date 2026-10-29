@@ -4,8 +4,6 @@ import type { UsageSnapshot } from "../contract/bridge.ts";
 import type { UsageReport, UsageTotals, UsageWindow } from "../contract/nyte.ts";
 import { formatPercent, formatTokens, formatUsd, groupDigits } from "../lib/format.ts";
 
-export const USAGE_STALE_AFTER_MS = 60_000;
-
 export const USAGE_RANGES = ["7d", "30d", "90d", "all"] as const;
 
 export type UsageRange = (typeof USAGE_RANGES)[number];

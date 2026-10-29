@@ -12,8 +12,8 @@ import { receiveChatExcerpts } from "./add-to-chat.ts";
 import { ComposerEditor } from "../conversation/composer-editor.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import { nyte } from "../contract/nyte.ts";
-import { queryClient } from "../queries.ts";
-import { installConnection } from "../sdk.tsx";
+import { queryClient } from "../data/query-client.ts";
+import { installConnection } from "../data/connection.ts";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { TerminalPanel } from "../workbench/terminal-panel.tsx";
 

@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { afterEach, test, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
 import { asId } from "@nyte-ai/schema";
-import type { HostBridge, UsageSnapshot, UsageWindow } from "./contract/bridge.ts";
-import { installBridge } from "./contract/nyte.ts";
-import { queryClient, usageReportOptions } from "./queries.ts";
-import { USAGE_RANGES, USAGE_STALE_AFTER_MS, usageWindow } from "./settings/usage-view.ts";
-import { createWebBridge } from "./web/bridge.ts";
+import type { HostBridge, UsageSnapshot, UsageWindow } from "../contract/bridge.ts";
+import { installBridge } from "../contract/nyte.ts";
+import { queryClient } from "./query-client.ts";
+import { usageReportOptions } from "./usage.ts";
+import { USAGE_RANGES, usageWindow } from "../settings/usage-view.ts";
+import { USAGE_STALE_AFTER_MS } from "./usage.ts";
+import { createWebBridge } from "../web/bridge.ts";
 
 const readUsage = vi.fn<NonNullable<HostBridge["usage"]>>();
 

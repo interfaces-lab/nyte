@@ -1,16 +1,17 @@
-import "./conversation/transcript-render-counter.ts";
-import "../test/window-bridge.ts";
+import "../conversation/transcript-render-counter.ts";
+import "../../test/window-bridge.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { queryClient, useSession } from "./queries.ts";
-import { installConnection } from "./sdk.tsx";
-import { scriptedConnection, viewStream } from "../test/scripted-connection.ts";
-import { sessionRow } from "../test/view-fixtures.ts";
-import { renderCount, resetRenders } from "./conversation/transcript-render-counter.ts";
+import { queryClient } from "./query-client.ts";
+import { useSession } from "./sessions.ts";
+import { installConnection } from "./connection.ts";
+import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
+import { sessionRow } from "../../test/view-fixtures.ts";
+import { renderCount, resetRenders } from "../conversation/transcript-render-counter.ts";
 
 const SHOWN = asId<"session">("shown");
 

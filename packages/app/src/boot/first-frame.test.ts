@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, test, vi } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import { recordFirstFrame, seedFirstFrame } from "./first-frame.ts";
-import { keys, queryClient } from "./queries.ts";
-import { sessionRow } from "../test/view-fixtures.ts";
+import { keys, queryClient } from "../data/query-client.ts";
+import { sessionRow } from "../../test/view-fixtures.ts";
 
 const stored = new Map<string, string>();
 

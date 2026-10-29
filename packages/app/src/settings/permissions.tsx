@@ -1,8 +1,9 @@
 import type { ReactElement } from "react";
 import { APPROVAL_POLICIES, PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
-import { useApplyPluginSetting } from "../queries.ts";
-import { hostWatch, useWatch } from "../sdk.tsx";
+import { useApplyPluginSetting } from "../data/plugins.ts";
+import { hostWatch } from "../data/watches.ts";
+import { useWatch } from "../data/watch-store.ts";
 import { SettingsRow, SettingsSection } from "./rows.tsx";
 
 export function PermissionsSection(): ReactElement | null {

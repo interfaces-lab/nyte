@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import type { DeviceCode } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
 import { openExternal } from "../lib/open-external.ts";
-import { connection } from "../sdk.tsx";
+import { connection } from "../data/connection.ts";
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 

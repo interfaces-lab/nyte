@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { useId, useState, type ReactElement } from "react";
-import type { MentionFile } from "../references/message-references.ts";
-import type { WorktreeFile } from "../view-helpers.ts";
+import type { MentionFile } from "../data/files.ts";
+import type { WorktreeFile } from "./files/worktree-files.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Kbd } from "@nyte-ai/ui/kbd";

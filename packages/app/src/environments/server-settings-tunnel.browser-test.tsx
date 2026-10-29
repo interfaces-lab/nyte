@@ -9,7 +9,7 @@ import type {
   RemotePairing,
   TunnelConnection,
 } from "../contract/bridge.ts";
-import { keys } from "../queries.ts";
+import { keys } from "../data/query-client.ts";
 import { RemoteAccess } from "./server-settings.tsx";
 
 declare global {

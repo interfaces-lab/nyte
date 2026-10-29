@@ -7,7 +7,7 @@ import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import { installConnection } from "../../sdk.tsx";
+import { installConnection } from "../../data/connection.ts";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
 import { COMPLETED, USAGE } from "../../../test/view-fixtures.ts";
 import { QuestionTray } from "./questions.tsx";

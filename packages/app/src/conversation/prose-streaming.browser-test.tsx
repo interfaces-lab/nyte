@@ -16,7 +16,9 @@ import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import type { ViewStream } from "../../test/scripted-connection.ts";
 import { USAGE } from "../../test/view-fixtures.ts";
-import { installConnection, paceTranscripts, sessionWatch, useWatchSelect } from "../sdk.tsx";
+import { installConnection } from "../data/connection.ts";
+import { paceTranscripts, sessionWatch } from "../data/watches.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
 import { renderCount, resetRenders } from "./transcript-render-counter.ts";
 import { Prose } from "./prose.tsx";
 

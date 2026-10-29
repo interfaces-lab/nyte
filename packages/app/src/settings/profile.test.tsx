@@ -6,7 +6,7 @@ import { afterEach, test } from "vitest";
 import type { GitHubAccountState, GitHubApi, GitHubState } from "@nyte-ai/sdk";
 import type { ConnectView, HostState, NyteBridge } from "../contract/bridge.ts";
 import { installBridge } from "../contract/nyte.ts";
-import { keys } from "../query-keys.ts";
+import { keys } from "../data/query-client.ts";
 import { createWebBridge } from "../web/bridge.ts";
 import { ProfileSettings } from "./profile.tsx";
 import { settingsSectionGroups } from "./index.ts";

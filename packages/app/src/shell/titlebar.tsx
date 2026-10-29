@@ -18,7 +18,7 @@ import {
 import { activePane } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { chatTitle, useChat } from "../chats/index.ts";
-import { useHostState } from "../queries.ts";
+import { useHostState } from "../data/host.ts";
 import {
   workbenchController,
   workbenchScope,

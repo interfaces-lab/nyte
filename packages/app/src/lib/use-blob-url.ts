@@ -1,7 +1,7 @@
 import { hashKey, useQuery } from "@tanstack/react-query";
 import type { QueryCache, QueryKey } from "@tanstack/react-query";
 import type { BlobId } from "@nyte-ai/sdk";
-import { connection } from "../sdk.tsx";
+import { connection } from "../data/connection.ts";
 
 const handedOut = new WeakMap<QueryCache, Map<string, string>>();
 

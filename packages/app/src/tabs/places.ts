@@ -1,5 +1,5 @@
 import type { useRouter } from "@tanstack/react-router";
-import { sessionId as sessionIdSchema } from "../schemas.ts";
+import { sessionId as sessionIdSchema } from "../data/schemas.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sameSelection } from "../panes/pane-layout.ts";

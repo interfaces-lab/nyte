@@ -8,7 +8,7 @@ import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { Button } from "@nyte-ai/ui/button";
-import { keys } from "../query-keys.ts";
+import { keys } from "../data/query-client.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { CodeBlock } from "./code-block.tsx";
 import type { DiagramResult } from "./mermaid-render.ts";

@@ -13,8 +13,9 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { useSyncExternalStore } from "react";
 import { errorMessage } from "../contract/errors.ts";
-import { connected, hostWatch } from "../sdk.tsx";
-import { workspacePath as pathOfWorkspace } from "../view-helpers.ts";
+import { connected } from "../data/connection.ts";
+import { hostWatch } from "../data/watches.ts";
+import { workspacePath as pathOfWorkspace } from "../data/workspaces.ts";
 import type { WorkbenchController, WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
 
 type ShellTerminalState =

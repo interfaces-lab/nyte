@@ -1,4 +1,4 @@
-import type { MentionFile } from "../references/message-references.ts";
+import type { MentionFile } from "../data/files.ts";
 import { createFileRanking } from "../lib/file-ranking.ts";
 import { mentionsFolder } from "../references/message-references.ts";
 

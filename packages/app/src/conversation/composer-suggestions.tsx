@@ -8,7 +8,7 @@ import { skipToken, useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
-import type { MentionFile } from "../references/message-references.ts";
+import type { MentionFile } from "../data/files.ts";
 import type { CommandCompletion, CommandInfo } from "@nyte-ai/sdk";
 import type { SessionCatalogView, SkillInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";

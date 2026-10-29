@@ -21,23 +21,15 @@ import {
   usePaneViewStateStore,
 } from "../panes/pane-context.tsx";
 import type { PaneId } from "../panes/pane-layout.ts";
-import {
-  useCatalog,
-  useChildSessions,
-  useSessionActions,
-  useHostState,
-  useRenameSession,
-  useSessionChoice,
-} from "../queries.ts";
-import {
-  childrenWatch,
-  connection,
-  loadEarlierMessages,
-  sessionWatch,
-  useWatchSelect,
-} from "../sdk.tsx";
-import type { WatchStore } from "../sdk.tsx";
-import type { DesktopModelOption } from "../catalog.ts";
+import { useCatalog } from "../data/catalog.ts";
+import { useChildSessions, useRenameSession, useSessionChoice } from "../data/sessions.ts";
+import { useSessionActions } from "../data/session-actions.ts";
+import { useHostState } from "../data/host.ts";
+import { childrenWatch, loadEarlierMessages, sessionWatch } from "../data/watches.ts";
+import { connection } from "../data/connection.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
+import type { WatchStore } from "../data/watch-store.ts";
+import type { DesktopModelOption } from "../data/catalog.ts";
 
 import { BackgroundWork, useLiveTerminals } from "../conversation/tray/terminals.tsx";
 import { Timeline } from "../conversation/timeline.tsx";
@@ -55,7 +47,7 @@ import {
 } from "../conversation/tray/agents.tsx";
 import { subagentSessions, SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
-import { StartupReadsRelease } from "../startup.ts";
+import { StartupReadsRelease } from "../data/startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../lib/work-counts.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";

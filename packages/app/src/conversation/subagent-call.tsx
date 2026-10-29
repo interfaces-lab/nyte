@@ -23,14 +23,14 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { Row } from "@nyte-ai/ui/row";
 import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { useCatalog } from "../data/catalog.ts";
 import {
-  useCatalog,
   useChildSessions,
   useSession,
   useSessionActivity,
   useSessionChoice,
-  useWorkspaces,
-} from "../queries.ts";
+} from "../data/sessions.ts";
+import { useWorkspaces } from "../data/workspaces.ts";
 import { useChats } from "../chats/index.ts";
 import { useChatWindow } from "../window/index.ts";
 import { modelDisplayName, modelIcon, THINKING_LABELS } from "./model-picker-state.ts";

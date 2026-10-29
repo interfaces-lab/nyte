@@ -1,4 +1,4 @@
-import type { MentionFile } from "./message-references.ts";
+import type { MentionFile } from "../data/files.ts";
 
 interface ComposerFileDropTransfer {
   readonly types: ArrayLike<string>;

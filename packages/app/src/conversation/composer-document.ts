@@ -8,7 +8,8 @@ import type { Command, Transaction } from "@tiptap/pm/state";
 import { Value } from "typebox/value";
 import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 import type { CompletionTrigger } from "@nyte-ai/plugin/client/presentation";
-import type { ContentPart, MentionFile } from "../references/message-references.ts";
+import type { ContentPart } from "../references/message-references.ts";
+import type { MentionFile } from "../data/files.ts";
 import {
   messageParts,
   messageReferenceSchema,

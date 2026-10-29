@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
-import { SdkError } from "@nyte-ai/sdk";
-import { keys } from "../query-keys.ts";
+import { keys } from "../data/query-client.ts";
+import { missingAsNull } from "../data/sessions.ts";
 
 export function readRouteSession({
   client,
@@ -17,11 +17,6 @@ export function readRouteSession({
     queryFn: () => read().catch(missingAsNull),
     staleTime: Infinity,
   });
-}
-
-export function missingAsNull(cause: unknown): null {
-  if (cause instanceof SdkError && cause.code === "unknown") return null;
-  throw cause;
 }
 
 export async function routeSessionExists({

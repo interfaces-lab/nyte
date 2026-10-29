@@ -18,7 +18,8 @@ import { scriptedConnection, viewStream } from "../../test/scripted-connection.t
 import { USAGE } from "../../test/view-fixtures.ts";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { PaneController } from "../panes/pane-controller.ts";
-import { installConnection, sessionWatch } from "../sdk.tsx";
+import { installConnection } from "../data/connection.ts";
+import { sessionWatch } from "../data/watches.ts";
 import { LiveTurn } from "./live-turn.tsx";
 import { TranscriptProvider } from "./transcript.tsx";
 

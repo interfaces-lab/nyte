@@ -1,7 +1,7 @@
 import type { ModelRef } from "@nyte-ai/sdk";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
-import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../catalog.ts";
+import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../data/catalog.ts";
 import type { IconName } from "@nyte-ai/ui/icon";
 
 export function selectedModelOption(

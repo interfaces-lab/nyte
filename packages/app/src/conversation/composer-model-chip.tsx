@@ -1,7 +1,8 @@
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
-import { useCatalog, useConfigureSession, useSessionChoice } from "../queries.ts";
+import { useCatalog } from "../data/catalog.ts";
+import { useConfigureSession, useSessionChoice } from "../data/sessions.ts";
 import { ModelPicker, type ModelPickerChange } from "./model-picker.tsx";
 import { modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 

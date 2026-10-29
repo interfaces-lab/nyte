@@ -16,7 +16,7 @@ import type { ReactElement, RefObject } from "react";
 import type { ConnectBridge } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
 import { openExternal } from "../lib/open-external.ts";
-import { useUpdateState } from "../queries.ts";
+import { useUpdateState } from "../data/host.ts";
 import { updateLabel } from "../contract/update-label.ts";
 import { useConnectAction, useConnectView } from "./connect-view.ts";
 import { useGitHubAuth } from "./github-account.ts";

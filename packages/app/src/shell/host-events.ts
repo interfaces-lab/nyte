@@ -1,5 +1,6 @@
 import { toast } from "@nyte-ai/ui/toast";
-import { keys, loadLocalResources, queryClient } from "../queries.ts";
+import { keys, queryClient } from "../data/query-client.ts";
+import { loadLocalResources } from "../data/local-host.ts";
 import type { AppRouter } from "./routes.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";

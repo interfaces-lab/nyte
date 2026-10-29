@@ -4,8 +4,10 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { useMutation } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the child-session subscription must keep its identity; the compiler drops its memo because the waiting list is read after useSyncExternalStore
 import { createContext, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useChildSessions } from "../../queries.ts";
-import { connection, sessionWatch, useWatchSelect } from "../../sdk.tsx";
+import { useChildSessions } from "../../data/sessions.ts";
+import { connection } from "../../data/connection.ts";
+import { sessionWatch } from "../../data/watches.ts";
+import { useWatchSelect } from "../../data/watch-store.ts";
 import { sameComposerDocument } from "../composer-document.ts";
 import type { ComposerDocumentState } from "../composer-document.ts";
 

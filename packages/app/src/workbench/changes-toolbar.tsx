@@ -19,7 +19,7 @@ import {
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { useVcsLog } from "../queries.ts";
+import { useVcsLog } from "../data/vcs.ts";
 import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";

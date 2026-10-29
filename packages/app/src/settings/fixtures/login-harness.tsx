@@ -6,7 +6,7 @@ import { StrictMode } from "react";
 import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "@nyte-ai/ui/toast";
-import { queryClient } from "../../queries.ts";
+import { queryClient } from "../../data/query-client.ts";
 import { ProvidersSettings } from "../models-settings.tsx";
 
 function Harness(): ReactElement {

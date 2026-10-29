@@ -10,7 +10,8 @@ import { transcriptRows } from "./transcript-rows.ts";
 import { TurnItemView } from "./turn-view.tsx";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { endedTurn, listedChildren, sessionRow, settledTool } from "../../test/view-fixtures.ts";
-import { installConnection, sessionsWatch } from "../sdk.tsx";
+import { installConnection } from "../data/connection.ts";
+import { sessionsWatch } from "../data/watches.ts";
 
 vi.hoisted(() => {
   const query = { matches: false, addEventListener: () => {}, removeEventListener: () => {} };

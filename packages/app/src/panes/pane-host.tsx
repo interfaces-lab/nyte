@@ -16,7 +16,7 @@ import {
 import { activePane } from "./pane-layout.ts";
 import type { PaneState } from "./pane-layout.ts";
 import { useSessionPaneDropTarget } from "./session-dnd.tsx";
-import { useHostState } from "../queries.ts";
+import { useHostState } from "../data/host.ts";
 import {
   clientActionAriaShortcut,
   clientActions,
@@ -24,7 +24,8 @@ import {
   resolveClientAction,
 } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
-import { sessionsWatch, sessionWatch, useWatchSelect } from "../sdk.tsx";
+import { sessionsWatch, sessionWatch } from "../data/watches.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { ReferenceOpenerProvider } from "../references/reference-opener.tsx";

@@ -1,7 +1,8 @@
 import { mutationOptions } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
 import type { ConfigurationPatch, ModelRef, SessionId, SessionView, Thinking } from "@nyte-ai/sdk";
-import { connection, sessionWatch } from "./sdk.tsx";
+import { connection } from "./connection.ts";
+import { sessionWatch } from "./watches.ts";
 
 export type ConfigureSessionPatch = Pick<ConfigurationPatch, "model" | "thinking">;
 
