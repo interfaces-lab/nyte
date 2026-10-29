@@ -64,6 +64,7 @@ export function Titlebar({
             onActivate={() => undefined}
             onClose={onClose}
             onNewTab={onClose}
+            onKeep={() => undefined}
             onReorder={() => undefined}
             onCloseOthers={() => undefined}
             onCloseToRight={() => undefined}

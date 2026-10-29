@@ -405,6 +405,8 @@ export function StacksPage(): ReactElement {
               id: "stack",
               title,
               tooltip: title,
+              sessions: [],
+              preview: false,
               glyph:
                 item === undefined ? (
                   <Icon

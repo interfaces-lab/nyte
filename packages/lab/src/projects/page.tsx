@@ -148,6 +148,8 @@ function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
       id,
       title: found?.title ?? lane.name,
       tooltip: found?.title ?? `${lane.name} stack`,
+      sessions: [],
+      preview: false,
       glyph:
         found === undefined ? (
           <Icon name="layers" size={14} />

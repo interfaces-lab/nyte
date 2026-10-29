@@ -68,6 +68,7 @@ const turns = PROMPTS.map((prompt, index) => {
 
 const view: SessionView = {
   revision: asId<"revision">("r1"),
+  seenThrough: null,
   seq: asSeq(1),
   activation: { kind: "active" },
   messages: turns.flatMap((turn) => turn.messages),

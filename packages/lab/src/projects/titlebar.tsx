@@ -57,6 +57,7 @@ export function Titlebar({
             onActivate={onActivate}
             onClose={(id) => onClose([id])}
             onNewTab={onNewTab}
+            onKeep={() => undefined}
             onReorder={onReorder}
             onCloseOthers={(id) => onClose(ids.filter((candidate) => candidate !== id))}
             onCloseToRight={(id) => onClose(ids.slice(ids.indexOf(id) + 1))}

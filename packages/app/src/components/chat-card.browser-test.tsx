@@ -77,6 +77,7 @@ installConnection(
 );
 
 const rail: RailRows = {
+  markRead: () => undefined,
   openWorkspace: FOLDER,
   activeSessionId: undefined,
   unavailable: new Set(),
@@ -110,6 +111,7 @@ function Stage({ panes }: { readonly panes: PaneController }): ReactElement {
               title: chat.name ?? "",
               tooltip: chat.name ?? "",
               sessions: [chat.id],
+              preview: false,
               glyph: undefined,
               unread: false,
               split: undefined,
@@ -120,6 +122,7 @@ function Stage({ panes }: { readonly panes: PaneController }): ReactElement {
           onActivate={() => undefined}
           onClose={() => undefined}
           onNewTab={() => undefined}
+          onKeep={() => undefined}
           onReorder={() => undefined}
           onCloseOthers={() => undefined}
           onCloseToRight={() => undefined}
