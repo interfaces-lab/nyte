@@ -1,6 +1,9 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { props } from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
+import { media, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
 import { BubbleContent } from "@nyte-ai/ui/bubble";
@@ -12,7 +15,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { flushSync } from "react-dom";
 import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
 import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
-import type { TextMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
@@ -56,7 +59,11 @@ import { RecoveryAction } from "./turn-recovery.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 import { StepGroupView } from "./step-group.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
-import { userDisplayText } from "./transcript-presentation.ts";
+import { replyAge, userDisplayText, workedFor } from "./transcript-presentation.ts";
+import { useCopyConfirmation } from "./copy-confirmation.ts";
+import { stepGroupStyles } from "./step-group.stylex.ts";
+import { conversation } from "../theme/schema.stylex.ts";
+import { useNowMinute } from "../use-now-minute.ts";
 import type { PromptRow, TurnItemRow } from "./transcript-rows.ts";
 import { errorMessage } from "../errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
@@ -643,11 +650,110 @@ function TurnPartView({
   return <NoteView message={message} />;
 }
 
-function ResponseView({ messages }: { messages: readonly TextMessage[] }): ReactElement | null {
-  const markdown = messages.map((message) => message.state.markdown.trim()).join("\n\n");
-  const streaming = messages.some((message) => message.status.kind === "live");
+const replyStyles = create({
+  reply: {
+    display: "flex",
+    flexDirection: "column",
+    gap: conversation.rowGap,
+    minWidth: 0,
+    "--_reply-time-opacity": {
+      default: 0,
+      ":hover": { [media.hover]: 1 },
+      ":focus-within": 1,
+    },
+  },
+  latest: { "--_reply-time-opacity": 1 },
+  actions: { display: "flex", alignItems: "center", gap: space.s1 },
+  time: {
+    color: role.contentTertiary,
+    opacity: "var(--_reply-time-opacity)",
+    transitionProperty: "opacity",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
+  },
+});
 
-  return markdown === "" ? null : <Prose markdown={markdown} streaming={streaming} />;
+function ResponseView({
+  row,
+}: {
+  row: Extract<TurnItemRow, { kind: "response" }>;
+}): ReactElement | null {
+  const markdown = row.messages.map((message) => message.state.markdown.trim()).join("\n\n");
+  const streaming = row.messages.some((message) => message.status.kind === "live");
+  const first = row.messages[0];
+
+  if (markdown === "" || first === undefined) return null;
+
+  if (!row.ended) return <Prose markdown={markdown} streaming={streaming} />;
+  const worked = row.workedMs === undefined ? undefined : workedFor(row.workedMs);
+
+  return (
+    <div {...props(replyStyles.reply, row.latest && replyStyles.latest)}>
+      {worked !== undefined && (
+        <span {...props(stepGroupStyles.status)}>{worked}</span>
+      )}
+      <Prose markdown={markdown} streaming={streaming} />
+      <ReplyActions markdown={markdown} at={first.at} worked={worked} />
+    </div>
+  );
+}
+
+function ReplyActions({
+  markdown,
+  at,
+  worked,
+}: {
+  markdown: string;
+  at: number;
+  worked: string | undefined;
+}): ReactElement {
+  const confirmation = useCopyConfirmation();
+  const now = useNowMinute();
+  const sent = new Date(at);
+  const full = sent.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+  return (
+    <div {...props(text.sm, replyStyles.actions)}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="xs"
+              iconOnly
+              icon={confirmation.copied ? "checkmark" : "copy"}
+              data-copied={confirmation.copied || undefined}
+              aria-label="Copy reply"
+              onClick={() => confirmation.copy(markdown)}
+            />
+          }
+        />
+        <TooltipContent>{confirmation.copied ? "Copied" : "Copy reply"}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <time dateTime={sent.toISOString()} {...props(replyStyles.time)}>
+              <span aria-hidden="true">{replyAge(at, now)}</span>
+              <span {...props(srOnly)}>Message sent {full}</span>
+            </time>
+          }
+        />
+        <TooltipContent>
+          {full}
+          {worked !== undefined && (
+            <>
+              <br />
+              {worked}
+            </>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
 }
 
 export function TurnItemView({
@@ -705,7 +811,7 @@ export function TurnItemView({
     case "agents":
       return <SubagentGroupView messages={row.messages} cwd={cwd} />;
     case "response":
-      return <ResponseView messages={row.messages} />;
+      return <ResponseView row={row} />;
     case "failure": {
       const failure = failureNotice(row.failure);
 

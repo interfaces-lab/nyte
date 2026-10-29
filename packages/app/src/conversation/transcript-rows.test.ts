@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 import type { Message, SessionView } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
-import { COMPLETED, USAGE, endedTurn } from "../../test/view-fixtures.ts";
-import { transcriptProjector } from "./transcript-rows.ts";
+import { COMPLETED, USAGE, endedTurn, settledTool } from "../../test/view-fixtures.ts";
+import { transcriptProjector, transcriptRows } from "./transcript-rows.ts";
 
 const turn = asId<"turn">("t");
 
@@ -113,4 +113,84 @@ test("a leading prompt that arrives beside unchanged messages redraws the turn w
     "row:live",
     "changes:p",
   ]);
+});
+
+function work(id: string, at: number, endedAt: number): Message {
+  return {
+    ...settledTool(id, { kind: "read", path: `/w/${id}.ts` }),
+    turn,
+    at,
+    status: { kind: "settled", commit: asId<"commit">(id), endedAt },
+  };
+}
+
+function reply(id: string, at: number): Message {
+  return { ...answer(id), at };
+}
+
+const rowsFor = (turns: Parameters<typeof transcriptRows>[0]["turns"], running = false) =>
+  transcriptRows({
+    loading: false,
+    failed: false,
+    turns,
+    changes: [],
+    prompts: [],
+    running,
+    held: false,
+    retrying: undefined,
+  });
+
+test("a finished turn's final reply carries how long the turn worked, from its start to the later of the reply and its last work", () => {
+  const earlier = endedTurn([prompt, work("r1", 1_000, 2_000), reply("a1", 3_000)], {
+    id: turn,
+    startedAt: 500,
+  });
+
+  const later = endedTurn([work("r2", 6_000, 9_000), reply("a2", 8_000)], {
+    id: asId<"turn">("t2"),
+    startedAt: 5_000,
+  });
+
+  expect(rowsFor([earlier, later]).filter((row) => row.kind === "response")).toMatchObject([
+    { key: "response:a1", ended: true, latest: false, workedMs: 2_500 },
+    { key: "response:a2", ended: true, latest: true, workedMs: 4_000 },
+  ]);
+});
+
+test("a reply with no work before it, or a turn still running, shows no work line", () => {
+  const plain = endedTurn([prompt, reply("a1", 3_000)], { id: turn });
+
+  const running = endedTurn([work("r2", 6_000, 9_000), reply("a2", 8_000)], {
+    id: asId<"turn">("t2"),
+    state: { kind: "working", activity: null },
+  });
+
+  expect(rowsFor([plain, running], true).filter((row) => row.kind === "response")).toMatchObject([
+    { key: "response:a1", ended: true, workedMs: undefined },
+    { key: "response:a2", ended: false },
+  ]);
+});
+
+test("the live row names the planning status unless the last group names it itself", () => {
+  const thinking: Message = {
+    id: asId<"message">("th"),
+    turn,
+    at: 1,
+    kind: "part",
+    part: asId<"part">("th"),
+    partKind: "thinking",
+    role: "step",
+    state: { markdown: "Weighing it", merged: 1, signature: null },
+    version: 1,
+    status: { kind: "settled", commit: asId<"commit">("th"), endedAt: 1 },
+  };
+
+  const live = (messages: readonly Message[]) =>
+    rowsFor(
+      [endedTurn(messages, { id: turn, state: { kind: "working", activity: null } })],
+      true,
+    ).find((row) => row.kind === "live");
+
+  expect(live([thinking])).toMatchObject({ settledWork: true });
+  expect(live([thinking, work("r1", 1, 2)])).toMatchObject({ settledWork: false });
 });

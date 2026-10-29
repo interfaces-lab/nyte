@@ -12,7 +12,11 @@ import { conversationTurns } from "../view-helpers.ts";
 import type { TurnMessages } from "../view-helpers.ts";
 import { showsLiveStatus } from "./step-group-presentation.ts";
 import { displayTranscriptParts, transcriptSlot } from "./transcript-presentation.ts";
-import type { StepMessage, TranscriptSlot } from "./transcript-presentation.ts";
+import type {
+  StepMessage,
+  TranscriptDisplayPart,
+  TranscriptSlot,
+} from "./transcript-presentation.ts";
 
 export interface RowLayout {
   readonly key: string;
@@ -35,8 +39,18 @@ export type TurnItemRow =
       readonly running: boolean;
     })
   | (RowLayout & { readonly kind: "agents"; readonly messages: readonly ToolMessage[] })
-  | (RowLayout & { readonly kind: "response"; readonly messages: readonly TextMessage[] })
+  | (RowLayout & ResponseRow)
   | (RowLayout & { readonly kind: "failure"; readonly failure: Failure });
+
+/** A finished turn's final reply ends in its actions, and names how long the turn worked before it. */
+type ResponseRow = { readonly kind: "response"; readonly messages: readonly TextMessage[] } & (
+  | { readonly ended: false }
+  | {
+      readonly ended: true;
+      readonly latest: boolean;
+      readonly workedMs: number | undefined;
+    }
+);
 
 /** Marks the steps of a turn between its prompt and its first loaded message as not loaded. */
 type EarlierRow = RowLayout & { readonly kind: "earlier" };
@@ -130,7 +144,12 @@ function opensTurn(message: UserMessage): boolean {
 
 function turnRows(
   turn: TurnMessages,
-  place: { readonly group: string; readonly leads: boolean; readonly working: boolean },
+  place: {
+    readonly group: string;
+    readonly leads: boolean;
+    readonly working: boolean;
+    readonly latest: boolean;
+  },
 ) {
   const rows: (TurnItemRow | EarlierRow)[] = [];
   const { state } = turn.info;
@@ -197,6 +216,17 @@ function turnRows(
           key: `response:${first.id}`,
           ...layout,
           messages: item.messages,
+          ...(ends && state.kind === "ended"
+            ? {
+                ended: true,
+                latest: place.latest,
+                workedMs: workedMs(
+                  turn,
+                  display.slice(0, index).flatMap(displayMessages),
+                  first.at,
+                ),
+              }
+            : { ended: false }),
         });
         break;
       default: {
@@ -219,6 +249,34 @@ function turnRows(
   const end = display.at(-1);
 
   return { rows, settledWork: end?.kind === "step" && showsLiveStatus(end.messages) };
+}
+
+function displayMessages(item: TranscriptDisplayPart): readonly Message[] {
+  if (item.kind !== "part") return item.messages;
+
+  return item.message.kind === "user" ? [] : [item.message];
+}
+
+/** Wall-clock time from the turn's start to the later of its final reply's start and its last work settling. A clipped turn's earlier work isn't loaded but did happen. */
+function workedMs(
+  turn: TurnMessages,
+  work: readonly Message[],
+  replyAt: number,
+): number | undefined {
+  if (work.length === 0 && !turn.clipped) return undefined;
+
+  const end = Math.max(
+    replyAt,
+    ...work.map((message) =>
+      message.kind === "part" && message.status.kind === "settled"
+        ? message.status.endedAt
+        : message.at,
+    ),
+  );
+
+  const ms = end - turn.info.startedAt;
+
+  return ms > 0 ? ms : undefined;
 }
 
 export function transcriptRows({
@@ -260,7 +318,13 @@ export function transcriptRows({
       owner = turn.info.prompt ?? turn.info.id;
     }
 
-    const own = turnRows(turn, { group, leads, working: working && turn === last });
+    const own = turnRows(turn, {
+      group,
+      leads,
+      working: working && turn === last,
+      latest: turn === last,
+    });
+
     rows.push(...own.rows);
     settledWork = own.settledWork;
 
@@ -532,6 +596,10 @@ const PROSE_LINE_HEIGHT = 24;
 
 const PROSE_CHARS_PER_LINE = 90;
 
+const REPLY_ACTIONS_ESTIMATE = 32;
+
+const WORKED_LINE_ESTIMATE = 30;
+
 const CHANGES_CARD_BASE_ESTIMATE = 56;
 
 const CHANGES_CARD_ROW_ESTIMATE = 30;
@@ -587,8 +655,14 @@ function rowEstimate(
         0,
       );
 
+      const ended = row.ended
+        ? REPLY_ACTIONS_ESTIMATE + (row.workedMs === undefined ? 0 : WORKED_LINE_ESTIMATE)
+        : 0;
+
       return (
-        PROSE_BASE_ESTIMATE + PROSE_LINE_HEIGHT * Math.ceil((prose * scale) / PROSE_CHARS_PER_LINE)
+        ended +
+        PROSE_BASE_ESTIMATE +
+        PROSE_LINE_HEIGHT * Math.ceil((prose * scale) / PROSE_CHARS_PER_LINE)
       );
     }
 
