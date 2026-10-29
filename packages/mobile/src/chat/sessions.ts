@@ -22,6 +22,7 @@ export const statusLabels: Record<SessionMark, string> = {
   waiting: "Needs input",
   retry: "Retrying",
   working: "Working",
+  background: "Working in the background",
   failed: "Failed",
   idle: "Ready",
 };
@@ -77,6 +78,7 @@ export function formatActivity(at: number, now: number): string {
 export function markTone(mark: SessionMark, theme: Theme) {
   switch (mark) {
     case "working":
+    case "background":
       return { color: theme.accent, fill: theme.fill };
     case "retry":
       return { color: theme.warning, fill: theme.warningFill };

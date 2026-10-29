@@ -5,7 +5,7 @@ import { router, useFocusEffect } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { sessionMark } from "@nyte-ai/plugin/client/presentation";
+import { executionMark, mainHead } from "@nyte-ai/plugin/client/presentation";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { HeadName, SessionId } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
@@ -43,7 +43,9 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
 
   const childSessions = children.kind === "ready" ? children.value : undefined;
   const delegateNames = indexDelegateNames(childSessions ?? []);
-  const asking = childSessions?.find((child) => sessionMark(child) === "waiting");
+  const asking = childSessions?.find(
+    (child) => executionMark(mainHead(child)?.execution) === "waiting",
+  );
   const askingId = asking?.id;
 
   const [askingView] = useWatch(askingId === undefined ? undefined : client.session(askingId));

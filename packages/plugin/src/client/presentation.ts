@@ -236,17 +236,18 @@ export function toolOutput(state: ToolPartState): string {
 }
 
 /**
- * The mark a session list draws for a head's execution.
+ * The mark a session list draws for a row: its own run's, or `background` while only work the
+ * chat started runs.
  *
  * @category presentation
  */
-export type SessionMark = "waiting" | "retry" | "working" | "failed" | "idle";
+export type SessionMark = "waiting" | "retry" | "working" | "background" | "failed" | "idle";
 
 /**
- * Where a chat's run stands, for every surface that shows it. A run waiting on a part waits for
- * the user's approval or answer, a run waiting on a child, job or timer is working, and the
- * active kinds carry the run a Stop targets. `subagent-working` is a chat whose own run is over
- * while a subagent it started still runs: it has nothing of its own to stop.
+ * Where a chat's own run stands, for every surface that shows it. A run waiting on a part waits
+ * for the user's approval or answer, a run waiting on a child, job or timer is working, and the
+ * active kinds carry the run a Stop targets. Work the chat started in the background never
+ * changes it.
  *
  * @category presentation
  */
@@ -257,26 +258,27 @@ export type RunStatus =
   | { readonly kind: "failed"; readonly failure: Failure }
   | { readonly kind: "working"; readonly run: RunId; readonly stopping: boolean }
   | { readonly kind: "retrying"; readonly run: RunId }
-  | { readonly kind: "waiting-for-approval"; readonly run: RunId }
-  | { readonly kind: "subagent-working" };
-
-const IDLE: RunStatus = { kind: "idle" };
-
-const SUBAGENT_WORKING: RunStatus = { kind: "subagent-working" };
+  | { readonly kind: "waiting-for-approval"; readonly run: RunId };
 
 /**
- * The status of a head's execution; a session without one is idle. A run of its own outranks a
- * working subagent, which outranks how its own last run ended.
+ * A head's background items that are working, and those waiting on the user.
  *
  * @category presentation
  */
-export function runStatus(execution: Execution | undefined, subagentWorking = false): RunStatus {
+export type BackgroundWork = HeadInfo["background"];
+
+const IDLE: RunStatus = { kind: "idle" };
+
+/**
+ * The status of a head's execution; a session without one is idle.
+ *
+ * @category presentation
+ */
+export function runStatus(execution: Execution | undefined): RunStatus {
   switch (execution?.kind) {
     case undefined:
-      return subagentWorking ? SUBAGENT_WORKING : IDLE;
+      return IDLE;
     case "idle":
-      if (subagentWorking) return SUBAGENT_WORKING;
-
       return execution.lastRun === null ? IDLE : endedStatus(execution.lastRun.end);
     case "live":
       return { kind: "working", run: execution.run.id, stopping: execution.stopping };
@@ -316,8 +318,7 @@ export function endedStatus(end: RunEnd): RunStatus {
 }
 
 /**
- * The mark a list draws for a status: a subagent still working draws as working, and a run that
- * ended draws nothing unless it failed.
+ * The mark a list draws for a chat's own run: a run that ended draws nothing unless it failed.
  *
  * @category presentation
  */
@@ -330,7 +331,6 @@ export function runMark(status: RunStatus): SessionMark {
     case "failed":
       return "failed";
     case "working":
-    case "subagent-working":
       return "working";
     case "retrying":
       return "retry";
@@ -345,8 +345,22 @@ export function runMark(status: RunStatus): SessionMark {
 }
 
 /**
- * The words every surface uses for a status. A failed run reads Failed, never Stopped, and a
- * subagent still working reads as working.
+ * The mark a list row draws: a run of the chat's own wins; once it ended, background work waiting
+ * on the user draws as waiting, background work still running as `background`, and otherwise the
+ * row draws how its own run ended.
+ *
+ * @category presentation
+ */
+export function rowMark(status: RunStatus, background: BackgroundWork): SessionMark {
+  if ("run" in status) return runMark(status);
+
+  if (background.waiting > 0) return "waiting";
+
+  return background.working > 0 ? "background" : runMark(status);
+}
+
+/**
+ * The words every surface uses for a chat's own run. A failed run reads Failed, never Stopped.
  *
  * @category presentation
  */
@@ -361,7 +375,6 @@ export function runStatusLabel(status: RunStatus): string {
     case "failed":
       return "Failed";
     case "working":
-    case "subagent-working":
       return "Working";
     case "retrying":
       return "Retrying";
@@ -374,6 +387,53 @@ export function runStatusLabel(status: RunStatus): string {
     }
   }
 }
+
+/**
+ * The words for the work a chat started in the background; none while it has none running.
+ *
+ * @category presentation
+ */
+export function backgroundLabel(background: BackgroundWork): string | undefined {
+  if (background.waiting > 0) return "Needs attention in the background";
+
+  return background.working > 0
+    ? `${String(background.working)} working in the background`
+    : undefined;
+}
+
+/**
+ * The live row's words while a run is live and nothing it streams or runs shows progress, after
+ * `planningMs` of that: nothing at first, so a quick gap doesn't flash, then planning, then a note
+ * that it is slow.
+ *
+ * @category presentation
+ */
+export function planningLabel(planningMs: number): string | undefined {
+  if (planningMs < PLANNING_DELAY_MS) return undefined;
+
+  return planningMs < SLOW_PLANNING_MS ? PLANNING_LABEL : "Taking longer than expected…";
+}
+
+/**
+ * The live row's planning words, also what holds its place before {@link planningLabel} shows them.
+ *
+ * @category presentation
+ */
+export const PLANNING_LABEL = "Planning next moves";
+
+/**
+ * How long a live run shows no progress before the live row says it is planning.
+ *
+ * @category presentation
+ */
+export const PLANNING_DELAY_MS = 200;
+
+/**
+ * How long a live run plans before the live row says it is taking longer than expected.
+ *
+ * @category presentation
+ */
+export const SLOW_PLANNING_MS = 15_000;
 
 /**
  * The mark for an execution; a session without one is idle.
@@ -394,12 +454,14 @@ export function mainHead(session: Pick<SessionInfo, "heads">): HeadInfo | undefi
 }
 
 /**
- * The mark for a session's main head.
+ * The mark a session list draws for a session's main head.
  *
  * @category presentation
  */
 export function sessionMark(session: Pick<SessionInfo, "heads">): SessionMark {
-  return executionMark(mainHead(session)?.execution);
+  const head = mainHead(session);
+
+  return head === undefined ? "idle" : rowMark(runStatus(head.execution), head.background);
 }
 
 /**
