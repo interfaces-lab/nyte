@@ -110,6 +110,7 @@ function view(parts: readonly PartView[]): SessionView {
         ? { kind: "live", run: liveRun, phase: "executing", stopping: false }
         : { kind: "waiting", run: liveRun, on: { kind: "part", part: waiting.id } },
     reportsHeld: false,
+    seenThrough: null,
     background: [],
     configuration: { selected: configuration, effective: configuration },
     context: { tokens: 0, window: 1_000, lastRequest: null },

@@ -129,6 +129,7 @@ const unchanged = {
   usage: USAGE,
   execution: { kind: "live", run: liveRun, phase: "responding", stopping: false },
   reportsHeld: false,
+  seenThrough: null,
   background: [],
   configuration: { selected: configuration, effective: configuration },
   context: { tokens: 0, window: 1_000, lastRequest: null },

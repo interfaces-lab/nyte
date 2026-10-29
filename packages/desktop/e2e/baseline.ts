@@ -7,7 +7,7 @@ import { dev } from "@nyte-ai/core";
 import { idSchema } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/schema";
 import { sdk } from "@nyte-ai/sdk";
-import type { SendReceipt } from "@nyte-ai/sdk";
+import type { Host, SendReceipt } from "@nyte-ai/sdk";
 import { E2E_MODEL, e2eModels } from "../src/main/fixtures/e2e-models.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -15,6 +15,11 @@ const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const CACHE_ROOT = resolve(import.meta.dirname, ".cache");
 
 export const LONG_TURNS = 36;
+
+/** Turns of the unread chat its reader has seen; the replies after them are unread. */
+export const READ_TURNS = 5;
+
+export const UNREAD_TURNS = 8;
 
 export const FIXTURES = {
   alpha: "Alpha release",
@@ -24,6 +29,7 @@ export const FIXTURES = {
   thinking: "Thinking aloud",
   markdown: "Markdown showcase",
   long: "Long transcript",
+  unread: "Replies to catch up",
 } as const;
 
 type Fixture = keyof typeof FIXTURES;
@@ -36,7 +42,12 @@ const TRANSCRIPTS: Record<Fixture, readonly string[]> = {
   thinking: ["/think"],
   markdown: ["/markdown"],
   long: Array.from({ length: LONG_TURNS }, (_, index) => `/long 3 turn ${String(index + 1)}`),
+  unread: Array.from({ length: UNREAD_TURNS }, (_, index) => `/long 6 reply ${String(index + 1)}`),
 };
+
+const READ: Partial<Record<Fixture, number>> = { unread: READ_TURNS };
+
+const READER_TOKEN = "e2e-baseline-reader";
 
 const ManifestSchema = Type.Object({
   sessions: Type.Record(Type.String(), idSchema<"session">()),
@@ -88,6 +99,30 @@ function openOffline(home: string) {
   });
 }
 
+/** Marks the chat's tip seen as the desktop's principal, which reaches the host through a token, so the desktop opens it with that read mark. */
+async function readAsDesktop(host: Host, session: SessionId): Promise<void> {
+  await using listener = await host.listen({
+    transport: { kind: "fetch" },
+    auth: { kind: "token", token: READER_TOKEN },
+  });
+
+  const reader = await sdk.connect({
+    url: "http://baseline.test",
+    credentials: { kind: "token", token: READER_TOKEN },
+    fetch: (url, init) => listener.fetch(new Request(url, init)),
+  });
+
+  try {
+    const chat = reader.session(session);
+    const tip = (await chat.view()).heads.find((head) => head.name === "main")?.tip;
+
+    if (tip?.kind !== "commit") throw new Error(`Chat ${session} has no tip to read`);
+    await chat.see(tip.id);
+  } finally {
+    await reader.close();
+  }
+}
+
 async function seed(home: string): Promise<Manifest> {
   await mkdir(home, { recursive: true, mode: 0o700 });
   const host = await openOffline(home);
@@ -116,7 +151,11 @@ async function seed(home: string): Promise<Manifest> {
       sessions[fixture] = session.id;
       await settle(fixture, first, receipt);
 
-      for (const text of rest) await settle(fixture, text, await session.send(text));
+      for (const [index, text] of rest.entries()) {
+        if (index + 1 === READ[fixture]) await readAsDesktop(host, session.id);
+
+        await settle(fixture, text, await session.send(text));
+      }
     }
 
     return { sessions };
@@ -207,6 +246,7 @@ export async function prepareHome(parent: string): Promise<PreparedHome> {
       thinking: sessions("thinking"),
       markdown: sessions("markdown"),
       long: sessions("long"),
+      unread: sessions("unread"),
     },
   };
 }

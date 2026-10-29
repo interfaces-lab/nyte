@@ -91,6 +91,7 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
     heads,
     changes: state.changes,
     catalog: state.catalog,
+    seenThrough: readSeenThrough(state, head),
   };
 
   byTail.set(tail, view);
@@ -102,6 +103,12 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
 
 export function holdsReports(execution: Execution): boolean {
   return execution.kind === "idle" && execution.lastRun?.end.kind !== "completed";
+}
+
+function readSeenThrough(state: FoldState, head: HeadName): number | null {
+  const mark = state.seen.get(state.principal)?.get(head) ?? null;
+
+  return mark === null ? null : (state.commits.get(mark)?.at ?? null);
 }
 
 function headsFor(state: FoldState): readonly HeadInfo[] {

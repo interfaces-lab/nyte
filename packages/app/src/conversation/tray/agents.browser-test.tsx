@@ -143,6 +143,7 @@ function view(
       ? { kind: "live", run: agentRun(key), phase: "responding", stopping: false }
       : COMPLETED,
     reportsHeld: false,
+    seenThrough: null,
     background: [],
     configuration: {
       selected: configuration,

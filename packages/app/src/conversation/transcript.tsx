@@ -28,12 +28,15 @@ import { usePaneViewStateStore } from "../layout/pane-context.tsx";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { ScrollViewState } from "../layout/session-view-state.ts";
 import { messageScrollerStyles } from "./transcript.stylex.ts";
-import { initialMode, nextMode } from "./transcript-mode.ts";
-import type { TranscriptMode } from "./transcript-mode.ts";
+import { initialMode, nextMode, NO_INPUT, steeringUp, touching } from "./transcript-mode.ts";
+import type { ReaderInput, TranscriptMode } from "./transcript-mode.ts";
 import type { RowLayout } from "./transcript-rows.ts";
 import {
   distanceFromEnd,
+  NEAR_END,
   navigates,
+  navigatesUp,
+  NOWHERE,
   scrollsWithin,
   syncScrollButton,
   syncSticky,
@@ -41,6 +44,7 @@ import {
   TRANSCRIPT_PADDING_END,
   TRANSCRIPT_PADDING_START,
 } from "./transcript-scroll.ts";
+import type { TranscriptPlace } from "./transcript-scroll.ts";
 
 const OVERSCAN = 2;
 
@@ -110,6 +114,8 @@ interface TranscriptControls {
   readonly hold: (element: Element) => void;
   readonly keep: (element: Element) => () => void;
   readonly page: (direction: 1 | -1) => void;
+  /** Places the row a third of the way down the view and reads from it. */
+  readonly reveal: (key: string) => void;
 }
 
 interface TranscriptOptions {
@@ -117,6 +123,7 @@ interface TranscriptOptions {
   readonly sessionId: SessionId;
   readonly viewportRef?: (viewport: HTMLDivElement | null) => void;
   readonly loadEarlier?: () => Promise<number>;
+  readonly focusComposer?: () => void;
 }
 
 interface TranscriptState extends TranscriptOptions {
@@ -135,6 +142,7 @@ const NO_CONTROLS: TranscriptControls = {
   hold: () => undefined,
   keep: () => ignore,
   page: () => undefined,
+  reveal: () => undefined,
 };
 
 const TranscriptContext = createContext<TranscriptState | null>(null);
@@ -166,6 +174,7 @@ export function TranscriptProvider({
   sessionId,
   viewportRef,
   loadEarlier,
+  focusComposer,
   children,
 }: TranscriptOptions & { readonly children: ReactNode }): ReactElement {
   const viewStore = usePaneViewStateStore();
@@ -182,6 +191,7 @@ export function TranscriptProvider({
     hold: (element) => controlsRef.current?.hold(element),
     keep: (element) => controlsRef.current?.keep(element) ?? ignore,
     page: (direction) => controlsRef.current?.page(direction),
+    reveal: (key) => controlsRef.current?.reveal(key),
   }));
 
   const transcript = {
@@ -189,6 +199,7 @@ export function TranscriptProvider({
     sessionId,
     viewportRef,
     loadEarlier,
+    focusComposer,
     viewStore,
     initialPosition,
     dock,
@@ -205,11 +216,20 @@ export function TranscriptContent({
   ready,
   estimateSize,
   renderRow,
+  marker,
+  onPlace,
+  overlay,
 }: {
   readonly rows: readonly RowLayout[];
   readonly ready: boolean;
   readonly estimateSize: (index: number) => number;
   readonly renderRow: (index: number) => ReactNode;
+  /** The key of a row whose place against the view `onPlace` reports. */
+  readonly marker?: string;
+  /** Called when the reader's place changes. */
+  readonly onPlace?: (place: TranscriptPlace) => void;
+  /** Floats over the top of the view. */
+  readonly overlay?: ReactNode;
 }): ReactElement {
   const {
     paneId,
@@ -226,6 +246,9 @@ export function TranscriptContent({
   const [dockHeight, setDockHeight] = useState(0);
 
   const mode = useRef<TranscriptMode>(initialMode(initialPosition));
+  const input = useRef<ReaderInput>(NO_INPUT);
+  const scrolled = useRef({ offset: 0, height: 0 });
+  const placed = useRef(NOWHERE);
   const content = useRef<HTMLDivElement>(null);
   const scrollport = useRef<HTMLDivElement | null>(null);
 
@@ -267,13 +290,17 @@ export function TranscriptContent({
 
   const settle = (instance: TranscriptVirtualizer): void => {
     const scroll = instance.scrollElement;
-    const current = mode.current;
 
     if (scroll === null) return;
 
+    if (!touching(input.current, performance.now()))
+      mode.current = nextMode(mode.current, { kind: "quiet", distance: distanceFromEnd(scroll) });
+    const current = mode.current;
+
     if (current.kind === "following") {
-      if (distanceFromEnd(scroll) > 1) instance.scrollToEnd();
-      else if (current.opening && ready) mode.current = nextMode(current, { kind: "opened" });
+      if (distanceFromEnd(scroll) <= 1) {
+        if (current.opening && ready) mode.current = nextMode(current, { kind: "opened" });
+      } else if (!steeringUp(input.current, performance.now())) instance.scrollToEnd();
 
       return;
     }
@@ -320,6 +347,30 @@ export function TranscriptContent({
       });
   };
 
+  const report = (instance: TranscriptVirtualizer): void => {
+    const scroll = instance.scrollElement;
+
+    if (scroll === null || onPlace === undefined) return;
+    const current = mode.current;
+    const index = marker === undefined ? undefined : indexes.get(marker);
+    const item = index === undefined ? undefined : instance.measurementsCache[index];
+
+    const where =
+      item === undefined || (current.kind === "following" && current.opening)
+        ? null
+        : item.end <= scroll.scrollTop
+          ? "above"
+          : item.start >= scroll.scrollTop + scroll.clientHeight
+            ? "below"
+            : "inside";
+
+    const away = current.kind === "reading" && distanceFromEnd(scroll) > NEAR_END;
+
+    if (where === placed.current.marker && away === placed.current.away) return;
+    placed.current = { away, marker: where };
+    onPlace(placed.current);
+  };
+
   const present = (instance: TranscriptVirtualizer): void => {
     const scroll = instance.scrollElement;
 
@@ -329,6 +380,7 @@ export function TranscriptContent({
 
     syncSticky(scroll, content.current);
     queueMicrotask(() => syncScrollButton(scroll, dock));
+    report(instance);
     loadHistory(instance);
   };
 
@@ -340,11 +392,18 @@ export function TranscriptContent({
       observeElementOffset(instance, (offset, scrolling) => {
         const scroll = instance.scrollElement;
 
-        if (scroll !== null)
+        if (scroll !== null) {
+          const previous = scrolled.current;
+          const height = scroll.scrollHeight;
+          scrolled.current = { offset, height };
           mode.current = nextMode(mode.current, {
             kind: "scrolled",
-            atEnd: scroll.scrollHeight - scroll.clientHeight - offset <= 1,
+            distance: height - scroll.clientHeight - offset,
+            upward: offset < previous.offset && height >= previous.height,
+            reader: steeringUp(input.current, performance.now()),
           });
+        }
+
         flushSync(() => onOffset(offset, scrolling));
       }),
     scrollToFn: (offset, options, instance) => {
@@ -396,6 +455,7 @@ export function TranscriptContent({
 
   const virtualRows = virtualizer.getVirtualItems();
   const settleRows = useEffectEvent((): void => settle(virtualizer));
+  const reportPlace = useEffectEvent((): void => report(virtualizer));
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- measures virtual rows and syncs sticky headers before paint
   useLayoutEffect(() => {
@@ -406,6 +466,7 @@ export function TranscriptContent({
       settleRows();
       syncSticky(scroll, content.current);
       queueMicrotask(() => syncScrollButton(scroll, dock));
+      reportPlace();
     }
   }, [dock, dockHeight, ready, sticky, virtualRows, virtualizer]);
 
@@ -460,14 +521,33 @@ export function TranscriptContent({
       });
   }, []);
 
-  const release = useCallback((): void => {
+  const touch = useCallback(
+    (upward: boolean): void => {
+      virtualizer.cancelScroll();
+      input.current = { at: performance.now(), upward, pressed: input.current.pressed };
+      mode.current = nextMode(mode.current, { kind: "touched" });
+    },
+    [virtualizer],
+  );
+
+  const press = useCallback((pressed: boolean): void => {
+    input.current = { ...input.current, pressed };
+  }, []);
+
+  const reveal = useEffectEvent((key: string): void => {
+    const index = indexes.get(key);
+    const item = index === undefined ? undefined : virtualizer.measurementsCache[index];
     const scroll = virtualizer.scrollElement;
+
+    if (item === undefined || scroll === null) return;
+    const top = scroll.clientHeight / 3;
     virtualizer.cancelScroll();
     mode.current = nextMode(mode.current, {
-      kind: "released",
-      atEnd: scroll !== null && distanceFromEnd(scroll) <= 1,
+      kind: "held",
+      anchor: { key, element: undefined, top },
     });
-  }, [virtualizer]);
+    virtualizer.scrollToOffset(item.start - top);
+  });
 
   const restoreAnchor = useEffectEvent((): void => {
     const anchor = mode.current.kind === "reading" ? mode.current.anchor : null;
@@ -533,21 +613,23 @@ export function TranscriptContent({
     controlsRef.current = {
       end: () => {
         virtualizer.cancelScroll();
+        input.current = { ...NO_INPUT, pressed: input.current.pressed };
         mode.current = nextMode(mode.current, { kind: "ended" });
         virtualizer.scrollToEnd();
       },
       hold,
       keep,
       page: (direction) => {
-        release();
+        touch(direction < 0);
         virtualizer.scrollBy(direction * viewport.clientHeight * 0.9);
       },
+      reveal,
     };
 
     return () => {
       controlsRef.current = null;
     };
-  }, [controlsRef, hold, keep, release, viewport, virtualizer]);
+  }, [controlsRef, hold, keep, touch, viewport, virtualizer]);
 
   const selectRow = (): void => {
     const selection = document.getSelection();
@@ -567,68 +649,72 @@ export function TranscriptContent({
   };
 
   return (
-    <div
-      ref={attachViewport}
-      role="region"
-      aria-label="Messages"
-      tabIndex={-1}
-      data-nyte-scrollport="balanced"
-      {...props(messageScrollerStyles.viewport)}
-    >
-      {viewport !== null && (
-        <ViewportInput
-          viewport={viewport}
-          content={content}
-          onPresent={() => present(virtualizer)}
-          onHold={hold}
-          onRelease={release}
-          onSelectionChange={selectRow}
-        />
-      )}
-      {viewport !== null && dock !== null && (
-        <DockInput
-          dock={dock}
-          onResize={(height) => {
-            setDockHeight(height);
-            present(virtualizer);
-          }}
-          onWheel={(delta) => {
-            release();
-            virtualizer.scrollBy(delta);
-          }}
-        />
-      )}
-      <div ref={attachContent} {...props(text.lg, messageScrollerStyles.content)}>
-        {virtualRows.map((virtualRow) => {
-          const row = rows[virtualRow.index];
+    <div {...props(messageScrollerStyles.frame)}>
+      <div
+        ref={attachViewport}
+        role="region"
+        aria-label="Messages"
+        tabIndex={-1}
+        data-nyte-scrollport="balanced"
+        {...props(messageScrollerStyles.viewport)}
+      >
+        {viewport !== null && (
+          <ViewportInput
+            viewport={viewport}
+            content={content}
+            onPresent={() => present(virtualizer)}
+            onHold={hold}
+            onInput={touch}
+            onPress={press}
+            onSelectionChange={selectRow}
+          />
+        )}
+        {viewport !== null && dock !== null && (
+          <DockInput
+            dock={dock}
+            onResize={(height) => {
+              setDockHeight(height);
+              present(virtualizer);
+            }}
+            onWheel={(delta) => {
+              touch(delta < 0);
+              virtualizer.scrollBy(delta);
+            }}
+          />
+        )}
+        <div ref={attachContent} {...props(text.lg, messageScrollerStyles.content)}>
+          {virtualRows.map((virtualRow) => {
+            const row = rows[virtualRow.index];
 
-          if (row === undefined) return null;
+            if (row === undefined) return null;
 
-          return (
-            <div
-              key={row.key}
-              ref={measureRow}
-              data-row-key={row.key}
-              data-index={virtualRow.index}
-              {...props(
-                messageScrollerStyles.item,
-                !row.leads && messageScrollerStyles.itemWithin,
-                row.sticky && messageScrollerStyles.itemSticky,
-                virtualRow.index === 0 && messageScrollerStyles.itemFirst,
-              )}
-            >
-              {row.sticky ? (
-                <div data-turn-span {...props(messageScrollerStyles.span)}>
-                  {renderRow(virtualRow.index)}
-                  <div aria-hidden />
-                </div>
-              ) : (
-                renderRow(virtualRow.index)
-              )}
-            </div>
-          );
-        })}
+            return (
+              <div
+                key={row.key}
+                ref={measureRow}
+                data-row-key={row.key}
+                data-index={virtualRow.index}
+                {...props(
+                  messageScrollerStyles.item,
+                  !row.leads && messageScrollerStyles.itemWithin,
+                  row.sticky && messageScrollerStyles.itemSticky,
+                  virtualRow.index === 0 && messageScrollerStyles.itemFirst,
+                )}
+              >
+                {row.sticky ? (
+                  <div data-turn-span {...props(messageScrollerStyles.span)}>
+                    {renderRow(virtualRow.index)}
+                    <div aria-hidden />
+                  </div>
+                ) : (
+                  renderRow(virtualRow.index)
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
+      {overlay}
     </div>
   );
 }
@@ -639,31 +725,44 @@ function ViewportInput({
   content,
   onPresent,
   onHold,
-  onRelease,
+  onInput,
+  onPress,
   onSelectionChange,
 }: {
   readonly viewport: HTMLDivElement;
   readonly content: RefObject<HTMLDivElement | null>;
   readonly onPresent: () => void;
   readonly onHold: (element: Element) => void;
-  readonly onRelease: () => void;
+  /** The reader's wheel, touch, key or scrollbar press, and whether it moves the view up. */
+  readonly onInput: (upward: boolean) => void;
+  readonly onPress: (pressed: boolean) => void;
   readonly onSelectionChange: () => void;
 }): null {
   const present = useEffectEvent(onPresent);
   const hold = useEffectEvent(onHold);
-  const release = useEffectEvent(onRelease);
+  const input = useEffectEvent(onInput);
+  const press = useEffectEvent(onPress);
   const select = useEffectEvent(onSelectionChange);
 
   useMountEffect(() => {
     const resize = new ResizeObserver(() => present());
     resize.observe(viewport);
+    let touchY = 0;
 
     const pressed = (event: PointerEvent): void => {
-      if (event.target === viewport) release();
+      if (event.target !== viewport) return;
+      press(true);
+      input(false);
     };
 
     const keyed = (event: KeyboardEvent): void => {
-      if (navigates(event)) release();
+      if (navigates(event)) input(navigatesUp(event));
+    };
+
+    const touched = (event: TouchEvent): void => {
+      const y = event.touches[0]?.clientY ?? touchY;
+      input(y > touchY);
+      touchY = y;
     };
 
     const clicked = (event: MouseEvent): void => {
@@ -678,9 +777,21 @@ function ViewportInput({
     const listeners = new AbortController();
     const signal = listeners.signal;
     viewport.addEventListener("scroll", () => present(), { passive: true, signal });
-    viewport.addEventListener("wheel", () => release(), { passive: true, signal });
-    viewport.addEventListener("touchmove", () => release(), { passive: true, signal });
+    viewport.addEventListener("wheel", (event) => input(event.deltaY < 0), {
+      passive: true,
+      signal,
+    });
+    viewport.addEventListener(
+      "touchstart",
+      (event) => {
+        touchY = event.touches[0]?.clientY ?? 0;
+      },
+      { passive: true, signal },
+    );
+    viewport.addEventListener("touchmove", touched, { passive: true, signal });
     viewport.addEventListener("pointerdown", pressed, { signal });
+    window.addEventListener("pointerup", () => press(false), { signal });
+    window.addEventListener("pointercancel", () => press(false), { signal });
     viewport.addEventListener("keydown", keyed, { signal });
     content.current?.addEventListener("click", clicked, { capture: true, signal });
     document.addEventListener("selectionchange", () => select(), { signal });
@@ -752,9 +863,9 @@ export function TranscriptButton(): ReactElement | null {
               iconOnly
               aria-label="Scroll to bottom"
               tabIndex={-1}
-              onClick={(event) => {
-                event.currentTarget.blur();
+              onClick={() => {
                 transcript.controlsRef.current?.end();
+                transcript.focusComposer?.();
               }}
             >
               <Icon name="arrow-down" size={14} />

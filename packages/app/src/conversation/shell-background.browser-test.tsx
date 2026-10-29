@@ -77,6 +77,7 @@ function view(message: Message): SessionView {
     usage: USAGE,
     execution: COMPLETED,
     reportsHeld: false,
+    seenThrough: null,
     background: [
       {
         kind: "job",

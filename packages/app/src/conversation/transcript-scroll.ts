@@ -4,6 +4,17 @@ const STICKY_EPSILON = 2;
 
 export const TRANSCRIPT_PADDING_END = 114;
 
+/** How far from the end the view may sit before it offers a way back. */
+export const NEAR_END = 60;
+
+/** Where the reader is: `away` from the end while reading, and where the marked row sits against the view, null while the transcript opens or without a marked row. */
+export interface TranscriptPlace {
+  readonly away: boolean;
+  readonly marker: "above" | "inside" | "below" | null;
+}
+
+export const NOWHERE: TranscriptPlace = { away: false, marker: null };
+
 function setDataState(element: HTMLElement, name: string, active: boolean): void {
   const value = active ? "true" : "false";
 
@@ -59,8 +70,13 @@ export function navigates(event: KeyboardEvent): boolean {
   );
 }
 
+/** Whether a navigation key moves the view up. */
+export function navigatesUp(event: KeyboardEvent): boolean {
+  return /^(ArrowUp|PageUp|Home)$/.test(event.key) || (event.key === " " && event.shiftKey);
+}
+
 export function syncScrollButton(viewport: HTMLElement, dock: HTMLElement | null): void {
-  const shown = distanceFromEnd(viewport) > 60;
+  const shown = distanceFromEnd(viewport) > NEAR_END;
   const button = dock?.querySelector<HTMLElement>("[data-slot='scroll-to-bottom']");
 
   if (button === null || button === undefined) return;

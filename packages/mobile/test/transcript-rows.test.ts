@@ -103,6 +103,7 @@ function view(messages: readonly Message[], overrides: Partial<SessionView> = {}
     turns: [ended],
     execution: { kind: "idle", lastRun: null },
     reportsHeld: false,
+    seenThrough: null,
     background: [],
     configuration: { selected: null, effective: null },
     context: { tokens: 0, window: 1, lastRequest: null },

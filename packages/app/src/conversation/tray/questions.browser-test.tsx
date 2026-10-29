@@ -82,6 +82,7 @@ const asked: SessionView = {
   usage: USAGE,
   execution: COMPLETED,
   reportsHeld: false,
+  seenThrough: null,
   background: [],
   configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
   context: { tokens: 0, window: 1_000, lastRequest: null },

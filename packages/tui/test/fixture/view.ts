@@ -322,6 +322,7 @@ export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionVie
     usage: { ...USAGE, input: 0, output: 0, total: 0 },
     execution,
     reportsHeld: idle && execution.lastRun?.end.kind !== "completed",
+    seenThrough: null,
     background: [],
     configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
     context: { tokens: 1_000, window: 100_000, lastRequest: null },

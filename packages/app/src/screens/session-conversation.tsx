@@ -71,6 +71,7 @@ import { modelRefFor, selectedModelOption } from "../conversation/model-picker-s
 import { StartupReadsRelease } from "../startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../work-counts.ts";
+import { useWindowActive } from "../window-active.ts";
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 
@@ -235,18 +236,6 @@ function ActivationNotice({ activation }: { readonly activation: Activation }): 
   return null;
 }
 
-function subscribeAttention(notice: () => void): () => void {
-  window.addEventListener("focus", notice);
-  window.addEventListener("blur", notice);
-  document.addEventListener("visibilitychange", notice);
-
-  return () => {
-    window.removeEventListener("focus", notice);
-    window.removeEventListener("blur", notice);
-    document.removeEventListener("visibilitychange", notice);
-  };
-}
-
 function MarkSeen({
   sessionId,
   store,
@@ -262,10 +251,7 @@ function MarkSeen({
     return drawn?.kind === "commit" ? drawn.id : undefined;
   });
 
-  const looking = useSyncExternalStore(
-    subscribeAttention,
-    () => document.visibilityState === "visible" && document.hasFocus(),
-  );
+  const looking = useWindowActive((active) => active);
 
   const covered = useSyncExternalStore(workbenchController.subscribe, () => {
     const view = workbenchController.getView(viewKey);
@@ -471,6 +457,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
             sessionId={sessionId}
             viewportRef={setScroll}
             loadEarlier={loadEarlier}
+            focusComposer={() => composerRef.current?.focus({ preventScroll: true })}
           >
             <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
               <MarkSeen sessionId={sessionId} store={store} viewKey={workbenchViewKey(cwd)} />

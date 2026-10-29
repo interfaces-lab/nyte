@@ -13,13 +13,18 @@ import { Button } from "@nyte-ai/ui/button";
 import { TranscriptSkeleton } from "../screens/transcript-skeleton.tsx";
 import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
 import { SubagentReportLine } from "./subagent-call.tsx";
-import { TranscriptContent, useTranscriptScope } from "./transcript.tsx";
+import { TranscriptContent, useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
 import { ChangesFooter, TurnItemView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./turn-view.tsx";
-import { estimateRowSize } from "./transcript-rows.ts";
+import { dividerKey, estimateRowSize, withDivider } from "./transcript-rows.ts";
 import type { TranscriptProjector } from "./transcript-rows.ts";
+import { nextVisit, openVisit, readUnread } from "./transcript-unread.ts";
+import type { UnreadEvent, UnreadVisit } from "./transcript-unread.ts";
+import { NewMessages, UnreadDivider } from "./transcript-unread-view.tsx";
 import { countWork, useCommitCount } from "../work-counts.ts";
+import { useWindowActive } from "../window-active.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 type EditUserMessage = (
   message: UserMessage,
@@ -153,21 +158,45 @@ export function Timeline({
 }: Omit<RowContext, "density"> & { readonly ready: boolean }): ReactElement {
   const density = useSetting(preferences.toolCalls);
   const uiFontSize = useSetting(preferences.uiFontSize);
-  const rows = useWatchSelect(store, projector.rows);
+  const controls = useTranscriptControls();
+  const projected = useWatchSelect(store, projector.rows);
+  const replies = useWatchSelect(store, projector.replies);
+  const seenThrough = useWatchSelect(store, (state) => state.value?.seenThrough);
+  const [visit, setVisit] = useState<UnreadVisit>();
+
+  useMountEffect(() => () => setVisit(undefined));
+
+  const opened = visit ?? (seenThrough === undefined ? undefined : openVisit(seenThrough));
+
+  const observed = useWindowActive((active) =>
+    opened === undefined ? undefined : nextVisit(opened, { kind: "observed", active }, replies),
+  );
+
+  if (observed !== visit) setVisit(observed);
+  const unread = observed === undefined ? undefined : readUnread(observed, replies);
+  const divider = unread?.divider;
+  const rows = withDivider(projected, divider);
+
+  const update = (event: UnreadEvent): void =>
+    setVisit((current) => current && nextVisit(current, event, replies));
 
   const estimateSize = (index: number): number => {
-    const state = store.getState();
-    const key = projector.rows(state)[index]?.key;
+    const row = rows[index];
+
+    if (row === undefined) return 0;
 
     return estimateRowSize(
-      key === undefined ? undefined : projector.row(state, key),
+      "kind" in row ? row : projector.row(store.getState(), row.key),
       density,
       uiFontSize,
     );
   };
 
   const renderRow = (index: number): ReactNode => {
-    const key = rows[index]?.key;
+    const row = rows[index];
+
+    if (row !== undefined && "kind" in row) return <UnreadDivider />;
+    const key = row?.key;
 
     return key === undefined ? null : (
       <TranscriptRowView
@@ -190,6 +219,25 @@ export function Timeline({
       ready={ready}
       estimateSize={estimateSize}
       renderRow={renderRow}
+      marker={divider === undefined ? undefined : dividerKey(divider)}
+      onPlace={(place) => update({ kind: "placed", place })}
+      overlay={
+        <NewMessages
+          pill={unread?.pill ?? null}
+          onOpen={(direction) => {
+            if (direction === "down") {
+              controls.end();
+
+              return;
+            }
+
+            update({ kind: "revealed" });
+
+            if (divider !== undefined) controls.reveal(dividerKey(divider));
+          }}
+          onDismiss={(direction) => update({ kind: "dismissed", direction })}
+        />
+      }
     />
   );
 }

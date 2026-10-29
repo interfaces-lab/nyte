@@ -10,7 +10,7 @@ import { CHANNEL_PATH, encodeError, STREAM_HEADER } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/connect.ts";
 import { BASE, readOperation, TOKEN_SECRET, until } from "./served.ts";
-import { cleanups, client, closeOpened, open, text, users } from "./connection.ts";
+import { cleanups, client, closeOpened, open, settledChat, text, users } from "./connection.ts";
 
 afterEach(closeOpened);
 
@@ -57,6 +57,27 @@ describe("client", () => {
     expect(users(second)).toEqual(["Hi.", "More."]);
     expect(second.revision).toBe((await host.view(session.id)).revision);
     expect(await session.view()).toEqual(await host.view(session.id));
+    await watching.return?.();
+  });
+
+  it("carries the read mark in a watch's views once the principal sees the tip", async () => {
+    const host = await open();
+    const connection = await client(host);
+    const session = await settledChat(host, connection);
+    const watching = session.watch()[Symbol.asyncIterator]();
+    const opened = await watching.next();
+    assert(opened.done !== true);
+    const tip = opened.value.heads[0]?.tip;
+    assert(tip?.kind === "commit");
+
+    expect(opened.value.seenThrough).toBeNull();
+    await session.see(tip.id);
+    const seen = await watching.next();
+    assert(seen.done !== true);
+    const latest = Math.max(...seen.value.messages.map((message) => message.at));
+
+    expect(seen.value.seenThrough).toBeGreaterThanOrEqual(latest);
+    expect((await session.view()).seenThrough).toBe(seen.value.seenThrough);
     await watching.return?.();
   });
 
