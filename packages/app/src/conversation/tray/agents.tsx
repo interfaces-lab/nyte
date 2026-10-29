@@ -12,7 +12,7 @@ import { useChildSessions, useSession } from "../../queries.ts";
 import { connection } from "../../sdk.tsx";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import { subagentTrayState } from "../agent-status.ts";
+import { subagentTrayActive, subagentTrayState } from "../agent-status.ts";
 import type { SubagentTrayState } from "../agent-status.ts";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 import { useCommitCount } from "../../work-counts.ts";
@@ -25,7 +25,8 @@ export type SubagentTrayView =
 const TRAY_STATE_LABEL = {
   working: "Working",
   attention: "Needs attention",
-  inactive: "Completed",
+  completed: "Completed",
+  failed: "Failed",
 } satisfies Readonly<Record<SubagentTrayState, string>>;
 
 const styles = create({
@@ -58,7 +59,7 @@ export function listSubagents(agents: readonly SessionInfo[], view: SubagentTray
         : undefined;
 
   const active = agents
-    .filter((agent) => subagentTrayState(agent) !== "inactive")
+    .filter((agent) => subagentTrayActive(subagentTrayState(agent)))
     .toSorted((left, right) => {
       const attention =
         Number(subagentTrayState(left) !== "attention") -
@@ -70,7 +71,7 @@ export function listSubagents(agents: readonly SessionInfo[], view: SubagentTray
     });
 
   const settled = agents.find(
-    (agent) => agent.id === pinnedId && subagentTrayState(agent) === "inactive",
+    (agent) => agent.id === pinnedId && !subagentTrayActive(subagentTrayState(agent)),
   );
 
   return { active, listed: settled === undefined ? active : [...active, settled] };
@@ -269,7 +270,7 @@ export function SubagentTray({
               <span title={agentTitle(selected, selectedId)} {...props(trayStyles.title)}>
                 {agentTitle(selected, selectedId)}
               </span>
-              {selected !== undefined && subagentTrayState(selected) !== "inactive" && (
+              {selected !== undefined && subagentTrayActive(subagentTrayState(selected)) && (
                 <Button
                   tone="danger"
                   loading={pendingAction}

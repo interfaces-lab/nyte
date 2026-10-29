@@ -101,6 +101,5 @@ export const stripStyles = create({
   close: { display: "inline-flex", flexShrink: 0, opacity: "var(--_close-opacity)" },
   closeVisible: { opacity: 1 },
   control: { display: "inline-flex", flexShrink: 0, WebkitAppRegion: "no-drag" },
-  shortcut: { display: "inline-flex", alignItems: "center", gap: space.s2 },
   keys: { display: "inline-flex", gap: space.s0_5 },
 });

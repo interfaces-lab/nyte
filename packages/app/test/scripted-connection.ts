@@ -1,7 +1,9 @@
 import { SdkError, watchStore } from "@nyte-ai/sdk";
 import type {
   Connection,
+  GitApi,
   GitHubAccountApi,
+  GitHubApi,
   HostView,
   JobId,
   Json,
@@ -24,6 +26,10 @@ export interface ConnectionScript {
   readonly host?: ViewStream<HostView>;
   readonly models?: Partial<ModelsApi>;
   readonly github?: Partial<GitHubAccountApi>;
+  /** Every workspace's git, with what is left out refused. */
+  readonly git?: Partial<GitApi>;
+  /** Every workspace's GitHub, with what is left out refused. */
+  readonly workspaceGitHub?: Partial<GitHubApi>;
 }
 
 export interface ScriptedSend {
@@ -188,10 +194,38 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     changes: refuse,
     patches: refused,
     files: refuse,
-    git: refuse,
-    github: refuse,
+    git: script.git === undefined ? refuse : async () => ({ kind: "available" as const, api: git }),
+    github:
+      script.workspaceGitHub === undefined
+        ? refuse
+        : async () => ({ kind: "available" as const, api: github }),
     browser: refuse,
   });
+
+  const git: GitApi = {
+    status: refuse,
+    watch: refused,
+    changes: refuse,
+    watchChanges: refused,
+    patches: refused,
+    contents: refuse,
+    log: refuse,
+    refs: refuse,
+    blame: refuse,
+    stage: refuse,
+    unstage: refuse,
+    discard: refuse,
+    commit: refuse,
+    branch: refuse,
+    push: refuse,
+    ...script.git,
+  };
+
+  const github: GitHubApi = {
+    state: refuse,
+    createPullRequest: refuse,
+    ...script.workspaceGitHub,
+  };
 
   const connection: Connection = {
     hostId: asId<"host">("scripted"),

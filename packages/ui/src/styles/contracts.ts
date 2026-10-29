@@ -257,7 +257,7 @@ export const restyleContracts = {
   "Popover.Title": heading("packages/ui/src/popover.tsx"),
   "Popover.Description": heading("packages/ui/src/popover.tsx"),
   PreviewCardContent: popup("packages/ui/src/preview-card.tsx"),
-  TooltipContent: popup("packages/ui/src/tooltip.tsx", ["variant", "side", "tint"]),
+  TooltipContent: popup("packages/ui/src/tooltip.tsx", ["side", "tint"]),
   MenuContent: popup(menu),
   MenuSubContent: popup(menu),
   MenuItem: placed(menu, ["variant", "layout"]),

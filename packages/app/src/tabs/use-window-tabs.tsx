@@ -175,6 +175,9 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
       id: tab.id,
       title: placeTitle(place, sessions),
       tooltip: places.map((candidate) => placeTitle(candidate, sessions)).join(" | "),
+      sessions: places.flatMap((candidate) =>
+        candidate.kind === "session" ? [candidate.sessionId] : [],
+      ),
       glyph,
       unread:
         tab.id !== state.activeTabId &&

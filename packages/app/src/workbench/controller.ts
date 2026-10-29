@@ -10,9 +10,12 @@ import type { ClientCapabilities } from "../client-actions.ts";
 import { loadDeferred, readDeferred } from "../deferred.tsx";
 import { nyte } from "../nyte.ts";
 
-export const WORKBENCH_WIDTH_DEFAULT = 400;
+export const WORKBENCH_SHARE_DEFAULT = 0.5;
 
-const WORKBENCH_WIDTH_MIN = 300;
+const WORKBENCH_WIDTH_MIN = 384;
+
+/** What every panel was stored with before panels stored a share: the old default, not a width anyone chose. */
+const LEGACY_DEFAULT_PIXELS = 400;
 
 export const WORKBENCH_CENTER_WIDTH_MIN = 424;
 
@@ -182,6 +185,13 @@ export function workbenchTabAvailable(
   }
 }
 
+/** A panel's width: a share of the stage, or the pixels stored before shares until the next resize. */
+export type WorkbenchWidth = ShareWidth | { readonly kind: "pixels"; readonly pixels: number };
+
+type ShareWidth = { readonly kind: "share"; readonly share: number };
+
+const DEFAULT_WIDTH: ShareWidth = Object.freeze({ kind: "share", share: WORKBENCH_SHARE_DEFAULT });
+
 type WorkbenchWidthBounds =
   | { readonly kind: "docked"; readonly min: number; readonly max: number }
   | { readonly kind: "overlay"; readonly min: number; readonly max: number };
@@ -192,7 +202,7 @@ export interface WorkbenchViewState {
   readonly expanded: boolean;
   readonly collapsed: "floating" | "compact";
   readonly layout: WorkbenchLayout;
-  readonly width: number;
+  readonly width: WorkbenchWidth;
 }
 
 interface WorkbenchSnapshot {
@@ -279,7 +289,7 @@ export interface WorkbenchController {
     readonly toggleWorkbench: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly toggleMaximized: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly showChat: (input: { readonly view: WorkbenchViewKey }) => void;
-    readonly setWidth: (input: { readonly view: WorkbenchViewKey; readonly width: number }) => void;
+    readonly setShare: (input: { readonly view: WorkbenchViewKey; readonly share: number }) => void;
   };
 }
 
@@ -291,7 +301,7 @@ const DEFAULT_VIEW = Object.freeze({
   expanded: false,
   collapsed: "floating",
   layout: SPLIT_LAYOUT,
-  width: WORKBENCH_WIDTH_DEFAULT,
+  width: DEFAULT_WIDTH,
 }) satisfies WorkbenchViewState;
 
 const strict = { additionalProperties: false };
@@ -371,7 +381,9 @@ const persistedWorkbenchView = Type.Object(
     active: Type.Union([nonEmpty, Type.Null()]),
     expanded: Type.Boolean(),
     maximized: Type.Boolean(),
-    width: Type.Number(),
+    /** Pixels, stored before panels stored a share. */
+    width: Type.Optional(Type.Number()),
+    share: Type.Optional(Type.Number()),
   },
   strict,
 );
@@ -487,14 +499,26 @@ export function defaultWorkbenchTab(kind: WorkbenchTabKind): WorkbenchTabInput {
   }
 }
 
-function clampWorkbenchWidth(width: number): number {
-  return Number.isFinite(width)
-    ? Math.max(WORKBENCH_WIDTH_MIN, Math.round(width))
-    : WORKBENCH_WIDTH_DEFAULT;
+function shareWidth(share: number): ShareWidth {
+  return Number.isFinite(share) && share > 0
+    ? { kind: "share", share: Math.min(1, share) }
+    : DEFAULT_WIDTH;
 }
 
-export function workbenchDefaultWidth(availableWidth: number): number {
-  return Math.min(WORKBENCH_WIDTH_DEFAULT, Math.round(availableWidth / 2.5));
+function restoreWidth(stored: Static<typeof persistedWorkbenchView>): WorkbenchWidth {
+  if (stored.share !== undefined) return shareWidth(stored.share);
+
+  return stored.width === undefined || stored.width === LEGACY_DEFAULT_PIXELS
+    ? DEFAULT_WIDTH
+    : { kind: "pixels", pixels: stored.width };
+}
+
+/** The panel's width in pixels on a stage `stageWidth` wide, kept inside the stage's bounds. */
+export function workbenchPanelWidth(width: WorkbenchWidth, stageWidth: number): number {
+  return clampWorkbenchWidthToBounds(
+    width.kind === "share" ? width.share * stageWidth : width.pixels,
+    workbenchWidthBounds(stageWidth),
+  );
 }
 
 export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBounds {
@@ -516,7 +540,7 @@ export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBoun
 }
 
 export function clampWorkbenchWidthToBounds(width: number, bounds: WorkbenchWidthBounds): number {
-  const normalized = Number.isFinite(width) ? Math.round(width) : WORKBENCH_WIDTH_DEFAULT;
+  const normalized = Number.isFinite(width) ? Math.round(width) : bounds.min;
 
   return Math.min(bounds.max, Math.max(bounds.min, normalized));
 }
@@ -570,7 +594,7 @@ function restoreSnapshot(
         expanded: stored.expanded,
         collapsed: "floating",
         layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,
-        width: clampWorkbenchWidth(stored.width),
+        width: restoreWidth(stored),
       }),
     );
   }
@@ -596,7 +620,9 @@ function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnapshot {
         active,
         expanded: view.expanded,
         maximized: view.layout.kind === "maximized",
-        width: view.width,
+        ...(view.width.kind === "share"
+          ? { share: view.width.share }
+          : { width: view.width.pixels }),
       };
     }),
   };
@@ -908,10 +934,12 @@ export function createWorkbenchController(
     toggleWorkbench({ view }) {
       actions.toggle({ view });
     },
-    setWidth({ view, width }) {
-      const nextWidth = clampWorkbenchWidth(width);
+    setShare({ view, share }) {
+      const width = shareWidth(share);
       update(view, (current) =>
-        current.width === nextWidth ? current : { ...current, width: nextWidth },
+        current.width.kind === "share" && current.width.share === width.share
+          ? current
+          : { ...current, width },
       );
     },
   };

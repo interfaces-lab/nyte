@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
-import { createWorkbenchController } from "./controller.ts";
+import { createWorkbenchController, workbenchPanelWidth } from "./controller.ts";
+import type { WorkbenchPersistence } from "./controller.ts";
 
 test.each(["successful", "failed"] as const)(
   "changes selected while panels are pending survive a %s load",
@@ -102,3 +103,50 @@ test.each(["successful", "failed"] as const)(
     }
   },
 );
+
+test("the panel takes half the stage, at least 384 px, and keeps its share as the window grows", () => {
+  const stored: Parameters<WorkbenchPersistence["write"]>[0][] = [];
+
+  const controller = createWorkbenchController(() => ({ browser: true }), {
+    read: () => undefined,
+    write: (value) => stored.push(value),
+  });
+
+  const view = "/workspace";
+
+  expect(workbenchPanelWidth(controller.getView(view).width, 1400)).toBe(700);
+  expect(workbenchPanelWidth(controller.getView(view).width, 900)).toBe(450);
+
+  controller.actions.setShare({ view, share: 0.25 });
+  expect(workbenchPanelWidth(controller.getView(view).width, 1400)).toBe(384);
+  expect(workbenchPanelWidth(controller.getView(view).width, 2000)).toBe(500);
+  expect(stored.at(-1)?.views).toMatchObject([{ key: view, share: 0.25 }]);
+
+  const reopened = createWorkbenchController(() => ({ browser: true }), {
+    read: () => stored.at(-1),
+    write: () => undefined,
+  });
+
+  expect(workbenchPanelWidth(reopened.getView(view).width, 2000)).toBe(500);
+});
+
+test("a width stored in pixels stays until the next resize, and the old 400 px default becomes half", () => {
+  const pixels = (width: number) =>
+    createWorkbenchController(() => ({ browser: true }), {
+      read: () => ({
+        version: 7,
+        views: [
+          { key: "/workspace", tabs: [], active: null, expanded: true, maximized: false, width },
+        ],
+      }),
+      write: () => undefined,
+    });
+
+  const resized = pixels(520);
+  expect(workbenchPanelWidth(resized.getView("/workspace").width, 1400)).toBe(520);
+  expect(workbenchPanelWidth(resized.getView("/workspace").width, 2000)).toBe(520);
+  expect(workbenchPanelWidth(pixels(400).getView("/workspace").width, 1400)).toBe(700);
+
+  resized.actions.setShare({ view: "/workspace", share: 0.4 });
+  expect(workbenchPanelWidth(resized.getView("/workspace").width, 2000)).toBe(800);
+});
