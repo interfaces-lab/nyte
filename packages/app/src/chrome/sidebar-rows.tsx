@@ -19,7 +19,7 @@ import type { ChatDraft } from "../layout/session-view-state.ts";
 import { useSessionDraggable } from "../layout/session-dnd.tsx";
 import { sessionActivityMark } from "../session-activity.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
-import type { OpenTarget } from "../tabs/model.ts";
+import type { OpenIntent } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -39,10 +39,10 @@ function TimeAgo({ timestamp }: { readonly timestamp: number }): string {
   return formatTimeAgo(timestamp, useNowMinute());
 }
 
-function openTarget(event: MouseEvent): OpenTarget {
+function openIntent(event: MouseEvent): OpenIntent {
   return event.button === 1 || ((event.metaKey || event.ctrlKey) && !event.shiftKey)
     ? "background"
-    : "foreground";
+    : "preview";
 }
 
 export function DraftRow({
@@ -140,7 +140,7 @@ export interface RailRows {
   readonly repository: Pick<GitHubRepository, "owner" | "name"> | undefined;
   readonly working: ReadonlySet<SessionId>;
   readonly showUpdated: boolean;
-  readonly open: (sessionId: SessionId, target: OpenTarget | "beside") => void;
+  readonly open: (sessionId: SessionId, intent: OpenIntent | "beside") => void;
   readonly rename: (sessionId: SessionId, name: string) => void;
   readonly pin: (session: SessionInfo) => void;
   readonly markRead: (sessions: readonly SessionInfo[]) => void;
@@ -164,7 +164,7 @@ export function SessionRow({
   const showUpdated = rail.showUpdated;
   const draggable = place.workspace === rail.openWorkspace;
   const unreachable = session.workspace !== null && rail.unavailable.has(session.workspace);
-  const onOpen = (target: OpenTarget): void => rail.open(session.id, target);
+  const onOpen = (intent: OpenIntent): void => rail.open(session.id, intent);
   const onOpenBeside = (): void => rail.open(session.id, "beside");
   const onRename = (name: string): void => rail.rename(session.id, name);
   const onPin = (): void => rail.pin(session);
@@ -282,7 +282,7 @@ export function SessionRow({
       <Row.Primary
         xstyle={unreachable && styles.sessionUnreachable}
         aria-current={selected ? "page" : undefined}
-        onClick={(event) => onOpen(openTarget(event))}
+        onClick={(event) => onOpen(openIntent(event))}
         onDoubleClick={() => setDraftName(title)}
         onPointerEnter={() => {
           cancelWarm();

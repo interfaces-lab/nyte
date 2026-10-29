@@ -1,3 +1,4 @@
+import type { SessionId } from "@nyte-ai/sdk";
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -6,8 +7,15 @@ import { paneLayoutSchema, paneSelection } from "../layout/pane-layout.ts";
 import type { PaneLayout } from "../layout/pane-layout.ts";
 import { SessionViewStateStore, WindowDrafts } from "../layout/session-view-state.ts";
 import { sessionId } from "../schemas.ts";
-import { activeTab, findChatTab, initialWindow, reduce, tabLayout } from "./model.ts";
-import type { Tab, View, WindowAction, WindowState } from "./model.ts";
+import {
+  activeTab,
+  findChatTab,
+  initialWindow,
+  reduce,
+  tabLayout,
+  withoutPreviews,
+} from "./model.ts";
+import type { LastingTab, OpenIntent, WindowAction, WindowState } from "./model.ts";
 
 /** Each window keeps its tabs and drafts under its own id. */
 const WINDOW_KEY_PREFIX = "nyte.window.v1:";
@@ -63,7 +71,7 @@ const stripSchema = Type.Object(
 
 type StoredTab = Static<typeof tabSchema>;
 
-function storedView(view: StoredTab["view"]): View {
+function storedView(view: StoredTab["view"]): LastingTab["view"] {
   if (view.kind === "panes") return view;
 
   return {
@@ -75,7 +83,7 @@ function storedView(view: StoredTab["view"]): View {
   };
 }
 
-function storedTab(tab: StoredTab): Tab {
+function storedTab(tab: StoredTab): LastingTab {
   return { id: tab.id, view: storedView(tab.view) };
 }
 
@@ -191,6 +199,11 @@ class WindowTabs {
     this.#apply(reduce(this.#state, next, () => crypto.randomUUID()));
   }
 
+  /** Every chat a user opens comes through here; the intent decides its tab, and a window without a strip shows it in its one chat tab. */
+  openChat(sessionId: SessionId, intent: OpenIntent): void {
+    this.dispatch({ kind: "open", place: { kind: "session", sessionId }, target: intent });
+  }
+
   /** A new chat gets its own tab, or the new-chat tab already waiting; one tab replaces its view. */
   newChat(): void {
     this.dispatch(this.#strip ? { kind: "new-tab" } : { kind: "leave-page" });
@@ -291,7 +304,9 @@ class WindowTabs {
   readonly #flush = (): void => {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
-    write(`${this.#windowKey}:tabs`, JSON.stringify({ version: 2, ...this.#state }));
+    const lasting = withoutPreviews(this.#state, () => crypto.randomUUID());
+
+    write(`${this.#windowKey}:tabs`, JSON.stringify({ version: 2, ...lasting }));
   };
 }
 

@@ -25,14 +25,20 @@ test("background agents share one block, report in one line each, and wake the p
     contentType: "text/plain",
   });
 
-  await log
-    .getByRole("button", { name: /^Map the core/u })
-    .first()
-    .click();
-  const expand = chatPane(page).getByRole("button", { name: "Open as full chat" });
-  await expect(expand).toBeVisible();
-  await expect(chatPane(page).getByText("Echo: Trace part 1.")).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("agents-tray.png") });
-  await chatPane(page).getByRole("button", { name: "Close agents" }).click();
-  await expect(expand).toBeHidden();
+  const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+  const child = log.getByRole("button", { name: /^Map the core/u }).first();
+  await expect(tabs).toHaveCount(1);
+  await child.click();
+  await expect(tabs, "the child opens next to its parent, not in its place").toHaveCount(2);
+  await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "false");
+  await expect(tabs.nth(1)).toHaveAccessibleName("Map the core, preview");
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(messages(page).getByText("Echo: Trace part 1.")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("agents-child.png") });
+
+  await tabs.nth(0).click();
+  await expect(log.getByText("2 agents completed")).toBeVisible();
+  await child.click();
+  await expect(tabs, "an open child is shown in its tab").toHaveCount(2);
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
 });

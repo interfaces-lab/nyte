@@ -1,6 +1,18 @@
 import { button, glyph, media, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { create } from "@stylexjs/stylex";
+import { create, keyframes } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { tab } from "../theme/schema.stylex.ts";
+
+const fade = (start: string, end: string): string =>
+  `linear-gradient(to right, transparent, black ${start}, black calc(100% - ${end}), transparent)`;
+
+/** Driven by the strip's own scroll: an edge fades while more tabs lie past it. */
+const edgeFades = keyframes({
+  "0%": { maskImage: fade("0px", tab.stripEdgeFade) },
+  "1%": { maskImage: fade(tab.stripEdgeFade, tab.stripEdgeFade) },
+  "99%": { maskImage: fade(tab.stripEdgeFade, tab.stripEdgeFade) },
+  "100%": { maskImage: fade(tab.stripEdgeFade, "0px") },
+});
 
 export const stripStyles = create({
   strip: {
@@ -12,18 +24,27 @@ export const stripStyles = create({
     height: "100%",
     WebkitAppRegion: "drag",
   },
-  list: {
+  list: { display: "flex", flex: "0 1 auto", minWidth: 0, height: "100%" },
+  scroller: {
     display: "flex",
     alignItems: "center",
     gap: space.s0_5,
-    flex: "0 1 auto",
     minWidth: 0,
-    height: "100%",
     overflowX: "auto",
     overflowY: "hidden",
     scrollbarWidth: "none",
+    animationName: edgeFades,
+    animationTimeline: "scroll(self inline)",
+    animationTimingFunction: "linear",
+    animationFillMode: "both",
   },
-  slot: { display: "flex", flex: "0 1 240px", minWidth: 72, WebkitAppRegion: "no-drag" },
+  slot: {
+    display: "flex",
+    flex: "0 1 auto",
+    minWidth: tab.minWidth,
+    maxWidth: tab.maxWidth,
+    WebkitAppRegion: "no-drag",
+  },
   tab: {
     "--_close-opacity": {
       default: "0",
@@ -47,6 +68,7 @@ export const stripStyles = create({
     },
   },
   tabClosable: { paddingInlineEnd: space.s1 },
+  tabPreview: { fontStyle: "italic" },
   tabActive: {
     backgroundColor: {
       default: role.surfaceMaterial,

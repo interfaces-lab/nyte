@@ -50,6 +50,18 @@ async function chooseGrouping(page: Page, grouping: string): Promise<void> {
   await closeMenus(page);
 }
 
+async function dragTab(page: Page, from: Locator, to: Locator): Promise<void> {
+  const start = await from.boundingBox();
+  const end = await to.boundingBox();
+
+  if (start === null || end === null) throw new Error("A tab to drag is hidden");
+  const y = start.y + start.height / 2;
+  await page.mouse.move(start.x + start.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(end.x + end.width / 4, y, { steps: 10 });
+  await page.mouse.up();
+}
+
 test("the navigation journey", async ({ desktop }) => {
   const { page } = desktop;
 
@@ -62,16 +74,32 @@ test("the navigation journey", async ({ desktop }) => {
     );
   });
 
-  await test.step("a click opens a chat in its own tab, and a modified click opens it behind", async () => {
+  await test.step("a plain click previews a chat in one italic tab, which the next click replaces", async () => {
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+    await expect(tabs).toHaveCount(1);
+    await expect(tabs).toHaveAccessibleName(`${FIXTURES.alpha}, preview`);
+    await expect(tabs).toHaveCSS("font-style", "italic");
     await openChat(page, FIXTURES.beta);
-    await expect(tabs).toHaveCount(2);
+    await expect(tabs).toHaveCount(1);
+    await expect(tabs).toHaveAccessibleName(`${FIXTURES.beta}, preview`);
+    await page.keyboard.press("ControlOrMeta+Shift+T");
+    await expect(tabs, "the replaced preview isn't reopened").toHaveCount(1);
+  });
+
+  await test.step("double-click keeps a preview, and a modified click opens a chat behind", async () => {
+    const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+    await chatTab(page, FIXTURES.beta).dblclick();
+    await expect(chatTab(page, FIXTURES.beta)).toHaveAccessibleName(FIXTURES.beta);
+    await expect(chatTab(page, FIXTURES.beta)).toHaveCSS("font-style", "normal");
     await openChat(page, FIXTURES.alpha);
-    await expect(tabs, "an open chat switches to its tab").toHaveCount(2);
+    await expect(tabs).toHaveCount(2);
+    await expect(tabs.nth(1)).toHaveAccessibleName(`${FIXTURES.alpha}, preview`);
     await (await revealChat(page, FIXTURES.sidebar)).click({ modifiers: ["ControlOrMeta"] });
     await expect(tabs).toHaveCount(3);
-    await expect(tabs.nth(1)).toHaveAccessibleName(new RegExp(`^${FIXTURES.sidebar}`, "u"));
-    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "false");
+    await expect(tabs.nth(2), "a chat opened behind is kept").toHaveAccessibleName(
+      new RegExp(`^${FIXTURES.sidebar}(, unread)?$`, "u"),
+    );
+    await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "false");
     await expect(chatTab(page, FIXTURES.alpha)).toHaveAttribute("aria-selected", "true");
   });
 
@@ -221,6 +249,14 @@ test("the navigation journey", async ({ desktop }) => {
     await expect(chatRow(page, FIXTURES.alpha)).toBeVisible();
     await done.click();
     await expect(chatRow(page, FIXTURES.alpha)).toBeHidden();
+  });
+
+  await test.step("dragging a preview keeps it", async () => {
+    const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+    const preview = chatTab(page, FIXTURES.alpha);
+    await expect(preview).toHaveAccessibleName(`${FIXTURES.alpha}, preview`);
+    await dragTab(page, preview, tabs.nth(0));
+    await expect(tabs.nth(0)).toHaveAccessibleName(FIXTURES.alpha);
   });
 });
 

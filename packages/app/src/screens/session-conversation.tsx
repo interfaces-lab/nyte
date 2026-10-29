@@ -71,6 +71,7 @@ import { modelRefFor, selectedModelOption } from "../conversation/model-picker-s
 import { StartupReadsRelease } from "../startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../work-counts.ts";
+import { windowTabs } from "../tabs/window-tabs.ts";
 import { useWindowActive } from "../window-active.ts";
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
@@ -401,7 +402,12 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     setTrayView({ kind: "detail", sessionId: childSessionId });
   };
 
-  const subagents = subagentSessions(sessionId, openSubagentTray);
+  const expandChild = (childSessionId: SessionId): void => {
+    if (windowTabs.strip) windowTabs.openChat(childSessionId, "next-to-parent");
+    else paneActions.openSessionInPane(paneId, childSessionId);
+  };
+
+  const subagents = subagentSessions(sessionId, windowTabs.strip ? expandChild : openSubagentTray);
 
   return (
     <SubagentSessionsProvider value={subagents}>
@@ -496,7 +502,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                           onViewChange={setTrayView}
                           onExpand={(childSessionId) => {
                             setTrayView({ kind: "closed" });
-                            paneActions.openSessionInPane(paneId, childSessionId);
+                            expandChild(childSessionId);
                           }}
                           onRelease={() => composerRef.current?.focus({ preventScroll: true })}
                           viewport={scroll}

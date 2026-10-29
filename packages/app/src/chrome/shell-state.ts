@@ -81,14 +81,14 @@ export const shellActions = Object.freeze({
   openCustomize(sessionId: SessionId | undefined): void {
     windowTabs.dispatch({
       kind: "open",
-      target: "foreground",
+      target: "permanent",
       place: { kind: "customize", section: undefined, sessionId },
     });
   },
   openEnvironments(): void {
     windowTabs.dispatch({
       kind: "open",
-      target: "foreground",
+      target: "permanent",
       place: { kind: "environments", section: undefined },
     });
   },

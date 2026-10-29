@@ -257,7 +257,8 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
   });
 
   await test.step("typing with a child chat open: its output advances and both transcripts hold", async () => {
-    await groupRow.getByRole("button", { name: /^Survey part 1\b/u }).click();
+    await pill.click();
+    await chatPane(page).getByRole("button", { name: "Open Survey part 1", exact: true }).click();
     const expand = chatPane(page).getByRole("button", { name: "Open as full chat" });
     await expect(expand).toBeVisible();
     const tray = chatPane(page).locator("[data-slot='tray']");

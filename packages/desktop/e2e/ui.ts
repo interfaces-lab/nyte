@@ -27,8 +27,11 @@ export function messages(page: Page): Locator {
   return page.getByRole("region", { name: "Messages", exact: true });
 }
 
+/** A chat's tab, whether it is a preview or kept. */
 export function chatTab(page: Page, name: string): Locator {
-  return page.getByRole("tablist", { name: "Tabs" }).getByRole("tab", { name, exact: true });
+  return page
+    .getByRole("tablist", { name: "Tabs" })
+    .getByRole("tab", { name: new RegExp(`^${name}(, preview)?$`, "u") });
 }
 
 export function chatRow(page: Page, name: string): Locator {
