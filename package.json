@@ -21,6 +21,7 @@
     "lint:fix": "oxlint --fix .",
     "knip": "pnpm dlx knip@6.41.0",
     "cycles": "node scripts/check-cycles.mjs",
+    "layers": "node scripts/check-layers.mjs --report",
     "trace": "node scripts/trace.mjs",
     "models:generate": "turbo models:generate --filter=@nyte-ai/ai",
     "docs:dep": "node scripts/dependency-docs.mjs",
