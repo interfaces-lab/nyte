@@ -6,7 +6,7 @@ import { Dialog } from "@nyte-ai/ui/dialog";
 import { Input } from "@nyte-ai/ui/input";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { dismissLogin } from "./browser-surfaces.ts";
 
 const styles = create({

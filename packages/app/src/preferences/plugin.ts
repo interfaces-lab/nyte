@@ -3,7 +3,7 @@ import type { Json } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { connected, hostWatch } from "../sdk.tsx";
 import type { Setting } from "./store.ts";
 

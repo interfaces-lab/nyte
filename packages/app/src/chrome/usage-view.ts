@@ -1,7 +1,7 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import type { ProviderUsage } from "@nyte-ai/sdk";
-import type { UsageSnapshot } from "../bridge.ts";
-import type { UsageReport, UsageTotals, UsageWindow } from "../nyte.ts";
+import type { UsageSnapshot } from "../contract/bridge.ts";
+import type { UsageReport, UsageTotals, UsageWindow } from "../contract/nyte.ts";
 
 export const USAGE_STALE_AFTER_MS = 60_000;
 

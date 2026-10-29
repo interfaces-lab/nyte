@@ -12,7 +12,7 @@ import type { PaneId, PaneLayout } from "../layout/pane-layout.ts";
 import { useSessionDropTarget } from "../layout/session-dnd.tsx";
 import type { SessionDropTarget } from "../layout/session-dnd.tsx";
 import { useHostState } from "../queries.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 
 import {
   activeWorkbenchTab,
@@ -25,7 +25,7 @@ import {
 import type { WorkbenchViewKey } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { useChatWindow } from "../window/index.ts";
-import { clientCapabilities } from "../client-actions.ts";
+import { clientCapabilities } from "../contract/client-actions.ts";
 
 function panePreviewRect(
   layout: Extract<PaneLayout, { kind: "split" }>,

@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { shellActions } from "../chrome/shell-state.ts";
-import { clientActions } from "../client-actions.ts";
+import { clientActions } from "../contract/client-actions.ts";
 import { ContextSelector } from "./context-selector.tsx";
 
 export function EnvironmentMenu({ active }: { readonly active: boolean }): ReactElement {

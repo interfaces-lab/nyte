@@ -15,7 +15,7 @@ import { asId } from "@nyte-ai/schema";
 import type { ImageContent } from "@nyte-ai/schema/model";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { admitDraft } from "../client-plugins.tsx";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { COMPACT_COMMAND, workspaceFiles } from "../queries.ts";
 import { connected, sessionWatch } from "../sdk.tsx";
 import type { ComposerSubmission } from "./composer-document.ts";

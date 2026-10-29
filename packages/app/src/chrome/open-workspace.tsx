@@ -9,8 +9,8 @@ import type { Activation } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { keys, queryClient, useHostState } from "../queries.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { nyte } from "../nyte.ts";
-import type { HostBridge, OpenWorkspaceOutcome, TrustConsent } from "../bridge.ts";
+import { nyte } from "../contract/nyte.ts";
+import type { HostBridge, OpenWorkspaceOutcome, TrustConsent } from "../contract/bridge.ts";
 
 const styles = create({
   popup: {

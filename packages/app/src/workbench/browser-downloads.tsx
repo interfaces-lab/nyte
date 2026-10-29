@@ -1,13 +1,13 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import type { BrowserDownload } from "../bridge.ts";
+import type { BrowserDownload } from "../contract/bridge.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { revealLabel } from "../components/context-menu.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { dismissDownload } from "./browser-surfaces.ts";
 
 const styles = create({

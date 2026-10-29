@@ -1,12 +1,12 @@
 export { App } from "./app.tsx";
 
-export type { UpdateState } from "./bridge.ts";
+export type { UpdateState } from "./contract/bridge.ts";
 
 export { connectLocalHost, queryClient, setUpdateStateForDemo } from "./queries.ts";
 
 export { createAppRouter, startWindowTabs, windowTabRoute } from "./router.tsx";
 
-export type { DesktopWindow } from "./tabs/window-tabs.ts";
+export type { DesktopWindow } from "./contract/desktop-window.ts";
 
 export { startRendererStartup } from "./startup.ts";
 

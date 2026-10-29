@@ -11,7 +11,7 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { mentionsFolder } from "../conversation/message-references.ts";
 import { createFileRanking } from "../file-ranking.ts";
 import { treeStatus } from "./tree-theme.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 
 const MATCH_LIMIT = 50;
 

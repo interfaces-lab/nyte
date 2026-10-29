@@ -60,7 +60,7 @@ import { changesViewed, patchDigest } from "./changes-viewed.ts";
 import type { ViewedState } from "./changes-viewed.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 import { EMPTY_PATCH, patchStackSection } from "./stacked-diff.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 
 interface VcsChangeRow {
   readonly source: "working" | "commit";

@@ -30,7 +30,7 @@ import {
   PierreWorkerProvider,
 } from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { keyOwner } from "../shell/focus-owner.ts";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";

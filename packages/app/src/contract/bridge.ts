@@ -1,5 +1,5 @@
 import type { CredentialSource, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
-import type { ConnectionProblem, HostEndpoint } from "./sdk.tsx";
+import type { ConnectionProblem, HostEndpoint } from "./connection.ts";
 import { clientActions } from "./client-actions.ts";
 
 type Disposer = () => void;

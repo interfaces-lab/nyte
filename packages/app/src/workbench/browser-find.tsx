@@ -1,12 +1,12 @@
 import { create, props } from "@stylexjs/stylex";
 import { useImperativeHandle, useRef, useState } from "react";
 import type { ReactElement, Ref } from "react";
-import type { BrowserFindResult } from "../bridge.ts";
+import type { BrowserFindResult } from "../contract/bridge.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { setBrowserFinding } from "./browser-surfaces.ts";
 
 const styles = create({

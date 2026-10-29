@@ -16,7 +16,7 @@ import {
   usePaneControllerSnapshot,
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../queries.ts";
 import {
@@ -32,7 +32,7 @@ import {
   clientActionShortcut,
   clientActions,
   clientCapabilities,
-} from "../client-actions.ts";
+} from "../contract/client-actions.ts";
 
 import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
 import type { WindowState } from "../tabs/model.ts";

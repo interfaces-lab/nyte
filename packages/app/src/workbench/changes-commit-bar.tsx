@@ -14,7 +14,7 @@ import type {
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { useGitHub, useGitHubAccountState, useGitHubState } from "../chrome/github-account.ts";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import {
   Menu,
   MenuContent,

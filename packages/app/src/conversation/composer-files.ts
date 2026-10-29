@@ -1,5 +1,5 @@
 import type { ImageContent } from "@nyte-ai/schema/model";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { fileFromUrl } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";

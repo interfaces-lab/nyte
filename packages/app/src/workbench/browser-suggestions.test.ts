@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import type { BrowserHistoryEntry } from "../bridge.ts";
+import type { BrowserHistoryEntry } from "../contract/bridge.ts";
 import { browserSuggestions } from "./browser-suggestions.ts";
 
 const NOW = Date.UTC(2026, 0, 31);

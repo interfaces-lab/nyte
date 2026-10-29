@@ -1,9 +1,14 @@
 import type { Connection as SdkConnection, HostId } from "@nyte-ai/sdk";
-import type { HostEvent, NyteBridge, OpenWorkspaceOutcome, SelectedWorkspace } from "../bridge.ts";
-import { errorMessage } from "../errors.ts";
+import type {
+  HostEvent,
+  NyteBridge,
+  OpenWorkspaceOutcome,
+  SelectedWorkspace,
+} from "../contract/bridge.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { workspaceName } from "../view-helpers.ts";
 import { connectHost } from "../sdk.tsx";
-import type { HostEndpoint } from "../sdk.tsx";
+import type { HostEndpoint } from "../contract/connection.ts";
 import { requestFolderPath } from "./add-folder.tsx";
 
 export interface Connection {

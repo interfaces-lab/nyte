@@ -15,7 +15,7 @@ import { Sharing } from "@nyte-ai/service";
 import browserTools from "@nyte-ai/plugin/core/browser-tools";
 import type { ConnectShare } from "@nyte-ai/connect/host";
 import { ConnectError, ConnectRuntime, hostShare } from "@nyte-ai/connect/host";
-import { APP_ORIGINS } from "@nyte-ai/app/web/origins.ts";
+import { APP_ORIGINS } from "@nyte-ai/app/contract/origins.ts";
 import type {
   HostEvent,
   OpenWorkspaceOutcome,
@@ -26,7 +26,7 @@ import type {
   ServerConnectionProblem,
   ServerState,
   TailnetAvailability,
-} from "@nyte-ai/app/bridge.ts";
+} from "@nyte-ai/app/contract/bridge.ts";
 import type {
   CallHandler,
   CallInput,

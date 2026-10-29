@@ -5,7 +5,6 @@ import type {
   Connection,
   CredentialSource,
   GitStatus,
-  HostId,
   HostView,
   JobView,
   McpView,
@@ -24,17 +23,7 @@ import { countWork } from "./work-counts.ts";
 import { sessionActivityProjector } from "./conversation/session-activity.ts";
 import type { LoadedSessionView } from "./conversation/session-activity.ts";
 import { createTextPacer } from "./conversation/paced-text.ts";
-
-export interface HostEndpoint {
-  readonly url: string;
-  readonly credentials: Extract<CredentialSource, { readonly kind: "token" | "pairing" }>;
-  readonly expect?: { readonly hostId: HostId };
-}
-
-export interface ConnectionProblem {
-  readonly kind: "authentication" | "network" | "incompatible" | "server";
-  readonly message: string;
-}
+import type { ConnectionProblem, HostEndpoint } from "./contract/connection.ts";
 
 let installed: Connection | undefined;
 

@@ -1,4 +1,4 @@
-import type { HostEvent } from "@nyte-ai/app/bridge.ts";
+import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import type {
   CanvasPreviewOutcome,
   CanvasPreviewRequest,

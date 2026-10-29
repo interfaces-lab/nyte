@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import type { BrowserHistoryEntry, HostEvent } from "../bridge.ts";
-import { nyte } from "../nyte.ts";
+import type { BrowserHistoryEntry, HostEvent } from "../contract/bridge.ts";
+import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../queries.ts";
 
 const NONE: readonly BrowserHistoryEntry[] = [];

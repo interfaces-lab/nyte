@@ -48,9 +48,9 @@ import type {
   UpdateState,
   UsageSnapshot,
   UsageWindow,
-} from "./bridge.ts";
+} from "./contract/bridge.ts";
 import { groupByWorkspace } from "./session-list.ts";
-import { nyte } from "./nyte.ts";
+import { nyte } from "./contract/nyte.ts";
 import {
   childrenWatch,
   connectHost,

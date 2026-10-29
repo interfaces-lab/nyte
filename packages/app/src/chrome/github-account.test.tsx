@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import { SdkError } from "@nyte-ai/sdk";
 import type { GitHubAccountApi, GitHubAccountState, GitHubApi, GitHubState } from "@nyte-ai/sdk";
-import type { HostState } from "../bridge.ts";
+import type { HostState } from "../contract/bridge.ts";
 import { keys } from "../query-keys.ts";
 import { installConnection } from "../sdk.tsx";
 import { scriptedConnection } from "../../test/scripted-connection.ts";

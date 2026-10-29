@@ -1,7 +1,7 @@
 import type { Login } from "@nyte-ai/sdk";
 import { useSyncExternalStore } from "react";
-import type { DeviceCode } from "../bridge.ts";
-import { nyte } from "../nyte.ts";
+import type { DeviceCode } from "../contract/bridge.ts";
+import { nyte } from "../contract/nyte.ts";
 import { openExternal } from "../open-external.ts";
 import { connection } from "../sdk.tsx";
 

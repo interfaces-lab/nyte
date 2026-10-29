@@ -5,9 +5,9 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { usePaneActions, useCanSplitPane } from "../layout/pane-context.tsx";
 import type { PaneId } from "../layout/pane-layout.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 
-import { clientActions, clientActionShortcut } from "../client-actions.ts";
+import { clientActions, clientActionShortcut } from "../contract/client-actions.ts";
 
 export function PaneHeader({
   paneId,

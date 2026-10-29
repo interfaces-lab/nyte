@@ -1,10 +1,10 @@
 import type { RegisteredRouter } from "@tanstack/react-router";
-import type { AppMenuAction, HostState } from "../bridge.ts";
+import type { AppMenuAction, HostState } from "../contract/bridge.ts";
 import { shellActions } from "../chrome/shell-state.ts";
 import { folderPicker } from "../chrome/open-workspace.tsx";
-import { clientCapabilities } from "../client-actions.ts";
+import { clientCapabilities } from "../contract/client-actions.ts";
 import { focusNextPane, splitPanes } from "../layout/pane-context.tsx";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../queries.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";

@@ -3,7 +3,7 @@ import { exposeClerkBridge } from "@clerk/electron/preload";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import type { AccountBridge, AccountCommand } from "../account/protocol.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
-import type { AppMenuCommand } from "@nyte-ai/app/bridge.ts";
+import type { AppMenuCommand } from "@nyte-ai/app/contract/bridge.ts";
 import {
   BROWSER_BOUNDS_CHANNEL,
   BROWSER_FOCUS_CHANNEL,
@@ -26,8 +26,12 @@ import type {
   CallReplyFor,
   DesktopBridge,
 } from "../shared/ipc.ts";
-import type { BrowserBoundsMessage, BrowserFocusMessage, HostEvent } from "@nyte-ai/app/bridge.ts";
-import { bridgeError } from "@nyte-ai/app/errors.ts";
+import type {
+  BrowserBoundsMessage,
+  BrowserFocusMessage,
+  HostEvent,
+} from "@nyte-ai/app/contract/bridge.ts";
+import { bridgeError } from "@nyte-ai/app/contract/errors.ts";
 
 exposeClerkBridge();
 

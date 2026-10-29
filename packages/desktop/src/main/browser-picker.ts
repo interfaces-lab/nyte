@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import type { WebContents } from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { BrowserElementPick } from "@nyte-ai/app/bridge.ts";
+import type { BrowserElementPick } from "@nyte-ai/app/contract/bridge.ts";
 import { HTML_CHARS } from "../shared/browser-picker.ts";
 
 const PICKER_WORLD_ID = 1_000;

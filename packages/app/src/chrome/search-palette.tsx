@@ -19,8 +19,8 @@ import { useSessionSearch } from "../queries.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
-import { clientActionKeys, clientActions } from "../client-actions.ts";
-import { nyte } from "../nyte.ts";
+import { clientActionKeys, clientActions } from "../contract/client-actions.ts";
+import { nyte } from "../contract/nyte.ts";
 
 const TABS = ["all", "agents", "actions", "settings"] as const;
 

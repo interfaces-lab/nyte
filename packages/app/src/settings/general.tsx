@@ -5,14 +5,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ReactElement } from "react";
-import type { HostBridge, UpdateChannel } from "../bridge.ts";
+import type { HostBridge, UpdateChannel } from "../contract/bridge.ts";
 import { modifierKeyLabel } from "../conversation/composer-keys.ts";
 import { hostSetting, preferences, useSetting } from "../preferences/index.ts";
 import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
 import { settingsStyles as styles } from "./settings.stylex.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { keys } from "../query-keys.ts";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 
 const STARTUP = [
   { value: "new-chat", label: "New chat" },

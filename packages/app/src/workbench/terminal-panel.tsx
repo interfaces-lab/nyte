@@ -7,14 +7,14 @@ import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { SessionId, WorkspaceId } from "@nyte-ai/sdk";
 import { ADD_TO_CHAT_LABEL } from "../conversation/add-to-chat.ts";
-import { errorMessage } from "../errors";
+import { errorMessage } from "../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { useSession } from "../queries.ts";
 import { connection, jobsWatch } from "../sdk.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import type { WorkbenchTabId } from "./controller.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import {
   addTerminalToChat,
   mountTerminal,

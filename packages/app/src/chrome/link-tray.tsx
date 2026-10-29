@@ -11,8 +11,8 @@ import { motion, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import type { ReactElement, ReactNode } from "react";
-import type { ConnectBridge } from "../bridge.ts";
-import { errorMessage } from "../errors.ts";
+import type { ConnectBridge } from "../contract/bridge.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import {
   linkFailure,

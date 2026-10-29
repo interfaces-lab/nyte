@@ -1,5 +1,5 @@
 import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { preferences } from "../preferences/index.ts";
 import {
   applyPointerCursors,

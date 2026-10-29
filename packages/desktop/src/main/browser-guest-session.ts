@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { app, session } from "electron";
-import type { BrowserSurfaceState } from "@nyte-ai/app/bridge.ts";
+import type { BrowserSurfaceState } from "@nyte-ai/app/contract/bridge.ts";
 import { loadBlocker, shieldPaused } from "./adblock.ts";
 import type { Blocker } from "./adblock.ts";
 import type { BrowserOwner } from "./browser-agent.ts";

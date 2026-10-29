@@ -6,7 +6,7 @@ import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/in
 import type { ChatDirectory } from "../chats/index.ts";
 import { activateWorkspace } from "../chrome/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../queries.ts";
 import { sessionsWatch } from "../sdk.tsx";
 import { useChatWindow } from "../window/index.ts";

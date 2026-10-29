@@ -6,7 +6,7 @@ import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { worktreeFiles } from "../view-helpers.ts";
 import type { MentionFile } from "../conversation/message-references.ts";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import {
   Menu,
@@ -16,7 +16,7 @@ import {
   MenuSwitchItem,
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
-import type { HostBridge } from "../bridge.ts";
+import type { HostBridge } from "../contract/bridge.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
@@ -24,7 +24,7 @@ import { selectionWithin } from "@nyte-ai/ui/selection";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { WorkspaceFileTree } from "./file-tree.tsx";
 import { setTreeDrag } from "../conversation/composer-file-drop.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting, type Preference } from "../preferences/index.ts";
 import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../queries.ts";
 import { workbench } from "../theme/schema.stylex.ts";

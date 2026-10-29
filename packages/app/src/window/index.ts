@@ -2,7 +2,7 @@ import type { RegisteredRouter } from "@tanstack/react-router";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { SessionId } from "@nyte-ai/sdk";
 import { chatDirectory, subscribeChats } from "../chats/index.ts";
-import type { HostState } from "../nyte.ts";
+import type { HostState } from "../contract/nyte.ts";
 import { keys, queryClient } from "../queries.ts";
 import { connection } from "../sdk.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";

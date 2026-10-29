@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import type { ModelCatalogView, SessionView } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { HostState } from "../nyte.ts";
+import type { HostState } from "../contract/nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
 import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";

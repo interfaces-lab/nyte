@@ -8,9 +8,9 @@ import type {
   BrowserBridge,
   BrowserElementPick,
   BrowserNavigationAction,
-} from "../bridge.ts";
+} from "../contract/bridge.ts";
 import { addToChat } from "../conversation/add-to-chat.ts";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -19,7 +19,7 @@ import { workbenchStyles } from "./workbench.stylex.ts";
 import { WorkbenchRail } from "./workbench-rail.tsx";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { nyte } from "../nyte";
+import { nyte } from "../contract/nyte.ts";
 import { openExternal } from "../open-external.ts";
 import { keys } from "../queries.ts";
 import { displayAddress, parseWebUrl } from "./browser-address.ts";
@@ -41,8 +41,8 @@ import { DownloadsBar } from "./browser-downloads.tsx";
 import { FindBar } from "./browser-find.tsx";
 import type { FindBarHandle } from "./browser-find.tsx";
 import { LoginDialog } from "./browser-login.tsx";
-import { repeatsWhenHeld, resolveBrowserShortcut } from "./browser-shortcuts.ts";
-import type { BrowserShortcut } from "./browser-shortcuts.ts";
+import { repeatsWhenHeld, resolveBrowserShortcut } from "../contract/browser-shortcuts.ts";
+import type { BrowserShortcut } from "../contract/browser-shortcuts.ts";
 
 import { toggleBookmark, toggleBookmarkBar, useBookmarks } from "./browser-bookmarks.ts";
 import { ShieldMenu } from "./browser-shield.tsx";

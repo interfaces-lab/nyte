@@ -1,4 +1,4 @@
-import type { BrowserHistoryEntry } from "../bridge.ts";
+import type { BrowserHistoryEntry } from "../contract/bridge.ts";
 import { parseWebUrl, resolveBrowserAddress, searchAddress } from "./browser-address.ts";
 
 export interface BrowserSuggestion {

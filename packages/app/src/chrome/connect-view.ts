@@ -6,8 +6,8 @@ import type {
   ConnectNotice,
   ConnectUnavailable,
   ConnectView,
-} from "../bridge.ts";
-import { errorMessage } from "../errors.ts";
+} from "../contract/bridge.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { keys } from "../queries.ts";
 import type { ConnectionStanding } from "./connection-list.tsx";
 

@@ -3,19 +3,19 @@ import { focusManager, useMutation, useQueryClient } from "@tanstack/react-query
 import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/toast";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import type {
   RemoteAccessState,
   RemoteReach,
   ServedTarget,
   TailnetAvailability,
-} from "../bridge.ts";
+} from "../contract/bridge.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { MenuItem } from "@nyte-ai/ui/menu";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { openExternal } from "../open-external.ts";
 import { keys, useRemoteAccessState } from "../queries.ts";
 import { ConnectionList, ConnectionMenu, ConnectionRow } from "./connection-list.tsx";

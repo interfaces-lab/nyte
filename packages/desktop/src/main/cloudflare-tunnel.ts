@@ -10,7 +10,7 @@ import type {
   CloudflareTunnelView,
   RemoteDevice,
   RemotePairing,
-} from "@nyte-ai/app/bridge.ts";
+} from "@nyte-ai/app/contract/bridge.ts";
 import { CloudflaredConnector, findCloudflared, prepareConnectorDirectory } from "./cloudflared.ts";
 import type { ConnectorTiming } from "./cloudflared.ts";
 import {

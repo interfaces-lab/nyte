@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import type { BrowserSurfaceState } from "../bridge.ts";
+import type { BrowserSurfaceState } from "../contract/bridge.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import {

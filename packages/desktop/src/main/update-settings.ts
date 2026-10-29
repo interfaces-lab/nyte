@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import type { UpdateChannel } from "@nyte-ai/app/bridge.ts";
+import type { UpdateChannel } from "@nyte-ai/app/contract/bridge.ts";
 
 const updateSettings = Compile(
   Type.Object({ channel: Type.Enum(["stable", "nightly"]) }, { additionalProperties: false }),

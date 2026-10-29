@@ -1,6 +1,6 @@
-import type { HostBridge, NyteBridge } from "@nyte-ai/app/bridge.ts";
-import type { DesktopWindow } from "@nyte-ai/app/tabs/window-tabs.ts";
-import type { IpcFailure } from "@nyte-ai/app/errors.ts";
+import type { HostBridge, NyteBridge } from "@nyte-ai/app/contract/bridge.ts";
+import type { DesktopWindow } from "@nyte-ai/app/contract/desktop-window.ts";
+import type { IpcFailure } from "@nyte-ai/app/contract/errors.ts";
 
 export const CALL_CHANNEL = "nyte:call";
 

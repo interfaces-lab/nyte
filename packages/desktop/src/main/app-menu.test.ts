@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { MenuItemConstructorOptions } from "electron";
-import type { AppInfo, AppMenuCommand, BrowserKey } from "@nyte-ai/app/bridge.ts";
-import { clientActions } from "@nyte-ai/app/client-actions.ts";
+import type { AppInfo, AppMenuCommand, BrowserKey } from "@nyte-ai/app/contract/bridge.ts";
+import { clientActions } from "@nyte-ai/app/contract/client-actions.ts";
 import {
   acceleratorMatches,
   applicationMenuTemplate,

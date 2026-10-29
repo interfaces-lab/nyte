@@ -1,7 +1,7 @@
 import { SdkError } from "@nyte-ai/sdk";
 import type { Connection } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import type { PaneActions } from "../layout/pane-context.tsx";
 import type { DraftStatus, SessionViewStateStore } from "../layout/session-view-state.ts";
 import { readStartCatalog, selectedWorkspaceId } from "../queries.ts";

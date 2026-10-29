@@ -29,7 +29,7 @@ import type { EndSpan } from "@nyte-ai/sdk";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { useHostState } from "../queries.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { patchDigest } from "../workbench/changes-viewed.ts";

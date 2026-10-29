@@ -9,7 +9,7 @@ import "../theme/global.css";
 import { receiveChatExcerpts } from "../conversation/add-to-chat.ts";
 import { ComposerEditor } from "../conversation/composer-editor.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { ChangesStack } from "./changes-stack.tsx";
 import { patchDigest } from "./changes-viewed.ts";
 

@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { serial } from "@nyte-ai/schema/serial";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import type { BrowserHistoryEntry } from "@nyte-ai/app/bridge.ts";
+import type { BrowserHistoryEntry } from "@nyte-ai/app/contract/bridge.ts";
 import type { BrowserOwner } from "./browser-agent.ts";
 import { retainDiagnostic } from "./errors.ts";
 

@@ -14,14 +14,18 @@ import { Link, useRouter } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import { clientActionAriaShortcut, clientActionKeys, clientActions } from "../client-actions.ts";
+import {
+  clientActionAriaShortcut,
+  clientActionKeys,
+  clientActions,
+} from "../contract/client-actions.ts";
 import {
   hideFromPanes,
   usePaneActions,
   usePaneControllerSnapshot,
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import {
   useForgetWorkspace,

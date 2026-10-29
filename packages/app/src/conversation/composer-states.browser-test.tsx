@@ -24,7 +24,7 @@ import type {
   UserContent,
 } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { HostState } from "../nyte.ts";
+import type { HostState } from "../contract/nyte.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
 import { PaneController } from "../layout/pane-controller.ts";

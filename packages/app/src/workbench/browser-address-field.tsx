@@ -8,7 +8,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useId, useImperativeHandle, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent, ReactElement, ReactNode, Ref } from "react";
 import { flushSync } from "react-dom";
-import type { BrowserHistoryEntry } from "../bridge.ts";
+import type { BrowserHistoryEntry } from "../contract/bridge.ts";
 import { displayAddress, resolveBrowserAddress } from "./browser-address.ts";
 import { occludes } from "./browser-occlusion.ts";
 import { browserSuggestions } from "./browser-suggestions.ts";

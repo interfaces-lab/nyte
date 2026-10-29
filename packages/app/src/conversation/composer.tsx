@@ -7,7 +7,7 @@ import type { Delivery, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { runMark, runStatusLabel } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus, UserMessage } from "@nyte-ai/plugin/client/presentation";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import {
@@ -21,8 +21,8 @@ import {
   useSessionChoice,
 } from "../queries.ts";
 import { connection, sessionWatch } from "../sdk.tsx";
-import { nyte } from "../nyte.ts";
-import { clientActionAriaShortcut, clientActions } from "../client-actions.ts";
+import { nyte } from "../contract/nyte.ts";
+import { clientActionAriaShortcut, clientActions } from "../contract/client-actions.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../layout/session-view-state.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";

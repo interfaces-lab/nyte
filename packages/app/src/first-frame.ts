@@ -10,7 +10,7 @@ import { hashKey } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { HostState } from "./bridge.ts";
+import type { HostState } from "./contract/bridge.ts";
 import { keys, newestModelCatalog, queryClient } from "./queries.ts";
 import { sessionsWatch, sessionWatch } from "./sdk.tsx";
 import { sessionId } from "./schemas.ts";

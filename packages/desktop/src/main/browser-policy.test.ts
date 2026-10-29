@@ -11,7 +11,7 @@ import {
   uniqueDownloadName,
   webUrl,
 } from "./browser-policy.ts";
-import type { BrowserKey } from "@nyte-ai/app/bridge.ts";
+import type { BrowserKey } from "@nyte-ai/app/contract/bridge.ts";
 
 describe("browser policy", () => {
   test("accepts only web addresses", () => {

@@ -3,7 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { revealLabel } from "../components/context-menu.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { customizeStyles as styles } from "./customize.stylex.ts";
 

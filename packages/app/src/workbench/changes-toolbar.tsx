@@ -43,7 +43,7 @@ import type {
 } from "./change-scopes.ts";
 import type { ChangesLayout, ChangesViewOptions } from "./changes-view-options.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 
 const COMMIT_PAGE_SIZE = 20;
 

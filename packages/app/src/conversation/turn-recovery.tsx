@@ -5,7 +5,7 @@ import { toast } from "@nyte-ai/ui/toast";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { connected } from "../sdk.tsx";
 import { showsSettingsSection } from "../settings/index.ts";
 import { SessionModelChip } from "./composer-model-chip.tsx";

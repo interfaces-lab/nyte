@@ -1,5 +1,10 @@
 import { useSyncExternalStore } from "react";
-import type { BrowserDownload, BrowserKey, BrowserSurfaceState, HostEvent } from "../bridge.ts";
+import type {
+  BrowserDownload,
+  BrowserKey,
+  BrowserSurfaceState,
+  HostEvent,
+} from "../contract/bridge.ts";
 import type { WorkbenchController, WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
 import { workbenchController, workbenchViewKey } from "./controller.ts";
 

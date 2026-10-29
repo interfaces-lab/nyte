@@ -11,7 +11,7 @@ import { Input } from "@nyte-ai/ui/input";
 import { Switch } from "@nyte-ai/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { modelIcon, providerIcon } from "../conversation/model-picker-state.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../catalog.ts";
 import { useCatalog, useSetListing, useSetPreference } from "../queries.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";

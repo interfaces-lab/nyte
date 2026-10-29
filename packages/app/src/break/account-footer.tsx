@@ -12,7 +12,7 @@ import { StrictMode, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { GitHubAccountState } from "@nyte-ai/sdk";
-import type { ConnectView, UpdateState } from "../bridge.ts";
+import type { ConnectView, UpdateState } from "../contract/bridge.ts";
 import { AccountFooterMenu } from "../chrome/account-footer.tsx";
 import { sidebarStyles as styles } from "../chrome/sidebar.stylex.ts";
 import { keys } from "../query-keys.ts";

@@ -1,5 +1,5 @@
 import type { GitHubRepository, GitStatus } from "@nyte-ai/sdk";
-import type { ClientSurface } from "../bridge.ts";
+import type { ClientSurface } from "../contract/bridge.ts";
 import type { Chat } from "../chats/index.ts";
 
 export interface ChatFact {

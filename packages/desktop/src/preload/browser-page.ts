@@ -1,5 +1,5 @@
 import { ipcRenderer } from "electron";
-import type { BrowserKey } from "@nyte-ai/app/bridge.ts";
+import type { BrowserKey } from "@nyte-ai/app/contract/bridge.ts";
 import { BROWSER_PAGE_KEY_CHANNEL } from "../shared/browser-page.ts";
 
 const mac = process.platform === "darwin";

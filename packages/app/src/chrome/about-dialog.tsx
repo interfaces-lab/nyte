@@ -2,7 +2,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
-import type { AppInfo } from "../bridge.ts";
+import type { AppInfo } from "../contract/bridge.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";

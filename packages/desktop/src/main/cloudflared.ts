@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
-import type { TunnelConnection, TunnelFailure } from "@nyte-ai/app/bridge.ts";
+import type { TunnelConnection, TunnelFailure } from "@nyte-ai/app/contract/bridge.ts";
 
 const CLOUDFLARED_PATHS = [
   "/opt/homebrew/bin/cloudflared",

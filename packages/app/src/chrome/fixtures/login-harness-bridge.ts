@@ -1,6 +1,6 @@
 import type { HostView, ModelCatalogView } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import type { HostBridge } from "../../bridge.ts";
+import type { HostBridge } from "../../contract/bridge.ts";
 import { installConnection } from "../../sdk.tsx";
 import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
 

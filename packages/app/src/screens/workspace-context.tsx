@@ -11,8 +11,8 @@ import {
 } from "@nyte-ai/ui/menu";
 import { useGitHub, useGitHubState } from "../chrome/github-account.ts";
 import { folderPicker, handleOpenOutcome } from "../chrome/open-workspace.tsx";
-import { clientActions } from "../client-actions.ts";
-import { nyte } from "../nyte.ts";
+import { clientActions } from "../contract/client-actions.ts";
+import { nyte } from "../contract/nyte.ts";
 import { useHostState, useVcsSnapshot, useWorkspaceSessions, useWorkspaces } from "../queries.ts";
 import { ContextSelector } from "./context-selector.tsx";
 import { contextStyles } from "./context-selector.stylex.ts";

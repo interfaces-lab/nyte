@@ -1,4 +1,4 @@
-import type { UpdateState } from "@nyte-ai/app/bridge.ts";
+import type { UpdateState } from "@nyte-ai/app/contract/bridge.ts";
 import type { MessageBoxOptions } from "electron";
 import type { AppUpdater } from "electron-updater";
 import type { DesktopUpdateActivity } from "./host.ts";

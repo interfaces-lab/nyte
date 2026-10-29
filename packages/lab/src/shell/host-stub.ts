@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
-import type { HostState, NyteBridge, SelectedWorkspace } from "@nyte-ai/app/bridge.ts";
-import { installBridge } from "@nyte-ai/app/nyte.ts";
+import type { HostState, NyteBridge, SelectedWorkspace } from "@nyte-ai/app/contract/bridge.ts";
+import { installBridge } from "@nyte-ai/app/contract/nyte.ts";
 
 export const workspace = {
   id: asId<"workspace">("lab"),

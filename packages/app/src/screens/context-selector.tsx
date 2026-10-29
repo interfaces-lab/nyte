@@ -13,8 +13,8 @@ import {
   clientActions,
   clientCapabilities,
   resolveClientAction,
-} from "../client-actions.ts";
-import { nyte } from "../nyte.ts";
+} from "../contract/client-actions.ts";
+import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { contextStyles } from "./context-selector.stylex.ts";
 

@@ -35,7 +35,7 @@ import {
   type UsageRange,
   type UsageRow,
 } from "./usage-view.ts";
-import type { UsageWindow } from "../bridge.ts";
+import type { UsageWindow } from "../contract/bridge.ts";
 
 const MAX_ROWS = 6;
 

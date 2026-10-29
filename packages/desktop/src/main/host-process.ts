@@ -1,6 +1,6 @@
 import { app, dialog, MessageChannelMain, utilityProcess } from "electron";
 import type { MessagePortMain, UtilityProcess } from "electron";
-import type { HostEvent } from "@nyte-ai/app/bridge.ts";
+import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import type { CallReply, CallRequest } from "../shared/ipc.ts";
 import type { AccountState } from "./account-session.ts";
 import type { DesktopSettings } from "./desktop-settings.ts";

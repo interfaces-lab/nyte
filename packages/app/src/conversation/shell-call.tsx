@@ -22,7 +22,7 @@ import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { activityStyles } from "./activity.stylex.ts";
 import { moveToBackground } from "./shell-background.ts";

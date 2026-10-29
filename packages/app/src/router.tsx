@@ -37,13 +37,17 @@ import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar } from "./theme/schema.stylex.ts";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { nyte } from "./nyte.ts";
-import { clientCapabilities, resolveClientAction, resolveTabShortcut } from "./client-actions.ts";
+import { nyte } from "./contract/nyte.ts";
+import {
+  clientCapabilities,
+  resolveClientAction,
+  resolveTabShortcut,
+} from "./contract/client-actions.ts";
 import { activeTab, tabPlace } from "./tabs/model.ts";
 import { placeHref } from "./tabs/places.ts";
 import { useWindowTabsSync } from "./tabs/use-window-tabs.tsx";
 import { windowTabs } from "./tabs/window-tabs.ts";
-import type { DesktopWindow } from "./tabs/window-tabs.ts";
+import type { DesktopWindow } from "./contract/desktop-window.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { CustomizeSurface } from "./chrome/customize.tsx";

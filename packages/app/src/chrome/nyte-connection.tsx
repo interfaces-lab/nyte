@@ -9,8 +9,8 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { ConnectBridge } from "../bridge.ts";
-import { errorMessage } from "../errors.ts";
+import type { ConnectBridge } from "../contract/bridge.ts";
+import { errorMessage } from "../contract/errors.ts";
 import {
   linkedStanding,
   noticeNote,

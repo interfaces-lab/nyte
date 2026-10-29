@@ -5,10 +5,10 @@ import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-import { clientCapabilities } from "../client-actions.ts";
-import type { ClientCapabilities } from "../client-actions.ts";
+import { clientCapabilities } from "../contract/client-actions.ts";
+import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { loadDeferred, readDeferred } from "../deferred.tsx";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 
 export const WORKBENCH_SHARE_DEFAULT = 0.5;
 

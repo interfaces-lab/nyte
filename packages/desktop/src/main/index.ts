@@ -33,7 +33,7 @@ import {
 } from "../shared/ipc.ts";
 import type { CallHandler, CallRequest, CallTable, MainCallPath } from "../shared/ipc.ts";
 import { machineName } from "@nyte-ai/connect/host";
-import type { HostEvent } from "@nyte-ai/app/bridge.ts";
+import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import {

@@ -14,7 +14,7 @@ import type {
   SessionView,
 } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { HostState } from "../nyte.ts";
+import type { HostState } from "../contract/nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
 import type { ScrollViewState } from "../layout/session-view-state.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";

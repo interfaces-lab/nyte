@@ -6,7 +6,7 @@ import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { toast } from "@nyte-ai/ui/toast";
-import type { DeviceCode } from "../bridge.ts";
+import type { DeviceCode } from "../contract/bridge.ts";
 import { answerLogin } from "./login-attempts.ts";
 import type { BrowserSignIn } from "./login-attempts.ts";
 import { openExternal } from "../open-external.ts";

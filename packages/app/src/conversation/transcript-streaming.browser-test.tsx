@@ -15,7 +15,7 @@ import type {
 } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
-import type { HostState } from "../nyte.ts";
+import type { HostState } from "../contract/nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
 import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";

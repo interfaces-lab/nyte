@@ -8,7 +8,7 @@ import type {
   RemoteDevice,
   RemotePairing,
   TunnelConnection,
-} from "../bridge.ts";
+} from "../contract/bridge.ts";
 import { keys } from "../queries.ts";
 import { RemoteAccess } from "./server-settings.tsx";
 

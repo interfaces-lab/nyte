@@ -7,7 +7,7 @@ import type { CommandCompletion, Delivery } from "@nyte-ai/sdk";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import type { RunningMessagePreference } from "../preferences/index.ts";
 import { ImagePreview } from "./image-preview.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";

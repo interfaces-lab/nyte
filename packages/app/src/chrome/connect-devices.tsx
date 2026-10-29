@@ -1,7 +1,7 @@
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import type { ConnectBridge, ConnectDevice } from "../bridge.ts";
+import type { ConnectBridge, ConnectDevice } from "../contract/bridge.ts";
 import { useConnectAction } from "./connect-view.ts";
 import type { LinkedView } from "./connect-view.ts";
 import { DeviceRows } from "./device-rows.tsx";

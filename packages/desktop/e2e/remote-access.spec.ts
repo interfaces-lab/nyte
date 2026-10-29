@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import type { Page } from "@playwright/test";
 import { collectErrors } from "@nyte-ai/app/e2e/errors";
-import { APP_ORIGINS } from "@nyte-ai/app/web/origins.ts";
+import { APP_ORIGINS } from "@nyte-ai/app/contract/origins.ts";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
 import { chatRow, revealChat, sidebar } from "./ui.ts";

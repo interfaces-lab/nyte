@@ -8,7 +8,7 @@ import {
 import { SdkError } from "@nyte-ai/sdk";
 import type { GitHubAccountState, GitHubApi } from "@nyte-ai/sdk";
 import { keys, useHostState } from "../queries.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { connected } from "../sdk.tsx";
 import { startupReadsReleased } from "../startup.ts";
 

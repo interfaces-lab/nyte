@@ -1,5 +1,5 @@
 import type { FileDocument, FileVersion, FormatOutcome, WriteOutcome } from "@nyte-ai/sdk";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 
 type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
 

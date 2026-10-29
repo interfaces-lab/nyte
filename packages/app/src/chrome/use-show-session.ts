@@ -1,6 +1,6 @@
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { commitHostWorkspace, keys, queryClient } from "../queries.ts";
-import type { HostState } from "../nyte.ts";
+import type { HostState } from "../contract/nyte.ts";
 import { handleOpenOutcome } from "./open-workspace.tsx";
 
 export async function activateWorkspace(path: string | null): Promise<boolean> {

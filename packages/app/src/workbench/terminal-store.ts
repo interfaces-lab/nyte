@@ -12,7 +12,7 @@ import { toast } from "@nyte-ai/ui/toast";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { useSyncExternalStore } from "react";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { connected, hostWatch } from "../sdk.tsx";
 import { workspacePath as pathOfWorkspace } from "../view-helpers.ts";
 import type { WorkbenchController, WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";

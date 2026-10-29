@@ -8,7 +8,7 @@ import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { connectionProblem, hostChanged } from "../sdk.tsx";
 import type { Connection } from "./bridge.ts";
 import { parseConnection, saveConnection } from "./connection.ts";

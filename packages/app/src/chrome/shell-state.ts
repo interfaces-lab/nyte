@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import type { AppInfo } from "../bridge.ts";
+import type { AppInfo } from "../contract/bridge.ts";
 import { preferences, SIDEBAR_WIDTH } from "../preferences/index.ts";
 import { activeTab } from "../tabs/model.ts";
 import type { Page } from "../tabs/model.ts";

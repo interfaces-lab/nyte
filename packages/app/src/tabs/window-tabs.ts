@@ -16,6 +16,7 @@ import {
   withoutPreviews,
 } from "./model.ts";
 import type { LastingTab, OpenIntent, WindowAction, WindowState } from "./model.ts";
+import type { DesktopWindow } from "../contract/desktop-window.ts";
 
 /** Each window keeps its tabs and drafts under its own id. */
 const WINDOW_KEY_PREFIX = "nyte.window.v1:";
@@ -26,12 +27,6 @@ const EARLIER_STRIP_KEY = "nyte.desktop.tabs.v1";
 const EARLIER_TAB_KEY_PREFIX = "nyte.desktop.tab.v1:";
 
 const SAVE_DELAY_MS = 250;
-
-/** How the desktop opened a window: its lasting id and, when no other window was open, every id worth keeping. */
-export interface DesktopWindow {
-  readonly id: string;
-  readonly launch: { readonly windowIds: readonly string[] } | undefined;
-}
 
 const strict = { additionalProperties: false };
 

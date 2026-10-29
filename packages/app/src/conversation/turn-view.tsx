@@ -65,7 +65,7 @@ import { stepGroupStyles } from "./step-group.stylex.ts";
 import { conversation } from "../theme/schema.stylex.ts";
 import { useNowMinute } from "../use-now-minute.ts";
 import type { PromptRow, TurnItemRow } from "./transcript-rows.ts";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
 
 function UserMessagePreview({

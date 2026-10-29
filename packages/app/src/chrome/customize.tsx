@@ -22,7 +22,7 @@ import { Tabs } from "@nyte-ai/ui/tabs";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ShellSearch } from "../shell/search.ts";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import {
   useApplyPluginSetting,
   useHostState,
