@@ -17,6 +17,8 @@ import { activePane } from "../layout/pane-layout.ts";
 import type { PaneState } from "../layout/pane-layout.ts";
 import { useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
 import { useHostState } from "../queries.ts";
+import { clientActions, clientCapabilities, resolveClientAction } from "../client-actions.ts";
+import { nyte } from "../nyte.ts";
 import { sessionsWatch, sessionWatch, useWatchSelect } from "../sdk.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
@@ -24,25 +26,43 @@ import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
 import { workbenchViewKey } from "../workbench/controller.ts";
 import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
 
+/**
+ * Sends keys pressed outside any field to the active pane's composer: printable keys and paste land
+ * in it, and the model shortcut opens its picker from anywhere but another field.
+ */
 function TypeToCompose({
   input,
 }: {
   readonly input: RefObject<ComposerEditorHandle | null>;
 }): null {
   useMountEffect(() => {
+    const mac = nyte.platform === "darwin";
+
     const route = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.isComposing) return;
+      const owner = keyOwner();
+
       if (
-        event.defaultPrevented ||
-        event.isComposing ||
-        event.ctrlKey ||
-        event.metaKey ||
-        event.altKey ||
-        event.key.length !== 1 ||
-        (event.key === " " && document.activeElement !== document.body) ||
-        keyOwner() !== undefined
-      )
+        resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host))?.id ===
+        clientActions.selectModel.id
+      ) {
+        if (owner !== undefined && owner !== input.current?.readElement()) return;
+        event.preventDefault();
+        input.current?.openModelPicker();
+
         return;
-      input.current?.focus({ preventScroll: true });
+      }
+
+      if (owner !== undefined || event.altKey) return;
+      const paste = (mac ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === "v";
+
+      const typed =
+        !event.ctrlKey &&
+        !event.metaKey &&
+        event.key.length === 1 &&
+        (event.key !== " " || document.activeElement === document.body);
+
+      if (paste || typed) input.current?.focus({ preventScroll: true });
     };
 
     window.addEventListener("keydown", route);

@@ -149,7 +149,7 @@ test("a queued message waits in the queue until the response stops; a steer stay
   await field.press("ControlOrMeta+Enter");
   const queued = queue.getByRole("listitem").filter({ hasText: "Queued while holding" });
   await queued.hover();
-  await expect(queued.getByRole("button", { name: "Add to next response" })).toBeVisible();
+  await expect(queued.getByRole("button", { name: "Steer", exact: true })).toBeVisible();
   await expect(queued).toBeVisible();
   await expect(log.getByText("Queued while holding")).toHaveCount(0);
   await stop.press("Enter");

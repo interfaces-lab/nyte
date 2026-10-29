@@ -18,11 +18,12 @@ import { carriesFiles, carriesTreeFiles, droppedTreeFiles } from "./composer-fil
 import type { ComposerImageAttachment } from "./composer-files.ts";
 import {
   composerEnterAction,
-  deliveryChoices,
-  modifierKeyLabel,
+  enterBehavior,
+  recallDirection,
   submissionDelivery,
 } from "./composer-keys.ts";
 import type { SubmitAction } from "./composer-keys.ts";
+import type { RecallDirection } from "./composer-history.ts";
 import type { MessageReference } from "./message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 
@@ -62,7 +63,12 @@ interface ComposerFrameProps {
   onDismissTray?: () => boolean;
   floating?: boolean;
   onEmptySubmit?: () => boolean;
+  /** Puts an earlier prompt in the composer; false when there is none to step to. */
+  onRecall?: (direction: RecallDirection) => boolean;
   model?: ReactNode;
+  onOpenModelPicker?: () => void;
+  /** Shown beside Send: how full the chat's context window is. */
+  contextUsage?: ReactNode;
   inputRef?: (element: ComposerEditorHandle | null) => void;
   onFocusChange?: (focused: boolean) => void;
   suggestionCatalog: ComposerSuggestionCatalog;
@@ -92,7 +98,10 @@ export function ComposerFrame({
   onDismissTray,
   floating = false,
   onEmptySubmit,
+  onRecall,
   model,
+  onOpenModelPicker,
+  contextUsage,
   inputRef,
   onFocusChange,
   suggestionCatalog,
@@ -167,24 +176,18 @@ export function ComposerFrame({
       attachmentError !== undefined ||
       editing !== undefined);
 
-  const modifier = modifierKeyLabel(nyte.platform === "darwin");
-
-  const sendLabel = answering ? "Send answer" : "Send message";
-
-  const sendTitle =
+  const send = enterBehavior(
     editing?.kind === "queued"
-      ? editing.delivery === deliveryChoices.steer
-        ? `Update (Enter) · Queue Instead (${modifier}Enter)`
-        : `Update (Enter) · Steer Instead (${modifier}Enter)`
+      ? { kind: "editing-queued", delivery: editing.delivery }
       : editing?.kind === "message"
-        ? "Send Edited Message (Enter)"
+        ? { kind: "editing-message" }
         : answering
-          ? "Send answer (Enter)"
+          ? { kind: "answering" }
           : busy
-            ? runningMessagePreference === "queue"
-              ? `Queue (Enter) · Steer (${modifier}Enter)`
-              : `Steer (Enter) · Queue (${modifier}Enter)`
-            : "Send Message (Enter)";
+            ? { kind: "running", preference: runningMessagePreference }
+            : { kind: "idle" },
+    nyte.platform === "darwin",
+  );
 
   const resize = (text?: string): void => {
     const area = areaRef.current?.readElement();
@@ -248,16 +251,7 @@ export function ComposerFrame({
     setSubmitting(true);
 
     return Promise.resolve(
-      onSubmit(
-        submission,
-        submissionDelivery(
-          action,
-          deliveryChoices,
-          editing?.kind === "queued" ? editing.delivery : undefined,
-          busy && editing === undefined ? runningMessagePreference : "steer",
-        ),
-        currentDocument,
-      ),
+      onSubmit(submission, submissionDelivery(action, send.delivery), currentDocument),
     ).finally(() => setSubmitting(false));
   };
 
@@ -466,7 +460,9 @@ export function ComposerFrame({
             }
             files={suggestionMenu.files}
             combobox={answering ? undefined : suggestionMenu.combobox}
-            placeholder={dragging === "files" ? DROP_PLACEHOLDER : placeholder}
+            placeholder={
+              dragging === "files" ? DROP_PLACEHOLDER : (send.placeholder ?? placeholder)
+            }
             document={document}
             disabled={disabled}
             onReferencesChange={setReferences}
@@ -476,9 +472,18 @@ export function ComposerFrame({
               suggestionMenu.onCompletionChange(answering ? undefined : completion, next);
             }}
             onFilesSelected={onFilesSelected}
+            onOpenModelPicker={onOpenModelPicker}
             onFocusChange={onFocusChange}
             onKeyDown={(event) => {
               if (!answering && suggestionMenu.onKeyDown(event)) return;
+              const recall = recallDirection(event);
+
+              if (recall !== undefined && onRecall?.(recall) === true) {
+                event.preventDefault();
+
+                return;
+              }
+
               const enter = composerEnterAction(event);
 
               if (enter === "submit" || enter === "submit-alternate") {
@@ -575,6 +580,7 @@ export function ComposerFrame({
           </span>
           <span {...props(composerStyles.spacer, compact && composerStyles.spacerCompact)} />
           <span {...props(composerStyles.sendActions, compact && composerStyles.sendCompact)}>
+            {contextUsage}
             {busy && onAbort !== undefined && (
               <Button
                 iconOnly
@@ -593,8 +599,8 @@ export function ComposerFrame({
               <Button
                 iconOnly
                 icon="arrow-up"
-                aria-label={sendLabel}
-                title={sendTitle}
+                aria-label={send.label}
+                title={send.title}
                 type="submit"
                 variant="solid"
                 tone="primary"

@@ -87,6 +87,54 @@ test("the composer journey", async ({ desktop }) => {
     await page.keyboard.press("Escape");
     await expect(picker).toHaveCount(0);
   });
+
+  await test.step("Ctrl+/ opens the model picker, and closing it returns to the composer", async () => {
+    const field = composer(page);
+    await field.focus();
+    await page.keyboard.press("ControlOrMeta+/");
+    const picker = page.getByRole("menu");
+    await expect(picker).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(picker).toBeHidden();
+    await expect(field).toBeFocused();
+  });
+
+  await test.step("pasting with no field focused lands in the composer", async () => {
+    await desktop.application.evaluate(({ clipboard }) =>
+      clipboard.writeText("Pasted from nowhere"),
+    );
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    });
+    await page.keyboard.press("ControlOrMeta+v");
+    await expect(composer(page)).toBeFocused();
+    await expect(composer(page)).toHaveText("Pasted from nowhere");
+    await clearComposer(page);
+  });
+
+  await test.step("while a response runs, the placeholder names what Enter does", async () => {
+    await send(page, "/hold");
+    const stop = chatPane(page).getByRole("button", { name: "Stop response" });
+    await expect(stop).toBeVisible();
+    await expect(composer(page)).toHaveAttribute("data-placeholder", "Steer without stopping");
+    await stop.click();
+    await expect(stop).toBeHidden();
+    await expect(composer(page)).toHaveAttribute("data-placeholder", "Add a follow-up");
+  });
+
+  await test.step("Ctrl+Alt+Up and Down walk this chat's prompts, then return to the draft", async () => {
+    const field = composer(page);
+    await field.fill("Not sent yet");
+    await field.press("Control+Alt+ArrowUp");
+    await expect(field).toHaveText("/hold");
+    await field.press("Control+Alt+ArrowUp");
+    await expect(field).toHaveText("A first draft");
+    await field.press("Control+Alt+ArrowDown");
+    await expect(field).toHaveText("/hold");
+    await field.press("Control+Alt+ArrowDown");
+    await expect(field).toHaveText("Not sent yet");
+    await clearComposer(page);
+  });
 });
 
 test("an attached image starts a new chat with its first message", async ({ desktop }) => {

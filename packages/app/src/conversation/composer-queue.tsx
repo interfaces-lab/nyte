@@ -27,7 +27,7 @@ interface ComposerQueueProps {
   readonly enterSteers: boolean;
   readonly mac: boolean;
   readonly onEdit: (message: UserMessage) => void;
-  readonly onSendNow: (message: UserMessage) => void;
+  readonly onSteer: (message: UserMessage) => void;
   readonly onCancel: (message: UserMessage) => void;
   readonly onRemoveUnsent: (message: UserMessage) => void;
   readonly onEditBlocked: (reason: string) => void;
@@ -65,7 +65,7 @@ export function ComposerQueue({
   enterSteers,
   mac,
   onEdit,
-  onSendNow,
+  onSteer,
   onCancel,
   onRemoveUnsent,
   onEditBlocked,
@@ -82,7 +82,7 @@ export function ComposerQueue({
   const deleteKey = mac ? "Meta+Backspace" : "Control+Delete";
 
   const unsentDescription = `${mac ? "Command+Backspace" : "Ctrl+Delete"} removes. Escape returns to the composer.`;
-  const description = `Enter sends now. Space or Right Arrow edits. ${unsentDescription}`;
+  const description = `Enter steers. Space or Right Arrow edits. ${unsentDescription}`;
 
   const release = (button: Element): void => {
     if (button === document.activeElement) onReturn();
@@ -140,7 +140,7 @@ export function ComposerQueue({
       event.preventDefault();
       onReturn();
 
-      if (item.delivery !== deliveryChoices.steer) onSendNow(item);
+      if (item.delivery !== deliveryChoices.steer) onSteer(item);
 
       return;
     }
@@ -217,10 +217,11 @@ export function ComposerQueue({
                     <Button
                       iconOnly
                       icon="arrow-up"
-                      aria-label="Add to next response"
+                      aria-label="Steer"
+                      title="Sends without stopping the agent"
                       onClick={(event) => {
                         release(event.currentTarget);
-                        onSendNow(item);
+                        onSteer(item);
                       }}
                     />
                   )}

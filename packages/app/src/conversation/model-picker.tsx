@@ -97,6 +97,9 @@ interface ModelPickerProps {
   loading?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Where focus goes when the picker closes; the trigger by default. */
+  finalFocus?: () => HTMLElement | null | undefined;
+  keyShortcuts?: string;
   onChange: (change: ModelPickerChange) => void;
 }
 
@@ -109,6 +112,8 @@ export function ModelPicker({
   loading = false,
   open: openProp,
   onOpenChange,
+  finalFocus,
+  keyShortcuts,
   onChange,
 }: ModelPickerProps): ReactElement {
   const navigate = useNavigate();
@@ -156,6 +161,7 @@ export function ModelPicker({
             size="sm"
             disabled={disabled}
             loading={loading}
+            aria-keyshortcuts={keyShortcuts}
             aria-description={
               label.detail === undefined
                 ? `Model: ${label.name}`
@@ -171,7 +177,7 @@ export function ModelPicker({
           </Button>
         }
       />
-      <MenuContent xstyle={styles.palette}>
+      <MenuContent xstyle={styles.palette} finalFocus={finalFocus}>
         {fastAvailable && (
           <MenuSwitchItem
             layout="plain"

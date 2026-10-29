@@ -251,6 +251,9 @@ export async function run(): Promise<string> {
   if (pill instanceof HTMLElement) pill.click();
   await until(() => button(stage, "Stop Terminal"), "the tray's Stop Terminal");
 
+  if (!pill.isConnected || pill.getAttribute("aria-expanded") !== "true")
+    failures.push("the terminals chip does not stay pressed while its list is open");
+
   if (button(stage, "Move to Background") !== undefined)
     failures.push("the tray offers a background move");
   await painted();
@@ -259,6 +262,15 @@ export async function run(): Promise<string> {
   await painted();
   await capture("terminals-background-dark");
   applyDisplayMode("light");
+
+  if (pill instanceof HTMLElement) pill.click();
+  await until(
+    () => (button(stage, "Stop Terminal") === undefined ? true : null),
+    "the chip to close the list",
+  );
+
+  if (pill.getAttribute("aria-expanded") !== "false")
+    failures.push("the terminals chip stays pressed after closing its list");
 
   flushSync(() => root.unmount());
   views.push(view(running));
