@@ -5,6 +5,7 @@ import type { CallReply, CallRequest } from "../shared/ipc.ts";
 import type { AccountState } from "../shared/account-session.ts";
 import type { DesktopSettings } from "../shared/desktop-settings.ts";
 import type {
+  DesktopUpdateActivity,
   HostAnswer,
   HostAsk,
   HostMessage,
@@ -15,7 +16,6 @@ import type {
 } from "../shared/host-messages.ts";
 import { REVOKED_EXIT } from "../shared/host-messages.ts";
 import { Rpc } from "../shared/host-rpc.ts";
-import type { DesktopUpdateActivity } from "../host/desktop-host.ts";
 import type { HostWindow } from "../shared/host-window.ts";
 
 interface HostProcessHandlers {

@@ -43,6 +43,7 @@ import { codemodeRuntimeOptions } from "../workers/codemode-runtime.ts";
 import { imageRuntimeOptions } from "../workers/image-runtime.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "../shared/desktop-settings.ts";
 import type { DesktopSettings } from "../shared/desktop-settings.ts";
+import type { DesktopUpdateActivity } from "../shared/host-messages.ts";
 import { desktopSettings, desktopSettingsPlugin } from "./host-settings.ts";
 import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
 import { callTable } from "../shared/ipc-call.ts";
@@ -50,14 +51,6 @@ import type { RemoteAccessPlugins, RemoteExposure } from "./connections/remote-a
 import { ServerSettingsStore } from "./connections/server-settings.ts";
 import type { SavedServer } from "./connections/server-settings.ts";
 import { findTailnetAddress, serveTailnet } from "./connections/tailnet.ts";
-
-export type DesktopUpdateActivity =
-  | { readonly kind: "idle" }
-  | {
-      readonly kind: "busy";
-      readonly taskCount: number;
-      readonly terminalCommandCount: number;
-    };
 
 export interface DesktopHostDependencies {
   readonly home: string;

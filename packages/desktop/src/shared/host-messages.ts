@@ -8,9 +8,16 @@ import type { AccountState } from "./account-session.ts";
 import type { DesktopSettings } from "./desktop-settings.ts";
 import type { AccountAnswer, AccountCall } from "./host-account.ts";
 import type { AgentAnswer, AgentCall } from "./host-browser-agent.ts";
-import type { DesktopUpdateActivity } from "../host/desktop-host.ts";
 import type { HostWindow } from "./host-window.ts";
 import type { RpcMessage } from "./host-rpc.ts";
+
+export type DesktopUpdateActivity =
+  | { readonly kind: "idle" }
+  | {
+      readonly kind: "busy";
+      readonly taskCount: number;
+      readonly terminalCommandCount: number;
+    };
 
 export interface HostProcessOptions {
   readonly home: string;

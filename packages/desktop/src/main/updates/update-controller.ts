@@ -1,7 +1,7 @@
 import type { UpdateState } from "@nyte-ai/app/bridge.ts";
 import type { MessageBoxOptions } from "electron";
 import type { AppUpdater } from "electron-updater";
-import type { DesktopUpdateActivity } from "../../host/desktop-host.ts";
+import type { DesktopUpdateActivity } from "../../shared/host-messages.ts";
 
 const RELAUNCH_CLEANUP_TIMEOUT_MS = 10_000;
 
