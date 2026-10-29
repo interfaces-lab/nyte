@@ -38,8 +38,8 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(rail.getByRole("button")).toContainText([
       "Files",
       "Changes",
-      "Browser",
-      "Terminal",
+      "New Browser",
+      "New Terminal",
     ]);
     await page.getByRole("button", { name: "Open workbench panel" }).click();
     await expect(page.getByRole("button", { name: "Close workbench panel" })).toHaveAttribute(
@@ -141,6 +141,29 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(chatPane(page)).toBeVisible();
   });
 
+  await test.step("the rail lists each open tab once and only the launchers that add one", async () => {
+    await page.getByRole("button", { name: "Close workbench panel" }).click();
+
+    const rows = workbench(page)
+      .getByRole("navigation", { name: "Workbench navigation" })
+      .getByRole("button");
+
+    for (const label of ["Files", "Changes", "Browser", "New Browser", "New Terminal"]) {
+      await expect(rows.filter({ hasText: new RegExp(`^${label}$`, "u") })).toHaveCount(1);
+    }
+
+    await rows.filter({ hasText: /^New Terminal$/u }).click();
+    await expect(workbenchTabs(page).getByRole("tab")).toHaveCount(5);
+
+    const terminal = workbench(page)
+      .getByRole("tabpanel")
+      .getByRole("region", { name: "Terminal" });
+
+    await terminal.getByRole("textbox", { name: "Terminal input" }).focus();
+    await page.keyboard.type("exit\r");
+    await expect(terminal.getByRole("status")).toHaveText(/Shell exited/u);
+  });
+
   await test.step("closing every tab collapses the panel and brings the rail back", async () => {
     const tabs = workbenchTabs(page);
 
@@ -148,7 +171,9 @@ test("the workbench journey", async ({ desktop }) => {
       await closeTab(tabs, tabs.getByRole("tab", { name, exact: true }));
     }
 
-    await closeTab(tabs, tabs.getByRole("tab").first());
+    await tabs.getByRole("tab").first().press("Delete");
+    await expect(tabs.getByRole("tab")).toHaveCount(1);
+    await tabs.getByRole("tab").first().press("Delete");
     await expect(tabs.getByRole("tab")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Open workbench panel" })).toBeVisible();
     await expect(
