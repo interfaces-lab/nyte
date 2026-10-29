@@ -39,6 +39,33 @@ test("the navigation journey", async ({ desktop }) => {
     await expect(chatTab(page, FIXTURES.alpha)).toHaveAttribute("aria-selected", "true");
   });
 
+  await test.step("a tab and a sidebar row open the chat's card, and its folder line copies the path", async () => {
+    const folder = page.getByRole("button", { name: /Local$/u });
+    const tab = chatTab(page, FIXTURES.beta);
+    await tab.hover();
+    await expect(folder).toBeVisible();
+    await expect(folder).toHaveAccessibleDescription("Click to copy");
+    const tabBox = await tab.boundingBox();
+    expect((await folder.boundingBox())?.y).toBeGreaterThan(tabBox?.y ?? Infinity);
+    await folder.click();
+    await expect(folder).toHaveAccessibleDescription("Copied");
+    expect(await desktop.application.evaluate(({ clipboard }) => clipboard.readText())).toBe(
+      desktop.home,
+    );
+    await page.keyboard.press("Escape");
+    await expect(folder).toBeHidden();
+
+    const row = await revealChat(page, FIXTURES.alpha);
+    await row.hover();
+    await expect(folder).toBeVisible();
+    const rowBox = await row.boundingBox();
+    expect((await folder.boundingBox())?.x).toBeGreaterThan(
+      (rowBox?.x ?? 0) + (rowBox?.width ?? 0),
+    );
+    await page.keyboard.press("Escape");
+    await expect(folder).toBeHidden();
+  });
+
   await test.step("New tab adds a new chat, and closing it goes back to the chat before it", async () => {
     const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
     const before = await tabs.count();

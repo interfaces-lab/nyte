@@ -9,7 +9,7 @@ Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwrig
 | `first-run.spec.ts` | An empty home: new chat, nothing listed |
 | `startup.spec.ts` | A relaunch with the host held: the last run's chats and model, a draft that sends once the host opens |
 | `host-restart.spec.ts` | The Nyte Host killed under a chat: it restarts, the window reconnects through a new port with the same token, a message sent during the outage lands once; a crash loop stops and offers Restart |
-| `navigation.spec.ts` | Tabs, history, Chat actions, Environments, Customize, Search |
+| `navigation.spec.ts` | Tabs, the chat card, history, Chat actions, Environments, Customize, Search |
 | `settings.spec.ts` | Every settings page, the settings search, Back |
 | `chat.spec.ts` | Seeded chats folded past five, a first message, stop, provider errors, thinking |
 | `composer.spec.ts` | Send state, Shift+Enter, drafts, the skills list, attachments, the model button; an image attached through Attach Files… starting a new chat in an open folder |
