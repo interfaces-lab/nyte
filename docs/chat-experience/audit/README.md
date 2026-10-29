@@ -35,7 +35,7 @@ Run in this order so no two packages move the same files at once: P1 alone; then
 | P1 Structure | App folder tree, layer check, export map; desktop process split; `AGENTS.md` files name concepts, not file paths, with a check that keeps it so | done |
 | P2 Run-state gate | Own run vs background work, thinking vs planning, one projection for desktop and TUI | done |
 | P3 File rendering | Host classification, exhaustive editor states, image preview (inline PDF waits on the owner's choice), read-only outside files | done |
-| P4 Task linkage | Parent return, one subagent open rule, jobs from the host's background items, reopenable ended jobs, one status vocabulary | todo |
-| P5 Workbench | Kind table and rail model, one command module, pure tab reducer, Changes model, browser handoff | todo |
+| P4 Task linkage | Parent return, one subagent open rule, jobs from the host's background items, reopenable ended jobs, one status vocabulary | done |
+| P5 Workbench | Kind table and rail model, one command module, pure tab reducer, Changes model, browser handoff | done |
 | P6 Tokens | Interactive levels, accent roles, glyph-step icons, one control scale, type steps, lint read from tokens; a non-AI `Loader` so `Spinner` means AI work only; an app `AGENTS.md` (priorities, font roles, loading indicators) once those rules hold | todo |
 | P7 Final review | Two code-only reviewers over the whole diff; fixes; full verification | todo |
