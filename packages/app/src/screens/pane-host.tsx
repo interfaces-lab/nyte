@@ -17,7 +17,12 @@ import { activePane } from "../layout/pane-layout.ts";
 import type { PaneState } from "../layout/pane-layout.ts";
 import { useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
 import { useHostState } from "../queries.ts";
-import { clientActions, clientCapabilities, resolveClientAction } from "../client-actions.ts";
+import {
+  clientActionAriaShortcut,
+  clientActions,
+  clientCapabilities,
+  resolveClientAction,
+} from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
 import { sessionsWatch, sessionWatch, useWatchSelect } from "../sdk.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -48,7 +53,13 @@ function TypeToCompose({
       ) {
         if (owner !== undefined && owner !== input.current?.readElement()) return;
         event.preventDefault();
-        input.current?.openModelPicker();
+        input.current
+          ?.readElement()
+          ?.closest("[data-composer-region]")
+          ?.querySelector<HTMLElement>(
+            `[aria-keyshortcuts="${clientActionAriaShortcut(clientActions.selectModel, mac)}"]`,
+          )
+          ?.click();
 
         return;
       }

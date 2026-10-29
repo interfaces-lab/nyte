@@ -9,14 +9,11 @@ export function useCopyConfirmation() {
 
   const copy = (text: string): void => {
     if (copied) return;
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        clearTimeout(reset.current);
-        setCopied(true);
-        reset.current = setTimeout(() => setCopied(false), COPIED_MS);
-      })
-      .catch(() => undefined);
+    void navigator.clipboard.writeText(text).then(() => {
+      clearTimeout(reset.current);
+      setCopied(true);
+      reset.current = setTimeout(() => setCopied(false), COPIED_MS);
+    });
   };
 
   return { copied, copy };

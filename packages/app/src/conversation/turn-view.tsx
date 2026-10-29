@@ -60,7 +60,7 @@ import { ToolCallView } from "./tool-call.tsx";
 import { StepGroupView } from "./step-group.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
 import { replyAge, userDisplayText, workedFor } from "./transcript-presentation.ts";
-import { useCopyConfirmation } from "./copy-confirmation.ts";
+import { useCopyConfirmation } from "../components/copy-confirmation.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
 import { conversation } from "../theme/schema.stylex.ts";
 import { useNowMinute } from "../use-now-minute.ts";
@@ -692,9 +692,7 @@ function ResponseView({
 
   return (
     <div {...props(replyStyles.reply, row.latest && replyStyles.latest)}>
-      {worked !== undefined && (
-        <span {...props(stepGroupStyles.status)}>{worked}</span>
-      )}
+      {worked !== undefined && <span {...props(stepGroupStyles.status)}>{worked}</span>}
       <Prose markdown={markdown} streaming={streaming} />
       <ReplyActions markdown={markdown} at={first.at} worked={worked} />
     </div>

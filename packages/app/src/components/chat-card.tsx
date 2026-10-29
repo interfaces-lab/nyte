@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { create, props } from "@stylexjs/stylex";
-import { useState } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -14,13 +13,12 @@ import { nyte } from "../nyte.ts";
 import { keys, useSession, useWorkspaces } from "../queries.ts";
 import { connected, gitStatusWatch, useWatch } from "../sdk.tsx";
 import { chatCardFacts } from "./chat-card-facts.ts";
+import { useCopyConfirmation } from "./copy-confirmation.ts";
 import type { ChatFact } from "./chat-card-facts.ts";
 
 const OPEN_DELAY_MS = 250;
 
 const CLOSE_DELAY_MS = 100;
-
-const COPIED_MS = 2_000;
 
 const PLACEMENTS = {
   row: { side: "right", align: "start", sideOffset: 4 },
@@ -120,18 +118,14 @@ function ChatBlock({ sessionId }: { readonly sessionId: SessionId }): ReactEleme
 }
 
 function FactLine({ fact }: { readonly fact: ChatFact }): ReactElement {
-  const [copied, setCopied] = useState(false);
-
-  const copy = (): void => {
-    void navigator.clipboard.writeText(fact.copy).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), COPIED_MS);
-    });
-  };
+  const confirmation = useCopyConfirmation();
 
   return (
     <Row interactive xstyle={styles.fact}>
-      <Row.Primary aria-description={copied ? "Copied" : "Click to copy"} onClick={copy}>
+      <Row.Primary
+        aria-description={confirmation.copied ? "Copied" : "Click to copy"}
+        onClick={() => confirmation.copy(fact.copy)}
+      >
         <Row.Leading xstyle={styles.icon}>
           <Icon name={ICONS[fact.kind]} size={14} />
         </Row.Leading>
@@ -142,7 +136,7 @@ function FactLine({ fact }: { readonly fact: ChatFact }): ReactElement {
           )}
         </Row.Body>
         <Row.Meta xstyle={styles.copy}>
-          <Icon name={copied ? "checkmark" : "copy"} size={12} />
+          <Icon name={confirmation.copied ? "checkmark" : "copy"} size={12} />
         </Row.Meta>
       </Row.Primary>
     </Row>

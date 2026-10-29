@@ -66,7 +66,6 @@ interface ComposerFrameProps {
   /** Puts an earlier prompt in the composer; false when there is none to step to. */
   onRecall?: (direction: RecallDirection) => boolean;
   model?: ReactNode;
-  onOpenModelPicker?: () => void;
   /** Shown beside Send: how full the chat's context window is. */
   contextUsage?: ReactNode;
   inputRef?: (element: ComposerEditorHandle | null) => void;
@@ -100,7 +99,6 @@ export function ComposerFrame({
   onEmptySubmit,
   onRecall,
   model,
-  onOpenModelPicker,
   contextUsage,
   inputRef,
   onFocusChange,
@@ -472,7 +470,6 @@ export function ComposerFrame({
               suggestionMenu.onCompletionChange(answering ? undefined : completion, next);
             }}
             onFilesSelected={onFilesSelected}
-            onOpenModelPicker={onOpenModelPicker}
             onFocusChange={onFocusChange}
             onKeyDown={(event) => {
               if (!answering && suggestionMenu.onKeyDown(event)) return;

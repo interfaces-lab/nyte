@@ -44,7 +44,6 @@ export interface ComposerEditorHandle {
   insertReference(reference: MessageReference, start?: number, end?: number): void;
   dropReferences(references: readonly MessageReference[], clientX: number, clientY: number): void;
   attachFiles(files: readonly File[]): void;
-  openModelPicker(): void;
 }
 
 export interface ComposerComboboxState {
@@ -71,7 +70,6 @@ interface ComposerEditorProps {
   readonly onKeyDown: (event: KeyboardEvent) => void;
   readonly onFocusChange?: (focused: boolean) => void;
   readonly onFilesSelected?: (files: readonly File[]) => void;
-  readonly onOpenModelPicker?: () => void;
 }
 
 interface CaretBox {
@@ -162,7 +160,6 @@ export function ComposerEditor({
   onKeyDown,
   onFocusChange,
   onFilesSelected,
-  onOpenModelPicker,
 }: ComposerEditorProps): ReactElement {
   const catalog = indexFilesByUrl(files);
   const catalogRef = useRef(catalog);
@@ -178,7 +175,6 @@ export function ComposerEditor({
   const observed = useRef<ComposerDocumentState | undefined>(undefined);
   const lastReferences = useRef<readonly MessageReference[]>([]);
   const onFilesSelectedRef = useRef(onFilesSelected);
-  const onOpenModelPickerRef = useRef(onOpenModelPicker);
 
   const [handle] = useState((): ComposerEditorHandle => ({
     readElement: () => {
@@ -236,19 +232,15 @@ export function ComposerEditor({
     attachFiles(files) {
       onFilesSelectedRef.current?.(files);
     },
-    openModelPicker() {
-      onOpenModelPickerRef.current?.();
-    },
   }));
 
   useImperativeHandle(ref, () => handle, [handle]);
   useImperativeHandle(inputRef, () => handle, [handle]);
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest callbacks for the handle and Tiptap's paste handler, which outlive renders
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest onFilesSelected for Tiptap's paste handler, which outlives renders
   useLayoutEffect(() => {
     onFilesSelectedRef.current = onFilesSelected;
-    onOpenModelPickerRef.current = onOpenModelPicker;
-  }, [onFilesSelected, onOpenModelPicker]);
+  }, [onFilesSelected]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes editable state and aria attributes into Tiptap before paint
   useLayoutEffect(

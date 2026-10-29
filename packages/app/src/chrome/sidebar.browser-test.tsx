@@ -431,13 +431,7 @@ export async function run(): Promise<string> {
   try {
     await until(() => label("Quiet chat") !== undefined, "the chats");
 
-    for (const [name, step] of Object.entries(STEPS)) {
-      try {
-        await step();
-      } catch (error) {
-        throw new Error(`${name}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
+    for (const step of Object.values(STEPS)) await step();
 
     return "passed";
   } finally {

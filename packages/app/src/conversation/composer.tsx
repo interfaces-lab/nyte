@@ -797,7 +797,6 @@ export function Composer({
                 />
               ) : undefined
             }
-            onOpenModelPicker={questions === undefined ? () => setModelPickerOpen(true) : undefined}
             contextUsage={<ContextRing sessionId={sessionId} />}
             inputRef={attachInput}
             onFocusChange={(focused) => updateViewState((current) => ({ ...current, focused }))}

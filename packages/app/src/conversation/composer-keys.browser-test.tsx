@@ -234,8 +234,6 @@ export async function run(): Promise<string> {
     await pasteFromNowhere(editor);
 
     return "passed";
-  } catch (error) {
-    return error instanceof Error ? error.message : String(error);
   } finally {
     flushSync(() => root.unmount());
     stage.remove();

@@ -8,7 +8,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { loadDeferred } from "../deferred.tsx";
 import { keys } from "../query-keys.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { useCopyConfirmation } from "./copy-confirmation.ts";
+import { useCopyConfirmation } from "../components/copy-confirmation.ts";
 import { codeBlockStyles } from "./prose.stylex.ts";
 
 interface HighlightedCode {
