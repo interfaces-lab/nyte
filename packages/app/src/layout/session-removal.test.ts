@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import { PaneController } from "./pane-controller.ts";
-import { activeSelection, paneForSession, visibleSessionIds } from "./pane-layout.ts";
+import { activeSelection, paneForSession } from "./pane-layout.ts";
 
 const first = asId<"session">("first");
 
@@ -16,10 +16,12 @@ test("Undo restores both archived panes and their original focus", () => {
   controller.focus("primary");
   const restoreFirst = controller.removeSessionWithUndo(first);
   const restoreSecond = controller.removeSessionWithUndo(second);
-  assert.equal(visibleSessionIds(controller.getSnapshot().layout).size, 0);
+  assert.equal(paneForSession(controller.getSnapshot().layout, first), undefined);
+  assert.equal(paneForSession(controller.getSnapshot().layout, second), undefined);
   assert.equal(restoreSecond(), true);
   assert.equal(restoreFirst(), true);
-  assert.deepEqual(visibleSessionIds(controller.getSnapshot().layout), new Set([first, second]));
+  assert.ok(paneForSession(controller.getSnapshot().layout, first));
+  assert.ok(paneForSession(controller.getSnapshot().layout, second));
   assert.deepEqual(activeSelection(controller.getSnapshot().layout), {
     kind: "session",
     sessionId: first,

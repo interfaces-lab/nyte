@@ -94,16 +94,6 @@ export function orderedPanes(layout: PaneLayout): readonly PaneState[] {
   return layout.leading === "primary" ? panes : panes.toReversed();
 }
 
-export function visibleSessionIds(layout: PaneLayout): ReadonlySet<SessionId> {
-  const sessionIds = new Set<SessionId>();
-
-  for (const pane of orderedPanes(layout)) {
-    if (pane.selection.kind === "session") sessionIds.add(pane.selection.sessionId);
-  }
-
-  return sessionIds;
-}
-
 export function paneForSession(layout: PaneLayout, sessionId: SessionId): PaneId | undefined {
   return orderedPanes(layout).find(
     (pane) => pane.selection.kind === "session" && pane.selection.sessionId === sessionId,

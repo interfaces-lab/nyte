@@ -16,8 +16,7 @@ import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import type { ViewStream } from "../../test/scripted-connection.ts";
 import { USAGE } from "../../test/view-fixtures.ts";
-import { installConnection, sessionWatch, showTranscript, useWatchSelect } from "../sdk.tsx";
-import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { installConnection, paceTranscripts, sessionWatch, useWatchSelect } from "../sdk.tsx";
 import { renderCount, resetRenders } from "./transcript-render-counter.ts";
 import { Prose } from "./prose.tsx";
 
@@ -87,6 +86,9 @@ const base = {
 const streams = new Map<SessionId, ViewStream>();
 
 installConnection(scriptedConnection({ views: streams }).connection);
+let shown: ReadonlySet<SessionId> = new Set();
+
+paceTranscripts(() => shown);
 
 function answerView(session: SessionId, markdown: string, live: boolean): SessionView {
   const answer: Message = {
@@ -111,8 +113,6 @@ function Answer({ session }: { readonly session: SessionId }): ReactElement | nu
   const answer = useWatchSelect(sessionWatch(session), (state) =>
     state.value?.messages.findLast(showsText),
   );
-
-  useMountEffect(() => showTranscript(session));
 
   if (answer === undefined) return null;
 
@@ -155,6 +155,7 @@ function drawer(root: Root): Draw {
     }
 
     const session = current.id;
+    shown = new Set(mode === "visible" ? [session] : []);
 
     render(
       <Activity mode={mode}>

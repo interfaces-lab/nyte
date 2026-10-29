@@ -16,11 +16,11 @@ import type {
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
-import { PaneController } from "../layout/pane-controller.ts";
 import type { ScrollViewState } from "../layout/session-view-state.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
 import { installConnection, sessionWatch, warmSession } from "../sdk.tsx";
+import { windowTabs } from "../tabs/window-tabs.ts";
 import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
 import { SessionScreen } from "./session-screen.tsx";
 import { createAppRouter } from "../router.tsx";
@@ -140,7 +140,7 @@ const catalog = {
 
 const host = { workspace: undefined } satisfies HostState;
 
-const panes = new PaneController({ storageKey: "warm-sessions-test" });
+const panes = windowTabs.controller();
 
 let renderFailure: unknown;
 

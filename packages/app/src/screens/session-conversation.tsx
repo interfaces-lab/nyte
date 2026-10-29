@@ -5,7 +5,7 @@ import { modelConfiguration } from "./model-configuration.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
-import { useDeferredValue, useRef, useState, useSyncExternalStore } from "react";
+import { useDeferredValue, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type {
   Activation,
@@ -41,7 +41,6 @@ import {
   connection,
   loadEarlierMessages,
   sessionWatch,
-  showTranscript,
   useWatchSelect,
 } from "../sdk.tsx";
 import type { WatchStore } from "../sdk.tsx";
@@ -54,12 +53,7 @@ import { ApprovalTray } from "../conversation/approval-tray.tsx";
 import { QuestionTray } from "../conversation/tray/questions.tsx";
 import { transcriptProjector } from "../conversation/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import {
-  workbenchController,
-  workbenchShowsChat,
-  workbenchViewKey,
-} from "../workbench/controller.ts";
-import type { WorkbenchViewKey } from "../workbench/controller.ts";
+import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
 import { openJobTerminal } from "../workbench/terminal-store.ts";
 import {
   listSubagents,
@@ -72,8 +66,8 @@ import { StartupReadsRelease } from "../startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../work-counts.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { useWindowActive } from "../window-active.ts";
 import { useChat, useChats } from "../chats/index.ts";
+import { chatWindow, useChatWindow } from "../window/index.ts";
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 
@@ -254,11 +248,9 @@ function ActivationNotice({ activation }: { readonly activation: Activation }): 
 function MarkSeen({
   sessionId,
   store,
-  viewKey,
 }: {
   readonly sessionId: SessionId;
   readonly store: WatchStore<SessionView>;
-  readonly viewKey: WorkbenchViewKey;
 }): ReactElement | null {
   const tip = useWatchSelect(store, ({ value }) => {
     const drawn = value === undefined ? undefined : mainHead(value)?.tip;
@@ -266,15 +258,9 @@ function MarkSeen({
     return drawn?.kind === "commit" ? drawn.id : undefined;
   });
 
-  const looking = useWindowActive((active) => active);
+  const looking = useChatWindow((snapshot) => snapshot.looking.has(sessionId));
 
-  const covered = useSyncExternalStore(workbenchController.subscribe, () => {
-    const view = workbenchController.getView(viewKey);
-
-    return view.expanded && view.layout.kind === "maximized" && !workbenchShowsChat(view.layout);
-  });
-
-  return tip === undefined || !looking || covered ? null : (
+  return tip === undefined || !looking ? null : (
     <SeeTip key={tip} sessionId={sessionId} tip={tip} />
   );
 }
@@ -310,9 +296,26 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
   const [navigating, setNavigating] = useState(false);
 
-  const [trayView, setTrayView] = useState<SubagentTrayView | { readonly kind: "terminals" }>({
-    kind: "closed",
-  });
+  const [panel, setPanel] = useState<
+    Exclude<SubagentTrayView, { readonly kind: "detail" }> | { readonly kind: "terminals" }
+  >({ kind: "closed" });
+
+  const detail = useChatWindow((snapshot) =>
+    presentation === "full" ? snapshot.details.get(sessionId) : undefined,
+  );
+
+  const trayView = detail === undefined ? panel : { kind: "detail" as const, sessionId: detail };
+
+  const setTrayView = (view: SubagentTrayView | { readonly kind: "terminals" }): void => {
+    if (view.kind === "detail") {
+      chatWindow.act({ kind: "detail-opened", parent: sessionId, child: view.sessionId });
+
+      return;
+    }
+
+    if (detail !== undefined) chatWindow.act({ kind: "detail-closed", parent: sessionId });
+    setPanel(view);
+  };
 
   const hasTerminals = useHasLiveTerminals(presentation === "full" ? sessionId : undefined);
   const childSessions = useChildSessions(sessionId).data ?? [];
@@ -324,10 +327,14 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
 
   const trayEmptied = (trayView.kind === "terminals" && !hasTerminals) || listEmptied;
 
-  if (trayEmptied) setTrayView({ kind: "closed" });
+  if (trayEmptied) setPanel({ kind: "closed" });
 
-  const deferredTrayView = useDeferredValue(trayView);
-  const shownTrayView = trayView.kind === "detail" ? deferredTrayView : trayView;
+  const deferredDetail = useDeferredValue(detail);
+
+  const shownTrayView =
+    detail === undefined || deferredDetail === undefined
+      ? panel
+      : { kind: "detail" as const, sessionId: deferredDetail };
 
   const subagentTray: SubagentTrayView =
     shownTrayView.kind === "terminals" ? { kind: "closed" } : shownTrayView;
@@ -352,7 +359,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
 
   const viewStore = usePaneViewStateStore();
   useMountEffect(() => childrenWatch(sessionId).subscribe(() => undefined));
-  useMountEffect(() => showTranscript(sessionId));
   const cwd = host.data.workspace?.path;
 
   const loadEarlier = () => loadEarlierMessages(sessionId, HISTORY_PAGE);
@@ -482,13 +488,14 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
             focusComposer={() => composerRef.current?.focus({ preventScroll: true })}
           >
             <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
-              <MarkSeen sessionId={sessionId} store={store} viewKey={workbenchViewKey(cwd)} />
+              <MarkSeen sessionId={sessionId} store={store} />
               {((ready && chat.kind !== "loading") || failed) && <StartupReadsRelease />}
               {presentation === "full" && activation !== undefined && (
                 <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
               )}
               {presentation === "full" && <RunAnnouncer status={status} />}
               <Timeline
+                sessionId={sessionId}
                 store={store}
                 projector={projector}
                 ready={ready}

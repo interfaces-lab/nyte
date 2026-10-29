@@ -9,6 +9,7 @@ import { StatusDot } from "../components/ui.tsx";
 import { nyte } from "../nyte.ts";
 import { keys, queryClient } from "../queries.ts";
 import { sessionsWatch } from "../sdk.tsx";
+import { useChatWindow } from "../window/index.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { activeTab, showsPage, tabPlace, tabPlaces } from "./model.ts";
@@ -134,6 +135,7 @@ function placeTitle(place: Place, chats: ChatDirectory): string {
 
 export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] {
   const chats = useChats((directory) => directory);
+  const unread = useChatWindow((snapshot) => snapshot.unread);
 
   return state.tabs.map((tab) => {
     const places = tabPlaces(tab);
@@ -170,9 +172,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
       tooltip: places.map((candidate) => placeTitle(candidate, chats)).join(" | "),
       sessions,
       glyph,
-      unread:
-        tab.id !== state.activeTabId &&
-        sessions.some((sessionId) => chats.get(sessionId)?.unread === true),
+      unread: sessions.some((sessionId) => unread.has(sessionId)),
       preview: view.kind === "preview",
       split:
         view.kind === "panes" && view.layout.kind === "split" ? view.layout.direction : undefined,

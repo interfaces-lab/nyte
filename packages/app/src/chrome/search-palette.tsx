@@ -12,6 +12,7 @@ import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { sessionTitle } from "@nyte-ai/plugin/client/presentation";
 import { useChats } from "../chats/index.ts";
+import { useChatWindow } from "../window/index.ts";
 
 import { amongOptions, chatMark, sessionsForNavigation } from "./sidebar-view.ts";
 import { useSessionSearch } from "../queries.ts";
@@ -89,6 +90,7 @@ export function SearchPalette({
   onOpenCustomize,
 }: SearchPaletteProps): ReactElement {
   const chats = useChats((directory) => directory);
+  const unread = useChatWindow((snapshot) => snapshot.unread);
   const now = useNowMinute();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
@@ -199,12 +201,7 @@ export function SearchPalette({
         <Command.Item
           key={session.id}
           value={session.id}
-          leading={
-            <StatusGlyph
-              mark={chatMark(session, chats)}
-              unread={chats.get(session.id)?.unread === true}
-            />
-          }
+          leading={<StatusGlyph mark={chatMark(session, chats)} unread={unread.has(session.id)} />}
           meta={formatTimeAgo(session.lastActivityAt, now)}
           onClick={() => run(() => onOpenSession(session.id))}
         >

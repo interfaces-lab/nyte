@@ -476,17 +476,13 @@ export const childrenWatch = watchFamily(
 
 const OPENING_TAIL = 40;
 
-const visibleTranscripts = new Map<SessionId, number>();
+const NO_TRANSCRIPTS: ReadonlySet<SessionId> = new Set();
 
-export function showTranscript(session: SessionId): () => void {
-  visibleTranscripts.set(session, (visibleTranscripts.get(session) ?? 0) + 1);
+let shownTranscripts: () => ReadonlySet<SessionId> = () => NO_TRANSCRIPTS;
 
-  return () => {
-    const count = visibleTranscripts.get(session) ?? 1;
-
-    if (count === 1) visibleTranscripts.delete(session);
-    else visibleTranscripts.set(session, count - 1);
-  };
+/** Paces streamed text only in the transcripts `shown` reads as on screen; every other view publishes text as it arrives. */
+export function paceTranscripts(shown: () => ReadonlySet<SessionId>): void {
+  shownTranscripts = shown;
 }
 
 /** What an open view says about its own run: the viewed head's execution and every head's read state. */
@@ -563,7 +559,7 @@ export const sessionWatch = watchFamily(
         const activity = sessionActivityProjector();
 
         const pacer = createTextPacer<LoadedSessionView>(
-          () => visibleTranscripts.has(session),
+          () => shownTranscripts().has(session),
           (view) => sessionWatch(session).revise(view),
         );
 

@@ -19,12 +19,12 @@ import {
   useWorkbenchSnapshot,
   workbenchController,
   workbenchScope,
-  workbenchShowsChat,
   workbenchViewKey,
   WORKBENCH_CHAT_TAB,
 } from "../workbench/controller.ts";
 import type { WorkbenchViewKey } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
+import { useChatWindow } from "../window/index.ts";
 import { clientCapabilities } from "../client-actions.ts";
 
 function panePreviewRect(
@@ -171,11 +171,11 @@ export function SessionScreen(): ReactElement {
   const viewKey = workbenchViewKey(workspacePath);
   const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);
   const maximized = view.expanded && view.layout.kind === "maximized";
-  const chatShowing = maximized && workbenchShowsChat(view.layout);
+
+  const covered = useChatWindow((snapshot) => snapshot.covered);
 
   const paneFloatingMount =
-    maximized &&
-    !chatShowing &&
+    covered &&
     activeWorkbenchTab(view, workbenchScope(workspacePath), clientCapabilities(nyte.host))?.kind !==
       "browser"
       ? floatingMount

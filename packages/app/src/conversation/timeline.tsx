@@ -1,5 +1,5 @@
 import { props } from "@stylexjs/stylex";
-import type { SessionView, UserContent } from "@nyte-ai/sdk";
+import type { SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
 import { useState } from "react";
 // oxlint-disable-next-line no-restricted-imports -- TranscriptContent's uncompiled virtualizer calls renderRow on every scroll update, so each row needs its own memo boundary
 import { memo } from "react";
@@ -23,7 +23,7 @@ import { nextVisit, openVisit, readUnread } from "./transcript-unread.ts";
 import type { UnreadEvent, UnreadVisit } from "./transcript-unread.ts";
 import { NewMessages, UnreadDivider } from "./transcript-unread-view.tsx";
 import { countWork, useCommitCount } from "../work-counts.ts";
-import { useWindowActive } from "../window-active.ts";
+import { useChatWindow } from "../window/index.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 type EditUserMessage = (
@@ -147,6 +147,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
 });
 
 export function Timeline({
+  sessionId,
   store,
   projector,
   ready,
@@ -155,7 +156,10 @@ export function Timeline({
   branchModel,
   onEditUser,
   onRetry,
-}: Omit<RowContext, "density"> & { readonly ready: boolean }): ReactElement {
+}: Omit<RowContext, "density"> & {
+  readonly sessionId: SessionId;
+  readonly ready: boolean;
+}): ReactElement {
   const density = useSetting(preferences.toolCalls);
   const uiFontSize = useSetting(preferences.uiFontSize);
   const controls = useTranscriptControls();
@@ -168,9 +172,12 @@ export function Timeline({
 
   const opened = visit ?? (seenThrough === undefined ? undefined : openVisit(seenThrough));
 
-  const observed = useWindowActive((active) =>
-    opened === undefined ? undefined : nextVisit(opened, { kind: "observed", active }, replies),
-  );
+  const looking = useChatWindow((snapshot) => snapshot.looking.has(sessionId));
+
+  const observed =
+    opened === undefined
+      ? undefined
+      : nextVisit(opened, { kind: "observed", active: looking }, replies);
 
   if (observed !== visit) setVisit(observed);
   const unread = observed === undefined ? undefined : readUnread(observed, replies);

@@ -32,6 +32,7 @@ import {
   useWorkspaces,
 } from "../queries.ts";
 import { useChats } from "../chats/index.ts";
+import { useChatWindow } from "../window/index.ts";
 import { modelDisplayName, modelIcon, THINKING_LABELS } from "./model-picker-state.ts";
 import { activityStyles } from "./activity.stylex.ts";
 import { proseStyles } from "./prose.stylex.ts";
@@ -174,7 +175,9 @@ function SubagentRow({
   const sessionId = subject.kind === "session" ? subject.session.id : undefined;
   const chat = useChats((chats) => (sessionId === undefined ? undefined : chats.get(sessionId)));
 
-  const unread = chat?.unread === true;
+  const unread = useChatWindow(
+    (snapshot) => sessionId !== undefined && snapshot.unread.has(sessionId),
+  );
 
   const status =
     subject.kind === "call"

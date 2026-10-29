@@ -26,6 +26,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useNowMinute } from "../use-now-minute.ts";
 import { sessionWatch, warmSession } from "../sdk.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
+import { useChatWindow } from "../window/index.ts";
 import { StatusGlyph } from "./status-glyph.tsx";
 
 const WARM_DELAY_MS = 50;
@@ -141,7 +142,7 @@ export function SessionRow({
   const selected = session.id === rail.activeSessionId;
   const chat = useChat(session.id);
   const status = chat.kind === "ready" ? chat.chat.status : undefined;
-  const unread = chat.kind === "ready" && chat.chat.unread;
+  const unread = useChatWindow((snapshot) => snapshot.unread.has(session.id));
   const showUpdated = rail.showUpdated;
   const draggable = place.workspace === rail.openWorkspace;
   const unreachable = session.workspace !== null && rail.unavailable.has(session.workspace);

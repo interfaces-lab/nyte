@@ -21,6 +21,8 @@ import { reattachShells } from "./workbench/terminal-store.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
 import { acceptHostSettings } from "./preferences/host.ts";
 import { watchClientPlugins } from "./client-plugins.tsx";
+import { paceTranscripts } from "./sdk.tsx";
+import { chatWindow, followStage } from "./window/index.ts";
 
 function focusedSession(): SessionId | undefined {
   const selection = activeSelection(windowTabs.controller().getSnapshot().layout);
@@ -102,6 +104,14 @@ function useClientPlugins(): void {
   useMountEffect(() => watchClientPlugins(focusedSession, windowTabs.subscribe));
 }
 
+function useChatWindowStage(router: AppRouter): void {
+  useMountEffect(() => {
+    paceTranscripts(() => chatWindow.getSnapshot().shown);
+
+    return followStage(router);
+  });
+}
+
 function useSavedShells(): void {
   useMountEffect(() => {
     reattachShells(
@@ -118,6 +128,7 @@ function useSavedShells(): void {
 
 export function App({ appIcon, router }: { appIcon: string; router: AppRouter }): ReactElement {
   useHostEvents(router);
+  useChatWindowStage(router);
   useClientPlugins();
   useSavedShells();
   useMountEffect(() => {
