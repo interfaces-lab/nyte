@@ -5,10 +5,12 @@ import type {
   BrowserSurfaceState,
   HostEvent,
 } from "../../contract/bridge.ts";
-import type { WorkbenchController } from "../controller.ts";
+import { openUrl } from "../commands.ts";
+import { browserSurface } from "../model.ts";
 import type { WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
-import { workbenchController } from "../controller.ts";
-import { workbenchViewKey } from "../model.ts";
+import { workbenchViewKey } from "../paths.ts";
+import { workbench } from "../store.ts";
+import type { WorkbenchStore } from "../store.ts";
 
 interface BrowserSurfaceView {
   readonly state: BrowserSurfaceState | undefined;
@@ -43,9 +45,9 @@ function set(surface: string, view: BrowserSurfaceView): void {
 function browserTab(
   surface: string,
 ): { readonly view: WorkbenchViewKey; readonly id: WorkbenchTabId } | undefined {
-  for (const [view, state] of workbenchController.getSnapshot().views) {
+  for (const [view, state] of workbench.getSnapshot().views) {
     const tab = state.tabs.find(
-      (candidate) => candidate.id === surface && candidate.kind === "browser",
+      (candidate) => candidate.kind === "browser" && browserSurface(candidate) === surface,
     );
 
     if (tab !== undefined) return { view, id: tab.id };
@@ -66,12 +68,7 @@ export function applyBrowserEvent(
   const tab = browserTab(event.surface);
 
   if (event.kind === "browser_open_tab") {
-    if (tab === undefined) return;
-    workbenchController.actions.openTab({
-      view: tab.view,
-      tab: { kind: "browser", url: event.url },
-      activate: !event.background,
-    });
+    if (tab !== undefined) openUrl(tab.view, event.url, !event.background);
 
     return;
   }
@@ -93,18 +90,17 @@ export function applyBrowserEvent(
     return;
   }
 
-  const { state } = event;
+  const state = event.state;
 
   if (!owned && state.agentHolders === 0) return;
   const login = state.loading ? undefined : held.login;
   set(event.surface, { ...held, state, login });
 
   if (tab !== undefined && state.url !== "") {
-    workbenchController.actions.updateTab({
-      view: tab.view,
+    workbench.dispatch(tab.view, {
+      kind: "patch",
       id: tab.id,
-      kind: "browser",
-      patch: { url: state.url },
+      change: { kind: "browser", patch: { url: state.url } },
     });
   }
 }
@@ -144,28 +140,15 @@ export function claimBrowserSurface(surface: string): void {
   if (!views.has(surface)) set(surface, EMPTY);
 }
 
+/** Shows an agent's page in its workspace's Browser tab for that page, quietly adding one if none is open. */
 export function applyBrowserAgentOpened(
-  controller: Pick<WorkbenchController, "actions" | "getView">,
+  store: Pick<WorkbenchStore, "dispatch">,
   event: Extract<HostEvent, { kind: "browser_agent_opened" }>,
 ): void {
-  const view = workbenchViewKey(event.owner ?? undefined);
-  const existing = controller.getView(view).tabs.find((tab) => tab.kind === "browser");
-
-  if (existing === undefined) {
-    controller.actions.openTab({
-      view,
-      tab: { kind: "browser", url: event.url },
-      activate: false,
-    });
-
-    return;
-  }
-
-  controller.actions.updateTab({
-    view,
-    id: existing.id,
-    kind: "browser",
-    patch: { url: event.url },
+  store.dispatch(workbenchViewKey(event.owner ?? undefined), {
+    kind: "open",
+    tab: { id: crypto.randomUUID(), kind: "browser", url: event.url, surface: event.surface },
+    activate: false,
   });
 }
 

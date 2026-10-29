@@ -16,7 +16,7 @@ import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
 import { workbenchStyles } from "../workbench.stylex.ts";
-import { WorkbenchRail } from "../workbench-rail.tsx";
+import { SidePanel } from "../side-panel.tsx";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../../contract/nyte.ts";
@@ -843,7 +843,7 @@ export function BrowserPanel({
           )}
         </div>
         {historyVisible && (
-          <WorkbenchRail>
+          <SidePanel>
             <nav aria-label="Visit history" data-nyte-scrollport {...props(styles.history)}>
               <h2 {...props(text.sm, styles.historyHeading)}>Visit History</h2>
               {history.length === 0 ? (
@@ -890,7 +890,7 @@ export function BrowserPanel({
                 ))
               )}
             </nav>
-          </WorkbenchRail>
+          </SidePanel>
         )}
       </div>
     </section>

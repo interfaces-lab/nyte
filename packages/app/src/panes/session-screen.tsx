@@ -14,14 +14,10 @@ import type { SessionDropTarget } from "./session-dnd.tsx";
 import { useHostState } from "../data/host.ts";
 import { nyte } from "../contract/nyte.ts";
 
-import {
-  activeWorkbenchTab,
-  workbenchScope,
-  workbenchViewKey,
-  WORKBENCH_CHAT_TAB,
-} from "../workbench/model.ts";
-import { useWorkbenchSnapshot, workbenchController } from "../workbench/controller.ts";
+import { WORKBENCH_CHAT_TAB } from "../workbench/model.ts";
 import type { WorkbenchViewKey } from "../workbench/model.ts";
+import { activeWorkbenchTab } from "../workbench/selectors.ts";
+import { useWorkbenchView } from "../workbench/store.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { useChatWindow } from "../window/index.ts";
 import { clientCapabilities } from "../contract/client-actions.ts";
@@ -164,19 +160,17 @@ function SessionPanes({
 export function SessionScreen(): ReactElement {
   const host = useHostState();
   const [floatingMount, setFloatingMount] = useState<HTMLDivElement | null>(null);
-  const workbench = useWorkbenchSnapshot();
   const workspacePath = host.data.workspace?.path;
-
-  const viewKey = workbenchViewKey(workspacePath);
-  const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);
+  const workbench = useWorkbenchView(workspacePath);
+  const viewKey = workbench.key;
+  const view = workbench.view;
   const maximized = view.expanded && view.layout.kind === "maximized";
 
   const covered = useChatWindow((snapshot) => snapshot.covered);
 
   const paneFloatingMount =
     covered &&
-    activeWorkbenchTab(view, workbenchScope(workspacePath), clientCapabilities(nyte.host))?.kind !==
-      "browser"
+    activeWorkbenchTab(view, workbench.scope, clientCapabilities(nyte.host))?.kind !== "browser"
       ? floatingMount
       : null;
 

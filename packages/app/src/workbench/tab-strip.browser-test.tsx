@@ -3,8 +3,8 @@ import { createRoot } from "react-dom/client";
 import { asId } from "@nyte-ai/schema";
 import type { JobView } from "@nyte-ai/sdk";
 import { WorkbenchTabStrip } from "./tab-strip.tsx";
-import { workbenchController } from "./controller.ts";
-import { workbenchViewKey } from "./model.ts";
+import { workbenchViewKey } from "./paths.ts";
+import { workbench } from "./store.ts";
 import { fileActions } from "./files/file-store.ts";
 import { terminalActions } from "./terminal/terminal-store.ts";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
@@ -45,7 +45,7 @@ async function drag(from: HTMLElement, distance: number): Promise<void> {
 }
 
 export async function run(): Promise<string> {
-  const session = asId<"session">("browser-tab-strip-session");
+  const workspace = asId<"workspace">("browser-tab-strip-workspace");
 
   const job: JobView = {
     id: asId<"job">("browser-tab-strip-job"),
@@ -61,28 +61,24 @@ export async function run(): Promise<string> {
   };
 
   const viewKey = workbenchViewKey("/workspace/browser-tab-strip");
-  workbenchController.actions.openTab({
-    view: viewKey,
-    tab: {
-      kind: "changes",
-      scope: { kind: "uncommitted" },
-      selectedPath: null,
-      pathRevealRevision: 0,
-      scrollTop: 0,
-    },
-    activate: true,
+  workbench.dispatch(viewKey, {
+    kind: "open-changes",
+    id: "changes",
+    scope: { kind: "uncommitted" },
+    path: null,
   });
 
-  const terminalId = workbenchController.actions.openTab({
-    view: viewKey,
-    tab: { kind: "terminal", owner: { kind: "agent", sessionId: session, jobId: job.id } },
+  const terminalId = "agent-terminal";
+  workbench.dispatch(viewKey, {
+    kind: "open",
+    tab: { id: terminalId, kind: "terminal", owner: { kind: "job", workspace, job: job.id } },
     activate: false,
   });
 
-  terminalActions.openJob({ id: terminalId, sessionId: session, job });
+  terminalActions.openJob({ id: terminalId, workspace, job });
   fileActions.open(viewKey, { path: "/workspace/browser-tab-strip/src/app.ts" });
   await nextFrame();
-  const active = workbenchController.getView(viewKey).active;
+  const active = workbench.getView(viewKey).active;
 
   const container = document.createElement("div");
   document.body.append(container);
@@ -93,10 +89,9 @@ export async function run(): Promise<string> {
       root.render(
         <WorkbenchTabStrip
           viewKey={viewKey}
-          view={workbenchController.getView(viewKey)}
+          view={workbench.getView(viewKey)}
           scope={{ kind: "project" }}
           capabilities={{ browser: true }}
-          workspacePath="/workspace"
         />,
       ),
     );
@@ -104,7 +99,7 @@ export async function run(): Promise<string> {
     check(
       tabs.map((tab) => tab.getAttribute("aria-label")).join("|") ===
         "Changes|pnpm test|src/app.ts",
-      "Tabs must keep the controller's interleaved order",
+      "Tabs must keep the store's interleaved order",
     );
     const agentTab = tabs[1];
     check(agentTab !== undefined, "Missing agent terminal tab");
@@ -124,10 +119,10 @@ export async function run(): Promise<string> {
       getComputedStyle(glyph).color === getComputedStyle(agentTab).color,
       "Agent terminal glyph must use its tab control color",
     );
-    check(workbenchController.getView(viewKey).active === active, "Rendering changed activation");
+    check(workbench.getView(viewKey).active === active, "Rendering changed activation");
 
     const kinds = (): string =>
-      workbenchController
+      workbench
         .getView(viewKey)
         .tabs.map((tab) => tab.kind)
         .join("|");
@@ -143,8 +138,8 @@ export async function run(): Promise<string> {
     await drag(changesTab, 400);
     check(kinds() === "terminal|file|changes", "Dragging a tab past the end did not reorder it");
     check(
-      workbenchController.getView(viewKey).active ===
-        workbenchController.getView(viewKey).tabs.find((tab) => tab.kind === "changes")?.id,
+      workbench.getView(viewKey).active ===
+        workbench.getView(viewKey).tabs.find((tab) => tab.kind === "changes")?.id,
       "Picking a tab up did not select it",
     );
 

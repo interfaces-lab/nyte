@@ -442,6 +442,8 @@ export type HostEvent =
   | {
       kind: "browser_agent_opened";
       owner: string | null;
+      /** The agent's page, which a Browser tab shows instead of opening its own. */
+      surface: string;
       url: string;
     };
 

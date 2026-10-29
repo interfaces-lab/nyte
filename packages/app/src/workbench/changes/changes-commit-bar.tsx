@@ -35,23 +35,12 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { BranchReadout } from "./change-scopes.ts";
 import { ChangesPullRequest } from "./changes-pull-request.tsx";
 import type { WorkbenchChangesScope } from "../model.ts";
-
-export const COMMIT_ACTIONS = [
-  "branch-commit",
-  "branch-commit-push",
-  "branch",
-  "commit",
-  "commit-push",
-  "commit-pull-request",
-  "push",
-  "pull-request",
-] as const;
-
-type CommitAction = (typeof COMMIT_ACTIONS)[number];
-
-const DEFAULT_COMMIT_ACTION: CommitAction = "commit-push";
-
-const STORAGE_KEY = "nyte.desktop.changes-commit-action.v1";
+import {
+  COMMIT_ACTIONS,
+  DEFAULT_COMMIT_ACTION,
+  storedCommitAction,
+} from "./changes-view-options.ts";
+import type { CommitAction } from "./changes-view-options.ts";
 
 interface CommitActionPlan {
   readonly branch: boolean;
@@ -295,23 +284,6 @@ function pullRequestInput(message: string): GitHubPullRequestInput {
   return body === "" ? { title } : { title, body };
 }
 
-function readStoredAction(actions: readonly CommitAction[]): CommitAction {
-  try {
-    if (typeof window === "undefined") return DEFAULT_COMMIT_ACTION;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-
-    return actions.find((action) => action === stored) ?? DEFAULT_COMMIT_ACTION;
-  } catch {
-    return DEFAULT_COMMIT_ACTION;
-  }
-}
-
-function storeAction(action: CommitAction): void {
-  try {
-    if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, action);
-  } catch {}
-}
-
 const styles = create({
   bar: {
     display: "flex",
@@ -454,7 +426,7 @@ export function ChangesCommitBar({
   const account = useGitHubAccountState().data;
   const actions = commitActions(github !== undefined);
   const [message, setMessage] = useState("");
-  const [chosenAction, setAction] = useState<CommitAction>(() => readStoredAction(COMMIT_ACTIONS));
+  const [chosenAction, setAction] = useState<CommitAction>(storedCommitAction.get);
   const action = actions.includes(chosenAction) ? chosenAction : DEFAULT_COMMIT_ACTION;
   const [branchName, setBranchName] = useState("");
   const [branchPrompt, setBranchPrompt] = useState<CommitAction | undefined>(undefined);
@@ -508,7 +480,7 @@ export function ChangesCommitBar({
   const start = (chosen: CommitAction): void => {
     if (running || commitActionDisabled(chosen, state)) return;
     setAction(chosen);
-    storeAction(chosen);
+    storedCommitAction.set(chosen);
     setResult(undefined);
 
     if (commitActionPlan(chosen).branch) {

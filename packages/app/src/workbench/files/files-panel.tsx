@@ -41,7 +41,7 @@ import { WorkspaceSearch } from "../workspace-search.tsx";
 import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
 import { treeItemHeight, treeStatus, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";
-import { WorkbenchRail } from "../workbench-rail.tsx";
+import { SidePanel } from "../side-panel.tsx";
 
 const styles = create({
   panel: {
@@ -126,10 +126,14 @@ export function FilesPanel({
   viewKey,
   visible,
   workspaceActive,
+  sidebarVisible,
+  onToggleSidebar,
 }: {
   readonly viewKey: WorkbenchViewKey;
   readonly visible: boolean;
   readonly workspaceActive: boolean;
+  readonly sidebarVisible: boolean;
+  readonly onToggleSidebar: () => void;
 }): ReactElement {
   const treeStatusTheme = useTreeStatusTheme();
   const shown = workspaceActive && visible;
@@ -147,7 +151,6 @@ export function FilesPanel({
   const tabs = useFileTabs(viewKey);
   const autoSave = useSetting(preferences.fileAutoSave);
   const [sidebar, setSidebar] = useState<"explorer" | "search">("explorer");
-  const [sidebarVisible, setSidebarVisible] = useState(false);
   const [searchOpened, setSearchOpened] = useState(false);
   const [discardPath, setDiscardPath] = useState<string>();
   const [discarding, setDiscarding] = useState(false);
@@ -167,8 +170,12 @@ export function FilesPanel({
 
   const unsaved = activeFile?.dirty === true;
 
+  const showSidebar = (): void => {
+    if (!sidebarVisible) onToggleSidebar();
+  };
+
   const showSearch = (): void => {
-    setSidebarVisible(true);
+    showSidebar();
     setSearchOpened(true);
     setSidebar("search");
     requestAnimationFrame(() => searchRef.current?.querySelector("input")?.focus());
@@ -367,6 +374,7 @@ export function FilesPanel({
         />
         <FileBreadcrumbs
           path={activeFile?.displayPath}
+          external={activeFile?.external === true}
           files={files.data}
           onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
         />
@@ -461,7 +469,7 @@ export function FilesPanel({
           indicator="glyph"
           aria-label="Files Sidebar"
           pressed={sidebarVisible}
-          onPressedChange={setSidebarVisible}
+          onPressedChange={onToggleSidebar}
         >
           <PanelToggleIcon side="right" visible={sidebarVisible} />
         </Toggle>
@@ -481,7 +489,7 @@ export function FilesPanel({
               onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
               onShowExplorer={() => {
                 setSidebar("explorer");
-                setSidebarVisible(true);
+                showSidebar();
               }}
               onSearch={showSearch}
             />
@@ -506,7 +514,7 @@ export function FilesPanel({
           ))}
         </div>
         {sidebarVisible && (
-          <WorkbenchRail>
+          <SidePanel>
             <aside
               aria-label={sidebar === "search" ? "Workspace search" : "Explorer"}
               {...props(styles.explorer)}
@@ -548,7 +556,7 @@ export function FilesPanel({
                 )}
               </div>
             </aside>
-          </WorkbenchRail>
+          </SidePanel>
         )}
       </div>
       <ConfirmDialog
@@ -588,38 +596,47 @@ const breadcrumbStyles = create({
   tree: { display: "block", height: "min(320px, var(--available-height))", width: "100%" },
 });
 
+/** The active file's path, each folder a menu of its files; a file outside the workspace reads as plain text. */
 function FileBreadcrumbs({
   path,
+  external,
   files,
   onOpen,
 }: {
   readonly path: string | undefined;
+  readonly external: boolean;
   readonly files: readonly MentionFile[] | undefined;
   readonly onOpen: (file: MentionFile) => void;
 }): ReactElement {
   return (
     <nav aria-label="File path" {...props(breadcrumbStyles.path)}>
-      {path === undefined
-        ? "Files"
-        : path.split("/").map((segment, index, segments) => (
-            <Fragment key={segments.slice(0, index + 1).join("/")}>
-              {index > 0 && (
-                <span aria-hidden="true" {...props(breadcrumbStyles.separator)}>
-                  <Icon name="chevron-right" size={10} />
-                </span>
-              )}
-              <FileCrumb
-                label={segment}
-                path={segments.slice(0, index + 1).join("/")}
-                directory={segments
-                  .slice(0, index === segments.length - 1 ? index : index + 1)
-                  .join("/")}
-                current={index === segments.length - 1}
-                files={files}
-                onOpen={onOpen}
-              />
-            </Fragment>
-          ))}
+      {path === undefined ? (
+        "Files"
+      ) : external ? (
+        <span title={path} {...props(breadcrumbStyles.label)}>
+          {path}
+        </span>
+      ) : (
+        path.split("/").map((segment, index, segments) => (
+          <Fragment key={segments.slice(0, index + 1).join("/")}>
+            {index > 0 && (
+              <span aria-hidden="true" {...props(breadcrumbStyles.separator)}>
+                <Icon name="chevron-right" size={10} />
+              </span>
+            )}
+            <FileCrumb
+              label={segment}
+              path={segments.slice(0, index + 1).join("/")}
+              directory={segments
+                .slice(0, index === segments.length - 1 ? index : index + 1)
+                .join("/")}
+              current={index === segments.length - 1}
+              files={files}
+              onOpen={onOpen}
+            />
+          </Fragment>
+        ))
+      )}
     </nav>
   );
 }

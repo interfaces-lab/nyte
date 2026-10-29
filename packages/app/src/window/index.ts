@@ -6,8 +6,9 @@ import type { HostState } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { connection } from "../data/connection.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { workbenchController } from "../workbench/controller.ts";
-import { workbenchShowsChat, workbenchViewKey } from "../workbench/model.ts";
+import { workbenchShowsChat } from "../workbench/model.ts";
+import { workbenchViewKey } from "../workbench/paths.ts";
+import { workbench } from "../workbench/store.ts";
 import { derivedStore } from "../data/derived-store.ts";
 import type { StoreSource } from "../data/derived-store.ts";
 import { expose } from "./exposure.ts";
@@ -58,17 +59,13 @@ const sources = {
   covered: {
     read() {
       const host = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
-      const workbench = workbenchController.getView(workbenchViewKey(host));
+      const view = workbench.getView(workbenchViewKey(host));
 
-      return (
-        workbench.expanded &&
-        workbench.layout.kind === "maximized" &&
-        !workbenchShowsChat(workbench.layout)
-      );
+      return view.expanded && view.layout.kind === "maximized" && !workbenchShowsChat(view.layout);
     },
     subscribe(notice: () => void) {
       const leave = [
-        workbenchController.subscribe(notice),
+        workbench.subscribe(notice),
         queryClient.getQueryCache().subscribe((event) => {
           if (event.query.queryKey[0] === keys.host[0]) notice();
         }),

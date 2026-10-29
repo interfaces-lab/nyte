@@ -1,39 +1,45 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { applyBrowserAgentOpened } from "./browser-surfaces.ts";
-import { createWorkbenchController } from "../controller.ts";
-import { workbenchViewKey } from "../model.ts";
+import { browserSurface } from "../model.ts";
+import { workbenchViewKey } from "../paths.ts";
+import { createWorkbenchStore } from "../store.ts";
 
-test("an agent's page adds a quiet Browser tab, then navigates it in place", () => {
-  const controller = createWorkbenchController(() => ({ browser: true }));
+test("an agent's page adds a quiet Browser tab showing that page, and leaves the user's tab alone", () => {
+  const workbench = createWorkbenchStore(() => ({ browser: true }));
   const owner = "/workspace/agent";
   const view = workbenchViewKey(owner);
+  const surface = "stage:session:agent";
 
-  applyBrowserAgentOpened(controller, {
+  workbench.dispatch(view, {
+    kind: "add",
+    tab: { id: "mine", kind: "browser", url: "https://mine.test/", surface: null },
+  });
+  workbench.dispatch(view, { kind: "toggle" });
+  applyBrowserAgentOpened(workbench, {
     kind: "browser_agent_opened",
     owner,
+    surface,
     url: "https://a.test/",
   });
 
-  const added = controller.getView(view);
+  const added = workbench.getView(view);
   assert.equal(added.expanded, false);
   assert.deepEqual(
-    added.tabs.map((tab) => tab.kind === "browser" && tab.url),
-    ["https://a.test/"],
+    added.tabs.map((tab) => tab.kind === "browser" && [browserSurface(tab), tab.url]),
+    [
+      ["mine", "https://mine.test/"],
+      [surface, "https://a.test/"],
+    ],
   );
 
-  applyBrowserAgentOpened(controller, {
+  applyBrowserAgentOpened(workbench, {
     kind: "browser_agent_opened",
     owner,
+    surface,
     url: "https://b.test/",
   });
 
-  const navigated = controller.getView(view);
-  assert.equal(navigated.expanded, false);
-  assert.deepEqual(
-    navigated.tabs.map((tab) => tab.kind === "browser" && tab.url),
-    ["https://b.test/"],
-  );
-  assert.equal(navigated.tabs[0]?.id, added.tabs[0]?.id);
-  assert.deepEqual(controller.getView(workbenchViewKey(undefined)).tabs, []);
+  assert.deepEqual(workbench.getView(view).tabs, added.tabs);
+  assert.deepEqual(workbench.getView(workbenchViewKey(undefined)).tabs, []);
 });

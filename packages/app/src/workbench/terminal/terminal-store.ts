@@ -10,14 +10,13 @@ import type {
 } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { Type } from "typebox";
-import { Value } from "typebox/value";
 import { useSyncExternalStore } from "react";
 import { errorMessage } from "../../contract/errors.ts";
 import { connected } from "../../data/connection.ts";
 import { hostWatch } from "../../data/watches.ts";
 import { workspacePath as pathOfWorkspace } from "../../data/workspaces.ts";
-import type { WorkbenchController } from "../controller.ts";
-import type { WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
+import type { WorkbenchTabId } from "../model.ts";
+import { persisted } from "../persistence.ts";
 
 type ShellTerminalState =
   | { readonly kind: "starting" }
@@ -49,8 +48,10 @@ interface ShellTerminalTab extends TerminalTabFields {
 
 interface JobTerminalTab extends TerminalTabFields {
   readonly kind: "job";
-  readonly sessionId: SessionId;
+  readonly workspace: WorkspaceId;
   readonly jobId: JobView["id"];
+  /** The chat that started the job, as the job reports it. */
+  readonly session: SessionId | null;
   readonly state: JobTerminalState;
   readonly rendering: TerminalRenderingState;
   readonly stream: TerminalStreamState;
@@ -228,8 +229,8 @@ async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
   }
 }
 
-function savedKey(id: WorkbenchTabId): string {
-  return SAVED_PREFIX + id;
+function savedOutput(id: WorkbenchTabId) {
+  return persisted(SAVED_PREFIX + id, savedShell, null);
 }
 
 function save(id: WorkbenchTabId): void {
@@ -238,19 +239,11 @@ function save(id: WorkbenchTabId): void {
   const feed = feeds.get(id);
 
   if (feed === undefined) return;
-
-  try {
-    window.localStorage.setItem(
-      savedKey(id),
-      JSON.stringify({
-        workspace: feed.workspace,
-        key: feed.job.key,
-        printed: feed.printed.join("").slice(-KEPT_OUTPUT),
-      }),
-    );
-  } catch {
-    return;
-  }
+  savedOutput(id).set({
+    workspace: feed.workspace,
+    key: feed.job.key,
+    printed: feed.printed.join("").slice(-KEPT_OUTPUT),
+  });
 }
 
 function scheduleSave(id: WorkbenchTabId): void {
@@ -261,25 +254,10 @@ function scheduleSave(id: WorkbenchTabId): void {
   );
 }
 
-function readSaved(id: WorkbenchTabId) {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(savedKey(id)) ?? "null");
-
-    return Value.Check(savedShell, parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 function forgetSaved(id: WorkbenchTabId): void {
   clearTimeout(saving.get(id));
   saving.delete(id);
-
-  try {
-    window.localStorage.removeItem(savedKey(id));
-  } catch {
-    return;
-  }
+  savedOutput(id).remove();
 }
 
 if (globalThis.window !== undefined)
@@ -415,7 +393,7 @@ export function reattachShells(
   shells: Iterable<{ readonly id: WorkbenchTabId; readonly workspacePath: string | null }>,
 ): void {
   for (const { id, workspacePath } of shells) {
-    const saved = readSaved(id);
+    const saved = savedOutput(id).get();
 
     if (saved === null || saved.key === null || snapshot.tabs.has(id) || creating.has(id)) continue;
     const { key } = saved;
@@ -450,21 +428,34 @@ export function reattachShells(
   }
 }
 
-function syncJobs(sessionId: SessionId, jobs: readonly JobView[]): void {
+/** Brings the workspace's job tabs up to date with its job list. */
+function syncJobs(workspace: WorkspaceId, jobs: readonly JobView[]): void {
   const commands = new Map(jobs.map((job) => [job.id, job]));
   const tabs = new Map(snapshot.tabs);
   let changed = false;
 
   for (const tab of snapshot.tabs.values()) {
-    if (tab.kind !== "job" || tab.sessionId !== sessionId) continue;
+    if (tab.kind !== "job" || tab.workspace !== workspace) continue;
     const job = commands.get(tab.jobId);
 
     if (job === undefined) continue;
 
-    if (tab.title === job.command && tab.state.kind === job.state.kind) continue;
+    if (
+      tab.title === job.command &&
+      tab.state.kind === job.state.kind &&
+      tab.session === job.session
+    )
+      continue;
 
     changed = true;
-    const next: JobTerminalTab = { ...tab, title: job.command, state: job.state };
+
+    const next: JobTerminalTab = {
+      ...tab,
+      title: job.command,
+      state: job.state,
+      session: job.session,
+    };
+
     tabs.set(tab.id, next);
     output.get(tab.id)?.update(next);
   }
@@ -479,20 +470,19 @@ function disposeOutput(id: WorkbenchTabId): void {
 }
 
 function followJob(tab: JobTerminalTab): void {
-  const { id, sessionId, jobId } = tab;
+  const id = tab.id;
   const previous = feeds.get(id);
 
   const pending = Promise.resolve()
     .then(async () => {
       await previous?.job.close();
       const connection = await connected();
-      const { workspace } = await connection.session(sessionId).info();
 
       if (creating.get(id) !== pending) return;
 
       const feed: Feed = {
-        job: connection.workspace(workspace).job(jobId),
-        workspace,
+        job: connection.workspace(tab.workspace).job(tab.jobId),
+        workspace: tab.workspace,
         printed: [...(previous?.printed ?? [])],
         length: previous?.length ?? 0,
       };
@@ -548,7 +538,7 @@ export const terminalActions = {
       );
 
     if (snapshot.tabs.has(id)) return Promise.resolve();
-    const saved = readSaved(id);
+    const saved = savedOutput(id).get();
 
     return startShell(
       id,
@@ -559,17 +549,17 @@ export const terminalActions = {
   },
   openJob({
     id,
-    sessionId,
+    workspace,
     job,
   }: {
     readonly id: WorkbenchTabId;
-    readonly sessionId: SessionId;
+    readonly workspace: WorkspaceId;
     readonly job: JobView;
   }): void {
     const existing = snapshot.tabs.get(id);
 
     if (existing !== undefined && existing.kind === "job") {
-      syncJobs(sessionId, [job]);
+      syncJobs(workspace, [job]);
 
       return;
     }
@@ -579,8 +569,9 @@ export const terminalActions = {
       title: job.command,
       cwd: "",
       kind: "job",
-      sessionId,
+      workspace,
       jobId: job.id,
+      session: job.session,
       state: job.state,
       rendering: { kind: "ready" },
       stream: { kind: "connecting" },
@@ -681,28 +672,3 @@ export const terminalActions = {
     await feed?.job.close();
   },
 };
-
-export function openJobTerminal({
-  controller,
-  view,
-  sessionId,
-  job,
-}: {
-  readonly controller: Pick<WorkbenchController, "actions">;
-  readonly view: WorkbenchViewKey;
-  readonly sessionId: SessionId;
-  readonly job: JobView;
-}): WorkbenchTabId {
-  const id = controller.actions.openTab({
-    view,
-    tab: {
-      kind: "terminal",
-      owner: { kind: "agent", sessionId, jobId: job.id },
-    },
-    activate: true,
-  });
-
-  terminalActions.openJob({ id, sessionId, job });
-
-  return id;
-}

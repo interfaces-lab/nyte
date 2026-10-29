@@ -1,6 +1,6 @@
 import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import type { Static } from "typebox";
+import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import {
@@ -8,21 +8,70 @@ import {
   SPLIT_LAYOUT,
   type WorkbenchSnapshot,
   type WorkbenchTab,
-  type WorkbenchViewKey,
   type WorkbenchViewState,
   workbenchTabAvailable,
 } from "./model.ts";
+import { workspaceFile } from "./paths.ts";
 import { DEFAULT_WIDTH, type WorkbenchWidth, shareWidth } from "./width.ts";
 
 /** What every panel was stored with before panels stored a share: the old default, not a width anyone chose. */
 const LEGACY_DEFAULT_PIXELS = 400;
 
-export interface WorkbenchPersistence {
-  read(): PersistedWorkbenchSnapshot | undefined;
-  write(value: PersistedWorkbenchSnapshot): void;
+/** A value the workbench keeps in local storage, checked against its schema when read. */
+interface Persisted<T> {
+  readonly get: () => T;
+  readonly set: (value: T) => void;
+  readonly remove: () => void;
+  readonly subscribe: (listener: () => void) => () => void;
 }
 
-const STORAGE_KEY = "nyte:desktop:workbench:v7";
+/** Reads `key` once, on first use; a stored value that fails `schema` reads as `fallback`. */
+export function persisted<S extends TSchema, Fallback>(
+  key: string,
+  schema: S,
+  fallback: Fallback,
+): Persisted<Static<S> | Fallback> {
+  const storage = globalThis.window === undefined ? undefined : window.localStorage;
+  const listeners = new Set<() => void>();
+  let loaded: { readonly value: Static<S> | Fallback } | undefined;
+
+  const read = (): Static<S> | Fallback => {
+    const raw = storage?.getItem(key) ?? null;
+
+    if (raw === null) return fallback;
+    const parsed: unknown = JSON.parse(raw);
+
+    return Value.Check(schema, parsed) ? parsed : fallback;
+  };
+
+  const publish = (value: Static<S> | Fallback): void => {
+    loaded = { value };
+
+    for (const listener of listeners) listener();
+  };
+
+  return {
+    get: () => (loaded ??= { value: read() }).value,
+    set(value) {
+      storage?.setItem(key, JSON.stringify(value));
+      publish(value);
+    },
+    remove() {
+      storage?.removeItem(key);
+      publish(fallback);
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+export type WorkbenchPersistence = Pick<
+  Persisted<PersistedWorkbenchSnapshot | undefined>,
+  "get" | "set"
+>;
 
 const strict = { additionalProperties: false };
 
@@ -120,11 +169,12 @@ type PersistedTab = Static<typeof persistedTab>;
 function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
   switch (tab.kind) {
     case "file":
-    case "browser":
     case "canvas":
     case "files":
     case "changes":
       return tab;
+    case "browser":
+      return { id: tab.id, kind: "browser", url: tab.url };
     case "terminal":
       return tab.owner.kind === "user"
         ? { id: tab.id, kind: "terminal", owner: { kind: "user" } }
@@ -137,6 +187,10 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
   }
 }
 
+function restoreTab(tab: PersistedTab): WorkbenchTab {
+  return tab.kind === "browser" ? { ...tab, surface: null } : tab;
+}
+
 function restoreWidth(stored: Static<typeof persistedWorkbenchView>): WorkbenchWidth {
   if (stored.share !== undefined) return shareWidth(stored.share);
 
@@ -145,61 +199,57 @@ function restoreWidth(stored: Static<typeof persistedWorkbenchView>): WorkbenchW
     : { kind: "pixels", pixels: stored.width };
 }
 
-function decodePersistedWorkbenchSnapshot(
-  serialized: string,
-): PersistedWorkbenchSnapshot | undefined {
-  try {
-    const parsed: unknown = JSON.parse(serialized);
-
-    if (!Value.Check(persistedWorkbenchSnapshot, parsed)) return undefined;
-
-    const valid = parsed.views.every((view) => {
-      const ids = new Set(view.tabs.map((tab) => tab.id));
-
-      return (
-        ids.size === view.tabs.length &&
-        (view.active === null ? view.tabs.length === 0 : ids.has(view.active))
-      );
-    });
-
-    return valid ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
+/** Restores each stored view; a file tab goes to the view whose workspace holds it. */
 export function restoreSnapshot(
   persisted: PersistedWorkbenchSnapshot | undefined,
   capabilities: () => ClientCapabilities,
 ): WorkbenchSnapshot {
-  const views = new Map<WorkbenchViewKey, WorkbenchViewState>();
-
-  if (persisted === undefined) return Object.freeze({ views });
+  if (persisted === undefined) return Object.freeze({ views: new Map() });
   const available = capabilities();
+  const keys = persisted.views.map((stored) => stored.key);
 
-  for (const stored of persisted.views) {
-    const tabs: readonly WorkbenchTab[] = stored.tabs.filter((tab) =>
-      workbenchTabAvailable({ kind: "project" }, tab.kind, available),
-    );
+  const placed = persisted.views.flatMap((stored) =>
+    stored.tabs.flatMap((tab, index) => {
+      if (
+        !workbenchTabAvailable({ kind: "project" }, tab.kind, available) ||
+        stored.tabs.findIndex((candidate) => candidate.id === tab.id) !== index
+      )
+        return [];
+      const restored = restoreTab(tab);
 
-    const active = tabs.some((tab) => tab.id === stored.active)
-      ? stored.active
-      : (tabs[0]?.id ?? null);
+      const view =
+        restored.kind === "file"
+          ? (workspaceFile(restored.path, keys)?.view ?? stored.key)
+          : stored.key;
 
-    views.set(
-      stored.key,
-      Object.freeze({
-        tabs: Object.freeze(tabs.map((tab) => Object.freeze(tab))),
-        active,
-        expanded: stored.expanded,
-        collapsed: "floating",
-        layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,
-        width: restoreWidth(stored),
+      return [{ view, tab: restored }];
+    }),
+  );
+
+  return Object.freeze({
+    views: new Map(
+      persisted.views.map((stored): [string, WorkbenchViewState] => {
+        const tabs = placed.flatMap((entry) => (entry.view === stored.key ? [entry.tab] : []));
+
+        const active = tabs.some((tab) => tab.id === stored.active)
+          ? stored.active
+          : (tabs[0]?.id ?? null);
+
+        return [
+          stored.key,
+          Object.freeze({
+            tabs: Object.freeze(tabs.map((tab) => Object.freeze(tab))),
+            active,
+            expanded: stored.expanded,
+            collapsed: "floating",
+            layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,
+            width: restoreWidth(stored),
+            sidebars: [],
+          }),
+        ];
       }),
-    );
-  }
-
-  return Object.freeze({ views });
+    ),
+  });
 }
 
 export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnapshot {
@@ -228,25 +278,6 @@ export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnap
   };
 }
 
-export function browserPersistence(): WorkbenchPersistence | undefined {
-  if (globalThis.window === undefined) return undefined;
-
-  return {
-    read() {
-      try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
-
-        return raw === null ? undefined : decodePersistedWorkbenchSnapshot(raw);
-      } catch {
-        return undefined;
-      }
-    },
-    write(value) {
-      try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-      } catch {
-        return;
-      }
-    },
-  };
+export function workbenchPersistence(): WorkbenchPersistence {
+  return persisted("nyte:desktop:workbench:v7", persistedWorkbenchSnapshot, undefined);
 }

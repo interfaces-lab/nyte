@@ -33,8 +33,8 @@ import { nyte } from "../contract/nyte.ts";
 import { useHostState } from "../data/host.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { patchDigest } from "../diff/changes-viewed.ts";
-import { useVisibleCanvasTab, workbenchController } from "../workbench/controller.ts";
-import { workbenchViewKey } from "../workbench/model.ts";
+import { workbenchViewKey } from "../workbench/paths.ts";
+import { useVisibleCanvasTab, workbench } from "../workbench/store.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
 import { readCanvasTheme, subscribeCanvasTheme } from "./canvas-theme.ts";
@@ -330,8 +330,8 @@ function TranscriptCanvas({
               size="sm"
               variant="outline"
               onClick={() =>
-                workbenchController.actions.closeTab({
-                  view: workbenchViewKey(workspacePath),
+                workbench.dispatch(workbenchViewKey(workspacePath), {
+                  kind: "close",
                   id: besideTab,
                 })
               }

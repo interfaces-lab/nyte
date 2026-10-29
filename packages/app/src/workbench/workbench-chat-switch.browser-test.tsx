@@ -34,8 +34,8 @@ import { USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
 import { renderCount, resetRenders } from "../chat/transcript/transcript-render-counter.ts";
 import { ChangesPanel } from "./changes/changes-panel.tsx";
 import { ChangesToolbar } from "./changes/changes-toolbar.tsx";
-import { workbenchController } from "./controller.ts";
-import { workbenchViewKey } from "./model.ts";
+import { workbenchViewKey } from "./paths.ts";
+import { workbench } from "./store.ts";
 import { TextFileEditor } from "./files/file-editor.tsx";
 import { fileActions } from "./files/file-store.ts";
 import { FilesPanel } from "./files/files-panel.tsx";
@@ -307,16 +307,11 @@ export async function run(): Promise<string> {
     version: asId<"file-version">("v1"),
   });
   const view = workbenchViewKey(WORKSPACE.path);
-  workbenchController.actions.openTab({
-    view,
-    tab: {
-      kind: "changes",
-      scope: { kind: "thread" },
-      selectedPath: null,
-      pathRevealRevision: 0,
-      scrollTop: 0,
-    },
-    activate: true,
+  workbench.dispatch(view, {
+    kind: "open-changes",
+    id: crypto.randomUUID(),
+    scope: { kind: "thread" },
+    path: null,
   });
   fileActions.open(view, FILE);
 
