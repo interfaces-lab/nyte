@@ -1,4 +1,4 @@
-import { toolDetail, toolVerbs } from "@nyte-ai/plugin/client/presentation";
+import { runStatusLabel, toolDetail, toolVerbs } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus, ToolStatus } from "@nyte-ai/plugin/client/presentation";
 import { countWork } from "../work-counts.ts";
 import type { SessionActivity } from "./session-activity.ts";
@@ -37,17 +37,17 @@ export function subagentStatus(status: RunStatus, unread: boolean): SubagentStat
     case "subagent-working":
       return PLANNING;
     case "waiting-for-approval":
-      return { indicator: "attention", text: "Needs attention" };
+      return { indicator: "attention", text: runStatusLabel(status) };
     case "retrying":
-      return { indicator: "running", text: "Retrying" };
+      return { indicator: "running", text: runStatusLabel(status) };
     case "idle":
       return { indicator: "done", text: "" };
     case "completed":
-      return { indicator: unread ? "unread" : "done", text: "Completed" };
+      return { indicator: unread ? "unread" : "done", text: runStatusLabel(status) };
     case "stopped":
-      return { indicator: "done", text: "Stopped" };
+      return { indicator: "done", text: runStatusLabel(status) };
     case "failed":
-      return { indicator: "failed", text: "Stopped with error" };
+      return { indicator: "failed", text: runStatusLabel(status) };
     default: {
       const _exhaustive: never = status;
 

@@ -5,7 +5,7 @@ import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { runMark } from "@nyte-ai/plugin/client/presentation";
+import { runMark, runStatusLabel } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus, SessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { useChats } from "../../chats/index.ts";
@@ -23,17 +23,6 @@ export type SubagentTrayView =
   | { readonly kind: "closed" }
   | { readonly kind: "list"; readonly retainedSessionId: SessionId | undefined }
   | { readonly kind: "detail"; readonly sessionId: SessionId };
-
-const STATUS_LABEL = {
-  idle: "Idle",
-  working: "Working",
-  retrying: "Retrying",
-  "subagent-working": "Working",
-  "waiting-for-approval": "Needs attention",
-  completed: "Completed",
-  stopped: "Stopped",
-  failed: "Failed",
-} as const satisfies Readonly<Record<RunStatus["kind"], string>>;
 
 interface ListedAgent {
   readonly session: SessionInfo;
@@ -267,7 +256,7 @@ export function SubagentTray({
                       </Row.Leading>
                       <Row.Label>{title}</Row.Label>
                     </Row.Primary>
-                    <Row.Meta>{STATUS_LABEL[agent.status.kind]}</Row.Meta>
+                    <Row.Meta>{runStatusLabel(agent.status)}</Row.Meta>
                   </Row>
                 );
               })}

@@ -1,4 +1,9 @@
-import { failureNotice, runMark, sessionTitle } from "@nyte-ai/plugin/client/presentation";
+import {
+  failureNotice,
+  runMark,
+  runStatusLabel,
+  sessionTitle,
+} from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
 import { Button } from "@nyte-ai/ui/button";
@@ -157,7 +162,7 @@ export function SessionRow({
 
   const ask =
     status?.kind === "waiting-for-approval"
-      ? "Needs your answer"
+      ? runStatusLabel(status)
       : status?.kind === "failed"
         ? failureNotice(status.failure).text
         : undefined;
