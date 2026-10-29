@@ -446,15 +446,14 @@ async function editQueuedMessage({
     );
   }
 
-  const sendNow = () =>
-    region.querySelector<HTMLButtonElement>(
-      "[data-queue-row='second'] button[aria-label='Add to next response']",
-    );
+  const steer = () =>
+    region.querySelector<HTMLButtonElement>("[data-queue-row='second'] button[aria-label='Steer']");
 
+  check(steer()?.title === "Sends without stopping the agent", "Steer has no tooltip");
   mark = calls.length;
-  sendNow()?.click();
-  await called(mark, "revise second", "Send now");
-  await until(sendNow, "the revised row to leave its sending state");
+  steer()?.click();
+  await called(mark, "revise second", "Steer");
+  await until(steer, "the revised row to leave its sending state");
 
   return failures;
 }

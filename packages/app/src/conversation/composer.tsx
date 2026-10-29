@@ -492,7 +492,7 @@ export function Composer({
       );
   };
 
-  const sendPendingNow = (item: UserMessage): void => {
+  const steerPending = (item: UserMessage): void => {
     setRowAction(item.id, { kind: "sending" });
     connection()
       .session(sessionId)
@@ -519,7 +519,7 @@ export function Composer({
         (cause: unknown) =>
           setRowAction(item.id, {
             kind: "failed",
-            message: `Couldn't send: ${errorMessage(cause)}`,
+            message: `Couldn't steer: ${errorMessage(cause)}`,
           }),
       );
   };
@@ -532,7 +532,7 @@ export function Composer({
 
   const sendNextQueued = (): boolean => {
     if (nextIdleQueued === undefined) return false;
-    sendPendingNow(nextIdleQueued);
+    steerPending(nextIdleQueued);
 
     return true;
   };
@@ -642,7 +642,7 @@ export function Composer({
                 enterSteers={emptyEnterSteers}
                 mac={mac}
                 onEdit={beginEdit}
-                onSendNow={sendPendingNow}
+                onSteer={steerPending}
                 onCancel={cancelPending}
                 onRemoveUnsent={removeOutboxRow}
                 onEditBlocked={(message) => setFeedback({ kind: "status", message })}
