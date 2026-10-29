@@ -11,7 +11,7 @@ const Report = Type.Object({
 });
 
 test(
-  "a session title re-renders only when its own name changes",
+  "a session's readers re-render only when its own row changes",
   { timeout: 120_000 },
   async () => {
     const output = await testRenderer(
@@ -22,7 +22,7 @@ test(
     const report = Value.Parse(Report, JSON.parse(output));
     console.info(`session selection: ${JSON.stringify(report)}`);
 
-    expect(report.unrelated).toEqual({ title: 0, row: report.snapshots, unlisted: 0 });
+    expect(report.unrelated).toEqual({ title: 0, row: 0, unlisted: 0 });
     expect(report.renamed).toEqual({ title: 1, text: "Renamed" });
     expect(report.unlisted).toBe("Read from host");
   },
