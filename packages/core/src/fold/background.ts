@@ -13,9 +13,12 @@ export function backgroundItems(
   ];
 }
 
+/** Counts the jobs and child sessions that are working, and those waiting on the user. A held page is not work: it stays held until its session or client goes. */
 export function countBackground(items: readonly BackgroundItem[]): HeadInfo["background"] {
+  const counted = items.filter((item) => item.kind !== "page");
+
   return {
-    working: items.filter((item) => item.state === "working").length,
-    waiting: items.filter((item) => item.state === "waiting").length,
+    working: counted.filter((item) => item.state === "working").length,
+    waiting: counted.filter((item) => item.state === "waiting").length,
   };
 }
