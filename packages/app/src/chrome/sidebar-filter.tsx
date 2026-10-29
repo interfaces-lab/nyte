@@ -30,12 +30,10 @@ import {
   GROUPINGS,
   hasSessionFilters,
   amongOptions,
-  PULL_REQUESTS,
   SHOW_FIELDS,
   SORTS,
   STATUSES,
   toggleOption,
-  type SessionPullRequest,
   type SessionEnvironment,
   type SessionShowField,
   type SessionStatus,
@@ -44,10 +42,6 @@ import {
 
 const SHOW_FIELD_ICONS = {
   updated: "clock",
-  environment: "globe",
-  pr: "pull-request",
-  branch: "git-branch",
-  machine: "devices",
 } as const satisfies Readonly<Record<SessionShowField, IconName>>;
 
 const STATUS_LABELS = {
@@ -57,22 +51,6 @@ const STATUS_LABELS = {
   draft: "Draft",
   done: "Done",
 } as const satisfies Readonly<Record<SessionStatus, string>>;
-
-const PR_LABELS = {
-  draft: "Draft",
-  open: "Open",
-  merged: "Merged",
-  closed: "Closed",
-  none: "No PR",
-} as const satisfies Readonly<Record<SessionPullRequest, string>>;
-
-const PR_ICONS = {
-  draft: "draft",
-  open: "pull-request",
-  merged: "merged",
-  closed: "pull-request-closed",
-  none: "circle-x",
-} as const satisfies Readonly<Record<SessionPullRequest, IconName>>;
 
 const ENVIRONMENT_ICONS = {
   cloud: "cloud",
@@ -213,7 +191,7 @@ export function WorkspaceControls({
                     })
                   }
                 >
-                  {field === "pr" ? "PR" : field[0]?.toLocaleUpperCase() + field.slice(1)}
+                  {field[0]?.toLocaleUpperCase() + field.slice(1)}
                 </MenuCheckboxItem>
               ))}
             </MenuSubContent>
@@ -255,31 +233,6 @@ export function WorkspaceControls({
                     }
                   >
                     {STATUS_LABELS[status]}
-                  </MenuCheckboxItem>
-                ))}
-              </MenuSubContent>
-            </MenuSub>
-            <MenuSub>
-              <MenuSubTrigger icon="pull-request">PR</MenuSubTrigger>
-              <MenuSubContent xstyle={styles.popup}>
-                {PULL_REQUESTS.map((pullRequest) => (
-                  <MenuCheckboxItem
-                    key={pullRequest}
-                    icon={PR_ICONS[pullRequest]}
-                    checked={value.pullRequests.includes(pullRequest)}
-                    onCheckedChange={(checked) =>
-                      onChange({
-                        ...value,
-                        pullRequests: toggleOption(
-                          PULL_REQUESTS,
-                          value.pullRequests,
-                          pullRequest,
-                          checked,
-                        ),
-                      })
-                    }
-                  >
-                    {PR_LABELS[pullRequest]}
                   </MenuCheckboxItem>
                 ))}
               </MenuSubContent>

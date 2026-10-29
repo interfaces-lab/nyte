@@ -105,6 +105,7 @@ export const sidebarStyles = create({
     fontWeight: type.weightRegular,
     flexShrink: 0,
   },
+  sectionTitle: { paddingInlineStart: sidebar.rowPaddingInline },
   sectionToggle: {
     display: "inline-flex",
     alignItems: "center",
