@@ -17,7 +17,7 @@ import type { ChangesRepository, TurnChangeOption } from "./change-scopes.ts";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 
-interface VcsChangeRow {
+export interface VcsChangeRow {
   readonly source: "working" | "commit";
   readonly path: string;
   readonly status: FileStatus;
@@ -30,7 +30,7 @@ interface RecordedChangeRow {
   readonly removed: number;
 }
 
-type ChangeRow = VcsChangeRow | RecordedChangeRow;
+export type ChangeRow = VcsChangeRow | RecordedChangeRow;
 
 export type PatchSnapshot = ReturnType<ReturnType<typeof createPatchLoader>["getSnapshot"]>;
 

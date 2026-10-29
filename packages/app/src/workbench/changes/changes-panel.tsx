@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import type { RunId, SessionId, SessionView, WorkspaceId } from "@nyte-ai/sdk";
+import type { ChangeSet, RunId, SessionId, SessionView, WorkspaceId } from "@nyte-ai/sdk";
 import { FileTypeIconSprite } from "../../components/file-type-icon";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { asId } from "@nyte-ai/schema";
@@ -62,7 +62,8 @@ import {
   viewedStates,
   workingRows,
 } from "./changes-model.ts";
-import type { RevertTarget } from "./changes-model.ts";
+import type { ChangeRow, PatchSnapshot, RevertTarget, VcsChangeRow } from "./changes-model.ts";
+import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 
 const NO_TURN_OPTIONS: readonly TurnChangeOption[] = [];
 
@@ -117,6 +118,29 @@ function usePatchLoader(
   useMountEffect(() => () => patches.release());
 
   return patches;
+}
+
+/** The rows, kept while their inputs hold: a recorded scope's patch key follows the list's identity. */
+function useChangeRows(
+  source: ChangeRow["source"],
+  working: readonly VcsChangeRow[],
+  manifest: ChangeSet | undefined,
+  recorded: ChangeSet | undefined,
+): readonly ChangeRow[] {
+  "use memo";
+
+  return changeRows(source, working, manifest, recorded);
+}
+
+function useStackSections(
+  rows: readonly ChangeRow[],
+  manifest: ChangeSet | undefined,
+  snapshot: PatchSnapshot,
+  source: PatchSource | undefined,
+): readonly ChangesStackItem[] {
+  "use memo";
+
+  return stackSections(rows, manifest, snapshot, source);
 }
 
 async function revertFile(path: string, revision: string | undefined): Promise<string | undefined> {
@@ -250,7 +274,7 @@ function ChangesPanelView({
     enabled: visible,
   });
 
-  const rows = changeRows(resolved.rows, working, manifest.data, recorded.data);
+  const rows = useChangeRows(resolved.rows, working, manifest.data, recorded.data);
   const stackOrder = rows.map((row) => row.path);
 
   const collapsedPaths =
@@ -285,7 +309,7 @@ function ChangesPanelView({
     patches.getSnapshot,
   );
 
-  const sections = stackSections(rows, manifest.data, patchSnapshot, patchSource);
+  const sections = useStackSections(rows, manifest.data, patchSnapshot, patchSource);
   const emptyState = changesEmptyState({ resolved, snapshot: snapshot.data, manifest, recorded });
   const viewedScopeId = `${optionsScopeId}\u0000${activeScopeValue}`;
 
