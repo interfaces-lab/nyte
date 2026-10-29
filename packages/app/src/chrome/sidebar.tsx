@@ -36,7 +36,7 @@ import {
 } from "../queries.ts";
 import { localSessions } from "../session-list.ts";
 import { closeSettings, type SettingsSection } from "../settings/index.ts";
-import type { OpenTarget } from "../tabs/model.ts";
+import type { OpenIntent } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { AccountFooterMenu } from "./account-footer.tsx";
 import { useGitHub, useGitHubAccountState, useGitHubState } from "./github-account.ts";
@@ -78,12 +78,12 @@ type SidebarConfirmation =
       readonly sessionIds: readonly SessionId[];
     };
 
-async function showSession(sessionId: SessionId, target: OpenTarget | "beside"): Promise<void> {
+async function showSession(sessionId: SessionId, target: OpenIntent | "beside"): Promise<void> {
   if (target !== "background" && !(await activateWorkspace(sessionFolderPath(sessionId) ?? null)))
     return;
 
   if (target !== "beside") {
-    windowTabs.dispatch({ kind: "open", place: { kind: "session", sessionId }, target });
+    windowTabs.openChat(sessionId, target);
 
     return;
   }
@@ -402,13 +402,7 @@ export function Sidebar(): ReactElement {
             open={paletteOpen}
             recentSessions={listed?.map(({ session }) => session)}
             onOpenChange={shellActions.setSearchOpen}
-            onOpenSession={(sessionId) =>
-              windowTabs.dispatch({
-                kind: "open",
-                place: { kind: "session", sessionId },
-                target: "foreground",
-              })
-            }
+            onOpenSession={(sessionId) => windowTabs.openChat(sessionId, "permanent")}
             onNewChat={() => panes.newChat()}
             onOpenFolder={openFolder}
             onOpenHome={

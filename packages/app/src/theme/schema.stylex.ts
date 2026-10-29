@@ -8,6 +8,12 @@ export const shell = defineConsts({
   cardRadius: "var(--nyte-shell-card-radius)",
 });
 
+export const tab = defineConsts({
+  minWidth: "var(--nyte-tab-min-width)",
+  maxWidth: "var(--nyte-tab-max-width)",
+  stripEdgeFade: "var(--nyte-tab-strip-edge-fade)",
+});
+
 export const conversation = defineConsts({
   measure: "var(--nyte-conversation-measure)",
   paragraphGap: "var(--nyte-prose-paragraph-gap)",
