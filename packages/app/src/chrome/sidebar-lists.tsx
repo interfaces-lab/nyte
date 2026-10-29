@@ -214,7 +214,7 @@ export function ChatsList({
 
   if (view.grouping === "inbox") {
     const shelved = (shelf: SessionShelf): readonly ListedSession[] =>
-      rows.filter(({ session }) => deriveShelf(session, rail.chats, hold) === shelf);
+      rows.filter(({ session }) => deriveShelf(session, rail.chats, rail.unread, hold) === shelf);
 
     const inbox = shelved("inbox");
 
@@ -333,7 +333,9 @@ export function FolderList({
 
   if (sessions === undefined && drafts.length === 0) return null;
 
-  const groups = sessions === undefined ? [] : folderView(sessions, view, now, rail.chats);
+  const groups =
+    sessions === undefined ? [] : folderView(sessions, view, now, rail.chats, rail.unread);
+
   const listed = groups.flatMap((group) => group.sessions);
   const selected = listed.findIndex((session) => session.id === rail.activeSessionId);
   const key = `local:${place.workspace ?? "home"}`;

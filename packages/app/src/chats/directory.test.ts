@@ -27,8 +27,12 @@ const FAILED: Execution = {
   },
 };
 
+const main = asId<"head">("main");
+
+const tip = asId<"commit">("tip");
+
 function heads(execution: Execution, unread = false): readonly HeadInfo[] {
-  return [{ name: asId<"head">("main"), tip: { kind: "start" }, stack: null, execution, unread }];
+  return [{ name: main, tip: { kind: "commit", id: tip }, stack: null, execution, unread }];
 }
 
 function unreadRow(id: string, execution: Execution, change: Partial<SessionInfo> = {}) {
@@ -52,12 +56,14 @@ test("an open view's heads replace the listed ones as a unit, and closing it han
   const views = new Map([[listed.id, { execution: LIVE, heads: heads(LIVE, true) }]]);
   const open = chatsFor([listed], { views });
 
-  expect(open.get(listed.id)).toMatchObject({ status: { kind: "working" }, unread: false });
-  expect(chatsFor([listed], {}, open).get(listed.id)?.status).toEqual({ kind: "completed" });
-
-  const read = new Map([[listed.id, { execution: COMPLETED, heads: heads(COMPLETED, true) }]]);
-
-  expect(chatsFor([listed], { views: read }).get(listed.id)?.unread).toBe(true);
+  expect(open.get(listed.id)).toMatchObject({
+    status: { kind: "working" },
+    unreadTip: { head: main, commit: tip },
+  });
+  expect(chatsFor([listed], {}, open).get(listed.id)).toMatchObject({
+    status: { kind: "completed" },
+    unreadTip: null,
+  });
 
   const headless = new Map([[listed.id, { execution: LIVE, heads: [] }]]);
 
@@ -83,18 +89,21 @@ test("a chat whose own run is over reads as a subagent still working while any d
   expect(settled.get(middle.id)?.status.kind).toBe("completed");
 });
 
-test("only a completed run past the read mark leaves a chat unread", () => {
-  const completed = unreadRow("completed", COMPLETED);
-  const stopped = unreadRow("stopped", STOPPED);
-  const failed = unreadRow("failed", FAILED);
-  const working = unreadRow("working", LIVE);
-  const delegating = unreadRow("delegating", COMPLETED);
-  const child = sessionRow("child", { parent: delegating.id }, LIVE);
-  const seen = sessionRow("seen");
-  const chats = chatsFor([completed, stopped, failed, working, delegating, child, seen]);
+test("a chat carries its main head's tip past the read mark, whatever its run did; deciding unread is the window's", () => {
+  const chats = chatsFor([
+    unreadRow("completed", COMPLETED),
+    unreadRow("stopped", STOPPED),
+    unreadRow("failed", FAILED),
+    unreadRow("working", LIVE),
+    sessionRow("seen"),
+  ]);
 
-  expect([...chats.values()].flatMap((chat) => (chat.unread ? [chat.title] : []))).toEqual([
-    "completed",
+  expect([...chats.values()].map((chat) => [chat.title, chat.unreadTip?.commit ?? null])).toEqual([
+    ["completed", tip],
+    ["stopped", tip],
+    ["failed", tip],
+    ["working", tip],
+    ["seen", null],
   ]);
 });
 

@@ -1,5 +1,5 @@
 import type { SessionId } from "@nyte-ai/sdk";
-import type { Chat, ChatDirectory } from "../chats/index.ts";
+import type { ChatDirectory } from "../chats/index.ts";
 import { orderedPanes } from "../layout/pane-layout.ts";
 import { activeTab } from "../tabs/model.ts";
 import type { WindowState } from "../tabs/model.ts";
@@ -24,7 +24,7 @@ export interface Exposure {
   readonly shown: ReadonlySet<SessionId>;
   /** Shown chats the user can read now: uncovered, in a focused window. A chat under its tray's agent is covered. */
   readonly looking: ReadonlySet<SessionId>;
-  /** Chats with a finished reply nobody has read, except those the user is looking at. */
+  /** Chats whose completed run left a reply past the read mark, except those the user is looking at. */
   readonly unread: ReadonlySet<SessionId>;
 }
 
@@ -35,7 +35,9 @@ export function expose(view: WindowView): Exposure {
 
   const unread = new Set(
     [...view.chats.values()].flatMap((chat) =>
-      chat.unread && !placed.looking.has(chat.id) ? [chat.id] : [],
+      chat.unreadTip !== null && chat.status.kind === "completed" && !placed.looking.has(chat.id)
+        ? [chat.id]
+        : [],
     ),
   );
 
@@ -66,23 +68,4 @@ function place(view: WindowView): Omit<Exposure, "unread"> {
         ? new Set([...panes.filter((parent) => detail(parent) === undefined), ...details])
         : NONE,
   };
-}
-
-const shown = new WeakMap<ChatDirectory, WeakMap<ReadonlySet<SessionId>, ChatDirectory>>();
-
-/** The directory with each chat's unread flag set to whether this window shows it unread. */
-export function shownChats(chats: ChatDirectory, unread: ReadonlySet<SessionId>): ChatDirectory {
-  const known = shown.get(chats)?.get(unread);
-
-  if (known !== undefined) return known;
-
-  const next = new Map(
-    [...chats].map(([id, chat]): readonly [SessionId, Chat] =>
-      chat.unread === unread.has(id) ? [id, chat] : [id, { ...chat, unread: unread.has(id) }],
-    ),
-  );
-
-  shown.set(chats, (shown.get(chats) ?? new WeakMap()).set(unread, next));
-
-  return next;
 }

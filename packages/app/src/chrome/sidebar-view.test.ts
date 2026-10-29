@@ -101,7 +101,9 @@ test("pinned chats leave their workspace in grouped views and lead the flat list
 
   const status = { ...DEFAULT_SESSION_VIEW, grouping: "status" } as const;
 
-  expect(names(folderView(sessions, status, 0, NONE))).toEqual([["Done", ["newest", "middle"]]]);
+  expect(names(folderView(sessions, status, 0, NONE, new Set()))).toEqual([
+    ["Done", ["newest", "middle"]],
+  ]);
   expect(names(sessionsForView(sessions, DEFAULT_SESSION_VIEW, "local", 0))).toEqual([
     ["none", ["older pin", "newest", "middle"]],
   ]);

@@ -35,36 +35,28 @@ function unread(id: string, execution: Execution, change: Partial<SessionInfo> =
   });
 }
 
-function glyph(row: SessionInfo, rows: readonly SessionInfo[] = [row]): string {
-  const chats = chatsFor(rows);
-
-  return renderToStaticMarkup(
-    <StatusGlyph mark={chatMark(row, chats)} unread={chats.get(row.id)?.unread === true} />,
-  );
+/** `unread` stands for the window's answer, which the window's own tests cover. */
+function glyph(row: SessionInfo, rows: readonly SessionInfo[] = [row], unread = true): string {
+  return renderToStaticMarkup(<StatusGlyph mark={chatMark(row, chatsFor(rows))} unread={unread} />);
 }
 
-function grouped(rows: readonly SessionInfo[]): readonly (readonly [string, readonly string[]])[] {
+function grouped(
+  rows: readonly SessionInfo[],
+  unread: readonly SessionInfo[],
+): readonly (readonly [string, readonly string[]])[] {
   return sessionsForView(
     rows,
     { ...DEFAULT_SESSION_VIEW, grouping: "status" },
     "local",
     1000,
     chatsFor(rows),
+    new Set(unread.map((session) => session.id)),
   ).map((group) => [group.label ?? "", group.sessions.map((session) => session.id)]);
 }
 
-test("a completed chat past its read mark shows Unread until seen; stopped, live and empty ones don't", () => {
+test("an unread chat shows Unread while its run draws no mark, and a read one shows nothing", () => {
   assert.match(glyph(unread("completed", COMPLETED)), /aria-label="Unread"/);
-  assert.equal(glyph(sessionRow("seen")), "");
-  assert.doesNotMatch(glyph(unread("live", LIVE)), /Unread/);
-
-  const stopped: Execution = {
-    kind: "idle",
-    lastRun: { id: run.id, end: { kind: "stopped" }, endedAt: 1 },
-  };
-
-  assert.equal(glyph(unread("stopped", stopped)), "");
-  assert.equal(glyph({ ...unread("empty", COMPLETED), heads: [] }), "");
+  assert.equal(glyph(sessionRow("seen"), undefined, false), "");
 });
 
 test("run marks take priority over Unread and each reads its own label", () => {
@@ -102,7 +94,7 @@ test("a chat whose subagent still works reads as working, and a failed one needs
 
   assert.match(glyph(parent, [parent, child]), /aria-label="Running"/);
 
-  assert.deepEqual(grouped([parent, child, failed, done]), [
+  assert.deepEqual(grouped([parent, child, failed, done], [done]), [
     ["Needs attention", ["failed"]],
     ["Unread", ["done"]],
     ["Working", ["parent"]],

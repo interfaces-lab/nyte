@@ -9,6 +9,8 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 
 const NO_CHATS: ChatDirectory = new Map();
 
+const NONE_UNREAD: ReadonlySet<SessionId> = new Set();
+
 export const GROUPINGS = [
   "inbox",
   "none",
@@ -95,9 +97,11 @@ export function chatMark(session: SessionInfo, chats: ChatDirectory): SessionMar
   return chat === undefined ? "idle" : runMark(chat.status);
 }
 
+/** A chat's status in the sidebar; `unread` is the window's answer, which leaves out chats the user is looking at. */
 function deriveSessionStatus(
   session: SessionInfo,
   chats: ChatDirectory,
+  unread: ReadonlySet<SessionId>,
 ): Exclude<SessionStatus, "draft"> {
   const mark = chatMark(session, chats);
 
@@ -109,7 +113,7 @@ function deriveSessionStatus(
     case "working":
       return "working";
     case "idle":
-      return chats.get(session.id)?.unread === true ? "unread" : "done";
+      return unread.has(session.id) ? "unread" : "done";
     default: {
       const _exhaustive: never = mark;
 
@@ -133,6 +137,7 @@ export interface ShelfHold {
 export function deriveShelf(
   session: SessionInfo,
   chats: ChatDirectory,
+  unread: ReadonlySet<SessionId>,
   hold: ShelfHold | undefined,
 ): SessionShelf {
   if (session.archived) return "archived";
@@ -141,7 +146,7 @@ export function deriveShelf(
 
   if (session.pinned) return "inbox";
 
-  const status = deriveSessionStatus(session, chats);
+  const status = deriveSessionStatus(session, chats, unread);
 
   switch (status) {
     case "needs-attention":
@@ -223,6 +228,7 @@ function groupSessions(
   environment: SessionEnvironment,
   now: number,
   chats: ChatDirectory,
+  unread: ReadonlySet<SessionId>,
 ): readonly SessionViewGroup[] {
   switch (grouping) {
     case "inbox":
@@ -244,7 +250,7 @@ function groupSessions(
 
       return STATUSES.flatMap((status) => {
         const members = sessions.filter(
-          (session) => deriveSessionStatus(session, chats) === status,
+          (session) => deriveSessionStatus(session, chats, unread) === status,
         );
 
         return members.length === 0
@@ -291,6 +297,7 @@ export function sessionsForView(
   environment: SessionEnvironment,
   now: number,
   chats: ChatDirectory = NO_CHATS,
+  unread: ReadonlySet<SessionId> = NONE_UNREAD,
 ): readonly SessionViewGroup[] {
   if (settings.environments.length > 0 && !settings.environments.includes(environment)) return [];
 
@@ -299,12 +306,12 @@ export function sessionsForView(
       session.parent === null &&
       session.archived === settings.archived &&
       (settings.statuses.length === 0 ||
-        settings.statuses.includes(deriveSessionStatus(session, chats))),
+        settings.statuses.includes(deriveSessionStatus(session, chats, unread))),
   );
 
   const ordered = filtered.toSorted(sessionOrder(settings.sort, chats));
 
-  return groupSessions(ordered, settings.grouping, environment, now, chats);
+  return groupSessions(ordered, settings.grouping, environment, now, chats, unread);
 }
 
 /** A workspace's chats in a grouped view: pinned chats leave it for the Pinned section above. */
@@ -313,6 +320,7 @@ export function folderView(
   settings: SessionViewSettings,
   now: number,
   chats: ChatDirectory,
+  unread: ReadonlySet<SessionId>,
 ): readonly SessionViewGroup[] {
   return sessionsForView(
     sessions.filter((session) => !session.pinned),
@@ -320,6 +328,7 @@ export function folderView(
     "local",
     now,
     chats,
+    unread,
   );
 }
 

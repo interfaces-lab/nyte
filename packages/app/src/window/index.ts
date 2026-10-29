@@ -1,10 +1,10 @@
 import type { RegisteredRouter } from "@tanstack/react-router";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { SessionId } from "@nyte-ai/sdk";
-import { chatDirectory, subscribeChats, useChats } from "../chats/index.ts";
-import type { ChatDirectory } from "../chats/index.ts";
+import { chatDirectory, subscribeChats } from "../chats/index.ts";
 import type { HostState } from "../nyte.ts";
 import { keys, queryClient } from "../queries.ts";
+import { connection } from "../sdk.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import {
   workbenchController,
@@ -13,7 +13,7 @@ import {
 } from "../workbench/controller.ts";
 import { derivedStore } from "../derived-store.ts";
 import type { StoreSource } from "../derived-store.ts";
-import { expose, shownChats } from "./exposure.ts";
+import { expose } from "./exposure.ts";
 import { reduceTrays } from "./tray.ts";
 import type { TrayAction, TrayView } from "./tray.ts";
 
@@ -135,8 +135,28 @@ function act(action: TrayAction): void {
   setOwn({ ...own, trays: reduceTrays(own.trays, action) });
 }
 
+/** Moves each chat's read mark to the tip it is unread through; a chat with nothing unread is left alone. */
+async function markRead(ids: readonly SessionId[]): Promise<void> {
+  const chats = chatDirectory();
+
+  await Promise.all(
+    ids.flatMap((id) => {
+      const tip = chats.get(id)?.unreadTip;
+
+      return tip === undefined || tip === null
+        ? []
+        : [connection().session(id).head(tip.head).see(tip.commit)];
+    }),
+  );
+}
+
 /** This window: what it shows, what the user is looking at, and the actions that change it. */
-export const chatWindow = { getSnapshot: store.getSnapshot, subscribe: store.subscribe, act };
+export const chatWindow = {
+  getSnapshot: store.getSnapshot,
+  subscribe: store.subscribe,
+  act,
+  markRead,
+};
 
 /** What `select` makes of this window; a change that selects an equal value doesn't render. */
 export function useChatWindow<S>(
@@ -150,14 +170,6 @@ export function useChatWindow<S>(
     select,
     isEqual,
   );
-}
-
-/** The chat directory as this window shows it: unread only where nobody is looking. */
-export function useShownChats(): ChatDirectory {
-  const chats = useChats((directory) => directory);
-  const unread = useChatWindow((snapshot) => snapshot.unread);
-
-  return shownChats(chats, unread);
 }
 
 /** Follows whether settings has the stage, which leaves no chat on screen. */

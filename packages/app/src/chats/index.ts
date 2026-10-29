@@ -9,7 +9,7 @@ import { openViews, sessionsWatch, subscribeOpenViews } from "../sdk.tsx";
 import { joinChats } from "./directory.ts";
 import type { Chat, ChatDirectory } from "./directory.ts";
 
-export type { Chat, ChatDirectory, ChatLocation, Folder } from "./directory.ts";
+export type { Chat, ChatDirectory, ChatLocation, Folder, UnreadTip } from "./directory.ts";
 
 export type ChatResult =
   | { readonly kind: "loading" }

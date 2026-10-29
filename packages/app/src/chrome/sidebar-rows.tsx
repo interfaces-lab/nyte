@@ -124,11 +124,13 @@ export interface RailRows {
   readonly unavailable: ReadonlySet<WorkspaceId>;
   readonly repository: Pick<GitHubRepository, "owner" | "name"> | undefined;
   readonly chats: ChatDirectory;
+  /** The window's unread answer, which leaves out chats the user is looking at. */
+  readonly unread: ReadonlySet<SessionId>;
   readonly showUpdated: boolean;
   readonly open: (sessionId: SessionId, intent: OpenIntent | "beside") => void;
   readonly rename: (sessionId: SessionId, name: string) => void;
   readonly pin: (session: SessionInfo) => void;
-  readonly markRead: (sessions: readonly SessionInfo[]) => void;
+  readonly markRead: (sessions: readonly SessionId[]) => void;
   readonly archive: (session: SessionInfo) => void;
   readonly remove: (sessionId: SessionId) => void;
   readonly openDraft: (draftId: string) => void;
@@ -166,6 +168,7 @@ export function SessionRow({
       : status?.kind === "failed"
         ? failureNotice(status.failure).text
         : undefined;
+
   const [draftName, setDraftName] = useState<string | undefined>();
   const warming = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -227,7 +230,7 @@ export function SessionRow({
         Rename Chat…
       </MenuItem>
       {unread && (
-        <MenuItem icon="eye" onClick={() => rail.markRead([session])}>
+        <MenuItem icon="eye" onClick={() => rail.markRead([session.id])}>
           Mark as Read
         </MenuItem>
       )}

@@ -93,6 +93,7 @@ async function* replay<T>(values: readonly T[]): AsyncIterable<T> {
   await new Promise<never>(() => undefined);
 }
 
+/** A connection that answers from `script`. A session's handle stands for its heads too, so what the script changes on it, `head()` returns. */
 export function scriptedConnection(script: ConnectionScript = {}): {
   readonly connection: Connection;
   readonly sent: readonly ScriptedSend[];
@@ -157,7 +158,9 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       }),
     };
 
-    return { ...base, ...script.session?.(id) };
+    const handle: Session = { ...base, head: () => handle, ...script.session?.(id) };
+
+    return handle;
   };
 
   const workspace = (id: WorkspaceId) => ({

@@ -34,9 +34,8 @@ import {
   type RailWorkspace,
 } from "../queries.ts";
 import { localSessions } from "../session-list.ts";
-import { chatFolderPath } from "../chats/index.ts";
-import { useShownChats } from "../window/index.ts";
-import { connection } from "../sdk.tsx";
+import { chatFolderPath, useChats } from "../chats/index.ts";
+import { chatWindow, useChatWindow } from "../window/index.ts";
 import { closeSettings, type SettingsSection } from "../settings/index.ts";
 import type { OpenIntent } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -98,21 +97,14 @@ async function showSession(sessionId: SessionId, target: OpenIntent | "beside"):
   controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
 }
 
-function markRead(sessions: readonly SessionInfo[]): void {
-  for (const session of sessions)
-    for (const head of session.heads)
-      if (head.unread && head.tip.kind === "commit")
-        void connection()
-          .session(session.id)
-          .head(head.name)
-          .see(head.tip.id)
-          .catch(() =>
-            toast.add({
-              type: "error",
-              title: "Couldn't mark this chat as read. Try again.",
-              id: "session-mark-read-error",
-            }),
-          );
+function markRead(sessions: readonly SessionId[]): void {
+  void chatWindow.markRead(sessions).catch(() =>
+    toast.add({
+      type: "error",
+      title: "Couldn't mark this chat as read. Try again.",
+      id: "session-mark-read-error",
+    }),
+  );
 }
 
 function listedNeighbours(
@@ -174,7 +166,8 @@ export function Sidebar(): ReactElement {
   const renameSession = useRenameSession();
   const forgetWorkspace = useForgetWorkspace();
   const { layout } = usePaneControllerSnapshot();
-  const chats = useShownChats();
+  const chats = useChats((directory) => directory);
+  const unread = useChatWindow((snapshot) => snapshot.unread);
   const now = useNowMinute();
   const page = useStagePage();
   const paletteOpen = useOverlays().search;
@@ -231,7 +224,7 @@ export function Sidebar(): ReactElement {
             shelf:
               listedWhenBlank?.has(paneSession.id) === false
                 ? "inbox"
-                : deriveShelf(paneSession, chats, undefined),
+                : deriveShelf(paneSession, chats, unread, undefined),
           },
     );
 
@@ -265,6 +258,7 @@ export function Sidebar(): ReactElement {
     ),
     repository: githubState.data?.repository,
     chats,
+    unread,
     showUpdated: view.show.includes("updated"),
     open: (sessionId, target) => void showSession(sessionId, target),
     rename: (sessionId, name) => renameSession.mutate({ sessionId, name }),
@@ -308,7 +302,7 @@ export function Sidebar(): ReactElement {
         path: workspaceGroup.workspacePath,
       };
 
-      return sessionsForView(workspaceGroup.sessions, view, "local", now, chats)
+      return sessionsForView(workspaceGroup.sessions, view, "local", now, chats, unread)
         .flatMap((group) => group.sessions)
         .map((session) => ({ place, session }));
     })
@@ -340,6 +334,7 @@ export function Sidebar(): ReactElement {
                 "local",
                 now,
                 chats,
+                unread,
               ).flatMap((group) => group.sessions),
           activeSessionId,
         );
@@ -369,12 +364,12 @@ export function Sidebar(): ReactElement {
     const kept =
       expanded || sessions === undefined
         ? undefined
-        : folderView(sessions, view, now, chats)
+        : folderView(sessions, view, now, chats, unread)
             .flatMap((group) => group.sessions)
             .find((session) => session.id === activeSessionId);
 
-    const unread = sessionsForNavigation(sessions ?? []).filter(
-      (session) => chats.get(session.id)?.unread === true,
+    const unreadHere = sessionsForNavigation(sessions ?? []).flatMap((session) =>
+      unread.has(session.id) ? [session.id] : [],
     );
 
     return (
@@ -389,7 +384,7 @@ export function Sidebar(): ReactElement {
         onNewChat={
           entry.kind === "home" || entry.available ? () => void newWorkspaceChat(place) : undefined
         }
-        onMarkAllRead={unread.length === 0 ? undefined : () => markRead(unread)}
+        onMarkAllRead={unreadHere.length === 0 ? undefined : () => markRead(unreadHere)}
         onArchiveAll={
           sessions === undefined
             ? undefined

@@ -1,12 +1,12 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
-import type { SessionId } from "@nyte-ai/sdk";
+import type { Execution, HeadInfo, SessionId } from "@nyte-ai/sdk";
 import { reducePaneLayout } from "../layout/pane-layout.ts";
 import type { PaneLayoutAction } from "../layout/pane-layout.ts";
 import { activeTab, initialWindow, reduce, tabLayout } from "../tabs/model.ts";
 import type { WindowAction, WindowState } from "../tabs/model.ts";
 import { chatsFor, COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
-import { expose, shownChats } from "./exposure.ts";
+import { expose } from "./exposure.ts";
 import type { WindowView } from "./exposure.ts";
 import { reduceTrays } from "./tray.ts";
 import type { TrayView } from "./tray.ts";
@@ -21,15 +21,17 @@ const behind = asId<"session">("behind");
 
 const showsAgent: TrayView = { kind: "detail", sessionId: agent };
 
-const unreadHeads = [
-  {
-    name: asId<"head">("main"),
-    tip: { kind: "start" },
-    stack: null,
-    execution: COMPLETED,
-    unread: true,
-  },
-] as const;
+function unreadHeads(execution: Execution = COMPLETED): readonly HeadInfo[] {
+  return [
+    {
+      name: asId<"head">("main"),
+      tip: { kind: "commit", id: asId<"commit">("tip") },
+      stack: null,
+      execution,
+      unread: true,
+    },
+  ];
+}
 
 let lastId = 1;
 
@@ -85,27 +87,57 @@ test("a single pane shows its chat and nothing in another tab", () => {
 
 test("an unread chat stays unread everywhere except while someone is looking at it", () => {
   const chats = chatsFor([
-    sessionRow("left", { heads: unreadHeads }),
-    sessionRow("behind", { heads: unreadHeads }),
+    sessionRow("left", { heads: unreadHeads() }),
+    sessionRow("behind", { heads: unreadHeads() }),
   ]);
 
   expect(sorted(expose(view(single, { chats })).unread)).toEqual([behind]);
   expect(sorted(expose(view(single, { chats, focused: false })).unread)).toEqual([behind, left]);
 });
 
-test("every surface reads the same unread answer as the dot", () => {
+test("only a completed run past the read mark leaves a chat unread", () => {
+  const stopped: Execution = {
+    kind: "idle",
+    lastRun: { id: asId<"run">("run"), end: { kind: "stopped" }, endedAt: 2 },
+  };
+
+  const failed: Execution = {
+    kind: "idle",
+    lastRun: {
+      id: asId<"run">("run"),
+      end: { kind: "failed", failure: { class: "provider", message: "Rate limited." } },
+      endedAt: 2,
+    },
+  };
+
+  const live: Execution = {
+    kind: "live",
+    run: {
+      id: asId<"run">("run"),
+      head: asId<"head">("main"),
+      startedAt: 1,
+      attempt: 1,
+      origin: { kind: "input", message: asId<"message">("m") },
+    },
+    phase: "responding",
+    stopping: false,
+  };
+
+  const delegating = sessionRow("delegating", { heads: unreadHeads() });
+
   const chats = chatsFor([
-    sessionRow("left", { heads: unreadHeads }),
-    sessionRow("behind", { heads: unreadHeads }),
+    sessionRow("completed", { heads: unreadHeads() }),
+    sessionRow("stopped", { heads: unreadHeads(stopped) }),
+    sessionRow("failed", { heads: unreadHeads(failed) }),
+    delegating,
+    sessionRow("working", { heads: unreadHeads(live) }),
+    sessionRow("child", { parent: delegating.id }, live),
+    sessionRow("seen"),
   ]);
 
-  const unread = expose(view(single, { chats })).unread;
-  const shown = shownChats(chats, unread);
-
-  expect(shown.get(left)?.unread).toBe(false);
-  expect(shown.get(behind)?.unread).toBe(true);
-  expect(shown.get(behind)).toBe(chats.get(behind));
-  expect(shownChats(chats, unread)).toBe(shown);
+  expect(sorted(expose(view(initialWindow("t1"), { chats })).unread)).toEqual([
+    asId<"session">("completed"),
+  ]);
 });
 
 test("both panes of a split are looked at, whichever has focus", () => {

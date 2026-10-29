@@ -1,4 +1,4 @@
-import { mainHead, runStatus, type UserMessage } from "@nyte-ai/plugin/client/presentation";
+import { runStatus, type UserMessage } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus } from "@nyte-ai/plugin/client/presentation";
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { modelConfiguration } from "./model-configuration.ts";
@@ -7,14 +7,7 @@ import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useDeferredValue, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type {
-  Activation,
-  CommitId,
-  Revision,
-  SessionId,
-  SessionView,
-  UserContent,
-} from "@nyte-ai/sdk";
+import type { Activation, Revision, SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
 import { Composer } from "../conversation/composer.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "../conversation/turn-view.tsx";
@@ -248,24 +241,12 @@ function ActivationNotice({ activation }: { readonly activation: Activation }): 
   return null;
 }
 
-function MarkSeen({
-  sessionId,
-  store,
-}: {
-  readonly sessionId: SessionId;
-  readonly store: WatchStore<SessionView>;
-}): ReactElement | null {
-  const tip = useWatchSelect(store, ({ value }) => {
-    const drawn = value === undefined ? undefined : mainHead(value)?.tip;
-
-    return drawn?.kind === "commit" ? drawn.id : undefined;
-  });
-
+/** Marks the chat read through each new tip while the user is looking at it. */
+function MarkSeen({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
+  const tip = useChats((chats) => chats.get(sessionId)?.unreadTip?.commit);
   const looking = useChatWindow((snapshot) => snapshot.looking.has(sessionId));
 
-  return tip === undefined || !looking ? null : (
-    <SeeTip key={tip} sessionId={sessionId} tip={tip} />
-  );
+  return tip === undefined || !looking ? null : <SeeTip key={tip} sessionId={sessionId} />;
 }
 
 /** Forgets a tray left with nothing to show, so it doesn't open again by itself when work returns. */
@@ -275,18 +256,9 @@ function CloseTray({ parent }: { readonly parent: SessionId }): null {
   return null;
 }
 
-function SeeTip({
-  sessionId,
-  tip,
-}: {
-  readonly sessionId: SessionId;
-  readonly tip: CommitId;
-}): null {
+function SeeTip({ sessionId }: { readonly sessionId: SessionId }): null {
   useMountEffect(() => {
-    void connection()
-      .session(sessionId)
-      .see(tip)
-      .catch(() => undefined);
+    void chatWindow.markRead([sessionId]);
   });
 
   return null;
@@ -479,7 +451,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
           >
             <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
               {trayEmptied && <CloseTray parent={sessionId} />}
-              <MarkSeen sessionId={sessionId} store={store} />
+              <MarkSeen sessionId={sessionId} />
               {((ready && chat.kind !== "loading") || failed) && <StartupReadsRelease />}
               {presentation === "full" && activation !== undefined && (
                 <ActivationNotice key={JSON.stringify(activation)} activation={activation} />

@@ -83,6 +83,7 @@ const rail: RailRows = {
   unavailable: new Set(),
   repository: undefined,
   chats: new Map(),
+  unread: new Set(),
   showUpdated: false,
   open: () => undefined,
   rename: () => undefined,

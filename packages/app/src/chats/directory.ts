@@ -1,7 +1,9 @@
 import { mainHead, runStatus, sessionTitle } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus } from "@nyte-ai/plugin/client/presentation";
 import type {
+  CommitId,
   Execution,
+  HeadName,
   SessionId,
   SessionInfo,
   SessionView,
@@ -34,8 +36,13 @@ export interface Chat {
   readonly title: string;
   readonly location: ChatLocation;
   readonly status: RunStatus;
-  /** A finished reply nobody has read: the main head is past the read mark after a completed run. */
-  readonly unread: boolean;
+  /** The main head's tip while it is past the read mark, from the chat's open view when it has one; null once read. */
+  readonly unreadTip: UnreadTip | null;
+}
+
+export interface UnreadTip {
+  readonly head: HeadName;
+  readonly commit: CommitId;
 }
 
 export type ChatDirectory = ReadonlyMap<SessionId, Chat>;
@@ -73,7 +80,10 @@ export function joinChats(sources: ChatSources, previous: ChatDirectory): ChatDi
         session.id,
         {
           execution: view === undefined ? head?.execution : view.execution,
-          unread: head?.unread === true,
+          unreadTip:
+            head?.unread === true && head.tip.kind === "commit"
+              ? { head: head.name, commit: head.tip.id }
+              : null,
         },
       ];
     }),
@@ -86,15 +96,14 @@ export function joinChats(sources: ChatSources, previous: ChatDirectory): ChatDi
   const chats = new Map(
     listed.map((session) => {
       const head = heads.get(session.id);
-      const status = runStatus(head?.execution, delegating.has(session.id));
 
       const next: Chat = {
         id: session.id,
         parent: session.parent,
         title: sessionTitle(session),
         location: workspaces === undefined ? LOADING : locate(session.workspace, workspaces),
-        status,
-        unread: head?.unread === true && status.kind === "completed",
+        status: runStatus(head?.execution, delegating.has(session.id)),
+        unreadTip: head?.unreadTip ?? null,
       };
 
       const known = previous.get(session.id);
@@ -103,7 +112,7 @@ export function joinChats(sources: ChatSources, previous: ChatDirectory): ChatDi
         known !== undefined &&
         known.parent === next.parent &&
         known.title === next.title &&
-        known.unread === next.unread &&
+        JSON.stringify(known.unreadTip) === JSON.stringify(next.unreadTip) &&
         JSON.stringify(known.status) === JSON.stringify(next.status) &&
         JSON.stringify(known.location) === JSON.stringify(next.location)
           ? known
@@ -121,7 +130,7 @@ export function joinChats(sources: ChatSources, previous: ChatDirectory): ChatDi
 /** The run and read state a chat's main head reports, from its open view when it has one. */
 interface Head {
   readonly execution: Execution | undefined;
-  readonly unread: boolean;
+  readonly unreadTip: UnreadTip | null;
 }
 
 const LOADING: ChatLocation = { kind: "loading" };
