@@ -24,19 +24,17 @@ import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import {
-  sessionFolderPath,
   useForgetWorkspace,
   useHostState,
   useRenameSession,
   useServerState,
   useSessionActions,
-  useWorkingSessionIds,
   useWorkspaceSessions,
   useWorkspaces,
   type RailWorkspace,
 } from "../queries.ts";
 import { localSessions } from "../session-list.ts";
-import { sessionHasUnreadCompletion } from "../session-read-state.ts";
+import { chatFolderPath, useChats } from "../chats/index.ts";
 import { connection } from "../sdk.tsx";
 import { closeSettings, type SettingsSection } from "../settings/index.ts";
 import type { OpenIntent } from "../tabs/model.ts";
@@ -85,7 +83,7 @@ type SidebarConfirmation =
     };
 
 async function showSession(sessionId: SessionId, target: OpenIntent | "beside"): Promise<void> {
-  if (target !== "background" && !(await activateWorkspace(sessionFolderPath(sessionId) ?? null)))
+  if (target !== "background" && !(await activateWorkspace(chatFolderPath(sessionId) ?? null)))
     return;
 
   if (target !== "beside") {
@@ -175,7 +173,7 @@ export function Sidebar(): ReactElement {
   const renameSession = useRenameSession();
   const forgetWorkspace = useForgetWorkspace();
   const { layout } = usePaneControllerSnapshot();
-  const workingSessions = useWorkingSessionIds();
+  const chats = useChats((directory) => directory);
   const now = useNowMinute();
   const page = useStagePage();
   const paletteOpen = useOverlays().search;
@@ -232,7 +230,7 @@ export function Sidebar(): ReactElement {
             shelf:
               listedWhenBlank?.has(paneSession.id) === false
                 ? "inbox"
-                : deriveShelf(paneSession, workingSessions, undefined),
+                : deriveShelf(paneSession, chats, undefined),
           },
     );
 
@@ -265,14 +263,14 @@ export function Sidebar(): ReactElement {
       ),
     ),
     repository: githubState.data?.repository,
-    working: workingSessions,
+    chats,
     showUpdated: view.show.includes("updated"),
     open: (sessionId, target) => void showSession(sessionId, target),
     rename: (sessionId, name) => renameSession.mutate({ sessionId, name }),
     pin: (session) => sessionActions.pin({ sessionId: session.id, pinned: !session.pinned }),
     markRead,
     archive: (session) => {
-      if (!session.archived && sessionIsRunning(session, workingSessions)) {
+      if (!session.archived && sessionIsRunning(session, chats)) {
         setConfirmation({ kind: "archive-working", sessionId: session.id });
 
         return;
@@ -298,7 +296,7 @@ export function Sidebar(): ReactElement {
     onClearFilters: () => preferences.sidebarView.set(clearSessionFilters(view)),
   };
 
-  const order = sessionOrder(view.sort, workingSessions);
+  const order = sessionOrder(view.sort, chats);
 
   const listed: readonly ListedSession[] | undefined = workspaceSessions.data
     ?.flatMap((workspaceGroup) => {
@@ -309,7 +307,7 @@ export function Sidebar(): ReactElement {
         path: workspaceGroup.workspacePath,
       };
 
-      return sessionsForView(workspaceGroup.sessions, view, "local", now, workingSessions)
+      return sessionsForView(workspaceGroup.sessions, view, "local", now, chats)
         .flatMap((group) => group.sessions)
         .map((session) => ({ place, session }));
     })
@@ -340,7 +338,7 @@ export function Sidebar(): ReactElement {
                 view,
                 "local",
                 now,
-                workingSessions,
+                chats,
               ).flatMap((group) => group.sessions),
           activeSessionId,
         );
@@ -370,11 +368,13 @@ export function Sidebar(): ReactElement {
     const kept =
       expanded || sessions === undefined
         ? undefined
-        : folderView(sessions, view, now, workingSessions)
+        : folderView(sessions, view, now, chats)
             .flatMap((group) => group.sessions)
             .find((session) => session.id === activeSessionId);
 
-    const unread = sessionsForNavigation(sessions ?? []).filter(sessionHasUnreadCompletion);
+    const unread = sessionsForNavigation(sessions ?? []).filter(
+      (session) => chats.get(session.id)?.unread === true,
+    );
 
     return (
       <WorkspaceRow

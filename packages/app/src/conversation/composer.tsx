@@ -3,9 +3,10 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import type { ReactElement, ReactNode } from "react";
-import type { Delivery, Execution, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
+import type { Delivery, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
+import { runMark } from "@nyte-ai/plugin/client/presentation";
+import type { RunStatus, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
@@ -100,7 +101,7 @@ interface EditHold {
 
 export function Composer({
   sessionId,
-  execution,
+  status,
   pending,
   unsent,
   initialViewState = DEFAULT_COMPOSER_VIEW_STATE,
@@ -111,7 +112,7 @@ export function Composer({
   floatingMount = null,
 }: {
   sessionId: SessionId;
-  execution: Execution | undefined;
+  status: RunStatus;
   pending: readonly UserMessage[];
   unsent: readonly UserMessage[];
   initialViewState?: ComposerViewState;
@@ -141,8 +142,8 @@ export function Composer({
   const [attachmentError, setAttachmentError] = useState<string>();
   const [feedback, setFeedback] = useState<ComposerFeedback>();
   const [rowActions, setRowActions] = useState<ReadonlyMap<string, PendingRowAction>>(new Map());
-  const liveRun = execution === undefined || execution.kind === "idle" ? undefined : execution.run;
-  const stopping = execution?.kind === "live" && execution.stopping;
+  const liveRun = "run" in status ? status.run : undefined;
+  const stopping = status.kind === "working" && status.stopping;
   const [target, setTarget] = useState<ComposerTarget>({ kind: "new" });
   const [savingEdit, setSavingEdit] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -502,7 +503,7 @@ export function Composer({
     if (liveRun === undefined || stopping) return;
     connection()
       .session(sessionId)
-      .run(liveRun.id)
+      .run(liveRun)
       .stop()
       .catch((cause: unknown) =>
         setFeedback({
@@ -687,9 +688,11 @@ export function Composer({
                 <>
                   {liveRun !== undefined && (
                     <span {...props(text.base, composerStyles.floatingStatus)}>
-                      <StatusDot mark="working" />
+                      <StatusDot mark={runMark(status)} />
                       <span {...props(composerStyles.floatingStatusText, markerStyles.shimmer)}>
-                        {activity ?? PLANNING_LABEL}
+                        {status.kind === "waiting-for-approval"
+                          ? "Needs your answer"
+                          : (activity ?? PLANNING_LABEL)}
                       </span>
                     </span>
                   )}

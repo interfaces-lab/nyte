@@ -82,7 +82,7 @@ const rail: RailRows = {
   activeSessionId: undefined,
   unavailable: new Set(),
   repository: undefined,
-  working: new Set(),
+  chats: new Map(),
   showUpdated: false,
   open: () => undefined,
   rename: () => undefined,

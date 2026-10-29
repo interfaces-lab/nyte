@@ -57,7 +57,6 @@ import {
   connected,
   currentConnection,
   sessionsWatch,
-  findListedSession,
   gitStatusWatch,
   hostWatch,
   jobsWatch,
@@ -101,6 +100,11 @@ function actionsFor(client: QueryClient): SessionActions {
   return actions;
 }
 
+/** The app's session actions, for readers outside React. */
+export function appSessionActions(): SessionActions {
+  return actionsFor(queryClient);
+}
+
 export function useSessionActions(): SessionActions {
   return actionsFor(useQueryClient());
 }
@@ -117,7 +121,11 @@ function useSessionProjection() {
 
 const readHost = () => nyte.host.state();
 
-const readWorkspaces = async () => (await connected()).workspaces.list();
+/** The folder list as every reader asks for it. */
+export const workspacesQuery = {
+  queryKey: keys.workspaces,
+  queryFn: async () => (await connected()).workspaces.list(),
+};
 
 const readModelCatalog = async () => (await connected()).models.list();
 
@@ -155,18 +163,6 @@ export async function readStartCatalog(): Promise<DesktopCatalog> {
 
 export function selectedWorkspaceId(): WorkspaceId | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
-}
-
-export function sessionFolderPath(sessionId: SessionId): string | null | undefined {
-  const session = findListedSession(sessionId);
-  const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
-
-  if (session === undefined || workspaces === undefined) return undefined;
-  const workspace = workspaces.find((candidate) => candidate.id === session.workspace);
-
-  return workspace === undefined || workspace.availability.kind === "unavailable"
-    ? null
-    : workspacePath(workspace);
 }
 
 export async function workspaceFiles(): Promise<FilesApi> {
@@ -246,8 +242,7 @@ export function useWorkspaces() {
   });
 
   return useQuery({
-    queryKey: keys.workspaces,
-    queryFn: readWorkspaces,
+    ...workspacesQuery,
     placeholderData: () =>
       queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.firstFrameWorkspaces),
     select: (workspaces): readonly RailWorkspace[] =>
@@ -315,29 +310,6 @@ function useRootSessions(): readonly SessionInfo[] | undefined {
   const listed = roots ?? recorded;
 
   return listed === undefined ? undefined : projection.list(listed);
-}
-
-export function useWorkingSessionIds(): ReadonlySet<SessionId> {
-  return useWatchSelect(
-    sessionsWatch("all"),
-    ({ value: all = [] }) => {
-      const parents = new Map(all.map((session) => [session.id, session.parent]));
-      const working = new Set<SessionId>();
-
-      for (const session of all) {
-        if (session.heads.every((head) => head.execution.kind === "idle")) continue;
-
-        for (let parent = session.parent; parent !== null; parent = parents.get(parent) ?? null) {
-          if (working.has(parent)) break;
-          working.add(parent);
-        }
-      }
-
-      return working;
-    },
-    (previous, next) =>
-      previous.size === next.size && [...previous].every((sessionId) => next.has(sessionId)),
-  );
 }
 
 export function useWorkspaceSessions() {
@@ -894,7 +866,7 @@ export async function loadLocalResources(): Promise<void> {
 
   const [state, workspaces, catalog] = await Promise.all([
     readHost(),
-    readWorkspaces(),
+    workspacesQuery.queryFn(),
     readModelCatalog(),
     host.value === undefined ? host.next() : undefined,
     directory.value === undefined

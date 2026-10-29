@@ -3,7 +3,7 @@ import { asId } from "@nyte-ai/schema";
 import type { Json, Message, SessionView, ToolClass, ToolPartState } from "@nyte-ai/sdk";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { settledTool } from "../../test/view-fixtures.ts";
-import { subagentActivity } from "./subagent-status.ts";
+import { callStatus, subagentActivity, subagentStatus } from "./subagent-status.ts";
 import { sessionActivityProjector } from "./session-activity.ts";
 
 function readActivity(
@@ -222,4 +222,23 @@ test("removed messages stop contributing activity and the next view can restore 
   );
   expect(subagentActivity(project({ messages: [running] }), "/workspace")).toBe("Reading live.ts");
   expect(subagentActivity(undefined, "/workspace")).toBeUndefined();
+});
+
+test("a stopped agent reads as done, never failed, whether the row knows its chat or only its call", () => {
+  const word = { tense: "none", tone: "stopped", word: "Stopped" } as const;
+
+  expect(subagentStatus({ kind: "stopped" }, false)).toEqual({
+    indicator: "done",
+    text: "Stopped",
+  });
+  expect(callStatus(word)).toEqual({ indicator: "done", text: "Stopped" });
+
+  expect(
+    subagentStatus(
+      { kind: "failed", failure: { class: "provider", message: "Rate limited." } },
+      false,
+    ).indicator,
+  ).toBe("failed");
+  expect(subagentStatus({ kind: "completed" }, true).indicator).toBe("unread");
+  expect(subagentStatus({ kind: "subagent-working" }, false).indicator).toBe("running");
 });

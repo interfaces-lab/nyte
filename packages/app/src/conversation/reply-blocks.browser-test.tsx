@@ -7,6 +7,8 @@ import { createRoot } from "react-dom/client";
 import type { Execution, Message } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { queryClient } from "../queries.ts";
+import { installConnection } from "../sdk.tsx";
+import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { SubagentCitation } from "./subagent-call.tsx";
 import { SubagentSessionsProvider } from "./subagent-sessions.ts";
 import { transcriptRows } from "./transcript-rows.ts";
@@ -94,6 +96,8 @@ const rows = transcriptRows({
 const working = sessionRow("working", { name: "Map the core", parent: asId("parent") }, LIVE);
 
 const finished = sessionRow("finished", { name: "Map the app", parent: asId("parent") }, COMPLETED);
+
+installConnection(scriptedConnection({ sessions: [working, finished] }).connection);
 
 function Stage(): ReactElement {
   return (

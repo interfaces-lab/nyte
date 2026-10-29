@@ -1,12 +1,13 @@
+import { runMark } from "@nyte-ai/plugin/client/presentation";
+import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { typed } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
-import { sessionActivityMark } from "../session-activity.ts";
-import { sessionHasUnreadCompletion } from "../session-read-state.ts";
+import type { ChatDirectory } from "../chats/index.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-const NO_WORKING_SESSIONS: ReadonlySet<SessionId> = new Set();
+const NO_CHATS: ChatDirectory = new Map();
 
 export const GROUPINGS = [
   "inbox",
@@ -87,11 +88,18 @@ export const COLLAPSED_SESSION_LIMIT = 5;
 
 const SESSION_PAGE_SIZE = 8;
 
+/** The mark a listed chat draws; a chat the directory doesn't have yet draws none. */
+export function chatMark(session: SessionInfo, chats: ChatDirectory): SessionMark {
+  const chat = chats.get(session.id);
+
+  return chat === undefined ? "idle" : runMark(chat.status);
+}
+
 function deriveSessionStatus(
   session: SessionInfo,
-  working: ReadonlySet<SessionId>,
+  chats: ChatDirectory,
 ): Exclude<SessionStatus, "draft"> {
-  const mark = sessionActivityMark(session, working.has(session.id));
+  const mark = chatMark(session, chats);
 
   switch (mark) {
     case "waiting":
@@ -101,7 +109,7 @@ function deriveSessionStatus(
     case "working":
       return "working";
     case "idle":
-      return sessionHasUnreadCompletion(session) ? "unread" : "done";
+      return chats.get(session.id)?.unread === true ? "unread" : "done";
     default: {
       const _exhaustive: never = mark;
 
@@ -111,8 +119,8 @@ function deriveSessionStatus(
 }
 
 /** Whether a run is going in the chat or one of its subagents, including one waiting on the user. */
-export function sessionIsRunning(session: SessionInfo, working: ReadonlySet<SessionId>): boolean {
-  const mark = sessionActivityMark(session, working.has(session.id));
+export function sessionIsRunning(session: SessionInfo, chats: ChatDirectory): boolean {
+  const mark = chatMark(session, chats);
 
   return mark === "working" || mark === "retry" || mark === "waiting";
 }
@@ -124,7 +132,7 @@ export interface ShelfHold {
 
 export function deriveShelf(
   session: SessionInfo,
-  working: ReadonlySet<SessionId>,
+  chats: ChatDirectory,
   hold: ShelfHold | undefined,
 ): SessionShelf {
   if (session.archived) return "archived";
@@ -133,7 +141,7 @@ export function deriveShelf(
 
   if (session.pinned) return "inbox";
 
-  const status = deriveSessionStatus(session, working);
+  const status = deriveSessionStatus(session, chats);
 
   switch (status) {
     case "needs-attention":
@@ -167,8 +175,8 @@ function compareUpdated(left: SessionInfo, right: SessionInfo): number {
   );
 }
 
-function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): number {
-  const mark = sessionActivityMark(session, working.has(session.id));
+function stageRank(session: SessionInfo, chats: ChatDirectory): number {
+  const mark = chatMark(session, chats);
 
   switch (mark) {
     case "waiting":
@@ -189,7 +197,7 @@ function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): numbe
 
 export function sessionOrder(
   sort: SessionSort,
-  working: ReadonlySet<SessionId> = NO_WORKING_SESSIONS,
+  chats: ChatDirectory = NO_CHATS,
 ): (left: SessionInfo, right: SessionInfo) => number {
   switch (sort) {
     case "created":
@@ -199,7 +207,7 @@ export function sessionOrder(
     case "status":
       return (left, right) =>
         Number(right.pinned) - Number(left.pinned) ||
-        stageRank(left, working) - stageRank(right, working) ||
+        stageRank(left, chats) - stageRank(right, chats) ||
         compareUpdated(left, right);
     default: {
       const _exhaustive: never = sort;
@@ -214,7 +222,7 @@ function groupSessions(
   grouping: SessionGrouping,
   environment: SessionEnvironment,
   now: number,
-  working: ReadonlySet<SessionId>,
+  chats: ChatDirectory,
 ): readonly SessionViewGroup[] {
   switch (grouping) {
     case "inbox":
@@ -236,7 +244,7 @@ function groupSessions(
 
       return STATUSES.flatMap((status) => {
         const members = sessions.filter(
-          (session) => deriveSessionStatus(session, working) === status,
+          (session) => deriveSessionStatus(session, chats) === status,
         );
 
         return members.length === 0
@@ -282,7 +290,7 @@ export function sessionsForView(
   settings: SessionViewSettings,
   environment: SessionEnvironment,
   now: number,
-  working: ReadonlySet<SessionId> = NO_WORKING_SESSIONS,
+  chats: ChatDirectory = NO_CHATS,
 ): readonly SessionViewGroup[] {
   if (settings.environments.length > 0 && !settings.environments.includes(environment)) return [];
 
@@ -291,12 +299,12 @@ export function sessionsForView(
       session.parent === null &&
       session.archived === settings.archived &&
       (settings.statuses.length === 0 ||
-        settings.statuses.includes(deriveSessionStatus(session, working))),
+        settings.statuses.includes(deriveSessionStatus(session, chats))),
   );
 
-  const ordered = filtered.toSorted(sessionOrder(settings.sort, working));
+  const ordered = filtered.toSorted(sessionOrder(settings.sort, chats));
 
-  return groupSessions(ordered, settings.grouping, environment, now, working);
+  return groupSessions(ordered, settings.grouping, environment, now, chats);
 }
 
 /** A workspace's chats in a grouped view: pinned chats leave it for the Pinned section above. */
@@ -304,14 +312,14 @@ export function folderView(
   sessions: readonly SessionInfo[],
   settings: SessionViewSettings,
   now: number,
-  working: ReadonlySet<SessionId>,
+  chats: ChatDirectory,
 ): readonly SessionViewGroup[] {
   return sessionsForView(
     sessions.filter((session) => !session.pinned),
     settings,
     "local",
     now,
-    working,
+    chats,
   );
 }
 

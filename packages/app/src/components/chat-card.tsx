@@ -10,7 +10,8 @@ import { row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
-import { keys, useSession, useWorkspaces } from "../queries.ts";
+import { useChat } from "../chats/index.ts";
+import { keys } from "../queries.ts";
 import { connected, gitStatusWatch, useWatch } from "../sdk.tsx";
 import { chatCardFacts } from "./chat-card-facts.ts";
 import { useCopyConfirmation } from "./copy-confirmation.ts";
@@ -80,9 +81,12 @@ export function ChatCardContent({
 }
 
 function ChatBlock({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
-  const session = useSession(sessionId).data;
-  const workspaces = useWorkspaces().data ?? [];
-  const workspace = workspaces.find((candidate) => candidate.id === session?.workspace)?.id;
+  const chat = useChat(sessionId);
+
+  const workspace =
+    chat.kind === "ready" && chat.chat.location.kind === "folder"
+      ? chat.chat.location.workspace
+      : undefined;
   const git = useWatch(workspace === undefined ? undefined : gitStatusWatch(workspace)).value;
 
   const repository = useQuery({
@@ -97,11 +101,10 @@ function ChatBlock({ sessionId }: { readonly sessionId: SessionId }): ReactEleme
     staleTime: 30_000,
   }).data;
 
-  if (session === undefined || session === null) return null;
+  if (chat.kind !== "ready") return null;
 
   const card = chatCardFacts({
-    session,
-    workspaces,
+    chat: chat.chat,
     git,
     repository: repository ?? undefined,
     surface: nyte.clientSurface,

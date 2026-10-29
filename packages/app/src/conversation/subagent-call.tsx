@@ -10,7 +10,7 @@ import type {
   ToolClass,
   UserContent,
 } from "@nyte-ai/sdk";
-import { toolNoun, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
+import { sessionTitle, toolNoun, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { TextRoll } from "../components/text-roll.tsx";
 import { UnreadMark } from "../components/ui.tsx";
@@ -31,7 +31,7 @@ import {
   useSessionChoice,
   useWorkspaces,
 } from "../queries.ts";
-import { sessionHasUnreadCompletion } from "../session-read-state.ts";
+import { useChats } from "../chats/index.ts";
 import { modelDisplayName, modelIcon, THINKING_LABELS } from "./model-picker-state.ts";
 import { activityStyles } from "./activity.stylex.ts";
 import { proseStyles } from "./prose.stylex.ts";
@@ -42,7 +42,7 @@ import {
   useOpenSubagentTray,
   useSubagentChildren,
 } from "./subagent-sessions.ts";
-import { callStatus, sessionStatus } from "./subagent-status.ts";
+import { callStatus, subagentStatus } from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 import { useCommitCount } from "../work-counts.ts";
@@ -108,6 +108,13 @@ const lineStyles = create({
   },
 });
 
+/** A child the directory doesn't list yet: nothing to say about it. */
+const UNKNOWN: SubagentStatus = { indicator: "done", text: "" };
+
+function sameItems<T>(previous: readonly T[], next: readonly T[]): boolean {
+  return previous.length === next.length && previous.every((item, index) => item === next[index]);
+}
+
 type SubagentSubject =
   | { readonly kind: "session"; readonly session: SessionInfo }
   | { readonly kind: "call"; readonly status: SubagentStatus };
@@ -164,10 +171,17 @@ function SubagentRow({
   readonly xstyle: StyleXStyles;
 }): ReactElement {
   useCommitCount("render:agent-row");
+  const sessionId = subject.kind === "session" ? subject.session.id : undefined;
+  const chat = useChats((chats) => (sessionId === undefined ? undefined : chats.get(sessionId)));
+
+  const unread = chat?.unread === true;
+
   const status =
-    subject.kind === "session"
-      ? sessionStatus(subject.session, sessionHasUnreadCompletion(subject.session))
-      : subject.status;
+    subject.kind === "call"
+      ? subject.status
+      : chat === undefined
+        ? UNKNOWN
+        : subagentStatus(chat.status, unread);
 
   const content = (
     <>
@@ -235,7 +249,7 @@ function SubagentNestedRows({
         .map((child) => (
           <SubagentRow
             key={child.id}
-            title={child.name ?? "Subagent"}
+            title={sessionTitle(child)}
             subject={{ kind: "session", session: child }}
             cwd={cwd}
             open={openTray === undefined ? undefined : () => openTray(child.id)}
@@ -286,18 +300,25 @@ export function SubagentGroupView({
   readonly cwd: string | undefined;
 }): ReactElement {
   useCommitCount("render:agent-group");
-  const indicators = useSubagentChildren(
+  const called = useSubagentChildren(
     (children) =>
-      messages.map((message) => {
-        const child = children.find((candidate) => candidate.call === message.state.call);
+      messages.map(
+        (message) => children.find((candidate) => candidate.call === message.state.call)?.id,
+      ),
+    sameItems,
+  );
 
-        return child === undefined
+  const indicators = useChats(
+    (chats) =>
+      messages.map((message, index) => {
+        const id = called[index];
+        const chat = id === undefined ? undefined : chats.get(id);
+
+        return chat === undefined
           ? callStatus(toolStatus(message)).indicator
-          : sessionStatus(child, false).indicator;
+          : subagentStatus(chat.status, false).indicator;
       }),
-    (previous, next) =>
-      previous.length === next.length &&
-      previous.every((indicator, index) => indicator === next[index]),
+    sameItems,
   );
 
   const total = messages.length;
@@ -573,6 +594,7 @@ export function SubagentCitation({
   const openTray = useOpenSubagentTray();
   const title = child?.name ?? undefined;
   const name = label === "" || label === session ? (title ?? session) : label;
+  const status = useChats((chats) => chats.get(session)?.status);
 
   const link = (
     <a
@@ -587,7 +609,7 @@ export function SubagentCitation({
     >
       <span {...props(proseStyles.linkLead)}>
         <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
-          {child !== undefined && sessionStatus(child, false).indicator === "running" ? (
+          {status !== undefined && subagentStatus(status, false).indicator === "running" ? (
             <Spinner />
           ) : (
             <Icon name="agent" size={12} />

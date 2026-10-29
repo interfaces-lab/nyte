@@ -5,15 +5,17 @@ import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { runMark } from "@nyte-ai/plugin/client/presentation";
+import type { RunStatus, SessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import { useChats } from "../../chats/index.ts";
+import type { ChatDirectory } from "../../chats/index.ts";
 import { StatusDot } from "../../components/ui.tsx";
 import { Button } from "@nyte-ai/ui/button";
-import { useChildSessions, useSession } from "../../queries.ts";
+import { useChildSessions } from "../../queries.ts";
 import { connection } from "../../sdk.tsx";
 import { trayStyles } from "../../theme/tray.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import { subagentTrayActive, subagentTrayState } from "../agent-status.ts";
-import type { SubagentTrayState } from "../agent-status.ts";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 import { useCommitCount } from "../../work-counts.ts";
 
@@ -22,12 +24,23 @@ export type SubagentTrayView =
   | { readonly kind: "list"; readonly retainedSessionId: SessionId | undefined }
   | { readonly kind: "detail"; readonly sessionId: SessionId };
 
-const TRAY_STATE_LABEL = {
+const STATUS_LABEL = {
+  idle: "Idle",
   working: "Working",
-  attention: "Needs attention",
+  retrying: "Retrying",
+  "subagent-working": "Working",
+  "waiting-for-approval": "Needs attention",
   completed: "Completed",
+  stopped: "Stopped",
   failed: "Failed",
-} satisfies Readonly<Record<SubagentTrayState, string>>;
+} as const satisfies Readonly<Record<RunStatus["kind"], string>>;
+
+interface ListedAgent {
+  readonly session: SessionInfo;
+  readonly title: string;
+  readonly status: RunStatus;
+  readonly mark: SessionMark;
+}
 
 const styles = create({
   attentionDot: {
@@ -46,11 +59,12 @@ const styles = create({
 
 const NO_AGENTS: readonly SessionInfo[] = [];
 
-function agentTitle(agent: SessionInfo | undefined, sessionId: SessionId): string {
-  return agent?.name ?? sessionId;
-}
-
-export function listSubagents(agents: readonly SessionInfo[], view: SubagentTrayView) {
+/** The agents the tray lists: those running or waiting on the user, then failed ones, and the one it holds open. */
+export function listSubagents(
+  agents: readonly SessionInfo[],
+  view: SubagentTrayView,
+  chats: ChatDirectory,
+) {
   const pinnedId =
     view.kind === "detail"
       ? view.sessionId
@@ -58,23 +72,28 @@ export function listSubagents(agents: readonly SessionInfo[], view: SubagentTray
         ? view.retainedSessionId
         : undefined;
 
-  const active = agents
-    .filter((agent) => subagentTrayActive(subagentTrayState(agent)))
-    .toSorted((left, right) => {
-      const attention =
-        Number(subagentTrayState(left) !== "attention") -
-        Number(subagentTrayState(right) !== "attention");
+  const known = agents.flatMap((session): readonly ListedAgent[] => {
+    const chat = chats.get(session.id);
 
-      return (
-        attention || right.lastActivityAt - left.lastActivityAt || left.id.localeCompare(right.id)
-      );
-    });
+    return chat === undefined
+      ? []
+      : [{ session, title: chat.title, status: chat.status, mark: runMark(chat.status) }];
+  });
 
-  const settled = agents.find(
-    (agent) => agent.id === pinnedId && !subagentTrayActive(subagentTrayState(agent)),
-  );
+  const shown = known
+    .filter((agent) => agent.mark !== "idle")
+    .toSorted(
+      (left, right) =>
+        Number(left.mark !== "waiting") - Number(right.mark !== "waiting") ||
+        right.session.lastActivityAt - left.session.lastActivityAt ||
+        left.session.id.localeCompare(right.session.id),
+    );
 
-  return { active, listed: settled === undefined ? active : [...active, settled] };
+  const active = shown.filter((agent) => agent.mark !== "failed");
+
+  const settled = known.find((agent) => agent.session.id === pinnedId && agent.mark === "idle");
+
+  return { active, listed: settled === undefined ? shown : [...shown, settled] };
 }
 
 export function SubagentTray({
@@ -96,6 +115,7 @@ export function SubagentTray({
 }): ReactElement | null {
   useCommitCount("render:agents-tray");
   const agents = useChildSessions(parentSessionId).data ?? NO_AGENTS;
+  const chats = useChats((directory) => directory);
   const { root, ref, availableHeight } = useTrayRoot(viewport);
   const trayId = useId();
   const [stopCandidates, setStopCandidates] = useState<readonly SessionId[]>();
@@ -109,17 +129,15 @@ export function SubagentTray({
       Promise.all(sessionIds.map((sessionId) => connection().session(sessionId).stop())),
   });
 
-  const roster = listSubagents(agents, view);
+  const roster = listSubagents(agents, view, chats);
   const active = roster.active;
   const listed = roster.listed;
-  const running = active.filter((agent) => subagentTrayState(agent) === "working");
+  const failed = listed.length - active.length;
   const selectedId = view.kind === "detail" ? view.sessionId : undefined;
-  const selectedSession = useSession(selectedId ?? parentSessionId);
+  const selected = selectedId === undefined ? undefined : chats.get(selectedId);
+  const selectedTitle = selected?.title ?? "Subagent";
 
-  const selected =
-    selectedId === undefined
-      ? undefined
-      : (selectedSession.data ?? agents.find((agent) => agent.id === selectedId));
+  const selectedMark = selected === undefined ? "idle" : runMark(selected.status);
 
   const pendingAction = stop.isPending || stopAll.isPending;
 
@@ -143,7 +161,7 @@ export function SubagentTray({
     if (held) onRelease();
   };
 
-  if (view.kind === "closed" && active.length === 0) return null;
+  if (view.kind === "closed" && listed.length === 0) return null;
 
   if (view.kind === "list" && listed.length === 0) return null;
 
@@ -151,29 +169,29 @@ export function SubagentTray({
     <div ref={attachRoot} {...props(trayParts.root)}>
       {view.kind === "closed" && (
         <TrayPill
-          label={`Agents, ${String(active.length)} active`}
+          label={`Agents, ${String(active.length)} active${failed === 0 ? "" : `, ${String(failed)} failed`}`}
           controls={trayId}
           onClick={() => onViewChange({ kind: "list", retainedSessionId: undefined })}
         >
           <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
-            {running.length > 0 ? (
+            {active.some((agent) => agent.mark !== "waiting") ? (
               <StatusDot mark="working" />
+            ) : active.length > 0 ? (
+              <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
             ) : (
-              active.some((agent) => subagentTrayState(agent) === "attention") && (
-                <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
-              )
+              <StatusDot mark="failed" />
             )}
           </span>
           <span>Agents</span>
           <span aria-hidden="true" {...props(trayParts.pillCount)}>
-            {String(active.length)}
+            {String(listed.length)}
           </span>
         </TrayPill>
       )}
       <Tray
         open={view.kind !== "closed" && (view.kind === "detail" || listed.length > 0)}
         id={trayId}
-        label={selectedId === undefined ? "Agents" : agentTitle(selected, selectedId)}
+        label={selectedId === undefined ? "Agents" : selectedTitle}
         focusKey={view.kind}
         onClose={close}
         xstyle={view.kind === "detail" && styles.detail(availableHeight)}
@@ -199,14 +217,16 @@ export function SubagentTray({
                   disabled={stop.isPending}
                   onClick={() => {
                     if (stopCandidates === undefined) {
-                      setStopCandidates(active.map((agent) => agent.id));
+                      setStopCandidates(active.map((agent) => agent.session.id));
 
                       return;
                     }
 
                     const candidates = new Set(stopCandidates);
                     stopAll.mutate(
-                      active.filter((agent) => candidates.has(agent.id)).map((agent) => agent.id),
+                      active.flatMap((agent) =>
+                        candidates.has(agent.session.id) ? [agent.session.id] : [],
+                      ),
                     );
                     setStopCandidates(undefined);
                   }}
@@ -227,27 +247,27 @@ export function SubagentTray({
               {...props(trayStyles.list, trayParts.listHeight(availableHeight))}
             >
               {listed.map((agent) => {
-                const state = subagentTrayState(agent);
+                const title = agent.title;
 
                 return (
-                  <Row key={agent.id} xstyle={trayParts.row} interactive>
+                  <Row key={agent.session.id} xstyle={trayParts.row} interactive>
                     <Row.Primary
-                      aria-label={`Open ${agentTitle(agent, agent.id)}`}
+                      aria-label={`Open ${title}`}
                       onClick={() => {
                         setStopCandidates(undefined);
-                        onViewChange({ kind: "detail", sessionId: agent.id });
+                        onViewChange({ kind: "detail", sessionId: agent.session.id });
                       }}
                     >
                       <Row.Leading aria-hidden="true">
-                        {state === "attention" ? (
+                        {agent.mark === "waiting" ? (
                           <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
                         ) : (
-                          state === "working" && <StatusDot mark="working" />
+                          <StatusDot mark={runMark(agent.status)} />
                         )}
                       </Row.Leading>
-                      <Row.Label>{agentTitle(agent, agent.id)}</Row.Label>
+                      <Row.Label>{title}</Row.Label>
                     </Row.Primary>
-                    <Row.Meta>{TRAY_STATE_LABEL[state]}</Row.Meta>
+                    <Row.Meta>{STATUS_LABEL[agent.status.kind]}</Row.Meta>
                   </Row>
                 );
               })}
@@ -267,10 +287,10 @@ export function SubagentTray({
                 label="Back to agents"
                 onClick={() => onViewChange({ kind: "list", retainedSessionId: view.sessionId })}
               />
-              <span title={agentTitle(selected, selectedId)} {...props(trayStyles.title)}>
-                {agentTitle(selected, selectedId)}
+              <span title={selectedTitle} {...props(trayStyles.title)}>
+                {selectedTitle}
               </span>
-              {selected !== undefined && subagentTrayActive(subagentTrayState(selected)) && (
+              {selectedMark !== "idle" && selectedMark !== "failed" && (
                 <Button
                   tone="danger"
                   loading={pendingAction}

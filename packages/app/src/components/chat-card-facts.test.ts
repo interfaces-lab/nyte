@@ -1,21 +1,28 @@
 import { expect, test } from "vitest";
-import type { GitStatus } from "@nyte-ai/sdk";
+import type { GitStatus, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
+import { chatsFor, sessionRow, workspaceRow } from "../../test/view-fixtures.ts";
+import type { Chat } from "../chats/index.ts";
 import { chatCardFacts } from "./chat-card-facts.ts";
 
-const project = {
-  id: asId<"workspace">("project"),
-  path: "/Users/ada/Developer/nyte",
-  name: "nyte",
-  worktree: null,
-};
+const project = workspaceRow("project", "/Users/ada/Developer/nyte");
 
-const worktree = {
-  id: asId<"workspace">("worktree"),
-  path: "/Users/ada/.nyte/worktrees/nyte/fix-scroll",
-  name: "fix-scroll",
-  worktree: { source: project.id, branch: "fix-scroll" },
-};
+const worktree = workspaceRow("worktree", "/Users/ada/.nyte/worktrees/nyte/fix-scroll", {
+  kind: "worktree",
+  source: project.id,
+  session: asId<"session">("chat"),
+  branch: "fix-scroll",
+  base: "main",
+});
+
+function chat(session: Partial<SessionInfo>, workspaces: readonly WorkspaceInfo[]): Chat {
+  const row = sessionRow("chat", session);
+  const joined = chatsFor([row], { workspaces }).get(row.id);
+
+  if (joined === undefined) throw new Error("The directory lost the chat.");
+
+  return joined;
+}
 
 function repository(branch: string | null): GitStatus {
   return {
@@ -35,8 +42,7 @@ function repository(branch: string | null): GitStatus {
 test("a local git chat shows its repository with the branch, then its folder under ~", () => {
   expect(
     chatCardFacts({
-      session: { name: "Fix the scroll", workspace: project.id },
-      workspaces: [project],
+      chat: chat({ name: "Fix the scroll", workspace: project.id }, [project]),
       git: repository("main"),
       repository: { owner: "nyte-ai", name: "nyte" },
       surface: "desktop",
@@ -58,8 +64,7 @@ test("a local git chat shows its repository with the branch, then its folder und
 test("a worktree chat names its worktree before the folder it was made from", () => {
   expect(
     chatCardFacts({
-      session: { name: null, workspace: worktree.id },
-      workspaces: [project, worktree],
+      chat: chat({ name: null, workspace: worktree.id }, [project, worktree]),
       git: undefined,
       repository: undefined,
       surface: "web",
@@ -68,7 +73,12 @@ test("a worktree chat names its worktree before the folder it was made from", ()
     title: "New chat",
     facts: [
       { kind: "repository", text: "nyte", detail: "fix-scroll", copy: "fix-scroll" },
-      { kind: "worktree", text: "fix-scroll", detail: "Worktree", copy: worktree.path },
+      {
+        kind: "worktree",
+        text: "fix-scroll",
+        detail: "Worktree",
+        copy: "/Users/ada/.nyte/worktrees/nyte/fix-scroll",
+      },
       {
         kind: "folder",
         text: "~/Developer/nyte",
@@ -80,12 +90,11 @@ test("a worktree chat names its worktree before the folder it was made from", ()
 });
 
 test("a folder outside git shows the folder alone, and a chat outside any listed folder only its title", () => {
-  const plain = { ...project, path: "/srv/notes", name: "notes" };
+  const plain = workspaceRow("project", "/srv/notes");
 
   expect(
     chatCardFacts({
-      session: { name: "Notes", workspace: plain.id },
-      workspaces: [plain],
+      chat: chat({ name: "Notes", workspace: plain.id }, [plain]),
       git: { kind: "none" },
       repository: undefined,
       surface: "desktop",
@@ -94,8 +103,7 @@ test("a folder outside git shows the folder alone, and a chat outside any listed
 
   expect(
     chatCardFacts({
-      session: { name: "Home", workspace: asId<"workspace">("home") },
-      workspaces: [plain],
+      chat: chat({ name: "Home", workspace: asId<"workspace">("home") }, [plain]),
       git: undefined,
       repository: undefined,
       surface: "desktop",

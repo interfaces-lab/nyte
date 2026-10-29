@@ -1,6 +1,5 @@
-import type { SessionInfo } from "@nyte-ai/sdk";
-import { mainHead, toolDetail, toolVerbs } from "@nyte-ai/plugin/client/presentation";
-import type { ToolStatus } from "@nyte-ai/plugin/client/presentation";
+import { toolDetail, toolVerbs } from "@nyte-ai/plugin/client/presentation";
+import type { RunStatus, ToolStatus } from "@nyte-ai/plugin/client/presentation";
 import { countWork } from "../work-counts.ts";
 import type { SessionActivity } from "./session-activity.ts";
 
@@ -31,36 +30,26 @@ export function callStatus(status: ToolStatus): SubagentStatus {
   }
 }
 
-export function sessionStatus(session: SessionInfo, unread: boolean): SubagentStatus {
-  const execution = mainHead(session)?.execution;
-
-  if (execution === undefined) return { indicator: "done", text: "" };
-
-  switch (execution.kind) {
-    case "live":
+/** A subagent row's indicator and line for its chat's status. A stopped agent is done, never failed. */
+export function subagentStatus(status: RunStatus, unread: boolean): SubagentStatus {
+  switch (status.kind) {
+    case "working":
+    case "subagent-working":
       return PLANNING;
-    case "waiting":
-      return execution.on.kind === "part"
-        ? { indicator: "attention", text: "Needs attention" }
-        : PLANNING;
+    case "waiting-for-approval":
+      return { indicator: "attention", text: "Needs attention" };
     case "retrying":
       return { indicator: "running", text: "Retrying" };
-    case "idle": {
-      const end = execution.lastRun?.end;
-
-      if (end === undefined || end.kind === "completed")
-        return {
-          indicator: unread ? "unread" : "done",
-          text: end === undefined ? "" : "Completed",
-        };
-
-      return end.kind === "failed"
-        ? { indicator: "failed", text: "Stopped with error" }
-        : { indicator: "failed", text: "Stopped" };
-    }
-
+    case "idle":
+      return { indicator: "done", text: "" };
+    case "completed":
+      return { indicator: unread ? "unread" : "done", text: "Completed" };
+    case "stopped":
+      return { indicator: "done", text: "Stopped" };
+    case "failed":
+      return { indicator: "failed", text: "Stopped with error" };
     default: {
-      const _exhaustive: never = execution;
+      const _exhaustive: never = status;
 
       return _exhaustive;
     }

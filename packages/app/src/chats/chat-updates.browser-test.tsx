@@ -1,14 +1,14 @@
-import "../test/window-bridge.ts";
+import "../../test/window-bridge.ts";
 import type { ReactElement } from "react";
 import { useLayoutEffect } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { SessionInfo } from "@nyte-ai/sdk";
-import { scriptedConnection, viewStream } from "../test/scripted-connection.ts";
-import { sessionRow } from "../test/view-fixtures.ts";
-import { liveRun } from "./screens/session-screen-render.fixtures.ts";
-import { useWorkingSessionIds } from "./queries.ts";
-import { installConnection, sessionsWatch } from "./sdk.tsx";
+import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
+import { sessionRow } from "../../test/view-fixtures.ts";
+import { liveRun } from "../screens/session-screen-render.fixtures.ts";
+import { installConnection, sessionsWatch } from "../sdk.tsx";
+import { useChat } from "./index.ts";
 
 const rootA = sessionRow("root-a");
 const rootB = sessionRow("root-b");
@@ -25,13 +25,21 @@ installConnection(scriptedConnection({ sessions: source }).connection);
 
 let commits = 0;
 
-function WorkingAncestors(): ReactElement {
-  const working = useWorkingSessionIds();
+function RootStatus({ id }: { readonly id: SessionInfo["id"] }): string {
+  const chat = useChat(id);
   useLayoutEffect(() => {
     commits += 1;
   });
 
-  return <output>{[...working].sort().join(",")}</output>;
+  return chat.kind === "ready" ? `${chat.chat.title}:${chat.chat.status.kind}` : chat.kind;
+}
+
+function Roots(): ReactElement {
+  return (
+    <output>
+      <RootStatus id={rootA.id} /> <RootStatus id={rootB.id} />
+    </output>
+  );
 }
 
 function painted(): Promise<void> {
@@ -43,7 +51,7 @@ export async function run(): Promise<string> {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  flushSync(() => root.render(<WorkingAncestors />));
+  flushSync(() => root.render(<Roots />));
   const loading = container.textContent;
   await store.first();
   await painted();

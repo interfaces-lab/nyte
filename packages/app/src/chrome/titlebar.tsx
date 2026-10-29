@@ -17,7 +17,8 @@ import {
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
-import { useHostState, useSession, useWorkspaces } from "../queries.ts";
+import { useChat } from "../chats/index.ts";
+import { useHostState } from "../queries.ts";
 import {
   workbenchController,
   workbenchScope,
@@ -40,21 +41,16 @@ import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
 function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement | null {
-  const workspaceId = useSession(sessionId, (session) => session.workspace).data;
-  const workspaces = useWorkspaces();
-  const workspace = workspaces.data?.find((candidate) => candidate.id === workspaceId);
+  const chat = useChat(sessionId);
 
-  if (workspace === undefined) return null;
-  const { worktree } = workspace;
-
-  const folder =
-    worktree === null
-      ? workspace
-      : workspaces.data?.find((candidate) => candidate.id === worktree.source);
+  if (chat.kind !== "ready" || chat.chat.location.kind !== "folder") return null;
+  const location = chat.chat.location;
+  const worktree = location.worktree;
+  const folder = worktree === null ? location : worktree.source;
 
   return (
     <>
-      {folder !== undefined && (
+      {folder !== null && (
         <>
           <span title={folder.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
             {folder.name}
@@ -64,7 +60,7 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
       )}
       {worktree !== null && (
         <>
-          <span title={workspace.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
+          <span title={location.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
             <Icon name="git-branch" size={12} />
             {worktree.branch}
           </span>
@@ -78,8 +74,9 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
 const SessionLink = createLink(ButtonLink);
 
 function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
-  const parentSessionId = useSession(sessionId, (session) => session.parent).data ?? undefined;
-  const title = useSession(sessionId, (session) => session.name).data ?? "New chat";
+  const chat = useChat(sessionId);
+  const parentSessionId = chat.kind === "ready" ? (chat.chat.parent ?? undefined) : undefined;
+  const title = chat.kind === "ready" ? chat.chat.title : "";
   const panes = usePaneActions();
 
   return (

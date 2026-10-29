@@ -1,6 +1,6 @@
-import type { GitHubRepository, GitStatus, SessionInfo } from "@nyte-ai/sdk";
+import type { GitHubRepository, GitStatus } from "@nyte-ai/sdk";
 import type { ClientSurface } from "../bridge.ts";
-import type { RailWorkspace } from "../queries.ts";
+import type { Chat } from "../chats/index.ts";
 
 export interface ChatFact {
   readonly kind: "repository" | "worktree" | "folder";
@@ -16,8 +16,7 @@ export interface ChatCardFacts {
 }
 
 export interface ChatCardSources {
-  readonly session: Pick<SessionInfo, "name" | "workspace">;
-  readonly workspaces: readonly Pick<RailWorkspace, "id" | "path" | "name" | "worktree">[];
+  readonly chat: Pick<Chat, "title" | "location">;
   readonly git: GitStatus | undefined;
   readonly repository: Pick<GitHubRepository, "owner" | "name"> | undefined;
   readonly surface: ClientSurface;
@@ -31,20 +30,14 @@ const HOME = /^(?:\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[\\/]
  * A chat outside any listed folder has only its title.
  */
 export function chatCardFacts(sources: ChatCardSources): ChatCardFacts {
-  const title = sources.session.name ?? "New chat";
-  const workspaces = sources.workspaces;
-  const workspace = workspaces.find((candidate) => candidate.id === sources.session.workspace);
+  const title = sources.chat.title;
+  const location = sources.chat.location;
 
-  if (workspace === undefined) return { title, facts: [] };
+  if (location.kind !== "folder") return { title, facts: [] };
   const git = sources.git;
   const repository = sources.repository;
-  const worktree = workspace.worktree;
-
-  const folder =
-    (worktree === null
-      ? undefined
-      : workspaces.find((candidate) => candidate.id === worktree.source)) ?? workspace;
-
+  const worktree = location.worktree;
+  const folder = worktree?.source ?? location;
   const branch = (git?.kind === "repository" ? git.branch : null) ?? worktree?.branch;
   const name = repository === undefined ? folder.name : `${repository.owner}/${repository.name}`;
   const inRepository = repository !== undefined || git?.kind === "repository" || worktree !== null;
@@ -53,9 +46,9 @@ export function chatCardFacts(sources: ChatCardSources): ChatCardFacts {
     inRepository && { kind: "repository", text: name, detail: branch, copy: branch ?? name },
     worktree !== null && {
       kind: "worktree",
-      text: workspace.name,
+      text: location.name,
       detail: "Worktree",
-      copy: workspace.path,
+      copy: location.path,
     },
     {
       kind: "folder",

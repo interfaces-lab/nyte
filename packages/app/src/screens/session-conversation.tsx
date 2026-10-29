@@ -1,4 +1,5 @@
-import { mainHead, type UserMessage } from "@nyte-ai/plugin/client/presentation";
+import { mainHead, runStatus, type UserMessage } from "@nyte-ai/plugin/client/presentation";
+import type { RunStatus } from "@nyte-ai/plugin/client/presentation";
 import { sessionScreenStyles } from "./session-screen.stylex.ts";
 import { modelConfiguration } from "./model-configuration.ts";
 import { PaneHeader } from "./pane-header.tsx";
@@ -33,7 +34,6 @@ import {
   useSessionActions,
   useHostState,
   useRenameSession,
-  useSession,
   useSessionChoice,
 } from "../queries.ts";
 import {
@@ -73,6 +73,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../work-counts.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useWindowActive } from "../window-active.ts";
+import { useChat, useChats } from "../chats/index.ts";
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 
@@ -169,13 +170,26 @@ type SessionConversationProps =
       readonly onOpenSubagentTray: (sessionId: SessionId) => void;
     };
 
-function RunAnnouncer({ working }: { readonly working: boolean }): ReactElement {
-  const [shown, setShown] = useState(working);
+const ANNOUNCEMENTS = {
+  idle: "",
+  working: "Nyte is responding",
+  retrying: "Nyte is responding",
+  "waiting-for-approval": "Nyte needs your answer",
+  "subagent-working": "",
+  completed: "Response finished",
+  stopped: "Response stopped",
+  failed: "Response failed",
+} as const satisfies Readonly<Record<RunStatus["kind"], string>>;
+
+/** Says when the chat's run starts, needs an answer or ends, and how it ended. */
+function RunAnnouncer({ status }: { readonly status: RunStatus }): ReactElement {
+  const announcement = ANNOUNCEMENTS[status.kind];
+  const [shown, setShown] = useState(announcement);
   const [message, setMessage] = useState("");
 
-  if (working !== shown) {
-    setShown(working);
-    setMessage(working ? "Nyte is responding" : "Response finished");
+  if (announcement !== shown) {
+    setShown(announcement);
+    setMessage(announcement);
   }
 
   return (
@@ -288,7 +302,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const host = useHostState();
   const paneActions = usePaneActions();
   const { layout } = usePaneControllerSnapshot();
-  const sessionName = useSession(sessionId, (session) => session.name).data;
+  const chat = useChat(sessionId);
   const catalog = useCatalog(sessionId);
   const renameSession = useRenameSession();
   const sessionActions = useSessionActions();
@@ -303,9 +317,12 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const hasTerminals = useHasLiveTerminals(presentation === "full" ? sessionId : undefined);
   const childSessions = useChildSessions(sessionId).data ?? [];
 
-  const trayEmptied =
-    (trayView.kind === "terminals" && !hasTerminals) ||
-    (trayView.kind === "list" && listSubagents(childSessions, trayView).listed.length === 0);
+  const listEmptied = useChats(
+    (chats) =>
+      trayView.kind === "list" && listSubagents(childSessions, trayView, chats).listed.length === 0,
+  );
+
+  const trayEmptied = (trayView.kind === "terminals" && !hasTerminals) || listEmptied;
 
   if (trayEmptied) setTrayView({ kind: "closed" });
 
@@ -328,7 +345,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const [projector] = useState(transcriptProjector);
   const ready = useWatchSelect(store, (state) => state.value !== undefined);
   const failed = useWatchSelect(store, (state) => state.error !== undefined);
-  const execution = useWatchSelect(store, (state) => state.value?.execution);
+  const status = runStatus(useWatchSelect(store, (state) => state.value?.execution));
   const activation = useWatchSelect(store, (state) => state.value?.activation);
   const messages = useWatchSelect(store, projector.messages);
   const choice = useSessionChoice(sessionId);
@@ -336,7 +353,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const viewStore = usePaneViewStateStore();
   useMountEffect(() => childrenWatch(sessionId).subscribe(() => undefined));
   useMountEffect(() => showTranscript(sessionId));
-  const working = navigating || messages.working;
   const cwd = host.data.workspace?.path;
 
   const loadEarlier = () => loadEarlierMessages(sessionId, HISTORY_PAGE);
@@ -358,7 +374,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     fast: selected?.fast === true,
   };
 
-  const title = sessionName ?? "New chat";
+  const title = chat.kind === "ready" ? chat.chat.title : "";
 
   const commitRename = (): void => {
     if (draftName === undefined) return;
@@ -467,11 +483,11 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
           >
             <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
               <MarkSeen sessionId={sessionId} store={store} viewKey={workbenchViewKey(cwd)} />
-              {((ready && sessionName !== undefined) || failed) && <StartupReadsRelease />}
+              {((ready && chat.kind !== "loading") || failed) && <StartupReadsRelease />}
               {presentation === "full" && activation !== undefined && (
                 <ActivationNotice key={JSON.stringify(activation)} activation={activation} />
               )}
-              {presentation === "full" && <RunAnnouncer working={working} />}
+              {presentation === "full" && <RunAnnouncer status={status} />}
               <Timeline
                 store={store}
                 projector={projector}
@@ -543,7 +559,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                       return true;
                     },
                   }}
-                  execution={execution}
+                  status={status}
                   pending={messages.queued}
                   unsent={messages.unsent}
                   fileDropRoot={column}

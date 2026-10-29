@@ -1,18 +1,16 @@
 import type { ReactElement } from "react";
-import type { SessionInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import { StatusDot } from "../components/ui.tsx";
-import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 
 export function StatusGlyph({
-  session,
   mark,
+  unread,
 }: {
-  readonly session: SessionInfo;
   readonly mark: SessionMark;
+  readonly unread: boolean;
 }): ReactElement | null {
   if (mark !== "idle") return <StatusDot mark={mark} />;
 
-  return sessionHasUnreadCompletion(session) ? <Icon name="eye" size={14} label="Unread" /> : null;
+  return unread ? <Icon name="eye" size={14} label="Unread" /> : null;
 }

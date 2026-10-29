@@ -10,10 +10,11 @@ import { useNowMinute } from "../use-now-minute.ts";
 import { StatusGlyph } from "./status-glyph.tsx";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
-import { sessionActivityMark } from "../session-activity.ts";
+import { sessionTitle } from "@nyte-ai/plugin/client/presentation";
+import { useChats } from "../chats/index.ts";
 
-import { amongOptions, sessionsForNavigation } from "./sidebar-view.ts";
-import { useSessionSearch, useWorkingSessionIds } from "../queries.ts";
+import { amongOptions, chatMark, sessionsForNavigation } from "./sidebar-view.ts";
+import { useSessionSearch } from "../queries.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
@@ -45,10 +46,6 @@ interface PaletteAction {
   readonly group: "actions" | "settings";
   readonly meta?: ReactNode;
   readonly run: () => void;
-}
-
-function sessionTitle(session: SessionInfo): string {
-  return session.name ?? "New chat";
 }
 
 function matches(action: PaletteAction, query: string): boolean {
@@ -91,7 +88,7 @@ export function SearchPalette({
   onOpenSettings,
   onOpenCustomize,
 }: SearchPaletteProps): ReactElement {
-  const workingSessions = useWorkingSessionIds();
+  const chats = useChats((directory) => directory);
   const now = useNowMinute();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
@@ -204,8 +201,8 @@ export function SearchPalette({
           value={session.id}
           leading={
             <StatusGlyph
-              session={session}
-              mark={sessionActivityMark(session, workingSessions.has(session.id))}
+              mark={chatMark(session, chats)}
+              unread={chats.get(session.id)?.unread === true}
             />
           }
           meta={formatTimeAgo(session.lastActivityAt, now)}

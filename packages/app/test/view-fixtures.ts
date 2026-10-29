@@ -1,6 +1,8 @@
-import type { Execution, SessionInfo, ToolClass, TurnInfo } from "@nyte-ai/sdk";
+import type { Execution, SessionInfo, ToolClass, TurnInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
+import { joinChats } from "../src/chats/directory.ts";
+import type { ChatDirectory, ChatSources } from "../src/chats/directory.ts";
 import type { WatchSource } from "../src/sdk.tsx";
 import type { TurnMessages } from "../src/view-helpers.ts";
 
@@ -40,6 +42,44 @@ export function sessionRow(
     lastActivityAt: 2,
     ...change,
   };
+}
+
+export function workspaceRow(
+  id: string,
+  path: string,
+  isolation: WorkspaceInfo["isolation"] = null,
+): WorkspaceInfo {
+  return {
+    id: asId<"workspace">(id),
+    target: { kind: "local", path },
+    identity: asId<"environment-identity">(id),
+    availability: { kind: "available" },
+    projectResources: null,
+    trusted: true,
+    projectSources: [],
+    addedBy: asId<"principal">("tester"),
+    sessions: 0,
+    writers: [],
+    isolation,
+  };
+}
+
+/** The chat directory these sessions join into, with no open views and no pending actions unless given. */
+export function chatsFor(
+  sessions: readonly SessionInfo[],
+  sources: Partial<ChatSources> = {},
+  previous: ChatDirectory = new Map(),
+): ChatDirectory {
+  return joinChats(
+    {
+      lists: [sessions],
+      views: new Map(),
+      workspaces: [],
+      project: (session) => session,
+      ...sources,
+    },
+    previous,
+  );
 }
 
 export function listedChildren(

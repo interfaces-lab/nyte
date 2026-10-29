@@ -1,4 +1,4 @@
-import { failureNotice } from "@nyte-ai/plugin/client/presentation";
+import { failureNotice, runMark, sessionTitle } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
 import { Button } from "@nyte-ai/ui/button";
@@ -17,8 +17,8 @@ import { formatTimeAgo } from "../components/ui.tsx";
 import { draftPreviewText } from "../conversation/message-references.ts";
 import type { ChatDraft } from "../layout/session-view-state.ts";
 import { useSessionDraggable } from "../layout/session-dnd.tsx";
-import { sessionActivityMark } from "../session-activity.ts";
-import { sessionHasUnreadCompletion } from "../session-read-state.ts";
+import type { ChatDirectory } from "../chats/index.ts";
+import { useChat } from "../chats/index.ts";
 import type { OpenIntent } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
@@ -27,10 +27,6 @@ import { useNowMinute } from "../use-now-minute.ts";
 import { sessionWatch, warmSession } from "../sdk.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { StatusGlyph } from "./status-glyph.tsx";
-
-function sessionTitle(session: SessionInfo): string {
-  return session.name ?? "New chat";
-}
 
 const WARM_DELAY_MS = 50;
 
@@ -111,23 +107,6 @@ export function DraftRow({
   );
 }
 
-function sessionAsk(session: SessionInfo): string | undefined {
-  for (const head of session.heads) {
-    const { execution } = head;
-
-    if (execution.kind === "waiting" && execution.on.kind === "part") return "Needs your answer";
-  }
-
-  for (const head of session.heads) {
-    const { execution } = head;
-
-    if (execution.kind === "idle" && execution.lastRun?.end.kind === "failed")
-      return failureNotice(execution.lastRun.end.failure).text;
-  }
-
-  return undefined;
-}
-
 export interface SessionPlace {
   readonly workspace: WorkspaceId | null;
   readonly path: string | null;
@@ -138,7 +117,7 @@ export interface RailRows {
   readonly activeSessionId: SessionId | undefined;
   readonly unavailable: ReadonlySet<WorkspaceId>;
   readonly repository: Pick<GitHubRepository, "owner" | "name"> | undefined;
-  readonly working: ReadonlySet<SessionId>;
+  readonly chats: ChatDirectory;
   readonly showUpdated: boolean;
   readonly open: (sessionId: SessionId, intent: OpenIntent | "beside") => void;
   readonly rename: (sessionId: SessionId, name: string) => void;
@@ -160,7 +139,9 @@ export function SessionRow({
   readonly rail: RailRows;
 }): ReactElement {
   const selected = session.id === rail.activeSessionId;
-  const working = rail.working.has(session.id);
+  const chat = useChat(session.id);
+  const status = chat.kind === "ready" ? chat.chat.status : undefined;
+  const unread = chat.kind === "ready" && chat.chat.unread;
   const showUpdated = rail.showUpdated;
   const draggable = place.workspace === rail.openWorkspace;
   const unreachable = session.workspace !== null && rail.unavailable.has(session.workspace);
@@ -170,9 +151,15 @@ export function SessionRow({
   const onPin = (): void => rail.pin(session);
   const onArchive = (): void => rail.archive(session);
   const onDelete = (): void => rail.remove(session.id);
-  const mark = sessionActivityMark(session, working);
+  const mark = status === undefined ? "idle" : runMark(status);
   const title = sessionTitle(session);
-  const ask = mark === "waiting" || mark === "failed" ? sessionAsk(session) : undefined;
+
+  const ask =
+    status?.kind === "waiting-for-approval"
+      ? "Needs your answer"
+      : status?.kind === "failed"
+        ? failureNotice(status.failure).text
+        : undefined;
   const [draftName, setDraftName] = useState<string | undefined>();
   const warming = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -203,7 +190,7 @@ export function SessionRow({
     return (
       <Row xstyle={[styles.rowSurface, styles.sessionRenameRow]}>
         <Row.Leading xstyle={styles.rowIcon}>
-          <StatusGlyph session={session} mark={mark} />
+          <StatusGlyph mark={mark} unread={unread} />
         </Row.Leading>
         <Row.Label>
           <Input
@@ -233,7 +220,7 @@ export function SessionRow({
       <MenuItem icon="pencil" onClick={() => setDraftName(title)}>
         Rename Chat…
       </MenuItem>
-      {sessionHasUnreadCompletion(session) && (
+      {unread && (
         <MenuItem icon="eye" onClick={() => rail.markRead([session])}>
           Mark as Read
         </MenuItem>
@@ -296,7 +283,7 @@ export function SessionRow({
         {...listeners}
       >
         <Row.Leading xstyle={[styles.rowIcon, ask !== undefined && styles.rowIconAsk]}>
-          <StatusGlyph session={session} mark={mark} />
+          <StatusGlyph mark={mark} unread={unread} />
         </Row.Leading>
         {ask === undefined ? (
           titleLine

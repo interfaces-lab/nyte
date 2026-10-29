@@ -1,4 +1,5 @@
 import "../../test/window-bridge.ts";
+import { runStatus } from "@nyte-ai/plugin/client/presentation";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
@@ -659,7 +660,7 @@ function LoneComposer({ state }: { readonly state: ComposerState }): ReactElemen
   return (
     <Composer
       sessionId={sessionId}
-      execution={sessionView?.execution}
+      status={runStatus(sessionView?.execution)}
       pending={messages.queued}
       unsent={messages.unsent}
       onViewStateChange={(state) => {

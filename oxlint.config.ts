@@ -23,6 +23,12 @@ const uiLibraryImports = [
   },
 ];
 
+/** Each concept folder in the app is reached through its index; the files beside it are its internals. */
+const conceptFolderImports = ["chats", "window"].map((folder) => ({
+  group: [`**/${folder}/*`, `!**/${folder}/index.ts`],
+  message: `Import ${folder}/ through ${folder}/index.ts. Its other files are internal; export what you need from the index.`,
+}));
+
 const buttonLibraryMessage =
   "Buttons come styled from @nyte-ai/ui/button and @nyte-ai/ui/toggle; pass layout through their props, not a new look.";
 
@@ -275,7 +281,7 @@ export default defineConfig({
           "error",
           {
             paths: [...rendererCoreImports, compilerMemoImport, ...runtimeLoadImports],
-            patterns: uiLibraryImports,
+            patterns: [...uiLibraryImports, ...conceptFolderImports],
           },
         ],
       },

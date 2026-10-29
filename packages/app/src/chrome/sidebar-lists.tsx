@@ -16,11 +16,11 @@ import { usePaneControllerSnapshot, usePaneViewStateStore } from "../layout/pane
 import { activePane } from "../layout/pane-layout.ts";
 import type { ChatDraft } from "../layout/session-view-state.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
-import { sessionActivityMark } from "../session-activity.ts";
 import { useStagePage } from "./shell-state.ts";
 import { DraftRow, SessionRow, type RailRows, type SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
+  chatMark,
   COLLAPSED_SESSION_LIMIT,
   deriveShelf,
   folderView,
@@ -214,7 +214,7 @@ export function ChatsList({
 
   if (view.grouping === "inbox") {
     const shelved = (shelf: SessionShelf): readonly ListedSession[] =>
-      rows.filter(({ session }) => deriveShelf(session, rail.working, hold) === shelf);
+      rows.filter(({ session }) => deriveShelf(session, rail.chats, hold) === shelf);
 
     const inbox = shelved("inbox");
 
@@ -285,9 +285,7 @@ export function ChatsList({
     );
   }
 
-  const live = rows.filter(
-    ({ session }) => sessionActivityMark(session, rail.working.has(session.id)) !== "idle",
-  ).length;
+  const live = rows.filter(({ session }) => chatMark(session, rail.chats) !== "idle").length;
 
   const page = sessionPage(
     rows.length,
@@ -335,7 +333,7 @@ export function FolderList({
 
   if (sessions === undefined && drafts.length === 0) return null;
 
-  const groups = sessions === undefined ? [] : folderView(sessions, view, now, rail.working);
+  const groups = sessions === undefined ? [] : folderView(sessions, view, now, rail.chats);
   const listed = groups.flatMap((group) => group.sessions);
   const selected = listed.findIndex((session) => session.id === rail.activeSessionId);
   const key = `local:${place.workspace ?? "home"}`;

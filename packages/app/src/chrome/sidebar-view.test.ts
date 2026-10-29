@@ -16,7 +16,7 @@ import {
   type SessionViewGroup,
 } from "./sidebar-view.ts";
 
-const NONE = new Set<never>();
+const NONE = new Map<never, never>();
 
 function names(groups: readonly SessionViewGroup[]): readonly (readonly [string, string[]])[] {
   return groups.map((group) => [

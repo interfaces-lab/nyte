@@ -1,20 +1,14 @@
 import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
-import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import { runMark } from "@nyte-ai/plugin/client/presentation";
 import { Icon } from "@nyte-ai/ui/icon";
+import { chatFolderPath, subscribeChats, useChats } from "../chats/index.ts";
+import type { ChatDirectory } from "../chats/index.ts";
 import { activateWorkspace } from "../chrome/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
 import { nyte } from "../nyte.ts";
-import {
-  keys,
-  queryClient,
-  sessionFolderPath,
-  useWorkingSessionIds,
-  useWorkspaceSessions,
-} from "../queries.ts";
-import { sessionsWatch, useWatchSelect } from "../sdk.tsx";
-import { sessionActivityMark } from "../session-activity.ts";
-import { sessionHasUnreadCompletion } from "../session-read-state.ts";
+import { keys, queryClient } from "../queries.ts";
+import { sessionsWatch } from "../sdk.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { activeTab, showsPage, tabPlace, tabPlaces } from "./model.ts";
@@ -61,7 +55,7 @@ export function useWindowTabsSync(): void {
         return;
       }
 
-      const folder = sessionFolderPath(place.sessionId);
+      const folder = chatFolderPath(place.sessionId);
 
       if (folder === undefined) return;
       followed = focus;
@@ -108,35 +102,24 @@ export function useWindowTabsSync(): void {
     forgetGone();
     const unsubscribeRouter = router.subscribe("onResolved", adopt);
     const unsubscribeTabs = windowTabs.subscribe(follow);
-    const unsubscribeSessions = sessionsWatch("roots").subscribe(follow);
+    const unsubscribeChats = subscribeChats(follow);
     const unsubscribeAllSessions = sessionsWatch("all").subscribe(forgetGone);
-
-    const unsubscribeWorkspaces = queryClient.getQueryCache().subscribe((event) => {
-      if (event.query.queryKey[0] === keys.workspaces[0]) follow();
-    });
 
     return () => {
       unsubscribeRouter();
       unsubscribeTabs();
-      unsubscribeSessions();
+      unsubscribeChats();
       unsubscribeAllSessions();
-      unsubscribeWorkspaces();
     };
   });
 }
 
-function sessionTitle(session: SessionInfo | undefined): string {
-  if (session === undefined) return "Chat";
-
-  return session.name ?? "New chat";
-}
-
-function placeTitle(place: Place, sessions: ReadonlyMap<SessionId, SessionInfo>): string {
+function placeTitle(place: Place, chats: ChatDirectory): string {
   switch (place.kind) {
     case "blank":
       return "New chat";
     case "session":
-      return sessionTitle(sessions.get(place.sessionId));
+      return chats.get(place.sessionId)?.title ?? "Chat";
     case "customize":
       return "Customize";
     case "environments":
@@ -149,48 +132,15 @@ function placeTitle(place: Place, sessions: ReadonlyMap<SessionId, SessionInfo>)
   }
 }
 
-function sameSessions(previous: readonly SessionInfo[], next: readonly SessionInfo[]): boolean {
-  return (
-    previous.length === next.length && previous.every((session, index) => session === next[index])
-  );
-}
-
-/**
- * Names subagents in tabs from the list of every chat, re-rendering only when one of them changes,
- * and roots from the root list, which shows pending renames.
- */
 export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] {
-  const workspaceSessions = useWorkspaceSessions();
-  const working = useWorkingSessionIds();
-
-  const tabbed = new Set(
-    state.tabs.flatMap((tab) =>
-      tabPlaces(tab).flatMap((place) => (place.kind === "session" ? [place.sessionId] : [])),
-    ),
-  );
-
-  const subagents = useWatchSelect(
-    sessionsWatch("all"),
-    ({ value = [] }) =>
-      value.filter((session) => session.parent !== null && tabbed.has(session.id)),
-    sameSessions,
-  );
-
-  const sessions = new Map([
-    ...subagents.map((session) => [session.id, session] as const),
-    ...(workspaceSessions.data ?? []).flatMap((entry) =>
-      entry.sessions.map((session) => [session.id, session] as const),
-    ),
-  ]);
+  const chats = useChats((directory) => directory);
 
   return state.tabs.map((tab) => {
     const places = tabPlaces(tab);
     const place = tabPlace(tab);
     const view = tab.view;
-    const session = place.kind === "session" ? sessions.get(place.sessionId) : undefined;
-
-    const mark =
-      session === undefined ? "idle" : sessionActivityMark(session, working.has(session.id));
+    const chat = place.kind === "session" ? chats.get(place.sessionId) : undefined;
+    const mark = chat === undefined ? "idle" : runMark(chat.status);
 
     const glyph =
       place.kind === "session" ? (
@@ -210,22 +160,19 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
         />
       );
 
+    const sessions = places.flatMap((candidate) =>
+      candidate.kind === "session" ? [candidate.sessionId] : [],
+    );
+
     return {
       id: tab.id,
-      title: placeTitle(place, sessions),
-      tooltip: places.map((candidate) => placeTitle(candidate, sessions)).join(" | "),
-      sessions: places.flatMap((candidate) =>
-        candidate.kind === "session" ? [candidate.sessionId] : [],
-      ),
+      title: placeTitle(place, chats),
+      tooltip: places.map((candidate) => placeTitle(candidate, chats)).join(" | "),
+      sessions,
       glyph,
       unread:
         tab.id !== state.activeTabId &&
-        places.some((candidate) => {
-          if (candidate.kind !== "session") return false;
-          const listed = sessions.get(candidate.sessionId);
-
-          return listed !== undefined && sessionHasUnreadCompletion(listed);
-        }),
+        sessions.some((sessionId) => chats.get(sessionId)?.unread === true),
       preview: view.kind === "preview",
       split:
         view.kind === "panes" && view.layout.kind === "split" ? view.layout.direction : undefined,

@@ -489,6 +489,37 @@ export function showTranscript(session: SessionId): () => void {
   };
 }
 
+/** What an open view says about its own run: the viewed head's execution and every head's read state. */
+export type OpenView = Pick<SessionView, "execution" | "heads">;
+
+let views: ReadonlyMap<SessionId, OpenView> = new Map();
+
+const viewListeners = new Set<() => void>();
+
+/** Every session whose view is open, as its view last reported it, before text pacing; a new map once any changes. */
+export function openViews(): ReadonlyMap<SessionId, OpenView> {
+  return views;
+}
+
+export function subscribeOpenViews(listener: () => void): () => void {
+  viewListeners.add(listener);
+
+  return () => viewListeners.delete(listener);
+}
+
+function reportView(session: SessionId, view: OpenView | undefined): void {
+  const known = views.get(session);
+
+  if (view === undefined ? known === undefined : keepItem(known, view) === known) return;
+  const next = new Map(views);
+
+  if (view === undefined) next.delete(session);
+  else next.set(session, view);
+  views = next;
+
+  for (const listener of viewListeners) listener();
+}
+
 const pagers = new Map<SessionId, PagedViews>();
 
 function nextFrame(): Promise<void> {
@@ -555,10 +586,13 @@ export const sessionWatch = watchFamily(
               if (shown !== undefined) view = keepShown(shown, view);
             }
 
+            reportView(session, { execution: view.execution, heads: view.heads });
+
             return { done: false, value: pacer.receive({ ...view, activity: activity(view) }) };
           },
           async return() {
             pacer.dispose();
+            reportView(session, undefined);
 
             if (pagers.get(session) === views) pagers.delete(session);
             await iterator.return?.();

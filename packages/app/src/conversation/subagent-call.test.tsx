@@ -8,7 +8,9 @@ import { SubagentCallView } from "./subagent-call.tsx";
 import { SubagentSessionsProvider } from "./subagent-sessions.ts";
 import { transcriptRows } from "./transcript-rows.ts";
 import { TurnItemView } from "./turn-view.tsx";
+import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { endedTurn, listedChildren, sessionRow, settledTool } from "../../test/view-fixtures.ts";
+import { installConnection, sessionsWatch } from "../sdk.tsx";
 
 vi.hoisted(() => {
   const query = { matches: false, addEventListener: () => {}, removeEventListener: () => {} };
@@ -50,7 +52,10 @@ const childSession: SessionInfo = sessionRow("child", {
 
 const turn = endedTurn([create]);
 
-test("a create call finds its child by the call that made it", () => {
+test("a create call finds its child by the call that made it", async () => {
+  installConnection(scriptedConnection({ sessions: [childSession] }).connection);
+  const listing = sessionsWatch("all").subscribe(() => undefined);
+  await sessionsWatch("all").first();
   const client = new QueryClient();
   client.setQueryData(["sessions", "children", parent], [childSession]);
 
@@ -84,6 +89,7 @@ test("a create call finds its child by the call that made it", () => {
   );
 
   client.clear();
+  listing();
   expect(html.match(/>Completed</g)?.length).toBe(1);
   expect(html).not.toContain("agents completed");
 });
