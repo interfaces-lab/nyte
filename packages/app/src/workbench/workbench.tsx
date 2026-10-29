@@ -20,9 +20,9 @@ import {
   shownWorkbenchTab,
   WORKBENCH_ACTIVE_WIDTH_VARIABLE,
   WORKBENCH_CENTER_WIDTH_MIN,
-  WORKBENCH_WIDTH_DEFAULT,
+  WORKBENCH_SHARE_DEFAULT,
   workbenchController,
-  workbenchDefaultWidth,
+  workbenchPanelWidth,
   workbenchScope,
   workbenchTabAvailable,
   workbenchKindLabel,
@@ -517,11 +517,13 @@ function WorkbenchViewHost({
   const compact = view.collapsed === "compact" || bounds.kind === "overlay";
   const maximized = view.layout.kind === "maximized";
   const chatShowing = workbenchShowsChat(view.layout);
-  const panelWidth = maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
-  const defaultWidth = clampWorkbenchWidthToBounds(workbenchDefaultWidth(stageWidth), bounds);
+  const panelWidth = maximized ? stageWidth : workbenchPanelWidth(view.width, stageWidth);
+
+  const setWidth = (width: number): void =>
+    workbenchController.actions.setShare({ view: viewKey, share: width / stageWidth });
 
   const resetWidth = () =>
-    workbenchController.actions.setWidth({ view: viewKey, width: defaultWidth });
+    workbenchController.actions.setShare({ view: viewKey, share: WORKBENCH_SHARE_DEFAULT });
 
   const beginResize = (event: PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return;
@@ -562,7 +564,7 @@ function WorkbenchViewHost({
     }
 
     resizeRef.current = undefined;
-    workbenchController.actions.setWidth({ view: viewKey, width: resize.nextWidth });
+    setWidth(resize.nextWidth);
     setResizing(false);
   };
 
@@ -576,10 +578,7 @@ function WorkbenchViewHost({
 
     if (width === undefined) return;
     event.preventDefault();
-    workbenchController.actions.setWidth({
-      view: viewKey,
-      width: clampWorkbenchWidthToBounds(width, bounds),
-    });
+    setWidth(clampWorkbenchWidthToBounds(width, bounds));
   };
 
   const panelVisible = current && view.expanded;
@@ -743,9 +742,7 @@ export function Workbench({
   const capabilities = clientCapabilities(nyte.host);
   const rootRef = useRef<HTMLElement>(null);
 
-  const [stageWidth, setStageWidth] = useState(
-    WORKBENCH_WIDTH_DEFAULT + WORKBENCH_CENTER_WIDTH_MIN,
-  );
+  const [stageWidth, setStageWidth] = useState(2 * WORKBENCH_CENTER_WIDTH_MIN);
 
   const viewKey = workbenchViewKey(workspacePath);
   const snapshot = useWorkbenchSnapshot();
