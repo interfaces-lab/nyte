@@ -14,18 +14,18 @@ import {
 
 test.use({ chapter: "chat" });
 
-test("the five newest seeded chats are listed and Show 2 More reveals the rest", async ({
+test("the five newest seeded chats are listed and Show 3 More reveals the rest", async ({
   desktop,
 }) => {
   const { page } = desktop;
-  const oldest: readonly string[] = [FIXTURES.alpha, FIXTURES.beta];
+  const oldest: readonly string[] = [FIXTURES.alpha, FIXTURES.beta, FIXTURES.sidebar];
   const newest = Object.values(FIXTURES).filter((name) => !oldest.includes(name));
 
   for (const name of newest) await expect(chatRow(page, name)).toBeVisible();
 
   for (const name of oldest) await expect(chatRow(page, name)).toBeHidden();
 
-  await sidebar(page).getByRole("button", { name: "Show 2 More", exact: true }).click();
+  await sidebar(page).getByRole("button", { name: "Show 3 More", exact: true }).click();
 
   for (const name of oldest) await expect(chatRow(page, name)).toBeVisible();
 

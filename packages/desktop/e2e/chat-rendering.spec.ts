@@ -65,7 +65,10 @@ async function observeFrames(page: Page): Promise<void> {
     ].find((element) => element.clientHeight > 0 && element.getClientRects().length > 0);
 
     const footer = initial?.querySelector("[data-row-key^='changes:']");
-    const dock = initial?.parentElement?.querySelector("[data-composer-region]")?.parentElement;
+
+    const dock = initial
+      ?.closest(":has([data-composer-region])")
+      ?.querySelector("[data-composer-region]")?.parentElement;
 
     if (
       initial === undefined ||
@@ -113,7 +116,11 @@ async function observeFrames(page: Page): Promise<void> {
       if (viewport === undefined) return;
       probe.frames += 1;
       const box = viewport.getBoundingClientRect();
-      const dock = viewport.parentElement?.querySelector("[data-composer-region]")?.parentElement;
+
+      const dock = viewport
+        .closest(":has([data-composer-region])")
+        ?.querySelector("[data-composer-region]")?.parentElement;
+
       const top = box.top + probe.layout.headerHeight;
       const bottom = (dock?.getBoundingClientRect().top ?? box.bottom) - probe.layout.endGap;
 
@@ -188,7 +195,9 @@ async function observeFrames(page: Page): Promise<void> {
         fail("the pending reservation collapsed below the previous ready footer");
 
       const running =
-        viewport.parentElement?.querySelector("button[aria-label='Stop response']") !== null;
+        viewport
+          .closest(":has([data-composer-region])")
+          ?.querySelector("button[aria-label='Stop response']") !== null;
 
       if (running) {
         probe.pendingFrames += 1;
