@@ -2,26 +2,29 @@ import { workbenchStyles } from "./workbench.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
-import { clientCapabilities } from "../client-actions.ts";
-import type { ClientCapabilities } from "../client-actions.ts";
-import { nyte } from "../nyte.ts";
+import { clientCapabilities } from "../contract/client-actions.ts";
+import type { ClientCapabilities } from "../contract/client-actions.ts";
+import { nyte } from "../contract/nyte.ts";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { useHostState, useVcsSnapshot } from "../queries.ts";
+import { useHostState } from "../data/host.ts";
+import { useVcsSnapshot } from "../data/vcs.ts";
 import { BranchRow, ChangesRow, SessionStatusRows } from "./rail-status.tsx";
 import {
   clampWorkbenchWidthToBounds,
-  defaultWorkbenchTab,
-  shownWorkbenchTab,
   WORKBENCH_ACTIVE_WIDTH_VARIABLE,
   WORKBENCH_CENTER_WIDTH_MIN,
   WORKBENCH_SHARE_DEFAULT,
-  workbenchController,
   workbenchPanelWidth,
+  workbenchWidthBounds,
+} from "./width.ts";
+import {
+  defaultWorkbenchTab,
+  shownWorkbenchTab,
   workbenchScope,
   workbenchTabAvailable,
   workbenchKindLabel,
@@ -29,10 +32,9 @@ import {
   workbenchTabLabel,
   workbenchTabs,
   workbenchViewKey,
-  workbenchWidthBounds,
-  useWorkbenchSnapshot,
   WORKBENCH_HOME_VIEW_KEY,
-} from "./controller";
+} from "./model.ts";
+import { workbenchController, useWorkbenchSnapshot } from "./controller.ts";
 import type {
   WorkbenchScope,
   WorkbenchTab,
@@ -40,16 +42,16 @@ import type {
   WorkbenchTabKind,
   WorkbenchViewKey,
   WorkbenchViewState,
-} from "./controller";
-import { terminalActions, useTerminalRuntime } from "./terminal-store";
-import { BrowserPanel } from "./browser-panel";
-import { CanvasPanel } from "./canvas-panel.tsx";
-import { Deferred, loadDeferred } from "../deferred.tsx";
+} from "./model.ts";
+import { terminalActions, useTerminalRuntime } from "./terminal/terminal-store";
+import { BrowserPanel } from "./browser/browser-panel";
+import { CanvasPanel } from "../canvas/canvas-panel.tsx";
+import { Deferred, loadDeferred } from "../lib/deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
-import { useFileTabs } from "./file-store.ts";
+import { useFileTabs } from "./files/file-store.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { usePaneControllerSnapshot } from "../layout/pane-context.tsx";
-import { activeSelection } from "../layout/pane-layout.ts";
+import { usePaneControllerSnapshot } from "../panes/pane-context.tsx";
+import { activeSelection } from "../panes/pane-layout.ts";
 
 const MOUNTED_VIEWS = 3;
 

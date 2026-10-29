@@ -1,4 +1,4 @@
-import type { ContextMenuTemplateItem, HostBridge } from "../bridge.ts";
+import type { ContextMenuTemplateItem, HostBridge } from "../contract/bridge.ts";
 
 type ContextMenuEntry =
   | Exclude<ContextMenuTemplateItem, { kind: "item" }>

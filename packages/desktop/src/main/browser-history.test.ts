@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import type { BrowserHistoryEntry } from "@nyte-ai/app/bridge.ts";
+import type { BrowserHistoryEntry } from "@nyte-ai/app/contract/bridge.ts";
 import { BrowserHistoryStore, HISTORY_LIMIT, TITLE_LIMIT, URL_LIMIT } from "./browser-history.ts";
 import { ipcDiagnostics } from "./errors.ts";
 

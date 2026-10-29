@@ -8,7 +8,11 @@ import { ExpectedHostError } from "./errors.ts";
 import { themeSource } from "./launch-state.ts";
 import { Uuid } from "@nyte-ai/connect";
 import type { CallInput, CallPath, CallRequest } from "../shared/ipc.ts";
-import type { BrowserBoundsMessage, BrowserFocusMessage, BrowserKey } from "@nyte-ai/app/bridge.ts";
+import type {
+  BrowserBoundsMessage,
+  BrowserFocusMessage,
+  BrowserKey,
+} from "@nyte-ai/app/contract/bridge.ts";
 
 type Parser<T> = Pick<Validator<TProperties, TSchema, T>, "Parse">;
 

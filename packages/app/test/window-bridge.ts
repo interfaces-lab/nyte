@@ -1,5 +1,5 @@
-import type { NyteBridge } from "../src/bridge.ts";
-import { installBridge } from "../src/nyte.ts";
+import type { NyteBridge } from "../src/contract/bridge.ts";
+import { installBridge } from "../src/contract/nyte.ts";
 
 declare global {
   interface Window {

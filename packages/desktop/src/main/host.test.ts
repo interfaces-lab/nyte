@@ -8,7 +8,7 @@ import { credentialStore, defaultSecrets, sqliteStore } from "@nyte-ai/host";
 import { fakeModels, titleReply } from "@nyte-ai/bench";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import type { Connection } from "@nyte-ai/sdk";
-import type { HostEvent } from "@nyte-ai/app/bridge.ts";
+import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import { testDesktop } from "./fixtures/desktop-host.ts";
 import type { TestDesktop } from "./fixtures/desktop-host.ts";
 

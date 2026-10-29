@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
-import { reducePaneLayout } from "../layout/pane-layout.ts";
-import type { PaneLayoutAction, PaneSelection } from "../layout/pane-layout.ts";
+import { reducePaneLayout } from "../panes/pane-layout.ts";
+import type { PaneLayoutAction, PaneSelection } from "../panes/pane-layout.ts";
 import { activeTab, initialWindow, reduce, tabLayout, tabPlace, withoutPreviews } from "./model.ts";
 import type { Place, WindowAction, WindowState } from "./model.ts";
 

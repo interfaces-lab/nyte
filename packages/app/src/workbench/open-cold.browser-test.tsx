@@ -3,25 +3,22 @@ import { createMemoryHistory } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
-import { Deferred, publishDeferred, readDeferred } from "../deferred.tsx";
-import deferredUrls from "../deferred-urls.ts";
-import { createAppRouter } from "../router.tsx";
-import { runWindowCommand } from "../shell/window-commands.ts";
+import { Deferred, publishDeferred, readDeferred } from "../lib/deferred.tsx";
+import deferredUrls from "../lib/deferred-urls.ts";
+import { createAppRouter } from "../shell/routes.tsx";
+import { runWindowCommand } from "../commands/window-commands.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { ChangesPanel } from "./changes-panel.tsx";
-import {
-  useWorkbenchSnapshot,
-  workbenchController,
-  WORKBENCH_HOME_VIEW_KEY,
-} from "./controller.ts";
-import { FilesPanel } from "./files-panel.tsx";
-import { TerminalPanel } from "./terminal-panel.tsx";
+import { ChangesPanel } from "./changes/changes-panel.tsx";
+import { useWorkbenchSnapshot, workbenchController } from "./controller.ts";
+import { WORKBENCH_HOME_VIEW_KEY } from "./model.ts";
+import { FilesPanel } from "./files/files-panel.tsx";
+import { TerminalPanel } from "./terminal/terminal-panel.tsx";
 import {
   addTerminalToChat,
   clearTerminal,
   copyTerminal,
   focusTerminal,
-} from "./terminal-runtime.ts";
+} from "./terminal/terminal-runtime.ts";
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

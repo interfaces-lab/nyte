@@ -6,9 +6,10 @@ import { createRoot } from "react-dom/client";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
-import { liveRun } from "../screens/session-screen-render.fixtures.ts";
-import { keys, queryClient } from "../queries.ts";
-import { installConnection, sessionsWatch } from "../sdk.tsx";
+import { liveRun } from "../panes/session-screen-render.fixtures.ts";
+import { keys, queryClient } from "../data/query-client.ts";
+import { installConnection } from "../data/connection.ts";
+import { sessionsWatch } from "../data/watches.ts";
 import { chatTitle, useChat, useChats } from "./index.ts";
 
 const rootA = sessionRow("root-a");

@@ -2,7 +2,11 @@ import { app, clipboard, dialog, Menu } from "electron";
 import type { BrowserWindow, Session, WebContents } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { BrowserAction, BrowserBridge, BrowserMenuAction } from "@nyte-ai/app/bridge.ts";
+import type {
+  BrowserAction,
+  BrowserBridge,
+  BrowserMenuAction,
+} from "@nyte-ai/app/contract/bridge.ts";
 import type { BrowserOwner } from "./browser-agent.ts";
 
 export async function showBrowserMenu({

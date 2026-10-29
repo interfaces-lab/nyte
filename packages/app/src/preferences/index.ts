@@ -1,7 +1,7 @@
 import { typed } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
-import type { ThemePreference } from "../bridge.ts";
-import { DEFAULT_SESSION_VIEW, SessionViewSchema } from "../chrome/sidebar-view.ts";
+import type { ThemePreference } from "../contract/bridge.ts";
+import { DEFAULT_SESSION_VIEW, SessionViewSchema } from "./session-view.ts";
 import { CodeFontSchema, UiFontSchema } from "../theme/fonts.ts";
 import { definePreference } from "./store.ts";
 import type { Preference } from "./store.ts";

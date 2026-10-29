@@ -10,7 +10,7 @@ import type {
   WorkspaceId,
   WorkspaceInfo,
 } from "@nyte-ai/sdk";
-import { workspaceName, workspacePath } from "../view-helpers.ts";
+import { workspaceName, workspacePath } from "../data/workspaces.ts";
 
 export interface Folder {
   readonly workspace: WorkspaceId;

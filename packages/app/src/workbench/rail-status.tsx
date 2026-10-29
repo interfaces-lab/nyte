@@ -8,11 +8,12 @@ import { Row } from "@nyte-ai/ui/row";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { formatTokens, formatUsd } from "../chrome/usage-view.ts";
-import { sessionWatch, useWatchSelect } from "../sdk.tsx";
+import { formatTokens, formatUsd } from "../lib/format.ts";
+import { sessionWatch } from "../data/watches.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
 import { showsSettingsSection } from "../settings/index.ts";
-import { worktreeFiles } from "../view-helpers.ts";
-import { ChangeStats } from "./change-stats.tsx";
+import { worktreeFiles } from "./files/worktree-files.ts";
+import { ChangeStats } from "./changes/change-stats.tsx";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const CONTEXT_WARNING_PERCENT = 80;

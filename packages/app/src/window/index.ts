@@ -2,17 +2,14 @@ import type { RegisteredRouter } from "@tanstack/react-router";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { SessionId } from "@nyte-ai/sdk";
 import { chatDirectory, subscribeChats } from "../chats/index.ts";
-import type { HostState } from "../nyte.ts";
-import { keys, queryClient } from "../queries.ts";
-import { connection } from "../sdk.tsx";
+import type { HostState } from "../contract/nyte.ts";
+import { keys, queryClient } from "../data/query-client.ts";
+import { connection } from "../data/connection.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import {
-  workbenchController,
-  workbenchShowsChat,
-  workbenchViewKey,
-} from "../workbench/controller.ts";
-import { derivedStore } from "../derived-store.ts";
-import type { StoreSource } from "../derived-store.ts";
+import { workbenchController } from "../workbench/controller.ts";
+import { workbenchShowsChat, workbenchViewKey } from "../workbench/model.ts";
+import { derivedStore } from "../data/derived-store.ts";
+import type { StoreSource } from "../data/derived-store.ts";
 import { expose } from "./exposure.ts";
 import { reduceTrays } from "./tray.ts";
 import type { TrayAction, TrayView } from "./tray.ts";

@@ -11,7 +11,7 @@ import type {
   BrowserNavigationAction,
   BrowserSurfaceState,
   HostEvent,
-} from "@nyte-ai/app/bridge.ts";
+} from "@nyte-ai/app/contract/bridge.ts";
 import { SurfaceAgent } from "./browser-agent-surface.ts";
 import type { AgentSurfaces } from "./browser-agent-surface.ts";
 import type { BrowserAgent, BrowserHolder, BrowserOwner } from "./browser-agent.ts";

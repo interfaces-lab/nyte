@@ -7,7 +7,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { sidebarStyles as rail } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
+import { sidebarStyles as rail } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { shell, sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";

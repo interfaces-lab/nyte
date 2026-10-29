@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { app } from "electron";
 import type { DownloadItem } from "electron";
-import type { BrowserDownload, HostEvent } from "@nyte-ai/app/bridge.ts";
+import type { BrowserDownload, HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import { uniqueDownloadName } from "./browser-policy.ts";
 import type { Surface } from "./browser-surface.ts";
 

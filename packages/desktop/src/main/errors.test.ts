@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 import { SdkError } from "@nyte-ai/sdk";
-import { bridgeError, errorMessage } from "@nyte-ai/app/errors.ts";
+import { bridgeError, errorMessage } from "@nyte-ai/app/contract/errors.ts";
 import { ipcDiagnostics, ipcResult } from "./errors.ts";
 import { throwForRenderer } from "./host.ts";
 import { callIpc } from "./ipc-call.ts";

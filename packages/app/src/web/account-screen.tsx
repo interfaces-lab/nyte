@@ -15,7 +15,7 @@ import { useId, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { AccountScope, accountAppearance } from "../account/appearance.tsx";
-import { connectionProblem, hostChanged } from "../sdk.tsx";
+import { connectionProblem, hostChanged } from "../data/connection.ts";
 import type { Connection } from "./bridge.ts";
 import {
   accountRoute,

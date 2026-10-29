@@ -29,7 +29,7 @@ export const HOPS: ReadonlyMap<string, Hop> = new Map([
   ["tool.run:canvas_render", hop("core/src/agent/turn.ts:execute", 30, 35)],
   ["tool.run:bash", hop("core/src/agent/turn.ts:execute", 4210, 4020)],
   ["canvas.compile", hop("plugin/src/canvas/canvas.ts:canvas_render.execute", 25, 25)],
-  ["canvas.paint", hop("app/src/conversation/canvas-frame.tsx:CanvasFrame", 455, 170)],
+  ["canvas.paint", hop("app/src/canvas/canvas-frame.tsx:CanvasFrame", 455, 170)],
   ["pty.spawn", hop("host/src/local/jobs.ts:localExec", 25, 25)],
   ["pty.output", hop("host/src/local/jobs.ts:localExec (output.push)", 3835, 3855)],
   ["part.publish", hop("core/src/fold/watch.ts:publishSet", 25, 25)],

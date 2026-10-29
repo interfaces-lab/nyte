@@ -1,4 +1,4 @@
-import type { UpdateChannel, UpdateState } from "@nyte-ai/app/bridge.ts";
+import type { UpdateChannel, UpdateState } from "@nyte-ai/app/contract/bridge.ts";
 import electronUpdater from "electron-updater";
 import { app, dialog } from "electron";
 import type { MenuItem } from "electron";
@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { serial } from "@nyte-ai/schema/serial";
 import { createUpdateController } from "./update-controller.ts";
 import type { UpdateLogDetails } from "./update-controller.ts";
-import { updateLabel } from "@nyte-ai/app/updates.ts";
+import { updateLabel } from "@nyte-ai/app/contract/update-label.ts";
 import type { DesktopUpdateActivity } from "./host.ts";
 import { UpdateSettingsStore } from "./update-settings.ts";
 

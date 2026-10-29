@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { vi } from "vitest";
-import type { ConnectView, HostEvent } from "@nyte-ai/app/bridge.ts";
+import type { ConnectView, HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import {
   BROKER_ROUTES,
   DESKTOP_ROUTES,

@@ -6,9 +6,9 @@ import type {
   AppMenuCommand,
   BrowserKey,
   BrowserNavigationAction,
-} from "@nyte-ai/app/bridge.ts";
-import { clientActionAccelerator, clientActions } from "@nyte-ai/app/client-actions.ts";
-import { shortcutCharacter } from "@nyte-ai/app/workbench/browser-shortcuts.ts";
+} from "@nyte-ai/app/contract/bridge.ts";
+import { clientActionAccelerator, clientActions } from "@nyte-ai/app/contract/client-actions.ts";
+import { shortcutCharacter } from "@nyte-ai/app/contract/browser-shortcuts.ts";
 
 export type ViewCommand = Extract<
   BrowserNavigationAction,

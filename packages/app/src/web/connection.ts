@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import type { Connection } from "./bridge.ts";
 
 const STORAGE_KEY = "nyte:connection";

@@ -3,7 +3,7 @@ import type {
   CloudflareTunnelSettings,
   CloudflareTunnelView,
   RemotePairing,
-} from "@nyte-ai/app/bridge.ts";
+} from "@nyte-ai/app/contract/bridge.ts";
 
 export interface RemoteAccessPlugin<Settings, View> {
   view(): Promise<View>;

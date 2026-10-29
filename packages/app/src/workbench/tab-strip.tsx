@@ -3,8 +3,8 @@ import { Tabs } from "@nyte-ai/ui/tabs";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import type { ClientCapabilities } from "../client-actions.ts";
-import { errorMessage } from "../errors.ts";
+import type { ClientCapabilities } from "../contract/client-actions.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { SortableItem, SortableList } from "../components/sortable-strip.tsx";
@@ -27,26 +27,26 @@ import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   activeWorkbenchTab,
   defaultWorkbenchTab,
-  workbenchController,
   workbenchTabAvailable,
   workbenchKindLabel,
   workbenchShowsChat,
   workbenchTabLabel,
   workbenchTabs,
   WORKBENCH_CHAT_TAB,
-} from "./controller.ts";
+} from "./model.ts";
+import { workbenchController } from "./controller.ts";
 import type {
   WorkbenchScope,
   WorkbenchTab,
   WorkbenchTabKind,
   WorkbenchViewKey,
   WorkbenchViewState,
-} from "./controller.ts";
-import { readDeferred } from "../deferred.tsx";
-import { useCanvasEditing } from "./canvas-activity.ts";
-import { terminalActions, useTerminalRuntime } from "./terminal-store.ts";
-import type { TerminalTab } from "./terminal-store.ts";
-import { fileActions, useFileTabs } from "./file-store.ts";
+} from "./model.ts";
+import { readDeferred } from "../lib/deferred.tsx";
+import { useCanvasEditing } from "../canvas/canvas-activity.ts";
+import { terminalActions, useTerminalRuntime } from "./terminal/terminal-store.ts";
+import type { TerminalTab } from "./terminal/terminal-store.ts";
+import { fileActions, useFileTabs } from "./files/file-store.ts";
 
 const TAB_CONTENT_FADE =
   "linear-gradient(to right, black calc(100% - 36px), transparent calc(100% - 12px))";

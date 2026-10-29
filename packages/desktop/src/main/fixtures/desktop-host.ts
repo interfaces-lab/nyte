@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeModels } from "@nyte-ai/bench";
 import type { FakeModels } from "@nyte-ai/bench";
-import type { HostEvent } from "@nyte-ai/app/bridge.ts";
+import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import { sdk } from "@nyte-ai/sdk";
 import type { Connection, CredentialSource } from "@nyte-ai/sdk";
 import { messagePortEnd, portFetch, servePort } from "../../shared/host-port.ts";

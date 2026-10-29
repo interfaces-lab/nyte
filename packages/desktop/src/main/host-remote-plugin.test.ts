@@ -19,7 +19,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterEach, test, vi } from "vitest";
 import { sdk } from "@nyte-ai/sdk";
-import type { HostEvent, RemoteAccessState } from "@nyte-ai/app/bridge.ts";
+import type { HostEvent, RemoteAccessState } from "@nyte-ai/app/contract/bridge.ts";
 import type { DesktopHost } from "./host.ts";
 import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
 import { testDesktop } from "./fixtures/desktop-host.ts";

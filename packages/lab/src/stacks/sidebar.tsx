@@ -1,7 +1,7 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { clientActionKeys, clientActions } from "@nyte-ai/app/client-actions.ts";
-import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
+import { clientActionKeys, clientActions } from "@nyte-ai/app/contract/client-actions.ts";
+import { sidebarStyles } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";

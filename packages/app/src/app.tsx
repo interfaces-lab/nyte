@@ -2,102 +2,25 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterContextProvider } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import { Toaster, toast } from "@nyte-ai/ui/toast";
-import { keys, loadLocalResources, queryClient } from "./queries.ts";
-import { Shell } from "./router.tsx";
-import type { AppRouter } from "./router.tsx";
-import { nyte } from "./nyte.ts";
+import { Toaster } from "@nyte-ai/ui/toast";
+import { queryClient } from "./data/query-client.ts";
+import { Shell } from "./shell/shell.tsx";
+import type { AppRouter } from "./shell/routes.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { windowTabs } from "./tabs/window-tabs.ts";
-import { activeSelection } from "./layout/pane-layout.ts";
-import {
-  applyBrowserEvent,
-  applyBrowserAgentOpened,
-  applyBrowserKey,
-} from "./workbench/browser-surfaces.ts";
-import { applyBrowserHistory } from "./workbench/browser-history.ts";
-import { WORKBENCH_HOME_VIEW_KEY, workbenchController } from "./workbench/controller.ts";
-import { reattachShells } from "./workbench/terminal-store.ts";
-import { requestTrust } from "./chrome/open-workspace.tsx";
-import { acceptHostSettings } from "./preferences/host.ts";
-import { watchClientPlugins } from "./client-plugins.tsx";
-import { paceTranscripts } from "./sdk.tsx";
+import { activeSelection } from "./panes/pane-layout.ts";
+import { WORKBENCH_HOME_VIEW_KEY } from "./workbench/model.ts";
+import { workbenchController } from "./workbench/controller.ts";
+import { reattachShells } from "./workbench/terminal/terminal-store.ts";
+import { watchClientPlugins } from "./canvas/client-plugins.tsx";
+import { paceTranscripts } from "./data/watches.ts";
 import { chatWindow, followStage } from "./window/index.ts";
+import { useHostEvents } from "./shell/host-events.ts";
 
 function focusedSession(): SessionId | undefined {
   const selection = activeSelection(windowTabs.controller().getSnapshot().layout);
 
   return selection.kind === "session" ? selection.sessionId : undefined;
-}
-
-function useHostEvents(router: AppRouter): void {
-  useMountEffect(() => {
-    const unsubscribe = nyte.host.onEvent((event) => {
-      switch (event.kind) {
-        case "workspace_trust_required":
-          requestTrust(event.path);
-
-          return;
-        case "workspace_opened":
-        case "workspace_closed":
-          void loadLocalResources()
-            .then(() => router.invalidate())
-            .catch(() => undefined);
-
-          return;
-        case "update_changed":
-          queryClient.setQueryData(keys.updates, event.state);
-
-          return;
-        case "update_channel_changed":
-          queryClient.setQueryData(keys.updateChannel, event.channel);
-
-          return;
-        case "settings_changed":
-          acceptHostSettings(event.settings);
-
-          return;
-        case "server_changed":
-          void queryClient.invalidateQueries({ queryKey: keys.server });
-
-          return;
-        case "remote_access_changed":
-          void queryClient.invalidateQueries({ queryKey: keys.remoteAccess });
-
-          return;
-        case "status":
-          toast.add({ title: event.message });
-
-          return;
-        case "browser_changed":
-        case "browser_download":
-        case "browser_open_tab":
-        case "browser_login_requested":
-          applyBrowserEvent(event);
-
-          return;
-        case "browser_key":
-          applyBrowserKey(event);
-
-          return;
-        case "browser_history_changed":
-          applyBrowserHistory(event);
-
-          return;
-        case "browser_agent_opened":
-          applyBrowserAgentOpened(workbenchController, event);
-
-          return;
-        default: {
-          const _exhaustive: never = event;
-
-          return _exhaustive;
-        }
-      }
-    });
-
-    return unsubscribe;
-  });
 }
 
 function useClientPlugins(): void {

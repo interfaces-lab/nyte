@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { IpcFailure, IpcResult } from "@nyte-ai/app/errors.ts";
+import type { IpcFailure, IpcResult } from "@nyte-ai/app/contract/errors.ts";
 
 export const ipcDiagnostics = new Map<string, unknown>();
 

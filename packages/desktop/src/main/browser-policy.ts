@@ -1,4 +1,4 @@
-import type { BrowserKey, BrowserSurfaceState } from "@nyte-ai/app/bridge.ts";
+import type { BrowserKey, BrowserSurfaceState } from "@nyte-ai/app/contract/bridge.ts";
 
 const NET_ERROR_ABORTED = -3;
 

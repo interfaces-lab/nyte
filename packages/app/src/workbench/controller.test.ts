@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
-import { createWorkbenchController, workbenchPanelWidth } from "./controller.ts";
-import type { WorkbenchPersistence } from "./controller.ts";
+import { createWorkbenchController } from "./controller.ts";
+import { workbenchPanelWidth } from "./width.ts";
+import type { WorkbenchPersistence } from "./persistence.ts";
 
 test.each(["successful", "failed"] as const)(
   "changes selected while panels are pending survive a %s load",
