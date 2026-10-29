@@ -7,6 +7,7 @@ import {
   failureNotice,
   runMark,
   runStatus,
+  runStatusLabel,
   sessionTitle,
   toolOutput,
   toolStatus,
@@ -199,6 +200,21 @@ it("keeps a run's outcome, an approval wait and a working subagent apart", () =>
   expect(runStatus(responding)).toEqual({ kind: "working", run: run.id, stopping: true });
   expect(runStatus(approval)).toEqual({ kind: "waiting-for-approval", run: run.id });
   expect(runStatus(failed)).toEqual({ kind: "failed", failure });
+
+  const labels = [
+    [undefined, false, "Idle"],
+    [completed, false, "Completed"],
+    [stopped, false, "Stopped"],
+    [failed, false, "Failed"],
+    [responding, false, "Working"],
+    [completed, true, "Working"],
+    [retrying, false, "Retrying"],
+    [approval, false, "Needs attention"],
+  ] as const;
+
+  expect(
+    labels.map(([execution, subagent]) => runStatusLabel(runStatus(execution, subagent))),
+  ).toEqual(labels.map(([, , label]) => label));
 });
 
 it("titles an unnamed root a new chat and an unnamed child a subagent", () => {

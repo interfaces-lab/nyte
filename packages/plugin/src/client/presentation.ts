@@ -345,6 +345,37 @@ export function runMark(status: RunStatus): SessionMark {
 }
 
 /**
+ * The words every surface uses for a status. A failed run reads Failed, never Stopped, and a
+ * subagent still working reads as working.
+ *
+ * @category presentation
+ */
+export function runStatusLabel(status: RunStatus): string {
+  switch (status.kind) {
+    case "idle":
+      return "Idle";
+    case "completed":
+      return "Completed";
+    case "stopped":
+      return "Stopped";
+    case "failed":
+      return "Failed";
+    case "working":
+    case "subagent-working":
+      return "Working";
+    case "retrying":
+      return "Retrying";
+    case "waiting-for-approval":
+      return "Needs attention";
+    default: {
+      const _exhaustive: never = status;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/**
  * The mark for an execution; a session without one is idle.
  *
  * @category presentation
