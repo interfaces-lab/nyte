@@ -7,9 +7,10 @@
 - Add backward compatibility only when asked.
 - `node_modules` is the source of truth for library types.
 - Before changing a package, read `packages/<name>/AGENTS.md` if it exists. It isn't loaded for you.
+- AGENTS.md names symbols, concepts and commands, never file or folder paths: files move. `pnpm lint` rejects a path.
 - Base branches, worktrees and diffs on `origin/main`; PRs target `main`.
 - No `.changeset` files or per-package changelogs. Releases follow `RELEASING.md`.
-- Runtime dependencies point one way: `schema` → `ai` → `core` → `plugin`, `protocol` → `host` → `sdk`. Client code (`@nyte-ai/sdk/client`, the TUI's `src/index.ts`, the app) never imports `@nyte-ai/host`.
+- Runtime dependencies point one way: `schema` → `ai` → `core` → `plugin`, `protocol` → `host` → `sdk`. Client code (`@nyte-ai/sdk/client`, the TUI's client entry, the app) never imports `@nyte-ai/host`.
 - Before adding complexity for an unlikely race or security case, explain the failure, its likelihood and the cost, and get the user's buy-in.
 
 ## Code style
@@ -36,7 +37,7 @@
 ## Live TUI testing
 
 - `pnpm dev:live [directory]` runs this worktree's TUI against the installed `nyte host` (`NYTE_BINARY` overrides the binary). The worktree only renders; host, store and core changes need `pnpm install:nyte` or `pnpm dev:tui`.
-- Agents run it only with an isolated `HOME` and `NYTE_HOME`, as `qa/service.ts` does.
+- Agents run it only with an isolated `HOME` and `NYTE_HOME`, as the TUI's QA service does.
 
 ## Branches and commits
 
@@ -47,6 +48,6 @@
 
 - Package: `pnpm --dir packages/<package> test`.
 - Full check: `pnpm check` (format, lint, typecheck). Docs only: `pnpm exec turbo typecheck --filter=@nyte-ai/web`.
-- After changing `packages/schema` wire types or `packages/core/src/contract/records.ts`, run `pnpm --dir packages/host check:store` and backfill what it reports.
+- After changing `@nyte-ai/schema` wire types or core's stored record types (`HeadRecord`, `SessionRecord` and the other `*Record` schemas), run `pnpm --dir packages/host check:store` and backfill what it reports.
 - Report failures in unrelated files; don't fix them.
-- Before changing Turborepo config, read the installed `turbo` package's `docs/`.
+- Before changing Turborepo config, read the docs that ship inside the installed `turbo` package.

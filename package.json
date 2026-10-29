@@ -17,7 +17,7 @@
     "dev:desktop": "pnpm --filter @nyte-ai/desktop dev",
     "format": "oxfmt --check",
     "format:fix": "oxfmt .",
-    "lint": "oxlint .",
+    "lint": "oxlint . && node scripts/check-agents.mjs",
     "lint:fix": "oxlint --fix .",
     "knip": "pnpm dlx knip@6.41.0",
     "cycles": "node scripts/check-cycles.mjs",
