@@ -84,6 +84,7 @@ export class SurfaceAgent implements BrowserAgent {
       this.#surfaces.emit({
         kind: "browser_agent_opened",
         owner: input.owner.kind === "project" ? input.owner.path : null,
+        surface: surface.id,
         url: target,
       });
 

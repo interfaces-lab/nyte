@@ -73,7 +73,7 @@ interface ResizeState {
   nextWidth: number;
 }
 
-export function WorkbenchRail({ children }: { readonly children: ReactNode }): ReactElement {
+export function SidePanel({ children }: { readonly children: ReactNode }): ReactElement {
   const current = useSyncExternalStore(storedWidth.subscribe, storedWidth.get);
   const seatRef = useRef<HTMLDivElement>(null);
   const [max, setMax] = useState(WIDTH_MAX);

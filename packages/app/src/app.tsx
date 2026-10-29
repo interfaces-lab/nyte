@@ -9,8 +9,8 @@ import type { AppRouter } from "./shell/routes.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { windowTabs } from "./tabs/window-tabs.ts";
 import { activeSelection } from "./panes/pane-layout.ts";
-import { WORKBENCH_HOME_VIEW_KEY } from "./workbench/model.ts";
-import { workbenchController } from "./workbench/controller.ts";
+import { workspacePathForView } from "./workbench/paths.ts";
+import { workbench } from "./workbench/store.ts";
 import { reattachShells } from "./workbench/terminal/terminal-store.ts";
 import { watchClientPlugins } from "./canvas/client-plugins.tsx";
 import { paceTranscripts } from "./data/watches.ts";
@@ -38,10 +38,10 @@ function useChatWindowStage(router: AppRouter): void {
 function useSavedShells(): void {
   useMountEffect(() => {
     reattachShells(
-      [...workbenchController.getSnapshot().views].flatMap(([key, view]) =>
+      [...workbench.getSnapshot().views].flatMap(([key, view]) =>
         view.tabs.flatMap((tab) =>
           tab.kind === "terminal" && tab.owner.kind === "user"
-            ? [{ id: tab.id, workspacePath: key === WORKBENCH_HOME_VIEW_KEY ? null : key }]
+            ? [{ id: tab.id, workspacePath: workspacePathForView(key) ?? null }]
             : [],
         ),
       ),

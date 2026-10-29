@@ -8,10 +8,10 @@ import {
   SPLIT_LAYOUT,
   type WorkbenchSnapshot,
   type WorkbenchTab,
-  type WorkbenchViewKey,
   type WorkbenchViewState,
   workbenchTabAvailable,
 } from "./model.ts";
+import { workspaceFile } from "./paths.ts";
 import { DEFAULT_WIDTH, type WorkbenchWidth, shareWidth } from "./width.ts";
 
 /** What every panel was stored with before panels stored a share: the old default, not a width anyone chose. */
@@ -169,11 +169,12 @@ type PersistedTab = Static<typeof persistedTab>;
 function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
   switch (tab.kind) {
     case "file":
-    case "browser":
     case "canvas":
     case "files":
     case "changes":
       return tab;
+    case "browser":
+      return { id: tab.id, kind: "browser", url: tab.url };
     case "terminal":
       return tab.owner.kind === "user"
         ? { id: tab.id, kind: "terminal", owner: { kind: "user" } }
@@ -186,6 +187,10 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
   }
 }
 
+function restoreTab(tab: PersistedTab): WorkbenchTab {
+  return tab.kind === "browser" ? { ...tab, surface: null } : tab;
+}
+
 function restoreWidth(stored: Static<typeof persistedWorkbenchView>): WorkbenchWidth {
   if (stored.share !== undefined) return shareWidth(stored.share);
 
@@ -194,40 +199,57 @@ function restoreWidth(stored: Static<typeof persistedWorkbenchView>): WorkbenchW
     : { kind: "pixels", pixels: stored.width };
 }
 
+/** Restores each stored view; a file tab goes to the view whose workspace holds it. */
 export function restoreSnapshot(
   persisted: PersistedWorkbenchSnapshot | undefined,
   capabilities: () => ClientCapabilities,
 ): WorkbenchSnapshot {
-  const views = new Map<WorkbenchViewKey, WorkbenchViewState>();
-
-  if (persisted === undefined) return Object.freeze({ views });
+  if (persisted === undefined) return Object.freeze({ views: new Map() });
   const available = capabilities();
+  const keys = persisted.views.map((stored) => stored.key);
 
-  for (const stored of persisted.views) {
-    const tabs: readonly WorkbenchTab[] = stored.tabs.filter(
-      (tab, index) =>
-        workbenchTabAvailable({ kind: "project" }, tab.kind, available) &&
-        stored.tabs.findIndex((candidate) => candidate.id === tab.id) === index,
-    );
+  const placed = persisted.views.flatMap((stored) =>
+    stored.tabs.flatMap((tab, index) => {
+      if (
+        !workbenchTabAvailable({ kind: "project" }, tab.kind, available) ||
+        stored.tabs.findIndex((candidate) => candidate.id === tab.id) !== index
+      )
+        return [];
+      const restored = restoreTab(tab);
 
-    const active = tabs.some((tab) => tab.id === stored.active)
-      ? stored.active
-      : (tabs[0]?.id ?? null);
+      const view =
+        restored.kind === "file"
+          ? (workspaceFile(restored.path, keys)?.view ?? stored.key)
+          : stored.key;
 
-    views.set(
-      stored.key,
-      Object.freeze({
-        tabs: Object.freeze(tabs.map((tab) => Object.freeze(tab))),
-        active,
-        expanded: stored.expanded,
-        collapsed: "floating",
-        layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,
-        width: restoreWidth(stored),
+      return [{ view, tab: restored }];
+    }),
+  );
+
+  return Object.freeze({
+    views: new Map(
+      persisted.views.map((stored): [string, WorkbenchViewState] => {
+        const tabs = placed.flatMap((entry) => (entry.view === stored.key ? [entry.tab] : []));
+
+        const active = tabs.some((tab) => tab.id === stored.active)
+          ? stored.active
+          : (tabs[0]?.id ?? null);
+
+        return [
+          stored.key,
+          Object.freeze({
+            tabs: Object.freeze(tabs.map((tab) => Object.freeze(tab))),
+            active,
+            expanded: stored.expanded,
+            collapsed: "floating",
+            layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,
+            width: restoreWidth(stored),
+            sidebars: [],
+          }),
+        ];
       }),
-    );
-  }
-
-  return Object.freeze({ views });
+    ),
+  });
 }
 
 export function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnapshot {

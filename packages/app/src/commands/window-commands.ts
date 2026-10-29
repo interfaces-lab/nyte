@@ -8,15 +8,11 @@ import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { closeSettings } from "../settings/return.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import {
-  activeWorkbenchTab,
-  defaultWorkbenchTab,
-  workbenchScope,
-  workbenchShowsChat,
-  workbenchViewKey,
-} from "../workbench/model.ts";
-import { workbenchController } from "../workbench/controller.ts";
-import { terminalActions } from "../workbench/terminal/terminal-store.ts";
+import { launch } from "../workbench/commands.ts";
+import { workbenchShowsChat } from "../workbench/model.ts";
+import { workbenchScope, workbenchViewKey } from "../workbench/paths.ts";
+import { activeWorkbenchTab } from "../workbench/selectors.ts";
+import { workbench } from "../workbench/store.ts";
 
 const COMMANDS = [
   "new-chat",
@@ -50,27 +46,15 @@ function uncoverPanes(router: RegisteredRouter): void {
   shellActions.showWorkspace();
 }
 
-function workbenchView() {
-  const workspacePath = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
-  const viewKey = workbenchViewKey(workspacePath);
-
-  return { workspacePath, viewKey, view: workbenchController.getView(viewKey) };
+function currentWorkspacePath(): string | undefined {
+  return queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
 }
 
-function openTerminal(): void {
-  const { workspacePath, viewKey } = workbenchView();
-
-  const id = workbenchController.actions.openTab({
-    view: viewKey,
-    tab: { kind: "terminal", owner: { kind: "user" } },
-    activate: true,
-  });
-
-  void terminalActions.create({ id, workspacePath: workspacePath ?? null });
-}
-
+/** Hides the workbench from its terminal, else shows the user's terminal, else starts one. */
 function toggleTerminal(): void {
-  const { workspacePath, viewKey, view } = workbenchView();
+  const workspacePath = currentWorkspacePath();
+  const viewKey = workbenchViewKey(workspacePath);
+  const view = workbench.getView(viewKey);
 
   const active = activeWorkbenchTab(
     view,
@@ -81,10 +65,10 @@ function toggleTerminal(): void {
   const terminal = view.tabs.find((tab) => tab.kind === "terminal" && tab.owner.kind === "user");
 
   if (view.expanded && !workbenchShowsChat(view.layout) && active?.kind === "terminal")
-    workbenchController.actions.toggle({ view: viewKey });
+    workbench.dispatch(viewKey, { kind: "toggle" });
   else if (terminal !== undefined)
-    workbenchController.actions.activateTab({ view: viewKey, id: terminal.id });
-  else openTerminal();
+    workbench.dispatch(viewKey, { kind: "activate", id: terminal.id });
+  else launch(viewKey, "terminal");
 }
 
 export function runWindowCommand(router: RegisteredRouter, command: AppMenuAction): boolean {
@@ -130,7 +114,7 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
       return true;
     case "workbench":
       uncoverPanes(router);
-      workbenchController.actions.toggleWorkbench({ view: workbenchView().viewKey });
+      workbench.dispatch(workbenchViewKey(currentWorkspacePath()), { kind: "toggle" });
 
       return true;
     case "terminal":
@@ -140,17 +124,13 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
       return true;
     case "new-terminal":
       uncoverPanes(router);
-      openTerminal();
+      launch(workbenchViewKey(currentWorkspacePath()), "terminal");
 
       return true;
     case "new-browser":
       if (!browser) return false;
       uncoverPanes(router);
-      workbenchController.actions.openTab({
-        view: workbenchView().viewKey,
-        tab: defaultWorkbenchTab("browser"),
-        activate: true,
-      });
+      launch(workbenchViewKey(currentWorkspacePath()), "browser");
 
       return true;
     case "split-right":

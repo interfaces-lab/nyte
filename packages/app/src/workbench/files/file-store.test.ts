@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { asId } from "@nyte-ai/schema";
 import { describe, test } from "vitest";
-import { createWorkbenchController } from "../controller.ts";
-import { workbenchViewKey } from "../model.ts";
+import { workbenchViewKey } from "../paths.ts";
+import { createWorkbenchStore } from "../store.ts";
 import { createFileTabStore } from "./file-store.ts";
 
 const first = { path: "/workspace/src/a.ts" };
@@ -14,20 +14,16 @@ const third = { path: "/workspace/src/c.ts" };
 const key = workbenchViewKey("/workspace");
 
 describe("file runtime store", () => {
-  test("documents use controller tab IDs while order and activation stay in the controller", () => {
-    const controller = createWorkbenchController(() => ({ browser: true }));
-    const store = createFileTabStore(controller);
+  test("documents use workbench tab IDs while order and activation stay in the workbench store", () => {
+    const workbench = createWorkbenchStore(() => ({ browser: true }));
+    const store = createFileTabStore(workbench);
 
-    const changes = controller.actions.openTab({
-      view: key,
-      tab: {
-        kind: "changes",
-        scope: { kind: "uncommitted" },
-        selectedPath: null,
-        pathRevealRevision: 0,
-        scrollTop: 0,
-      },
-      activate: true,
+    const changes = "changes";
+    workbench.dispatch(key, {
+      kind: "open-changes",
+      id: changes,
+      scope: { kind: "uncommitted" },
+      path: null,
     });
 
     store.actions.open(key, first);
@@ -39,16 +35,16 @@ describe("file runtime store", () => {
     assert.equal(tabs[0]?.line, 12);
     assert.equal(store.getView(key).active?.path, first.path);
     assert.deepEqual(
-      controller.getView(key).tabs.map((tab) => tab.kind),
+      workbench.getView(key).tabs.map((tab) => tab.kind),
       ["changes", "file", "file"],
     );
-    assert.equal(controller.getView(key).tabs[0]?.id, changes);
-    assert.equal(controller.getView(key).active, tabs[0]?.id);
+    assert.equal(workbench.getView(key).tabs[0]?.id, changes);
+    assert.equal(workbench.getView(key).active, tabs[0]?.id);
   });
 
   test("drafts survive tab switches and remain isolated by tab ID", () => {
-    const controller = createWorkbenchController(() => ({ browser: true }));
-    const store = createFileTabStore(controller);
+    const workbench = createWorkbenchStore(() => ({ browser: true }));
+    const store = createFileTabStore(workbench);
     const other = workbenchViewKey("/other-workspace");
     store.actions.open(key, first);
     store.actions.setDraft(key, first.path, {
@@ -69,9 +65,9 @@ describe("file runtime store", () => {
     assert.notEqual(store.getView(key).tabs[0]?.id, store.getView(other).tabs[0]?.id);
   });
 
-  test("dirty close retains the controller tab until explicit discard", () => {
-    const controller = createWorkbenchController(() => ({ browser: true }));
-    const store = createFileTabStore(controller);
+  test("dirty close retains the workbench tab until explicit discard", () => {
+    const workbench = createWorkbenchStore(() => ({ browser: true }));
+    const store = createFileTabStore(workbench);
     store.actions.open(key, first);
     store.actions.setDraft(key, first.path, {
       contents: "unsaved",
@@ -80,17 +76,17 @@ describe("file runtime store", () => {
     });
 
     assert.equal(store.actions.close(key, first.path), false);
-    assert.equal(controller.getView(key).tabs.length, 1);
+    assert.equal(workbench.getView(key).tabs.length, 1);
     store.actions.cancelClose(key);
     assert.equal(store.getView(key).tabs[0]?.draft?.contents, "unsaved");
     store.actions.close(key, first.path);
     store.actions.discardClose(key);
-    assert.equal(controller.getView(key).tabs.length, 0);
+    assert.equal(workbench.getView(key).tabs.length, 0);
   });
 
   test("clean previews replace each other while pinned files remain", () => {
-    const controller = createWorkbenchController(() => ({ browser: true }));
-    const store = createFileTabStore(controller);
+    const workbench = createWorkbenchStore(() => ({ browser: true }));
+    const store = createFileTabStore(workbench);
     store.actions.open(key, { ...first, preview: true });
     store.actions.open(key, { ...second, preview: true });
     store.actions.pin(key, second.path);
@@ -106,8 +102,8 @@ describe("file runtime store", () => {
   });
 
   test("history restores file locations without owning tab activation", () => {
-    const controller = createWorkbenchController(() => ({ browser: true }));
-    const store = createFileTabStore(controller);
+    const workbench = createWorkbenchStore(() => ({ browser: true }));
+    const store = createFileTabStore(workbench);
     store.actions.open(key, { ...first, line: 10 });
     store.actions.open(key, { ...first, line: 20 });
     store.actions.open(key, second);
@@ -119,8 +115,8 @@ describe("file runtime store", () => {
   });
 
   test("opening a file at a line publishes once, with the tab and its line together", () => {
-    const controller = createWorkbenchController(() => ({ browser: true }));
-    const store = createFileTabStore(controller);
+    const workbench = createWorkbenchStore(() => ({ browser: true }));
+    const store = createFileTabStore(workbench);
     store.actions.open(key, first);
     const seen: [string | undefined, number | undefined][] = [];
 

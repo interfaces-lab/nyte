@@ -5,12 +5,11 @@ import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import type { SessionId, WorkspaceId } from "@nyte-ai/sdk";
+import type { WorkspaceId } from "@nyte-ai/sdk";
 import { ADD_TO_CHAT_LABEL } from "../../references/add-to-chat.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { useSessionRow } from "../../data/session-rows.ts";
 import { connection } from "../../data/connection.ts";
 import { jobsWatch } from "../../data/watches.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -194,40 +193,27 @@ export function TerminalPanel({
       void terminalActions.restore({ id: tabId, workspacePath });
   });
 
-  const jobSessionId = tab !== undefined && tab.kind === "job" ? tab.sessionId : undefined;
-  const workspace = useSessionRow(jobSessionId, (session) => session.workspace) ?? undefined;
-
   const cancellation = useMutation({
     mutationFn: (current: TerminalTab) => {
-      if (current.kind !== "job" || workspace === undefined)
-        throw new Error("Only agent commands can be stopped here");
+      if (current.kind !== "job") throw new Error("Only agent commands can be stopped here");
 
-      return connection().workspace(workspace).job(current.jobId).stop();
+      return connection().workspace(current.workspace).job(current.jobId).stop();
     },
   });
 
   const [error, setError] = useState<string>();
 
-  const restart = async (current: TerminalTab): Promise<void> => {
+  const restart = (current: TerminalTab): void => {
     setError(undefined);
-
-    try {
-      await terminalActions.close(current.id);
-      await terminalActions.create({ id: current.id, workspacePath });
-    } catch (cause) {
-      setError(errorMessage(cause));
-    }
+    void terminalActions
+      .close(current.id)
+      .then(() => terminalActions.create({ id: current.id, workspacePath }))
+      .then(undefined, (cause: unknown) => setError(errorMessage(cause)));
   };
 
   return (
     <section aria-label="Terminal" {...props(terminalStyles.root)}>
-      {jobSessionId !== undefined && workspace !== undefined && (
-        <JobSync
-          key={`${workspace}:${jobSessionId}`}
-          workspace={workspace}
-          sessionId={jobSessionId}
-        />
-      )}
+      {tab?.kind === "job" && <JobSync key={tab.workspace} workspace={tab.workspace} />}
       {tab === undefined ? (
         <div {...props(text.base, terminalStyles.empty)}>
           <Icon name="console" size={24} />
@@ -240,9 +226,7 @@ export function TerminalPanel({
               tab={tab}
               stopping={cancellation.isPending}
               stop={() => cancellation.mutate(tab)}
-              restart={() => {
-                void restart(tab);
-              }}
+              restart={() => restart(tab)}
             />
             {tab.kind === "job" && tab.stream.kind === "failed" && (
               <div
@@ -291,24 +275,12 @@ export function TerminalPanel({
   );
 }
 
-function JobSync({
-  workspace,
-  sessionId,
-}: {
-  readonly workspace: WorkspaceId;
-  readonly sessionId: SessionId;
-}): null {
+function JobSync({ workspace }: { readonly workspace: WorkspaceId }): null {
   useMountEffect(() => {
     const jobs = jobsWatch(workspace);
 
     const sync = (): void => {
-      const value = jobs.value;
-
-      if (value === undefined) return;
-      terminalActions.syncJobs(
-        sessionId,
-        value.filter((job) => job.session === sessionId),
-      );
+      if (jobs.value !== undefined) terminalActions.syncJobs(workspace, jobs.value);
     };
 
     sync();

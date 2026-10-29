@@ -15,8 +15,7 @@ import { errorMessage } from "../../contract/errors.ts";
 import { connected } from "../../data/connection.ts";
 import { hostWatch } from "../../data/watches.ts";
 import { workspacePath as pathOfWorkspace } from "../../data/workspaces.ts";
-import type { WorkbenchController } from "../controller.ts";
-import type { WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
+import type { WorkbenchTabId } from "../model.ts";
 import { persisted } from "../persistence.ts";
 
 type ShellTerminalState =
@@ -49,8 +48,10 @@ interface ShellTerminalTab extends TerminalTabFields {
 
 interface JobTerminalTab extends TerminalTabFields {
   readonly kind: "job";
-  readonly sessionId: SessionId;
+  readonly workspace: WorkspaceId;
   readonly jobId: JobView["id"];
+  /** The chat that started the job, as the job reports it. */
+  readonly session: SessionId | null;
   readonly state: JobTerminalState;
   readonly rendering: TerminalRenderingState;
   readonly stream: TerminalStreamState;
@@ -427,21 +428,34 @@ export function reattachShells(
   }
 }
 
-function syncJobs(sessionId: SessionId, jobs: readonly JobView[]): void {
+/** Brings the workspace's job tabs up to date with its job list. */
+function syncJobs(workspace: WorkspaceId, jobs: readonly JobView[]): void {
   const commands = new Map(jobs.map((job) => [job.id, job]));
   const tabs = new Map(snapshot.tabs);
   let changed = false;
 
   for (const tab of snapshot.tabs.values()) {
-    if (tab.kind !== "job" || tab.sessionId !== sessionId) continue;
+    if (tab.kind !== "job" || tab.workspace !== workspace) continue;
     const job = commands.get(tab.jobId);
 
     if (job === undefined) continue;
 
-    if (tab.title === job.command && tab.state.kind === job.state.kind) continue;
+    if (
+      tab.title === job.command &&
+      tab.state.kind === job.state.kind &&
+      tab.session === job.session
+    )
+      continue;
 
     changed = true;
-    const next: JobTerminalTab = { ...tab, title: job.command, state: job.state };
+
+    const next: JobTerminalTab = {
+      ...tab,
+      title: job.command,
+      state: job.state,
+      session: job.session,
+    };
+
     tabs.set(tab.id, next);
     output.get(tab.id)?.update(next);
   }
@@ -456,20 +470,19 @@ function disposeOutput(id: WorkbenchTabId): void {
 }
 
 function followJob(tab: JobTerminalTab): void {
-  const { id, sessionId, jobId } = tab;
+  const id = tab.id;
   const previous = feeds.get(id);
 
   const pending = Promise.resolve()
     .then(async () => {
       await previous?.job.close();
       const connection = await connected();
-      const { workspace } = await connection.session(sessionId).info();
 
       if (creating.get(id) !== pending) return;
 
       const feed: Feed = {
-        job: connection.workspace(workspace).job(jobId),
-        workspace,
+        job: connection.workspace(tab.workspace).job(tab.jobId),
+        workspace: tab.workspace,
         printed: [...(previous?.printed ?? [])],
         length: previous?.length ?? 0,
       };
@@ -536,17 +549,17 @@ export const terminalActions = {
   },
   openJob({
     id,
-    sessionId,
+    workspace,
     job,
   }: {
     readonly id: WorkbenchTabId;
-    readonly sessionId: SessionId;
+    readonly workspace: WorkspaceId;
     readonly job: JobView;
   }): void {
     const existing = snapshot.tabs.get(id);
 
     if (existing !== undefined && existing.kind === "job") {
-      syncJobs(sessionId, [job]);
+      syncJobs(workspace, [job]);
 
       return;
     }
@@ -556,8 +569,9 @@ export const terminalActions = {
       title: job.command,
       cwd: "",
       kind: "job",
-      sessionId,
+      workspace,
       jobId: job.id,
+      session: job.session,
       state: job.state,
       rendering: { kind: "ready" },
       stream: { kind: "connecting" },
@@ -658,28 +672,3 @@ export const terminalActions = {
     await feed?.job.close();
   },
 };
-
-export function openJobTerminal({
-  controller,
-  view,
-  sessionId,
-  job,
-}: {
-  readonly controller: Pick<WorkbenchController, "actions">;
-  readonly view: WorkbenchViewKey;
-  readonly sessionId: SessionId;
-  readonly job: JobView;
-}): WorkbenchTabId {
-  const id = controller.actions.openTab({
-    view,
-    tab: {
-      kind: "terminal",
-      owner: { kind: "agent", sessionId, jobId: job.id },
-    },
-    activate: true,
-  });
-
-  terminalActions.openJob({ id, sessionId, job });
-
-  return id;
-}

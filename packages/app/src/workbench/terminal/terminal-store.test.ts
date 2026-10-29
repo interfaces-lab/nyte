@@ -2,15 +2,11 @@ import assert from "node:assert/strict";
 import { asId } from "@nyte-ai/schema";
 import type { Connection, Job, JobView, OutputFrame, WorkspaceInfo } from "@nyte-ai/sdk";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import {
-  attachTerminalOutput,
-  getTerminal,
-  openJobTerminal,
-  terminalActions,
-} from "./terminal-store.ts";
-import { createWorkbenchController } from "../controller.ts";
-import { workbenchViewKey } from "../model.ts";
+import { attachTerminalOutput, getTerminal, terminalActions } from "./terminal-store.ts";
+import { openJobTerminal } from "../commands.ts";
+import { workbenchViewKey } from "../paths.ts";
 import type { WorkbenchPersistence } from "../persistence.ts";
+import { createWorkbenchStore, workbench } from "../store.ts";
 import type { TerminalOutput } from "./terminal-store.ts";
 import { installConnection } from "../../data/connection.ts";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
@@ -289,21 +285,24 @@ describe("shell terminals", () => {
 
     const capabilities = () => ({ browser: true });
     const view = workbenchViewKey("/workspace");
-    const before = createWorkbenchController(capabilities, persistence);
+    const before = createWorkbenchStore(capabilities, persistence);
+    const shell = "shell";
 
-    const shell = before.actions.openTab({
-      view,
-      tab: { kind: "terminal", owner: { kind: "user" } },
-      activate: true,
+    before.dispatch(view, {
+      kind: "add",
+      tab: { id: shell, kind: "terminal", owner: { kind: "user" } },
     });
-
-    before.actions.openTab({
-      view,
-      tab: { kind: "terminal", owner: { kind: "agent", sessionId: firstSession, jobId: "job" } },
+    before.dispatch(view, {
+      kind: "open",
+      tab: {
+        id: "job",
+        kind: "terminal",
+        owner: { kind: "job", workspace, job: asId<"job">("job") },
+      },
       activate: false,
     });
 
-    const after = createWorkbenchController(capabilities, persistence);
+    const after = createWorkbenchStore(capabilities, persistence);
 
     expect(after.getView(view).tabs).toEqual([
       { id: shell, kind: "terminal", owner: { kind: "user" } },
@@ -313,21 +312,21 @@ describe("shell terminals", () => {
 
 describe("agent job terminals", () => {
   test("a job opens in the workspace view and streams the job's output, read-only", async () => {
-    const controller = createWorkbenchController(() => ({ browser: true }));
     const view = workbenchViewKey("/workspace/displayed");
     const otherView = workbenchViewKey("/workspace/other");
     next = fakeJob("agent");
     const job = command(next.job.id);
 
-    const id = openJobTerminal({ controller, view, sessionId: firstSession, job });
+    const id = openJobTerminal(view, workspace, job);
 
-    assert.equal(controller.getView(view).active, id);
-    assert.deepEqual(controller.getView(view).tabs[0], {
+    assert.equal(workbench.getView(view).active, id);
+    assert.deepEqual(workbench.getView(view).tabs[0], {
       id,
       kind: "terminal",
-      owner: { kind: "agent", sessionId: firstSession, jobId: job.id },
+      owner: { kind: "job", workspace, job: job.id },
     });
-    assert.deepEqual(controller.getView(otherView).tabs, []);
+    assert.equal(openJobTerminal(view, workspace, job), id);
+    assert.deepEqual(workbench.getView(otherView).tabs, []);
     const output = sink();
     attachTerminalOutput(id, output);
     next.print("starting\n");
@@ -335,7 +334,7 @@ describe("agent job terminals", () => {
     await terminalActions.write(id, "ignored");
     expect(next.written).toEqual([]);
 
-    terminalActions.syncJobs(firstSession, [{ ...job, command: "Updated title" }]);
+    terminalActions.syncJobs(workspace, [{ ...job, command: "Updated title" }]);
     const terminal = getTerminal(id);
     assert.ok(terminal);
     assert.ok(terminal.kind === "job");
@@ -348,7 +347,7 @@ describe("agent job terminals", () => {
 
   test("keeps renderer failure separate from command state", () => {
     const id = tabId();
-    terminalActions.openJob({ id, sessionId: firstSession, job: command(`job-${id}`) });
+    terminalActions.openJob({ id, workspace, job: command(`job-${id}`) });
 
     terminalActions.fail(id, "Canvas rendering is unavailable");
     const terminal = getTerminal(id);

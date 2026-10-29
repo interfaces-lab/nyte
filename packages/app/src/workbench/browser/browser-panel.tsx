@@ -1,11 +1,10 @@
 import { button, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent, ReactElement, ReactNode, RefObject } from "react";
 import type {
   BrowserBoundsMessage,
-  BrowserBridge,
   BrowserElementPick,
   BrowserNavigationAction,
 } from "../../contract/bridge.ts";
@@ -16,7 +15,7 @@ import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
 import { workbenchStyles } from "../workbench.stylex.ts";
-import { WorkbenchRail } from "../workbench-rail.tsx";
+import { SidePanel } from "../side-panel.tsx";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../../contract/nyte.ts";
@@ -30,10 +29,10 @@ import { keyOwner } from "../../lib/focus-owner.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { overlayCovers, subscribeOverlayRects } from "../../components/overlay-occlusion.ts";
 import {
-  applyBrowserEvent,
-  claimBrowserSurface,
-  forgetBrowserSurface,
+  browserBridge,
+  holdBrowserSurface,
   onBrowserKey,
+  openBrowserPage,
   setBrowserFinding,
   useBrowserSurface,
 } from "./browser-surfaces.ts";
@@ -188,27 +187,6 @@ const styles = create({
   },
 });
 
-interface SurfaceHold {
-  opened: boolean;
-  url: string | undefined;
-  released: boolean;
-}
-
-function browserBridge(): BrowserBridge {
-  const browser = nyte.host.browser;
-
-  if (browser === undefined) throw new Error("This host does not provide browser tabs");
-
-  return browser;
-}
-
-function releaseSurface(surface: string): void {
-  forgetBrowserSurface(surface);
-  void browserBridge()
-    .close({ surface })
-    .catch(() => undefined);
-}
-
 interface SurfacePlacement {
   readonly covered: boolean;
   readonly focus: () => void;
@@ -304,6 +282,8 @@ function useSurfacePlacement(
         lastRef.current = { ...last, visible: false, focus: false };
         browserBridge().setBounds(lastRef.current);
       }
+
+      if (visible) browserBridge().setFocus({ surface, focused: false });
     };
   }, [slot, surface, visible]);
 
@@ -424,77 +404,28 @@ export function BrowserPanel({
   const page = useSurfacePlacement(slotRef, surface, showSurface);
   const pageFrame = usePageFrame(surface, hasPage ? state.url : "", page.covered);
 
-  const holdRef = useRef<SurfaceHold | undefined>(undefined);
+  const owner =
+    workspacePath === null
+      ? ({ kind: "home" } as const)
+      : ({ kind: "project", path: workspacePath } as const);
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- holds the native surface for this surface and workspace
-  useEffect(() => {
-    const hold: SurfaceHold = { opened: false, url: undefined, released: false };
-    holdRef.current = hold;
+  useMountEffect(() => holdBrowserSurface(surface, url, owner, setFailure));
 
-    return () => {
-      hold.released = true;
-      holdRef.current = undefined;
-      releaseSurface(surface);
-    };
-  }, [surface, workspacePath]);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- opens the requested URL when the native surface drifts from it
-  useEffect(() => {
-    const hold = holdRef.current;
-
-    if (hold === undefined || parseWebUrl(url) === undefined) return;
-
-    if (hold.opened && (url === stateUrl || url === hold.url)) {
-      hold.url = url;
-
-      return;
-    }
-
-    hold.opened = true;
-    hold.url = url;
-    let superseded = false;
-
-    const owner =
-      workspacePath === null
-        ? ({ kind: "home" } as const)
-        : ({ kind: "project", path: workspacePath } as const);
-
-    claimBrowserSurface(surface);
-    void browserBridge()
-      .open({ surface, url, owner })
-      .then(
-        (openState) => {
-          if (hold.released || superseded) return;
-          applyBrowserEvent({ kind: "browser_changed", surface, state: openState });
-        },
-        (cause: unknown) => {
-          if (hold.released || superseded) return;
-          setFailure(errorMessage(cause));
-        },
+  useMountEffect(() =>
+    onBrowserKey(surface, (key) => {
+      sectionRef.current?.dispatchEvent(
+        new KeyboardEvent("keydown", { ...key, bubbles: true, cancelable: true }),
       );
-
-    return () => {
-      superseded = true;
-    };
-  }, [surface, url, stateUrl, workspacePath]);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- clears native page focus when the panel hides or the surface changes
-  useEffect(() => {
-    if (!visible) return;
-
-    return () => browserBridge().setFocus({ surface, focused: false });
-  }, [surface, visible]);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- key events forwarded from the native surface, resubscribed per surface
-  useEffect(
-    () =>
-      onBrowserKey(surface, (key) => {
-        sectionRef.current?.dispatchEvent(
-          new KeyboardEvent("keydown", { ...key, bubbles: true, cancelable: true }),
-        );
-      }),
-    [surface],
+    }),
   );
+
+  const openPage = (target: string): void => {
+    setFailure(undefined);
+    onUrlChange(target);
+    void openBrowserPage(surface, target, owner).then(undefined, (cause: unknown) =>
+      setFailure(errorMessage(cause)),
+    );
+  };
 
   const navigate = (action: BrowserNavigationAction): void => {
     void browserBridge()
@@ -574,10 +505,14 @@ export function BrowserPanel({
   };
 
   const go = (target: string): void => {
-    setFailure(undefined);
+    if (target !== url) {
+      openPage(target);
 
-    if (target === url) navigate("reload");
-    else onUrlChange(target);
+      return;
+    }
+
+    setFailure(undefined);
+    navigate("reload");
   };
 
   const forget = (entry: string): void => {
@@ -785,7 +720,7 @@ export function BrowserPanel({
                 xstyle={styles.bookmarkButton}
                 onClick={(event) => {
                   event.preventDefault();
-                  onUrlChange(item.url);
+                  openPage(item.url);
                 }}
               >
                 <span {...props(styles.bookmarkLabel)}>
@@ -843,7 +778,7 @@ export function BrowserPanel({
           )}
         </div>
         {historyVisible && (
-          <WorkbenchRail>
+          <SidePanel>
             <nav aria-label="Visit history" data-nyte-scrollport {...props(styles.history)}>
               <h2 {...props(text.sm, styles.historyHeading)}>Visit History</h2>
               {history.length === 0 ? (
@@ -863,8 +798,7 @@ export function BrowserPanel({
                       onClick={(event) => {
                         event.preventDefault();
                         setDraft(undefined);
-                        setFailure(undefined);
-                        onUrlChange(entry.url);
+                        openPage(entry.url);
                       }}
                     >
                       <Row.Leading>
@@ -890,7 +824,7 @@ export function BrowserPanel({
                 ))
               )}
             </nav>
-          </WorkbenchRail>
+          </SidePanel>
         )}
       </div>
     </section>

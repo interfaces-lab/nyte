@@ -38,7 +38,6 @@ import {
   branchReadout,
   changesRepository,
   changesScopeLabel,
-  changesScopeValue,
   scopeFiles,
   sameTurnOptions,
   sessionScopeOption,
@@ -59,6 +58,7 @@ import { ChangesToolbar, changesShortcutAction } from "./changes-toolbar.tsx";
 import { setChangesViewOptions, useChangesViewOptions } from "./changes-view-options.ts";
 import { changesViewed, patchDigest } from "../../diff/changes-viewed.ts";
 import type { ViewedState } from "../../diff/changes-viewed.ts";
+import { changesScopeValue } from "../model.ts";
 import type { WorkbenchChangesScope } from "../model.ts";
 import { EMPTY_PATCH, patchStackSection } from "../../diff/stacked-diff.ts";
 import { nyte } from "../../contract/nyte.ts";

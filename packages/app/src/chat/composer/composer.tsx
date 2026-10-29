@@ -41,8 +41,8 @@ import { deliverEdit, deliverSubmission } from "./composer-send.ts";
 import { contentDraftText } from "../../references/message-references.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { StatusDot } from "../../components/ui.tsx";
-import { workbenchController } from "../../workbench/controller.ts";
-import { workbenchViewKey } from "../../workbench/model.ts";
+import { workbenchViewKey } from "../../workbench/paths.ts";
+import { workbench } from "../../workbench/store.ts";
 import { composerStyles } from "./composer.stylex.ts";
 import { markerStyles } from "../transcript/activity.stylex.ts";
 import {
@@ -703,7 +703,7 @@ export function Composer({
                     pill
                     onClick={() => {
                       focusAfterMove.current = true;
-                      workbenchController.actions.showChat({ view: workbenchViewKey(cwd) });
+                      workbench.dispatch(workbenchViewKey(cwd), { kind: "show-chat" });
                     }}
                   >
                     Show Chat

@@ -38,9 +38,9 @@ import { ApprovalTray } from "./trays/approval-tray.tsx";
 import { QuestionTray } from "./trays/questions.tsx";
 import { transcriptProjector } from "./transcript/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { workbenchController } from "../workbench/controller.ts";
-import { workbenchViewKey } from "../workbench/model.ts";
-import { openJobTerminal } from "../workbench/terminal/terminal-store.ts";
+import { useSessionRow } from "../data/session-rows.ts";
+import { openJobTerminal } from "../workbench/commands.ts";
+import { workbenchViewKey } from "../workbench/paths.ts";
 import { listSubagents, SubagentTray, type SubagentTrayView } from "./trays/agents.tsx";
 import { subagentSessions, SubagentSessionsProvider } from "./tools/subagent-sessions.ts";
 import { modelRefFor, selectedModelOption } from "./composer/model-picker-state.ts";
@@ -306,6 +306,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const viewStore = usePaneViewStateStore();
   useMountEffect(() => childrenWatch(sessionId).subscribe(() => undefined));
   const cwd = host.data.workspace?.path;
+  const workspace = useSessionRow(sessionId, (session) => session.workspace);
 
   const loadEarlier = () => loadEarlierMessages(sessionId, HISTORY_PAGE);
 
@@ -492,12 +493,9 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                           open={shownTrayView.kind === "terminals"}
                           onViewChange={setTrayView}
                           onOpenTerminal={(job) =>
-                            openJobTerminal({
-                              controller: workbenchController,
-                              view: workbenchViewKey(cwd),
-                              sessionId,
-                              job,
-                            })
+                            workspace === undefined || workspace === null
+                              ? ""
+                              : openJobTerminal(workbenchViewKey(cwd), workspace, job)
                           }
                           viewport={scroll}
                         />

@@ -29,8 +29,8 @@ import { sessionWatch } from "../data/watches.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { ReferenceOpenerProvider } from "../references/reference-opener.tsx";
-import { workbenchViewKey } from "../workbench/model.ts";
-import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
+import { workbenchReferenceOpener } from "../workbench/commands.ts";
+import { workbenchViewKey } from "../workbench/paths.ts";
 
 /**
  * Sends keys pressed outside any field to the active pane's composer: printable keys and paste land
@@ -176,10 +176,7 @@ export function PaneHost({
   const host = useHostState();
   const workspacePath = host.data.workspace?.path;
 
-  const referenceOpener = workbenchReferenceOpener({
-    viewKey: workbenchViewKey(workspacePath),
-    workspacePath,
-  });
+  const referenceOpener = workbenchReferenceOpener(workbenchViewKey(workspacePath));
 
   return (
     <section

@@ -27,7 +27,6 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ChangeStats } from "./change-stats.tsx";
 import { ChangesCommitBar, readsWorkingTree } from "./changes-commit-bar.tsx";
 import {
-  changesScopeValue,
   commitScopeOptions,
   turnHasChanges,
   visibleTurnOptions,
@@ -42,6 +41,7 @@ import type {
   TurnChangeOption,
 } from "./change-scopes.ts";
 import type { ChangesLayout, ChangesViewOptions } from "./changes-view-options.ts";
+import { changesScopeValue } from "../model.ts";
 import type { WorkbenchChangesScope } from "../model.ts";
 import { nyte } from "../../contract/nyte.ts";
 

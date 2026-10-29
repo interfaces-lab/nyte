@@ -4,6 +4,7 @@ import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import { worktreeFiles } from "../files/worktree-files.ts";
 import type { TurnMessages } from "../../chat/transcript/turns.ts";
 import type { WorktreeFile } from "../files/worktree-files.ts";
+import { changesScopeValue } from "../model.ts";
 import type { WorkbenchChangesScope } from "../model.ts";
 
 interface CommitInfo {
@@ -101,25 +102,6 @@ export function visibleTurnOptions(
   return options.filter(
     (option) => turnHasChanges(option) || option.scope.turnId === selectedTurnId,
   );
-}
-
-export function changesScopeValue(scope: WorkbenchChangesScope): string {
-  switch (scope.kind) {
-    case "uncommitted":
-    case "staged":
-    case "unstaged":
-    case "thread":
-      return scope.kind;
-    case "turn":
-      return `turn:${scope.turnId}`;
-    case "commit":
-      return `commit:${scope.oid}`;
-    default: {
-      const _exhaustive: never = scope;
-
-      return _exhaustive;
-    }
-  }
 }
 
 export function vcsRequestForScope(scope: WorkbenchChangesScope): GitScope | undefined {
@@ -297,4 +279,21 @@ export function branchReadout(snapshot: GitStatus | undefined): BranchReadout | 
     ahead: snapshot.upstream?.ahead ?? 0,
     behind: snapshot.upstream?.behind ?? 0,
   };
+}
+
+/** What the working tree holds, for the rail's Changes row. */
+export function changesSummary(repository: Extract<GitStatus, { readonly kind: "repository" }>) {
+  const files = worktreeFiles(repository).length;
+  const changes = [...repository.staged, ...repository.unstaged];
+  const added = changes.reduce((sum, file) => sum + file.added, 0);
+  const removed = changes.reduce((sum, file) => sum + file.removed, 0);
+
+  const label =
+    files === 0
+      ? "No changes"
+      : added + removed > 0
+        ? "Changes"
+        : `${String(files)} changed ${files === 1 ? "file" : "files"}`;
+
+  return { label, changed: files > 0, added, removed };
 }

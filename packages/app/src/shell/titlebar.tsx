@@ -19,8 +19,7 @@ import { activePane } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
-import { workbenchController, useWorkbenchSnapshot } from "../workbench/controller.ts";
-import { workbenchScope, workbenchViewKey } from "../workbench/model.ts";
+import { useWorkbenchView, workbench } from "../workbench/store.ts";
 import { useStagePage } from "../tabs/shell-state.ts";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
 import {
@@ -124,7 +123,6 @@ export function Titlebar(): ReactElement {
   const { layout } = usePaneControllerSnapshot();
   const panes = usePaneActions();
   const canSplit = useCanSplitPane();
-  const workbench = useWorkbenchSnapshot();
   const sidebarControl = useSidebar();
   const sidebarVisible = sidebarControl.open;
   const page = useStagePage();
@@ -132,11 +130,10 @@ export function Titlebar(): ReactElement {
   const capabilities = clientCapabilities(nyte.host);
   const selection = activePane(layout).selection;
   const workspacePath = host.data.workspace?.path;
-  const viewKey = workbenchViewKey(workspacePath);
-  const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);
-
-  const terminalWorkspacePath = workspacePath ?? null;
-  const scope = workbenchScope(workspacePath);
+  const workbenchView = useWorkbenchView(workspacePath);
+  const viewKey = workbenchView.key;
+  const view = workbenchView.view;
+  const scope = workbenchView.scope;
 
   const settingsOpen = useSettingsOpen();
 
@@ -240,7 +237,6 @@ export function Titlebar(): ReactElement {
                   view={view}
                   scope={scope}
                   capabilities={capabilities}
-                  workspacePath={terminalWorkspacePath}
                   sessionId={selection.kind === "session" ? selection.sessionId : undefined}
                 />
                 <span {...props(titlebarStyles.control)}>
@@ -251,9 +247,7 @@ export function Titlebar(): ReactElement {
                           iconOnly
                           icon={maximized ? "minimize" : "expand"}
                           aria-label={maximized ? "Restore split view" : "Expand workbench"}
-                          onClick={() =>
-                            workbenchController.actions.toggleMaximized({ view: viewKey })
-                          }
+                          onClick={() => workbench.dispatch(viewKey, { kind: "toggle-maximized" })}
                           title={undefined}
                         />
                       }
@@ -276,9 +270,7 @@ export function Titlebar(): ReactElement {
                       aria-label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}
                       pressed={workbenchOpen}
                       aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
-                      onPressedChange={() =>
-                        workbenchController.actions.toggleWorkbench({ view: viewKey })
-                      }
+                      onPressedChange={() => workbench.dispatch(viewKey, { kind: "toggle" })}
                       title={undefined}
                     >
                       <PanelToggleIcon side="right" visible={workbenchOpen} />

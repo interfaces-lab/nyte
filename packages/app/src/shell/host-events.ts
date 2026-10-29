@@ -10,7 +10,7 @@ import {
   applyBrowserKey,
 } from "../workbench/browser/browser-surfaces.ts";
 import { applyBrowserHistory } from "../workbench/browser/browser-history.ts";
-import { workbenchController } from "../workbench/controller.ts";
+import { workbench } from "../workbench/store.ts";
 import { requestTrust } from "../panes/open-workspace.tsx";
 import { acceptHostSettings } from "../preferences/host.ts";
 
@@ -69,7 +69,7 @@ export function useHostEvents(router: AppRouter): void {
 
           return;
         case "browser_agent_opened":
-          applyBrowserAgentOpened(workbenchController, event);
+          applyBrowserAgentOpened(workbench, event);
 
           return;
         default: {

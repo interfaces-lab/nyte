@@ -1,13 +1,11 @@
-import type { PartId, SessionId } from "@nyte-ai/sdk";
-import type { TurnId } from "@nyte-ai/sdk";
+import type { JobId, PartId, SessionId, TurnId, WorkspaceId } from "@nyte-ai/sdk";
+import type { IconName } from "@nyte-ai/ui/icon";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { DEFAULT_WIDTH, type WorkbenchWidth } from "./width.ts";
 
 export type WorkbenchTabId = string;
 
 export type WorkbenchViewKey = string;
-
-export type WorkbenchTabKind = WorkbenchTab["kind"];
 
 export type WorkbenchChangesScope =
   | { readonly kind: "uncommitted" }
@@ -17,43 +15,201 @@ export type WorkbenchChangesScope =
   | { readonly kind: "turn"; readonly turnId: TurnId }
   | { readonly kind: "commit"; readonly oid: string };
 
+/** A terminal's process: a shell the user started, or an agent's job, which names its chat. */
 export type TerminalOwner =
   | { readonly kind: "user" }
-  | { readonly kind: "agent"; readonly sessionId: SessionId; readonly jobId: string };
+  | { readonly kind: "job"; readonly workspace: WorkspaceId; readonly job: JobId };
 
-export type WorkbenchTab =
-  | { readonly id: WorkbenchTabId; readonly kind: "terminal"; readonly owner: TerminalOwner }
-  | {
-      readonly id: WorkbenchTabId;
-      readonly kind: "file";
-      readonly path: string;
-      readonly preview: boolean;
-    }
-  | {
-      readonly id: WorkbenchTabId;
-      readonly kind: "changes";
-      readonly scope: WorkbenchChangesScope;
-      readonly selectedPath: string | null;
-      readonly pathRevealRevision: number;
-      readonly scrollTop: number;
-    }
-  | { readonly id: WorkbenchTabId; readonly kind: "browser"; readonly url: string }
-  | {
-      readonly id: WorkbenchTabId;
-      readonly kind: "canvas";
-      readonly sessionId: SessionId;
-      readonly part: PartId;
-      readonly title: string;
-      /** The revision held in view while newer ones land; `null` follows the latest. */
-      readonly pinned: number | null;
-    }
-  | { readonly id: WorkbenchTabId; readonly kind: "files" };
+interface TabFields {
+  readonly terminal: { readonly owner: TerminalOwner };
+  readonly file: { readonly path: string; readonly preview: boolean };
+  readonly changes: {
+    readonly scope: WorkbenchChangesScope;
+    readonly selectedPath: string | null;
+    readonly pathRevealRevision: number;
+    readonly scrollTop: number;
+  };
+  readonly browser: {
+    readonly url: string;
+    /** The agent's page this tab shows; `null` while the tab shows a page of its own. */
+    readonly surface: string | null;
+  };
+  readonly canvas: {
+    readonly sessionId: SessionId;
+    readonly part: PartId;
+    readonly title: string;
+    /** The revision held in view while newer ones land; `null` follows the latest. */
+    readonly pinned: number | null;
+  };
+  readonly files: Readonly<Record<never, never>>;
+}
 
-export type WorkbenchTabInput = WorkbenchTab extends infer Tab
-  ? Tab extends WorkbenchTab
-    ? Omit<Tab, "id">
-    : never
-  : never;
+export type WorkbenchTabKind = keyof TabFields;
+
+export type KindInput<Kind extends WorkbenchTabKind> = { readonly kind: Kind } & TabFields[Kind];
+
+export type KindTab<Kind extends WorkbenchTabKind> = {
+  readonly id: WorkbenchTabId;
+} & KindInput<Kind>;
+
+export type WorkbenchTabInput = { [Kind in WorkbenchTabKind]: KindInput<Kind> }[WorkbenchTabKind];
+
+export type WorkbenchTab = { [Kind in WorkbenchTabKind]: KindTab<Kind> }[WorkbenchTabKind];
+
+export type WorkbenchScope = { readonly kind: "pathless" } | { readonly kind: "project" };
+
+/** The kinds a launcher opens; the rest open from what they show. */
+export type LaunchKind = "files" | "changes" | "browser" | "terminal";
+
+interface KindDescriptor<Kind extends WorkbenchTabKind> {
+  readonly label: string;
+  readonly icon: IconName;
+  readonly available: (scope: WorkbenchScope, capabilities: ClientCapabilities) => boolean;
+  /**
+   * What a launcher opens: the one tab of a singleton kind, focused when it is open, or a new tab
+   * every time. Absent for kinds that open from what they show (a file, a canvas).
+   */
+  readonly launch: Kind extends LaunchKind
+    ? { readonly policy: "singleton" | "new"; readonly input: KindInput<Kind> }
+    : undefined;
+  /** Opening a tab whose identity matches an open tab's focuses that tab; `undefined` never matches. */
+  readonly identity: (tab: KindInput<Kind>) => string | undefined;
+}
+
+const projectOnly = (scope: WorkbenchScope): boolean => scope.kind === "project";
+
+const always = (): boolean => true;
+
+/** One descriptor per tab kind; the rail, launchers, "+" menu and tab strip all read it. */
+type WorkbenchKinds = { readonly [Kind in WorkbenchTabKind]: KindDescriptor<Kind> };
+
+export const WORKBENCH_KINDS: WorkbenchKinds = {
+  files: {
+    label: "Files",
+    icon: "file",
+    available: projectOnly,
+    launch: { policy: "singleton", input: { kind: "files" } },
+    identity: () => "files",
+  },
+  changes: {
+    label: "Changes",
+    icon: "git-branch",
+    available: projectOnly,
+    launch: {
+      policy: "singleton",
+      input: {
+        kind: "changes",
+        scope: { kind: "uncommitted" },
+        selectedPath: null,
+        pathRevealRevision: 0,
+        scrollTop: 0,
+      },
+    },
+    identity: () => "changes",
+  },
+  browser: {
+    label: "Browser",
+    icon: "globe",
+    available: (_scope, capabilities) => capabilities.browser,
+    launch: { policy: "new", input: { kind: "browser", url: "about:blank", surface: null } },
+    identity: (tab) => (tab.surface === null ? `url:${tab.url}` : `surface:${tab.surface}`),
+  },
+  terminal: {
+    label: "Terminal",
+    icon: "console",
+    available: always,
+    launch: { policy: "new", input: { kind: "terminal", owner: { kind: "user" } } },
+    identity: (tab) =>
+      tab.owner.kind === "job" ? `${tab.owner.workspace}:${tab.owner.job}` : undefined,
+  },
+  file: {
+    label: "File",
+    icon: "file",
+    available: projectOnly,
+    launch: undefined,
+    identity: (tab) => tab.path,
+  },
+  canvas: {
+    label: "Canvas",
+    icon: "canvas-grid",
+    available: always,
+    launch: undefined,
+    identity: (tab) => `${tab.sessionId}:${tab.part}`,
+  },
+};
+
+/** The order every launcher lists its kinds in. */
+const LAUNCH_ORDER = Object.freeze([
+  "files",
+  "changes",
+  "browser",
+  "terminal",
+] satisfies LaunchKind[]);
+
+export function workbenchLaunchers(
+  scope: WorkbenchScope,
+  capabilities: ClientCapabilities,
+): readonly LaunchKind[] {
+  return LAUNCH_ORDER.filter((kind) => WORKBENCH_KINDS[kind].available(scope, capabilities));
+}
+
+export function workbenchTabAvailable(
+  scope: WorkbenchScope,
+  kind: WorkbenchTabKind,
+  capabilities: ClientCapabilities,
+): boolean {
+  return WORKBENCH_KINDS[kind].available(scope, capabilities);
+}
+
+export function tabIdentity<Kind extends WorkbenchTabKind>(
+  tab: KindInput<Kind>,
+): string | undefined {
+  return WORKBENCH_KINDS[tab.kind].identity(tab);
+}
+
+/** The open tab that `input` names, by its kind's identity. */
+export function matchingTab(
+  tabs: readonly WorkbenchTab[],
+  input: WorkbenchTabInput,
+): WorkbenchTab | undefined {
+  const identity = tabIdentity(input);
+
+  if (identity === undefined) return undefined;
+
+  return tabs.find((tab) => tab.kind === input.kind && tabIdentity(tab) === identity);
+}
+
+export function workbenchTabLabel(tab: WorkbenchTab): string {
+  if (tab.kind === "file") return tab.path.split(/[\\/]/).at(-1) ?? tab.path;
+
+  if (tab.kind === "canvas") return tab.title;
+
+  return WORKBENCH_KINDS[tab.kind].label;
+}
+
+/** The native page a Browser tab shows: the agent's it took over, else its own. */
+export function browserSurface(tab: KindTab<"browser">): string {
+  return tab.surface ?? tab.id;
+}
+
+export function changesScopeValue(scope: WorkbenchChangesScope): string {
+  switch (scope.kind) {
+    case "uncommitted":
+    case "staged":
+    case "unstaged":
+    case "thread":
+      return scope.kind;
+    case "turn":
+      return `turn:${scope.turnId}`;
+    case "commit":
+      return `commit:${scope.oid}`;
+    default: {
+      const _exhaustive: never = scope;
+
+      return _exhaustive;
+    }
+  }
+}
 
 export type WorkbenchLayout =
   | { readonly kind: "split" }
@@ -73,101 +229,15 @@ export const MAXIMIZED_CHAT_LAYOUT = Object.freeze({
 
 export const WORKBENCH_CHAT_TAB = "chat";
 
+/** The panel slot every file and the Files tab share. */
+export const FILES_SLOT = "files";
+
 export function workbenchShowsChat(layout: WorkbenchLayout): boolean {
   return layout.kind === "maximized" && layout.showing === "chat";
 }
 
 export function revealWorkbench(layout: WorkbenchLayout): WorkbenchLayout {
   return workbenchShowsChat(layout) ? MAXIMIZED_WORKBENCH_LAYOUT : layout;
-}
-
-export function sameChangesScope(
-  left: WorkbenchChangesScope,
-  right: WorkbenchChangesScope,
-): boolean {
-  switch (left.kind) {
-    case "uncommitted":
-    case "staged":
-    case "unstaged":
-    case "thread":
-      return right.kind === left.kind;
-    case "turn":
-      return right.kind === "turn" && right.turnId === left.turnId;
-    case "commit":
-      return right.kind === "commit" && right.oid === left.oid;
-    default: {
-      const _exhaustive: never = left;
-
-      return _exhaustive;
-    }
-  }
-}
-
-export type WorkbenchScope = { readonly kind: "pathless" } | { readonly kind: "project" };
-
-export const WORKBENCH_HOME_VIEW_KEY: WorkbenchViewKey = "home";
-
-export function workbenchViewKey(workspacePath: string | undefined): WorkbenchViewKey {
-  return workspacePath ?? WORKBENCH_HOME_VIEW_KEY;
-}
-
-export function workbenchScope(workspacePath: string | undefined): WorkbenchScope {
-  return workspacePath === undefined ? { kind: "pathless" } : { kind: "project" };
-}
-
-const PATHLESS_TABS = Object.freeze(["browser", "terminal"] satisfies WorkbenchTabKind[]);
-
-const PROJECT_TABS = Object.freeze([
-  "files",
-  "changes",
-  "browser",
-  "terminal",
-] satisfies WorkbenchTabKind[]);
-
-export function workbenchTabs(
-  scope: WorkbenchScope,
-  capabilities: ClientCapabilities,
-): readonly WorkbenchTabKind[] {
-  let tabs: readonly WorkbenchTabKind[];
-
-  switch (scope.kind) {
-    case "pathless":
-      tabs = PATHLESS_TABS;
-      break;
-    case "project":
-      tabs = PROJECT_TABS;
-      break;
-    default: {
-      const _exhaustive: never = scope;
-
-      return _exhaustive;
-    }
-  }
-
-  return tabs.filter((kind) => workbenchTabAvailable(scope, kind, capabilities));
-}
-
-export function workbenchTabAvailable(
-  scope: WorkbenchScope,
-  kind: WorkbenchTabKind,
-  capabilities: ClientCapabilities,
-): boolean {
-  switch (kind) {
-    case "browser":
-      return capabilities.browser;
-    case "terminal":
-    case "canvas":
-      return true;
-    case "file":
-    case "files":
-    case "changes":
-      return scope.kind === "project";
-    default: {
-      const _exhaustive: never = kind;
-
-      return _exhaustive;
-    }
-  }
 }
 
 export interface WorkbenchViewState {
@@ -177,47 +247,13 @@ export interface WorkbenchViewState {
   readonly collapsed: "floating" | "compact";
   readonly layout: WorkbenchLayout;
   readonly width: WorkbenchWidth;
+  /** The panel slots, a tab's id or {@link FILES_SLOT}, whose sidebar is showing. */
+  readonly sidebars: readonly string[];
 }
 
 export interface WorkbenchSnapshot {
   readonly views: ReadonlyMap<WorkbenchViewKey, WorkbenchViewState>;
 }
-
-type ChangesPatch = Omit<Extract<WorkbenchTab, { readonly kind: "changes" }>, "id" | "kind">;
-
-type FilePatch = Omit<Extract<WorkbenchTab, { readonly kind: "file" }>, "id" | "kind" | "path">;
-
-type BrowserPatch = Omit<Extract<WorkbenchTab, { readonly kind: "browser" }>, "id" | "kind">;
-
-type CanvasPatch = Partial<
-  Pick<Extract<WorkbenchTab, { readonly kind: "canvas" }>, "title" | "pinned">
->;
-
-export type WorkbenchTabUpdate =
-  | {
-      readonly view: WorkbenchViewKey;
-      readonly id: WorkbenchTabId;
-      readonly kind: "changes";
-      readonly patch: ChangesPatch;
-    }
-  | {
-      readonly view: WorkbenchViewKey;
-      readonly id: WorkbenchTabId;
-      readonly kind: "file";
-      readonly patch: FilePatch;
-    }
-  | {
-      readonly view: WorkbenchViewKey;
-      readonly id: WorkbenchTabId;
-      readonly kind: "browser";
-      readonly patch: BrowserPatch;
-    }
-  | {
-      readonly view: WorkbenchViewKey;
-      readonly id: WorkbenchTabId;
-      readonly kind: "canvas";
-      readonly patch: CanvasPatch;
-    };
 
 export const DEFAULT_VIEW = Object.freeze({
   tabs: Object.freeze([]),
@@ -226,86 +262,10 @@ export const DEFAULT_VIEW = Object.freeze({
   collapsed: "floating",
   layout: SPLIT_LAYOUT,
   width: DEFAULT_WIDTH,
+  sidebars: Object.freeze([]),
 }) satisfies WorkbenchViewState;
 
-export function activeWorkbenchTab(
-  view: WorkbenchViewState,
-  scope: WorkbenchScope,
-  capabilities: ClientCapabilities,
-): WorkbenchTab | null {
-  const active = view.tabs.find((tab) => tab.id === view.active);
-
-  if (active !== undefined && workbenchTabAvailable(scope, active.kind, capabilities))
-    return active;
-
-  return view.tabs.find((tab) => workbenchTabAvailable(scope, tab.kind, capabilities)) ?? null;
-}
-
-/** The tab on screen: none while the workbench is collapsed or the maximized chat covers it. */
-export function shownWorkbenchTab(
-  view: WorkbenchViewState,
-  scope: WorkbenchScope,
-  capabilities: ClientCapabilities,
-): WorkbenchTab | null {
-  if (!view.expanded || workbenchShowsChat(view.layout)) return null;
-
-  return activeWorkbenchTab(view, scope, capabilities);
-}
-
-export function workbenchTabLabel(tab: WorkbenchTab): string {
-  if (tab.kind === "file") return tab.path.split(/[\\/]/).at(-1) ?? tab.path;
-
-  if (tab.kind === "canvas") return tab.title;
-
-  return workbenchKindLabel(tab.kind);
-}
-
-export function workbenchKindLabel(kind: WorkbenchTabKind): string {
-  switch (kind) {
-    case "file":
-      return "File";
-    case "files":
-      return "Files";
-    case "changes":
-      return "Changes";
-    case "browser":
-      return "Browser";
-    case "canvas":
-      return "Canvas";
-    case "terminal":
-      return "Terminal";
-    default: {
-      const _exhaustive: never = kind;
-
-      return _exhaustive;
-    }
-  }
-}
-
-export function defaultWorkbenchTab(kind: WorkbenchTabKind): WorkbenchTabInput {
-  switch (kind) {
-    case "files":
-      return { kind: "files" };
-    case "changes":
-      return {
-        kind: "changes",
-        scope: { kind: "uncommitted" },
-        selectedPath: null,
-        pathRevealRevision: 0,
-        scrollTop: 0,
-      };
-    case "browser":
-      return { kind: "browser", url: "about:blank" };
-    case "terminal":
-      return { kind: "terminal", owner: { kind: "user" } };
-    case "file":
-      throw new Error("A file tab requires a path");
-    case "canvas":
-      throw new Error("A canvas tab requires a canvas");
-    default: {
-      const _exhaustive: never = kind;
-
-      return _exhaustive;
-    }
-  }
+/** The panel slot a tab renders in. */
+export function tabSlot(tab: WorkbenchTab): string {
+  return tab.kind === "file" || tab.kind === "files" ? FILES_SLOT : tab.id;
 }

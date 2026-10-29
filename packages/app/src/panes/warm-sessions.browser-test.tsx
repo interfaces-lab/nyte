@@ -22,8 +22,8 @@ import { keys, queryClient } from "../data/query-client.ts";
 import { installConnection } from "../data/connection.ts";
 import { sessionWatch, warmSession } from "../data/watches.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { workbenchController } from "../workbench/controller.ts";
-import { workbenchViewKey } from "../workbench/model.ts";
+import { workbenchViewKey } from "../workbench/paths.ts";
+import { workbench } from "../workbench/store.ts";
 import { SessionScreen } from "./session-screen.tsx";
 import { createAppRouter } from "../shell/routes.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
@@ -340,15 +340,15 @@ async function checkRules(): Promise<string> {
     expectRule(!b.composer.isConnected, "a deleted hidden session kept its composer mounted");
     expectRule(a.viewport.isConnected, "deleting another session unmounted a hot one");
 
-    const workbench = workbenchViewKey(undefined);
-    workbenchController.actions.toggle({ view: workbench });
-    workbenchController.actions.toggleMaximized({ view: workbench });
+    const home = workbenchViewKey(undefined);
+    workbench.dispatch(home, { kind: "toggle" });
+    workbench.dispatch(home, { kind: "toggle-maximized" });
     await moveTip(C, 2);
     expectRule(
       !seen.includes(`${C}-tip-2`),
       "a chat under the maximized workbench was marked read",
     );
-    workbenchController.actions.showChat({ view: workbench });
+    workbench.dispatch(home, { kind: "show-chat" });
     await until(() => seen.includes(`${C}-tip-2`), "the chat shown over the workbench to be read");
 
     expectRule(consoleErrors.length === 0, `console errors:\n${consoleErrors.join("\n")}`);

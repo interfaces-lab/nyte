@@ -30,7 +30,7 @@ import type { LineStat } from "@nyte-ai/sdk";
 import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
 import { treeItemHeight, useTreeStatusTheme } from "../files/tree-theme.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";
-import { WorkbenchRail } from "../workbench-rail.tsx";
+import { SidePanel } from "../side-panel.tsx";
 
 export interface ChangesSidebarFile {
   readonly path: string;
@@ -270,7 +270,7 @@ export function ChangesSidebar({
   );
 
   return (
-    <WorkbenchRail>
+    <SidePanel>
       <div {...props(styles.search)}>
         <Input
           ref={filterInputRef}
@@ -351,6 +351,6 @@ export function ChangesSidebar({
         aria-label="Changed files"
         {...props(workbenchStyles.treeTheme, treeStatusTheme, styles.tree)}
       />
-    </WorkbenchRail>
+    </SidePanel>
   );
 }
