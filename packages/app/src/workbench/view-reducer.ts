@@ -21,7 +21,7 @@ type ChangesTab = KindTab<"changes">;
 
 type CanvasTab = KindTab<"canvas">;
 
-export type WorkbenchTabPatch =
+type WorkbenchTabPatch =
   | {
       readonly kind: "changes";
       readonly patch: Partial<

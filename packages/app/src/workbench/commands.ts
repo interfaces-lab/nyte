@@ -69,7 +69,7 @@ export function openJobTerminal(
   return id;
 }
 
-export type CloseOutcome =
+type CloseOutcome =
   | { readonly kind: "closed" }
   | { readonly kind: "confirm"; readonly reason: "dirty" | "running" };
 

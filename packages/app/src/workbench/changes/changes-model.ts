@@ -17,7 +17,7 @@ import type { ChangesRepository, TurnChangeOption } from "./change-scopes.ts";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 
-export interface VcsChangeRow {
+interface VcsChangeRow {
   readonly source: "working" | "commit";
   readonly path: string;
   readonly status: FileStatus;
@@ -30,7 +30,7 @@ interface RecordedChangeRow {
   readonly removed: number;
 }
 
-export type ChangeRow = VcsChangeRow | RecordedChangeRow;
+type ChangeRow = VcsChangeRow | RecordedChangeRow;
 
 export type PatchSnapshot = ReturnType<ReturnType<typeof createPatchLoader>["getSnapshot"]>;
 
@@ -41,7 +41,7 @@ const UNKNOWN_STAT: LineStat = { kind: "unknown" };
 const EMPTY_ROWS: readonly VcsChangeRow[] = [];
 
 /** The comparison the panel shows, and where its rows come from. */
-export interface ResolvedChangesScope {
+interface ResolvedChangesScope {
   /** The tab's scope, or Uncommitted when it names a turn or chat there is nothing to read for. */
   readonly scope: WorkbenchChangesScope;
   readonly value: string;
@@ -181,7 +181,7 @@ export function patchIdentity(input: {
 }
 
 /** The patch for `path`: fresh from the current source, or stale from an earlier one of its lineage. */
-export function findPatch(
+function findPatch(
   snapshot: PatchSnapshot,
   source: { readonly key: string; readonly lineage: string } | undefined,
   path: string,

@@ -18,7 +18,7 @@ import { DEFAULT_WIDTH, type WorkbenchWidth, shareWidth } from "./width.ts";
 const LEGACY_DEFAULT_PIXELS = 400;
 
 /** A value the workbench keeps in local storage, checked against its schema when read. */
-export interface Persisted<T> {
+interface Persisted<T> {
   readonly get: () => T;
   readonly set: (value: T) => void;
   readonly remove: () => void;

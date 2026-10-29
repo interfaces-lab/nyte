@@ -43,8 +43,3 @@ export function workspaceFile(
     ? undefined
     : { view: owner.view, relative: file.slice(owner.root.length) };
 }
-
-/** The absolute path of `relative` inside the workspace at `root`. */
-export function workspacePathJoin(root: string, relative: string): string {
-  return `${normalized(root)}/${relative}`;
-}

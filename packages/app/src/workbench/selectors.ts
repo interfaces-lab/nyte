@@ -38,13 +38,13 @@ export function shownWorkbenchTab(
   return activeWorkbenchTab(view, scope, capabilities);
 }
 
-export interface RailLauncher {
+interface RailLauncher {
   readonly kind: LaunchKind;
   readonly label: string;
   readonly icon: IconName;
 }
 
-export interface RailModel {
+interface RailModel {
   /** Whether the Changes row shows; it stands in for the Changes launcher. */
   readonly changes: boolean;
   readonly openTabs: readonly WorkbenchTab[];
@@ -81,7 +81,7 @@ export function railModel(input: {
 }
 
 /** How a tab reads in the rail and the tab strip. */
-export interface TabPresentation {
+interface TabPresentation {
   readonly label: string;
   /** The full path or directory behind the label, when there is one. */
   readonly title: string | undefined;

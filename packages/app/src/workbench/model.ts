@@ -161,7 +161,7 @@ export function workbenchTabAvailable(
   return WORKBENCH_KINDS[kind].available(scope, capabilities);
 }
 
-export function tabIdentity<Kind extends WorkbenchTabKind>(
+function tabIdentity<Kind extends WorkbenchTabKind>(
   tab: KindInput<Kind>,
 ): string | undefined {
   return WORKBENCH_KINDS[tab.kind].identity(tab);
