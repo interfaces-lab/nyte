@@ -1,7 +1,16 @@
 import { create } from "@stylexjs/stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 
 export const messageScrollerStyles = create({
+  frame: {
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
+  },
   viewport: {
     display: "flex",
     flexDirection: "column",
@@ -49,4 +58,27 @@ export const messageScrollerStyles = create({
     },
     transitionTimingFunction: "ease-in-out",
   },
+  pill: {
+    position: "absolute",
+    zIndex: 1,
+    insetBlockStart: space.s3,
+    insetInlineStart: "50%",
+    translate: "-50% 0",
+  },
+});
+
+export const dividerStyles = create({
+  root: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.s2,
+    paddingBlock: space.s1,
+    color: role.contentInteractivePrimary,
+  },
+  rule: {
+    flex: 1,
+    height: space.px,
+    backgroundColor: "currentColor",
+  },
+  label: { fontWeight: type.weightMedium },
 });

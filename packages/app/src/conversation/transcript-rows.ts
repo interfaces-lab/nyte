@@ -12,6 +12,7 @@ import { conversationTurns } from "../view-helpers.ts";
 import type { TurnMessages } from "../view-helpers.ts";
 import { displayTranscriptParts, transcriptSlot } from "./transcript-presentation.ts";
 import type { StepMessage, TranscriptSlot } from "./transcript-presentation.ts";
+import type { Reply } from "./transcript-unread.ts";
 
 export interface RowLayout {
   readonly key: string;
@@ -64,6 +65,9 @@ export type TranscriptRow =
       readonly state: "pending" | "ready";
       readonly files: SessionView["changes"];
     });
+
+/** The "New" line before the first unread reply. It belongs to the reader's visit, not to the view, so the transcript inserts it into the projected rows. */
+export type DividerRow = RowLayout & { readonly kind: "divider" };
 
 const NO_USERS: readonly never[] = [];
 
@@ -301,6 +305,7 @@ export interface TranscriptProjector {
   readonly rows: (state: SessionState) => readonly RowLayout[];
   readonly row: (state: SessionState, key: string) => TranscriptRow | undefined;
   readonly messages: (state: SessionState) => ConversationMessages;
+  readonly replies: (state: SessionState) => readonly Reply[];
 }
 
 interface Projection {
@@ -309,6 +314,7 @@ interface Projection {
   readonly rows: Map<string, TranscriptRow>;
   readonly rowKeys: ReadonlyMap<string, string>;
   readonly messages: ConversationMessages;
+  readonly replies: readonly Reply[];
 }
 
 function rowMessages(row: TranscriptRow): readonly Message[] {
@@ -396,13 +402,53 @@ function project(state: SessionState, previous: Projection | undefined): Project
 
   for (const row of rows) for (const message of rowMessages(row)) rowKeys.set(message.id, row.key);
 
+  const replies = rows.flatMap((row) =>
+    row.kind === "response"
+      ? row.messages.map((message) => ({ id: message.id, at: message.at, row: row.key }))
+      : [],
+  );
+
+  const shown = previous?.replies;
+
   return {
     state,
     layouts: unchanged ? known : layouts,
     rows: new Map(rows.map((row) => [row.key, row])),
     rowKeys,
     messages,
+    replies:
+      shown?.length === replies.length &&
+      replies.every(
+        (reply, index) => reply.id === shown[index]?.id && reply.row === shown[index].row,
+      )
+        ? shown
+        : replies,
   };
+}
+
+export function dividerKey(reply: Reply): string {
+  return `unread-divider:${reply.id}`;
+}
+
+/** `rows` with the "New" divider before the row that shows `reply`. */
+export function withDivider(
+  rows: readonly RowLayout[],
+  reply: Reply | undefined,
+): readonly (RowLayout | DividerRow)[] {
+  const at = reply === undefined ? -1 : rows.findIndex((row) => row.key === reply.row);
+  const next = rows[at];
+
+  if (reply === undefined || next === undefined) return rows;
+
+  const divider: DividerRow = {
+    kind: "divider",
+    key: dividerKey(reply),
+    group: next.group,
+    leads: false,
+    sticky: false,
+  };
+
+  return [...rows.slice(0, at), divider, ...rows.slice(at)];
 }
 
 function replaced<T extends Message>(messages: readonly T[], message: T): readonly T[] {
@@ -503,6 +549,7 @@ export function transcriptProjector(): TranscriptProjector {
     rows: (state) => sync(state).layouts,
     row: (state, key) => sync(state).rows.get(key),
     messages: (state) => sync(state).messages,
+    replies: (state) => sync(state).replies,
   };
 }
 
@@ -539,7 +586,7 @@ const SKELETON_ESTIMATE = 240;
 const ESTIMATE_FONT_SIZE = 13;
 
 export function estimateRowSize(
-  row: TranscriptRow | undefined,
+  row: TranscriptRow | DividerRow | undefined,
   density: ToolCallDensity,
   uiFontSize: number,
 ): number {
@@ -549,7 +596,7 @@ export function estimateRowSize(
 }
 
 function rowEstimate(
-  row: TranscriptRow | undefined,
+  row: TranscriptRow | DividerRow | undefined,
   density: ToolCallDensity,
   scale: number,
 ): number {
@@ -562,6 +609,7 @@ function rowEstimate(
     case "retry":
     case "failure":
     case "earlier":
+    case "divider":
       return BANNER_ESTIMATE;
     case "prompt":
       return USER_ROW_ESTIMATE;
