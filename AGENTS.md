@@ -31,8 +31,17 @@
 ## Testing
 
 - No new tests unless asked.
+- Every test protects a named contract with a credible regression, has one owner, and can fail.
 - Test through the real API; don't copy the implementation's logic into the test.
 - Use the repo's fakes (`@nyte-ai/bench` models, `fakeHost`, `fakePorts`), not mocks or `globalThis` patches.
+- Write contract tests (wire formats, input validation, store migrations, packaging) as tables: one table across the cases, not one test per case.
+- No test-only parameters or exports in production code (`now`, `delay`, `budget`). Use fake timers (`vi.setSystemTime`).
+- No source-grep or tombstone tests that assert a file, export or feature is gone.
+
+## Live desktop diagnostics
+
+- To attach Playwright to a running desktop app, use `chromium.connectOverCDP(endpoint, { noDefaults: true })`. Without `noDefaults`, Playwright applies light-mode media emulation while attached, so a window that follows the system theme flashes light until the connection closes. The option also keeps focus and the other media preferences as they were.
+- Don't emulate a colour scheme or reduced motion on the user's live window unless asked; use an isolated test context for those cases.
 
 ## Live TUI testing
 
@@ -48,6 +57,8 @@
 
 - Package: `pnpm --dir packages/<package> test`.
 - Full check: `pnpm check` (format, lint, typecheck). Docs only: `pnpm exec turbo typecheck --filter=@nyte-ai/web`.
+- While iterating, typecheck only what you touched: `pnpm exec turbo typecheck --filter=<package>...`.
+- `tsc` is the source of truth for types. When the editor or the type-aware lint rules disagree with it, reproduce with the package's `typecheck` script.
 - After changing `@nyte-ai/schema` wire types or core's stored record types (`HeadRecord`, `SessionRecord` and the other `*Record` schemas), run `pnpm --dir packages/host check:store` and backfill what it reports.
 - Report failures in unrelated files; don't fix them.
 - Before changing Turborepo config, read the docs that ship inside the installed `turbo` package.

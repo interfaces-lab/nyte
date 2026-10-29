@@ -2,7 +2,8 @@
  * Fails when an AGENTS.md names a source location. Files move; a path in agent guidance goes stale
  * and sends the next agent to a file that is gone. Name the symbol, the concept or the command.
  *
- * Allowed: sibling guidance (`AGENTS.md`, `README.md`, `packages/<name>/AGENTS.md`), repo-root
+ * Allowed: other guidance (`AGENTS.md`, `README.md`, `packages/<name>/AGENTS.md`, and the path of any
+ * tracked AGENTS.md, which moves only on purpose), repo-root
  * conventions (`RELEASING.md`, `mise.toml`), store ref keys with placeholders (`live/<run>`),
  * home-directory runtime files (`~/.nyte/...`), package specifiers (`@nyte-ai/app/e2e/errors`)
  * and URLs.
@@ -43,7 +44,8 @@ if (problems.length > 0) process.exit(1);
 function names(code) {
   const word = code.split(/\s+/u)[0] ?? "";
 
-  if (ALLOWED.has(word) || /^packages\/<[^>]+>\/AGENTS\.md$/u.test(word)) return false;
+  if (ALLOWED.has(word) || files.includes(word) || /^packages\/<[^>]+>\/AGENTS\.md$/u.test(word))
+    return false;
 
   if (word.startsWith("~/") || word.startsWith("@") || /^[a-z]+:\/\//u.test(word)) return false;
 

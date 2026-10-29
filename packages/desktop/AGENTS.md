@@ -8,6 +8,8 @@
   Clerk is the sole opt-in renderer entry: load it only for an account command,
   never from the workspace startup graph.
 - Use Vitest for state, host, and IPC behavior with real local fixtures where possible.
+- Tests follow the Testing section of the root `AGENTS.md`. Here, packaging, installer, IPC validation, credential and store tests are contracts: one table across channels, not one test per channel.
+- Test IPC through the raw message the renderer sends (channel and payload), not through a typed client.
 - Browser pages are native `WebContentsView`s and composite above every DOM layer.
   A floating surface that can overlap a page must carry a `data-slot` in the app's
   overlay occlusion list (the slots `overlayCovers` watches), or it renders behind the page.
