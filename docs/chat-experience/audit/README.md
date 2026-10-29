@@ -23,6 +23,7 @@ A code-only review of the whole desktop app. Twelve reviewers, two per area on d
 - **The thinking group and the planning status are separate**: the group is transcript content and stays after the turn; the planning status is a live row owned by the run.
 - **The host classifies a file once** (kind, MIME, inside or outside the workspace); the app renders each kind with one exhaustive switch. Files outside the workspace open read-only.
 - **No new host restrictions on which paths a paired device can read or write.** The host serves any absolute path today; confining it is a security decision for the product owner.
+- **`AGENTS.md` files name concepts and symbols, never file paths**, because paths go stale when files move. A check fails on a path in any `AGENTS.md`.
 - **Token values stay Nyte's**; the work is internal consistency of the levels.
 
 ## Packages
@@ -31,7 +32,7 @@ Run in this order so no two packages move the same files at once: P1 alone; then
 
 | Package | Scope | Status |
 | --- | --- | --- |
-| P1 Structure | App folder tree, layer check, export map; desktop process split | todo |
+| P1 Structure | App folder tree, layer check, export map; desktop process split; `AGENTS.md` files name concepts, not file paths, with a check that keeps it so | done |
 | P2 Run-state gate | Own run vs background work, thinking vs planning, one projection for desktop and TUI | todo |
 | P3 File rendering | Host classification, exhaustive editor states, image and PDF preview, read-only outside files | todo |
 | P4 Task linkage | Parent return, one subagent open rule, jobs from the host's background items, reopenable ended jobs, one status vocabulary | todo |
