@@ -5,7 +5,7 @@ import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { backgroundLabel, rowMark, runStatusLabel } from "@nyte-ai/plugin/client/presentation";
+import { rowLabel, rowMark } from "@nyte-ai/plugin/client/presentation";
 import type { BackgroundWork, RunStatus, SessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { useChats } from "../../chats/index.ts";
@@ -270,11 +270,7 @@ export function SubagentTray({
                       </Row.Leading>
                       <Row.Label>{title}</Row.Label>
                     </Row.Primary>
-                    <Row.Meta>
-                      {"run" in agent.status
-                        ? runStatusLabel(agent.status)
-                        : (backgroundLabel(agent.background) ?? runStatusLabel(agent.status))}
-                    </Row.Meta>
+                    <Row.Meta>{rowLabel(agent.status, agent.background)}</Row.Meta>
                   </Row>
                 );
               })}

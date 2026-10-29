@@ -402,6 +402,16 @@ export function backgroundLabel(background: BackgroundWork): string | undefined 
 }
 
 /**
+ * The words for a list row, matching {@link rowMark}: its own run while one goes, else the
+ * background work it started, else how its own run ended.
+ *
+ * @category presentation
+ */
+export function rowLabel(status: RunStatus, background: BackgroundWork): string {
+  return ("run" in status ? undefined : backgroundLabel(background)) ?? runStatusLabel(status);
+}
+
+/**
  * The live row's words while a run is live and nothing it streams or runs shows progress, after
  * `planningMs` of that: nothing at first, so a quick gap doesn't flash, then planning, then a note
  * that it is slow.
