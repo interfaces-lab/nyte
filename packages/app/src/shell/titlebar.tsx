@@ -2,12 +2,11 @@ import { useSettingsOpen } from "../tabs/use-settings-open.ts";
 import { titlebarStyles } from "./titlebar.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
-import { createLink } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
-import { Button, ButtonLink } from "@nyte-ai/ui/button";
+import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import {
@@ -16,6 +15,7 @@ import {
   usePaneControllerSnapshot,
 } from "../panes/pane-context.tsx";
 import { activePane } from "../panes/pane-layout.ts";
+import { ParentLink } from "../panes/pane-header.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
@@ -67,31 +67,16 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
   );
 }
 
-const SessionLink = createLink(ButtonLink);
-
 function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   const chat = useChat(sessionId);
   const parentSessionId = chat.kind === "ready" ? (chat.chat.parent ?? undefined) : undefined;
   const title = chatTitle(chat.kind === "ready" ? chat.chat : undefined);
-  const panes = usePaneActions();
 
   return (
     <span {...props(titlebarStyles.sessionTitleGroup)}>
       {parentSessionId !== undefined && (
         <span {...props(titlebarStyles.sessionBack)}>
-          <SessionLink
-            iconOnly
-            icon="arrow-left"
-            aria-label="Back to parent chat"
-            to="/session/$sessionId"
-            params={{ sessionId: parentSessionId }}
-            preload={false}
-            onClick={(event) => {
-              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-              event.preventDefault();
-              panes.openSession(parentSessionId);
-            }}
-          />
+          <ParentLink parent={parentSessionId} />
         </span>
       )}
       <SessionLocation sessionId={sessionId} />

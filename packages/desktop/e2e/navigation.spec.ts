@@ -381,7 +381,7 @@ test("the sidebar journey", async ({ desktop }) => {
     await openNewChat(page);
     await send(page, "/hold");
     await expect(messages(page).getByRole("paragraph").last()).toContainText("Holding");
-    const held = sidebar(page).getByRole("button", { name: /^Running \/hold /u });
+    const held = sidebar(page).getByRole("button", { name: /^Working \/hold /u });
     const archive = sidebar(page).getByRole("button", { name: "Archive /hold" });
     const dialog = page.getByRole("alertdialog", { name: "Archive Working Chat" });
     const stop = chatPane(page).getByRole("button", { name: "Stop response" });
