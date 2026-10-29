@@ -7,8 +7,9 @@ import type { SessionInfo } from "@nyte-ai/sdk";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 import { liveRun } from "../screens/session-screen-render.fixtures.ts";
+import { keys, queryClient } from "../queries.ts";
 import { installConnection, sessionsWatch } from "../sdk.tsx";
-import { useChat } from "./index.ts";
+import { chatTitle, useChat, useChats } from "./index.ts";
 
 const rootA = sessionRow("root-a");
 
@@ -24,9 +25,16 @@ const active = sessionRow(
 
 const idle = sessionRow("idle", { parent: rootB.id });
 
+const started = sessionRow("started", { name: "Just started" });
+
 const source = viewStream<readonly SessionInfo[]>([rootA, rootB, middle, active, idle]);
 
-installConnection(scriptedConnection({ sessions: source }).connection);
+installConnection(
+  scriptedConnection({
+    sessions: source,
+    session: (id) => (id === started.id ? { info: async () => started } : {}),
+  }).connection,
+);
 
 let commits = 0;
 
@@ -45,6 +53,14 @@ function Roots(): ReactElement {
       <RootStatus id={rootA.id} /> <RootStatus id={rootB.id} />
     </output>
   );
+}
+
+/** A chat the lists don't carry, as its own reader and the directory each show it. */
+function Unlisted(): string {
+  const chat = useChat(started.id);
+  const listed = useChats((chats) => chatTitle(chats.get(started.id)));
+
+  return `${chat.kind === "ready" ? chat.chat.title : chat.kind} / ${listed}`;
 }
 
 function painted(): Promise<void> {
@@ -94,7 +110,26 @@ export async function run(): Promise<string> {
     ]);
     await publish("last child stops", [rootB, idle, settled, middle, rootA]);
 
-    return JSON.stringify({ loading, updates: report });
+    const unlisted = document.createElement("div");
+    document.body.append(unlisted);
+    const other = createRoot(unlisted);
+    const seen: (string | null)[] = [];
+
+    const until = async (text: string): Promise<void> => {
+      for (let frame = 0; frame < 100 && unlisted.textContent !== text; frame += 1) await painted();
+      seen.push(unlisted.textContent);
+    };
+
+    flushSync(() => other.render(<Unlisted />));
+    await until("Just started / Just started");
+    queryClient.setQueryData(keys.session(started.id), { ...started, name: "Renamed" });
+    await until("Renamed / Renamed");
+    source.push([rootB, idle, settled, middle, rootA, { ...started, name: "Listed" }]);
+    await until("Listed / Listed");
+    flushSync(() => other.unmount());
+    unlisted.remove();
+
+    return JSON.stringify({ loading, updates: report, unlisted: seen });
   } finally {
     flushSync(() => root.unmount());
     container.remove();

@@ -11,8 +11,9 @@ import {
   workbenchShowsChat,
   workbenchViewKey,
 } from "../workbench/controller.ts";
+import { derivedStore } from "../derived-store.ts";
+import type { StoreSource } from "../derived-store.ts";
 import { expose, shownChats } from "./exposure.ts";
-import type { WindowView } from "./exposure.ts";
 
 export interface WindowSnapshot {
   /** Chats on screen, whether or not anyone can read them now; text paces only in these. */
@@ -31,102 +32,107 @@ export type ChatWindowAction =
   | { readonly kind: "detail-opened"; readonly parent: SessionId; readonly child: SessionId }
   | { readonly kind: "detail-closed"; readonly parent: SessionId };
 
-const listeners = new Set<() => void>();
-
-let details: ReadonlyMap<SessionId, SessionId> = new Map();
-
-let settings = false;
-
-let inputs: WindowView | undefined;
-
-let snapshot: WindowSnapshot = {
-  shown: new Set(),
-  looking: new Set(),
-  unread: new Set(),
-  details,
-  covered: false,
-};
-
-function getSnapshot(): WindowSnapshot {
-  const host = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
-  const workbench = workbenchController.getView(workbenchViewKey(host));
-
-  const next: WindowView = {
-    tabs: windowTabs.getSnapshot(),
-    details,
-    settings,
-    covered:
-      workbench.expanded &&
-      workbench.layout.kind === "maximized" &&
-      !workbenchShowsChat(workbench.layout),
-    focused: document.visibilityState === "visible" && document.hasFocus(),
-    chats: chatDirectory(),
-  };
-
-  if (
-    inputs !== undefined &&
-    inputs.tabs === next.tabs &&
-    inputs.details === next.details &&
-    inputs.settings === next.settings &&
-    inputs.covered === next.covered &&
-    inputs.focused === next.focused &&
-    inputs.chats === next.chats
-  )
-    return snapshot;
-
-  inputs = next;
-  const exposure = expose(next);
-
-  snapshot = {
-    shown: sameSet(snapshot.shown, exposure.shown) ? snapshot.shown : exposure.shown,
-    looking: sameSet(snapshot.looking, exposure.looking) ? snapshot.looking : exposure.looking,
-    unread: sameSet(snapshot.unread, exposure.unread) ? snapshot.unread : exposure.unread,
-    details,
-    covered: next.covered,
-  };
-
-  return snapshot;
+/** What this window holds itself; the rest of its view it reads from the stores it listens to. */
+interface Own {
+  readonly details: ReadonlyMap<SessionId, SessionId>;
+  readonly settings: boolean;
 }
 
-let leaveSources: (() => void) | undefined;
+let own: Own = { details: new Map(), settings: false };
 
-function subscribe(notice: () => void): () => void {
-  listeners.add(notice);
-  leaveSources ??= watchSources();
+const ownListeners = new Set<() => void>();
 
-  return () => {
-    listeners.delete(notice);
+function setOwn(next: Own): void {
+  own = next;
 
-    if (listeners.size > 0) return;
-    leaveSources?.();
-    leaveSources = undefined;
-  };
+  for (const notice of ownListeners) notice();
 }
 
-function watchSources(): () => void {
-  const leave = [
-    windowTabs.subscribe(notifyAll),
-    workbenchController.subscribe(notifyAll),
-    subscribeChats(notifyAll),
-    queryClient.getQueryCache().subscribe((event) => {
-      if (event.query.queryKey[0] === keys.host[0]) notifyAll();
-    }),
-  ];
+const sources = {
+  own: {
+    read: () => own,
+    subscribe(notice: () => void) {
+      ownListeners.add(notice);
 
-  window.addEventListener("focus", notifyAll);
-  window.addEventListener("blur", notifyAll);
-  document.addEventListener("visibilitychange", notifyAll);
+      return () => ownListeners.delete(notice);
+    },
+  },
+  tabs: { read: windowTabs.getSnapshot, subscribe: windowTabs.subscribe },
+  covered: {
+    read() {
+      const host = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
+      const workbench = workbenchController.getView(workbenchViewKey(host));
 
-  return () => {
-    for (const unsubscribe of leave) unsubscribe();
-    window.removeEventListener("focus", notifyAll);
-    window.removeEventListener("blur", notifyAll);
-    document.removeEventListener("visibilitychange", notifyAll);
-  };
-}
+      return (
+        workbench.expanded &&
+        workbench.layout.kind === "maximized" &&
+        !workbenchShowsChat(workbench.layout)
+      );
+    },
+    subscribe(notice: () => void) {
+      const leave = [
+        workbenchController.subscribe(notice),
+        queryClient.getQueryCache().subscribe((event) => {
+          if (event.query.queryKey[0] === keys.host[0]) notice();
+        }),
+      ];
+
+      return () => {
+        for (const unsubscribe of leave) unsubscribe();
+      };
+    },
+  },
+  focused: {
+    read: () => document.visibilityState === "visible" && document.hasFocus(),
+    subscribe(notice: () => void) {
+      window.addEventListener("focus", notice);
+      window.addEventListener("blur", notice);
+      document.addEventListener("visibilitychange", notice);
+
+      return () => {
+        window.removeEventListener("focus", notice);
+        window.removeEventListener("blur", notice);
+        document.removeEventListener("visibilitychange", notice);
+      };
+    },
+  },
+  chats: { read: chatDirectory, subscribe: subscribeChats },
+} satisfies Readonly<Record<string, StoreSource<unknown>>>;
+
+const store = derivedStore(
+  sources,
+  (read, previous: WindowSnapshot) => {
+    const details = read.own.read().details;
+    const covered = read.covered.read();
+
+    const exposure = expose({
+      tabs: read.tabs.read(),
+      details,
+      settings: read.own.read().settings,
+      covered,
+      focused: read.focused.read(),
+      chats: read.chats.read(),
+    });
+
+    return {
+      shown: sameSet(previous.shown, exposure.shown) ? previous.shown : exposure.shown,
+      looking: sameSet(previous.looking, exposure.looking) ? previous.looking : exposure.looking,
+      unread: sameSet(previous.unread, exposure.unread) ? previous.unread : exposure.unread,
+      details,
+      covered,
+    };
+  },
+  {
+    shown: new Set<SessionId>(),
+    looking: new Set<SessionId>(),
+    unread: new Set<SessionId>(),
+    details: new Map<SessionId, SessionId>(),
+    covered: false,
+  },
+);
 
 function act(action: ChatWindowAction): void {
-  const next = new Map(details);
+  const next = new Map(own.details);
 
   switch (action.kind) {
     case "detail-opened":
@@ -142,23 +148,24 @@ function act(action: ChatWindowAction): void {
     }
   }
 
-  details = next;
-  notifyAll();
-}
-
-function notifyAll(): void {
-  for (const notice of listeners) notice();
+  setOwn({ ...own, details: next });
 }
 
 /** This window: what it shows, what the user is looking at, and the actions that change it. */
-export const chatWindow = { getSnapshot, subscribe, act };
+export const chatWindow = { getSnapshot: store.getSnapshot, subscribe: store.subscribe, act };
 
 /** What `select` makes of this window; a change that selects an equal value doesn't render. */
 export function useChatWindow<S>(
   select: (snapshot: WindowSnapshot) => S,
   isEqual?: (previous: S, next: S) => boolean,
 ): S {
-  return useSyncExternalStoreWithSelector(subscribe, getSnapshot, getSnapshot, select, isEqual);
+  return useSyncExternalStoreWithSelector(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
+    select,
+    isEqual,
+  );
 }
 
 /** The chat directory as this window shows it: unread only where nobody is looking. */
@@ -172,11 +179,9 @@ export function useShownChats(): ChatDirectory {
 /** Follows whether settings has the stage, which leaves no chat on screen. */
 export function followStage(router: RegisteredRouter): () => void {
   const read = (): void => {
-    const next = router.state.matches.some((match) => match.routeId === "/settings/$section");
+    const settings = router.state.matches.some((match) => match.routeId === "/settings/$section");
 
-    if (next === settings) return;
-    settings = next;
-    notifyAll();
+    if (settings !== own.settings) setOwn({ ...own, settings });
   };
 
   read();

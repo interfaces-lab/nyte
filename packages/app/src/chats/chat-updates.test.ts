@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
 test(
-  "a chat's readers update only when that chat changes, a subagent still working included",
+  "a chat's readers update only when that chat changes, and a chat the lists don't carry joins the directory from its own read",
   { timeout: 120_000 },
   async () => {
     const report: unknown = JSON.parse(
@@ -44,6 +44,7 @@ test(
         },
         { phase: "last child stops", shown: "root-a:completed root-b:completed", commits: 1 },
       ],
+      unlisted: ["Just started / Just started", "Renamed / Renamed", "Listed / Listed"],
     });
   },
 );

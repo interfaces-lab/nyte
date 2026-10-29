@@ -20,7 +20,7 @@ import {
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
-import { useChat } from "../chats/index.ts";
+import { chatTitle, useChat } from "../chats/index.ts";
 import { button, glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -221,7 +221,7 @@ function CanvasTabContent({
 function ChatTabLabel({ sessionId }: { readonly sessionId: SessionId }): ReactElement {
   const chat = useChat(sessionId);
 
-  return <>{chat.kind === "ready" ? chat.chat.title : ""}</>;
+  return <>{chatTitle(chat.kind === "ready" ? chat.chat : undefined)}</>;
 }
 
 export function WorkbenchTabStrip({

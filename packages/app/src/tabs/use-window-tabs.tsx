@@ -2,7 +2,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import { runMark } from "@nyte-ai/plugin/client/presentation";
 import { Icon } from "@nyte-ai/ui/icon";
-import { chatFolderPath, subscribeChats, useChats } from "../chats/index.ts";
+import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
 import { activateWorkspace } from "../chrome/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
@@ -120,7 +120,7 @@ function placeTitle(place: Place, chats: ChatDirectory): string {
     case "blank":
       return "New chat";
     case "session":
-      return chats.get(place.sessionId)?.title ?? "Chat";
+      return chatTitle(chats.get(place.sessionId));
     case "customize":
       return "Customize";
     case "environments":

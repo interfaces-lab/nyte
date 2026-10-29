@@ -190,6 +190,14 @@ export async function workspaceGit(): Promise<GitApi> {
 export const readSession = async (sessionId: SessionId) =>
   (await connected()).session(sessionId).info();
 
+/** One session's own read, for a session the lists don't carry; a missing one reads as null. */
+export function sessionQuery(sessionId: SessionId) {
+  return {
+    queryKey: keys.session(sessionId),
+    queryFn: () => readSession(sessionId).catch(missingAsNull),
+  };
+}
+
 const OPENING_HOST_STATE: HostState = { workspace: undefined };
 
 export function useHostState() {
@@ -371,8 +379,7 @@ export function useSession<S>(
   const settled = useWatchSelect(roots, (state) => (state.value ?? state.error) !== undefined);
 
   const read = useQuery({
-    queryKey: keys.session(id ?? asId<"session">("")),
-    queryFn: () => (id === undefined ? null : readSession(id).catch(missingAsNull)),
+    ...sessionQuery(id ?? asId<"session">("")),
     enabled: settled && row === UNLISTED && id !== undefined,
     select: (session: SessionInfo | null) => (session === null ? null : pick(session)),
   });

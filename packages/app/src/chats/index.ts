@@ -2,7 +2,9 @@ import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { SessionId, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { QueryObserver, skipToken } from "@tanstack/react-query";
-import { appSessionActions, keys, queryClient, useSession, workspacesQuery } from "../queries.ts";
+import { derivedStore } from "../derived-store.ts";
+import type { StoreSource } from "../derived-store.ts";
+import { appSessionActions, keys, queryClient, sessionQuery, workspacesQuery } from "../queries.ts";
 import { openViews, sessionsWatch, subscribeOpenViews } from "../sdk.tsx";
 import { joinChats } from "./directory.ts";
 import type { Chat, ChatDirectory } from "./directory.ts";
@@ -15,21 +17,15 @@ export type ChatResult =
   | { readonly kind: "ready"; readonly chat: Chat };
 
 /**
- * One chat as every surface shows it. Re-renders only when that chat changes. A chat the
- * lists don't carry yet, such as one just started, is read on its own and joined the same way.
+ * One chat as every surface shows it. Re-renders only when that chat changes. Asking for a chat
+ * the lists don't carry yet, such as one just started, reads it into the directory.
  */
 export function useChat(id: SessionId): ChatResult {
-  const listed = useSyncExternalStore(
-    subscribeChats,
+  return useSyncExternalStore(
+    (notice) => subscribeChat(id, notice),
     () => readChat(id),
     () => readChat(id),
   );
-
-  const unlisted = useSession(listed.kind === "missing" ? id : undefined).data;
-
-  return listed.kind === "missing" && unlisted !== undefined && unlisted !== null
-    ? readUnlisted(unlisted)
-    : listed;
 }
 
 /** What `select` makes of every chat; a change that selects an equal value doesn't render. */
@@ -44,6 +40,11 @@ export function useChats<S>(
     select,
     isEqual,
   );
+}
+
+/** What a surface calls a chat; one the directory doesn't have yet is still a chat, never blank. */
+export function chatTitle(chat: Chat | undefined): string {
+  return chat?.title ?? "Chat";
 }
 
 /** The folder the host opens for a chat: its own, null for Home, undefined until the folder list loads. */
@@ -74,118 +75,154 @@ function readChat(id: SessionId): ChatResult {
   return result;
 }
 
-const unlistedResults = new WeakMap<SessionInfo, ChatResult>();
+/** How many readers ask for each chat by id. */
+const asked = new Map<SessionId, number>();
 
-function readUnlisted(session: SessionInfo): ChatResult {
-  const known = unlistedResults.get(session);
+const askListeners = new Set<() => void>();
 
-  if (known !== undefined) return known;
+function subscribeChat(id: SessionId, notice: () => void): () => void {
+  const leave = subscribeChats(notice);
+  asked.set(id, (asked.get(id) ?? 0) + 1);
 
-  const chat = joinChats(
-    {
-      lists: [[session]],
-      views: openViews(),
-      workspaces: queryClient.getQueryData(keys.workspaces),
-      project: (listed) => listed,
-    },
-    new Map(),
-  ).get(session.id);
+  for (const listener of askListeners) listener();
 
-  const result: ChatResult = chat === undefined ? MISSING : { kind: "ready", chat };
+  return () => {
+    const count = (asked.get(id) ?? 1) - 1;
 
-  unlistedResults.set(session, result);
+    if (count === 0) asked.delete(id);
+    else asked.set(id, count);
 
-  return result;
-}
-
-interface Read {
-  readonly all: readonly SessionInfo[] | undefined;
-  readonly roots: readonly SessionInfo[] | undefined;
-  readonly recorded: readonly SessionInfo[] | undefined;
-  readonly views: ReturnType<typeof openViews>;
-  readonly workspaces: readonly WorkspaceInfo[] | undefined;
-  readonly pending: ReturnType<ReturnType<typeof appSessionActions>["getSnapshot"]>;
-}
-
-let read: Read | undefined;
-
-let directory: ChatDirectory = new Map();
-
-/** Every chat this connection lists, joined again only when one of its sources changed. */
-export function chatDirectory(): ChatDirectory {
-  const actions = appSessionActions();
-
-  const next: Read = {
-    all: sessionsWatch("all").value,
-    roots: sessionsWatch("roots").value,
-    recorded: queryClient.getQueryData(keys.firstFrameRoots),
-    views: openViews(),
-    workspaces: queryClient.getQueryData(keys.workspaces),
-    pending: actions.getSnapshot(),
+    for (const listener of askListeners) listener();
+    leave();
   };
-
-  if (
-    read !== undefined &&
-    read.all === next.all &&
-    read.roots === next.roots &&
-    read.recorded === next.recorded &&
-    read.views === next.views &&
-    read.workspaces === next.workspaces &&
-    read.pending === next.pending
-  )
-    return directory;
-
-  read = next;
-
-  directory = joinChats(
-    {
-      lists: [next.all, next.roots ?? next.recorded],
-      views: next.views,
-      workspaces: next.workspaces,
-      project: (session) => actions.projectSession(session, next.pending),
-    },
-    directory,
-  );
-
-  return directory;
 }
 
-const listeners = new Set<() => void>();
+let unlistedRows: readonly SessionInfo[] = [];
 
-let leaveSources: (() => void) | undefined;
+/** Each asked-for chat the lists don't carry, read on its own while the directory is heard. */
+const unlisted: StoreSource<readonly SessionInfo[]> = {
+  read: () => unlistedRows,
+  subscribe(notice) {
+    const reads = new Map<
+      SessionId,
+      { readonly session: () => SessionInfo | null | undefined; readonly leave: () => void }
+    >();
+
+    const collect = (): void => {
+      const next = [...reads.values()].flatMap((read) => {
+        const session = read.session();
+
+        return session === undefined || session === null ? [] : [session];
+      });
+
+      if (
+        next.length === unlistedRows.length &&
+        next.every((row, index) => row === unlistedRows[index])
+      )
+        return;
+      unlistedRows = next;
+      notice();
+    };
+
+    const sync = (): void => {
+      const all = sessionsWatch("all").value;
+
+      const listed = new Set(
+        [...(all ?? []), ...(sessionsWatch("roots").value ?? [])].map((session) => session.id),
+      );
+
+      const wanted = new Set(
+        all === undefined ? [] : [...asked.keys()].filter((id) => !listed.has(id)),
+      );
+
+      for (const [id, read] of reads)
+        if (!wanted.has(id)) {
+          read.leave();
+          reads.delete(id);
+        }
+
+      for (const id of wanted)
+        if (!reads.has(id)) {
+          const observer = new QueryObserver(queryClient, sessionQuery(id));
+          reads.set(id, {
+            session: () => observer.getCurrentResult().data,
+            leave: observer.subscribe(collect),
+          });
+        }
+
+      collect();
+    };
+
+    askListeners.add(sync);
+
+    const leave = [
+      sessionsWatch("all").subscribeByFrame(sync),
+      sessionsWatch("roots").subscribeByFrame(sync),
+    ];
+
+    sync();
+
+    return () => {
+      askListeners.delete(sync);
+
+      for (const unsubscribe of leave) unsubscribe();
+
+      for (const read of reads.values()) read.leave();
+      unlistedRows = [];
+    };
+  },
+};
+
+const sources = {
+  all: {
+    read: () => sessionsWatch("all").value,
+    subscribe: (notice: () => void) => sessionsWatch("all").subscribeByFrame(notice),
+  },
+  roots: {
+    read: () => sessionsWatch("roots").value,
+    subscribe: (notice: () => void) => sessionsWatch("roots").subscribeByFrame(notice),
+  },
+  recorded: {
+    read: () => queryClient.getQueryData<readonly SessionInfo[]>(keys.firstFrameRoots),
+    subscribe: (notice: () => void) =>
+      new QueryObserver(queryClient, {
+        queryKey: keys.firstFrameRoots,
+        queryFn: skipToken,
+      }).subscribe(notice),
+  },
+  unlisted,
+  views: { read: openViews, subscribe: subscribeOpenViews },
+  workspaces: {
+    read: () => queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces),
+    subscribe: (notice: () => void) =>
+      new QueryObserver(queryClient, workspacesQuery).subscribe(notice),
+  },
+  pending: {
+    read: () => appSessionActions().getSnapshot(),
+    subscribe: (notice: () => void) => appSessionActions().subscribe(notice),
+  },
+} satisfies Readonly<Record<string, StoreSource<unknown>>>;
+
+const directory = derivedStore(
+  sources,
+  (read, previous: ChatDirectory) => {
+    const pending = read.pending.read();
+
+    return joinChats(
+      {
+        lists: [read.all.read(), read.roots.read() ?? read.recorded.read(), read.unlisted.read()],
+        views: read.views.read(),
+        workspaces: read.workspaces.read(),
+        project: (session) => appSessionActions().projectSession(session, pending),
+      },
+      previous,
+    );
+  },
+  new Map<SessionId, Chat>(),
+);
+
+/** Every chat this connection lists or a reader asked for, joined again only when one of its sources changed. */
+export const chatDirectory = directory.getSnapshot;
 
 /** Hears every change to the directory's sources; the sources are watched while anyone listens. */
-export function subscribeChats(notice: () => void): () => void {
-  listeners.add(notice);
-  leaveSources ??= watchSources();
-
-  return () => {
-    listeners.delete(notice);
-
-    if (listeners.size > 0) return;
-    leaveSources?.();
-    leaveSources = undefined;
-  };
-}
-
-function watchSources(): () => void {
-  const notify = (): void => {
-    for (const notice of listeners) notice();
-  };
-
-  const leave = [
-    sessionsWatch("all").subscribeByFrame(notify),
-    sessionsWatch("roots").subscribeByFrame(notify),
-    subscribeOpenViews(notify),
-    appSessionActions().subscribe(notify),
-    new QueryObserver(queryClient, workspacesQuery).subscribe(notify),
-    new QueryObserver(queryClient, {
-      queryKey: keys.firstFrameRoots,
-      queryFn: skipToken,
-    }).subscribe(notify),
-  ];
-
-  return () => {
-    for (const unsubscribe of leave) unsubscribe();
-  };
-}
+export const subscribeChats = directory.subscribe;

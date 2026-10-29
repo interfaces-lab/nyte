@@ -17,7 +17,7 @@ import {
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
-import { useChat } from "../chats/index.ts";
+import { chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../queries.ts";
 import {
   workbenchController,
@@ -76,7 +76,7 @@ const SessionLink = createLink(ButtonLink);
 function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   const chat = useChat(sessionId);
   const parentSessionId = chat.kind === "ready" ? (chat.chat.parent ?? undefined) : undefined;
-  const title = chat.kind === "ready" ? chat.chat.title : "";
+  const title = chatTitle(chat.kind === "ready" ? chat.chat : undefined);
   const panes = usePaneActions();
 
   return (

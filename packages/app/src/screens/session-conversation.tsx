@@ -66,7 +66,7 @@ import { StartupReadsRelease } from "../startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../work-counts.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { useChat, useChats } from "../chats/index.ts";
+import { chatTitle, useChat, useChats } from "../chats/index.ts";
 import { chatWindow, useChatWindow } from "../window/index.ts";
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
@@ -380,7 +380,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     fast: selected?.fast === true,
   };
 
-  const title = chat.kind === "ready" ? chat.chat.title : "";
+  const title = chatTitle(chat.kind === "ready" ? chat.chat : undefined);
 
   const commitRename = (): void => {
     if (draftName === undefined) return;
