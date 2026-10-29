@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [stylex.rollup({ devMode: "css-only" })],
   resolve: { conditions: ["nyte-source", ...defaultClientConditions] },
   test: {
-    setupFiles: ["src/main/fixtures/isolated-home.ts"],
+    setupFiles: ["src/shared/fixtures/isolated-home.ts"],
     exclude: [...configDefaults.exclude, "e2e/**"],
   },
 });

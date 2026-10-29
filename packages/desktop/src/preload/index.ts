@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import { exposeClerkBridge } from "@clerk/electron/preload";
-import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
-import type { AccountBridge, AccountCommand } from "../account/protocol.ts";
+import { ACCOUNT_CHANNELS } from "../shared/account/protocol.ts";
+import type { AccountBridge, AccountCommand } from "../shared/account/protocol.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import type { AppMenuCommand } from "@nyte-ai/app/contract/bridge.ts";
 import {

@@ -22,7 +22,7 @@ import {
   windowTabRoute,
 } from "@nyte-ai/app";
 import appIcon from "../../../build/icon-macos.svg";
-import { AccountProvider } from "../../account/provider.tsx";
+import { AccountProvider } from "./account/provider.tsx";
 
 startWindowTabs(window.nyte.window);
 

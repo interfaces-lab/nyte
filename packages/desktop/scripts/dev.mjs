@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
 import electronMetadata from "electron/package.json" with { type: "json" };
-import { ACCOUNT_SCHEMES } from "../src/account/scheme.ts";
+import { ACCOUNT_SCHEMES } from "../src/shared/account/scheme.ts";
 
 /**
  * A renamed copy of Electron's app bundle carrying the dev icon and URL scheme. Mission Control

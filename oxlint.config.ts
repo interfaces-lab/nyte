@@ -29,6 +29,23 @@ const conceptFolderImports = ["chats", "window"].map((folder) => ({
   message: `Import ${folder}/ through ${folder}/index.ts. Its other files are internal; export what you need from the index.`,
 }));
 
+/**
+ * Each desktop process folder may not reach into another's code: main and the
+ * utility host meet only through `shared/`, which imports neither.
+ */
+const desktopProcessImports = (...folders: readonly string[]) =>
+  folders.map((folder) => ({
+    regex: `^(\\.\\./)+${folder}/`,
+    message: `Code in desktop/src/${folder}/ runs in another process. Import what both sides need from desktop/src/shared/, moving it there if it is not yet.`,
+  }));
+
+const desktopProcessFolders = [
+  { folder: "main", forbidden: ["host", "workers"] },
+  { folder: "host", forbidden: ["main"] },
+  { folder: "workers", forbidden: ["main", "host"] },
+  { folder: "shared", forbidden: ["main", "host", "workers"] },
+];
+
 const buttonLibraryMessage =
   "Buttons come styled from @nyte-ai/ui/button and @nyte-ai/ui/toggle; pass layout through their props, not a new look.";
 
@@ -404,5 +421,17 @@ export default defineConfig({
         "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
       },
     },
+    ...desktopProcessFolders.map(({ folder, forbidden }) => ({
+      files: [`packages/desktop/src/${folder}/**`],
+      rules: {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            paths: runtimeLoadImports,
+            patterns: [...uiLibraryImports, ...desktopProcessImports(...forbidden)],
+          },
+        ],
+      },
+    })),
   ],
 });

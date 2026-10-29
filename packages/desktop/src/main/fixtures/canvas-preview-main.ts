@@ -7,9 +7,9 @@ import process from "node:process";
 import { app } from "electron";
 import { readCanvasFixture } from "@nyte-ai/canvas/fixtures";
 import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
-import { ACCOUNT_SCHEMES } from "../../account/scheme.ts";
+import { ACCOUNT_SCHEMES } from "../../shared/account/scheme.ts";
 import { offscreenCanvasPreviewer } from "../canvas-preview.ts";
-import { registerRenderer } from "../renderer.ts";
+import { registerRenderer } from "../renderer-protocol.ts";
 import { exitWithParent } from "./exit-with-parent.ts";
 
 exitWithParent();

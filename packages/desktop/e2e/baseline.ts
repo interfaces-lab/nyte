@@ -8,7 +8,7 @@ import { idSchema } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/schema";
 import { sdk } from "@nyte-ai/sdk";
 import type { Host, SendReceipt } from "@nyte-ai/sdk";
-import { E2E_MODEL, e2eModels } from "../src/main/fixtures/e2e-models.ts";
+import { E2E_MODEL, e2eModels } from "../src/host/fixtures/e2e-models.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
@@ -71,7 +71,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
 async function fingerprint(): Promise<string> {
   const files = [
     join(import.meta.dirname, "baseline.ts"),
-    join(REPO_ROOT, "packages/desktop/src/main/fixtures/e2e-models.ts"),
+    join(REPO_ROOT, "packages/desktop/src/host/fixtures/e2e-models.ts"),
     join(REPO_ROOT, "packages/host/src/sqlite.ts"),
     join(REPO_ROOT, "packages/host/src/store-rows.ts"),
     join(REPO_ROOT, "pnpm-lock.yaml"),
