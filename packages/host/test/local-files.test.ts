@@ -36,7 +36,7 @@ function paths(frames: readonly ScanFrame[]): string[] {
 }
 
 describe("localFiles", () => {
-  it("reads text, binary, large and missing files with content versions", async () => {
+  it("classifies documents before the text limit and reads SVG source on request", async () => {
     const root = await folder();
     await writeFile(join(root, "a.txt"), "hello\n");
     await writeFile(join(root, "b.bin"), new Uint8Array([0, 1, 2]));
@@ -46,6 +46,8 @@ describe("localFiles", () => {
     expect(await files.read("a.txt")).toEqual({
       kind: "text",
       path: "a.txt",
+      scope: "workspace",
+      mime: "text/plain",
       contents: "hello\n",
       version: sha256("hello\n"),
     });
@@ -56,6 +58,41 @@ describe("localFiles", () => {
       version: sha256("x".repeat(1024 * 1024 + 1)),
     });
     expect(await files.read("nope.txt")).toEqual({ kind: "missing", path: "nope.txt" });
+    const outside = await folder();
+    const png = Buffer.concat([
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      Buffer.alloc(2 * 1024 * 1024),
+    ]);
+    const image = join(outside, "frames-stack.png");
+    await writeFile(image, png);
+    expect(await files.read(image, { as: "document" })).toMatchObject({
+      kind: "image",
+      scope: "external",
+      mime: "image/png",
+      size: png.length,
+    });
+    await symlink(image, join(root, "image-link"));
+    expect(await files.read("image-link", { as: "document" })).toMatchObject({
+      kind: "image",
+      scope: "external",
+    });
+    await writeFile(join(root, "drawing.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    expect(await files.read("drawing.svg", { as: "document" })).toMatchObject({
+      kind: "image",
+      mime: "image/svg+xml",
+    });
+    expect(await files.read("drawing.svg", { as: "text" })).toMatchObject({
+      kind: "text",
+      mime: "image/svg+xml",
+    });
+    await writeFile(join(root, "document.pdf"), "%PDF-1.7\n");
+    expect(await files.read("document.pdf")).toMatchObject({
+      kind: "pdf",
+      mime: "application/pdf",
+    });
+    await using reader = await files.bytes(image);
+    expect(reader.mime).toBe("image/png");
+    expect(Buffer.concat(await collect(reader.chunks()))).toEqual(png);
     expect(await files.read(join(root, "a.txt"))).toMatchObject({
       kind: "text",
       contents: "hello\n",
@@ -71,7 +108,7 @@ describe("localFiles", () => {
     const chunks = await collect(reader.chunks());
 
     expect(reader.size).toBe(200_000);
-    expect(reader.mime).toBeNull();
+    expect(reader.mime).toBe("application/octet-stream");
     expect(reader.version).toBe(sha256(bytes));
     expect(Buffer.concat(chunks).equals(Buffer.from(bytes))).toBe(true);
     await expect(localFiles(root).bytes("gone")).rejects.toMatchObject({ code: "unknown" });

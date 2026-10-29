@@ -120,7 +120,7 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
   });
 
   return {
-    read: (path) => rows.call("files.read", { workspace, path }),
+    read: (path, options) => rows.call("files.read", { workspace, path, options }),
     bytes: (path) => rows.bytes("files.bytes", { workspace, path }),
     stat: (path) => rows.call("files.stat", { workspace, path }),
     write: (path, contents, options) =>
