@@ -67,6 +67,19 @@ Outside `src/`: `dev/` holds the account-footer harness page (`/dev/account-foot
 - Composer drafts are saved by `chat/composer/drafts.ts`; per-pane view state is `panes/session-view-state.ts`.
 - Popups that may cover a browser page register in `components/overlay-occlusion.ts`.
 
+## Desktop
+
+`packages/desktop/src` is split by the process that runs each file. The two Node processes meet only through `shared/`, and `oxlint.config.ts` enforces this: `main` may not import `host` or `workers`, `host` may not import `main`, `workers` import neither, and `shared` imports none of them.
+
+| Folder | Runs in | Holds |
+| --- | --- | --- |
+| `main/` | Electron main | startup, the host supervisor, the app menu, canvas preview, the renderer protocol; `account/`, `browser/` (the workbench browser's pages, picker, agent surface, adblock), `native/` (CLI install, context menu, fonts), `updates/` |
+| `host/` | the `nyte host` child | the desktop host entry, host settings, models, the browser plugin; `connections/` (relay, tunnel, tailnet, remote access) |
+| `workers/` | worker threads | code mode, image and usage workers |
+| `shared/` | both | the IPC and host message types, settings shapes, account protocol |
+| `preload/` | preload scripts | the window bridge, browser page and canvas preview preloads |
+| `renderer/` | the window | the entry that mounts the app and installs the bridge |
+
 ## Package boundary
 
 Other packages import the app only through `packages/app/package.json` `exports`: `.` (startup and `App`), `./contract/*` for the desktop main and preload processes, and a short list of style, theme and lab entry points. A new deep import needs an entry there.
