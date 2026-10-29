@@ -12,7 +12,7 @@ import { canvasRenderers } from "./canvas-frame.tsx";
 import { PartOrigin } from "../chat/transcript/part-origin.ts";
 import { RawPartView } from "../chat/transcript/raw-part.tsx";
 import { connected, connection } from "../data/connection.ts";
-import { sessionsWatch } from "../data/watches.ts";
+import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
 import { chatWindow } from "../window/index.ts";
 
 let mounting: Promise<ClientPlugins> | undefined;
@@ -47,12 +47,11 @@ export function watchClientPlugins(
   });
 
   const plugins = mounting;
-  const directory = sessionsWatch("all");
 
   const feed = (): void => {
-    const sessions = directory.value;
+    const { listed, rows } = sessionRows();
 
-    if (sessions !== undefined) void plugins.then((mount) => mount.sessionsChanged(sessions));
+    if (listed) void plugins.then((mount) => mount.sessionsChanged([...rows.values()]));
   };
 
   let focused: SessionId | undefined;
@@ -75,7 +74,7 @@ export function watchClientPlugins(
 
   feed();
   refocus();
-  const stopDirectory = directory.subscribe(feed);
+  const stopDirectory = subscribeSessionRows(feed);
   const stopFocus = focusMoved(refocus);
 
   return () => {

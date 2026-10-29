@@ -1,13 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
-import { useSyncExternalStore } from "react";
 import { keyedSerial } from "@nyte-ai/schema/serial";
 import type { Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { ActionToasts } from "../lib/action-toasts.ts";
 import { keys, queryClient } from "./query-client.ts";
 import { connection } from "./connection.ts";
-import { findListedSession } from "./watches.ts";
+import { findSessionRow } from "./session-rows.ts";
 
 type SessionChange =
   | { readonly kind: "archive"; readonly archived: boolean }
@@ -81,14 +80,6 @@ export class SessionActions {
     }
 
     return projected;
-  }
-
-  projectList(sessions: readonly SessionInfo[], changes = this.#pending): readonly SessionInfo[] {
-    return sessions.flatMap((session) => {
-      const projected = this.projectSession(session, changes);
-
-      return projected === null ? [] : [projected];
-    });
   }
 
   rename(input: { sessionId: SessionId; name: string }): Promise<boolean> {
@@ -194,12 +185,12 @@ export class SessionActions {
   }
 
   #find(sessionId: SessionId): SessionInfo | undefined {
-    const session =
-      findListedSession(sessionId) ??
-      this.#client.getQueryData<SessionInfo | null>(keys.session(sessionId)) ??
-      undefined;
+    const read = this.#client.getQueryData<SessionInfo | null>(keys.session(sessionId));
 
-    return session === undefined ? undefined : (this.projectSession(session) ?? undefined);
+    return (
+      findSessionRow(sessionId) ??
+      (read === undefined || read === null ? undefined : (this.projectSession(read) ?? undefined))
+    );
   }
 
   #add(sessionId: SessionId, change: SessionChange): PendingChange {
@@ -295,14 +286,4 @@ export function appSessionActions(): SessionActions {
 
 export function useSessionActions(): SessionActions {
   return actionsFor(useQueryClient());
-}
-
-export function useSessionProjection() {
-  const actions = useSessionActions();
-  const pending = useSyncExternalStore(actions.subscribe, actions.getSnapshot, actions.getSnapshot);
-
-  return {
-    session: (session: SessionInfo) => actions.projectSession(session, pending),
-    list: (sessions: readonly SessionInfo[]) => actions.projectList(sessions, pending),
-  };
 }

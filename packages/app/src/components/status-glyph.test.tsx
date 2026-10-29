@@ -27,7 +27,11 @@ const FAILED: Execution = {
   },
 };
 
-function unread(id: string, execution: Execution, change: Partial<SessionInfo> = {}): SessionInfo {
+function unread(
+  id: string,
+  execution: Execution,
+  background = { working: 0, waiting: 0 },
+): SessionInfo {
   return sessionRow(id, {
     heads: [
       {
@@ -36,10 +40,9 @@ function unread(id: string, execution: Execution, change: Partial<SessionInfo> =
         stack: null,
         execution,
         unread: true,
-        background: { working: 0, waiting: 0 },
+        background,
       },
     ],
-    ...change,
   });
 }
 
@@ -77,14 +80,15 @@ test("run marks take priority over Unread and each reads its own label", () => {
   const retrying: Execution = { kind: "retrying", run, until: 2, reason: "Busy" };
 
   const cases = [
-    [LIVE, "Running"],
-    [approval, "Needs attention"],
-    [retrying, "Retrying"],
-    [FAILED, "Failed"],
+    [LIVE, "Running", 0],
+    [approval, "Needs attention", 0],
+    [retrying, "Retrying", 0],
+    [FAILED, "Failed", 0],
+    [COMPLETED, "Working in the background", 1],
   ] as const;
 
-  const looks = cases.map(([execution, label]) => {
-    const html = glyph(unread(label, execution));
+  const looks = cases.map(([execution, label, working]) => {
+    const html = glyph(unread(label, execution, { working, waiting: 0 }));
     assert.match(html, new RegExp(`aria-label="${label}"`));
     assert.doesNotMatch(html, /Unread/);
 
@@ -94,17 +98,18 @@ test("run marks take priority over Unread and each reads its own label", () => {
   assert.equal(new Set(looks).size, looks.length, "every mark looks different");
 });
 
-test("a chat whose subagent still works reads as working, and a failed one needs attention", () => {
-  const parent = sessionRow("parent", {}, FAILED);
-  const child = sessionRow("child", { parent: parent.id }, LIVE);
+test("a chat whose own run ended draws its background work but sorts by its own run, and work waiting on the user needs attention", () => {
+  const busy = unread("busy", COMPLETED, { working: 1, waiting: 0 });
+  const asking = unread("asking", COMPLETED, { working: 1, waiting: 1 });
   const failed = sessionRow("failed", {}, FAILED);
   const done = unread("done", COMPLETED);
 
-  assert.match(glyph(parent, [parent, child]), /aria-label="Running"/);
+  assert.match(glyph(busy, [busy], false), /aria-label="Working in the background"/);
+  assert.match(glyph(asking, [asking], false), /aria-label="Needs attention"/);
 
-  assert.deepEqual(grouped([parent, child, failed, done], [done]), [
-    ["Needs attention", ["failed"]],
+  assert.deepEqual(grouped([busy, asking, failed, done], [done]), [
+    ["Needs attention", ["asking", "failed"]],
     ["Unread", ["done"]],
-    ["Working", ["parent"]],
+    ["Done", ["busy"]],
   ]);
 });

@@ -6,8 +6,6 @@ export interface SubagentStatus {
   readonly text: string;
 }
 
-const PLANNING: SubagentStatus = { indicator: "running", text: "Planning next moves" };
-
 export function callStatus(status: ToolStatus): SubagentStatus {
   switch (status.tone) {
     case "running":
@@ -32,8 +30,7 @@ export function callStatus(status: ToolStatus): SubagentStatus {
 export function subagentStatus(status: RunStatus, unread: boolean): SubagentStatus {
   switch (status.kind) {
     case "working":
-    case "subagent-working":
-      return PLANNING;
+      return { indicator: "running", text: runStatusLabel(status) };
     case "waiting-for-approval":
       return { indicator: "attention", text: runStatusLabel(status) };
     case "retrying":

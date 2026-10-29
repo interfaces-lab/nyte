@@ -1,8 +1,10 @@
 import type { Execution, SessionInfo, ToolClass, TurnInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
-import { joinChats } from "../src/chats/directory.ts";
-import type { ChatDirectory, ChatSources } from "../src/chats/directory.ts";
+import { describeChats } from "../src/chats/directory.ts";
+import type { ChatDirectory } from "../src/chats/directory.ts";
+import { mergeSessionRows } from "../src/data/session-rows.ts";
+import type { RowSources } from "../src/data/session-rows.ts";
 import type { WatchSource } from "../src/data/watch-store.ts";
 import type { TurnMessages } from "../src/chat/transcript/turns.ts";
 
@@ -71,22 +73,24 @@ export function workspaceRow(
   };
 }
 
-/** The chat directory these sessions join into, with no open views and no pending actions unless given. */
+/** The chats these sessions' rows describe, with no open views and no pending actions unless given. */
 export function chatsFor(
   sessions: readonly SessionInfo[],
-  sources: Partial<ChatSources> = {},
+  sources: Partial<RowSources> & { readonly workspaces?: readonly WorkspaceInfo[] } = {},
   previous: ChatDirectory = new Map(),
 ): ChatDirectory {
-  return joinChats(
+  const rows = mergeSessionRows(
     {
       lists: [sessions],
+      roots: undefined,
       views: new Map(),
-      workspaces: [],
       project: (session) => session,
       ...sources,
     },
-    previous,
-  );
+    { rows: new Map(), roots: undefined },
+  ).rows;
+
+  return describeChats(rows.values(), "workspaces" in sources ? sources.workspaces : [], previous);
 }
 
 export function listedChildren(

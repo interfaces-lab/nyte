@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { keys } from "../data/query-client.ts";
-import { missingAsNull } from "../data/sessions.ts";
+import { missingAsNull } from "../data/session-rows.ts";
 
 export function readRouteSession({
   client,

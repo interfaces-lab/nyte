@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
 test(
-  "a chat's readers update only when that chat changes, and a chat the lists don't carry joins the directory from its own read",
+  "a chat's readers update only when that chat changes, its own run stays as it ended while its background work comes and goes, and a chat the lists don't carry joins the directory from its own read",
   { timeout: 120_000 },
   async () => {
     const report: unknown = JSON.parse(
@@ -15,34 +15,38 @@ test(
     expect(report).toMatchObject({
       loading: "loading loading",
       updates: [
-        { phase: "initial", shown: "root-a:subagent-working root-b:completed" },
-        { phase: "child metadata", shown: "root-a:subagent-working root-b:completed", commits: 0 },
+        { phase: "initial", shown: "root-a:completed:1 root-b:completed:0" },
+        { phase: "child metadata", shown: "root-a:completed:1 root-b:completed:0", commits: 0 },
         {
           phase: "directory reorder",
-          shown: "root-a:subagent-working root-b:completed",
+          shown: "root-a:completed:1 root-b:completed:0",
           commits: 0,
         },
         {
-          phase: "another ancestor starts",
-          shown: "root-a:subagent-working root-b:subagent-working",
+          phase: "another root starts background work",
+          shown: "root-a:completed:1 root-b:completed:1",
           commits: 1,
         },
         {
-          phase: "active directory reorder",
-          shown: "root-a:subagent-working root-b:subagent-working",
+          phase: "busy directory reorder",
+          shown: "root-a:completed:1 root-b:completed:1",
           commits: 0,
         },
         {
-          phase: "first ancestor stops",
-          shown: "root-a:completed root-b:subagent-working",
+          phase: "first root's background work ends",
+          shown: "root-a:completed:0 root-b:completed:1",
           commits: 1,
         },
         {
-          phase: "child changes parent",
-          shown: "root-a:subagent-working root-b:completed",
+          phase: "background work moves",
+          shown: "root-a:completed:1 root-b:completed:0",
           commits: 2,
         },
-        { phase: "last child stops", shown: "root-a:completed root-b:completed", commits: 1 },
+        {
+          phase: "last background work ends",
+          shown: "root-a:completed:0 root-b:completed:0",
+          commits: 1,
+        },
       ],
       unlisted: ["Just started / Just started", "Renamed / Renamed", "Listed / Listed"],
     });

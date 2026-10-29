@@ -1,6 +1,6 @@
 import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
-import { runMark } from "@nyte-ai/plugin/client/presentation";
+import { rowMark } from "@nyte-ai/plugin/client/presentation";
 import { Icon } from "@nyte-ai/ui/icon";
 import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
@@ -8,7 +8,7 @@ import { activateWorkspace } from "../sidebar/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
-import { sessionsWatch } from "../data/watches.ts";
+import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
 import { useChatWindow } from "../window/index.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
@@ -87,12 +87,12 @@ export function useWindowTabsSync(): void {
     };
 
     const forgetGone = (): void => {
-      const listed = sessionsWatch("all").value;
+      const { listed, rows } = sessionRows();
 
-      if (listed === undefined) return;
+      if (!listed) return;
 
       const live = new Set(
-        listed.filter((session) => !session.archived).map((session) => session.id),
+        [...rows.values()].filter((session) => !session.archived).map((session) => session.id),
       );
 
       windowTabs.dispatch({ kind: "forget-closed", live });
@@ -104,7 +104,7 @@ export function useWindowTabsSync(): void {
     const unsubscribeRouter = router.subscribe("onResolved", adopt);
     const unsubscribeTabs = windowTabs.subscribe(follow);
     const unsubscribeChats = subscribeChats(follow);
-    const unsubscribeAllSessions = sessionsWatch("all").subscribe(forgetGone);
+    const unsubscribeAllSessions = subscribeSessionRows(forgetGone);
 
     return () => {
       unsubscribeRouter();
@@ -142,7 +142,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
     const place = tabPlace(tab);
     const view = tab.view;
     const chat = place.kind === "session" ? chats.get(place.sessionId) : undefined;
-    const mark = chat === undefined ? "idle" : runMark(chat.status);
+    const mark = chat === undefined ? "idle" : rowMark(chat.status, chat.background);
 
     const glyph =
       place.kind === "session" ? (

@@ -24,8 +24,8 @@ import {
   resolveClientAction,
 } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
-import { sessionsWatch, sessionWatch } from "../data/watches.ts";
-import { useWatchSelect } from "../data/watch-store.ts";
+import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
+import { sessionWatch } from "../data/watches.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { ReferenceOpenerProvider } from "../references/reference-opener.tsx";
@@ -149,11 +149,11 @@ export function PaneHost({
   const shownSession = pane.selection.kind === "session" ? pane.selection.sessionId : undefined;
   const [hotSessions, setHotSessions] = useState<readonly SessionId[]>([]);
 
-  const listedHot = useWatchSelect(sessionsWatch("all"), ({ value }) =>
-    value === undefined
-      ? undefined
-      : hotSessions.filter((id) => value.some((session) => session.id === id)).join(","),
-  );
+  const listedHot = useSyncExternalStore(subscribeSessionRows, () => {
+    const { listed, rows } = sessionRows();
+
+    return listed ? hotSessions.filter((id) => rows.has(id)).join(",") : undefined;
+  });
 
   if (shownSession !== undefined && hotSessions[0] !== shownSession)
     setHotSessions(

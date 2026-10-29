@@ -1,15 +1,14 @@
 import { mainHead, runStatus, sessionTitle } from "@nyte-ai/plugin/client/presentation";
-import type { RunStatus } from "@nyte-ai/plugin/client/presentation";
+import type { BackgroundWork, RunStatus } from "@nyte-ai/plugin/client/presentation";
 import type {
   CommitId,
-  Execution,
   HeadName,
   SessionId,
   SessionInfo,
-  SessionView,
   WorkspaceId,
   WorkspaceInfo,
 } from "@nyte-ai/sdk";
+import { replaceEqualDeep } from "@tanstack/react-query";
 import { workspaceName, workspacePath } from "../data/workspaces.ts";
 
 export interface Folder {
@@ -35,8 +34,11 @@ export interface Chat {
   readonly parent: SessionId | null;
   readonly title: string;
   readonly location: ChatLocation;
+  /** How the chat's own run stands; work it started in the background never changes it. */
   readonly status: RunStatus;
-  /** The main head's tip while it is past the read mark, from the chat's open view when it has one; null once read. */
+  /** The main head's background items that are working, and those waiting on the user. */
+  readonly background: BackgroundWork;
+  /** The main head's tip while it is past the read mark; null once read. */
   readonly unreadTip: UnreadTip | null;
 }
 
@@ -47,117 +49,46 @@ export interface UnreadTip {
 
 export type ChatDirectory = ReadonlyMap<SessionId, Chat>;
 
-export interface ChatSources {
-  /** Session lists, most complete first: a session takes its row from the first list that has it. */
-  readonly lists: readonly (readonly SessionInfo[] | undefined)[];
-  /** Each session whose view is open. Its execution and read state replace the listed head's as a unit. */
-  readonly views: ReadonlyMap<SessionId, Pick<SessionView, "execution" | "heads">>;
-  readonly workspaces: readonly WorkspaceInfo[] | undefined;
-  /** The session as pending renames, pins, archives and deletes leave it; null once deleted. */
-  readonly project: (session: SessionInfo) => SessionInfo | null;
-}
-
 /**
- * Joins the session lists, the open views and the folder list into one chat per session.
- * A chat that comes out the same as in `previous` keeps its identity, and so does the
- * directory when no chat changed.
+ * One chat per session row, placed in the folder list. A chat that comes out the same as in
+ * `previous` keeps its identity, and so does the directory when no chat changed.
  */
-export function joinChats(sources: ChatSources, previous: ChatDirectory): ChatDirectory {
-  const sessions = new Map<SessionId, SessionInfo | null>();
-
-  for (const list of sources.lists)
-    for (const session of list ?? [])
-      if (!sessions.has(session.id)) sessions.set(session.id, sources.project(session));
-
-  const listed = [...sessions.values()].filter((session) => session !== null);
-
-  const heads = new Map(
-    listed.map((session): readonly [SessionId, Head] => {
-      const view = sources.views.get(session.id);
-      const head = mainHead(view ?? session);
-
-      return [
-        session.id,
-        {
-          execution: view === undefined ? head?.execution : view.execution,
-          unreadTip:
-            head?.unread === true && head.tip.kind === "commit"
-              ? { head: head.name, commit: head.tip.id }
-              : null,
-        },
-      ];
-    }),
-  );
-
-  const delegating = activeAncestors(listed, heads);
-  const workspaces = sources.workspaces;
-  let changed = listed.length !== previous.size;
-
+export function describeChats(
+  sessions: Iterable<SessionInfo>,
+  workspaces: readonly WorkspaceInfo[] | undefined,
+  previous: ChatDirectory,
+): ChatDirectory {
   const chats = new Map(
-    listed.map((session) => {
-      const head = heads.get(session.id);
+    [...sessions].map((session) => {
+      const head = mainHead(session);
 
       const next: Chat = {
         id: session.id,
         parent: session.parent,
         title: sessionTitle(session),
         location: workspaces === undefined ? LOADING : locate(session.workspace, workspaces),
-        status: runStatus(head?.execution, delegating.has(session.id)),
-        unreadTip: head?.unreadTip ?? null,
+        status: runStatus(head?.execution),
+        background: head?.background ?? NO_BACKGROUND,
+        unreadTip:
+          head?.unread === true && head.tip.kind === "commit"
+            ? { head: head.name, commit: head.tip.id }
+            : null,
       };
 
-      const known = previous.get(session.id);
-
-      const chat =
-        known !== undefined &&
-        known.parent === next.parent &&
-        known.title === next.title &&
-        JSON.stringify(known.unreadTip) === JSON.stringify(next.unreadTip) &&
-        JSON.stringify(known.status) === JSON.stringify(next.status) &&
-        JSON.stringify(known.location) === JSON.stringify(next.location)
-          ? known
-          : next;
-
-      if (chat !== known) changed = true;
-
-      return [session.id, chat] as const;
+      return [session.id, replaceEqualDeep(previous.get(session.id), next)] as const;
     }),
   );
 
-  return changed ? chats : previous;
-}
-
-/** The run and read state a chat's main head reports, from its open view when it has one. */
-interface Head {
-  readonly execution: Execution | undefined;
-  readonly unreadTip: UnreadTip | null;
+  return chats.size === previous.size && [...chats].every(([id, chat]) => previous.get(id) === chat)
+    ? previous
+    : chats;
 }
 
 const LOADING: ChatLocation = { kind: "loading" };
 
 const UNLISTED: ChatLocation = { kind: "unlisted" };
 
-/** Every chat with a run going somewhere below it, waiting runs included. */
-function activeAncestors(
-  sessions: readonly SessionInfo[],
-  heads: ReadonlyMap<SessionId, Head>,
-): ReadonlySet<SessionId> {
-  const parents = new Map(sessions.map((session) => [session.id, session.parent]));
-  const active = new Set<SessionId>();
-
-  for (const session of sessions) {
-    const execution = heads.get(session.id)?.execution;
-
-    if (execution === undefined || execution.kind === "idle") continue;
-
-    for (let parent = session.parent; parent !== null; parent = parents.get(parent) ?? null) {
-      if (active.has(parent)) break;
-      active.add(parent);
-    }
-  }
-
-  return active;
-}
+const NO_BACKGROUND: BackgroundWork = { working: 0, waiting: 0 };
 
 function locate(workspace: WorkspaceId, workspaces: readonly WorkspaceInfo[]): ChatLocation {
   const info = workspaces.find((candidate) => candidate.id === workspace);

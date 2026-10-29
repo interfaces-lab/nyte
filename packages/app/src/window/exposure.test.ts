@@ -21,7 +21,7 @@ const behind = asId<"session">("behind");
 
 const showsAgent: TrayView = { kind: "detail", sessionId: agent };
 
-function unreadHeads(execution: Execution = COMPLETED): readonly HeadInfo[] {
+function unreadHeads(execution: Execution = COMPLETED, working = 0): readonly HeadInfo[] {
   return [
     {
       name: asId<"head">("main"),
@@ -29,7 +29,7 @@ function unreadHeads(execution: Execution = COMPLETED): readonly HeadInfo[] {
       stack: null,
       execution,
       unread: true,
-      background: { working: 0, waiting: 0 },
+      background: { working, waiting: 0 },
     },
   ];
 }
@@ -96,7 +96,7 @@ test("an unread chat stays unread everywhere except while someone is looking at 
   expect(sorted(expose(view(single, { chats, focused: false })).unread)).toEqual([behind, left]);
 });
 
-test("only a completed run past the read mark leaves a chat unread", () => {
+test("only a completed run past the read mark leaves a chat unread, whatever runs in its background", () => {
   const stopped: Execution = {
     kind: "idle",
     lastRun: { id: asId<"run">("run"), end: { kind: "stopped" }, endedAt: 2 },
@@ -124,7 +124,7 @@ test("only a completed run past the read mark leaves a chat unread", () => {
     stopping: false,
   };
 
-  const delegating = sessionRow("delegating", { heads: unreadHeads() });
+  const delegating = sessionRow("delegating", { heads: unreadHeads(COMPLETED, 1) });
 
   const chats = chatsFor([
     sessionRow("completed", { heads: unreadHeads() }),
@@ -138,6 +138,7 @@ test("only a completed run past the read mark leaves a chat unread", () => {
 
   expect(sorted(expose(view(initialWindow("t1"), { chats })).unread)).toEqual([
     asId<"session">("completed"),
+    delegating.id,
   ]);
 });
 
