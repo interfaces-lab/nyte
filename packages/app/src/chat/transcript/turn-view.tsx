@@ -47,6 +47,7 @@ import { UserMessageText, messageFiles, messageImages } from "./message-content.
 import type { MessageFile } from "./message-content.tsx";
 import { contentDraftText } from "../../references/message-references.ts";
 import { useBlobUrl } from "../../lib/use-blob-url.ts";
+import { connection } from "../../data/connection.ts";
 import { ModelPicker } from "../composer/model-picker.tsx";
 import type { ModelPickerChange } from "../composer/model-picker.tsx";
 import {
@@ -130,7 +131,7 @@ function UserMessagePreview({
 }
 
 function BlobImage({ file }: { file: MessageFile }): ReactElement | null {
-  const src = useBlobUrl(file.blob);
+  const src = useBlobUrl(["blob", file.blob], () => connection().blob(file.blob)).data;
 
   return src === undefined ? null : <ImagePreview src={src} name={file.name} />;
 }
