@@ -6,6 +6,7 @@ import {
   completionTrigger,
   executionMark,
   failureNotice,
+  rowLabel,
   rowMark,
   runMark,
   runStatus,
@@ -200,7 +201,8 @@ it("keeps a run's outcome and an approval wait apart, and draws background work 
   const rows: readonly [Execution, typeof none, string][] = [
     [completed, none, "idle"],
     [completed, working, "background"],
-    [failed, working, "background"],
+    [failed, working, "failed"],
+    [failed, asking, "waiting"],
     [stopped, asking, "waiting"],
     [responding, asking, "working"],
     [approval, working, "waiting"],
@@ -209,6 +211,18 @@ it("keeps a run's outcome and an approval wait apart, and draws background work 
 
   expect(rows.map(([execution, background]) => rowMark(runStatus(execution), background))).toEqual(
     rows.map(([, , mark]) => mark),
+  );
+  expect(rows.map(([execution, background]) => rowLabel(runStatus(execution), background))).toEqual(
+    [
+      "Completed",
+      "2 working in the background",
+      "Failed",
+      "Needs attention in the background",
+      "Needs attention in the background",
+      "Working",
+      "Needs attention",
+      "Retrying",
+    ],
   );
   expect([none, working, asking].map(backgroundLabel)).toEqual([
     undefined,

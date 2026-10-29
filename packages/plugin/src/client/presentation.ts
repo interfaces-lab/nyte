@@ -345,9 +345,8 @@ export function runMark(status: RunStatus): SessionMark {
 }
 
 /**
- * The mark a list row draws: a run of the chat's own wins; once it ended, background work waiting
- * on the user draws as waiting, background work still running as `background`, and otherwise the
- * row draws how its own run ended.
+ * The mark a list row draws, first that applies: a run of the chat's own, background work waiting
+ * on the user, the chat's own failure, background work still running, how its own run ended.
  *
  * @category presentation
  */
@@ -355,6 +354,8 @@ export function rowMark(status: RunStatus, background: BackgroundWork): SessionM
   if ("run" in status) return runMark(status);
 
   if (background.waiting > 0) return "waiting";
+
+  if (status.kind === "failed") return "failed";
 
   return background.working > 0 ? "background" : runMark(status);
 }
@@ -402,13 +403,16 @@ export function backgroundLabel(background: BackgroundWork): string | undefined 
 }
 
 /**
- * The words for a list row, matching {@link rowMark}: its own run while one goes, else the
- * background work it started, else how its own run ended.
+ * The words for a list row, in {@link rowMark}'s order: its own run while one goes, background
+ * work waiting on the user, its own failure, background work still running, how its run ended.
  *
  * @category presentation
  */
 export function rowLabel(status: RunStatus, background: BackgroundWork): string {
-  return ("run" in status ? undefined : backgroundLabel(background)) ?? runStatusLabel(status);
+  if ("run" in status || (status.kind === "failed" && background.waiting === 0))
+    return runStatusLabel(status);
+
+  return backgroundLabel(background) ?? runStatusLabel(status);
 }
 
 /**
