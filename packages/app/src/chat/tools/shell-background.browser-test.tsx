@@ -248,6 +248,9 @@ export async function run(): Promise<string> {
 
   if (stage.querySelector("button[aria-description^='Open terminals']") !== null)
     failures.push("a foreground step shows the terminals pill");
+
+  if (button(stage, "Open in terminal") === undefined)
+    failures.push("a foreground step doesn't open its job in a terminal");
   await capture("shell-running-compact");
   inline.click();
   await until(() => (acts.length > 0 ? acts : null), "the background action");
@@ -266,6 +269,9 @@ export async function run(): Promise<string> {
     () => (button(stage, "Move to background") === undefined ? true : null),
     "the inline control to leave",
   );
+
+  if (button(stage, "Open in terminal") === undefined)
+    failures.push("a step moved to the background loses the link to its job");
 
   if (pill instanceof HTMLElement) pill.click();
   await until(() => button(stage, "Stop Terminal"), "the tray's Stop Terminal");
