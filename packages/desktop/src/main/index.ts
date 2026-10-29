@@ -44,33 +44,33 @@ import {
   performMenuRole,
 } from "./app-menu.ts";
 import type { ViewCommand } from "./app-menu.ts";
-import { safeExternalUrl } from "./external-url.ts";
-import { BrowserSurfaces } from "./browser.ts";
-import { BrowserHistoryStore } from "./browser-history.ts";
-import { showContextMenu } from "./context-menu.ts";
-import { callIpc, callTable } from "./ipc-call.ts";
-import type { CallRoute } from "./ipc-call.ts";
-import { localFonts } from "./fonts.ts";
-import { registerAccount } from "./account.ts";
-import type { AccountSession } from "./account-session.ts";
-import { AccountStore } from "./account-store.ts";
-import { accountScheme } from "../account/scheme.ts";
+import { safeExternalUrl } from "./native/external-url.ts";
+import { BrowserSurfaces } from "./browser/browser.ts";
+import { BrowserHistoryStore } from "./browser/browser-history.ts";
+import { showContextMenu } from "./native/context-menu.ts";
+import { callIpc, callTable } from "../shared/ipc-call.ts";
+import type { CallRoute } from "../shared/ipc-call.ts";
+import { localFonts } from "./native/fonts.ts";
+import { registerAccount } from "./account/account.ts";
+import type { AccountSession } from "../shared/account-session.ts";
+import { AccountStore } from "./account/account-store.ts";
+import { accountScheme } from "../shared/account/scheme.ts";
 import { offscreenCanvasPreviewer } from "./canvas-preview.ts";
-import { canvasShellUrl, registerRenderer } from "./renderer.ts";
-import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
-import { readConnectConfig } from "./connect-config.ts";
-import type { ConnectConfig } from "./connect-config.ts";
-import { adoptStagedCli, installCli, stageCli } from "./cli.ts";
-import { ExpectedHostError, retainDiagnostic } from "./errors.ts";
-import { answerAccount } from "./host-account.ts";
-import { answerAgent } from "./host-browser-agent.ts";
-import { HostProcess } from "./host-process.ts";
-import type { HostWindow } from "./host-window.ts";
-import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
-import { LaunchStateStore } from "./launch-state.ts";
-import { registerUpdates } from "./updates.ts";
+import { canvasShellUrl, registerRenderer } from "./renderer-protocol.ts";
+import { ACCOUNT_CHANNELS } from "../shared/account/protocol.ts";
+import { readConnectConfig } from "../shared/connect-config.ts";
+import type { ConnectConfig } from "../shared/connect-config.ts";
+import { adoptStagedCli, installCli, stageCli } from "./native/cli.ts";
+import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
+import { answerAccount } from "../shared/host-account.ts";
+import { answerAgent } from "../shared/host-browser-agent.ts";
+import { HostProcess } from "./host-supervisor.ts";
+import type { HostWindow } from "../shared/host-window.ts";
+import { DEFAULT_DESKTOP_SETTINGS } from "../shared/desktop-settings.ts";
+import { LaunchStateStore } from "../shared/launch-state.ts";
+import { registerUpdates } from "./updates/updates.ts";
 
-import { decodeBrowserBounds, decodeBrowserFocus, themePreference } from "./ipc-inputs.ts";
+import { decodeBrowserBounds, decodeBrowserFocus, themePreference } from "../shared/ipc-inputs.ts";
 
 interface NyteWindow {
   readonly window: BrowserWindow;

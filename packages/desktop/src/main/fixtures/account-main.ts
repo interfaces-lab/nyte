@@ -8,12 +8,12 @@ import type { WebContents } from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
-import { ACCOUNT_CHANNELS } from "../../account/protocol.ts";
-import { ACCOUNT_HOST, ACCOUNT_SCHEMES } from "../../account/scheme.ts";
-import { registerAccount } from "../account.ts";
-import { AccountCancelled } from "../account-session.ts";
-import { AccountStore } from "../account-store.ts";
-import { registerRenderer } from "../renderer.ts";
+import { ACCOUNT_CHANNELS } from "../../shared/account/protocol.ts";
+import { ACCOUNT_HOST, ACCOUNT_SCHEMES } from "../../shared/account/scheme.ts";
+import { registerAccount } from "../account/account.ts";
+import { AccountCancelled } from "../../shared/account-session.ts";
+import { AccountStore } from "../account/account-store.ts";
+import { registerRenderer } from "../renderer-protocol.ts";
 import { exitWithParent } from "./exit-with-parent.ts";
 
 exitWithParent();

@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { StrictMode, useState } from "react";
-import { AccountProvider } from "../../account/provider.tsx";
+import { AccountProvider } from "../../renderer/src/account/provider.tsx";
 
 function App() {
   const [count, setCount] = useState(0);

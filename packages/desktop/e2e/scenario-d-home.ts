@@ -8,7 +8,7 @@ import { sdk } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-import { E2E_MODEL, e2eModels } from "../src/main/fixtures/e2e-models.ts";
+import { E2E_MODEL, e2eModels } from "../src/host/fixtures/e2e-models.ts";
 
 export interface CiDesktopHome extends AsyncDisposable {
   readonly home: ScenarioHome;

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import type { Locator, Page } from "@playwright/test";
-import { SWARM_AGENTS } from "../src/main/fixtures/e2e-models.ts";
+import { SWARM_AGENTS } from "../src/host/fixtures/e2e-models.ts";
 import { expect, test } from "./fixtures.ts";
 import { readInputTrace } from "./input-trace.ts";
 import { chatPane, composer, messages, openNewChat, send } from "./ui.ts";

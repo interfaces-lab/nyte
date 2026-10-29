@@ -8,8 +8,8 @@ import { app, BrowserWindow } from "electron";
 import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { ACCOUNT_SCHEMES } from "../../account/scheme.ts";
-import { canvasShellUrl, registerRenderer } from "../renderer.ts";
+import { ACCOUNT_SCHEMES } from "../../shared/account/scheme.ts";
+import { canvasShellUrl, registerRenderer } from "../renderer-protocol.ts";
 import { exitWithParent } from "./exit-with-parent.ts";
 
 exitWithParent();
