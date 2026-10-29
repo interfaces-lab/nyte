@@ -47,6 +47,12 @@ const styles = create({
     backgroundColor: "transparent",
     color: role.contentSecondary,
   },
+  statusBackground: {
+    width: glyph.sm,
+    height: glyph.sm,
+    backgroundColor: "transparent",
+    color: role.contentSecondary,
+  },
   statusFailed: {
     width: glyph.sm,
     height: glyph.sm,
@@ -60,6 +66,7 @@ const styles = create({
 const STATUS_MARK_LABEL = {
   idle: "Idle",
   working: "Running",
+  background: "Working in the background",
   waiting: "Needs attention",
   retry: "Retrying",
   failed: "Failed",
@@ -73,6 +80,8 @@ function statusMarkStyle(mark: SessionMark) {
       return [intent.warning, styles.statusSpinner];
     case "waiting":
       return [intent.warning, styles.statusWaiting];
+    case "background":
+      return styles.statusBackground;
     case "failed":
       return [intent.danger, styles.statusFailed];
     case "idle":
@@ -103,6 +112,7 @@ export function StatusDot({
       {mark === "idle" && <UnreadMark />}
       {(mark === "working" || mark === "retry") && <Spinner />}
       {mark === "waiting" && <Icon name="bubble-question" size={14} variant="filled" />}
+      {mark === "background" && <Icon name="layers" size={14} />}
       {mark === "failed" && <Icon name="warning" size={14} variant="filled" />}
     </span>
   );

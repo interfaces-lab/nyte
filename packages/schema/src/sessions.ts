@@ -17,8 +17,10 @@ export const HeadInfoType = Type.Object({
   ),
   execution: ExecutionType,
   unread: Type.Boolean(),
+  background: Type.Object({ working: Type.Number(), waiting: Type.Number() }),
 });
 
+/** A head as a session list shows it; `background` counts the head's background items that are working, and those waiting on the user. */
 export type HeadInfo = Decoded<typeof HeadInfoType>;
 
 export const SessionInfoType = Type.Object({

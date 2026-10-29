@@ -106,6 +106,10 @@ function view(
   const turn = asId<"turn">(`${key}-turn`);
   const promptId = asId<"message">(`${key}-prompt`);
 
+  const execution: SessionView["execution"] = running
+    ? { kind: "live", run: agentRun(key), phase: "responding", stopping: false }
+    : COMPLETED;
+
   return {
     revision: asId<"revision">(`${key}-r1`),
     seq: asSeq(1),
@@ -139,9 +143,7 @@ function view(
       }).info,
     ],
     usage: USAGE,
-    execution: running
-      ? { kind: "live", run: agentRun(key), phase: "responding", stopping: false }
-      : COMPLETED,
+    execution,
     reportsHeld: false,
     seenThrough: null,
     background: [],
@@ -150,7 +152,16 @@ function view(
       effective: configuration,
     },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
+    heads: [
+      {
+        name: asId<"head">("main"),
+        tip: { kind: "start" },
+        stack: null,
+        execution,
+        unread: false,
+        background: { working: 0, waiting: 0 },
+      },
+    ],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };

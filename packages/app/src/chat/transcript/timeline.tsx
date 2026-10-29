@@ -136,7 +136,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
         </StatusMarker>
       );
     case "live":
-      return <LiveTurn working={row.working || navigating} settledWork={row.settledWork} />;
+      return <LiveTurn working={row.working || navigating} />;
     default: {
       const _exhaustive: never = row;
 

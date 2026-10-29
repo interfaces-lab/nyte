@@ -26,6 +26,7 @@ import {
   trustRef,
   trustTarget,
 } from "./refs.ts";
+import { headBackground } from "./head-background.ts";
 import { waitIndex, wokenIndex } from "./wait-index.ts";
 
 type StoreDialect = "sqlite" | "postgres";
@@ -38,7 +39,7 @@ interface SchemaStep {
 }
 
 /** Rewrites stored records (`rewrite`, one record or null to keep it), logged events (`rewriteLog`, one session's events in seq order, each rewritten or null to keep it), or derives new refs from a record (`adds`, the names of refs to create at the record the ref `name` holds, after every step's rewrite; one that exists is kept). */
-interface RewriteStep {
+export interface RewriteStep {
   readonly kind: "rewrite";
   readonly name: string;
   rewrite?(record: Json): Json | null;
@@ -808,6 +809,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   foldCheckpointsCleared,
   modelsPerRequest,
   refTargetIndex,
+  headBackground,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

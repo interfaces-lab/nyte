@@ -69,6 +69,7 @@ function unreadChat(unread: boolean): SessionInfo {
         stack: null,
         execution: COMPLETED,
         unread,
+        background: { working: 0, waiting: 0 },
       },
     ],
   });

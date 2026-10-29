@@ -6,7 +6,7 @@ import { useWatchSelect } from "../../data/watch-store.ts";
 import { activityStyles } from "./activity.stylex.ts";
 import { usePlanningTime } from "./planning-time.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
-import { liveStatusLabel, PLANNING_LABEL } from "./step-group-presentation.ts";
+import { PLANNING_LABEL, planningLabel } from "@nyte-ai/plugin/client/presentation";
 import { useTranscriptScope } from "./transcript.tsx";
 
 export const liveTurnStyles = create({
@@ -20,14 +20,8 @@ export const liveTurnStyles = create({
   waiting: { visibility: "hidden" },
 });
 
-export function LiveTurn({
-  working,
-  settledWork,
-}: {
-  working: boolean;
-  settledWork: boolean;
-}): ReactElement | null {
-  if (!working || settledWork) return null;
+export function LiveTurn({ working }: { working: boolean }): ReactElement | null {
+  if (!working) return null;
 
   return <PlanningLine />;
 }
@@ -35,10 +29,13 @@ export function LiveTurn({
 function PlanningLine(): ReactElement {
   const sessionId = useTranscriptScope()?.sessionId;
   const store = sessionId === undefined ? undefined : sessionWatch(sessionId);
-  const planning = useWatchSelect(store, (state) => state.value?.activity.kind === "idle");
+  const planning = useWatchSelect(
+    store,
+    (state) => state.value?.execution.kind === "live" && state.value.activity.kind === "idle",
+  );
   const newest = useWatchSelect(store, (state) => state.value?.messages.at(-1)?.id);
   const planningMs = usePlanningTime(planning, newest);
-  const label = planning ? liveStatusLabel("planning", planningMs) : undefined;
+  const label = planning ? planningLabel(planningMs) : undefined;
 
   return (
     <div {...props(liveTurnStyles.root)}>

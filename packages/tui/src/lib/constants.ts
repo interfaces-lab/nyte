@@ -161,8 +161,6 @@ export const BUSY_COMPOSER_PLACEHOLDER = "Steer the run";
 
 export const ANSWER_COMPOSER_PLACEHOLDER = `Type an answer, or press ${keycap("picker.accept").replace(/^./u, (letter) => letter.toUpperCase())} to pick one`;
 
-export const ACTIVITY_WORKING_LABEL = " Working";
-
 export const ACTIVITY_THINKING_LABEL = " Thinking…";
 
 export const ACTIVITY_THOUGHT_LABEL = " Thought";
@@ -219,6 +217,7 @@ export const GLYPHS = {
   report: LEGACY_CONSOLE ? "<" : "↳",
   said: LEGACY_CONSOLE ? ">" : "›",
   bullet: "●",
+  background: LEGACY_CONSOLE ? "o" : "○",
   check: "✓",
   cross: "✗",
   diamond: "◆",

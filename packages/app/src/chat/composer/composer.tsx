@@ -5,7 +5,7 @@ import { createPortal, flushSync } from "react-dom";
 import type { ReactElement, ReactNode } from "react";
 import type { Delivery, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { runMark, runStatusLabel } from "@nyte-ai/plugin/client/presentation";
+import { PLANNING_LABEL, runMark, runStatusLabel } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -45,7 +45,6 @@ import { workbenchController } from "../../workbench/controller.ts";
 import { workbenchViewKey } from "../../workbench/model.ts";
 import { composerStyles } from "./composer.stylex.ts";
 import { markerStyles } from "../transcript/activity.stylex.ts";
-import { PLANNING_LABEL } from "../transcript/step-group-presentation.ts";
 import {
   TranscriptButton,
   useTranscriptControls,

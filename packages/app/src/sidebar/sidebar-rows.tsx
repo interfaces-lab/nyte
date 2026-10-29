@@ -1,9 +1,11 @@
 import {
+  backgroundLabel,
   failureNotice,
-  runMark,
+  rowMark,
   runStatusLabel,
   sessionTitle,
 } from "@nyte-ai/plugin/client/presentation";
+import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
 import { Button } from "@nyte-ai/ui/button";
@@ -22,7 +24,7 @@ import { formatTimeAgo } from "../lib/format.ts";
 import { draftPreviewText } from "../references/message-references.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
 import { useSessionDraggable } from "../panes/session-dnd.tsx";
-import type { ChatDirectory } from "../chats/index.ts";
+import type { Chat, ChatDirectory } from "../chats/index.ts";
 import { useChat } from "../chats/index.ts";
 import type { OpenIntent } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -148,7 +150,7 @@ export function SessionRow({
 }): ReactElement {
   const selected = session.id === rail.activeSessionId;
   const chat = useChat(session.id);
-  const status = chat.kind === "ready" ? chat.chat.status : undefined;
+  const shown = chat.kind === "ready" ? chat.chat : undefined;
   const unread = useChatWindow((snapshot) => snapshot.unread.has(session.id));
   const showUpdated = rail.showUpdated;
   const draggable = place.workspace === rail.openWorkspace;
@@ -159,15 +161,10 @@ export function SessionRow({
   const onPin = (): void => rail.pin(session);
   const onArchive = (): void => rail.archive(session);
   const onDelete = (): void => rail.remove(session.id);
-  const mark = status === undefined ? "idle" : runMark(status);
+  const mark = shown === undefined ? "idle" : rowMark(shown.status, shown.background);
   const title = sessionTitle(session);
 
-  const ask =
-    status?.kind === "waiting-for-approval"
-      ? runStatusLabel(status)
-      : status?.kind === "failed"
-        ? failureNotice(status.failure).text
-        : undefined;
+  const ask = shown === undefined ? undefined : askLine(shown, mark);
 
   const [draftName, setDraftName] = useState<string | undefined>();
   const warming = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -387,4 +384,15 @@ export function NeighbourWarm({
   });
 
   return null;
+}
+
+/** The second line a row adds when the chat needs the user: an approval, a question below it, or its own failure. */
+function askLine(chat: Chat, mark: SessionMark): string | undefined {
+  if (chat.status.kind === "waiting-for-approval") return runStatusLabel(chat.status);
+
+  if (mark === "waiting") return backgroundLabel(chat.background);
+
+  return mark === "failed" && chat.status.kind === "failed"
+    ? failureNotice(chat.status.failure).text
+    : undefined;
 }

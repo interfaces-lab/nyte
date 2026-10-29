@@ -1,4 +1,4 @@
-import { runMark } from "@nyte-ai/plugin/client/presentation";
+import { rowMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type { ChatDirectory } from "../chats/index.ts";
@@ -41,7 +41,7 @@ const SESSION_PAGE_SIZE = 8;
 export function chatMark(session: SessionInfo, chats: ChatDirectory): SessionMark {
   const chat = chats.get(session.id);
 
-  return chat === undefined ? "idle" : runMark(chat.status);
+  return chat === undefined ? "idle" : rowMark(chat.status, chat.background);
 }
 
 /** A chat's status in the sidebar; `unread` is the window's answer, which leaves out chats the user is looking at. */
@@ -59,6 +59,7 @@ function deriveSessionStatus(
     case "retry":
     case "working":
       return "working";
+    case "background":
     case "idle":
       return unread.has(session.id) ? "unread" : "done";
     default: {
@@ -69,7 +70,7 @@ function deriveSessionStatus(
   }
 }
 
-/** Whether a run is going in the chat or one of its subagents, including one waiting on the user. */
+/** Whether the chat's own run is going, or it or work it started waits on the user. */
 export function sessionIsRunning(session: SessionInfo, chats: ChatDirectory): boolean {
   const mark = chatMark(session, chats);
 
@@ -137,6 +138,7 @@ function stageRank(session: SessionInfo, chats: ChatDirectory): number {
     case "retry":
     case "working":
       return 1;
+    case "background":
     case "idle":
       return 2;
     default: {

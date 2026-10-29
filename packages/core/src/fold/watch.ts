@@ -32,6 +32,7 @@ import { headRef, parseHeadRef, runRef } from "../store/refs.ts";
 import { EMPTY_REVISION, load } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { followedTrace, startSpan, tracing } from "../util/trace.ts";
+import { backgroundItems } from "./background.ts";
 import { foldCheckpointing } from "./checkpoint.ts";
 import { emptyFold, fold } from "./fold.ts";
 import { withPair } from "./project.ts";
@@ -56,7 +57,7 @@ interface FoldFeed {
 
 type Feeds = Pick<
   Kernel,
-  "store" | "bus" | "publisher" | "sessions" | "jobs" | "pages" | "description"
+  "store" | "bus" | "publisher" | "sessions" | "jobs" | "pages" | "children" | "description"
 >;
 
 type LiveStreams = ReadonlyMap<SessionId, ReadonlyMap<PartId, LiveStream>>;
@@ -520,9 +521,12 @@ function openFoldFeed(
           activation: kernel.sessions.activation(session),
         },
         { ...seed, head: null, kind: "catalog", catalog: kernel.sessions.catalog(session) },
-        ...[...kernel.jobs.background(session), ...kernel.pages.background(session)].map(
-          ({ head, item }): SessionEvent => ({ ...seed, head, kind: "background", item }),
-        ),
+        ...backgroundItems(kernel, session).map(({ head, item }): SessionEvent => ({
+          ...seed,
+          head,
+          kind: "background",
+          item,
+        })),
       ];
 
       for (const event of events) deliver({ event, head: null });

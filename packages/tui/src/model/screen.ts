@@ -3,6 +3,7 @@ import {
   BUSY_COMPOSER_PLACEHOLDER,
   COMPOSER_PLACEHOLDER,
 } from "../lib/constants.ts";
+import { backgroundLabel } from "@nyte-ai/plugin/client/presentation";
 import { readProgramStatus } from "../lib/program-status.ts";
 import type { ProgramStatus } from "../lib/program-status.ts";
 import { unfinishedTask } from "../lib/tasks.ts";
@@ -108,10 +109,12 @@ function tasksLine(state: State, question: QuestionModel | null): TasksLine | nu
 
   if (active === 0) return null;
 
-  if (question?.owner.kind === "child")
-    return { text: "a background task needs your answer", attention: true };
+  const attention = question?.owner.kind === "child";
 
-  return { text: `${String(active)} running in background`, attention: false };
+  return {
+    text: backgroundLabel({ working: active, waiting: attention ? 1 : 0 }) ?? "",
+    attention,
+  };
 }
 
 export function keyboardDialog(state: State): Dialog | null {

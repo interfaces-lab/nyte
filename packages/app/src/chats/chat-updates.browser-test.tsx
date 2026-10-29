@@ -12,7 +12,15 @@ import { installConnection } from "../data/connection.ts";
 import { sessionsWatch } from "../data/watches.ts";
 import { chatTitle, useChat, useChats } from "./index.ts";
 
-const rootA = sessionRow("root-a");
+/** A row whose main head counts `working` background items. */
+function working(row: SessionInfo, count: number): SessionInfo {
+  return {
+    ...row,
+    heads: row.heads.map((head) => ({ ...head, background: { working: count, waiting: 0 } })),
+  };
+}
+
+const rootA = working(sessionRow("root-a"), 1);
 
 const rootB = sessionRow("root-b");
 
@@ -45,7 +53,9 @@ function RootStatus({ id }: { readonly id: SessionInfo["id"] }): string {
     commits += 1;
   });
 
-  return chat.kind === "ready" ? `${chat.chat.title}:${chat.chat.status.kind}` : chat.kind;
+  return chat.kind === "ready"
+    ? `${chat.chat.title}:${chat.chat.status.kind}:${String(chat.chat.background.working)}`
+    : chat.kind;
 }
 
 function Roots(): ReactElement {
@@ -98,18 +108,14 @@ export async function run(): Promise<string> {
     ]);
     await publish("directory reorder", [rootB, idle, active, middle, rootA]);
     const second = { ...idle, heads: active.heads };
-    await publish("another ancestor starts", [rootB, second, active, middle, rootA]);
-    await publish("active directory reorder", [rootA, middle, active, rootB, second]);
+    const busyB = working(rootB, 1);
+    await publish("another root starts background work", [busyB, second, active, middle, rootA]);
+    await publish("busy directory reorder", [rootA, middle, active, busyB, second]);
     const settled = sessionRow("active", { parent: middle.id });
-    await publish("first ancestor stops", [rootB, second, settled, middle, rootA]);
-    await publish("child changes parent", [
-      rootB,
-      { ...second, parent: middle.id },
-      settled,
-      middle,
-      rootA,
-    ]);
-    await publish("last child stops", [rootB, idle, settled, middle, rootA]);
+    const quietA = working(rootA, 0);
+    await publish("first root's background work ends", [busyB, second, settled, middle, quietA]);
+    await publish("background work moves", [rootB, second, settled, middle, rootA]);
+    await publish("last background work ends", [rootB, idle, settled, middle, quietA]);
 
     const unlisted = document.createElement("div");
     document.body.append(unlisted);
@@ -125,7 +131,7 @@ export async function run(): Promise<string> {
     await until("Just started / Just started");
     queryClient.setQueryData(keys.session(started.id), { ...started, name: "Renamed" });
     await until("Renamed / Renamed");
-    source.push([rootB, idle, settled, middle, rootA, { ...started, name: "Listed" }]);
+    source.push([rootB, idle, settled, middle, quietA, { ...started, name: "Listed" }]);
     await until("Listed / Listed");
     flushSync(() => other.unmount());
     unlisted.remove();

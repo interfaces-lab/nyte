@@ -5,8 +5,8 @@ import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { runMark, runStatusLabel } from "@nyte-ai/plugin/client/presentation";
-import type { RunStatus, SessionMark } from "@nyte-ai/plugin/client/presentation";
+import { rowLabel, rowMark } from "@nyte-ai/plugin/client/presentation";
+import type { BackgroundWork, RunStatus, SessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { useChats } from "../../chats/index.ts";
 import type { ChatDirectory } from "../../chats/index.ts";
@@ -26,6 +26,7 @@ interface ListedAgent {
   readonly session: SessionInfo;
   readonly title: string;
   readonly status: RunStatus;
+  readonly background: BackgroundWork;
   readonly mark: SessionMark;
 }
 
@@ -64,7 +65,15 @@ export function listSubagents(
 
     return chat === undefined
       ? []
-      : [{ session, title: chat.title, status: chat.status, mark: runMark(chat.status) }];
+      : [
+          {
+            session,
+            title: chat.title,
+            status: chat.status,
+            background: chat.background,
+            mark: rowMark(chat.status, chat.background),
+          },
+        ];
   });
 
   const shown = known
@@ -118,13 +127,14 @@ export function SubagentTray({
 
   const roster = listSubagents(agents, view, chats);
   const active = roster.active;
+  const running = active.filter((agent) => "run" in agent.status);
   const listed = roster.listed;
   const failed = listed.length - active.length;
   const selectedId = view.kind === "detail" ? view.sessionId : undefined;
   const selected = selectedId === undefined ? undefined : chats.get(selectedId);
   const selectedTitle = selected?.title ?? "Subagent";
 
-  const selectedMark = selected === undefined ? "idle" : runMark(selected.status);
+  const selectedRuns = selected !== undefined && "run" in selected.status;
 
   const pendingAction = stop.isPending || stopAll.isPending;
 
@@ -167,12 +177,12 @@ export function SubagentTray({
           }
         >
           <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
-            {active.some((agent) => agent.mark !== "waiting") ? (
+            {running.some((agent) => agent.mark !== "waiting") ? (
               <StatusDot mark="working" />
-            ) : active.length > 0 ? (
+            ) : active.some((agent) => agent.mark === "waiting") ? (
               <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
             ) : (
-              <StatusDot mark="failed" />
+              <StatusDot mark={active.length > 0 ? "background" : "failed"} />
             )}
           </span>
           <span>Agents</span>
@@ -198,7 +208,7 @@ export function SubagentTray({
           <>
             <div {...props(trayStyles.header)}>
               <span {...props(trayStyles.title)}>Agents</span>
-              {active.length > 0 && (
+              {running.length > 0 && (
                 <Button
                   aria-description={
                     stopCandidates === undefined
@@ -210,14 +220,14 @@ export function SubagentTray({
                   disabled={stop.isPending}
                   onClick={() => {
                     if (stopCandidates === undefined) {
-                      setStopCandidates(active.map((agent) => agent.session.id));
+                      setStopCandidates(running.map((agent) => agent.session.id));
 
                       return;
                     }
 
                     const candidates = new Set(stopCandidates);
                     stopAll.mutate(
-                      active.flatMap((agent) =>
+                      running.flatMap((agent) =>
                         candidates.has(agent.session.id) ? [agent.session.id] : [],
                       ),
                     );
@@ -255,12 +265,12 @@ export function SubagentTray({
                         {agent.mark === "waiting" ? (
                           <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
                         ) : (
-                          <StatusDot mark={runMark(agent.status)} />
+                          <StatusDot mark={agent.mark} />
                         )}
                       </Row.Leading>
                       <Row.Label>{title}</Row.Label>
                     </Row.Primary>
-                    <Row.Meta>{runStatusLabel(agent.status)}</Row.Meta>
+                    <Row.Meta>{rowLabel(agent.status, agent.background)}</Row.Meta>
                   </Row>
                 );
               })}
@@ -289,7 +299,7 @@ export function SubagentTray({
               <span title={selectedTitle} {...props(trayStyles.title)}>
                 {selectedTitle}
               </span>
-              {selectedMark !== "idle" && selectedMark !== "failed" && (
+              {selectedRuns && (
                 <Button
                   tone="danger"
                   loading={pendingAction}

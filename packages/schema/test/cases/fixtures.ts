@@ -156,6 +156,7 @@ export const headInfo: HeadInfo = {
   stack: { parent: head, base: { kind: "start" }, stale: false },
   execution,
   unread: true,
+  background: { working: 1, waiting: 0 },
 };
 
 export const sessionInfo: SessionInfo = {

@@ -1,4 +1,5 @@
 import { asId } from "@nyte-ai/schema";
+import { replaceEqualDeep } from "@tanstack/react-query";
 import { pagedViews, tracePaints } from "@nyte-ai/sdk";
 import type {
   GitStatus,
@@ -29,13 +30,6 @@ export const sessionsWatch = watchFamily(
     current.sessions.watch({ parents: { kind: parents } }),
 );
 
-export function findListedSession(session: SessionId): SessionInfo | undefined {
-  return (
-    sessionsWatch("roots").value?.find((item) => item.id === session) ??
-    sessionsWatch("all").value?.find((item) => item.id === session)
-  );
-}
-
 export const childrenWatch = watchFamily(
   (current, session: SessionId): AsyncIterable<readonly SessionInfo[]> =>
     current.sessions.watch({ parents: { kind: "children", session } }),
@@ -52,8 +46,8 @@ export function paceTranscripts(shown: () => ReadonlySet<SessionId>): void {
   shownTranscripts = shown;
 }
 
-/** What an open view says about its own run: the viewed head's execution and every head's read state. */
-export type OpenView = Pick<SessionView, "execution" | "heads">;
+/** What an open view says about its session's row: every head, as the view last showed it. */
+export type OpenView = Pick<SessionView, "heads">;
 
 let views: ReadonlyMap<SessionId, OpenView> = new Map();
 
@@ -73,7 +67,7 @@ export function subscribeOpenViews(listener: () => void): () => void {
 function reportView(session: SessionId, view: OpenView | undefined): void {
   const known = views.get(session);
 
-  if (view === undefined ? known === undefined : keepItem(known, view) === known) return;
+  if (view === undefined ? known === undefined : replaceEqualDeep(known, view) === known) return;
   const next = new Map(views);
 
   if (view === undefined) next.delete(session);
@@ -89,17 +83,13 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
-function keepItem<T>(shown: T | undefined, next: T): T {
-  return shown !== undefined && JSON.stringify(shown) === JSON.stringify(next) ? shown : next;
-}
-
 function keepItems<T>(
   shown: readonly T[],
   next: readonly T[],
   key: (item: T) => string,
 ): readonly T[] {
   const known = new Map(shown.map((item) => [key(item), item]));
-  const items = next.map((item) => keepItem(known.get(key(item)), item));
+  const items = next.map((item) => replaceEqualDeep(known.get(key(item)), item));
 
   return items.length === shown.length && items.every((item, index) => item === shown[index])
     ? shown
@@ -111,7 +101,7 @@ function keepShown(shown: SessionView, next: SessionView): SessionView {
     ...next,
     messages: keepItems(shown.messages, next.messages, (message) => message.id),
     queue: keepItems(shown.queue, next.queue, (message) => message.id),
-    leadingPrompt: keepItem(shown.leadingPrompt, next.leadingPrompt),
+    leadingPrompt: replaceEqualDeep(shown.leadingPrompt, next.leadingPrompt),
     turns: keepItems(shown.turns, next.turns, (turn) => turn.id),
     changes: keepItems(shown.changes, next.changes, (change) => change.path),
   };
@@ -149,7 +139,7 @@ export const sessionWatch = watchFamily(
               if (shown !== undefined) view = keepShown(shown, view);
             }
 
-            reportView(session, { execution: view.execution, heads: view.heads });
+            reportView(session, { heads: view.heads });
 
             return { done: false, value: pacer.receive({ ...view, activity: activity(view) }) };
           },

@@ -10,7 +10,7 @@ import { ADD_TO_CHAT_LABEL } from "../../references/add-to-chat.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { useSession } from "../../data/sessions.ts";
+import { useSessionRow } from "../../data/session-rows.ts";
 import { connection } from "../../data/connection.ts";
 import { jobsWatch } from "../../data/watches.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -195,7 +195,7 @@ export function TerminalPanel({
   });
 
   const jobSessionId = tab !== undefined && tab.kind === "job" ? tab.sessionId : undefined;
-  const workspace = useSession(jobSessionId).data?.workspace;
+  const workspace = useSessionRow(jobSessionId, (session) => session.workspace) ?? undefined;
 
   const cancellation = useMutation({
     mutationFn: (current: TerminalTab) => {

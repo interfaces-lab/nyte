@@ -171,7 +171,7 @@ function mount(session: SessionId) {
         <PaneControllerProvider controller={panes}>
           <TranscriptProvider paneId="primary" sessionId={session}>
             <Activity mode={mode}>
-              <LiveTurn working settledWork={false} />
+              <LiveTurn working />
             </Activity>
           </TranscriptProvider>
         </PaneControllerProvider>,

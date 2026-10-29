@@ -8,17 +8,9 @@ import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { reasoningHeading } from "./reasoning-heading.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 
-export const PLANNING_DELAY_MS = 200;
-
-export const SLOW_PLANNING_MS = 15_000;
-
-export const PLANNING_LABEL = "Planning next moves";
-
-export type LiveStatus = "thinking" | "planning";
-
 type StepGroupLine =
   | { readonly kind: "summary"; readonly verb: string; readonly detail: string | undefined }
-  | { readonly kind: "status"; readonly status: LiveStatus };
+  | { readonly kind: "thinking" };
 
 type Lead = "edit" | "explore" | "run";
 
@@ -36,11 +28,6 @@ interface Work {
   readonly tools: number;
 }
 
-/** A live group without a tool call has no work to count, so its line names what the agent is doing instead. */
-export function showsLiveStatus(messages: readonly StepMessage[]): boolean {
-  return !messages.some(showsTool);
-}
-
 export function stepGroupLine({
   messages,
   durationMs,
@@ -51,20 +38,9 @@ export function stepGroupLine({
   readonly running: boolean;
 }): StepGroupLine {
   if (!running) return { kind: "summary", ...settledSummary(messages, durationMs) };
-
-  if (showsLiveStatus(messages)) {
-    const newest = messages.at(-1);
-
-    return {
-      kind: "status",
-      status:
-        newest !== undefined && showsThinking(newest) && newest.status.kind === "live"
-          ? "thinking"
-          : "planning",
-    };
-  }
-
   const calls = messages.filter(showsTool);
+
+  if (calls.length === 0) return { kind: "thinking" };
   const lead = leadingWork(calls);
 
   const detail = workDetail(
@@ -77,14 +53,6 @@ export function stepGroupLine({
     verb: LEAD_VERBS[lead].live,
     detail: detail === "" ? undefined : detail,
   };
-}
-
-export function liveStatusLabel(status: LiveStatus, planningMs: number): string | undefined {
-  if (status === "thinking") return "Thinking";
-
-  if (planningMs < PLANNING_DELAY_MS) return undefined;
-
-  return planningMs < SLOW_PLANNING_MS ? PLANNING_LABEL : "Taking longer than expected…";
 }
 
 function settledSummary(messages: readonly StepMessage[], durationMs: number) {

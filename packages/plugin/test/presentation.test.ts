@@ -2,9 +2,12 @@ import { asId } from "@nyte-ai/schema";
 import type { Execution, PartStatus, ToolClass, ToolOutcome, ToolPartState } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
 import {
+  backgroundLabel,
   completionTrigger,
   executionMark,
   failureNotice,
+  rowLabel,
+  rowMark,
   runMark,
   runStatus,
   runStatusLabel,
@@ -139,7 +142,7 @@ function ended(end: Extract<Execution, { kind: "idle" }>["lastRun"]): Execution 
   return { kind: "idle", lastRun: end };
 }
 
-it("keeps a run's outcome, an approval wait and a working subagent apart", () => {
+it("keeps a run's outcome and an approval wait apart, and draws background work only after the run", () => {
   const run = { id: asId<"run">("run"), head: asId<"head">("main"), startedAt: 0, attempt: 1 };
   const started = { ...run, origin: { kind: "input", message: asId<"message">("m") } } as const;
 
@@ -172,49 +175,78 @@ it("keeps a run's outcome, an approval wait and a working subagent apart", () =>
   const delegating: Execution = { kind: "waiting", run: started, on: child };
   const retrying: Execution = { kind: "retrying", run: started, until: 2, reason: "Busy" };
 
-  const cases: readonly [Execution | undefined, boolean, string, string][] = [
-    [undefined, false, "idle", "idle"],
-    [ended(null), false, "idle", "idle"],
-    [completed, false, "completed", "idle"],
-    [stopped, false, "stopped", "idle"],
-    [failed, false, "failed", "failed"],
-    [responding, false, "working", "working"],
-    [delegating, false, "working", "working"],
-    [approval, false, "waiting-for-approval", "waiting"],
-    [retrying, false, "retrying", "retry"],
-    [completed, true, "subagent-working", "working"],
-    [failed, true, "subagent-working", "working"],
-    [stopped, true, "subagent-working", "working"],
-    [approval, true, "waiting-for-approval", "waiting"],
-    [responding, true, "working", "working"],
+  const cases: readonly [Execution | undefined, string, string][] = [
+    [undefined, "idle", "idle"],
+    [ended(null), "idle", "idle"],
+    [completed, "completed", "idle"],
+    [stopped, "stopped", "idle"],
+    [failed, "failed", "failed"],
+    [responding, "working", "working"],
+    [delegating, "working", "working"],
+    [approval, "waiting-for-approval", "waiting"],
+    [retrying, "retrying", "retry"],
   ];
 
-  for (const [execution, subagent, kind, mark] of cases) {
-    const status = runStatus(execution, subagent);
+  for (const [execution, kind, mark] of cases) {
+    const status = runStatus(execution);
 
     expect([status.kind, runMark(status)]).toEqual([kind, mark]);
-
-    if (!subagent) expect(executionMark(execution)).toBe(mark);
+    expect(executionMark(execution)).toBe(mark);
   }
+
+  const none = { working: 0, waiting: 0 };
+  const working = { working: 2, waiting: 0 };
+  const asking = { working: 1, waiting: 1 };
+
+  const rows: readonly [Execution, typeof none, string][] = [
+    [completed, none, "idle"],
+    [completed, working, "background"],
+    [failed, working, "failed"],
+    [failed, asking, "waiting"],
+    [stopped, asking, "waiting"],
+    [responding, asking, "working"],
+    [approval, working, "waiting"],
+    [retrying, working, "retry"],
+  ];
+
+  expect(rows.map(([execution, background]) => rowMark(runStatus(execution), background))).toEqual(
+    rows.map(([, , mark]) => mark),
+  );
+  expect(rows.map(([execution, background]) => rowLabel(runStatus(execution), background))).toEqual(
+    [
+      "Completed",
+      "2 working in the background",
+      "Failed",
+      "Needs attention in the background",
+      "Needs attention in the background",
+      "Working",
+      "Needs attention",
+      "Retrying",
+    ],
+  );
+  expect([none, working, asking].map(backgroundLabel)).toEqual([
+    undefined,
+    "2 working in the background",
+    "Needs attention in the background",
+  ]);
 
   expect(runStatus(responding)).toEqual({ kind: "working", run: run.id, stopping: true });
   expect(runStatus(approval)).toEqual({ kind: "waiting-for-approval", run: run.id });
   expect(runStatus(failed)).toEqual({ kind: "failed", failure });
 
   const labels = [
-    [undefined, false, "Idle"],
-    [completed, false, "Completed"],
-    [stopped, false, "Stopped"],
-    [failed, false, "Failed"],
-    [responding, false, "Working"],
-    [completed, true, "Working"],
-    [retrying, false, "Retrying"],
-    [approval, false, "Needs attention"],
+    [undefined, "Idle"],
+    [completed, "Completed"],
+    [stopped, "Stopped"],
+    [failed, "Failed"],
+    [responding, "Working"],
+    [retrying, "Retrying"],
+    [approval, "Needs attention"],
   ] as const;
 
-  expect(
-    labels.map(([execution, subagent]) => runStatusLabel(runStatus(execution, subagent))),
-  ).toEqual(labels.map(([, , label]) => label));
+  expect(labels.map(([execution]) => runStatusLabel(runStatus(execution)))).toEqual(
+    labels.map(([, label]) => label),
+  );
 });
 
 it("titles an unnamed root a new chat and an unnamed child a subagent", () => {

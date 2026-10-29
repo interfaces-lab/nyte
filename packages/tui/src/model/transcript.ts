@@ -1,6 +1,6 @@
 import type { Failure, Message, SessionView, TurnId, TurnInfo } from "@nyte-ai/sdk";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
-import { showsTool } from "@nyte-ai/plugin/client/presentation";
+import { runStatus, runStatusLabel, showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { MIN_REPORTED_DURATION_MS } from "../lib/constants.ts";
 import { promptMessages, pendingReports } from "../lib/view-helpers.ts";
@@ -42,6 +42,7 @@ export interface TurnModel {
 
 export type TurnStatus =
   | { readonly kind: "unanswered" }
+  /** A null activity is a live run that shows no progress: it is planning. */
   | { readonly kind: "working"; readonly activity: string | null; readonly startedAt: number }
   | { readonly kind: "thinking"; readonly startedAt: number }
   | { readonly kind: "waiting"; readonly question: boolean }
@@ -351,7 +352,7 @@ export function turnStatus(
     case "waiting":
       return info.state.on.kind === "part" || openQuestions(view).length > 0
         ? { kind: "waiting", question: true }
-        : { kind: "working", activity: null, startedAt };
+        : { kind: "working", activity: runStatusLabel(runStatus(execution)), startedAt };
     case "working": {
       if (info.run === null)
         return blocks.some((message) => message.kind === "user") ? { kind: "unanswered" } : null;
@@ -364,11 +365,15 @@ export function turnStatus(
           attempt: execution.run.attempt,
         };
       const last = blocks.at(-1);
+      const streaming = last?.kind === "part" && last.status.kind === "live";
 
-      if (last?.kind === "part" && last.partKind === "thinking" && last.status.kind === "live")
-        return { kind: "thinking", startedAt };
+      if (streaming && last.partKind === "thinking") return { kind: "thinking", startedAt };
 
-      return { kind: "working", activity: info.state.activity, startedAt };
+      return {
+        kind: "working",
+        activity: info.state.activity ?? (streaming ? runStatusLabel(runStatus(execution)) : null),
+        startedAt,
+      };
     }
 
     default: {

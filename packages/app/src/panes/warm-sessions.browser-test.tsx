@@ -42,6 +42,7 @@ function head(session: string, tip: number): HeadInfo {
     stack: null,
     execution: COMPLETED,
     unread: true,
+    background: { working: 0, waiting: 0 },
   };
 }
 

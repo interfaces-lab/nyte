@@ -52,6 +52,7 @@ import type {
   PageTable,
 } from "./contract/workspace.ts";
 import { createExecutionState, dispatchHead, driveInProcess } from "./drive/execution.ts";
+import { createChildTable } from "./engine/children.ts";
 import { createJobTable, jobHandle } from "./engine/jobs.ts";
 import { openPresence } from "./engine/presence.ts";
 import type { Member } from "./engine/presence.ts";
@@ -438,6 +439,9 @@ export function createKernel(input: KernelOptions): Kernel {
       get pages() {
         return kernel.pages;
       },
+      get children() {
+        return kernel.children;
+      },
     }),
     executionState: createExecutionState(),
     workspaceState: createWorkspaceState(),
@@ -499,6 +503,18 @@ export function createKernel(input: KernelOptions): Kernel {
     get pages() {
       return (pages ??= createPageTable(kernel));
     },
+    children: createChildTable({
+      bus,
+      get jobs() {
+        return kernel.jobs;
+      },
+      get pages() {
+        return kernel.pages;
+      },
+      get children() {
+        return kernel.children;
+      },
+    }),
     connections: createConnectionRegistry(),
     secrets: input.secrets ?? null,
     github: input.github ?? null,

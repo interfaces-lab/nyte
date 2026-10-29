@@ -322,7 +322,27 @@ const callSettled = schemaArbitrary(variant("call", "settled")).filter(isJsonObj
 
 const requested = schemaArbitrary(variant("request")).filter(isJsonObject);
 
+const described = schemaArbitrary(variant("session")).filter(isJsonObject);
+
 const modelRef = schemaArbitrary(withJson(ModelRefType));
+
+/** A session event as a store before head background counts logged it: no head row has `background`. */
+function withoutBackground(event: JsonObject) {
+  const info = isJsonObject(event.info) ? event.info : {};
+  const heads = Array.isArray(info.heads) ? info.heads : [];
+
+  return {
+    ...event,
+    info: {
+      ...info,
+      heads: heads.map((head) =>
+        isJsonObject(head)
+          ? Object.fromEntries(Object.entries(head).filter(([key]) => key !== "background"))
+          : head,
+      ),
+    },
+  };
+}
 
 function withoutModel(event: JsonObject): JsonObject {
   return Object.fromEntries(Object.entries(event).filter(([key]) => key !== "model"));
@@ -430,6 +450,7 @@ function events(from: number): fc.Arbitrary<readonly Json[]> {
         ...(older(from, 8) ? [intentPair] : []),
         ...(older(from, 21) ? [callChanges] : []),
         ...(older(from, 23) ? [configuredRun] : []),
+        ...(older(from, 25) ? [described.map((event) => [withoutBackground(event)])] : []),
         ...(older(from, 7)
           ? [
               fc

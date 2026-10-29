@@ -1,6 +1,6 @@
 import type { MessageId } from "@nyte-ai/sdk";
 import { useLayoutEffect, useRef, useState } from "react";
-import { PLANNING_DELAY_MS, SLOW_PLANNING_MS } from "./step-group-presentation.ts";
+import { PLANNING_DELAY_MS, SLOW_PLANNING_MS } from "@nyte-ai/plugin/client/presentation";
 
 export function usePlanningTime(planning: boolean, newest: MessageId | undefined): number {
   const [period, setPeriod] = useState({ planning, newest, id: 0 });

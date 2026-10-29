@@ -31,8 +31,14 @@ const main = asId<"head">("main");
 
 const tip = asId<"commit">("tip");
 
-function heads(execution: Execution, unread = false): readonly HeadInfo[] {
-  return [{ name: main, tip: { kind: "commit", id: tip }, stack: null, execution, unread }];
+function heads(
+  execution: Execution,
+  unread = false,
+  background = { working: 0, waiting: 0 },
+): readonly HeadInfo[] {
+  return [
+    { name: main, tip: { kind: "commit", id: tip }, stack: null, execution, unread, background },
+  ];
 }
 
 function unreadRow(id: string, execution: Execution, change: Partial<SessionInfo> = {}) {
@@ -53,7 +59,7 @@ test("each chat takes one title rule, its parent, and the status of its main hea
 
 test("an open view's heads replace the listed ones as a unit, and closing it hands back the list", () => {
   const listed = sessionRow("open");
-  const views = new Map([[listed.id, { execution: LIVE, heads: heads(LIVE, true) }]]);
+  const views = new Map([[listed.id, { heads: heads(LIVE, true) }]]);
   const open = chatsFor([listed], { views });
 
   expect(open.get(listed.id)).toMatchObject({
@@ -65,28 +71,31 @@ test("an open view's heads replace the listed ones as a unit, and closing it han
     unreadTip: null,
   });
 
-  const headless = new Map([[listed.id, { execution: LIVE, heads: [] }]]);
+  const headless = new Map([[listed.id, { heads: [] }]]);
 
-  expect(chatsFor([listed], { views: headless }).get(listed.id)?.status.kind).toBe("working");
+  expect(chatsFor([listed], { views: headless }).get(listed.id)?.status.kind).toBe("idle");
 });
 
-test("a chat whose own run is over reads as a subagent still working while any descendant runs", () => {
-  const root = sessionRow("root", {}, FAILED);
-  const middle = sessionRow("middle", { parent: root.id });
+test("a chat reads as its own run ended whatever its subagents do, and carries its background counts", () => {
+  const root = sessionRow("root", { heads: heads(FAILED, false, { working: 1, waiting: 0 }) });
+
+  const middle = sessionRow("middle", {
+    parent: root.id,
+    heads: heads(COMPLETED, false, { working: 0, waiting: 1 }),
+  });
+
   const leaf = sessionRow("leaf", { parent: middle.id }, LIVE);
-  const busy = sessionRow("busy", {}, LIVE);
-  const helper = sessionRow("helper", { parent: busy.id }, LIVE);
-  const chats = chatsFor([root, middle, leaf, busy, helper]);
+  const chats = chatsFor([root, middle, leaf]);
 
-  expect(chats.get(root.id)?.status).toEqual({ kind: "subagent-working" });
-  expect(chats.get(middle.id)?.status).toEqual({ kind: "subagent-working" });
+  expect(chats.get(root.id)).toMatchObject({
+    status: { kind: "failed" },
+    background: { working: 1, waiting: 0 },
+  });
+  expect(chats.get(middle.id)).toMatchObject({
+    status: { kind: "completed" },
+    background: { working: 0, waiting: 1 },
+  });
   expect(chats.get(leaf.id)?.status.kind).toBe("working");
-  expect(chats.get(busy.id)?.status.kind, "its own run outranks the subagent").toBe("working");
-
-  const settled = chatsFor([root, middle, sessionRow("leaf", { parent: middle.id }), busy, helper]);
-
-  expect(settled.get(root.id)?.status.kind, "the failure shows again").toBe("failed");
-  expect(settled.get(middle.id)?.status.kind).toBe("completed");
 });
 
 test("a chat carries its main head's tip past the read mark, whatever its run did; deciding unread is the window's", () => {

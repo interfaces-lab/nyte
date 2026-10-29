@@ -1,5 +1,6 @@
 import type { SessionInfo } from "@nyte-ai/sdk";
-import { CHAT_KEYBINDS } from "../lib/constants.ts";
+import { mainHead, rowLabel, rowMark, runStatus } from "@nyte-ai/plugin/client/presentation";
+import { CHAT_KEYBINDS, GLYPHS } from "../lib/constants.ts";
 import type { ChatCommand } from "../lib/constants.ts";
 import { shortId } from "../lib/format.ts";
 import {
@@ -270,8 +271,40 @@ export function resumeChoices(state: State, sessions: readonly SessionInfo[]): r
         session.id,
         `${session.name ?? shortId(session.id)}${session.id === current ? " (current)" : ""}`,
         `${new Date(session.lastActivityAt).toLocaleString()} · ${shortId(session.id)}`,
+        sessionStanding(session),
       ),
     );
+}
+
+/** A listed session's mark and words: its own run while one goes, else the background work it started, else how its run ended when it failed. */
+function sessionStanding(session: SessionInfo): Partial<Pick<Choice, "status" | "mark">> {
+  const head = mainHead(session);
+  const status = runStatus(head?.execution);
+  const background = head?.background ?? { working: 0, waiting: 0 };
+  const mark = rowMark(status, background);
+  const text = rowLabel(status, background);
+
+  switch (mark) {
+    case "idle":
+      return {};
+    case "working":
+      return { mark: { glyph: GLYPHS.bullet, tone: "running" }, status: { text, tone: "muted" } };
+    case "background":
+      return {
+        mark: { glyph: GLYPHS.background, tone: "running" },
+        status: { text, tone: "muted" },
+      };
+    case "retry":
+    case "waiting":
+      return { mark: { glyph: GLYPHS.bullet, tone: "warning" }, status: { text, tone: "warning" } };
+    case "failed":
+      return { mark: { glyph: GLYPHS.cross, tone: "error" }, status: { text, tone: "error" } };
+    default: {
+      const _exhaustive: never = mark;
+
+      return _exhaustive;
+    }
+  }
 }
 
 function liveList(state: State, dialog: ListDialog): ListDialog {

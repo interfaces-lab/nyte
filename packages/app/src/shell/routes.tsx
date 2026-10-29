@@ -14,8 +14,8 @@ import type { RouterHistory } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { useStagePage } from "../tabs/shell-state.ts";
 import { Button } from "@nyte-ai/ui/button";
-import { keys, queryClient } from "../data/query-client.ts";
-import { readSession } from "../data/sessions.ts";
+import { queryClient } from "../data/query-client.ts";
+import { readSession, sessionRows } from "../data/session-rows.ts";
 import { routeSessionExists } from "./route-session.ts";
 import { sessionsWatch } from "../data/watches.ts";
 import { preferences } from "../preferences/index.ts";
@@ -104,9 +104,7 @@ const indexRoute = createRoute({
 
     if (preferences.startupDestination.get() === "new-chat") return;
 
-    const directory =
-      sessionsWatch("roots").value ??
-      queryClient.getQueryData<readonly SessionInfo[]>(keys.firstFrameRoots);
+    const directory = sessionRows().roots;
 
     if (directory === undefined) {
       context.startup.openLastChatOnArrival();

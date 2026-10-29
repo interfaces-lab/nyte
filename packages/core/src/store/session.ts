@@ -47,6 +47,8 @@ export const EMPTY_REVISION: Revision = asId<"revision">("");
 
 export const START: Position = { kind: "start" };
 
+export const NO_BACKGROUND: HeadInfo["background"] = { working: 0, waiting: 0 };
+
 export const STALE: unique symbol = Symbol("stale");
 
 const WRITE_TRIES = 8;
@@ -415,6 +417,7 @@ export async function sessionEvent(
     stack: head.stack,
     execution: { kind: "idle", lastRun: head.lastRun },
     unread: false,
+    background: NO_BACKGROUND,
     ...rows?.get(head.name),
   }));
 

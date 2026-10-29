@@ -1,47 +1,17 @@
-import { SdkError } from "@nyte-ai/sdk";
-import { skipToken, useMutation, useMutationState, useQuery } from "@tanstack/react-query";
-import type { UseQueryResult } from "@tanstack/react-query";
-import { asId } from "@nyte-ai/schema";
-import type { SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
-import { keys } from "./query-client.ts";
+import { useMutation, useMutationState } from "@tanstack/react-query";
+import type { SessionId, SessionView } from "@nyte-ai/sdk";
 import { projectSessionChoice, sessionConfigurationOptions } from "./session-configuration.ts";
 import type { PendingConfiguration } from "./session-configuration.ts";
 import { groupByWorkspace } from "./session-list.ts";
-import { childrenWatch, sessionsWatch, sessionWatch } from "./watches.ts";
-import { connected } from "./connection.ts";
+import { useRootRows } from "./session-rows.ts";
+import { childrenWatch, sessionWatch } from "./watches.ts";
 import { useWatch, useWatchSelect } from "./watch-store.ts";
-import type { WatchState } from "./watch-store.ts";
 import { subagentActivity } from "./session-activity.ts";
-import { useSessionActions, useSessionProjection } from "./session-actions.ts";
+import { useSessionActions } from "./session-actions.ts";
 import { useWorkspaces } from "./workspaces.ts";
 
-export const readSession = async (sessionId: SessionId) =>
-  (await connected()).session(sessionId).info();
-
-/** One session's own read, for a session the lists don't carry; a missing one reads as null. */
-export function sessionQuery(sessionId: SessionId) {
-  return {
-    queryKey: keys.session(sessionId),
-    queryFn: () => readSession(sessionId).catch(missingAsNull),
-  };
-}
-
-function useRootSessions(): readonly SessionInfo[] | undefined {
-  const projection = useSessionProjection();
-  const roots = useWatch(sessionsWatch("roots")).value;
-
-  const recorded = useQuery<readonly SessionInfo[]>({
-    queryKey: keys.firstFrameRoots,
-    queryFn: skipToken,
-  }).data;
-
-  const listed = roots ?? recorded;
-
-  return listed === undefined ? undefined : projection.list(listed);
-}
-
 export function useWorkspaceSessions() {
-  const roots = useRootSessions();
+  const roots = useRootRows();
   const workspaces = useWorkspaces().data;
 
   return {
@@ -50,7 +20,7 @@ export function useWorkspaceSessions() {
 }
 
 export function useSessionSearch(search: string, enabled = true) {
-  const roots = useRootSessions();
+  const roots = useRootRows();
   const needle = search.trim().toLocaleLowerCase();
 
   return {
@@ -64,47 +34,6 @@ export function useSessionSearch(search: string, enabled = true) {
             ),
           },
   };
-}
-
-const UNLISTED = Symbol("unlisted");
-
-type SessionRead<S> = Omit<UseQueryResult, "data"> & { readonly data: S | null | undefined };
-
-type SelectSession<S> = (session: SessionInfo) => S;
-
-/** `data` is `undefined` while loading and `null` for a missing session. With `select`, only a change to the selected value re-renders. */
-export function useSession(id: SessionId | undefined): SessionRead<SessionInfo>;
-export function useSession<S>(id: SessionId | undefined, select: SelectSession<S>): SessionRead<S>;
-export function useSession<S>(
-  id: SessionId | undefined,
-  select?: SelectSession<S>,
-): SessionRead<S | SessionInfo> {
-  const projection = useSessionProjection();
-
-  const pick = (session: SessionInfo) => {
-    const projected = projection.session(session);
-
-    return projected === null || select === undefined ? projected : select(projected);
-  };
-
-  const list = ({ value }: WatchState<readonly SessionInfo[]>) => {
-    const session = value?.find((candidate) => candidate.id === id);
-
-    return session === undefined ? UNLISTED : pick(session);
-  };
-
-  const roots = sessionsWatch("roots");
-  const root = useWatchSelect(roots, list);
-  const row = useWatchSelect(sessionsWatch("all"), (all) => (root === UNLISTED ? list(all) : root));
-  const settled = useWatchSelect(roots, (state) => (state.value ?? state.error) !== undefined);
-
-  const read = useQuery({
-    ...sessionQuery(id ?? asId<"session">("")),
-    enabled: settled && row === UNLISTED && id !== undefined,
-    select: (session: SessionInfo | null) => (session === null ? null : pick(session)),
-  });
-
-  return { ...read, data: row === UNLISTED ? read.data : row };
 }
 
 export function useSessionView(sessionId: SessionId | undefined): SessionView | undefined {
@@ -149,9 +78,4 @@ export function useRenameSession() {
   return useMutation({
     mutationFn: (input: { sessionId: SessionId; name: string }) => actions.rename(input),
   });
-}
-
-export function missingAsNull(cause: unknown): null {
-  if (cause instanceof SdkError && cause.code === "unknown") return null;
-  throw cause;
 }

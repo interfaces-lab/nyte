@@ -24,12 +24,8 @@ import { Row } from "@nyte-ai/ui/row";
 import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useCatalog } from "../../data/catalog.ts";
-import {
-  useChildSessions,
-  useSession,
-  useSessionActivity,
-  useSessionChoice,
-} from "../../data/sessions.ts";
+import { useChildSessions, useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
+import { useSessionRow } from "../../data/session-rows.ts";
 import { useWorkspaces } from "../../data/workspaces.ts";
 import { useChats } from "../../chats/index.ts";
 import { useChatWindow } from "../../window/index.ts";
@@ -592,8 +588,8 @@ export function SubagentCitation({
   readonly label: string;
 }): ReactElement {
   const listed = useChildSession(session);
-  const read = useSession(session);
-  const child = listed ?? read.data ?? undefined;
+  const read = useSessionRow(session, (row) => row);
+  const child = listed ?? read ?? undefined;
   const openTray = useOpenSubagentTray();
   const title = child?.name ?? undefined;
   const name = label === "" || label === session ? (title ?? session) : label;

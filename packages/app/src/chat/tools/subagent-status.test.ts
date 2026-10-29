@@ -241,5 +241,7 @@ test("a stopped agent reads as done, never failed, whether the row knows its cha
     ).indicator,
   ).toBe("failed");
   expect(subagentStatus({ kind: "completed" }, true).indicator).toBe("unread");
-  expect(subagentStatus({ kind: "subagent-working" }, false).indicator).toBe("running");
+  expect(
+    subagentStatus({ kind: "working", run: asId<"run">("run"), stopping: false }, false),
+  ).toEqual({ indicator: "running", text: "Working" });
 });

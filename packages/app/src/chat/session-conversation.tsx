@@ -154,7 +154,6 @@ const ANNOUNCEMENTS = {
   working: "Nyte is responding",
   retrying: "Nyte is responding",
   "waiting-for-approval": "Nyte needs your answer",
-  "subagent-working": "",
   completed: "Response finished",
   stopped: "Response stopped",
   failed: "Response failed",

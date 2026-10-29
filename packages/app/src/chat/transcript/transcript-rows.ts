@@ -10,7 +10,6 @@ import type { WatchStore } from "../../data/watch-store.ts";
 import { CHANGES_VISIBLE_FILES } from "../../diff/change-tree.ts";
 import { conversationTurns } from "./turns.ts";
 import type { TurnMessages } from "./turns.ts";
-import { showsLiveStatus } from "./step-group-presentation.ts";
 import { displayTranscriptParts, transcriptSlot } from "./transcript-presentation.ts";
 import type {
   StepMessage,
@@ -70,12 +69,7 @@ export type TranscriptRow =
   | EarlierRow
   | PromptRow
   | (RowLayout & { readonly kind: "retry"; readonly message: string })
-  | (RowLayout & {
-      readonly kind: "live";
-      readonly working: boolean;
-      /** The turn ends in a step group whose own line names the live status, so this row draws nothing. */
-      readonly settledWork: boolean;
-    })
+  | (RowLayout & { readonly kind: "live"; readonly working: boolean })
   | (RowLayout & {
       readonly kind: "changes";
       readonly state: "pending" | "ready";
@@ -163,7 +157,7 @@ function turnRows(
     leads: place.leads && rows.length === 0,
   });
 
-  if (turn.messages.length === 0 && state.kind !== "ended") return { rows, settledWork: false };
+  if (turn.messages.length === 0 && state.kind !== "ended") return rows;
   const display = displayTranscriptParts(turn.messages);
 
   for (const [index, item] of display.entries()) {
@@ -203,7 +197,7 @@ function turnRows(
           messages: item.messages,
           added: ends ? turn.info.summary.added : 0,
           removed: ends ? turn.info.summary.removed : 0,
-          running: ends && place.working,
+          running: ends && place.working && item.messages.some(inFlight),
         });
         break;
       case "agents":
@@ -250,9 +244,12 @@ function turnRows(
       failure: state.end.failure,
     });
 
-  const end = display.at(-1);
+  return rows;
+}
 
-  return { rows, settledWork: end?.kind === "step" && showsLiveStatus(end.messages) };
+/** A part still streaming, running or waiting; the step group holding one is live. */
+function inFlight(message: StepMessage): boolean {
+  return message.status.kind === "live" || message.status.kind === "waiting";
 }
 
 function displayMessages(item: TranscriptDisplayPart): readonly Message[] {
@@ -312,7 +309,6 @@ export function transcriptRows({
   const working = readWorking(running, held, prompts);
   let group: string | null = null;
   let leads = true;
-  let settledWork = false;
   let owner: string | undefined;
 
   for (const turn of turns) {
@@ -329,10 +325,9 @@ export function transcriptRows({
       latest: turn === last,
     });
 
-    rows.push(...own.rows);
-    settledWork = own.settledWork;
+    rows.push(...own);
 
-    if (own.rows.length > 0) leads = false;
+    if (own.length > 0) leads = false;
   }
 
   for (const message of prompts) {
@@ -351,7 +346,7 @@ export function transcriptRows({
   if (retrying !== undefined)
     rows.push({ kind: "retry", key: "row:retry", ...OUTSIDE, message: retrying });
 
-  rows.push({ kind: "live", key: "row:live", ...OUTSIDE, working, settledWork });
+  rows.push({ kind: "live", key: "row:live", ...OUTSIDE, working });
 
   if (owner !== undefined)
     rows.push({
