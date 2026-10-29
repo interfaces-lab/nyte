@@ -32,7 +32,7 @@ import {
 import { workbench } from "../theme/schema.stylex.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
-import { keyOwner } from "../shell/focus-owner.ts";
+import { keyOwner } from "../lib/focus-owner.ts";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";

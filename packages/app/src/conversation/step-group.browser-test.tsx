@@ -12,8 +12,8 @@ import "../theme/global.css";
 import { StepGroupView } from "./step-group.tsx";
 import type { StepMessage } from "./transcript-presentation.ts";
 import { asId } from "@nyte-ai/schema";
-import { PaneControllerProvider } from "../layout/pane-context.tsx";
-import { PaneController } from "../layout/pane-controller.ts";
+import { PaneControllerProvider } from "../panes/pane-context.tsx";
+import { PaneController } from "../panes/pane-controller.ts";
 import { queryClient } from "../queries.ts";
 import { TranscriptProvider } from "./transcript.tsx";
 

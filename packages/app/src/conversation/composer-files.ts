@@ -2,7 +2,7 @@ import { nyte } from "../contract/nyte.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { fileFromUrl } from "../references/message-references.ts";
 import type { MessageReference } from "../references/message-references.ts";
-import type { ComposerImageAttachment } from "../layout/session-view-state.ts";
+import type { ComposerImageAttachment } from "../panes/session-view-state.ts";
 
 const INLINE_IMAGE_TYPE_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
   ["bmp", "image/bmp"],

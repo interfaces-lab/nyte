@@ -2,10 +2,10 @@ import type { SessionId } from "@nyte-ai/sdk";
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { PaneController } from "../layout/pane-controller.ts";
-import { paneLayoutSchema, paneSelection } from "../layout/pane-layout.ts";
-import type { PaneLayout } from "../layout/pane-layout.ts";
-import { SessionViewStateStore, WindowDrafts } from "../layout/session-view-state.ts";
+import { PaneController } from "../panes/pane-controller.ts";
+import { paneLayoutSchema, paneSelection } from "../panes/pane-layout.ts";
+import type { PaneLayout } from "../panes/pane-layout.ts";
+import { SessionViewStateStore, WindowDrafts } from "../panes/session-view-state.ts";
 import { sessionId } from "../schemas.ts";
 import {
   activeTab,

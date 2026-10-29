@@ -5,7 +5,7 @@ import { asId } from "@nyte-ai/schema";
 import type { HostBridge, UsageSnapshot, UsageWindow } from "./contract/bridge.ts";
 import { installBridge } from "./contract/nyte.ts";
 import { queryClient, usageReportOptions } from "./queries.ts";
-import { USAGE_RANGES, USAGE_STALE_AFTER_MS, usageWindow } from "./chrome/usage-view.ts";
+import { USAGE_RANGES, USAGE_STALE_AFTER_MS, usageWindow } from "./settings/usage-view.ts";
 import { createWebBridge } from "./web/bridge.ts";
 
 const readUsage = vi.fn<NonNullable<HostBridge["usage"]>>();

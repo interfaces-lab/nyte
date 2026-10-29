@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "../app.tsx";
 import { loadLocalResources } from "../queries.ts";
-import { createAppRouter } from "../router.tsx";
+import { createAppRouter } from "../shell/routes.tsx";
 import { connection as installedConnection, connectionProblem, hostChanged } from "../sdk.tsx";
 import { forgetFirstFrame, recordFirstFrame, seedFirstFrame } from "../first-frame.ts";
 import { startRendererStartup } from "../startup.ts";

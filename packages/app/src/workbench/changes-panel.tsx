@@ -29,8 +29,8 @@ import {
 } from "../queries.ts";
 import { conversationTurns } from "../view-helpers.ts";
 import { sessionWatch, useWatchSelect } from "../sdk.tsx";
-import { usePaneControllerSnapshot } from "../layout/pane-context.tsx";
-import { activeSelection } from "../layout/pane-layout.ts";
+import { usePaneControllerSnapshot } from "../panes/pane-context.tsx";
+import { activeSelection } from "../panes/pane-layout.ts";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {

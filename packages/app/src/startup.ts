@@ -1,5 +1,5 @@
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import type { AppRouter } from "./router.tsx";
+import type { AppRouter } from "./shell/routes.tsx";
 
 interface RendererStartupOptions {
   readonly fonts: readonly string[];

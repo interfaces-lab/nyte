@@ -13,8 +13,8 @@ import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { GitHubAccountState } from "@nyte-ai/sdk";
 import type { ConnectView, UpdateState } from "../contract/bridge.ts";
-import { AccountFooterMenu } from "../chrome/account-footer.tsx";
-import { sidebarStyles as styles } from "../chrome/sidebar.stylex.ts";
+import { AccountFooterMenu } from "../account/account-footer.tsx";
+import { sidebarStyles as styles } from "../sidebar/sidebar.stylex.ts";
 import { keys } from "../query-keys.ts";
 
 const OCTOCAT = "https://avatars.githubusercontent.com/u/583231?v=4";

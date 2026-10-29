@@ -48,8 +48,8 @@ import { Deferred, loadDeferred } from "../lib/deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { usePaneControllerSnapshot } from "../layout/pane-context.tsx";
-import { activeSelection } from "../layout/pane-layout.ts";
+import { usePaneControllerSnapshot } from "../panes/pane-context.tsx";
+import { activeSelection } from "../panes/pane-layout.ts";
 
 const MOUNTED_VIEWS = 3;
 

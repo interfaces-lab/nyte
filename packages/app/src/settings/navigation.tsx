@@ -6,7 +6,7 @@ import type { KeyboardEvent, ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Row } from "@nyte-ai/ui/row";
-import { sidebarStyles as rail } from "../chrome/sidebar.stylex.ts";
+import { sidebarStyles as rail } from "../sidebar/sidebar.stylex.ts";
 import { SETTINGS_PAGES, settingsSectionGroups, type SettingsSection } from "./pages.ts";
 import { closeSettings } from "./return.ts";
 import { settingsStyles as styles } from "./settings.stylex.ts";

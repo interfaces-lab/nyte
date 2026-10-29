@@ -4,7 +4,7 @@ export type { UpdateState } from "./contract/bridge.ts";
 
 export { connectLocalHost, queryClient, setUpdateStateForDemo } from "./queries.ts";
 
-export { createAppRouter, startWindowTabs, windowTabRoute } from "./router.tsx";
+export { createAppRouter, startWindowTabs, windowTabRoute } from "./shell/routes.tsx";
 
 export type { DesktopWindow } from "./contract/desktop-window.ts";
 

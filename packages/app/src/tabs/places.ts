@@ -2,7 +2,7 @@ import type { useRouter } from "@tanstack/react-router";
 import { sessionId as sessionIdSchema } from "../schemas.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { sameSelection } from "../layout/pane-layout.ts";
+import { sameSelection } from "../panes/pane-layout.ts";
 import { showsPage } from "./model.ts";
 import type { Page, Place } from "./model.ts";
 

@@ -34,7 +34,7 @@ import type { ComposerDocumentState, ComposerSubmission } from "./composer-docum
 import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { attachComposerFiles } from "./composer-files.ts";
-import type { ComposerImageAttachment } from "../layout/session-view-state.ts";
+import type { ComposerImageAttachment } from "../panes/session-view-state.ts";
 import {
   composerContentEmpty,
   composerMessageContent,

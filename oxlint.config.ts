@@ -381,7 +381,7 @@ export default defineConfig({
        * The QR code needs a white quiet zone a camera can read, which no
        * token guarantees in every appearance.
        */
-      files: ["packages/app/src/chrome/pairing-code.tsx"],
+      files: ["packages/app/src/environments/pairing-code.tsx"],
       rules: {
         "nyte-design/no-raw-colors": "off",
       },

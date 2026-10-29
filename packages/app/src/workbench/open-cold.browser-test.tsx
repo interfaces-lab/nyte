@@ -5,8 +5,8 @@ import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
 import { Deferred, publishDeferred, readDeferred } from "../lib/deferred.tsx";
 import deferredUrls from "../lib/deferred-urls.ts";
-import { createAppRouter } from "../router.tsx";
-import { runWindowCommand } from "../shell/window-commands.ts";
+import { createAppRouter } from "../shell/routes.tsx";
+import { runWindowCommand } from "../commands/window-commands.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { ChangesPanel } from "./changes-panel.tsx";
 import {

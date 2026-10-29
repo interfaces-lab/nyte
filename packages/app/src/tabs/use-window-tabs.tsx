@@ -4,7 +4,7 @@ import { runMark } from "@nyte-ai/plugin/client/presentation";
 import { Icon } from "@nyte-ai/ui/icon";
 import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
-import { activateWorkspace } from "../chrome/use-show-session.ts";
+import { activateWorkspace } from "../sidebar/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../queries.ts";

@@ -1,4 +1,4 @@
-import type { ScrollViewState } from "../layout/session-view-state.ts";
+import type { ScrollViewState } from "../panes/session-view-state.ts";
 
 /** How close to the end still counts as at the end: fractional offsets at non-integer zoom can leave 1–3 px. */
 export const FOLLOW_TOLERANCE = 4;

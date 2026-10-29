@@ -38,7 +38,7 @@ import type {
 } from "@nyte-ai/sdk";
 import { operationsDigest } from "@nyte-ai/sdk";
 import { keys } from "./query-keys.ts";
-import { missingAsNull } from "./route-session.ts";
+import { missingAsNull } from "./shell/route-session.ts";
 import { SessionActions } from "./session-actions.ts";
 import { projectSessionChoice, sessionConfigurationOptions } from "./session-configuration.ts";
 import type { PendingConfiguration } from "./session-configuration.ts";
@@ -65,7 +65,7 @@ import {
   useWatchSelect,
 } from "./sdk.tsx";
 import type { WatchState } from "./sdk.tsx";
-import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
+import { USAGE_STALE_AFTER_MS } from "./settings/usage-view.ts";
 import { applyListings, toDesktopCatalog } from "./catalog.ts";
 import { workspaceName, workspacePath } from "./view-helpers.ts";
 import { mentionFile } from "./references/message-references.ts";

@@ -19,7 +19,7 @@ import {
   carriesTreeFiles,
   droppedTreeFiles,
 } from "../references/composer-file-drop.ts";
-import type { ComposerImageAttachment } from "../layout/session-view-state.ts";
+import type { ComposerImageAttachment } from "../panes/session-view-state.ts";
 import {
   composerEnterAction,
   enterBehavior,

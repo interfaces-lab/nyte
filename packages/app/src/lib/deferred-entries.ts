@@ -1,4 +1,4 @@
-import type { chartsRuntime } from "../chrome/usage-charts.deferred.ts";
+import type { chartsRuntime } from "../settings/usage-charts.deferred.ts";
 import type { codeRuntime } from "../conversation/code.deferred.tsx";
 import type { highlightRuntime } from "../conversation/highlight.deferred.ts";
 import type { ghosttyRuntime } from "../workbench/ghostty.deferred.ts";
@@ -22,7 +22,7 @@ export const deferredEntries = {
     packages: ["ghostty-web/"],
   },
   charts: {
-    module: new URL("../chrome/usage-charts.deferred.ts", import.meta.url).href,
+    module: new URL("../settings/usage-charts.deferred.ts", import.meta.url).href,
     packages: ["@nivo/", "d3-shape/", "@react-spring/"],
   },
 } as const;

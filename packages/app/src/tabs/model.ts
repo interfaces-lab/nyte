@@ -6,8 +6,8 @@ import {
   orderedPanes,
   reducePaneLayout,
   sameSelection,
-} from "../layout/pane-layout.ts";
-import type { PaneLayout, PaneSelection } from "../layout/pane-layout.ts";
+} from "../panes/pane-layout.ts";
+import type { PaneLayout, PaneSelection } from "../panes/pane-layout.ts";
 
 export type Page =
   | {

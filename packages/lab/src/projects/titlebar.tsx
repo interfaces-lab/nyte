@@ -1,6 +1,6 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { titlebarStyles } from "@nyte-ai/app/chrome/titlebar.stylex.ts";
+import { titlebarStyles } from "@nyte-ai/app/shell/titlebar.stylex.ts";
 import { WindowTabStrip } from "@nyte-ai/app/tabs/window-tab-strip.tsx";
 import type { WindowTabItem } from "@nyte-ai/app/tabs/window-tab-strip.tsx";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";

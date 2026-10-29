@@ -1,6 +1,6 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { NewChatsSection } from "../chrome/models-settings.tsx";
+import { NewChatsSection } from "./models-settings.tsx";
 import { hostSetting } from "../preferences/index.ts";
 import { useCatalog } from "../queries.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";

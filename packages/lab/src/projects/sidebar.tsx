@@ -12,7 +12,7 @@ import {
 import { props } from "@stylexjs/stylex";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { clientActionKeys, clientActions } from "@nyte-ai/app/contract/client-actions.ts";
-import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
+import { sidebarStyles } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";

@@ -1,6 +1,6 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import type { ChatDirectory } from "../chats/index.ts";
-import { orderedPanes } from "../layout/pane-layout.ts";
+import { orderedPanes } from "../panes/pane-layout.ts";
 import { activeTab } from "../tabs/model.ts";
 import type { WindowState } from "../tabs/model.ts";
 import type { TrayView } from "./tray.ts";

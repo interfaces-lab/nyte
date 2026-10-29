@@ -26,7 +26,7 @@ import { displayAddress, parseWebUrl } from "./browser-address.ts";
 import { AddressField } from "./browser-address-field.tsx";
 import type { AddressFieldHandle } from "./browser-address-field.tsx";
 import { useBrowserHistory } from "./browser-history.ts";
-import { keyOwner } from "../shell/focus-owner.ts";
+import { keyOwner } from "../lib/focus-owner.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { overlayCovers, subscribeOverlayRects } from "../components/overlay-occlusion.ts";
 import {

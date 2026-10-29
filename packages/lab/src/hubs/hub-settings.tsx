@@ -13,7 +13,7 @@ import {
   type ActionDispatch,
   type ReactElement,
 } from "react";
-import { ConnectionMenu, ConnectionRow } from "@nyte-ai/app/chrome/connection-list.tsx";
+import { ConnectionMenu, ConnectionRow } from "@nyte-ai/app/components/connection-list.tsx";
 import { settingsStyles } from "@nyte-ai/app/settings/settings.stylex.ts";
 import { settingsPatterns } from "@nyte-ai/app/theme/settings-patterns.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";

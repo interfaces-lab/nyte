@@ -8,7 +8,7 @@
  */
 import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
-import { sidebarStyles as rail } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
+import { sidebarStyles as rail } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
 import { appearanceStyles as appearance } from "@nyte-ai/app/settings/appearance.stylex.ts";
 import { settingsStyles as shell } from "@nyte-ai/app/settings/settings.stylex.ts";
 import {

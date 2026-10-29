@@ -13,7 +13,7 @@ import type {
   GitRevision,
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { useGitHub, useGitHubAccountState, useGitHubState } from "../chrome/github-account.ts";
+import { useGitHub, useGitHubAccountState, useGitHubState } from "../account/github-account.ts";
 import { errorMessage } from "../contract/errors.ts";
 import {
   Menu,

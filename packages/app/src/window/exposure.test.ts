@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import type { Execution, HeadInfo, SessionId } from "@nyte-ai/sdk";
-import { reducePaneLayout } from "../layout/pane-layout.ts";
-import type { PaneLayoutAction } from "../layout/pane-layout.ts";
+import { reducePaneLayout } from "../panes/pane-layout.ts";
+import type { PaneLayoutAction } from "../panes/pane-layout.ts";
 import { activeTab, initialWindow, reduce, tabLayout } from "../tabs/model.ts";
 import type { WindowAction, WindowState } from "../tabs/model.ts";
 import { chatsFor, COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
