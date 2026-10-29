@@ -2,7 +2,6 @@ import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import type { Cursor, GitStatus } from "@nyte-ai/sdk";
-import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import {
   Menu,
@@ -23,9 +22,9 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { useVcsLog } from "../queries.ts";
 import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
-import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { ChangeStats } from "./change-stats.tsx";
 import { ChangesCommitBar, readsWorkingTree } from "./changes-commit-bar.tsx";
 import {
   changesScopeValue,
@@ -106,17 +105,6 @@ const styles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  scopeStats: {
-    display: "inline-flex",
-    gap: space.s1_5,
-    flexShrink: 0,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    fontWeight: type.weightSemibold,
-    fontVariantNumeric: "tabular-nums",
-  },
-  scopeAdded: { color: role.contentSecondary },
-  scopeRemoved: { color: role.contentSecondary },
   scopeCount: {
     color: role.contentSecondary,
     whiteSpace: "nowrap",
@@ -157,34 +145,6 @@ const styles = create({
   branchCount: { flexShrink: 0, fontVariantNumeric: "tabular-nums" },
   spacer: { flex: 1, minWidth: 0 },
 });
-
-function ChangeStats({
-  added,
-  removed,
-}: {
-  readonly added: number;
-  readonly removed: number;
-}): ReactElement | null {
-  if (added === 0 && removed === 0) return null;
-
-  return (
-    <span
-      aria-label={`${String(added)} added, ${String(removed)} removed`}
-      {...props(styles.scopeStats)}
-    >
-      {added > 0 && (
-        <span {...props(intent.success, styles.scopeAdded)}>
-          +<AnimatedNumber value={added} />
-        </span>
-      )}
-      {removed > 0 && (
-        <span {...props(intent.danger, styles.scopeRemoved)}>
-          -<AnimatedNumber value={removed} />
-        </span>
-      )}
-    </span>
-  );
-}
 
 function ScopeMeta({
   stats,

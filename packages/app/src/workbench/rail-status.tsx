@@ -11,6 +11,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { formatTokens, formatUsd } from "../chrome/usage-view.ts";
 import { sessionWatch, useWatchSelect } from "../sdk.tsx";
 import { showsSettingsSection } from "../settings/index.ts";
+import { worktreeFiles } from "../view-helpers.ts";
+import { ChangeStats } from "./change-stats.tsx";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const CONTEXT_WARNING_PERCENT = 80;
@@ -178,12 +180,17 @@ export function BranchRow({
 }
 
 export function ChangesRow({
-  files,
+  head,
   onOpen,
 }: {
-  readonly files: number;
+  readonly head: Repository;
   readonly onOpen: () => void;
 }): ReactElement {
+  const files = worktreeFiles(head).length;
+  const changes = [...head.staged, ...head.unstaged];
+  const added = changes.reduce((sum, file) => sum + file.added, 0);
+  const removed = changes.reduce((sum, file) => sum + file.removed, 0);
+
   return (
     <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
       <Row.Primary onClick={onOpen}>
@@ -193,8 +200,11 @@ export function ChangesRow({
         <Row.Label xstyle={[workbenchStyles.railLabel, files > 0 && workbenchStyles.railValue]}>
           {files === 0
             ? "No changes"
-            : `${String(files)} changed ${files === 1 ? "file" : "files"}`}
+            : added + removed > 0
+              ? "Changes"
+              : `${String(files)} changed ${files === 1 ? "file" : "files"}`}
         </Row.Label>
+        <ChangeStats added={added} removed={removed} />
       </Row.Primary>
     </Row>
   );

@@ -12,7 +12,6 @@ import { Row } from "@nyte-ai/ui/row";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { useHostState, useVcsSnapshot } from "../queries.ts";
-import { changesRepository, scopeFiles } from "./change-scopes.ts";
 import { BranchRow, ChangesRow, SessionStatusRows } from "./rail-status.tsx";
 import {
   clampWorkbenchWidthToBounds,
@@ -201,10 +200,9 @@ function FloatingWorkbenchPanel({
   const project = scope.kind === "project";
   const vcs = useVcsSnapshot(project);
   const snapshot = project ? vcs.data : undefined;
-  const repository = changesRepository(snapshot);
   const tools = workbenchTabs(scope, capabilities);
   const head = snapshot?.kind === "repository" ? snapshot : undefined;
-  const changesShown = repository !== undefined && tools.includes("changes");
+  const changesShown = head !== undefined && tools.includes("changes");
   const statusShown = sessionId !== undefined || head !== undefined;
 
   const visibleTabs = view.tabs.filter((tab) =>
@@ -235,7 +233,7 @@ function FloatingWorkbenchPanel({
           )}
           {changesShown && (
             <ChangesRow
-              files={scopeFiles(snapshot, "uncommitted")?.length ?? 0}
+              head={head}
               onOpen={() =>
                 openWorkbenchTab({ view: viewKey, kind: "changes", workspacePath, capabilities })
               }
