@@ -1,4 +1,4 @@
-import "../conversation/transcript-render-counter.ts";
+import "../chat/transcript/transcript-render-counter.ts";
 import "../../test/window-bridge.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
@@ -11,7 +11,7 @@ import { useSession } from "./sessions.ts";
 import { installConnection } from "./connection.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
-import { renderCount, resetRenders } from "../conversation/transcript-render-counter.ts";
+import { renderCount, resetRenders } from "../chat/transcript/transcript-render-counter.ts";
 
 const SHOWN = asId<"session">("shown");
 

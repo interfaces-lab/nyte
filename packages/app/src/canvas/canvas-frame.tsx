@@ -33,19 +33,16 @@ import { nyte } from "../contract/nyte.ts";
 import { useHostState } from "../data/host.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { patchDigest } from "../diff/changes-viewed.ts";
-import {
-  useVisibleCanvasTab,
-  workbenchController,
-  workbenchViewKey,
-} from "../workbench/controller.ts";
+import { useVisibleCanvasTab, workbenchController } from "../workbench/controller.ts";
+import { workbenchViewKey } from "../workbench/model.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
 import { readCanvasTheme, subscribeCanvasTheme } from "./canvas-theme.ts";
 import type { CanvasTheme } from "./canvas-theme.ts";
-import { openConversationLink } from "../conversation/external-link.ts";
+import { openConversationLink } from "../chat/markdown/external-link.ts";
 import type { MentionFile } from "../data/files.ts";
-import { PartOrigin } from "../conversation/part-origin.ts";
-import { linkReference, useCitableFiles } from "../conversation/prose.tsx";
+import { PartOrigin } from "../chat/transcript/part-origin.ts";
+import { linkReference, useCitableFiles } from "../chat/markdown/prose.tsx";
 import { useReferenceOpener } from "../references/reference-opener.tsx";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
 

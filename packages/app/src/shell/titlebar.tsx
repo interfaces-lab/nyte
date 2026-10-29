@@ -19,12 +19,8 @@ import { activePane } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
-import {
-  workbenchController,
-  workbenchScope,
-  workbenchViewKey,
-  useWorkbenchSnapshot,
-} from "../workbench/controller.ts";
+import { workbenchController, useWorkbenchSnapshot } from "../workbench/controller.ts";
+import { workbenchScope, workbenchViewKey } from "../workbench/model.ts";
 import { useStagePage } from "../tabs/shell-state.ts";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
 import {

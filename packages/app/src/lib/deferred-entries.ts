@@ -1,16 +1,16 @@
 import type { chartsRuntime } from "../settings/usage-charts.deferred.ts";
-import type { codeRuntime } from "../conversation/code.deferred.tsx";
-import type { highlightRuntime } from "../conversation/highlight.deferred.ts";
-import type { ghosttyRuntime } from "../workbench/ghostty.deferred.ts";
+import type { codeRuntime } from "../chat/markdown/code.deferred.tsx";
+import type { highlightRuntime } from "../chat/markdown/highlight.deferred.ts";
+import type { ghosttyRuntime } from "../workbench/terminal/ghostty.deferred.ts";
 import type { workbenchRuntime } from "../workbench/panels.deferred.tsx";
 
 export const deferredEntries = {
   code: {
-    module: new URL("../conversation/code.deferred.tsx", import.meta.url).href,
+    module: new URL("../chat/markdown/code.deferred.tsx", import.meta.url).href,
     packages: ["@pierre/diffs/", "shiki/"],
   },
   highlight: {
-    module: new URL("../conversation/highlight.deferred.ts", import.meta.url).href,
+    module: new URL("../chat/markdown/highlight.deferred.ts", import.meta.url).href,
     packages: ["@pierre/highlights/"],
   },
   workbench: {
@@ -18,7 +18,7 @@ export const deferredEntries = {
     packages: ["@pierre/diffs/", "preact/"],
   },
   ghostty: {
-    module: new URL("../workbench/ghostty.deferred.ts", import.meta.url).href,
+    module: new URL("../workbench/terminal/ghostty.deferred.ts", import.meta.url).href,
     packages: ["ghostty-web/"],
   },
   charts: {

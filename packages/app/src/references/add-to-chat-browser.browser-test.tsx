@@ -7,10 +7,10 @@ import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { receiveChatExcerpts } from "./add-to-chat.ts";
-import { ComposerEditor } from "../conversation/composer-editor.tsx";
-import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
+import { ComposerEditor } from "../chat/composer/composer-editor.tsx";
+import type { ComposerEditorHandle } from "../chat/composer/composer-editor.tsx";
 import { nyte } from "../contract/nyte.ts";
-import { BrowserPanel } from "../workbench/browser-panel.tsx";
+import { BrowserPanel } from "../workbench/browser/browser-panel.tsx";
 
 declare global {
   interface Window {

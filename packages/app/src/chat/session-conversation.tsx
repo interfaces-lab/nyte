@@ -8,9 +8,9 @@ import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useDeferredValue, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { Activation, Revision, SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
-import { Composer } from "../conversation/composer.tsx";
-import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
-import type { BranchModelChoice, BranchModelPicker } from "../conversation/turn-view.tsx";
+import { Composer } from "./composer/composer.tsx";
+import type { ComposerEditorHandle } from "./composer/composer-editor.tsx";
+import type { BranchModelChoice, BranchModelPicker } from "./transcript/turn-view.tsx";
 import { observeActivation } from "../panes/open-workspace.tsx";
 import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
@@ -31,22 +31,19 @@ import { useWatchSelect } from "../data/watch-store.ts";
 import type { WatchStore } from "../data/watch-store.ts";
 import type { DesktopModelOption } from "../data/catalog.ts";
 
-import { BackgroundWork, useLiveTerminals } from "../conversation/tray/terminals.tsx";
-import { Timeline } from "../conversation/timeline.tsx";
-import { TranscriptProvider, useTranscriptControls } from "../conversation/transcript.tsx";
-import { ApprovalTray } from "../conversation/approval-tray.tsx";
-import { QuestionTray } from "../conversation/tray/questions.tsx";
-import { transcriptProjector } from "../conversation/transcript-rows.ts";
+import { BackgroundWork, useLiveTerminals } from "./trays/terminals.tsx";
+import { Timeline } from "./transcript/timeline.tsx";
+import { TranscriptProvider, useTranscriptControls } from "./transcript/transcript.tsx";
+import { ApprovalTray } from "./trays/approval-tray.tsx";
+import { QuestionTray } from "./trays/questions.tsx";
+import { transcriptProjector } from "./transcript/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
-import { openJobTerminal } from "../workbench/terminal-store.ts";
-import {
-  listSubagents,
-  SubagentTray,
-  type SubagentTrayView,
-} from "../conversation/tray/agents.tsx";
-import { subagentSessions, SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
-import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
+import { workbenchController } from "../workbench/controller.ts";
+import { workbenchViewKey } from "../workbench/model.ts";
+import { openJobTerminal } from "../workbench/terminal/terminal-store.ts";
+import { listSubagents, SubagentTray, type SubagentTrayView } from "./trays/agents.tsx";
+import { subagentSessions, SubagentSessionsProvider } from "./tools/subagent-sessions.ts";
+import { modelRefFor, selectedModelOption } from "./composer/model-picker-state.ts";
 import { StartupReadsRelease } from "../data/startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCommitCount } from "../lib/work-counts.ts";

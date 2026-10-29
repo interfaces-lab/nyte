@@ -4,7 +4,8 @@
  * A folder is the first path segment under `src/`. Folders in one layer may import each
  * other; a folder may import any lower layer and never a higher one. Every static
  * `import` and `export … from` counts, type-only ones too, because the layers describe
- * where a reader finds a concept, not only what loads at run time. Tests, browser-test
+ * where a reader finds a concept, not only what loads at run time; TYPE_REACH lists the
+ * few files whose type-only imports may reach up. Tests, browser-test
  * fixtures and `fixtures/` folders are left out: they may reach any layer to drive
  * what they test. A folder missing from LAYERS, or a root file other than the entry
  * points, fails the check so a new one is placed on purpose.
@@ -15,7 +16,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { ScriptKind } from "@typescript/native/ast";
+import { ScriptKind, SyntaxKind } from "@typescript/native/ast";
 import { isExportDeclaration, isImportDeclaration } from "@typescript/native/ast/is";
 import { API } from "@typescript/native/sync";
 
@@ -46,6 +47,17 @@ const LAYERS = [
   ["shell"],
   ["boot", "web", "app.tsx", "index.ts"],
 ];
+
+/**
+ * Files whose type-only imports may reach a higher layer, with the reason. Their value
+ * imports still follow the layers.
+ */
+const TYPE_REACH = new Map([
+  [
+    "lib/deferred-entries.ts",
+    "The deferred-chunk manifest names each entry's runtime type; the entries load later by URL.",
+  ],
+]);
 
 /** Root files that are not modules of any folder. */
 const UNPLACED = new Set(["vite-env.d.ts"]);
@@ -90,6 +102,8 @@ for (const file of files) {
 
   const parsed = retained.sourceFile;
 
+  const typesReach = TYPE_REACH.has(relative(source, file));
+
   for (const statement of parsed.statements) {
     if (!isImportDeclaration(statement) && !isExportDeclaration(statement)) continue;
 
@@ -108,6 +122,12 @@ for (const file of files) {
     const targetLayer = layers.get(targetFolder);
 
     if (targetLayer !== undefined && targetLayer <= layers.get(folder)) continue;
+
+    const typeOnly = isImportDeclaration(statement)
+      ? statement.importClause?.phaseModifier === SyntaxKind.TypeKeyword
+      : statement.isTypeOnly;
+
+    if (typesReach && typeOnly) continue;
 
     const line = parsed.getLineAndCharacterOfPosition(statement.getStart(parsed)).line + 1;
 

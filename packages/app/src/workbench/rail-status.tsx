@@ -13,7 +13,7 @@ import { sessionWatch } from "../data/watches.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { showsSettingsSection } from "../settings/index.ts";
 import { worktreeFiles } from "./files/worktree-files.ts";
-import { ChangeStats } from "./change-stats.tsx";
+import { ChangeStats } from "./changes/change-stats.tsx";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const CONTEXT_WARNING_PERCENT = 80;

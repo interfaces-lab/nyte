@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import type { Execution, JobId, SessionInfo } from "@nyte-ai/sdk";
 import { chatsFor, sessionRow } from "../../test/view-fixtures.ts";
-import { listSubagents } from "../conversation/tray/agents.tsx";
+import { listSubagents } from "../chat/trays/agents.tsx";
 import { showTray } from "./tray.ts";
 import type { TrayView } from "./tray.ts";
 

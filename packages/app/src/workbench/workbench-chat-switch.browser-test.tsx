@@ -1,4 +1,4 @@
-import "../conversation/transcript-render-counter.ts";
+import "../chat/transcript/transcript-render-counter.ts";
 import "../../test/window-bridge.ts";
 import "./panels.deferred.tsx";
 import { CodeView } from "@pierre/diffs/react";
@@ -31,13 +31,14 @@ import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import type { ViewStream } from "../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
-import { renderCount, resetRenders } from "../conversation/transcript-render-counter.ts";
-import { ChangesPanel } from "./changes-panel.tsx";
-import { ChangesToolbar } from "./changes-toolbar.tsx";
-import { workbenchController, workbenchViewKey } from "./controller.ts";
-import { TextFileEditor } from "./file-editor.tsx";
-import { fileActions } from "./file-store.ts";
-import { FilesPanel } from "./files-panel.tsx";
+import { renderCount, resetRenders } from "../chat/transcript/transcript-render-counter.ts";
+import { ChangesPanel } from "./changes/changes-panel.tsx";
+import { ChangesToolbar } from "./changes/changes-toolbar.tsx";
+import { workbenchController } from "./controller.ts";
+import { workbenchViewKey } from "./model.ts";
+import { TextFileEditor } from "./files/file-editor.tsx";
+import { fileActions } from "./files/file-store.ts";
+import { FilesPanel } from "./files/files-panel.tsx";
 import { Workbench } from "./workbench.tsx";
 
 const NAMES = ["alpha", "bravo", "charlie"] as const;

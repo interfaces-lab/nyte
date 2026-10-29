@@ -1,8 +1,8 @@
 import { mentionsFolder } from "../references/message-references.ts";
 import type { ReferenceOpener } from "../references/reference-opener.tsx";
-import type { WorkbenchViewKey } from "./controller.ts";
+import type { WorkbenchViewKey } from "./model.ts";
 import { workbenchController } from "./controller.ts";
-import { fileActions } from "./file-store.ts";
+import { fileActions } from "./files/file-store.ts";
 
 export function workbenchReferenceOpener(input: {
   readonly viewKey: WorkbenchViewKey;

@@ -11,12 +11,12 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import {
   activeWorkbenchTab,
   defaultWorkbenchTab,
-  workbenchController,
   workbenchScope,
   workbenchShowsChat,
   workbenchViewKey,
-} from "../workbench/controller.ts";
-import { terminalActions } from "../workbench/terminal-store.ts";
+} from "../workbench/model.ts";
+import { workbenchController } from "../workbench/controller.ts";
+import { terminalActions } from "../workbench/terminal/terminal-store.ts";
 
 const COMMANDS = [
   "new-chat",

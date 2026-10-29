@@ -8,8 +8,8 @@ import {
   applyBrowserEvent,
   applyBrowserAgentOpened,
   applyBrowserKey,
-} from "../workbench/browser-surfaces.ts";
-import { applyBrowserHistory } from "../workbench/browser-history.ts";
+} from "../workbench/browser/browser-surfaces.ts";
+import { applyBrowserHistory } from "../workbench/browser/browser-history.ts";
 import { workbenchController } from "../workbench/controller.ts";
 import { requestTrust } from "../panes/open-workspace.tsx";
 import { acceptHostSettings } from "../preferences/host.ts";

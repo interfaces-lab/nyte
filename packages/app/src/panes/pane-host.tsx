@@ -7,7 +7,7 @@ import { Activity, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement, RefObject } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { receiveChatExcerpts } from "../references/add-to-chat.ts";
-import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
+import type { ComposerEditorHandle } from "../chat/composer/composer-editor.tsx";
 import {
   usePaneActions,
   usePaneControllerSnapshot,
@@ -29,7 +29,7 @@ import { useWatchSelect } from "../data/watch-store.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { ReferenceOpenerProvider } from "../references/reference-opener.tsx";
-import { workbenchViewKey } from "../workbench/controller.ts";
+import { workbenchViewKey } from "../workbench/model.ts";
 import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
 
 /**

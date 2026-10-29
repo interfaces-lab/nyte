@@ -16,7 +16,8 @@ import type {
   PaneLayoutAction,
   SplitDirection,
 } from "./pane-layout.ts";
-import { SessionViewStateStore, WindowDrafts } from "./session-view-state.ts";
+import { SessionViewStateStore } from "./session-view-state.ts";
+import { WindowDrafts } from "../chat/composer/drafts.ts";
 import type { ComposerViewState } from "./session-view-state.ts";
 
 interface LayoutStorage {

@@ -27,26 +27,26 @@ import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   activeWorkbenchTab,
   defaultWorkbenchTab,
-  workbenchController,
   workbenchTabAvailable,
   workbenchKindLabel,
   workbenchShowsChat,
   workbenchTabLabel,
   workbenchTabs,
   WORKBENCH_CHAT_TAB,
-} from "./controller.ts";
+} from "./model.ts";
+import { workbenchController } from "./controller.ts";
 import type {
   WorkbenchScope,
   WorkbenchTab,
   WorkbenchTabKind,
   WorkbenchViewKey,
   WorkbenchViewState,
-} from "./controller.ts";
+} from "./model.ts";
 import { readDeferred } from "../lib/deferred.tsx";
 import { useCanvasEditing } from "../canvas/canvas-activity.ts";
-import { terminalActions, useTerminalRuntime } from "./terminal-store.ts";
-import type { TerminalTab } from "./terminal-store.ts";
-import { fileActions, useFileTabs } from "./file-store.ts";
+import { terminalActions, useTerminalRuntime } from "./terminal/terminal-store.ts";
+import type { TerminalTab } from "./terminal/terminal-store.ts";
+import { fileActions, useFileTabs } from "./files/file-store.ts";
 
 const TAB_CONTENT_FADE =
   "linear-gradient(to right, black calc(100% - 36px), transparent calc(100% - 12px))";

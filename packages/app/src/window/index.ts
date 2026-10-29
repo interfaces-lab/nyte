@@ -6,11 +6,8 @@ import type { HostState } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { connection } from "../data/connection.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import {
-  workbenchController,
-  workbenchShowsChat,
-  workbenchViewKey,
-} from "../workbench/controller.ts";
+import { workbenchController } from "../workbench/controller.ts";
+import { workbenchShowsChat, workbenchViewKey } from "../workbench/model.ts";
 import { derivedStore } from "../data/derived-store.ts";
 import type { StoreSource } from "../data/derived-store.ts";
 import { expose } from "./exposure.ts";

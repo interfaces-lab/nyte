@@ -7,18 +7,15 @@ import type { ReactElement } from "react";
 import type { CommandInfo, Delivery } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { ComposerFrame } from "../../conversation/composer-frame.tsx";
-import { attachComposerFiles } from "../../conversation/composer-files.ts";
-import { composerSource } from "../../conversation/composer-suggestions.tsx";
+import { ComposerFrame } from "./composer-frame.tsx";
+import { attachComposerFiles } from "./composer-files.ts";
+import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
-import type {
-  ComposerDocumentState,
-  ComposerSubmission,
-} from "../../conversation/composer-document.ts";
-import type { ComposerEditorHandle } from "../../conversation/composer-editor.tsx";
-import { composerSendPlan } from "../../conversation/composer-send.ts";
-import { startDraft } from "../../conversation/draft-start.ts";
-import { ModelPicker } from "../../conversation/model-picker.tsx";
+import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
+import type { ComposerEditorHandle } from "./composer-editor.tsx";
+import { composerSendPlan } from "./composer-send.ts";
+import { startDraft } from "./draft-start.ts";
+import { ModelPicker } from "./model-picker.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
 import {
   usePaneActions,
@@ -32,7 +29,7 @@ import { useCatalog } from "../../data/catalog.ts";
 import { useHostState } from "../../data/host.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { useWorkspaceCatalog } from "../../data/plugins.ts";
-import { modelRefFor, selectedModelOption } from "../../conversation/model-picker-state.ts";
+import { modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 import { StartupReadsRelease } from "../../data/startup.ts";
 
 const NO_COMMANDS: readonly CommandInfo[] = [];

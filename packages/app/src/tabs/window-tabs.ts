@@ -5,7 +5,8 @@ import { Value } from "typebox/value";
 import { PaneController } from "../panes/pane-controller.ts";
 import { paneLayoutSchema, paneSelection } from "../panes/pane-layout.ts";
 import type { PaneLayout } from "../panes/pane-layout.ts";
-import { SessionViewStateStore, WindowDrafts } from "../panes/session-view-state.ts";
+import { SessionViewStateStore } from "../panes/session-view-state.ts";
+import { WindowDrafts } from "../chat/composer/drafts.ts";
 import { sessionId } from "../data/schemas.ts";
 import {
   activeTab,

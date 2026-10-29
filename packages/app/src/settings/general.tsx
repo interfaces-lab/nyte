@@ -6,7 +6,7 @@ import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ReactElement } from "react";
 import type { HostBridge, UpdateChannel } from "../contract/bridge.ts";
-import { modifierKeyLabel } from "../conversation/composer-keys.ts";
+import { modifierKeyLabel } from "../chat/composer/composer-keys.ts";
 import { hostSetting, preferences, useSetting } from "../preferences/index.ts";
 import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
 import { settingsStyles as styles } from "./settings.stylex.ts";

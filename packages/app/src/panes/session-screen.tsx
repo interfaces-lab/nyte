@@ -16,13 +16,12 @@ import { nyte } from "../contract/nyte.ts";
 
 import {
   activeWorkbenchTab,
-  useWorkbenchSnapshot,
-  workbenchController,
   workbenchScope,
   workbenchViewKey,
   WORKBENCH_CHAT_TAB,
-} from "../workbench/controller.ts";
-import type { WorkbenchViewKey } from "../workbench/controller.ts";
+} from "../workbench/model.ts";
+import { useWorkbenchSnapshot, workbenchController } from "../workbench/controller.ts";
+import type { WorkbenchViewKey } from "../workbench/model.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { useChatWindow } from "../window/index.ts";
 import { clientCapabilities } from "../contract/client-actions.ts";

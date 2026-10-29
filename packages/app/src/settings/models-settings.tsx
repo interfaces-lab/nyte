@@ -10,7 +10,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Input } from "@nyte-ai/ui/input";
 import { Switch } from "@nyte-ai/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
-import { modelIcon, providerIcon } from "../conversation/model-picker-state.ts";
+import { modelIcon, providerIcon } from "../chat/composer/model-picker-state.ts";
 import { nyte } from "../contract/nyte.ts";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../data/catalog.ts";
 import { useCatalog, useSetListing, useSetPreference } from "../data/catalog.ts";
