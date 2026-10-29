@@ -199,7 +199,11 @@ class WindowTabs {
     this.#apply(reduce(this.#state, next, () => crypto.randomUUID()));
   }
 
-  /** Every chat a user opens comes through here; the intent decides its tab, and a window without a strip shows it in its one chat tab. */
+  /**
+   * Opens a chat by intent: the intent decides its tab, and a window without a strip shows it in
+   * its one chat tab. A pane's own opens (`openSessionInPane`, a drop on a pane edge) still place
+   * chats through the pane controller instead.
+   */
   openChat(sessionId: SessionId, intent: OpenIntent): void {
     this.dispatch({ kind: "open", place: { kind: "session", sessionId }, target: intent });
   }
