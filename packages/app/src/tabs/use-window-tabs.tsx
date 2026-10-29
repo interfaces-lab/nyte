@@ -87,12 +87,12 @@ export function useWindowTabsSync(): void {
     };
 
     const forgetGone = (): void => {
-      const { listed, rows } = sessionRows();
+      const { listed, hosted } = sessionRows();
 
       if (!listed) return;
 
       const live = new Set(
-        [...rows.values()].filter((session) => !session.archived).map((session) => session.id),
+        [...hosted.values()].filter((session) => !session.archived).map((session) => session.id),
       );
 
       windowTabs.dispatch({ kind: "forget-closed", live });

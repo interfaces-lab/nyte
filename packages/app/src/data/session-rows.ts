@@ -18,6 +18,8 @@ import type { OpenView } from "./watches.ts";
  */
 export interface SessionRows {
   readonly rows: ReadonlyMap<SessionId, SessionInfo>;
+  /** Each row as the host lists it, before open views and pending actions: what the host still has. */
+  readonly hosted: ReadonlyMap<SessionId, SessionInfo>;
   /** The root chats in the host's order; until the host lists them, the copy the last window kept. */
   readonly roots: readonly SessionInfo[] | undefined;
   /** The host's list of every session has arrived, so a row it lacks is read on its own. */
@@ -219,6 +221,7 @@ const sources = {
 
 const NO_ROWS: SessionRows = {
   rows: new Map(),
+  hosted: new Map(),
   roots: undefined,
   listed: false,
   missing: new Set(),
@@ -244,6 +247,7 @@ const store = derivedStore(
     const missing = read.unlisted.read().missing;
 
     return merged.rows === previous.rows &&
+      merged.hosted === previous.hosted &&
       merged.roots === previous.roots &&
       listed === previous.listed &&
       missing === previous.missing
@@ -267,12 +271,18 @@ export interface RowSources {
 /** The rows `sources` make; a row equal to one in `previous` keeps its identity, and so do the map and the roots when nothing in them changed. */
 export function mergeSessionRows(
   sources: RowSources,
-  previous: Pick<SessionRows, "rows" | "roots">,
-): Pick<SessionRows, "rows" | "roots"> {
+  previous: Pick<SessionRows, "rows" | "hosted" | "roots">,
+): Pick<SessionRows, "rows" | "hosted" | "roots"> {
   const merged = new Map<SessionId, SessionInfo>();
 
   for (const list of sources.lists)
     for (const session of list ?? []) if (!merged.has(session.id)) merged.set(session.id, session);
+
+  const hosted =
+    merged.size === previous.hosted.size &&
+    [...merged].every(([id, row]) => previous.hosted.get(id) === row)
+      ? previous.hosted
+      : merged;
 
   const rows = new Map(
     [...merged.values()].flatMap((listed) => {
@@ -292,6 +302,7 @@ export function mergeSessionRows(
   const known = previous.roots;
 
   return {
+    hosted,
     rows:
       rows.size === previous.rows.size &&
       [...rows].every(([id, row]) => previous.rows.get(id) === row)

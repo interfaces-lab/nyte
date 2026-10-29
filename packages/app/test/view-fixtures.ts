@@ -87,7 +87,7 @@ export function chatsFor(
       project: (session) => session,
       ...sources,
     },
-    { rows: new Map(), roots: undefined },
+    { rows: new Map(), hosted: new Map(), roots: undefined },
   ).rows;
 
   return describeChats(rows.values(), "workspaces" in sources ? sources.workspaces : [], previous);
