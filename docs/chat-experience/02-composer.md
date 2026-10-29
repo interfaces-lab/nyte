@@ -184,9 +184,9 @@ Nyte currently differs from Glass on: column width (840 vs 796 px), container ra
 | Model shortcut | absent | add | Cmd/Ctrl+/ opens the picker |
 | Picker close returns focus to composer | Returns to the trigger [inferred: menu default, model-picker.tsx:145] | change | Typing should resume where it was |
 | New-models dot | absent | leave out | Nyte has no "new model" announcements |
-| Branch in footer | Branch shown in title bar and new-chat row [chrome/titlebar.tsx:65–70; screens/workspace-context.tsx:144–150] | leave out | Already visible; checkout from chat is a Git feature, not composer behaviour |
-| Machine in footer | "This Mac" menu on new chat [screens/environment-menu.tsx:7–26] | leave out (in follow-up) | Nyte runs on one machine; moving agents elsewhere is Cursor-cloud |
-| Context ring | absent | add | Only when the host reports used/limit tokens. Right-aligned, with a hover readout "N% context used". |
+| Branch in footer | Branch shown in title bar and new-chat row | add (owner decision, 2026-10-30) | Port Cursor's footer: the branch segment sits under the composer, and the title bar drops its folder/branch crumb so location shows in one place. Its menu lists branches, checks one out and creates one; with no repository the segment is absent. |
+| Machine in footer | "This Mac" menu on new chat | add (owner decision, 2026-10-30) | The footer's environment segment reuses the new-chat environment menu ("This Mac", Environments…). |
+| Context ring | beside Send | move | Right end of the footer, only when the host reports used/limit tokens, hover readout "N% context used". |
 | Dictation | absent | leave out | A separate project: capture, permission, cancel and processing must ship together |
 | Child chat composer | Editable when a child opens in a pane [screens/session-conversation.tsx:493] | keep | Add a read-only state ("Follow-ups aren't available…" in Nyte's words) only if the host refuses child input |
 | Parent composer while a subagent's detail is open | Unchanged [screens/session-conversation.tsx:506–524] | add (optional) | Attach a reference to the open subagent and close its detail on send, so the follow-up reads in context |
