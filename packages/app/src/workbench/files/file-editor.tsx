@@ -13,7 +13,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { MouseEvent, ReactElement, Ref } from "react";
+import type { MouseEvent, ReactElement, ReactNode, Ref } from "react";
 import type { FileDocument, FileEvent } from "@nyte-ai/sdk";
 import { button, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
@@ -27,6 +27,8 @@ import {
 } from "../../lib/pierre-worker-provider.tsx";
 import { keys } from "../../data/query-client.ts";
 import { useSaveWorkspaceFile, useWorkspaceFile, workspaceFiles } from "../../data/files.ts";
+import { formatBytes } from "../../lib/format.ts";
+import { useBlobUrl } from "../../lib/use-blob-url.ts";
 import { workspaceGit } from "../../data/vcs.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import { watchFamily } from "../../data/watch-store.ts";
@@ -42,6 +44,8 @@ import { fileActions } from "./file-store.ts";
 import type { FileTab } from "./file-store.ts";
 
 type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
+
+type SizedFile = Extract<FileDocument, { readonly size: number }>;
 
 const diskEvents = watchFamily((_connection, path: string): AsyncIterable<readonly FileEvent[]> =>
   (async function* () {
@@ -109,10 +113,25 @@ const styles = create({
     minHeight: 0,
   },
   message: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: space.s2,
     padding: space.s5,
     color: role.contentSecondary,
     textWrap: "pretty",
   },
+  messageTitle: { color: role.contentPrimary, fontWeight: type.weightMedium },
+  messageDetail: { overflowWrap: "anywhere" },
+  image: {
+    display: "grid",
+    placeItems: "center",
+    flex: 1,
+    minHeight: 0,
+    overflow: "auto",
+    padding: space.s5,
+  },
+  picture: { display: "block", maxWidth: "100%", maxHeight: "100%", objectFit: "contain" },
   status: {
     display: "flex",
     alignItems: "center",
@@ -194,11 +213,140 @@ function DiskSync({ path }: { readonly path: string }): null {
   return null;
 }
 
+/** Files outside the workspace open read-only. */
+export function opensReadOnly(document: FileDocument): boolean {
+  return document.kind !== "missing" && document.scope === "external";
+}
+
 export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
   const document = useWorkspaceFile(input.file.path);
 
-  if (document.data?.kind === "text")
-    return <TextFileEditor {...input} document={document.data} reload={document.refetch} />;
+  return (
+    <>
+      {input.active && <DiskSync key={input.file.path} path={input.file.path} />}
+      <FileView {...input} document={document} />
+    </>
+  );
+}
+
+function FileView(
+  input: FileEditorProps & { readonly document: ReturnType<typeof useWorkspaceFile> },
+): ReactElement {
+  const query = input.document;
+  const retry = <Button onClick={() => void query.refetch()}>Retry</Button>;
+
+  if (query.data === undefined)
+    return query.isError ? (
+      <FileMessage active={input.active} alert title="The file could not be opened.">
+        <span {...props(styles.messageDetail)}>{query.error.message}</span>
+        {retry}
+      </FileMessage>
+    ) : (
+      <FileMessage active={input.active} title="Opening file…" />
+    );
+  const document = query.data;
+  const reveal = <RevealButton path={document.path} />;
+
+  switch (document.kind) {
+    case "text":
+      return (
+        <TextFileEditor
+          {...input}
+          key={opensReadOnly(document) ? document.version : "editable"}
+          document={document}
+          readOnly={opensReadOnly(document)}
+          reload={query.refetch}
+        />
+      );
+    case "image":
+      return <FileImage active={input.active} document={document} />;
+    case "pdf":
+      return (
+        <FileMessage active={input.active} title="PDFs can't be previewed here.">
+          <span>PDF · {formatBytes(document.size)}</span>
+          {reveal}
+        </FileMessage>
+      );
+    case "binary":
+      return (
+        <FileMessage active={input.active} title="This file can't be shown here.">
+          <span>Binary · {formatBytes(document.size)}</span>
+          {reveal}
+        </FileMessage>
+      );
+    case "large":
+      return (
+        <FileMessage active={input.active} title="This file is too large to open here.">
+          <span>{formatBytes(document.size)}. The editor opens text files up to 1 MB.</span>
+          {reveal}
+        </FileMessage>
+      );
+    case "missing":
+      return (
+        <FileMessage active={input.active} title="This file isn't on disk.">
+          <span {...props(styles.messageDetail)}>{document.path}</span>
+          {retry}
+        </FileMessage>
+      );
+    default: {
+      const exhaustive: never = document;
+
+      return exhaustive;
+    }
+  }
+}
+
+function FileMessage(input: {
+  readonly active: boolean;
+  readonly alert?: boolean;
+  readonly title: string;
+  readonly children?: ReactNode;
+}): ReactElement {
+  return (
+    <div
+      aria-hidden={!input.active}
+      inert={!input.active}
+      {...props(styles.root, !input.active && styles.hidden)}
+    >
+      <div role={input.alert === true ? "alert" : "status"} {...props(text.sm, styles.message)}>
+        <span {...props(styles.messageTitle)}>{input.title}</span>
+        {input.children}
+      </div>
+    </div>
+  );
+}
+
+function RevealButton(input: { readonly path: string }): ReactElement | null {
+  const revealPath = nyte.host.revealPath;
+
+  if (revealPath === undefined) return null;
+
+  return (
+    <Button onClick={() => void revealPath({ path: input.path })}>
+      {revealLabel(nyte.platform)}
+    </Button>
+  );
+}
+
+function FileImage(input: {
+  readonly active: boolean;
+  readonly document: SizedFile;
+}): ReactElement {
+  const path = input.document.path;
+
+  const url = useBlobUrl(["files", "bytes", path, input.document.version], async () =>
+    (await workspaceFiles()).bytes(path),
+  );
+
+  if (url.data === undefined)
+    return url.isError ? (
+      <FileMessage active={input.active} alert title="The image could not be loaded.">
+        <span {...props(styles.messageDetail)}>{url.error.message}</span>
+        <Button onClick={() => void url.refetch()}>Retry</Button>
+      </FileMessage>
+    ) : (
+      <FileMessage active={input.active} title="Opening file…" />
+    );
 
   return (
     <div
@@ -206,14 +354,13 @@ export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
       inert={!input.active}
       {...props(styles.root, !input.active && styles.hidden)}
     >
-      <div role={document.isError ? "alert" : "status"} {...props(text.sm, styles.message)}>
-        {document.isError
-          ? `The file could not be opened. ${document.error.message}`
-          : document.data?.kind === "binary"
-            ? "Binary files cannot be edited here."
-            : document.data?.kind === "large"
-              ? "This file is too large for the workbench editor."
-              : "Opening file…"}
+      <div {...props(styles.image)}>
+        <img src={url.data} alt={path.split("/").at(-1)} {...props(styles.picture)} />
+      </div>
+      <div {...props(styles.status)}>
+        <span {...props(styles.statusText)}>
+          {input.document.mime} · {formatBytes(input.document.size)}
+        </span>
       </div>
     </div>
   );
@@ -226,9 +373,11 @@ export function TextFileEditor({
   active,
   autoSave,
   document,
+  readOnly,
   reload,
 }: FileEditorProps & {
   readonly document: TextFile;
+  readonly readOnly: boolean;
   readonly reload: ReturnType<typeof useWorkspaceFile>["refetch"];
 }): ReactElement {
   const { navigationRevision } = file;
@@ -274,7 +423,7 @@ export function TextFileEditor({
   const codeFontSize = useSetting(preferences.codeFontSize);
   const lineNumbers = useSetting(preferences.fileLineNumbers);
   const wordWrap = useSetting(preferences.fileWordWrap);
-  const gitBlame = useSetting(preferences.fileGitBlame);
+  const gitBlame = useSetting(preferences.fileGitBlame) && !readOnly;
   const formatOnSave = useSetting(preferences.fileFormatOnSave);
   const saveFile = useSaveWorkspaceFile();
   const dirty = snapshot.contents !== snapshot.savedContents;
@@ -301,7 +450,7 @@ export function TextFileEditor({
     {
       id: file.path,
       type: "file",
-      edit: true,
+      edit: !readOnly,
       file: {
         name: file.displayPath,
         contents: buffer.getSnapshot().contents,
@@ -310,14 +459,16 @@ export function TextFileEditor({
     },
   ]);
 
-  const save = (): Promise<void> =>
-    buffer.save({
+  const save = async (): Promise<void> => {
+    if (readOnly) return;
+    await buffer.save({
       write: (input) =>
         saveFile.mutateAsync({ path: input.path, contents: input.contents, expect: input.version }),
       format: formatOnSave
         ? async (input) => (await workspaceFiles()).format(input.path, input.contents)
         : undefined,
     });
+  };
 
   const autosave = useRef({ enabled: autoSave, save });
   // oxlint-disable-next-line nyte-code/no-direct-effect -- latest autosave settings for the buffer timer, which runs outside render
@@ -389,11 +540,7 @@ export function TextFileEditor({
     if (editor !== undefined) replaceContents(editor, snapshot.contents);
   }, [file.path, snapshot.contents]);
 
-  const attachEditor = (
-    editor: Pick<Editor, "getFile" | "getText" | "applyEdits" | "focus" | "setSelections">,
-  ): void => {
-    if (editor.getFile() === undefined) return;
-    replaceContents(editor, buffer.getSnapshot().contents);
+  const showTarget = (editor: Pick<Editor, "focus" | "setSelections"> | undefined): void => {
     const target = navigation.current;
 
     if (!target.active || target.line === undefined || appliedNavigation.current >= target.revision)
@@ -409,6 +556,8 @@ export function TextFileEditor({
       id: file.path,
       range: { start: target.line, end: target.line },
     });
+
+    if (editor === undefined) return;
     editor.focus({
       lineNumber: target.line,
       character: (target.column ?? 1) - 1,
@@ -425,7 +574,16 @@ export function TextFileEditor({
       ]);
   };
 
+  const attachEditor = (
+    editor: Pick<Editor, "getFile" | "getText" | "applyEdits" | "focus" | "setSelections">,
+  ): void => {
+    if (editor.getFile() === undefined) return;
+    replaceContents(editor, buffer.getSnapshot().contents);
+    showTarget(editor);
+  };
+
   const attachCurrentEditor = useEffectEvent(attachEditor);
+  const showCurrentTarget = useEffectEvent(showTarget);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- applies line navigation to the imperative editor before paint
   useLayoutEffect(() => {
@@ -439,7 +597,8 @@ export function TextFileEditor({
     const editor = viewer.current?.getEditor(file.path);
 
     if (editor !== undefined) attachCurrentEditor(editor);
-  }, [active, file.column, file.length, file.line, file.path, navigationRevision]);
+    else if (readOnly) showCurrentTarget(undefined);
+  }, [active, file.column, file.length, file.line, file.path, navigationRevision, readOnly]);
 
   const discard = async (): Promise<void> => {
     if (buffer.getSnapshot().status.kind === "saving")
@@ -453,6 +612,7 @@ export function TextFileEditor({
   };
 
   const format = async (): Promise<void> => {
+    if (readOnly) return;
     const current = buffer.getSnapshot();
 
     const result = await (await workspaceFiles()).format(file.path, current.contents);
@@ -471,13 +631,13 @@ export function TextFileEditor({
       : (event: MouseEvent<HTMLElement>): void => {
           event.preventDefault();
           void showContextMenu(contextMenu, event, [
-            { kind: "role", role: "cut", label: "Cut" },
+            !readOnly && { kind: "role", role: "cut", label: "Cut" },
             { kind: "role", role: "copy", label: "Copy" },
-            { kind: "role", role: "paste", label: "Paste" },
+            !readOnly && { kind: "role", role: "paste", label: "Paste" },
             { kind: "role", role: "selectAll", label: "Select All" },
             { kind: "separator" },
-            { kind: "item", label: "Format Document", run: () => void format() },
-            {
+            !readOnly && { kind: "item", label: "Format Document", run: () => void format() },
+            !readOnly && {
               kind: "item",
               label: "Save",
               accelerator: "CmdOrCtrl+S",
@@ -490,7 +650,7 @@ export function TextFileEditor({
               label: "Copy Path",
               run: () => void navigator.clipboard.writeText(file.path),
             },
-            {
+            !readOnly && {
               kind: "item",
               label: "Copy Relative Path",
               run: () => void navigator.clipboard.writeText(file.displayPath),
@@ -522,7 +682,6 @@ export function TextFileEditor({
       onContextMenu={openContextMenu}
       {...props(styles.root, !active && styles.hidden)}
     >
-      {active && <DiskSync key={file.path} path={file.path} />}
       <PierreWorkerProvider>
         <EditProvider createEditor={createEditor}>
           <CodeView
@@ -556,6 +715,7 @@ export function TextFileEditor({
             <span {...props(styles.statusText)}>{blameText}</span>
           </>
         )}
+        {readOnly && <span {...props(styles.statusText)}>Read-only: outside the workspace</span>}
         <span role="status" {...props(styles.statusText, styles.saveText)}>
           {snapshot.status.kind === "saving"
             ? "Saving…"

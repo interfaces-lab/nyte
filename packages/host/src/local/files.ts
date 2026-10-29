@@ -35,6 +35,7 @@ import { sha256 } from "../hash.ts";
 import { findExecutable, run } from "./command.ts";
 import type { Ran } from "./command.ts";
 import { feed } from "./feed.ts";
+import { classifyFile } from "./file-kind.ts";
 import { decodeText } from "./text.ts";
 import { readErrorCode, createIgnores, walkTree, watchPath, watchTree } from "./tree.ts";
 
@@ -46,7 +47,7 @@ export type LocalFiles = Omit<FilesApi, "bytes"> & {
   bytes(path: string): Promise<VersionedReader>;
 };
 
-/** The size past which `read` answers `large`: 1 MiB. */
+/** The size past which `read` answers a text file as `large`: 1 MiB. */
 export const TEXT_LIMIT = 1024 * 1024;
 
 const CHUNK = 64 * 1024;
@@ -67,7 +68,7 @@ const WATCH_POLL_MS = 1_000;
 
 const FORMATTERS = ["oxfmt", "prettier", "biome"] as const;
 
-/** Returns a folder's files over `node:fs`: a relative path resolves against `root`, an absolute one is taken as given (the ancestor context files are read through it, §37g). A version is the SHA-256 of what is there, never an mtime: a file's contents (through a symlink, its target's), a directory's sorted entry names, and, for `stat` of a symlink itself, its target path. `read` answers `text` for UTF-8 without NUL up to 1 MiB, `large` above, `binary` otherwise, `missing` when absent (`SdkError("invalid")` for a directory); `bytes` streams the file with its size, a null mime and its version (`SdkError("unknown")` when absent); `stat` uses `lstat` (a symlink with its `target`), null when absent. `write` compares `expect` with the current version first (`stale { current }`, `absent` needing no file), answers `missing-parent` unless `parents`, and writes through a temporary file renamed into place (through a symlink, at its target), keeping an existing file's mode; `remove` compares `expect` the same way (`stale { current: null }` when nothing is there) and answers `saved` with the version it removed. `batch()` returns a plan whose `apply` and `upload()` reject with `SdkError("unavailable")`: core lays its own over them (`wrapFiles`). `format` runs `formatter`, else the first of `oxfmt`, `prettier` and `biome` under `<root>/node_modules/.bin`, then on the `PATH`, with the contents on stdin and the path for its config, answering `unchanged` when equal and `unavailable { reason }` when there is none or it fails. `scan` walks `directory` (default the root; an absolute one is walked as its own root and answered with absolute paths) breadth-first in pages of 500 entries, skipping `.git` and, unless `ignored: "include"` or the directory is itself ignored, what `.gitignore` files and `.git/info/exclude` ignore (`ignore`), then `complete`, or `incomplete` with `limit` after 50,000 entries or `permission` after an unreadable directory; entries carry no version. `find` matches the query against the scanned file paths, case-insensitively: exact name, name prefix, name substring, path substring, then a fuzzy subsequence, shorter first, at most `limit` (default 20, capped at 50), the scan reused for 5 s. `search` runs `ripgrep` (else `rg` on the PATH; with neither, a scan of the text files up to 1 MiB with a JavaScript regex) for the query, literal unless `regex`, with smart case unless `caseSensitive` is given, whole words alone when `wholeWord`, over the files the `include` globs pick (all when none) less the `exclude` globs; a file with a draft is searched in its draft's contents instead of on disk. It yields a `match` per matching line (1-based line and column and the first match's length, the line cut at 500 characters), drafts first, then `complete`, or `truncated` at `limit` (default 200); a regex or glob `rg` cannot read throws `SdkError("invalid")`. `watch` uses a recursive `fs.watch` on the root (a 1 s poll where there is none) or, given `paths`, a watch on each of them alone that waits for a missing one to appear and never polls, without ignored paths or directories, coalescing changes over 100 ms into `created`, `modified` and `removed` events with the version after (null when removed), a path's last change winning while the reader is behind. `signal` ends every open `watch`. */
+/** Returns a folder's files over `node:fs`: a relative path resolves against `root`, an absolute one is taken as given (the ancestor context files are read through it, §37g). A version is the SHA-256 of what is there, never an mtime: a file's contents (through a symlink, its target's), a directory's sorted entry names, and, for `stat` of a symlink itself, its target path. `read` classifies a file from its first 4 KiB (`classifyFile`) and answers its `mime` and `scope`, `workspace` when its real path is under the root's and `external` otherwise: `image` and `pdf` with their size whatever it is, an SVG as `image` only when `as` is `document` (otherwise as text), `text` for UTF-8 without NUL up to 1 MiB, `large` above, `binary` otherwise, `missing` when absent (`SdkError("invalid")` for a directory); `bytes` streams the file with its size, the same mime and its version (`SdkError("unknown")` when absent); `stat` uses `lstat` (a symlink with its `target`), null when absent. `write` compares `expect` with the current version first (`stale { current }`, `absent` needing no file), answers `missing-parent` unless `parents`, and writes through a temporary file renamed into place (through a symlink, at its target), keeping an existing file's mode; `remove` compares `expect` the same way (`stale { current: null }` when nothing is there) and answers `saved` with the version it removed. `batch()` returns a plan whose `apply` and `upload()` reject with `SdkError("unavailable")`: core lays its own over them (`wrapFiles`). `format` runs `formatter`, else the first of `oxfmt`, `prettier` and `biome` under `<root>/node_modules/.bin`, then on the `PATH`, with the contents on stdin and the path for its config, answering `unchanged` when equal and `unavailable { reason }` when there is none or it fails. `scan` walks `directory` (default the root; an absolute one is walked as its own root and answered with absolute paths) breadth-first in pages of 500 entries, skipping `.git` and, unless `ignored: "include"` or the directory is itself ignored, what `.gitignore` files and `.git/info/exclude` ignore (`ignore`), then `complete`, or `incomplete` with `limit` after 50,000 entries or `permission` after an unreadable directory; entries carry no version. `find` matches the query against the scanned file paths, case-insensitively: exact name, name prefix, name substring, path substring, then a fuzzy subsequence, shorter first, at most `limit` (default 20, capped at 50), the scan reused for 5 s. `search` runs `ripgrep` (else `rg` on the PATH; with neither, a scan of the text files up to 1 MiB with a JavaScript regex) for the query, literal unless `regex`, with smart case unless `caseSensitive` is given, whole words alone when `wholeWord`, over the files the `include` globs pick (all when none) less the `exclude` globs; a file with a draft is searched in its draft's contents instead of on disk. It yields a `match` per matching line (1-based line and column and the first match's length, the line cut at 500 characters), drafts first, then `complete`, or `truncated` at `limit` (default 200); a regex or glob `rg` cannot read throws `SdkError("invalid")`. `watch` uses a recursive `fs.watch` on the root (a 1 s poll where there is none) or, given `paths`, a watch on each of them alone that waits for a missing one to appear and never polls, without ignored paths or directories, coalescing changes over 100 ms into `created`, `modified` and `removed` events with the version after (null when removed), a path's last change winning while the reader is behind. `signal` ends every open `watch`. */
 export function localFiles(
   root: string,
   options?: {
@@ -99,16 +100,38 @@ export function localFiles(
   };
 
   return {
-    async read(path) {
+    async read(path, readOptions) {
       const target = absolute(path);
       const stats = await stat(target).catch(missing);
 
       if (stats === null) return { kind: "missing", path };
 
       if (stats.isDirectory()) throw new SdkError("invalid", `${path} is a directory.`);
+      const head = await readHead(target).catch(missing);
+
+      if (head === null) return { kind: "missing", path };
+      const file = classifyFile(target, head);
+      const scope = await findScope(root, target);
+
+      if (file.kind !== "text" && (file.mime !== "image/svg+xml" || readOptions?.as === "document"))
+        return {
+          kind: file.kind,
+          path,
+          scope,
+          mime: file.mime,
+          size: stats.size,
+          version: await hashFile(target),
+        };
 
       if (stats.size > TEXT_LIMIT)
-        return { kind: "large", path, size: stats.size, version: await hashFile(target) };
+        return {
+          kind: "large",
+          path,
+          scope,
+          mime: file.mime,
+          size: stats.size,
+          version: await hashFile(target),
+        };
       const bytes = await readFile(target).catch(missing);
 
       if (bytes === null) return { kind: "missing", path };
@@ -116,8 +139,15 @@ export function localFiles(
       const text = decodeText(bytes);
 
       return text === null
-        ? { kind: "binary", path, size: bytes.byteLength, version }
-        : { kind: "text", path, contents: text, version };
+        ? {
+            kind: "binary",
+            path,
+            scope,
+            mime: "application/octet-stream",
+            size: bytes.byteLength,
+            version,
+          }
+        : { kind: "text", path, scope, mime: file.mime, contents: text, version };
     },
     async bytes(path) {
       const target = absolute(path);
@@ -125,6 +155,7 @@ export function localFiles(
 
       if (stats === null || !stats.isFile())
         throw new SdkError("unknown", `No file is at ${path}.`);
+      const mime = classifyFile(target, await readHead(target)).mime;
       const version = await hashFile(target);
       let handle: Awaited<ReturnType<typeof open>> | null = null;
 
@@ -136,7 +167,7 @@ export function localFiles(
 
       return {
         size: stats.size,
-        mime: null,
+        mime,
         version,
         async *chunks() {
           handle = await open(target, "r");
@@ -280,6 +311,23 @@ export function localFiles(
       throw new SdkError("unavailable", "Core stores uploads; the local provider does not.");
     },
   };
+}
+
+/** Answers whether a file sits inside the workspace by real paths, so a symlink counts where it points. */
+async function findScope(root: string, path: string): Promise<"workspace" | "external"> {
+  const inside = relative(await realpath(root), await realpath(path));
+
+  return inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)
+    ? "external"
+    : "workspace";
+}
+
+async function readHead(path: string): Promise<Buffer> {
+  await using handle = await open(path, "r");
+  const head = Buffer.alloc(4096);
+  const read = await handle.read(head, 0, head.length, 0);
+
+  return head.subarray(0, read.bytesRead);
 }
 
 function hashVersion(data: string | Uint8Array): FileVersion {

@@ -14,7 +14,14 @@ function notes(files: Map<string, string>): Plugin<"core"> {
 
     if (contents === undefined) throw new Error(`No file ${path}.`);
 
-    return { kind: "text", path, contents, version: asId(`v-${contents.length}`) };
+    return {
+      kind: "text",
+      path,
+      scope: "workspace",
+      mime: "text/plain",
+      contents,
+      version: asId(`v-${contents.length}`),
+    };
   };
 
   return {

@@ -8,6 +8,7 @@ import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { revealLabel } from "../../components/context-menu.ts";
 import { nyte } from "../../contract/nyte.ts";
+import { formatBytes } from "../../lib/format.ts";
 import { dismissDownload } from "./browser-surfaces.ts";
 
 const styles = create({
@@ -44,20 +45,6 @@ const styles = create({
   },
   failed: { color: role.contentDisabled },
 });
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${String(bytes)} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let unit = 0;
-
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-
-  return `${value < 10 ? value.toFixed(1) : String(Math.round(value))} ${units[unit] ?? "GB"}`;
-}
 
 function detail(download: BrowserDownload): string {
   switch (download.state) {

@@ -10,6 +10,8 @@ const v2 = asId<"file-version">("v2");
 const document: Extract<FileDocument, { readonly kind: "text" }> = {
   kind: "text",
   path: "/workspace/file.ts",
+  scope: "workspace",
+  mime: "text/plain",
   contents: "original",
   version: v1,
 };

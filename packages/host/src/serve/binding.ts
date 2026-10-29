@@ -435,7 +435,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "job.settled": ({ workspace: id, job }, { signal }) =>
       workspace(id).job(job).settled({ signal }),
 
-    "files.read": async ({ workspace: id, path }) => (await files(id)).read(path),
+    "files.read": async ({ workspace: id, path, options }) => (await files(id)).read(path, options),
     "files.bytes": async ({ workspace: id, path }) => {
       const reader = await (await files(id)).bytes(path);
 

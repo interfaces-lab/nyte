@@ -350,7 +350,7 @@ export interface EnvironmentRegistry {
 }
 
 export interface FilesApi {
-  read(path: string): Promise<FileDocument>;
+  read(path: string, options?: { readonly as: "text" | "document" }): Promise<FileDocument>;
   bytes(path: string): Promise<ByteReader>;
   stat(path: string): Promise<{
     readonly kind: "file" | "directory" | "symlink";

@@ -131,6 +131,8 @@ export function localProvider(
             : {
                 kind: "text",
                 path,
+                scope: "workspace",
+                mime: "text/plain",
                 contents: new TextDecoder().decode(file.contents),
                 version: file.version,
               };
