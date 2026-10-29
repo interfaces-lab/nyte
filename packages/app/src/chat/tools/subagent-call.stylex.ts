@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { button, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const subagentCallStyles = create({
@@ -27,10 +27,6 @@ export const subagentCallStyles = create({
     height: type.leadingLg,
     paddingLeft: space.s0_5,
   },
-  dot: { width: 6, height: 6, borderRadius: radius.pill },
-  attention: { backgroundColor: role.contentInteractiveTertiary },
-  failed: { backgroundColor: role.bgInteractiveStrong },
-  done: { backgroundColor: role.contentTertiary },
   text: {
     display: "flex",
     flex: "1 1 0",
