@@ -32,7 +32,7 @@ import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../contract/nyte.ts";
 import { useHostState } from "../queries.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { patchDigest } from "../workbench/changes-viewed.ts";
+import { patchDigest } from "../diff/changes-viewed.ts";
 import {
   useVisibleCanvasTab,
   workbenchController,
@@ -42,12 +42,12 @@ import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
 import { readCanvasTheme, subscribeCanvasTheme } from "./canvas-theme.ts";
 import type { CanvasTheme } from "./canvas-theme.ts";
-import { openConversationLink } from "./external-link.ts";
-import type { MentionFile } from "./message-references.ts";
-import { PartOrigin } from "./part-origin.ts";
-import { linkReference, useCitableFiles } from "./prose.tsx";
-import { useReferenceOpener } from "./reference-opener.tsx";
-import type { ReferenceOpener } from "./reference-opener.tsx";
+import { openConversationLink } from "../conversation/external-link.ts";
+import type { MentionFile } from "../references/message-references.ts";
+import { PartOrigin } from "../conversation/part-origin.ts";
+import { linkReference, useCitableFiles } from "../conversation/prose.tsx";
+import { useReferenceOpener } from "../references/reference-opener.tsx";
+import type { ReferenceOpener } from "../references/reference-opener.tsx";
 
 const styles = create({
   figure: {

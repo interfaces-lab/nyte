@@ -10,7 +10,7 @@ import type { ToolCallDensity } from "../preferences/index.ts";
 import { useWatchSelect } from "../sdk.tsx";
 import type { WatchStore } from "../sdk.tsx";
 import { Button } from "@nyte-ai/ui/button";
-import { TranscriptSkeleton } from "../screens/transcript-skeleton.tsx";
+import { TranscriptSkeleton } from "./transcript-skeleton.tsx";
 import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
 import { SubagentReportLine } from "./subagent-call.tsx";
 import { TranscriptContent, useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
@@ -22,7 +22,7 @@ import type { TranscriptProjector } from "./transcript-rows.ts";
 import { nextVisit, openVisit, readUnread } from "./transcript-unread.ts";
 import type { UnreadEvent, UnreadVisit } from "./transcript-unread.ts";
 import { NewMessages, UnreadDivider } from "./transcript-unread-view.tsx";
-import { countWork, useCommitCount } from "../work-counts.ts";
+import { countWork, useCommitCount } from "../lib/work-counts.ts";
 import { useChatWindow } from "../window/index.ts";
 
 type EditUserMessage = (

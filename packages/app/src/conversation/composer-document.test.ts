@@ -4,7 +4,7 @@ import { getSchema, getTextBetween, getTextSerializersFromSchema } from "@tiptap
 import { closeHistory, history, redo, undo } from "@tiptap/pm/history";
 import { EditorState } from "@tiptap/pm/state";
 import type { Transaction } from "@tiptap/pm/state";
-import type { MentionFile } from "./message-references.ts";
+import type { MentionFile } from "../references/message-references.ts";
 import {
   clearComposerHistory,
   ComposerDocument,
@@ -26,8 +26,8 @@ import {
   restoreComposerDocument,
   selectComposerRange,
 } from "./composer-document.ts";
-import { referenceLabel, referenceText } from "./message-references.ts";
-import type { MessageReference } from "./message-references.ts";
+import { referenceLabel, referenceText } from "../references/message-references.ts";
+import type { MessageReference } from "../references/message-references.ts";
 
 const file: MentionFile = {
   path: "/project/a file.ts",

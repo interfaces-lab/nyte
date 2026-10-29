@@ -42,8 +42,8 @@ import type {
   WorkbenchViewKey,
   WorkbenchViewState,
 } from "./controller.ts";
-import { readDeferred } from "../deferred.tsx";
-import { useCanvasEditing } from "./canvas-activity.ts";
+import { readDeferred } from "../lib/deferred.tsx";
+import { useCanvasEditing } from "../canvas/canvas-activity.ts";
 import { terminalActions, useTerminalRuntime } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";

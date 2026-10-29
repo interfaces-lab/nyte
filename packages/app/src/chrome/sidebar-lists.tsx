@@ -1,4 +1,4 @@
-import { useNowMinute } from "../use-now-minute.ts";
+import { useNowMinute } from "../lib/use-now-minute.ts";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Button } from "@nyte-ai/ui/button";
@@ -26,11 +26,10 @@ import {
   folderView,
   hasSessionFilters,
   sessionPage,
-  type SessionShelf,
   type SessionViewGroup,
-  type SessionViewSettings,
   type ShelfHold,
 } from "./sidebar-view.ts";
+import { type SessionShelf, type SessionViewSettings } from "../preferences/session-view.ts";
 
 export interface ListedSession {
   readonly place: SessionPlace;

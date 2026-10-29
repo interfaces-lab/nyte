@@ -17,14 +17,14 @@ import type { MouseEvent, ReactElement, Ref } from "react";
 import type { FileDocument, FileEvent } from "@nyte-ai/sdk";
 import { button, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
-import { diffStyles } from "../conversation/diff.stylex.ts";
+import { diffStyles } from "../diff/diff.stylex.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { nyte } from "../contract/nyte.ts";
 import {
   PIERRE_HIGHLIGHTER_OPTIONS,
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
-} from "../pierre-worker-provider.tsx";
+} from "../lib/pierre-worker-provider.tsx";
 import {
   keys,
   useSaveWorkspaceFile,

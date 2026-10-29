@@ -12,7 +12,7 @@ import type { GitHubPullRequest, GitHubPullRequestContext, GitHubRepository } fr
 import type { ConnectBridge } from "../contract/bridge.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { nyte } from "../contract/nyte.ts";
-import { openExternal } from "../open-external.ts";
+import { openExternal } from "../lib/open-external.ts";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import {

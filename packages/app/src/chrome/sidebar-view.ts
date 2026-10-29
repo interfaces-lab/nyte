@@ -1,9 +1,16 @@
 import { runMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
-import { typed } from "@nyte-ai/schema/model";
-import { Type } from "typebox";
 import type { ChatDirectory } from "../chats/index.ts";
+import {
+  STATUSES,
+  type SessionEnvironment,
+  type SessionGrouping,
+  type SessionShelf,
+  type SessionSort,
+  type SessionStatus,
+  type SessionViewSettings,
+} from "../preferences/session-view.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -11,71 +18,11 @@ const NO_CHATS: ChatDirectory = new Map();
 
 const NONE_UNREAD: ReadonlySet<SessionId> = new Set();
 
-export const GROUPINGS = [
-  "inbox",
-  "none",
-  "repository",
-  "updated",
-  "status",
-  "environment",
-] as const;
-
-export const SORTS = ["created", "updated", "status"] as const;
-
-export const SHELVES = ["inbox", "working", "done", "archived"] as const;
-
-export const SHOW_FIELDS = ["updated"] as const;
-
-export const STATUSES = ["needs-attention", "unread", "working", "draft", "done"] as const;
-
-export const ENVIRONMENTS = ["cloud", "local"] as const;
-
-type SessionGrouping = (typeof GROUPINGS)[number];
-
-type SessionSort = (typeof SORTS)[number];
-
-export type SessionShowField = (typeof SHOW_FIELDS)[number];
-
-export type SessionStatus = (typeof STATUSES)[number];
-
-export type SessionEnvironment = (typeof ENVIRONMENTS)[number];
-
-export type SessionShelf = (typeof SHELVES)[number];
-
-export interface SessionViewSettings {
-  readonly grouping: SessionGrouping;
-  readonly sort: SessionSort;
-  readonly show: readonly SessionShowField[];
-  readonly statuses: readonly SessionStatus[];
-  readonly environments: readonly SessionEnvironment[];
-  readonly archived: boolean;
-}
-
 export interface SessionViewGroup {
   readonly key: string;
   readonly label: string | undefined;
   readonly sessions: readonly SessionInfo[];
 }
-
-export const SessionViewSchema = typed<SessionViewSettings>()(
-  Type.Object({
-    grouping: Type.Enum(GROUPINGS),
-    sort: Type.Enum(SORTS),
-    show: Type.Immutable(Type.Array(Type.Enum(SHOW_FIELDS))),
-    statuses: Type.Immutable(Type.Array(Type.Enum(STATUSES))),
-    environments: Type.Immutable(Type.Array(Type.Enum(ENVIRONMENTS))),
-    archived: Type.Boolean(),
-  }),
-);
-
-export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
-  grouping: "none",
-  sort: "created",
-  show: ["updated"] as const,
-  statuses: [],
-  environments: [],
-  archived: false,
-});
 
 /** Days back through which each Updated bucket reaches, counted in local calendar days. */
 const UPDATED_BUCKETS = [

@@ -23,8 +23,8 @@ import type {
   ToolStatus,
   ToolTense,
 } from "@nyte-ai/plugin/client/presentation";
-import { fileFromUrl } from "./message-references.ts";
-import { useReferenceOpener } from "./reference-opener.tsx";
+import { fileFromUrl } from "../references/message-references.ts";
+import { useReferenceOpener } from "../references/reference-opener.tsx";
 import { activityStyles } from "./activity.stylex.ts";
 import { ToolOutputText, excerptText, outputExcerpt } from "./tool-output.tsx";
 

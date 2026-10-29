@@ -1,5 +1,5 @@
 import type { Message } from "@nyte-ai/sdk";
-import { contentDraftText } from "./message-references.ts";
+import { contentDraftText } from "../references/message-references.ts";
 
 const RECALLED_PROMPTS = 10;
 

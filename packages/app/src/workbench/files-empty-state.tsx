@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { useId, useState, type ReactElement } from "react";
-import type { MentionFile } from "../conversation/message-references.ts";
+import type { MentionFile } from "../references/message-references.ts";
 import type { WorktreeFile } from "../view-helpers.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
@@ -8,8 +8,8 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Row } from "@nyte-ai/ui/row";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { mentionsFolder } from "../conversation/message-references.ts";
-import { createFileRanking } from "../file-ranking.ts";
+import { mentionsFolder } from "../references/message-references.ts";
+import { createFileRanking } from "../lib/file-ranking.ts";
 import { treeStatus } from "./tree-theme.ts";
 import { nyte } from "../contract/nyte.ts";
 

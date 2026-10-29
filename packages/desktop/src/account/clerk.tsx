@@ -1,5 +1,5 @@
 import { AccountScope, accountAppearance } from "@nyte-ai/app/account/appearance.tsx";
-import { publishDeferred } from "@nyte-ai/app/deferred.tsx";
+import { publishDeferred } from "@nyte-ai/app/lib/deferred.tsx";
 import { ClerkLoading, ClerkProvider, SignIn, useClerk } from "@clerk/electron/react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import type { ReactElement, ReactNode } from "react";

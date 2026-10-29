@@ -9,7 +9,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { occludes } from "../../workbench/browser-occlusion.ts";
+import { occludes } from "../../components/overlay-occlusion.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 

@@ -10,7 +10,7 @@ import type {
   ThinkingMessage,
   ToolMessage,
 } from "@nyte-ai/plugin/client/presentation";
-import { messageParts, referenceLabel } from "./message-references.ts";
+import { messageParts, referenceLabel } from "../references/message-references.ts";
 
 export type StepMessage = ThinkingMessage | ToolMessage;
 

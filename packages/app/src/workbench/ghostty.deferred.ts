@@ -1,4 +1,4 @@
-import { publishDeferred } from "../deferred.tsx";
+import { publishDeferred } from "../lib/deferred.tsx";
 import { loadGhostty } from "./ghostty.ts";
 
 export const ghosttyRuntime = { loadGhostty };

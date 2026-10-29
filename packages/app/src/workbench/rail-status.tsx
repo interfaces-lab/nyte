@@ -8,7 +8,7 @@ import { Row } from "@nyte-ai/ui/row";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { formatTokens, formatUsd } from "../chrome/usage-view.ts";
+import { formatTokens, formatUsd } from "../lib/format.ts";
 import { sessionWatch, useWatchSelect } from "../sdk.tsx";
 import { showsSettingsSection } from "../settings/index.ts";
 import { worktreeFiles } from "../view-helpers.ts";

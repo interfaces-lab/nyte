@@ -8,14 +8,14 @@ import { createRoot } from "react-dom/client";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
-import { receiveChatExcerpts } from "../conversation/add-to-chat.ts";
+import { receiveChatExcerpts } from "./add-to-chat.ts";
 import { ComposerEditor } from "../conversation/composer-editor.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { queryClient } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
-import { TerminalPanel } from "./terminal-panel.tsx";
+import { TerminalPanel } from "../workbench/terminal-panel.tsx";
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

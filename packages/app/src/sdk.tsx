@@ -19,10 +19,10 @@ import type {
 import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { startupReadsReleased } from "./startup.ts";
-import { countWork } from "./work-counts.ts";
-import { sessionActivityProjector } from "./conversation/session-activity.ts";
-import type { LoadedSessionView } from "./conversation/session-activity.ts";
-import { createTextPacer } from "./conversation/paced-text.ts";
+import { countWork } from "./lib/work-counts.ts";
+import { sessionActivityProjector } from "./data/session-activity.ts";
+import type { LoadedSessionView } from "./data/session-activity.ts";
+import { createTextPacer } from "./data/paced-text.ts";
 import type { ConnectionProblem, HostEndpoint } from "./contract/connection.ts";
 
 let installed: Connection | undefined;

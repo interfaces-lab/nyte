@@ -1,7 +1,5 @@
-import { runStatusLabel, toolDetail, toolVerbs } from "@nyte-ai/plugin/client/presentation";
+import { runStatusLabel } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus, ToolStatus } from "@nyte-ai/plugin/client/presentation";
-import { countWork } from "../work-counts.ts";
-import type { SessionActivity } from "./session-activity.ts";
 
 export interface SubagentStatus {
   readonly indicator: "running" | "attention" | "failed" | "unread" | "done";
@@ -52,33 +50,6 @@ export function subagentStatus(status: RunStatus, unread: boolean): SubagentStat
       const _exhaustive: never = status;
 
       return _exhaustive;
-    }
-  }
-}
-
-export function subagentActivity(
-  activity: SessionActivity | undefined,
-  cwd: string | undefined,
-): string | undefined {
-  countWork("select:activity");
-  switch (activity?.kind) {
-    case "tool": {
-      const verb = toolVerbs(activity.toolClass).running;
-      const detail = toolDetail(activity.toolClass, cwd)?.text;
-
-      return detail === undefined ? verb : `${verb} ${detail}`;
-    }
-    case "thinking":
-      return "Thinking";
-    case "writing":
-      return "Writing a response";
-    case "idle":
-    case undefined:
-      return undefined;
-    default: {
-      const exhaustive: never = activity;
-
-      return exhaustive;
     }
   }
 }

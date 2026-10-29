@@ -12,7 +12,7 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { readDeferred } from "../../deferred.tsx";
+import { readDeferred } from "../../lib/deferred.tsx";
 import { Tray, TrayIconAction, trayParts, useTrayRoot } from "./tray.tsx";
 import type { TrayView } from "../../window/index.ts";
 

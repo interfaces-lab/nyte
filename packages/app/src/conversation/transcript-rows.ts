@@ -7,7 +7,7 @@ import type {
 } from "@nyte-ai/plugin/client/presentation";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import type { WatchStore } from "../sdk.tsx";
-import { CHANGES_VISIBLE_FILES } from "../workbench/change-tree.ts";
+import { CHANGES_VISIBLE_FILES } from "../diff/change-tree.ts";
 import { conversationTurns } from "../view-helpers.ts";
 import type { TurnMessages } from "../view-helpers.ts";
 import { showsLiveStatus } from "./step-group-presentation.ts";

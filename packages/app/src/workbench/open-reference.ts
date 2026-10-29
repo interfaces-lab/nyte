@@ -1,5 +1,5 @@
-import { mentionsFolder } from "../conversation/message-references.ts";
-import type { ReferenceOpener } from "../conversation/reference-opener.tsx";
+import { mentionsFolder } from "../references/message-references.ts";
+import type { ReferenceOpener } from "../references/reference-opener.tsx";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { workbenchController } from "./controller.ts";
 import { fileActions } from "./file-store.ts";

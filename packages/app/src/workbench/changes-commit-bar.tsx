@@ -25,7 +25,7 @@ import {
 } from "@nyte-ai/ui/menu";
 import { Button, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { openExternal } from "../open-external.ts";
+import { openExternal } from "../lib/open-external.ts";
 import { keys, queryClient, refreshVcs, workspaceGit } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";

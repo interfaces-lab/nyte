@@ -46,7 +46,7 @@ import {
 import { callStatus, subagentStatus } from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
-import { useCommitCount } from "../work-counts.ts";
+import { useCommitCount } from "../lib/work-counts.ts";
 
 type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 

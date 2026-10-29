@@ -21,10 +21,10 @@ import {
   composerReference,
   composerReferencesPlugin,
 } from "./composer-document.ts";
-import type { MentionFile } from "./message-references.ts";
+import type { MentionFile } from "../references/message-references.ts";
 import { openConversationLink } from "./external-link.ts";
-import { useReferenceOpener } from "./reference-opener.tsx";
-import type { ReferenceOpener } from "./reference-opener.tsx";
+import { useReferenceOpener } from "../references/reference-opener.tsx";
+import type { ReferenceOpener } from "../references/reference-opener.tsx";
 import { composerStyles } from "./composer.stylex.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 

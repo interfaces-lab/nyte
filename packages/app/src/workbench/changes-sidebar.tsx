@@ -19,11 +19,15 @@ import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { workbench } from "../theme/schema.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { changeSelectionSummary, filesChangedLabel, filterChangePaths } from "./change-tree.ts";
-import type { ChangeStatus } from "./change-tree.ts";
-import type { ViewedState } from "./changes-viewed.ts";
+import {
+  changeSelectionSummary,
+  filesChangedLabel,
+  filterChangePaths,
+} from "../diff/change-tree.ts";
+import type { ChangeStatus } from "../diff/change-tree.ts";
+import type { ViewedState } from "../diff/changes-viewed.ts";
 import type { LineStat } from "@nyte-ai/sdk";
-import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
+import { PIERRE_TREE_CSS } from "../lib/pierre-worker-provider.tsx";
 import { treeItemHeight, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { WorkbenchRail } from "./workbench-rail.tsx";

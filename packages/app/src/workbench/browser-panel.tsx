@@ -9,7 +9,7 @@ import type {
   BrowserElementPick,
   BrowserNavigationAction,
 } from "../contract/bridge.ts";
-import { addToChat } from "../conversation/add-to-chat.ts";
+import { addToChat } from "../references/add-to-chat.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
@@ -20,7 +20,7 @@ import { WorkbenchRail } from "./workbench-rail.tsx";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../contract/nyte.ts";
-import { openExternal } from "../open-external.ts";
+import { openExternal } from "../lib/open-external.ts";
 import { keys } from "../queries.ts";
 import { displayAddress, parseWebUrl } from "./browser-address.ts";
 import { AddressField } from "./browser-address-field.tsx";
@@ -28,7 +28,7 @@ import type { AddressFieldHandle } from "./browser-address-field.tsx";
 import { useBrowserHistory } from "./browser-history.ts";
 import { keyOwner } from "../shell/focus-owner.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { overlayCovers, subscribeOverlayRects } from "./browser-occlusion.ts";
+import { overlayCovers, subscribeOverlayRects } from "../components/overlay-occlusion.ts";
 import {
   applyBrowserEvent,
   claimBrowserSurface,

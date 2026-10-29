@@ -2,7 +2,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { ChangesSidebar } from "./changes-sidebar.tsx";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
-import type { ViewedState } from "./changes-viewed.ts";
+import type { ViewedState } from "../diff/changes-viewed.ts";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 

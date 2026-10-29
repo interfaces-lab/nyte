@@ -1,9 +1,9 @@
+import type { ImageContent } from "@nyte-ai/schema/model";
 import type { ModelRef, SessionId, Thinking } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { ComposerImageAttachment } from "../conversation/composer-files.ts";
 import type { PaneId, SplitDirection } from "./pane-layout.ts";
 
 const FLUSH_DEBOUNCE_MS = 200;
@@ -678,4 +678,10 @@ export class SessionViewStateStore {
     else drafts.parked.set(draftId, next);
     this.#window.emit();
   }
+}
+
+export interface ComposerImageAttachment {
+  readonly id: string;
+  readonly name: string;
+  readonly content: ImageContent;
 }

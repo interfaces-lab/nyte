@@ -4,7 +4,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { toast } from "@nyte-ai/ui/toast";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { ActionToasts } from "./action-toasts.ts";
+import { ActionToasts } from "./lib/action-toasts.ts";
 import { SessionActions } from "./session-actions.ts";
 import { PaneController } from "./layout/pane-controller.ts";
 import { activeSelection } from "./layout/pane-layout.ts";

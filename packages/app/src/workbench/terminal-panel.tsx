@@ -6,7 +6,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { SessionId, WorkspaceId } from "@nyte-ai/sdk";
-import { ADD_TO_CHAT_LABEL } from "../conversation/add-to-chat.ts";
+import { ADD_TO_CHAT_LABEL } from "../references/add-to-chat.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";

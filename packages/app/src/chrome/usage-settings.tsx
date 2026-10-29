@@ -9,7 +9,7 @@ import { props } from "@stylexjs/stylex";
 // oxlint-disable-next-line no-restricted-imports -- the compiler widens deriveUsage/deriveTools to every later call that reads them, so a limits refetch would re-derive the report
 import { Fragment, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { Deferred } from "../deferred.tsx";
+import { Deferred } from "../lib/deferred.tsx";
 import { useAccountLimits, useUsageReport } from "../queries.ts";
 import { useChromeTab } from "./use-chrome-tab.ts";
 import { amongOptions } from "./sidebar-view.ts";
@@ -22,9 +22,6 @@ import {
   deriveUsage,
   describeEmptyRange,
   describeTotals,
-  formatPercent,
-  formatTokens,
-  formatUsd,
   spanLabel,
   timeLabel,
   usageWindow,
@@ -35,6 +32,7 @@ import {
   type UsageRange,
   type UsageRow,
 } from "./usage-view.ts";
+import { formatPercent, formatTokens, formatUsd } from "../lib/format.ts";
 import type { UsageWindow } from "../contract/bridge.ts";
 
 const MAX_ROWS = 6;

@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { resolvePhotonWasmPath } from "@nyte-ai/host/images";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
-import { deferredEntries } from "@nyte-ai/app/deferred-entries.ts";
+import { deferredEntries } from "@nyte-ai/app/lib/deferred-entries.ts";
 import { PICKER_SCRIPT } from "./src/main/browser-picker-page.ts";
 import packageMetadata from "./package.json" with { type: "json" };
 import {

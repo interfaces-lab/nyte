@@ -20,7 +20,7 @@ import { WORKBENCH_HOME_VIEW_KEY, workbenchController } from "./workbench/contro
 import { reattachShells } from "./workbench/terminal-store.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
 import { acceptHostSettings } from "./preferences/host.ts";
-import { watchClientPlugins } from "./client-plugins.tsx";
+import { watchClientPlugins } from "./canvas/client-plugins.tsx";
 import { paceTranscripts } from "./sdk.tsx";
 import { chatWindow, followStage } from "./window/index.ts";
 

@@ -1,6 +1,6 @@
 import { toast } from "@nyte-ai/ui/toast";
-import { errorMessage } from "./contract/errors.ts";
-import { nyte } from "./contract/nyte.ts";
+import { errorMessage } from "../contract/errors.ts";
+import { nyte } from "../contract/nyte.ts";
 
 export function openExternal(url: string, title?: string): void {
   void nyte.host.openExternal({ url }).catch((cause: unknown) =>

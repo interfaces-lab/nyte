@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { keyedSerial } from "@nyte-ai/schema/serial";
 import type { Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
-import { ActionToasts } from "./action-toasts.ts";
+import { ActionToasts } from "./lib/action-toasts.ts";
 import { keys } from "./query-keys.ts";
 import { connection, findListedSession } from "./sdk.tsx";
 

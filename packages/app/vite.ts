@@ -69,11 +69,11 @@ interface DeferredEntry {
 }
 
 const DEFERRED_URLS = normalizePath(
-  fileURLToPath(new URL("./src/deferred-urls.ts", import.meta.url)),
+  fileURLToPath(new URL("./src/lib/deferred-urls.ts", import.meta.url)),
 );
 
 /**
- * Builds each entry as a chunk of its own and fills `src/deferred-urls.ts`
+ * Builds each entry as a chunk of its own and fills `src/lib/deferred-urls.ts`
  * with their URLs, which `loadDeferred` injects as module scripts. The build
  * fails if a listed package reaches the startup chunks, so a static import
  * cannot quietly pull a deferred surface back into startup.

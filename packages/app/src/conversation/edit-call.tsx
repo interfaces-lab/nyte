@@ -14,11 +14,11 @@ import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
-import { Deferred } from "../deferred.tsx";
+import { Deferred } from "../lib/deferred.tsx";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { diffView } from "../theme/schema.stylex.ts";
-import { fileFromUrl } from "./message-references.ts";
-import { useReferenceOpener } from "./reference-opener.tsx";
+import { fileFromUrl } from "../references/message-references.ts";
+import { useReferenceOpener } from "../references/reference-opener.tsx";
 import { activityStyles } from "./activity.stylex.ts";
 import { ToolOutcome } from "./tool-line.tsx";
 

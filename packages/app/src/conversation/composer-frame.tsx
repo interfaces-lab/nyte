@@ -14,8 +14,12 @@ import type { ComposerDocumentState, ComposerSubmission } from "./composer-docum
 import { ComposerEditor, type ComposerEditorHandle } from "./composer-editor.tsx";
 import { useComposerSuggestions } from "./composer-suggestions.tsx";
 import type { ComposerMentionFiles, ComposerSuggestionCatalog } from "./composer-suggestions.tsx";
-import { carriesFiles, carriesTreeFiles, droppedTreeFiles } from "./composer-file-drop.ts";
-import type { ComposerImageAttachment } from "./composer-files.ts";
+import {
+  carriesFiles,
+  carriesTreeFiles,
+  droppedTreeFiles,
+} from "../references/composer-file-drop.ts";
+import type { ComposerImageAttachment } from "../layout/session-view-state.ts";
 import {
   composerEnterAction,
   enterBehavior,
@@ -24,7 +28,7 @@ import {
 } from "./composer-keys.ts";
 import type { SubmitAction } from "./composer-keys.ts";
 import type { RecallDirection } from "./composer-history.ts";
-import type { MessageReference } from "./message-references.ts";
+import type { MessageReference } from "../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 
 const DROP_PLACEHOLDER = "Drop here to attach…";

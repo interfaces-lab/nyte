@@ -7,9 +7,13 @@ import type { IconName } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
-import { mentionsFolder, referenceLabel, referenceTitle } from "./message-references.ts";
-import type { MessageReference } from "./message-references.ts";
-import { useReferenceOpener } from "./reference-opener.tsx";
+import {
+  mentionsFolder,
+  referenceLabel,
+  referenceTitle,
+} from "../references/message-references.ts";
+import type { MessageReference } from "../references/message-references.ts";
+import { useReferenceOpener } from "../references/reference-opener.tsx";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { composerStyles } from "./composer.stylex.ts";
 

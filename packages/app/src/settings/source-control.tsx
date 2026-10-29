@@ -5,7 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { Type } from "typebox";
-import { formatTimeAgo } from "../components/ui.tsx";
+import { formatTimeAgo } from "../lib/format.ts";
 import { errorMessage } from "../contract/errors.ts";
 import type { Setting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";

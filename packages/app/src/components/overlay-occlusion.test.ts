@@ -46,6 +46,6 @@ window.nyte = new Proxy(
 
 test("a menu over a browser panel hides the page and gives it back on close", async () => {
   expect(
-    await testRenderer(new URL("./browser-occlusion.browser-test.tsx", import.meta.url), setup),
+    await testRenderer(new URL("./overlay-occlusion.browser-test.tsx", import.meta.url), setup),
   ).toBe("passed");
 }, 60_000);

@@ -16,11 +16,11 @@ import { flushSync } from "react-dom";
 import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
 import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
-import { drawPart } from "../client-plugins.tsx";
+import { drawPart } from "../canvas/client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
-import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../workbench/change-tree.ts";
+import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../diff/change-tree.ts";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -28,13 +28,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { useMentionFiles, usePluginCatalog } from "../queries.ts";
 import { Prose } from "./prose.tsx";
-import { useReferenceOpener } from "./reference-opener.tsx";
+import { useReferenceOpener } from "../references/reference-opener.tsx";
 import { SubagentGroupView, SubagentReportLine } from "./subagent-call.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { attachComposerFiles } from "./composer-files.ts";
-import type { ComposerImageAttachment } from "./composer-files.ts";
+import type { ComposerImageAttachment } from "../layout/session-view-state.ts";
 import {
   composerContentEmpty,
   composerMessageContent,
@@ -44,8 +44,8 @@ import { composerSource } from "./composer-suggestions.tsx";
 import { ImagePreview } from "./image-preview.tsx";
 import { UserMessageText, messageFiles, messageImages } from "./message-content.tsx";
 import type { MessageFile } from "./message-content.tsx";
-import { contentDraftText } from "./message-references.ts";
-import { useBlobUrl } from "../use-blob-url.ts";
+import { contentDraftText } from "../references/message-references.ts";
+import { useBlobUrl } from "../lib/use-blob-url.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
 import {
@@ -63,7 +63,7 @@ import { replyAge, userDisplayText, workedFor } from "./transcript-presentation.
 import { useCopyConfirmation } from "../components/copy-confirmation.ts";
 import { stepGroupStyles } from "./step-group.stylex.ts";
 import { conversation } from "../theme/schema.stylex.ts";
-import { useNowMinute } from "../use-now-minute.ts";
+import { useNowMinute } from "../lib/use-now-minute.ts";
 import type { PromptRow, TurnItemRow } from "./transcript-rows.ts";
 import { errorMessage } from "../contract/errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";

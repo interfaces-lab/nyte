@@ -13,10 +13,10 @@ import {
   PIERRE_HIGHLIGHTER_OPTIONS,
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
-} from "../pierre-worker-provider.tsx";
+} from "../lib/pierre-worker-provider.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { patchDigest } from "../workbench/changes-viewed.ts";
+import { patchDigest } from "./changes-viewed.ts";
 import { diffStyles } from "./diff.stylex.ts";
 import type { DiffFilesLoader } from "./diff-expansion.ts";
 

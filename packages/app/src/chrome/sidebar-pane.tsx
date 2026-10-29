@@ -9,7 +9,7 @@ import { motion as motionTokens, role } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { preferences, SIDEBAR_WIDTH, useSetting } from "../preferences/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { occludes } from "../workbench/browser-occlusion.ts";
+import { occludes } from "../components/overlay-occlusion.ts";
 import { applySidebarWidth, clampSidebarWidth, shellActions } from "./shell-state.ts";
 import { useSidebar } from "./use-sidebar.ts";
 

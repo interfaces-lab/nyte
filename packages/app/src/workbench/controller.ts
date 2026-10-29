@@ -7,7 +7,7 @@ import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { clientCapabilities } from "../contract/client-actions.ts";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
-import { loadDeferred, readDeferred } from "../deferred.tsx";
+import { loadDeferred, readDeferred } from "../lib/deferred.tsx";
 import { nyte } from "../contract/nyte.ts";
 
 export const WORKBENCH_SHARE_DEFAULT = 0.5;

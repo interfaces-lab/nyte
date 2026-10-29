@@ -4,7 +4,8 @@ import { test } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import type { Execution, SessionInfo } from "@nyte-ai/sdk";
 import { chatsFor, COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
-import { chatMark, DEFAULT_SESSION_VIEW, sessionsForView } from "./sidebar-view.ts";
+import { chatMark, sessionsForView } from "./sidebar-view.ts";
+import { DEFAULT_SESSION_VIEW } from "../preferences/session-view.ts";
 import { StatusGlyph } from "./status-glyph.tsx";
 
 const run = {

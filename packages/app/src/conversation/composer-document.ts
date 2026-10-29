@@ -8,14 +8,14 @@ import type { Command, Transaction } from "@tiptap/pm/state";
 import { Value } from "typebox/value";
 import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 import type { CompletionTrigger } from "@nyte-ai/plugin/client/presentation";
-import type { ContentPart, MentionFile } from "./message-references.ts";
+import type { ContentPart, MentionFile } from "../references/message-references.ts";
 import {
   messageParts,
   messageReferenceSchema,
   referencePart,
   referenceText,
-} from "./message-references.ts";
-import type { MessageReference } from "./message-references.ts";
+} from "../references/message-references.ts";
+import type { MessageReference } from "../references/message-references.ts";
 
 export const COMPOSER_RESTORE = "composerRestore";
 

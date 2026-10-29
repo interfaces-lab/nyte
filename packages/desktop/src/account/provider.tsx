@@ -8,7 +8,7 @@ import { create, props } from "@stylexjs/stylex";
 import { CatchBoundary } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { loadDeferred } from "@nyte-ai/app/deferred.tsx";
+import { loadDeferred } from "@nyte-ai/app/lib/deferred.tsx";
 import type { ReactElement, ReactNode } from "react";
 import type { accountRuntime } from "./clerk.tsx";
 import type { AccountBridge, AccountCommand } from "./protocol.ts";
@@ -19,7 +19,7 @@ declare global {
   }
 }
 
-declare module "@nyte-ai/app/deferred-entries.ts" {
+declare module "@nyte-ai/app/lib/deferred-entries.ts" {
   interface DeferredRuntimes {
     account: typeof accountRuntime;
   }

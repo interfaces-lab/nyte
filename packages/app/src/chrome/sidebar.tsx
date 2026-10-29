@@ -74,7 +74,7 @@ import {
   type ShelfHold,
 } from "./sidebar-view.ts";
 import { activateWorkspace } from "./use-show-session.ts";
-import { useNowMinute } from "../use-now-minute.ts";
+import { useNowMinute } from "../lib/use-now-minute.ts";
 
 type SidebarConfirmation =
   | { readonly kind: "closed" }

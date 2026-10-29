@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
-import { loadDeferred } from "../deferred.tsx";
+import { loadDeferred } from "../lib/deferred.tsx";
 import { keys } from "../query-keys.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useCopyConfirmation } from "../components/copy-confirmation.ts";

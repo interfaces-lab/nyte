@@ -8,11 +8,11 @@ import questions from "@nyte-ai/plugin/client/questions";
 import renderers from "@nyte-ai/plugin/client/transcript";
 import type { Placement, SessionId, SubmitDraft } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
-import { canvasRenderers } from "./conversation/canvas-frame.tsx";
-import { PartOrigin } from "./conversation/part-origin.ts";
-import { RawPartView } from "./conversation/raw-part.tsx";
-import { connected, connection, sessionsWatch } from "./sdk.tsx";
-import { chatWindow } from "./window/index.ts";
+import { canvasRenderers } from "./canvas-frame.tsx";
+import { PartOrigin } from "../conversation/part-origin.ts";
+import { RawPartView } from "../conversation/raw-part.tsx";
+import { connected, connection, sessionsWatch } from "../sdk.tsx";
+import { chatWindow } from "../window/index.ts";
 
 let mounting: Promise<ClientPlugins> | undefined;
 

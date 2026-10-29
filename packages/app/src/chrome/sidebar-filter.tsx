@@ -26,19 +26,21 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { sidebarFilterStyles as styles } from "./sidebar-filter.stylex.ts";
 import {
   clearSessionFilters,
-  ENVIRONMENTS,
-  GROUPINGS,
   hasSessionFilters,
   amongOptions,
+  toggleOption,
+} from "./sidebar-view.ts";
+import {
+  ENVIRONMENTS,
+  GROUPINGS,
   SHOW_FIELDS,
   SORTS,
   STATUSES,
-  toggleOption,
   type SessionEnvironment,
   type SessionShowField,
   type SessionStatus,
   type SessionViewSettings,
-} from "./sidebar-view.ts";
+} from "../preferences/session-view.ts";
 
 const SHOW_FIELD_ICONS = {
   updated: "clock",

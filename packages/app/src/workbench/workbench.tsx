@@ -43,8 +43,8 @@ import type {
 } from "./controller";
 import { terminalActions, useTerminalRuntime } from "./terminal-store";
 import { BrowserPanel } from "./browser-panel";
-import { CanvasPanel } from "./canvas-panel.tsx";
-import { Deferred, loadDeferred } from "../deferred.tsx";
+import { CanvasPanel } from "../canvas/canvas-panel.tsx";
+import { Deferred, loadDeferred } from "../lib/deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";

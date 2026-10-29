@@ -1,5 +1,6 @@
-import { showsTool, toolStatus } from "@nyte-ai/plugin/client/presentation";
+import { showsTool, toolDetail, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
 import type { Message, SessionView, ToolClass } from "@nyte-ai/sdk";
+import { countWork } from "../lib/work-counts.ts";
 
 export type SessionActivity =
   | { readonly kind: "tool"; readonly toolClass: ToolClass }
@@ -54,4 +55,31 @@ export function sessionActivityProjector(): (
 
     return activeTool ?? live;
   };
+}
+
+export function subagentActivity(
+  activity: SessionActivity | undefined,
+  cwd: string | undefined,
+): string | undefined {
+  countWork("select:activity");
+  switch (activity?.kind) {
+    case "tool": {
+      const verb = toolVerbs(activity.toolClass).running;
+      const detail = toolDetail(activity.toolClass, cwd)?.text;
+
+      return detail === undefined ? verb : `${verb} ${detail}`;
+    }
+    case "thinking":
+      return "Thinking";
+    case "writing":
+      return "Writing a response";
+    case "idle":
+    case undefined:
+      return undefined;
+    default: {
+      const exhaustive: never = activity;
+
+      return exhaustive;
+    }
+  }
 }

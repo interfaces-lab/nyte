@@ -15,7 +15,7 @@ import type { GitHubAccountState } from "@nyte-ai/sdk";
 import type { ReactElement, RefObject } from "react";
 import type { ConnectBridge } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
-import { openExternal } from "../open-external.ts";
+import { openExternal } from "../lib/open-external.ts";
 import { useUpdateState } from "../queries.ts";
 import { updateLabel } from "../contract/update-label.ts";
 import { useConnectAction, useConnectView } from "./connect-view.ts";

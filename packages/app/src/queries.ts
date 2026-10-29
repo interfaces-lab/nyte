@@ -68,9 +68,9 @@ import type { WatchState } from "./sdk.tsx";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
 import { applyListings, toDesktopCatalog } from "./catalog.ts";
 import { workspaceName, workspacePath } from "./view-helpers.ts";
-import { mentionFile } from "./conversation/message-references.ts";
-import { subagentActivity } from "./conversation/subagent-status.ts";
-import type { MentionFile } from "./conversation/message-references.ts";
+import { mentionFile } from "./references/message-references.ts";
+import { subagentActivity } from "./data/session-activity.ts";
+import type { MentionFile } from "./references/message-references.ts";
 import type { DesktopCatalog, ListingChange } from "./catalog.ts";
 import { startupReadsReleased } from "./startup.ts";
 

@@ -1,4 +1,4 @@
-import { publishDeferred } from "../deferred.tsx";
+import { publishDeferred } from "../lib/deferred.tsx";
 import { ChangesPanel } from "./changes-panel.tsx";
 import { FilesPanel } from "./files-panel.tsx";
 import { TerminalPanel } from "./terminal-panel.tsx";

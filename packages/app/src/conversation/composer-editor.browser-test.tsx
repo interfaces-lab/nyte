@@ -6,7 +6,7 @@ import "../theme/tokens.stylex.ts";
 import { ComposerEditor } from "./composer-editor.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import type { ComposerDocumentState } from "./composer-document.ts";
-import type { MessageReference } from "./message-references.ts";
+import type { MessageReference } from "../references/message-references.ts";
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

@@ -1,6 +1,6 @@
-import type { MentionFile } from "./message-references.ts";
-import { createFileRanking } from "../file-ranking.ts";
-import { mentionsFolder } from "./message-references.ts";
+import type { MentionFile } from "../references/message-references.ts";
+import { createFileRanking } from "../lib/file-ranking.ts";
+import { mentionsFolder } from "../references/message-references.ts";
 
 const MAX_FILE_SUGGESTIONS = 20;
 

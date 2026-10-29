@@ -3,8 +3,9 @@ import { asId } from "@nyte-ai/schema";
 import type { Json, Message, SessionView, ToolClass, ToolPartState } from "@nyte-ai/sdk";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { settledTool } from "../../test/view-fixtures.ts";
-import { callStatus, subagentActivity, subagentStatus } from "./subagent-status.ts";
-import { sessionActivityProjector } from "./session-activity.ts";
+import { callStatus, subagentStatus } from "./subagent-status.ts";
+import { subagentActivity } from "../data/session-activity.ts";
+import { sessionActivityProjector } from "../data/session-activity.ts";
 
 function readActivity(
   view: Pick<SessionView, "messages">,

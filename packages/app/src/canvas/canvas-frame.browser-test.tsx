@@ -9,10 +9,10 @@ import "../theme/tokens.stylex.ts";
 import { keys } from "../queries.ts";
 import { CanvasFrame } from "./canvas-frame.tsx";
 import type { DrawnCanvas } from "./canvas-frame.tsx";
-import { mentionFile } from "./message-references.ts";
-import type { MessageReference } from "./message-references.ts";
-import { ReferenceOpenerProvider } from "./reference-opener.tsx";
-import type { ReferenceOpener } from "./reference-opener.tsx";
+import { mentionFile } from "../references/message-references.ts";
+import type { MessageReference } from "../references/message-references.ts";
+import { ReferenceOpenerProvider } from "../references/reference-opener.tsx";
+import type { ReferenceOpener } from "../references/reference-opener.tsx";
 
 declare global {
   interface Window {

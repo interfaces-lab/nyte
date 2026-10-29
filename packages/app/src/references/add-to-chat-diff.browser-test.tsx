@@ -6,12 +6,12 @@ import { createRoot } from "react-dom/client";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
-import { receiveChatExcerpts } from "../conversation/add-to-chat.ts";
+import { receiveChatExcerpts } from "./add-to-chat.ts";
 import { ComposerEditor } from "../conversation/composer-editor.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import { nyte } from "../contract/nyte.ts";
-import { ChangesStack } from "./changes-stack.tsx";
-import { patchDigest } from "./changes-viewed.ts";
+import { ChangesStack } from "../workbench/changes-stack.tsx";
+import { patchDigest } from "../diff/changes-viewed.ts";
 
 const PATCH = [
   "--- a/src/alpha.ts",

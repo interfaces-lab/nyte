@@ -5,16 +5,13 @@ import { sessionRow } from "../../test/view-fixtures.ts";
 import {
   DEFAULT_SESSION_VIEW,
   ENVIRONMENTS,
-  folderView,
   GROUPINGS,
   SessionViewSchema,
-  sessionPage,
-  sessionsForView,
   SHOW_FIELDS,
   SORTS,
   STATUSES,
-  type SessionViewGroup,
-} from "./sidebar-view.ts";
+} from "../preferences/session-view.ts";
+import { folderView, sessionPage, sessionsForView, type SessionViewGroup } from "./sidebar-view.ts";
 
 const NONE = new Map<never, never>();
 

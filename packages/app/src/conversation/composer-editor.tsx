@@ -4,7 +4,7 @@ import { closeHistory } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 import { useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, Ref } from "react";
-import type { MentionFile } from "./message-references.ts";
+import type { MentionFile } from "../references/message-references.ts";
 import {
   clearComposerHistory,
   COMPOSER_RESTORE,
@@ -31,8 +31,8 @@ import {
   focusComposer,
   useComposerSurface,
 } from "./composer-surface.tsx";
-import { clipboardReferenceFromPaste } from "./message-references.ts";
-import type { MessageReference } from "./message-references.ts";
+import { clipboardReferenceFromPaste } from "../references/message-references.ts";
+import type { MessageReference } from "../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 
 export interface ComposerEditorHandle {

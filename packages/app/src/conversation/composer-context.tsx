@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import { formatTokens } from "../chrome/usage-view.ts";
+import { formatTokens } from "../lib/format.ts";
 import { sessionWatch, useWatchSelect } from "../sdk.tsx";
 
 const styles = create({

@@ -13,7 +13,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
-import { useDebouncedValue } from "../use-debounced-value.ts";
+import { useDebouncedValue } from "../lib/use-debounced-value.ts";
 
 interface SearchMatch {
   readonly line: number;

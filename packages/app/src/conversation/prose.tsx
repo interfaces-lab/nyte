@@ -26,11 +26,11 @@ import {
   inlineCodeReference,
   mentionsFolder,
   referenceTitle,
-} from "./message-references.ts";
-import type { MessageReference } from "./message-references.ts";
-import type { MentionFile } from "./message-references.ts";
+} from "../references/message-references.ts";
+import type { MessageReference } from "../references/message-references.ts";
+import type { MentionFile } from "../references/message-references.ts";
 import { asId } from "@nyte-ai/schema";
-import { useReferenceOpener } from "./reference-opener.tsx";
+import { useReferenceOpener } from "../references/reference-opener.tsx";
 import { proseStyles } from "./prose.stylex.ts";
 import { SubagentCitation } from "./subagent-call.tsx";
 import {

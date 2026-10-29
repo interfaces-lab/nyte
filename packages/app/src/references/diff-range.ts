@@ -1,5 +1,5 @@
 import type { FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
-import type { ExcerptReference } from "../conversation/message-references.ts";
+import type { ExcerptReference } from "./message-references.ts";
 
 interface DiffRow {
   readonly marker: " " | "-" | "+";

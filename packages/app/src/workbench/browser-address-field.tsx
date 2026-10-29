@@ -10,7 +10,7 @@ import type { FormEvent, KeyboardEvent, ReactElement, ReactNode, Ref } from "rea
 import { flushSync } from "react-dom";
 import type { BrowserHistoryEntry } from "../contract/bridge.ts";
 import { displayAddress, resolveBrowserAddress } from "./browser-address.ts";
-import { occludes } from "./browser-occlusion.ts";
+import { occludes } from "../components/overlay-occlusion.ts";
 import { browserSuggestions } from "./browser-suggestions.ts";
 import type { BrowserCompletion, BrowserSuggestion } from "./browser-suggestions.ts";
 

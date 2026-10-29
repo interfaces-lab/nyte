@@ -27,7 +27,7 @@ import { sessionId as sessionIdSchema } from "../schemas.ts";
 import { role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
 import { usePaneActions, usePaneControllerSnapshot } from "./pane-context.tsx";
 import { orderedPanes } from "./pane-layout.ts";
-import { occludes } from "../workbench/browser-occlusion.ts";
+import { occludes } from "../components/overlay-occlusion.ts";
 import type { DropPlacement, PaneId, PaneLayout } from "./pane-layout.ts";
 import { placementInRect, SESSION_DRAG_ACTIVATION_DISTANCE } from "./session-dnd-geometry.ts";
 import type { SessionDragPoint } from "./session-dnd-geometry.ts";

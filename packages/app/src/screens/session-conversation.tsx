@@ -57,7 +57,7 @@ import { subagentSessions, SubagentSessionsProvider } from "../conversation/suba
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
 import { StartupReadsRelease } from "../startup.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { useCommitCount } from "../work-counts.ts";
+import { useCommitCount } from "../lib/work-counts.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { chatTitle, useChat, useChats } from "../chats/index.ts";
 import { chatWindow, showTray, useChatWindow } from "../window/index.ts";

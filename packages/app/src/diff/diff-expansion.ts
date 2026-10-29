@@ -1,6 +1,6 @@
 import type { FileContents, FileDiffLoadedFiles, FileDiffMetadata } from "@pierre/diffs";
 import type { GitApi, GitScope } from "@nyte-ai/sdk";
-import { patchDigest } from "../workbench/changes-viewed.ts";
+import { patchDigest } from "./changes-viewed.ts";
 
 export type DiffContents = Awaited<ReturnType<GitApi["contents"]>>;
 

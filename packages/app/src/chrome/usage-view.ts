@@ -2,6 +2,7 @@ import type { SessionId } from "@nyte-ai/sdk";
 import type { ProviderUsage } from "@nyte-ai/sdk";
 import type { UsageSnapshot } from "../contract/bridge.ts";
 import type { UsageReport, UsageTotals, UsageWindow } from "../contract/nyte.ts";
+import { formatPercent, formatTokens, formatUsd, groupDigits } from "../lib/format.ts";
 
 export const USAGE_STALE_AFTER_MS = 60_000;
 
@@ -90,40 +91,8 @@ function addTotals(left: UsageTotals, right: UsageTotals): UsageTotals {
   };
 }
 
-function group(digits: string): string {
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/gu, ",");
-}
-
-export function formatUsd(dollars: number): string {
-  if (dollars === 0) return "$0.00";
-
-  if (dollars < 0.01) return "<$0.01";
-  const fixed = dollars.toFixed(2);
-
-  return `$${group(fixed.slice(0, -3))}${fixed.slice(-3)}`;
-}
-
-export function formatTokens(tokens: number): string {
-  if (tokens < 1_000) return String(Math.round(tokens));
-
-  if (tokens < 1_000_000) return `${(tokens / 1_000).toFixed(tokens < 10_000 ? 1 : 0)}K`;
-
-  if (tokens < 1_000_000_000)
-    return `${(tokens / 1_000_000).toFixed(tokens < 10_000_000 ? 2 : 1)}M`;
-
-  return `${(tokens / 1_000_000_000).toFixed(2)}B`;
-}
-
-export function formatPercent(fraction: number): string {
-  if (fraction <= 0) return "0%";
-
-  if (fraction < 0.01) return "<1%";
-
-  return `${String(Math.round(fraction * 100))}%`;
-}
-
 function plural(count: number, noun: string): string {
-  return `${group(String(Math.round(count)))} ${noun}${count === 1 ? "" : "s"}`;
+  return `${groupDigits(String(Math.round(count)))} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 function localDay(at: number): string {

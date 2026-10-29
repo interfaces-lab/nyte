@@ -8,7 +8,7 @@ import { skipToken, useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
-import type { MentionFile } from "./message-references.ts";
+import type { MentionFile } from "../references/message-references.ts";
 import type { CommandCompletion, CommandInfo } from "@nyte-ai/sdk";
 import type { SessionCatalogView, SkillInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -18,9 +18,13 @@ import type { ComposerComboboxState, ComposerEditorHandle } from "./composer-edi
 import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts";
 import type { FileSuggestion, MentionSuggestion } from "./composer-suggestion-ranking.ts";
 import { composerEnterAction } from "./composer-keys.ts";
-import { mentionPreviewRows } from "./mention-preview.ts";
-import { CONVERSATION_MENTION, mentionsFolder, sameReference } from "./message-references.ts";
-import type { MessageReference } from "./message-references.ts";
+import { mentionPreviewRows } from "../references/mention-preview.ts";
+import {
+  CONVERSATION_MENTION,
+  mentionsFolder,
+  sameReference,
+} from "../references/message-references.ts";
+import type { MessageReference } from "../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 
 const NONE: readonly never[] = [];

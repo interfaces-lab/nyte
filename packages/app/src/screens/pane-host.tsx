@@ -6,7 +6,7 @@ import { props } from "@stylexjs/stylex";
 import { Activity, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement, RefObject } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import { receiveChatExcerpts } from "../conversation/add-to-chat.ts";
+import { receiveChatExcerpts } from "../references/add-to-chat.ts";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import {
   usePaneActions,
@@ -27,7 +27,7 @@ import { nyte } from "../contract/nyte.ts";
 import { sessionsWatch, sessionWatch, useWatchSelect } from "../sdk.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
-import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
+import { ReferenceOpenerProvider } from "../references/reference-opener.tsx";
 import { workbenchViewKey } from "../workbench/controller.ts";
 import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
 

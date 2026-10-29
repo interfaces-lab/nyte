@@ -16,19 +16,19 @@ import { FileTypeIcon } from "../components/file-type-icon";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Button } from "@nyte-ai/ui/button";
-import { ADD_TO_CHAT_LABEL, addToChat, addsToChat } from "../conversation/add-to-chat.ts";
-import type { DiffFilesLoader } from "../conversation/diff-expansion.ts";
+import { ADD_TO_CHAT_LABEL, addToChat, addsToChat } from "../references/add-to-chat.ts";
+import type { DiffFilesLoader } from "../diff/diff-expansion.ts";
 import {
   DIFF_SEPARATOR_CSS,
   EXPANSION_LINE_COUNT,
   adaptDiffExpanders,
-} from "../conversation/diff-view.tsx";
-import { diffStyles } from "../conversation/diff.stylex.ts";
+} from "../diff/diff-view.tsx";
+import { diffStyles } from "../diff/diff.stylex.ts";
 import {
   PIERRE_HIGHLIGHTER_OPTIONS,
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
-} from "../pierre-worker-provider.tsx";
+} from "../lib/pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
@@ -41,9 +41,9 @@ import { FindWidget } from "./find-widget.tsx";
 import type { FindWidgetHandle } from "./find-widget.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-stack-code-view.ts";
-import { diffRangeExcerpt } from "./diff-range.ts";
+import { diffRangeExcerpt } from "../references/diff-range.ts";
 import type { ChangesLayout } from "./changes-view-options.ts";
-import type { ViewedState } from "./changes-viewed.ts";
+import type { ViewedState } from "../diff/changes-viewed.ts";
 
 const styles = create({
   stack: {

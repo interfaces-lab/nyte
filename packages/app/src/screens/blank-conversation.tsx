@@ -10,7 +10,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { ComposerFrame } from "../conversation/composer-frame.tsx";
 import { attachComposerFiles } from "../conversation/composer-files.ts";
 import { composerSource } from "../conversation/composer-suggestions.tsx";
-import { bindComposerFileDrop } from "../conversation/composer-file-drop.ts";
+import { bindComposerFileDrop } from "../references/composer-file-drop.ts";
 import type {
   ComposerDocumentState,
   ComposerSubmission,

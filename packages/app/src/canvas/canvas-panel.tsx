@@ -10,12 +10,12 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import { formatTimeAgo } from "../components/ui.tsx";
-import { CanvasFrame } from "../conversation/canvas-frame.tsx";
+import { formatTimeAgo } from "../lib/format.ts";
+import { CanvasFrame } from "./canvas-frame.tsx";
 import { connection, partWatch, useWatch } from "../sdk.tsx";
 import { useCanvasEditing } from "./canvas-activity.ts";
-import { useNowMinute } from "../use-now-minute.ts";
-import { workbenchStyles } from "./workbench.stylex.ts";
+import { useNowMinute } from "../lib/use-now-minute.ts";
+import { workbenchStyles } from "../workbench/workbench.stylex.ts";
 
 const styles = create({
   panel: {

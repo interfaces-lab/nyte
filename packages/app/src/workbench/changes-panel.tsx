@@ -15,7 +15,7 @@ import type {
 import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { asId } from "@nyte-ai/schema";
-import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
+import { createDiffFilesLoader } from "../diff/diff-expansion.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import {
   readGitPatches,
@@ -52,14 +52,14 @@ import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
-import { createPatchLoader } from "./changes-patches.ts";
-import type { PatchEntry, PatchSource } from "./changes-patches.ts";
+import { createPatchLoader } from "../diff/changes-patches.ts";
+import type { PatchEntry, PatchSource } from "../diff/changes-patches.ts";
 import { ChangesToolbar, changesShortcutAction } from "./changes-toolbar.tsx";
 import { changesViewOptions, useChangesViewOptions } from "./changes-view-options.ts";
-import { changesViewed, patchDigest } from "./changes-viewed.ts";
-import type { ViewedState } from "./changes-viewed.ts";
+import { changesViewed, patchDigest } from "../diff/changes-viewed.ts";
+import type { ViewedState } from "../diff/changes-viewed.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
-import { EMPTY_PATCH, patchStackSection } from "./stacked-diff.ts";
+import { EMPTY_PATCH, patchStackSection } from "../diff/stacked-diff.ts";
 import { nyte } from "../contract/nyte.ts";
 
 interface VcsChangeRow {

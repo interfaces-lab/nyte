@@ -1,5 +1,5 @@
-import { publishDeferred } from "../deferred.tsx";
-import { DiffView } from "./diff-view.tsx";
+import { publishDeferred } from "../lib/deferred.tsx";
+import { DiffView } from "../diff/diff-view.tsx";
 
 export const codeRuntime = { DiffView };
 

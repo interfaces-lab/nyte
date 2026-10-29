@@ -24,7 +24,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { SettingsRow } from "../settings/rows.tsx";
 import { BrowserSignInPanel, DeviceCodePanel } from "./sign-in-panels.tsx";
-import { formatTokens } from "./usage-view.ts";
+import { formatTokens } from "../lib/format.ts";
 
 type CatalogDefaults = NonNullable<DesktopCatalog["defaults"]>;
 

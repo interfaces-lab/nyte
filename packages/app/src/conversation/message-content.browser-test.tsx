@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { ComposerEditor } from "./composer-editor.tsx";
 import { UserMessageText } from "./message-content.tsx";
-import { ReferenceOpenerProvider } from "./reference-opener.tsx";
+import { ReferenceOpenerProvider } from "../references/reference-opener.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
