@@ -1042,7 +1042,13 @@
     ],
     "ui/src/styles/schema.stylex.ts switchControl": ["heightMd", "knobMd", "paddingMd", "widthMd"],
     "ui/src/styles/schema.stylex.ts target": ["gap", "min"],
-    "ui/src/styles/schema.stylex.ts toast": ["inset", "minHeight", "overhang", "paddingBlock"],
+    "ui/src/styles/schema.stylex.ts toast": [
+      "anchor",
+      "inset",
+      "minHeight",
+      "overhang",
+      "paddingBlock"
+    ],
     "app/src/theme/schema.stylex.ts conversation": [
       "composerExpandedRadius",
       "composerInset",

@@ -111,6 +111,7 @@ export function Composer({
   fileDropRoot,
   backgroundWork,
   floatingMount = null,
+  toastAnchor = false,
 }: {
   sessionId: SessionId;
   status: RunStatus;
@@ -125,6 +126,7 @@ export function Composer({
     readonly onEscape: () => boolean;
   };
   floatingMount?: HTMLDivElement | null;
+  toastAnchor?: boolean;
 }): ReactElement {
   useCommitCount("render:composer");
   const runningMessage = useSetting(preferences.runningMessage);
@@ -623,7 +625,9 @@ export function Composer({
         {...props(composerStyles.region, floating && composerStyles.regionFloating)}
       >
         <div {...props(composerStyles.inputStack)}>
-          <div {...props(composerStyles.preComposerOverlay)}>
+          <div
+            {...props(composerStyles.preComposerOverlay, toastAnchor && composerStyles.toastAnchor)}
+          >
             <div {...props(composerStyles.preComposerStack)}>
               {feedback !== undefined && (
                 <div

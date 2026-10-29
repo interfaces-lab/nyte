@@ -28,13 +28,18 @@ const EXIT = "translateY(150%)";
 const COPIED_MS = 1500;
 
 const styles = create({
+  /**
+   * Above the element named `toastSchema.anchor`, end-aligned with it and no wider. Without
+   * one, the anchor() fallbacks put the stack at the window's bottom-end inset.
+   */
   viewport: {
     position: "fixed",
-    insetInlineEnd: space.s4,
-    insetBlockEnd: space.s4,
+    positionAnchor: toastSchema.anchor,
+    insetInlineEnd: `anchor(end, ${space.s4})`,
+    insetBlockEnd: `calc(anchor(start, calc(${space.s4} - ${space.s2})) + ${space.s2})`,
     zIndex: layer.toast,
     boxSizing: "border-box",
-    width: "min(380px, calc(100vw - 32px))",
+    width: "min(380px, calc(100vw - 32px), anchor-size(width, 100vw))",
     margin: 0,
     padding: 0,
     pointerEvents: "none",

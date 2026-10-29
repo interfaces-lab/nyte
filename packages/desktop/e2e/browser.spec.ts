@@ -5,6 +5,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { HOST_EVENT_CHANNEL } from "../src/shared/ipc.ts";
 import { expect, test } from "./fixtures.ts";
 
 test.use({ chapter: "browser" });
@@ -248,6 +249,62 @@ test("the integrated browser journey", async ({ desktop }) => {
     await page.getByRole("menu").press("Escape");
     await expect(page.getByRole("menu")).toBeHidden();
     await expect.poll(() => pageShown(application, url)).toBe(true);
+  });
+
+  await test.step("a toast above the composer leaves the page showing", async () => {
+    await application.evaluate(({ BrowserWindow }, channel) => {
+      for (const window of BrowserWindow.getAllWindows())
+        window.webContents.send(channel, { kind: "status", message: "Saved" });
+    }, HOST_EVENT_CHANNEL);
+    const notice = page.locator('[data-slot="toast"]').filter({ hasText: "Saved" });
+    await expect(notice).toBeVisible();
+    await page.evaluate(async () => {
+      for (let frame = 0; frame < 10; frame += 1)
+        await new Promise((done) => requestAnimationFrame(done));
+    });
+    expect(await pageShown(application, url)).toBe(true);
+    await notice.evaluate((element) =>
+      Promise.all(element.getAnimations().map((animation) => animation.finished)),
+    );
+    const toastBox = await notice.boundingBox();
+    const composerBox = await page.getByRole("form", { name: "Message" }).boundingBox();
+
+    if (toastBox === null || composerBox === null)
+      throw new Error("The toast or composer is hidden");
+    expect(
+      toastBox.x < composerBox.x + composerBox.width &&
+        composerBox.x < toastBox.x + toastBox.width &&
+        toastBox.y < composerBox.y + composerBox.height &&
+        composerBox.y < toastBox.y + toastBox.height,
+    ).toBe(false);
+    await notice.hover();
+    await notice.getByRole("button", { name: "Dismiss notification" }).click();
+    await expect(notice).toHaveCount(0);
+  });
+
+  await test.step.skip("pause and restore blocking for this host", async () => {
+    const loaded = pageRequests;
+    await shield.click();
+
+    const hostSwitch = page.getByRole("menuitemcheckbox", {
+      name: "Block on 127.0.0.1",
+      exact: true,
+    });
+
+    await hostSwitch.click();
+    await expect(hostSwitch).not.toBeChecked();
+    await expect.poll(() => pageRequests).toBe(loaded + 1);
+    await expect.poll(() => scriptRequests).toBe(1);
+    await expect(shield).toHaveAttribute("title", "Paused for 127.0.0.1");
+    await expect(shield).toHaveText("paused");
+
+    await hostSwitch.click();
+    await expect(hostSwitch).toBeChecked();
+    await expect.poll(() => pageRequests).toBe(loaded + 2);
+    await expect(shield).toHaveAttribute("title", "1 blocked on this page");
+    expect(scriptRequests).toBe(1);
+    await page.getByRole("menu").press("Escape");
+    await expect(page.getByRole("menu")).toBeHidden();
   });
 
   await test.step("open a guest link in a second workbench tab", async () => {
