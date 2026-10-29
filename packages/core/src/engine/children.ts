@@ -4,7 +4,7 @@ import type { ChildTable, Kernel } from "../contract/kernel.ts";
 import { backgroundItems } from "../fold/background.ts";
 import type { SessionRecord } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
-import { liveRun, MAIN } from "../store/session.ts";
+import { listSessionRecords, liveRun, MAIN } from "../store/session.ts";
 
 interface Child {
   readonly parent: SessionId;
@@ -91,6 +91,17 @@ export function createChildTable(
 }
 
 const CHILD_TITLE = "Subagent";
+
+/** Links every stored child of `parent`, so its background also lists children whose runs ended before this process started. */
+export async function linkStoredChildren(
+  kernel: Pick<Kernel, "store" | "children">,
+  parent: SessionId,
+): Promise<void> {
+  const records = await listSessionRecords(kernel.store, { kind: "children", session: parent });
+
+  for (const record of records)
+    kernel.children.link(record, await readChildState(kernel.store, record));
+}
 
 /** How a child's own run stands in the store: its main head's live run, else how its last run ended; null for a child that never ran. */
 export async function readChildState(

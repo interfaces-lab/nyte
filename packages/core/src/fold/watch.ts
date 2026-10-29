@@ -26,6 +26,7 @@ import type {
 } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeRunRecord } from "../contract/records.ts";
+import { linkStoredChildren } from "../engine/children.ts";
 import { settleAnswersFrom } from "../store/parts.ts";
 import { collectSessionEvents } from "../store/log.ts";
 import { headRef, parseHeadRef, runRef } from "../store/refs.ts";
@@ -508,6 +509,7 @@ function openFoldFeed(
 
       if (!open) return;
       await readPast();
+      await linkStoredChildren(kernel, session);
 
       if (!open) return;
 

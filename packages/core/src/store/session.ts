@@ -10,6 +10,7 @@ import type {
   MessageId,
   MoveOutcome,
   ObjectId,
+  ParentFilter,
   Position,
   Ref,
   Revision,
@@ -338,16 +339,17 @@ export async function covers(
   return false;
 }
 
-/** Every session record, most recently active first. Paged, not a snapshot: a session that becomes active mid-scan sorts ahead of the cursor and can be missed. */
+/** Every session record `parents` selects, most recently active first. Paged, not a snapshot: a session that becomes active mid-scan sorts ahead of the cursor and can be missed. */
 export async function listSessionRecords(
   store: StoreConnection,
+  parents: ParentFilter = { kind: "all" },
 ): Promise<readonly SessionRecord[]> {
   const records: SessionRecord[] = [];
   let after: { readonly at: number; readonly id: SessionId } | undefined;
 
   for (;;) {
     const refs = await store.sessions.list({
-      parents: { kind: "all" },
+      parents,
       after,
       limit: SESSION_PAGE,
     });
