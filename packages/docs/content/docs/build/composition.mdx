@@ -87,6 +87,9 @@ import type { Host } from "@nyte-ai/sdk";
 const store = sqliteStore({ path: "./agent.db" });
 const host = await sdk.open({ store });
 
+// This chat can't answer approval requests, so tool calls run without asking.
+await host.settings.apply("permissions", "full");
+
 const { providers } = await host.models.list();
 
 if (providers.find((provider) => provider.id === "openai-codex")?.credential === "missing") {
@@ -218,6 +221,9 @@ import type { Host } from "@nyte-ai/sdk";
 
 const store = sqliteStore({ path: "./agent.db" });
 const host = await sdk.open({ store });
+
+// This chat can't answer approval requests, so tool calls run without asking.
+await host.settings.apply("permissions", "full");
 
 const { providers } = await host.models.list();
 
@@ -353,6 +359,9 @@ import type { Host } from "@nyte-ai/sdk";
 const store = sqliteStore({ path: "./agent.db" });
 const host = await sdk.open({ store });
 
+// This chat can't answer approval requests, so tool calls run without asking.
+await host.settings.apply("permissions", "full");
+
 const { providers } = await host.models.list();
 
 if (providers.find((provider) => provider.id === "openai-codex")?.credential === "missing") {
@@ -478,6 +487,9 @@ import type { Host } from "@nyte-ai/sdk";
 
 const store = sqliteStore({ path: "./agent.db" });
 const host = await sdk.open({ store });
+
+// This chat can't answer approval requests, so tool calls run without asking.
+await host.settings.apply("permissions", "full");
 
 const { providers } = await host.models.list();
 
@@ -606,6 +618,9 @@ import type { Host } from "@nyte-ai/sdk";
 const store = sqliteStore({ path: "./agent.db" });
 const host = await sdk.open({ store });
 
+// This chat can't answer approval requests, so tool calls run without asking.
+await host.settings.apply("permissions", "full");
+
 const { providers } = await host.models.list();
 
 if (providers.find((provider) => provider.id === "openai-codex")?.credential === "missing") {
@@ -732,6 +747,9 @@ import type { Host } from "@nyte-ai/sdk";
 
 const store = sqliteStore({ path: "./agent.db" });
 const host = await sdk.open({ store });
+
+// This chat can't answer approval requests, so tool calls run without asking.
+await host.settings.apply("permissions", "full");
 
 const { providers } = await host.models.list();
 
@@ -947,14 +965,12 @@ node tui.ts "What does this project do?"
 
 ## The folder it works in
 
-The agent works in the folder you start the host from, and its tools run there without asking
-first. It isn't a sandbox. Pass `workspace: { kind: "local", path }` to `sdk.open` to pick another
+The agent works in the folder you start the host from. It isn't a sandbox. Pass `workspace: { kind: "local", path }` to `sdk.open` to pick another
 folder.
 
 Context files (`AGENTS.md`, `CLAUDE.md`) load from the folder and its ancestors without trust;
 start a session with `contextFiles: false` to skip them. The folder's extensions, such as
-`.nyte/skills`, `.agents/skills`, `.nyte/prompts` and `.nyte/plugins`, load only once you trust
-the folder:
+`.nyte/skills`, `.agents/skills` and `.nyte/plugins`, load only once you trust the folder:
 
 ```ts
 const added = await host.workspaces.add({ kind: "local", path: process.cwd() });
@@ -964,9 +980,9 @@ if (added.kind === "added" || added.kind === "exists") {
 }
 ```
 
-The decision is saved for the folder and the folders below it. To have tool calls ask first, run
-`host.settings.apply("permissions", "ask")`. The desktop app and the terminal show those requests;
-this chat doesn't, so leave it at the default while you build.
+The decision is saved for the folder and the folders below it. A host asks before every command
+and file change unless you apply another policy. The `server.ts` above applies `"full"` because
+this chat can't show approval requests. The desktop app and the terminal can.
 
 ## Before you deploy
 

@@ -33,7 +33,7 @@ The recorder then writes `source: { kind: "recorded" }`. Read the diff before co
 
 ## Simulation
 
-`simulate({ models })` opens a real host (`openHost`) on a SQLite store in a temp folder, with a home and a local workspace there unless you pass your own. `drive(command)` runs one step: `send`, `settle`, `approve`, `interrupt`, `view`, `list`, `listen` (opens the HTTP endpoint and answers its url and token), `kill` (closes the host and its store) and `restart` (a new host on the same store and endpoint). Clients connect with `sdk.connect` to the `listen` url, and the TUI harness takes `simulation.host` or that connection.
+`simulate({ models })` opens a real host (`openHost`) on a SQLite store in a temp folder, with a home and a local workspace there unless you pass your own. Its tool calls run without asking (`permissions` is `full`); to drive `approve`, apply `ask` first with `simulation.host.settings.apply`. `drive(command)` runs one step: `send`, `settle`, `approve`, `interrupt`, `view`, `list`, `listen` (opens the HTTP endpoint and answers its url and token), `kill` (closes the host and its store) and `restart` (a new host on the same store and endpoint). Clients connect with `sdk.connect` to the `listen` url, and the TUI harness takes `simulation.host` or that connection.
 
 `pnpm --dir packages/bench simulate [cassette]` serves the same commands over stdio: one JSON command a line in, one JSON outcome a line out, starting with `{"kind":"ready"}`. Without a cassette name it runs an echo model. It exits when stdin closes.
 

@@ -11,6 +11,7 @@ import {
   decodePartRecord,
   decodePrincipalRecord,
   decodeProcessRecord,
+  decodePromptRecord,
   decodeReceiptRecord,
   decodeRunRecord,
   decodeSeenRecord,
@@ -44,6 +45,7 @@ const decoders = new Map<Json, { readonly kind: string; readonly decode: Decode 
     call: decodeCallRecord,
     principals: decodePrincipalRecord,
     identity: decodeHostIdentity,
+    prompt: decodePromptRecord,
   } satisfies Record<Exclude<RecordKind, "kv">, Decode>).map(([kind, decode]) => [
     kind,
     { kind, decode },

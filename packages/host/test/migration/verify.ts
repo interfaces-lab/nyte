@@ -10,6 +10,7 @@ import {
   decodePartRecord,
   decodePrincipalRecord,
   decodeProcessRecord,
+  decodePromptRecord,
   decodeReceiptRecord,
   decodeRunRecord,
   decodeSeenRecord,
@@ -55,6 +56,7 @@ const DECODERS = new Map<string, Decode>(
     call: decodeCallRecord,
     principals: decodePrincipalRecord,
     identity: decodeHostIdentity,
+    prompt: decodePromptRecord,
   } satisfies Record<Exclude<RecordKind, "kv">, Decode>),
 );
 

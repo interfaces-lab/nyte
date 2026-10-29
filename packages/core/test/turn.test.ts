@@ -1,5 +1,5 @@
 import { asId } from "@nyte-ai/schema";
-import { contentText } from "@nyte-ai/schema/model";
+import { getSystemMessageText } from "@nyte-ai/schema/model";
 import type { Infer, Message } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { isPart, text, thinking, tool } from "../src/index.ts";
@@ -104,7 +104,7 @@ describe("turn", () => {
     expect(system.toolsAdded?.map((entry) => entry.name)).toEqual(
       expect.arrayContaining(["echo", "read"]),
     );
-    expect(contentText(system.content)).toMatch(/^<0000-system-prompt>\n/);
+    expect(getSystemMessageText(system)).toMatch(/^<0000-system-prompt>\n/);
 
     await until(() => (seen.includes("run_ended:completed") ? true : undefined));
     expect(seen).toEqual([

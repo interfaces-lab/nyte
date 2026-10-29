@@ -21,6 +21,7 @@ import type {
   AssistantMessage,
   ImageContent,
   Message,
+  SystemMessage,
   TextContent,
   ThinkingContent,
   ToolResultMessage,
@@ -31,10 +32,8 @@ import { estimateContextTokens, estimateTextTokens } from "@nyte-ai/ai/utils/est
 import { LOCAL } from "../contract/host.ts";
 import type { Kernel, PluginRuntime, ToolSource } from "../contract/kernel.ts";
 import { branchSummary, compaction, text, thinking, tool } from "../contract/parts.ts";
-import type { PromptSection } from "../contract/plugin.ts";
 import { decodeRunRecord } from "../contract/records.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
-import type { Resources } from "../contract/workspace.ts";
 import { withFold } from "../fold/reads.ts";
 import { modelImage } from "./images.ts";
 import { runRef } from "../store/refs.ts";
@@ -48,6 +47,7 @@ import {
 import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { scanResources } from "../extend/resources.ts";
+import { settleSystemPrompt, systemSections } from "./prompt-sections.ts";
 import { hiddenOwners } from "../engine/surface.ts";
 import { toolSource } from "../extend/registry.ts";
 
@@ -63,6 +63,8 @@ interface Group {
   readonly commit: CommitId;
   readonly run: RunId | null;
   readonly attempt: string | null;
+  /** Whether it holds text a failed attempt kept (a `cut` part commit), so the next attempt's text or calls start a response of their own. */
+  cut: boolean;
   readonly model: ModelRef | null;
   readonly at: number;
   response: string | null;
@@ -255,15 +257,25 @@ async function buildContext(
 ): Promise<readonly Message[]> {
   const { session, configuration } = input;
   const found = await requireSession(kernel.store, session);
+
   const resources = await scanResources(kernel, session);
   const model = models.getModel(configuration.model.provider, configuration.model.id);
+  const compactions = readCompactions(input.steps);
 
-  const system = buildSystemPrompt(
-    found.record.prompt,
-    input.agent,
-    resources,
-    runtime.registries.prompt.list(),
-  );
+  const prompt = await settleSystemPrompt(kernel, {
+    session,
+    head: input.head,
+    run: input.run,
+    sections: systemSections(
+      found.record.prompt,
+      input.agent,
+      resources.prompt,
+      runtime.registries.prompt.list(),
+    ),
+    commits: input.steps.map((step) => step.commit),
+    compacted: compactions.removed,
+    folds: !takesSystemUpdates(model),
+  });
 
   const ended = found.record.heads.find((entry) => entry.name === input.head);
   const lastRun = ended?.lastRun ?? null;
@@ -285,48 +297,14 @@ async function buildContext(
 
   const messages = await conversation(kernel, models, {
     steps: input.steps,
+    compactions,
+    updates: prompt.updates,
     run: input.run,
     images: model?.input.includes("image") === true,
     responses,
   });
 
-  return system === ""
-    ? messages
-    : [{ role: "system", content: system, timestamp: 0 }, ...messages];
-}
-
-function buildSystemPrompt(
-  own: PromptOverride | null,
-  agent: PromptOverride | null,
-  resources: Resources,
-  sections: readonly PromptSection[],
-): string {
-  if (own?.kind === "replace") return own.text;
-
-  if (agent?.kind === "replace") return agent.text;
-
-  const body =
-    resources.prompt.system ??
-    [...sections, ...collectPromptLayer("session", own), ...collectPromptLayer("agent", agent)]
-      .map((section) => ({ id: section.id, text: section.text, order: section.order ?? 100 }))
-      .sort(
-        (left, right) =>
-          left.order - right.order || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
-      )
-      .map((section) => {
-        const tag = `${String(section.order).padStart(4, "0")}-${section.id}`;
-
-        return `<${tag}>\n${section.text}\n</${tag}>`;
-      })
-      .join("\n\n");
-
-  return [body, resources.prompt.append]
-    .filter((part): part is string => part !== null && part !== "")
-    .join("\n\n");
-}
-
-function collectPromptLayer(id: string, override: PromptOverride | null): readonly PromptSection[] {
-  return override?.kind === "layer" ? [{ id, text: override.text, order: override.order }] : [];
+  return prompt.head === null ? messages : [prompt.head, ...messages];
 }
 
 /** The head's path, then the run's settled parts that are not on it yet. */
@@ -375,17 +353,11 @@ function readSteps(
   });
 }
 
-async function conversation(
-  kernel: Kernel,
-  models: Models,
-  input: {
-    readonly steps: readonly Step[];
-    readonly run: RunId | null;
-    readonly images: boolean;
-    readonly responses: ReadonlyMap<RunId, Usage>;
-  },
-): Promise<Message[]> {
-  const steps = input.steps;
+/** The commits the steps' compactions replaced, and each compaction by the first commit it replaced, where its summary goes. */
+function readCompactions(steps: readonly Step[]): {
+  readonly removed: ReadonlySet<CommitId>;
+  readonly anchors: ReadonlyMap<CommitId, readonly Step[]>;
+} {
   const removed = new Set<CommitId>();
   const anchors = new Map<CommitId, Step[]>();
 
@@ -402,8 +374,40 @@ async function conversation(
     anchors.set(anchor, [step, ...(anchors.get(anchor) ?? [])]);
   }
 
+  return { removed, anchors };
+}
+
+/**
+ * The steps as model messages. A system prompt update goes right after the messages of the
+ * commit it followed: after that commit's own message, or, for a commit inside an assistant turn,
+ * after the turn's tool results; an update after a commit that gives no message goes before the
+ * next step's. Every later request rebuilds it at that same place. The open turn is read through
+ * `openGroup`: only closures assign `group`, so TypeScript would keep it at its first `null`.
+ */
+async function conversation(
+  kernel: Kernel,
+  models: Models,
+  input: {
+    readonly steps: readonly Step[];
+    readonly compactions: ReturnType<typeof readCompactions>;
+    readonly updates: ReadonlyMap<CommitId, readonly SystemMessage[]>;
+    readonly run: RunId | null;
+    readonly images: boolean;
+    readonly responses: ReadonlyMap<RunId, Usage>;
+  },
+): Promise<Message[]> {
+  const steps = input.steps;
+  const removed = input.compactions.removed;
+  const anchors = input.compactions.anchors;
   const messages: Message[] = [];
+  const queued: SystemMessage[] = [];
+
+  const release = (): void => {
+    messages.push(...queued.splice(0));
+  };
   let group: Group | null = null;
+
+  const openGroup = (): Group | null => group;
   const answers: { readonly at: number; readonly run: RunId | null }[] = [];
 
   const push = (message: Message, commit: CommitId): void => {
@@ -447,6 +451,8 @@ async function conversation(
 
     for (const call of ordered)
       push(await toolResult(kernel, call.id, call.state, call.at, input.images), call.commit);
+
+    release();
   };
 
   const continueAfter = (cut: Group): void =>
@@ -454,7 +460,7 @@ async function conversation(
 
   const calls = steps.flatMap((step) => (step.part?.partKind === "tool" ? [step.part.id] : []));
 
-  for (const step of steps) {
+  const visit = async (step: Step): Promise<void> => {
     for (const compacted of anchors.get(step.commit) ?? []) {
       await flush();
       const summary = await readCompactionSummary(compacted);
@@ -465,7 +471,7 @@ async function conversation(
 
     const body = step.record.body;
 
-    if (removed.has(step.commit) || body.kind === "compaction") continue;
+    if (removed.has(step.commit) || body.kind === "compaction") return;
 
     if (body.kind === "user") {
       await flush();
@@ -481,18 +487,18 @@ async function conversation(
         },
         step.commit,
       );
-      continue;
+      return;
     }
 
     const part = step.part;
 
-    if (part === null) continue;
+    if (part === null) return;
 
     if (
       part.partKind === "tool" &&
       calls.some((other) => other !== part.id && part.id.startsWith(`${other}:`))
     )
-      continue;
+      return;
 
     if (part.partKind === "text" || part.partKind === "thinking" || part.partKind === "tool") {
       const blocks = await assistantBlocks(part, step.record.run);
@@ -505,8 +511,8 @@ async function conversation(
         group.run === step.record.run &&
         group.calls.length === 0 &&
         group.attempt !== null &&
-        attempt !== null &&
-        attempt !== group.attempt
+        attempt !== group.attempt &&
+        (attempt !== null || group.cut)
           ? group
           : null;
 
@@ -521,12 +527,13 @@ async function conversation(
 
       if (cut !== null) continueAfter(cut);
 
-      if (blocks.content.length === 0) continue;
+      if (blocks.content.length === 0) return;
 
       group ??= {
         commit: step.commit,
         run: step.record.run,
         attempt,
+        cut: false,
         model: step.model,
         at: step.record.at,
         response: null,
@@ -536,7 +543,9 @@ async function conversation(
 
       if (call === null) {
         group.content.push(...blocks.content);
-        continue;
+        group.cut ||= body.kind === "part" && body.cut === true;
+
+        return;
       }
 
       group.response = response;
@@ -548,7 +557,7 @@ async function conversation(
         id: providerCallId(call.call, step.record.run),
         state: call,
       });
-      continue;
+      return;
     }
 
     await flush();
@@ -556,10 +565,19 @@ async function conversation(
 
     if (note !== null)
       push({ role: "user", content: note, timestamp: step.record.at }, step.commit);
+  };
+
+  for (const step of steps) {
+    if (openGroup() === null) release();
+    await visit(step);
+    queued.push(...(input.updates.get(step.commit) ?? []));
+
+    if (openGroup() === null) release();
   }
 
-  const trailing = group;
+  const trailing = openGroup();
   await flush();
+  release();
 
   if (
     trailing !== null &&
@@ -946,6 +964,17 @@ function providerCallId(call: string, run: RunId | null): string {
   const counted = /^\d+:/.exec(rest);
 
   return counted === null ? rest : rest.slice(counted[0].length);
+}
+
+/** Whether `model` reads a system message sent mid-conversation where it stands, rather than folded into its leading prompt. */
+function takesSystemUpdates(model: ReturnType<Models["getModel"]>): boolean {
+  const compat = model?.compat;
+
+  return (
+    compat !== undefined &&
+    "supportsMidConvoSystemMessages" in compat &&
+    compat.supportsMidConvoSystemMessages === true
+  );
 }
 
 function resolveModelIdentity(models: Models, ref: ModelRef | null) {

@@ -63,6 +63,19 @@ const HeadRecordType = record({
 
 export type HeadRecord = Static<typeof HeadRecordType>;
 
+/** The system prompt a head's requests sent (`prompts/<head>` under its session): the sections its first request sent, in order, and each change a later request sent after the commits it followed, so every request rebuilds the same history and a provider's cache of it holds. */
+const PromptRecordType = record({
+  sections: list(record({ id: Type.String(), text: Type.String() })),
+  updates: list(
+    record({
+      after: idSchema<"commit">(),
+      sections: list(record({ id: Type.String(), text: nullable(Type.String()) })),
+    }),
+  ),
+});
+
+export type PromptRecord = Static<typeof PromptRecordType>;
+
 const SessionRecordType = record({
   id: idSchema<"session">(),
   name: nullable(Type.String()),
@@ -321,7 +334,8 @@ export type RecordKind =
   | "call"
   | "kv"
   | "principals"
-  | "identity";
+  | "identity"
+  | "prompt";
 
 export const STORED_RECORD_TYPES = {
   session: SessionRecordType,
@@ -339,6 +353,7 @@ export const STORED_RECORD_TYPES = {
   call: CallRecordType,
   principals: PrincipalRecordType,
   identity: HostIdentityType,
+  prompt: PromptRecordType,
 } satisfies Record<Exclude<RecordKind, "kv">, TSchema>;
 
 type Decode<T> = (object: Json | null) => T | null;
@@ -382,6 +397,8 @@ export const decodeProcessRecord: Decode<ProcessRecord> = decoder("process", Pro
 export const decodeJobRecord: Decode<JobRecord> = decoder("job", JobRecordType);
 
 export const decodeHostIdentity: Decode<HostIdentity> = decoder("identity", HostIdentityType);
+
+export const decodePromptRecord: Decode<PromptRecord> = decoder("prompt", PromptRecordType);
 
 export function decodeKvValue(object: Json | null): Json | undefined {
   return isJsonObject(object) && object.kind === "kv" ? object.body : undefined;

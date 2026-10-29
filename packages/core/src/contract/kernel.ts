@@ -45,6 +45,7 @@ import type {
   ImageProcessor,
   ModelState,
   OpenOptions,
+  PluginDirectory,
   PluginFile,
   PluginsApi,
 } from "./host.ts";
@@ -163,10 +164,8 @@ export interface PluginHost {
 
   host: readonly Plugin<"core">[];
 
-  readonly sources: ReadonlyMap<
-    Plugin<"core">,
-    { readonly source: "user" | "project"; readonly path: string }
-  >;
+  /** The file each host plugin from `<home>/.nyte/plugins` came from; core writes it as it loads that folder. */
+  readonly sources: Map<Plugin<"core">, { readonly source: "user"; readonly path: string }>;
 
   readonly state: PluginState;
 
@@ -176,6 +175,7 @@ export interface PluginHost {
 
   runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
 
+  /** Closes `session`'s runtime and takes it off the folder watches, which stop once no session is left on them. */
   close(session: SessionId): Promise<void>;
 
   api(owner: string, session: SessionId): PluginApi<"core">;
@@ -185,6 +185,9 @@ export interface PluginHost {
   check(plugins: readonly Plugin<"core">[]): ReturnType<Host["plugins"]["check"]>;
 
   load(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
+
+  /** Loads the plugin files in `dir` one by one, so a bad file is reported without dropping the others; the same plugin object while none of a file's graph changed. */
+  directory(dir: string): Promise<PluginDirectory>;
 }
 
 export interface SessionDirectory {
@@ -336,6 +339,9 @@ export interface PluginRuntime {
 
   load(plugins: readonly Plugin<"core">[]): Promise<readonly PluginLoadOutcome[]>;
 
+  /** The plugins its last `load` was asked for, in order, whether or not each activated. */
+  requested(): readonly Plugin<"core">[];
+
   outcomes(): readonly PluginLoadOutcome[];
 
   issues(): readonly HostView["plugins"][number][];
@@ -374,7 +380,19 @@ export interface PluginState {
   readonly settings: Set<(id: string, session: SessionId | null) => void>;
   readonly publishing: Map<SessionId, Promise<void>>;
   secretKey: Promise<CryptoKey> | null;
+  /** What the last load of `<home>/.nyte/plugins` gave: its plugins, taken by the host or not, which the next load compares against to tell whether anything changed; the files the host refused, with why; and the files the host view shows as failing, withdrawn by the next load that no longer fails them. */
+  user: {
+    readonly plugins: readonly Plugin<"core">[];
+    readonly refused: readonly PluginFailure[];
+    readonly failing: readonly string[];
+  };
 }
+
+/** A file of a plugin folder that failed to load or that the host refused, with why. */
+export type PluginFailure = {
+  readonly path: string;
+  readonly issues: HostView["plugins"][number]["issues"];
+};
 
 export type Attached = { readonly env: ExecutionEnv | null };
 

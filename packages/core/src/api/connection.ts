@@ -21,7 +21,7 @@ import { advance, cover, repair } from "../drive/execution.ts";
 import { pause, resume } from "../drive/pause.ts";
 import { createPrincipals, gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
-import { loadPlugins } from "../extend/activation.ts";
+import { loadPlugins } from "../extend/plugin-folders.ts";
 import { createSettingsApi } from "../extend/settings.ts";
 import {
   completeWorkspaceCommand,

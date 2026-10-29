@@ -39,6 +39,7 @@ import type {
   SessionEvent,
   SessionId,
   SettingOutcome,
+  ValidationIssue,
   WorkspaceId,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
@@ -272,6 +273,12 @@ export interface Login {
 }
 
 export type PluginFile = { readonly path: string };
+
+/** A plugin directory loaded file by file: each file that gave a core plugin, with its path, and each that did not, with one issue naming it. */
+export type PluginDirectory = {
+  readonly loaded: readonly { readonly plugin: Plugin<"core">; readonly path: string }[];
+  readonly failed: readonly { readonly path: string; readonly issue: ValidationIssue }[];
+};
 
 export interface PluginsApi<Entry> {
   replace(

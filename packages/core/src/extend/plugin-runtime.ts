@@ -39,7 +39,8 @@ import { coveredHere, requireSession } from "../store/session.ts";
 import { callable } from "../util/callable.ts";
 import { dev } from "../util/dev-log.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
-import { activateSession, loadPlugins } from "./activation.ts";
+import { activateSession } from "./activation.ts";
+import { loadPlugins } from "./plugin-folders.ts";
 import { createHookDispatch, namesCoreHook } from "./hooks.ts";
 import { build, corePluginApi } from "./plugin-api.ts";
 import { bumpGeneration, createRegistrySet, publishCatalog } from "./registry.ts";
@@ -95,6 +96,7 @@ export function createPluginState(): PluginState {
     settings: new Set(),
     publishing: new Map(),
     secretKey: null,
+    user: { plugins: [], refused: [], failing: [] },
   };
 }
 
@@ -118,6 +120,7 @@ export function createPluginRuntime(
   let core: PluginApi<"core"> | null = null;
   let closed = false;
   let last: readonly PluginLoadOutcome[] = [];
+  let requested: readonly Plugin<"core">[] = [];
   const lifecycle = serial();
   let holds = 0;
   let idle: PromiseWithResolvers<void> | null = null;
@@ -315,6 +318,7 @@ export function createPluginRuntime(
   ): Promise<readonly PluginLoadOutcome[]> => {
     dev("plugins", "load", { session, plugins: plugins.map(({ id }) => id) });
     closed = false;
+    requested = plugins;
 
     const checked = preflight(
       plugins,
@@ -372,6 +376,7 @@ export function createPluginRuntime(
     ready,
     hold,
     load: (plugins) => lifecycle.run(() => loadAll(plugins)),
+    requested: () => requested,
     outcomes: () => last,
     issues: issueRows,
     resolvedUncovered: () => resolvedUncovered,

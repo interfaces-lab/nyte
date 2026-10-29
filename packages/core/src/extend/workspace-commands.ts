@@ -9,7 +9,7 @@ import type {
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel, PluginRuntime } from "../contract/kernel.ts";
 import { readWorkspace } from "../env/environment.ts";
-import { newChatPlugins } from "./activation.ts";
+import { newChatPlugins } from "./plugin-folders.ts";
 import { createHookDispatch } from "./hooks.ts";
 import { activateApart } from "./plugin-runtime.ts";
 import {

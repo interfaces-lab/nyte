@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import { assert, expect, it } from "vitest";
 import codemode from "../src/codemode.ts";
 import { fakeModels, open } from "./fake-models.ts";
+import { getSystemMessageText } from "@nyte-ai/schema/model";
 
 const text = standard(Type.Object({ text: Type.String() }));
 
@@ -118,8 +119,8 @@ it("runs a script that calls two tools, one exposed to code only, and keeps its 
 
   assert(system?.role === "system");
   expect(system.toolsAdded?.map((declared) => declared.name)).not.toContain("shout");
-  expect(system.content).toContain(
+  expect(getSystemMessageText(system)).toContain(
     "<0096-codemode>\nTools you reach only from a codemode script, as `await tools.<name>(args)`:\n\n### `shout`\n",
   );
-  expect(system.content).toContain("Upper-case the text; callable from code only.");
+  expect(getSystemMessageText(system)).toContain("Upper-case the text; callable from code only.");
 });

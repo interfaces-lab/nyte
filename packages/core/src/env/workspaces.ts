@@ -66,6 +66,8 @@ export function createWorkspaceState(): WorkspaceState {
     listeners: new Set(),
     patches: new Map(),
     scans: new Map(),
+    watches: new Map(),
+    closed: false,
     home: null,
     batches: new Map(),
     held: new Map(),

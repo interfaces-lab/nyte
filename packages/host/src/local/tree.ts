@@ -272,7 +272,11 @@ export function watchTree(
  * which is watched recursively. A file is watched itself and re-watched when
  * it is replaced, a directory beside a watch on its parent for its own name;
  * while the target is missing, the nearest directory above it that exists is
- * watched for the next missing name, and the watch moves down as they appear.
+ * watched for the next missing name, and the watch moves down as they appear;
+ * a name that appears before its listener starts is found by checking once
+ * more after it does. After the target moves, `changed` waits until the new
+ * watch listens, so a caller that reads what appeared also sees anything
+ * written meanwhile.
  * Nothing polls.
  */
 export function watchPath(
@@ -294,12 +298,16 @@ export function watchPath(
 
     if (stopped) return;
 
-    if (moved) {
-      moved = false;
-      void arm();
+    if (!moved) {
+      if (paths.size > 0) changed(paths);
+
+      return;
     }
 
-    if (paths.size > 0) changed(paths);
+    moved = false;
+    void arm().then(() => {
+      if (!stopped && paths.size > 0) changed(paths);
+    });
   };
 
   const note = (path: string, replaced: boolean): void => {
@@ -347,10 +355,13 @@ export function watchPath(
     if (missing !== null) {
       const awaited = missing;
 
-      if (stats.isDirectory())
-        listen(existing, false, (_event, name) => {
-          if (name === null || name === awaited) note("", true);
-        });
+      if (!stats.isDirectory()) return;
+      listen(existing, false, (_event, name) => {
+        if (name === null || name === awaited) note("", true);
+      });
+      const appeared = await lstat(join(existing, awaited)).catch(() => null);
+
+      if (appeared !== null && !stopped && armed === generation) note("", true);
 
       return;
     }

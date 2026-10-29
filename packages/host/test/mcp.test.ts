@@ -8,6 +8,7 @@ import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth
 import { createInMemoryTransportPair } from "@earendil-works/pi-mcp/testing";
 import { isPart, tool } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
+import { PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { asId } from "@nyte-ai/schema";
 import type { Host } from "@nyte-ai/core";
 import type { McpView } from "@nyte-ai/schema";
@@ -117,6 +118,7 @@ it("calls a tool of a server in ~/.nyte/mcp.json as mcp__<server>__<tool>", asyn
 
   const folder = await home({ fake: { url: "https://fake.test/mcp", exposure: "direct" } });
   await using host = await open(folder, fake, () => fakeServer());
+  expect(await host.settings.apply(PERMISSIONS, "full")).toEqual({ kind: "applied" });
   const { session } = await host.sessions.start({ name: "Echo", content: "Hi." });
 
   const views = host

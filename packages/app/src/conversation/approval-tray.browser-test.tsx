@@ -29,7 +29,6 @@ import { createAppRouter } from "../router.tsx";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
-import { PermissionsSection } from "../settings/permissions.tsx";
 import { USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
 
 const SESSION = asId<"session">("approvals");
@@ -134,18 +133,7 @@ const host: HostView = {
   version: "0.0.0",
   catalog: asId<"catalog-generation">("initial"),
   plugins: [],
-  settings: [
-    {
-      id: "permissions",
-      owner: "approvals",
-      scope: "host",
-      label: "Permissions",
-      schema: { type: "string" },
-      choices: null,
-      value: "auto-edit",
-      from: "host",
-    },
-  ],
+  settings: [],
   defaultWorkspace: null,
   authority: new Set(),
 };
@@ -356,26 +344,6 @@ export async function run(): Promise<string> {
   await capture("approval-refused");
 
   flushSync(() => root.unmount());
-
-  const settings = createRoot(stage);
-  flushSync(() =>
-    settings.render(
-      <QueryClientProvider client={queryClient}>
-        <PermissionsSection />
-      </QueryClientProvider>,
-    ),
-  );
-
-  const row = await until(
-    () => stage.querySelector("[aria-label='Tool approvals']")?.closest("section"),
-    "the permissions setting",
-  );
-
-  if (!(row.textContent ?? "").includes("Edits workspace files, asks before commands"))
-    failures.push(`the setting reads ${row.textContent ?? ""}`);
-  await painted();
-  await capture("permissions-setting");
-  flushSync(() => settings.unmount());
   stage.remove();
 
   return failures.length === 0 ? "passed" : failures.join("\n");

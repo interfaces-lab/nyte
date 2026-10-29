@@ -5,7 +5,7 @@ import { memoryStore } from "@nyte-ai/core/store";
 import subagents from "@nyte-ai/plugin/core/subagents";
 import { asId } from "@nyte-ai/schema";
 import type { Message, WorkspaceTarget } from "@nyte-ai/schema";
-import { contentText } from "@nyte-ai/schema/model";
+import { getSystemMessageText } from "@nyte-ai/schema/model";
 import { assert, describe, expect, it } from "vitest";
 import { env, fakeModels, open, until } from "./fake-models.ts";
 import type { Reply, Request } from "./fake-models.ts";
@@ -234,7 +234,7 @@ describe("subagents", () => {
     const system = childRequest?.context.messages[0];
 
     assert(system?.role === "system");
-    expect(contentText(system.content)).toContain("<0100-session>\nYou count.\n</0100-session>");
+    expect(getSystemMessageText(system)).toContain("<0100-session>\nYou count.\n</0100-session>");
     expect((await host.session(asId(child)).info()).name).toBe("Counter");
   });
 

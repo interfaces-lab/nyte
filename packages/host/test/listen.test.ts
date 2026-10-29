@@ -18,7 +18,7 @@ import type { ComposeOptions } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
 import { createTransport, decodeError, parseSse } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
-import { listen, pluginLoader } from "../src/index.ts";
+import { createPluginLoader, listen } from "../src/index.ts";
 import { fakeModels, open } from "./fixtures/fake-models.ts";
 import type { FakeModels } from "./fixtures/fake-models.ts";
 
@@ -362,10 +362,12 @@ describe("listen", () => {
   it("maps custom authorization to a principal, 401 and 403, and loads wire plugin paths through the kernel's loader", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "nyte-listen-")));
     cleanups.push(() => rm(dir, { recursive: true, force: true }));
-    const host = await open(fakeModels(), {
-      loadPlugins: pluginLoader([dir]),
+    const loader = createPluginLoader({ dirs: async () => [dir] });
+    const host = await open(fakeModels(), { loadPlugins: (paths) => loader.load(paths) });
+    cleanups.push(async () => {
+      await host.close();
+      loader.close();
     });
-    cleanups.push(() => host.close());
     await writeFile(join(dir, "extra.mjs"), 'export default { id: "extra" };\n');
     const maintainer: PrincipalId = asId("maintainer");
 
@@ -401,8 +403,12 @@ describe("listen", () => {
   it("grants the listener token the authority it is given, so the owner's token assigns a session's plugins while a paired device or an owner peer can't", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "nyte-listen-")));
     cleanups.push(() => rm(dir, { recursive: true, force: true }));
-    const host = await open(fakeModels(), { loadPlugins: pluginLoader([dir]) });
-    cleanups.push(() => host.close());
+    const loader = createPluginLoader({ dirs: async () => [dir] });
+    const host = await open(fakeModels(), { loadPlugins: (paths) => loader.load(paths) });
+    cleanups.push(async () => {
+      await host.close();
+      loader.close();
+    });
     await writeFile(join(dir, "guard.mjs"), 'export default { id: "guard" };\n');
 
     const owner = await serve(host, {

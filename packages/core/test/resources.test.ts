@@ -25,7 +25,6 @@ function seeded() {
   disk.put("/home/ada/extra/solo.md", skill("solo", "From a path."));
   disk.put("/home/ada/.nyte/AGENTS.md", "User rules.\n");
   disk.put("/home/ada/.nyte/SYSTEM.md", "User system.\n");
-  disk.put("/home/ada/.nyte/prompts/fix.md", "Fix it (user).\n");
   disk.put("/AGENTS.md", "Root rules.\n");
   disk.put("/work/CLAUDE.md", "Work claude.\n");
   disk.put("/work/AGENTS.md", "Work agents.\n");
@@ -33,8 +32,6 @@ function seeded() {
   disk.put("/work/project/AGENTS.override.md", "Project override.\n");
   disk.put("/work/project/.nyte/skills/shared/SKILL.md", skill("shared", "The project's."));
   disk.put("/work/project/.nyte/APPEND_SYSTEM.md", "Project append.\n");
-  disk.put("/work/project/.nyte/prompts/fix.md", "Fix it (project).\n");
-  disk.put("/work/project/.nyte/prompts/ship.md", "Ship it.\n");
 
   return disk;
 }
@@ -100,10 +97,6 @@ describe("resources", () => {
       append: "Project append.\n",
       scope: "project",
     });
-    expect(resources.prompts).toEqual([
-      { name: "fix", location: ".nyte/prompts/fix.md", scope: "project" },
-      { name: "ship", location: ".nyte/prompts/ship.md", scope: "project" },
-    ]);
     expect(await scanResources(kernel, session.id)).toBe(resources);
   });
 
@@ -263,7 +256,7 @@ describe("resources", () => {
     });
   });
 
-  it("hides project skills, prompts and system files but keeps context files when projectResources is false", async () => {
+  it("hides project skills and system files but keeps context files when projectResources is false", async () => {
     const { kernel, host, workspace } = await world({ disk: seeded(), home: "/home/ada" });
     const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const before = await scanResources(kernel, session.id);
@@ -290,9 +283,6 @@ describe("resources", () => {
       ["project", "/work/project/AGENTS.override.md"],
     ]);
     expect(hidden.prompt).toEqual({ system: "User system.\n", append: null, scope: "user" });
-    expect(hidden.prompts).toEqual([
-      { name: "fix", location: ".nyte/prompts/fix.md", scope: "user" },
-    ]);
   });
 
   it("offers a new chat's skills before any chat exists, the folder's own only while it is trusted", async () => {

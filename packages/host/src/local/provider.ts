@@ -6,6 +6,7 @@ import { asId, SdkError } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
 import type { EnvironmentProvider, ExecutionEnv } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
+import { pluginFilesIn } from "../plugins/loader.ts";
 import { localFiles } from "./files.ts";
 import { localGit } from "./git.ts";
 import { localGitHub } from "./github.ts";
@@ -14,11 +15,9 @@ import { localExec } from "./jobs.ts";
 import { localSnapshots } from "./snapshots.ts";
 import { localWorktrees } from "./worktrees.ts";
 
-const PLUGIN_FILE = /\.(?:ts|mts|js|mjs)$/;
-
 const ROOT_SOURCES = [".nyte/SYSTEM.md", ".nyte/APPEND_SYSTEM.md", ".nyte/mcp.json"];
 
-/** Returns the local environment provider (`kind: "local"`): a folder on this machine. `inspect` answers a `{ kind: "local", path }` target's `folderIdentity` (§41d), `available` when the path is a readable directory (else `unavailable { unreachable }`; a target without a path `unavailable { unsupported }`, identified by the hash of its locator), and the project sources present under it, relative to it, in this order: the plugin files `.nyte/plugins/<name>.{ts,mts,js,mjs}` and `.nyte/plugins/<name>/index.<ext>`, the skills `.nyte/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`, the prompts `.nyte/prompts/<name>.md`, then `.nyte/SYSTEM.md`, `.nyte/APPEND_SYSTEM.md` and `.nyte/mcp.json`: the files project trust gates. Context files such as `AGENTS.md` load without trust and are not listed. `attach` resolves the real path (a target that is not a directory throws `SdkError("unavailable")`) and returns an `ExecutionEnv` with that identity, `cwd` the real path, `files` from `localFiles` (with `ripgrep` and `formatter`), `exec` from `localExec`, and a `close` that ends its file watches and the jobs' readers, leaving running jobs alone. `git` is `localGit` (with `git`), `github` is `localGitHub` (with `gh` and `git`; the login is the machine's, `localGitHubAccount`), `snapshots` is `localSnapshots` storing tree walks under `<home>/.nyte/snapshots` (`home` default `os.homedir()`), and absent for a folder that contains `<home>/.nyte` or lies inside it outside `<home>/.nyte/worktrees` (the home folder itself, its ancestors, Nyte's own state): there a snapshot would walk or stage everything under home, the store and secrets included, to report changes in the store it just wrote; `worktrees` is `localWorktrees` (with `home` and `git`); `realpath` is `fs.promises.realpath` (the native one, which spells each name as the disk stores it), a relative path resolved against `env.cwd`, null where it fails; no `browser` (the desktop wraps one in); `destroy` rejects with `SdkError("unavailable")`: a local folder is never torn down. */
+/** Returns the local environment provider (`kind: "local"`): a folder on this machine. `inspect` answers a `{ kind: "local", path }` target's `folderIdentity` (§41d), `available` when the path is a readable directory (else `unavailable { unreachable }`; a target without a path `unavailable { unsupported }`, identified by the hash of its locator), and the project sources present under it, relative to it, in this order: the plugin files in `.nyte/plugins` as the plugin loader finds them (`pluginFilesIn`), the skills `.nyte/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`, then `.nyte/SYSTEM.md`, `.nyte/APPEND_SYSTEM.md` and `.nyte/mcp.json`: the files project trust gates. Context files such as `AGENTS.md` load without trust and are not listed. `attach` resolves the real path (a target that is not a directory throws `SdkError("unavailable")`) and returns an `ExecutionEnv` with that identity, `cwd` the real path, `files` from `localFiles` (with `ripgrep` and `formatter`), `exec` from `localExec`, and a `close` that ends its file watches and the jobs' readers, leaving running jobs alone. `git` is `localGit` (with `git`), `github` is `localGitHub` (with `gh` and `git`; the login is the machine's, `localGitHubAccount`), `snapshots` is `localSnapshots` storing tree walks under `<home>/.nyte/snapshots` (`home` default `os.homedir()`), and absent for a folder that contains `<home>/.nyte` or lies inside it outside `<home>/.nyte/worktrees` (the home folder itself, its ancestors, Nyte's own state): there a snapshot would walk or stage everything under home, the store and secrets included, to report changes in the store it just wrote; `worktrees` is `localWorktrees` (with `home` and `git`); `realpath` is `fs.promises.realpath` (the native one, which spells each name as the disk stores it), a relative path resolved against `env.cwd`, null where it fails; no `browser` (the desktop wraps one in); `destroy` rejects with `SdkError("unavailable")`: a local folder is never torn down. */
 export function localProvider(options?: {
   readonly home?: string;
   readonly git?: string;
@@ -143,20 +142,9 @@ async function projectSources(root: string): Promise<readonly string[]> {
   const fileExists = async (path: string): Promise<boolean> =>
     (await stat(join(root, path)).catch(() => null))?.isFile() === true;
 
-  const plugins = (
-    await Promise.all(
-      (await names(".nyte/plugins")).map(async (name) => {
-        const path = `.nyte/plugins/${name}`;
-
-        if (PLUGIN_FILE.test(name) && (await fileExists(path))) return [path];
-
-        for (const index of ["index.ts", "index.mts", "index.js", "index.mjs"])
-          if (await fileExists(`${path}/${index}`)) return [`${path}/${index}`];
-
-        return [];
-      }),
-    )
-  ).flat();
+  const plugins = (await pluginFilesIn(join(root, ".nyte", "plugins"))).map((path) =>
+    relative(root, path).split(sep).join("/"),
+  );
 
   const skills = (
     await Promise.all(
@@ -174,13 +162,9 @@ async function projectSources(root: string): Promise<readonly string[]> {
     )
   ).flat();
 
-  const prompts = (await names(".nyte/prompts"))
-    .filter((name) => name.endsWith(".md"))
-    .map((name) => `.nyte/prompts/${name}`);
-
   const present = await Promise.all(
     ROOT_SOURCES.map(async (path) => ((await fileExists(path)) ? [path] : [])),
   );
 
-  return [...plugins, ...skills, ...prompts, ...present.flat()];
+  return [...plugins, ...skills, ...present.flat()];
 }

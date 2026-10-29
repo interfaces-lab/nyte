@@ -314,9 +314,6 @@ it("decides a call another runtime runs through api.approve, granting by the too
   const write = { name: "Write", class: { kind: "edit", path: "a.ts" } as const };
   const signal = new AbortController().signal;
 
-  expect(await api.approve(bash, signal)).toEqual({ kind: "allow" });
-  expect(await host.settings.apply(PERMISSIONS, "ask")).toEqual({ kind: "applied" });
-
   const deciding = api.approve(bash, signal);
   const [asked] = await waiting(session);
   assert(asked !== undefined);

@@ -10,6 +10,7 @@ export {
   decodePartRecord,
   decodePrincipalRecord,
   decodeProcessRecord,
+  decodePromptRecord,
   decodeReceiptRecord,
   decodeRunRecord,
   decodeSeenRecord,

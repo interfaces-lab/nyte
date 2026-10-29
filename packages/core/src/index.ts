@@ -12,6 +12,7 @@ export type {
   Login,
   ModelsApi,
   OpenOptions,
+  PluginDirectory,
   PluginFile,
   PluginStorage,
   PluginsApi,

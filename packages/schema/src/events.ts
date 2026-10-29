@@ -31,7 +31,12 @@ export const CommitBodyType = Type.Union([
     delivery: DeliveryType,
     siblings: Type.Array(idSchema<"commit">()),
   }),
-  Type.Object({ kind: Type.Literal("part"), part: idSchema<"part">() }),
+  Type.Object({
+    kind: Type.Literal("part"),
+    part: idSchema<"part">(),
+    /** Set where a failed attempt's kept text lands: the model is asked to continue from it, so its response ends there, before the next attempt's text or calls. */
+    cut: Type.Optional(Type.Literal(true)),
+  }),
   Type.Object({
     kind: Type.Literal("compaction"),
     part: idSchema<"part">(),

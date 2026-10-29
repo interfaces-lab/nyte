@@ -29,7 +29,6 @@ import type {
   OpenOptions,
 } from "./host.ts";
 import type { PartDefinition } from "./parts.ts";
-import type { Plugin } from "./plugin.ts";
 import type { Receipt, SendReceipt } from "./session.ts";
 import type { BatchEntry, FilesApi, Page, PageTable } from "./workspace.ts";
 
@@ -83,9 +82,6 @@ export interface ServerHost {
 
   /** The plugin rows the host view shows now. */
   pluginRows(): readonly HostView["plugins"][number][];
-
-  /** Whether `plugin` is among the host's loaded plugins. */
-  loaded(plugin: Plugin<"core">): boolean;
 
   readonly wire: WireHost;
 }

@@ -98,6 +98,14 @@ const SHIPPED = new Map<string, Presentation>([
     { name: "Canvas", description: "Draws interactive canvases in the chat", icon: "canvas-grid" },
   ],
   [
+    "approvals",
+    {
+      name: "Permissions",
+      description: "Asks before the agent runs commands or edits files",
+      icon: "shield",
+    },
+  ],
+  [
     "claude-code-sdk",
     {
       name: "Claude Code",
@@ -219,32 +227,39 @@ function PluginSetting({
 
   const choices = setting.choices ?? [];
 
-  return (
-    <Select
-      items={choices.map((choice) => ({ value: choiceKey(choice.value), label: choice.label }))}
-      disabled={disabled || choices.length === 0}
-      value={choiceKey(setting.value)}
-      onValueChange={(key) => {
-        const choice = choices.find((candidate) => choiceKey(candidate.value) === key);
+  const badge = choices.find(
+    (choice) => choiceKey(choice.value) === choiceKey(setting.value),
+  )?.badge;
 
-        if (choice !== undefined) onApply(choice.value);
-      }}
-    >
-      <SelectTrigger aria-label={setting.label}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {choices.map((choice) => (
-          <SelectItem
-            key={choiceKey(choice.value)}
-            value={choiceKey(choice.value)}
-            label={choice.label}
-          >
-            {choice.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+  return (
+    <>
+      <Select
+        items={choices.map((choice) => ({ value: choiceKey(choice.value), label: choice.label }))}
+        disabled={disabled || choices.length === 0}
+        value={choiceKey(setting.value)}
+        onValueChange={(key) => {
+          const choice = choices.find((candidate) => choiceKey(candidate.value) === key);
+
+          if (choice !== undefined) onApply(choice.value);
+        }}
+      >
+        <SelectTrigger aria-label={setting.label}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {choices.map((choice) => (
+            <SelectItem
+              key={choiceKey(choice.value)}
+              value={choiceKey(choice.value)}
+              label={choice.label}
+            >
+              {choice.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {badge !== undefined && <span {...props(text.sm, styles.note)}>{badge}</span>}
+    </>
   );
 }
 
@@ -255,7 +270,8 @@ function PluginDetails({
   readonly plugin: PluginView;
   readonly sessionId: SessionId | undefined;
 }): ReactElement {
-  const apply = useApplyPluginSetting(sessionId);
+  const applyToHost = useApplyPluginSetting(undefined);
+  const applyToChat = useApplyPluginSetting(sessionId);
   const { failure, settings, commands, tools } = plugin;
   const path = plugin.info.path;
   const perChat = settings.some((setting) => setting.scope === "session");
@@ -284,16 +300,20 @@ function PluginDetails({
           <PathActions path={path} />
         </Field>
       )}
-      {settings.map((setting) => (
-        <Field key={setting.id} label={setting.label}>
-          <PluginSetting
-            setting={setting}
-            disabled={(sessionId === undefined && setting.scope === "session") || apply.isPending}
-            onApply={(value) => apply.mutate({ id: setting.id, value })}
-          />
-        </Field>
-      ))}
-      {settings.length > 0 && (sessionId !== undefined || perChat) && (
+      {settings.map((setting) => {
+        const apply = setting.scope === "host" ? applyToHost : applyToChat;
+
+        return (
+          <Field key={setting.id} label={setting.label}>
+            <PluginSetting
+              setting={setting}
+              disabled={(sessionId === undefined && setting.scope === "session") || apply.isPending}
+              onApply={(value) => apply.mutate({ id: setting.id, value })}
+            />
+          </Field>
+        );
+      })}
+      {perChat && (
         <Wide>
           <span {...props(text.sm, styles.note)}>
             {sessionId === undefined ? "Open a chat to change per-chat settings." : "For this chat"}
@@ -416,9 +436,11 @@ function SkillRow({ skill }: { readonly skill: SkillView }): ReactElement {
       expansion={
         open ? (
           <Details>
-            <Field label="File">
-              <PathActions path={skill.path} />
-            </Field>
+            <Wide>
+              <span {...props(styles.stack)}>
+                <PathActions path={skill.path} />
+              </span>
+            </Wide>
           </Details>
         ) : undefined
       }

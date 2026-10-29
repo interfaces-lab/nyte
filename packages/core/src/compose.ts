@@ -73,7 +73,8 @@ import {
   replacePlugins,
 } from "./extend/plugin-runtime.ts";
 import { bumpGeneration } from "./extend/registry.ts";
-import { dropScans, resourcesPlugin } from "./extend/resources.ts";
+import { reportUserPluginFailures, userPluginFolder } from "./extend/plugin-folders.ts";
+import { closeWatches, forgetScans, resourcesPlugin, watchHome } from "./extend/resources.ts";
 import { settingInfos } from "./extend/setting-layers.ts";
 import { createSettingsApi } from "./extend/settings.ts";
 import { createBus } from "./fold/bus.ts";
@@ -89,16 +90,15 @@ import { cleanWorktrees, sweepWorktrees, worktreesPlugin } from "./env/worktrees
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
   readonly description: HostDescription;
-  readonly pluginSources?: ReadonlyMap<
-    Plugin<"core">,
-    { readonly source: "user" | "project"; readonly path: string }
-  >;
 
   readonly poll?: number;
 
   readonly seed?: { readonly settings: Readonly<Record<string, Json>>; readonly path: string };
 
   readonly loadPlugins?: PluginHost["load"];
+
+  /** Loads a plugin folder file by file; with it the host loads `<home>/.nyte/plugins` beside `plugins` and a trusted workspace's `.nyte/plugins` in its chats. */
+  readonly loadPluginDirectory?: PluginHost["directory"];
 
   readonly member?: Member;
 
@@ -139,12 +139,21 @@ export async function composeHost(options: ComposeOptions): Promise<ServedHost> 
 export async function composeServer(
   options: ComposeOptions,
 ): Promise<{ readonly host: ServedHost; readonly kernel: Kernel }> {
-  const outcomes = checkPlugins([...BUILTINS, ...options.plugins]).plugins;
+  const user =
+    options.home === null || options.loadPluginDirectory === undefined
+      ? { loaded: [], failed: [] }
+      : await options.loadPluginDirectory(userPluginFolder(options.home));
+
+  const given = [...options.plugins, ...user.loaded.map((entry) => entry.plugin)];
+
+  const sources: PluginHost["sources"] = new Map(
+    user.loaded.map((entry) => [entry.plugin, { source: "user", path: entry.path }] as const),
+  );
+
+  const outcomes = checkPlugins([...BUILTINS, ...given]).plugins;
 
   const fromFile = (index: number) =>
-    index < BUILTINS.length
-      ? undefined
-      : options.pluginSources?.get(options.plugins[index - BUILTINS.length]);
+    index < BUILTINS.length ? undefined : sources.get(given[index - BUILTINS.length]);
 
   const rejected = outcomes.filter(
     (outcome, index) => outcome.kind === "rejected" && fromFile(index) === undefined,
@@ -161,22 +170,29 @@ export async function composeServer(
     const file = fromFile(index);
 
     return outcome.kind === "rejected" && file !== undefined
-      ? [{ id: file.path, source: file.source, path: file.path, issues: outcome.issues }]
+      ? [{ path: file.path, issues: outcome.issues }]
       : [];
   });
 
-  const plugins = options.plugins.filter(
+  const plugins = given.filter(
     (_plugin, index) => outcomes[BUILTINS.length + index].kind !== "rejected",
   );
 
+  for (const plugin of sources.keys()) if (!plugins.includes(plugin)) sources.delete(plugin);
+
   const store = await options.store.open();
 
-  const kernel = await composeKernel({ ...options, plugins }, store);
+  const kernel = await composeKernel({ ...options, plugins }, store, sources);
 
-  for (const row of dropped) {
+  for (const row of dropped)
     dev("compose", "plugin file dropped", { path: row.path, issues: row.issues.length });
-    kernel.host.report(row);
-  }
+
+  reportUserPluginFailures(
+    kernel,
+    user.loaded.map((entry) => entry.plugin),
+    dropped,
+    user.failed.map((entry) => ({ path: entry.path, issues: [entry.issue] })),
+  );
 
   const added = await createWorkspaces(kernel, CORE_CONTEXT)
     .add(options.workspace)
@@ -199,6 +215,8 @@ export async function composeServer(
   try {
     if (options.seed !== undefined) await applySeed(kernel, options.seed);
     kernel.host.update({ settings: await settingInfos(kernel, null) });
+
+    if (options.loadPluginDirectory !== undefined) await watchHome(kernel);
   } catch (error) {
     await release(kernel, null);
 
@@ -309,7 +327,11 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
     kernel.host.report({ id: "settings", source: "user", path: seed.path, issues });
 }
 
-async function composeKernel(options: ComposeOptions, store: StoreConnection): Promise<Kernel> {
+async function composeKernel(
+  options: ComposeOptions,
+  store: StoreConnection,
+  pluginSources: PluginHost["sources"],
+): Promise<Kernel> {
   const identity = await hostIdentity(store);
   const instance = crypto.randomUUID();
 
@@ -337,11 +359,12 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
     images: options.images,
     builtins: BUILTINS,
     hostPlugins: options.plugins,
-    pluginSources: options.pluginSources,
+    pluginSources,
     secrets: options.secrets,
     home: options.home,
     poll: options.poll,
     loadPlugins: options.loadPlugins,
+    loadPluginDirectory: options.loadPluginDirectory,
   });
 
   kernel.host.update({ plugins: hostPluginRows(kernel) });
@@ -379,6 +402,7 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     readonly hostPlugins?: PluginHost["host"];
     readonly pluginSources?: PluginHost["sources"];
     readonly loadPlugins?: PluginHost["load"];
+    readonly loadPluginDirectory?: PluginHost["directory"];
     readonly poll?: number;
     readonly models?: Models;
     readonly mcp?: McpHubFactory;
@@ -528,6 +552,7 @@ export function createKernel(input: KernelOptions): Kernel {
 
         if (runtime === undefined) return;
         runtimes.delete(session);
+        forgetScans(kernel, (key) => key === session);
         await runtime.close();
       },
       api: (owner, session) =>
@@ -538,6 +563,7 @@ export function createKernel(input: KernelOptions): Kernel {
       load:
         input.loadPlugins ??
         (async () => unavailable("plugin files: this host has no plugin loader")),
+      directory: input.loadPluginDirectory ?? (async () => ({ loaded: [], failed: [] })),
     },
     handles: {
       connection: (context) =>
@@ -564,7 +590,6 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
   await kernel.modelState.close();
   await kernel.mcp?.close();
   await driver?.close();
-  const sessions = [...kernel.plugins.runtimes().keys()];
 
   const workspaces = (await kernel.store.refs.list("workspaces/")).map((ref) =>
     asId<"workspace">(ref.name.slice("workspaces/".length)),
@@ -577,8 +602,10 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
   await Promise.allSettled(running.map((job) => job.process.stop()));
   await Promise.allSettled(running.map((job) => jobHandle(kernel, job.view.id).settled()));
 
+  await closeWatches(kernel);
+  const sessions = [...kernel.plugins.runtimes().keys()];
+
   for (const session of sessions) await kernel.plugins.close(session);
-  dropScans(kernel);
 
   for (const session of sessions) await kernel.environments.detach(session);
 
