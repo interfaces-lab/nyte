@@ -1,3 +1,4 @@
+import type { Locator, Page } from "@playwright/test";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
 import {
@@ -5,14 +6,49 @@ import {
   chatRow,
   chatTab,
   menuShortcut,
+  messages,
   openChat,
+  openNewChat,
   primaryKey,
   revealChat,
+  send,
   shiftKey,
   sidebar,
 } from "./ui.ts";
 
 test.use({ chapter: "navigation" });
+
+async function closeMenus(page: Page): Promise<void> {
+  await expect(async () => {
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0, { timeout: 500 });
+  }).toPass();
+}
+
+/** Rows move with a layout animation, so hover until the row's action shows. */
+async function hoverAction(row: Locator, action: Locator): Promise<Locator> {
+  await expect(async () => {
+    await row.hover();
+    await expect(action).toBeVisible({ timeout: 500 });
+  }).toPass();
+
+  return action;
+}
+
+/** Clicks a hover action; a click that times out never landed, so retrying it is safe. */
+async function clickAction(row: Locator, action: Locator): Promise<void> {
+  await expect(async () => {
+    await row.hover();
+    await action.click({ timeout: 1_000 });
+  }).toPass();
+}
+
+async function chooseGrouping(page: Page, grouping: string): Promise<void> {
+  await sidebar(page).getByRole("button", { name: "Customize sidebar" }).click();
+  await page.getByRole("menuitem", { name: "Grouping" }).click();
+  await page.getByRole("menuitemradio", { name: grouping }).click();
+  await closeMenus(page);
+}
 
 test("the navigation journey", async ({ desktop }) => {
   const { page } = desktop;
@@ -158,5 +194,159 @@ test("the navigation journey", async ({ desktop }) => {
     await expect(chatRow(page, FIXTURES.alpha)).toBeVisible();
     await done.click();
     await expect(chatRow(page, FIXTURES.alpha)).toBeHidden();
+  });
+});
+
+test("the sidebar journey", async ({ desktop }) => {
+  const { page } = desktop;
+  const workspace = sidebar(page).getByRole("button", { name: "home", exact: true });
+  const workspaces = sidebar(page).getByRole("region", { name: "Workspaces" });
+  const pinned = sidebar(page).getByRole("region", { name: "Pinned" });
+
+  await test.step("a 256 px sidebar shows 24 px Pin and Archive beside the age", async () => {
+    await chooseGrouping(page, "Repository");
+    await expect(workspace).toHaveAttribute("aria-expanded", "true");
+
+    expect(
+      await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--nyte-sidebar-width").trim(),
+      ),
+    ).toBe("256px");
+
+    const row = chatRow(page, FIXTURES.long);
+    const age = row.locator('[data-slot="row-meta"]');
+
+    for (const action of ["Pin", "Archive"]) {
+      const button = await hoverAction(
+        row,
+        sidebar(page).getByRole("button", { name: `${action} ${FIXTURES.long}` }),
+      );
+
+      await expect(age).toBeVisible();
+      const box = await button.boundingBox();
+      const ageBox = await age.boundingBox();
+      expect(box?.width).toBe(24);
+      expect(box?.height).toBe(24);
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(ageBox?.x ?? 0);
+    }
+  });
+
+  await test.step("Mark as Read and Mark All as Read clear unread marks through the host", async () => {
+    const thinking = await revealChat(page, FIXTURES.thinking);
+    await expect(thinking).toHaveAccessibleName(/^Unread /u);
+    await thinking.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Mark as Read" }).click();
+    await expect(chatRow(page, FIXTURES.thinking)).not.toHaveAccessibleName(/^Unread /u);
+    await expect(chatRow(page, FIXTURES.long)).toHaveAccessibleName(/^Unread /u);
+    await workspace.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Mark All as Read" }).click();
+    await expect(chatRow(page, FIXTURES.long)).not.toHaveAccessibleName(/^Unread /u);
+  });
+
+  await test.step("Pin moves a chat into Pinned above the workspaces, and Unpin returns it", async () => {
+    await clickAction(
+      chatRow(page, FIXTURES.long),
+      sidebar(page).getByRole("button", { name: `Pin ${FIXTURES.long}` }),
+    );
+    await expect(chatRow(page, FIXTURES.long)).toHaveCount(1);
+    await expect(pinned.getByText(FIXTURES.long, { exact: true })).toBeVisible();
+    await expect(workspaces.getByText(FIXTURES.long, { exact: true })).toHaveCount(0);
+    await clickAction(
+      chatRow(page, FIXTURES.long),
+      sidebar(page).getByRole("button", { name: `Unpin ${FIXTURES.long}` }),
+    );
+    await expect(pinned).toHaveCount(0);
+    await expect(workspaces.getByText(FIXTURES.long, { exact: true })).toBeVisible();
+  });
+
+  await test.step("the open chat stays under its folded workspace", async () => {
+    await openChat(page, FIXTURES.alpha);
+    await workspace.click();
+    await expect(workspace).toHaveAttribute("aria-expanded", "false");
+    await expect(chatRow(page, FIXTURES.alpha)).toBeVisible();
+    await expect(chatRow(page, FIXTURES.long)).toBeHidden();
+  });
+
+  await test.step("grouping and folds survive a reload", async () => {
+    await chooseGrouping(page, "Status");
+    await page.reload();
+    await page.locator("[data-nyte-shell]").waitFor({ state: "visible" });
+    await expect(workspace).toHaveAttribute("aria-expanded", "false");
+    await sidebar(page).getByRole("button", { name: "Customize sidebar" }).click();
+    await page.getByRole("menuitem", { name: "Grouping" }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Status" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await closeMenus(page);
+  });
+
+  await test.step("arrow keys move focus without opening a chat, and fold and unfold", async () => {
+    await workspace.click();
+    await expect(workspace).toHaveAttribute("aria-expanded", "true");
+    const tabs = page.getByRole("tablist", { name: "Tabs" });
+    const selected = tabs.getByRole("tab", { selected: true });
+    const before = await selected.textContent();
+    await workspace.press("ArrowRight");
+    await expect(workspace).not.toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    const focused = page.locator('[data-slot="row-primary"]:focus [data-slot="row-label"]');
+    const name = await focused.textContent();
+    expect(name).not.toBeNull();
+    expect(await selected.textContent()).toBe(before);
+    await page.keyboard.press("Enter");
+    await expect(chatTab(page, name ?? "")).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowLeft");
+    await expect(workspace).toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await expect(workspace).toHaveAttribute("aria-expanded", "false");
+    await page.keyboard.press("ArrowRight");
+    await expect(workspace).toHaveAttribute("aria-expanded", "true");
+  });
+
+  await test.step("double-click renames in place, and Escape keeps the title", async () => {
+    await (await revealChat(page, FIXTURES.composer)).dblclick();
+    const field = sidebar(page).getByRole("textbox", { name: `Rename ${FIXTURES.composer}` });
+    await expect(field).toBeFocused();
+    await field.pressSequentially("Something else");
+    await field.press("Escape");
+    await expect(field).toHaveCount(0);
+    await expect(chatRow(page, FIXTURES.composer)).toBeVisible();
+  });
+
+  await test.step("archiving a working chat asks first, and Cancel keeps it running", async () => {
+    await openNewChat(page);
+    await send(page, "/hold");
+    await expect(messages(page).getByRole("paragraph").last()).toContainText("Holding");
+    const held = sidebar(page).getByRole("button", { name: /^Running \/hold /u });
+    const archive = sidebar(page).getByRole("button", { name: "Archive /hold" });
+    const dialog = page.getByRole("alertdialog", { name: "Archive Working Chat" });
+    const stop = chatPane(page).getByRole("button", { name: "Stop response" });
+    await clickAction(held, archive);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(held).toBeVisible();
+    await expect(stop).toBeVisible();
+    await clickAction(held, archive);
+    await dialog.getByRole("button", { name: "Archive Chat" }).click();
+    await expect(held).toHaveCount(0);
+    await page.getByRole("button", { name: "Undo" }).click();
+    await held.click();
+    await stop.click();
+    await expect(stop).toBeHidden();
+  });
+
+  await test.step("the Archived filter lists archived chats only", async () => {
+    await clickAction(
+      chatRow(page, FIXTURES.markdown),
+      sidebar(page).getByRole("button", { name: `Archive ${FIXTURES.markdown}` }),
+    );
+    await expect(chatRow(page, FIXTURES.markdown)).toHaveCount(0);
+    await sidebar(page).getByRole("button", { name: "Customize sidebar" }).click();
+    await page.getByRole("menuitemcheckbox", { name: "Archived" }).click();
+    await closeMenus(page);
+    await expect(chatRow(page, FIXTURES.markdown)).toBeVisible();
+    await expect(chatRow(page, FIXTURES.beta)).toHaveCount(0);
   });
 });
