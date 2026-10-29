@@ -27,7 +27,7 @@
 | `theme/` | Tokens, fonts, appearance and the global stylesheet | `schema.stylex.ts` |
 | `preferences/` | Stored preferences | `index.ts` |
 | `components/` | App-wide pieces with no feature: chat card, the task mark, overlay occlusion | `task-mark.tsx` |
-| `chats/` | The directory of chats and what state each is in | `index.ts` (the only import) |
+| `chats/` | The directory of chats, what state each is in, and the tasks (subagents and jobs) each started | `index.ts` (the only import) |
 | `diff/` | Diff rendering and patch loading, shared by the transcript and Changes | `diff-view.tsx` |
 | `references/` | Mentions and references a message carries, and "Add to chat" | `message-references.ts` |
 | `chat/` | One open chat | `session-conversation.tsx` |
@@ -58,6 +58,7 @@ Outside `src/`: `dev/` holds the account-footer harness page (`/dev/account-foot
 - The composer is `chat/composer/composer.tsx`; the new-chat composer is `chat/composer/new-chat-composer.tsx`.
 - A chat's view is `chat/session-conversation.tsx`; the transcript is `chat/transcript/transcript.tsx`; one turn is `chat/transcript/turn-view.tsx`.
 - Tool rows are in `chat/tools/`; a subagent row is `chat/tools/subagent-call.tsx`.
+- A chat's tasks are its view's background items joined to the chats and jobs they name: `chats/tasks.ts`, read through `useChatTasks` and `useTask`. The trays list them with `listAgents` and `listTerminals`.
 - Session reads are `data/sessions.ts`, actions `data/session-actions.ts`, live watches `data/watches.ts`, cache keys `data/query-client.ts`.
 - Git reads are `data/vcs.ts`; file reads `data/files.ts`; model catalog `data/catalog.ts`; usage `data/usage.ts`.
 - The workbench tab model is `workbench/model.ts`, its width `workbench/width.ts`, what it saves `workbench/persistence.ts`, the store `workbench/controller.ts`.

@@ -12,7 +12,7 @@ import { derivedStore } from "../data/derived-store.ts";
 import type { StoreSource } from "../data/derived-store.ts";
 import { expose } from "./exposure.ts";
 import { reduceTrays } from "./tray.ts";
-import type { TrayAction, TrayView } from "./tray.ts";
+import type { TrayAction, Trays, TrayView } from "./tray.ts";
 
 export interface WindowSnapshot {
   /** Chats on screen, whether or not anyone can read them now; text paces only in these. */
@@ -23,6 +23,8 @@ export interface WindowSnapshot {
   readonly unread: ReadonlySet<SessionId>;
   /** Each chat's open tray, by parent; a chat without one shows its tray closed. */
   readonly trays: ReadonlyMap<SessionId, TrayView>;
+  /** Each chat's ended tasks the user cleared from its trays, by parent. */
+  readonly cleared: ReadonlyMap<SessionId, ReadonlySet<string>>;
   /** The workbench is maximized over the chats instead of showing them. */
   readonly covered: boolean;
 }
@@ -31,11 +33,11 @@ export { showTray, type TrayView } from "./tray.ts";
 
 /** What this window holds itself; the rest of its view it reads from the stores it listens to. */
 interface Own {
-  readonly trays: ReadonlyMap<SessionId, TrayView>;
+  readonly trays: Trays;
   readonly settings: boolean;
 }
 
-let own: Own = { trays: new Map(), settings: false };
+let own: Own = { trays: { views: new Map(), cleared: new Map() }, settings: false };
 
 const ownListeners = new Set<() => void>();
 
@@ -99,7 +101,8 @@ const sources = {
 const store = derivedStore(
   sources,
   (read, previous: WindowSnapshot) => {
-    const trays = read.own.read().trays;
+    const trays = read.own.read().trays.views;
+    const cleared = read.own.read().trays.cleared;
     const covered = read.covered.read();
 
     const exposure = expose({
@@ -116,6 +119,7 @@ const store = derivedStore(
       looking: sameSet(previous.looking, exposure.looking) ? previous.looking : exposure.looking,
       unread: sameSet(previous.unread, exposure.unread) ? previous.unread : exposure.unread,
       trays,
+      cleared,
       covered,
     };
   },
@@ -124,6 +128,7 @@ const store = derivedStore(
     looking: new Set<SessionId>(),
     unread: new Set<SessionId>(),
     trays: new Map<SessionId, TrayView>(),
+    cleared: new Map<SessionId, ReadonlySet<string>>(),
     covered: false,
   },
 );

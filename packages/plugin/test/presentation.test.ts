@@ -3,9 +3,11 @@ import type { Execution, PartStatus, ToolClass, ToolOutcome, ToolPartState } fro
 import { expect, it } from "vitest";
 import {
   backgroundLabel,
+  callTaskState,
   completionTrigger,
   executionMark,
   failureNotice,
+  jobTaskState,
   rowMark,
   runMark,
   runStatus,
@@ -233,6 +235,14 @@ it("keeps a run's outcome and an approval wait apart, and draws background work 
     "Needs attention",
     "Retrying",
   ]);
+});
+
+it("reads a stopped call or job as done, never failed", () => {
+  expect(callTaskState({ tense: "none", tone: "stopped", word: "Stopped" })).toBe("done");
+  expect(callTaskState({ tense: "none", tone: "failure", word: "Failed" })).toBe("failed");
+  expect(jobTaskState({ kind: "exited", code: null, reason: "terminated" })).toBe("done");
+  expect(jobTaskState({ kind: "exited", code: 1, reason: "exited" })).toBe("failed");
+  expect(jobTaskState({ kind: "lost" })).toBe("failed");
 });
 
 it("titles an unnamed root a new chat and an unnamed child a subagent", () => {

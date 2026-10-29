@@ -10,18 +10,11 @@ import { queryClient } from "../../data/query-client.ts";
 import { installConnection } from "../../data/connection.ts";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
 import { SubagentCitation } from "../tools/subagent-call.tsx";
-import { SubagentSessionsProvider } from "../tools/subagent-sessions.ts";
 import { transcriptRows } from "./transcript-rows.ts";
 import { TurnItemView } from "./turn-view.tsx";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import {
-  COMPLETED,
-  endedTurn,
-  listedChildren,
-  sessionRow,
-  settledTool,
-} from "../../../test/view-fixtures.ts";
+import { COMPLETED, endedTurn, sessionRow, settledTool } from "../../../test/view-fixtures.ts";
 
 const HOUR = 3_600_000;
 
@@ -103,19 +96,15 @@ function Stage(): ReactElement {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-        <SubagentSessionsProvider
-          value={{ children: listedChildren([working, finished]), open: () => undefined }}
-        >
-          {rows.map((row) => (
-            <div key={row.key} data-row={row.key}>
-              <TurnItemView row={row} running={false} density="compact" cwd={undefined} />
-            </div>
-          ))}
-          <p>
-            <SubagentCitation session={working.id} label="core" />{" "}
-            <SubagentCitation session={finished.id} label="app" />
-          </p>
-        </SubagentSessionsProvider>
+        {rows.map((row) => (
+          <div key={row.key} data-row={row.key}>
+            <TurnItemView row={row} running={false} density="compact" cwd={undefined} />
+          </div>
+        ))}
+        <p>
+          <SubagentCitation session={working.id} label="core" />{" "}
+          <SubagentCitation session={finished.id} label="app" />
+        </p>
       </TooltipProvider>
     </QueryClientProvider>
   );

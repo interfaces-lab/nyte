@@ -4,14 +4,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
+import type { ReactNode } from "react";
 import { SubagentCallView } from "./subagent-call.tsx";
-import { SubagentSessionsProvider } from "./subagent-sessions.ts";
 import { transcriptRows } from "../transcript/transcript-rows.ts";
+import { TranscriptProvider } from "../transcript/transcript.tsx";
 import { TurnItemView } from "../transcript/turn-view.tsx";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
-import { endedTurn, listedChildren, sessionRow, settledTool } from "../../../test/view-fixtures.ts";
+import { endedTurn, sessionRow, sessionView, settledTool } from "../../../test/view-fixtures.ts";
 import { installConnection } from "../../data/connection.ts";
-import { sessionsWatch } from "../../data/watches.ts";
+import { sessionsWatch, sessionWatch } from "../../data/watches.ts";
+import { PaneControllerProvider } from "../../panes/pane-context.tsx";
+import { PaneController } from "../../panes/pane-controller.ts";
 
 vi.hoisted(() => {
   const query = { matches: false, addEventListener: () => {}, removeEventListener: () => {} };
@@ -53,68 +56,96 @@ const childSession: SessionInfo = sessionRow("child", {
 
 const turn = endedTurn([create]);
 
-test("a create call finds its child by the call that made it", async () => {
-  installConnection(scriptedConnection({ sessions: [childSession] }).connection);
-  const listing = sessionsWatch("all").subscribe(() => undefined);
-  await sessionsWatch("all").first();
-  const client = new QueryClient();
-  client.setQueryData(["sessions", "children", parent], [childSession]);
-
-  const html = renderToStaticMarkup(
-    <QueryClientProvider client={client}>
-      <SubagentSessionsProvider
-        value={{ children: listedChildren([childSession]), open: () => {} }}
-      >
-        {transcriptRows({
-          loading: false,
-          failed: false,
-          turns: [turn],
-          changes: [],
-          prompts: [],
-          running: false,
-          held: false,
-          retrying: undefined,
-        }).map((row) =>
-          row.kind === "agents" ? (
-            <TurnItemView
-              key={row.key}
-              row={row}
-              running={false}
-              density="compact"
-              cwd={undefined}
-            />
-          ) : null,
-        )}
-      </SubagentSessionsProvider>
-    </QueryClientProvider>,
-  );
-
-  client.clear();
-  listing();
-  expect(html.match(/>Completed</g)?.length).toBe(1);
-  expect(html).not.toContain("agents completed");
+const unlisted = settledTool("task-unlisted", {
+  kind: "delegate",
+  child: null,
+  role: "create",
+  title: "Map the workbench",
 });
 
-test("a running create call whose child is not listed yet is starting up", () => {
-  const client = new QueryClient();
+function Parent({ children }: { readonly children: ReactNode }): ReactNode {
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      <PaneControllerProvider controller={new PaneController({ storageKey: "subagent-call" })}>
+        <TranscriptProvider paneId="primary" sessionId={parent}>
+          {children}
+        </TranscriptProvider>
+      </PaneControllerProvider>
+    </QueryClientProvider>
+  );
+}
+
+test("a create call finds its child in the parent's background by the call that started it", async () => {
+  installConnection(
+    scriptedConnection({
+      sessions: [childSession],
+      views: new Map([
+        [
+          parent,
+          [
+            sessionView({
+              background: [
+                {
+                  kind: "child",
+                  id: childSession.id,
+                  title: "Map the workbench",
+                  state: "done",
+                  startedBy: create.state.call,
+                },
+              ],
+            }),
+          ],
+        ],
+      ]),
+    }).connection,
+  );
+  const leave = [
+    sessionsWatch("all").subscribe(() => undefined),
+    sessionWatch(parent).subscribe(() => undefined),
+  ];
+  await sessionsWatch("all").first();
+  await sessionWatch(parent).first();
 
   const html = renderToStaticMarkup(
-    <QueryClientProvider client={client}>
-      <SubagentSessionsProvider value={{ children: listedChildren([]), open: () => {} }}>
-        <SubagentCallView
-          title="Map the workbench"
-          message={{
-            ...create,
-            state: { ...create.state, phase: "running", progress: null },
-            status: { kind: "live", run: null },
-          }}
-          cwd={undefined}
-        />
-      </SubagentSessionsProvider>
-    </QueryClientProvider>,
+    <Parent>
+      {transcriptRows({
+        loading: false,
+        failed: false,
+        turns: [turn],
+        changes: [],
+        prompts: [],
+        running: false,
+        held: false,
+        retrying: undefined,
+      }).map((row) =>
+        row.kind === "agents" ? (
+          <TurnItemView key={row.key} row={row} running={false} density="compact" cwd={undefined} />
+        ) : null,
+      )}
+    </Parent>,
   );
 
-  client.clear();
+  for (const unsubscribe of leave) unsubscribe();
+  expect(html.match(/>Done</g)?.length).toBe(1);
+  expect(html, "the row opens the child").toContain("<button");
+  expect(html).not.toContain("agents done");
+});
+
+test("a running create call whose child the parent's background doesn't list yet is starting up", () => {
+  const html = renderToStaticMarkup(
+    <Parent>
+      <SubagentCallView
+        message={{
+          ...unlisted,
+          state: { ...unlisted.state, phase: "running", progress: null },
+          status: { kind: "live", run: null },
+        }}
+        toolClass={{ kind: "delegate", child: null, role: "create", title: "Map the workbench" }}
+        cwd={undefined}
+      />
+    </Parent>,
+  );
+
   expect(html.match(/>Starting up</g)?.length).toBe(1);
-  expect(html).not.toContain(">Completed<");
+  expect(html).not.toContain(">Done<");
 });

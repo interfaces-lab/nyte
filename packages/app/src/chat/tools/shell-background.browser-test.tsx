@@ -23,7 +23,8 @@ import { scriptedConnection, viewStream } from "../../../test/scripted-connectio
 import { COMPLETED, USAGE, sessionRow, settledTool } from "../../../test/view-fixtures.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { TranscriptProvider } from "../transcript/transcript.tsx";
-import { BackgroundWork } from "../trays/terminals.tsx";
+import { BackgroundWork, listTerminals } from "../trays/terminals.tsx";
+import { useChatTasks } from "../../chats/index.ts";
 
 const SESSION = asId<"session">("shell-background");
 
@@ -141,6 +142,28 @@ function ShellStep({ density }: { readonly density: ToolCallDensity }): ReactEle
   ) : null;
 }
 
+const NONE_CLEARED: ReadonlySet<string> = new Set();
+
+function Terminals({
+  open,
+  onOpen,
+  viewport,
+}: {
+  readonly open: boolean;
+  readonly onOpen: (open: boolean) => void;
+  readonly viewport: HTMLElement;
+}): ReactElement {
+  return (
+    <BackgroundWork
+      sessionId={SESSION}
+      terminals={listTerminals(useChatTasks(SESSION), NONE_CLEARED)}
+      open={open}
+      onViewChange={(view) => onOpen(view.kind === "terminals")}
+      viewport={viewport}
+    />
+  );
+}
+
 function Stage({
   density,
   viewport,
@@ -159,13 +182,7 @@ function Stage({
             <div style={{ padding: 16 }}>
               <ShellStep density={density} />
             </div>
-            <BackgroundWork
-              sessionId={SESSION}
-              open={open}
-              onViewChange={(view) => setOpen(view.kind === "terminals")}
-              onOpenTerminal={() => "terminal"}
-              viewport={viewport}
-            />
+            <Terminals open={open} onOpen={setOpen} viewport={viewport} />
           </TranscriptProvider>
         </PaneControllerProvider>
       </TooltipProvider>
@@ -241,7 +258,7 @@ export async function run(): Promise<string> {
   views.push(view(settledTool(CALL, SHELL, "[running in the background as job job-1]")));
 
   const pill = await until(
-    () => stage.querySelector("button[aria-description='Open terminals (1)']"),
+    () => stage.querySelector("button[aria-description='Open terminals (1 active)']"),
     "the terminals pill",
   );
 

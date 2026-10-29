@@ -1,11 +1,17 @@
-import type { Execution, SessionInfo, ToolClass, TurnInfo, WorkspaceInfo } from "@nyte-ai/sdk";
-import { asId } from "@nyte-ai/schema";
+import type {
+  Execution,
+  SessionInfo,
+  SessionView,
+  ToolClass,
+  TurnInfo,
+  WorkspaceInfo,
+} from "@nyte-ai/sdk";
+import { asId, asSeq } from "@nyte-ai/schema";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { describeChats } from "../src/chats/directory.ts";
 import type { ChatDirectory } from "../src/chats/directory.ts";
 import { mergeSessionRows } from "../src/data/session-rows.ts";
 import type { RowSources } from "../src/data/session-rows.ts";
-import type { WatchSource } from "../src/data/watch-store.ts";
 import type { TurnMessages } from "../src/chat/transcript/turns.ts";
 
 export const USAGE = {
@@ -93,12 +99,29 @@ export function chatsFor(
   return describeChats(rows.values(), "workspaces" in sources ? sources.workspaces : [], previous);
 }
 
-export function listedChildren(
-  children: readonly SessionInfo[],
-): WatchSource<readonly SessionInfo[]> {
-  const state = { value: children, error: undefined };
-
-  return { subscribeByFrame: () => () => undefined, getState: () => state };
+/** A finished chat's view with nothing in it, with `change` laid over it. */
+export function sessionView(change: Partial<SessionView> = {}): SessionView {
+  return {
+    revision: asId<"revision">("r1"),
+    seq: asSeq(1),
+    activation: { kind: "active" },
+    messages: [],
+    queue: [],
+    leadingPrompt: null,
+    parts: [],
+    turns: [],
+    usage: USAGE,
+    execution: COMPLETED,
+    reportsHeld: false,
+    seenThrough: null,
+    background: [],
+    configuration: { selected: null, effective: null },
+    context: { tokens: 0, window: 1_000, lastRequest: null },
+    heads: [],
+    changes: [],
+    catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
+    ...change,
+  };
 }
 
 export function settledTool(id: string, toolClass: ToolClass, text = ""): ToolMessage {

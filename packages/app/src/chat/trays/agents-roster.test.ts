@@ -1,8 +1,9 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
-import type { Execution } from "@nyte-ai/sdk";
+import type { BackgroundItem, Execution, SessionInfo } from "@nyte-ai/sdk";
 import { chatsFor, sessionRow } from "../../../test/view-fixtures.ts";
-import { listSubagents } from "./agents.tsx";
+import { describeTask, trayTasks } from "../../chats/tasks.ts";
+import type { Task } from "../../chats/tasks.ts";
 
 const run = {
   id: asId<"run">("run"),
@@ -23,20 +24,20 @@ const FAILED: Execution = {
 
 const parent = asId<"session">("parent");
 
-test("the agents tray keeps a failed agent listed after those waiting on the user, and drops settled ones", () => {
+test("the agents tray lists every agent still going and each ended one until it is cleared, those waiting on the user first", () => {
   const working = sessionRow(
     "working",
-    { parent, lastActivityAt: 5 },
+    { parent },
     { kind: "live", run, phase: "responding", stopping: false },
   );
 
   const approval = sessionRow(
     "approval",
-    { parent, lastActivityAt: 1 },
+    { parent },
     { kind: "waiting", run, on: { kind: "part", part: asId<"part">("p") } },
   );
 
-  const failed = sessionRow("failed", { parent, lastActivityAt: 3 }, FAILED);
+  const failed = sessionRow("failed", { parent }, FAILED);
 
   const stopped = sessionRow(
     "stopped",
@@ -47,22 +48,32 @@ test("the agents tray keeps a failed agent listed after those waiting on the use
   const completed = sessionRow("completed", { parent });
   const agents = [working, approval, failed, stopped, completed];
   const chats = chatsFor(agents);
-  const closed = listSubagents(agents, { kind: "closed" }, chats);
 
-  expect(closed.listed.map((agent) => agent.title)).toEqual(["approval", "working", "failed"]);
-  expect(closed.active.map((agent) => agent.title)).toEqual(["approval", "working"]);
+  const item = (session: SessionInfo): BackgroundItem => ({
+    kind: "child",
+    id: session.id,
+    title: "Subagent",
+    state: "done",
+    startedBy: null,
+  });
 
-  expect(closed.listed.map((agent) => agent.status.kind)).toEqual([
-    "waiting-for-approval",
-    "working",
-    "failed",
+  const tasks = agents.flatMap((agent): readonly Task[] => {
+    const task = describeTask(item(agent), chats.get(agent.id), undefined);
+
+    return task === undefined ? [] : [task];
+  });
+  const listed = trayTasks(tasks, new Set());
+
+  expect(listed.map((task) => [task.title, task.state])).toEqual([
+    ["approval", "waiting"],
+    ["working", "working"],
+    ["completed", "done"],
+    ["stopped", "done"],
+    ["failed", "failed"],
   ]);
 
-  const held = listSubagents(
-    agents,
-    { kind: "list", retainedSessionId: stopped.id, openedOver: [stopped.id] },
-    chats,
-  );
-
-  expect(held.listed.at(-1)).toMatchObject({ title: "stopped", status: { kind: "stopped" } });
+  expect(
+    trayTasks(tasks, new Set([stopped.id, completed.id, working.id])).map((task) => task.title),
+    "clearing keeps what still goes and what wasn't cleared",
+  ).toEqual(["approval", "working", "failed"]);
 });

@@ -3,87 +3,75 @@ import { create, props } from "@stylexjs/stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { useMutation } from "@tanstack/react-query";
 import type { JobEnd, JobId, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
+import { taskEnded, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import { Row } from "@nyte-ai/ui/row";
 import { useId, useRef, useState } from "react";
-import { useSessionRow } from "../../data/session-rows.ts";
-import { useWorkspaceJobs } from "../../data/workspaces.ts";
+import { trayTasks } from "../../chats/index.ts";
+import type { JobTask, Task } from "../../chats/index.ts";
+import { TaskMark } from "../../components/task-mark.tsx";
 import { connection } from "../../data/connection.ts";
-import { jobsWatch } from "../../data/watches.ts";
-import { useWatchSelect } from "../../data/watch-store.ts";
-import { Icon } from "@nyte-ai/ui/icon";
-import { Spinner } from "@nyte-ai/ui/spinner";
+import { useSessionRow } from "../../data/session-rows.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { readDeferred } from "../../lib/deferred.tsx";
-import { Tray, TrayIconAction, trayParts, useTrayRoot } from "./tray.tsx";
+import { chatWindow } from "../../window/index.ts";
 import type { TrayView } from "../../window/index.ts";
+import { openJobOutput } from "../tools/job-output.ts";
+import { pillCounts, pillState } from "./agents.tsx";
+import { Tray, TrayIconAction, trayParts, useTrayRoot } from "./tray.tsx";
 
 export type TerminalsTrayView = Extract<TrayView, { readonly kind: "closed" | "terminals" }>;
+
+/** A job the chat runs in the background, which the host still keeps. */
+export type TerminalTask = JobTask & { readonly job: JobView };
+
+/**
+ * The terminals a chat's tray lists, by the one tray rule: its jobs in the background the host
+ * still keeps. A job its call still holds shows in that call's row instead.
+ */
+export function listTerminals(
+  tasks: readonly Task[],
+  cleared: ReadonlySet<string>,
+): readonly TerminalTask[] {
+  return trayTasks(
+    tasks.filter(
+      (task): task is TerminalTask => task.kind === "job" && task.job?.foreground === false,
+    ),
+    cleared,
+  );
+}
 
 const styles = create({
   actions: { marginInlineEnd: `calc(${space.s1} + ${tray.rowInset} - ${tray.paddingInline})` },
 });
 
-function jobActionMessage(outcome: StopOutcome<JobEnd>): string {
-  switch (outcome.kind) {
-    case "requested":
-      return "Cancellation requested.";
-    case "missing":
-      return "This task is no longer available.";
-    case "settled":
-      return "This task has already finished. Its output is still available.";
-    default: {
-      const exhaustive: never = outcome;
-
-      return exhaustive;
-    }
-  }
-}
-
 interface BackgroundWorkProps {
   readonly sessionId: SessionId;
+  /** The terminals the tray lists. */
+  readonly terminals: readonly TerminalTask[];
   readonly open: boolean;
   readonly onViewChange: (view: TerminalsTrayView) => void;
-  readonly onOpenTerminal: (job: JobView) => string;
   readonly viewport: HTMLElement | null;
 }
 
-function runsInBackground(job: JobView, sessionId: SessionId | undefined): boolean {
-  return job.session === sessionId && job.state.kind === "running" && !job.foreground;
-}
-
-const NO_JOBS: readonly JobId[] = [];
-
-/** The chat's terminals running in the background now. */
-export function useLiveTerminals(sessionId: SessionId | undefined): readonly JobId[] {
-  const workspace = useSessionRow(sessionId, (session) => session.workspace) ?? undefined;
-
-  return useWatchSelect(
-    workspace === undefined ? undefined : jobsWatch(workspace),
-    (state) =>
-      state.value?.flatMap((job) => (runsInBackground(job, sessionId) ? [job.id] : [])) ?? NO_JOBS,
-    (previous, next) =>
-      previous.length === next.length && previous.every((id, index) => id === next[index]),
-  );
-}
-
+/**
+ * The chat's background jobs over its composer: a pill and the list. Every job still running is
+ * listed, and each ended one until the user clears it; any of them opens its output.
+ */
 export function BackgroundWork({
   sessionId,
+  terminals,
   open,
   onViewChange,
-  onOpenTerminal,
   viewport,
 }: BackgroundWorkProps) {
   const workspace = useSessionRow(sessionId, (session) => session.workspace) ?? undefined;
-  const jobs = useWorkspaceJobs(workspace);
-
   const { root, ref, availableHeight } = useTrayRoot(viewport);
   const pillRef = useRef<HTMLButtonElement>(null);
   const trayId = useId();
-  const [stopCandidates, setStopCandidates] = useState<readonly JobView["id"][]>();
+  const [stopCandidates, setStopCandidates] = useState<readonly JobId[]>();
 
-  const stopJob = (jobId: JobView["id"]): Promise<StopOutcome<JobEnd>> => {
+  const stopJob = (jobId: JobId): Promise<StopOutcome<JobEnd>> => {
     if (workspace === undefined) return Promise.resolve({ kind: "missing" });
 
     return connection().workspace(workspace).job(jobId).stop();
@@ -92,18 +80,19 @@ export function BackgroundWork({
   const cancel = useMutation({ mutationFn: stopJob });
 
   const stopAll = useMutation({
-    mutationFn: (jobIds: readonly JobView["id"][]) => Promise.all(jobIds.map(stopJob)),
+    mutationFn: (jobIds: readonly JobId[]) => Promise.all(jobIds.map(stopJob)),
   });
 
-  const liveTerminals = (jobs ?? [])
-    .filter((job) => runsInBackground(job, sessionId))
-    .toSorted((left, right) => right.startedAt - left.startedAt);
-
-  const hasTerminals = liveTerminals.length > 0;
-  const trayOpen = open && hasTerminals;
+  const live = terminals.filter((terminal) => terminal.live);
+  const ended = terminals.filter((terminal) => taskEnded(terminal.state));
+  const trayOpen = open && terminals.length > 0;
   const pendingAction = cancel.isPending || stopAll.isPending;
-  const count = String(liveTerminals.length);
-  const noun = liveTerminals.length === 1 ? "Terminal" : "Terminals";
+  const count = String(terminals.length);
+  const noun = terminals.length === 1 ? "Terminal" : "Terminals";
+
+  const missing =
+    (cancel.isSuccess && cancel.data.kind === "missing") ||
+    (stopAll.isSuccess && stopAll.data.some((outcome) => outcome.kind === "missing"));
 
   const close = () => {
     const held = root?.contains(document.activeElement) === true;
@@ -112,35 +101,50 @@ export function BackgroundWork({
     if (held) pillRef.current?.focus();
   };
 
-  if (!hasTerminals) return null;
+  if (terminals.length === 0) return null;
 
   return (
     <div ref={ref} {...props(trayParts.root)}>
       <Tray open={trayOpen} id={trayId} label="Terminals" focusKey="terminals" onClose={close}>
         <div {...props(trayStyles.header)}>
           <span {...props(trayStyles.title)}>{`${count} ${noun.toLowerCase()}`}</span>
-          <Button
-            aria-description={
-              stopCandidates !== undefined
-                ? `Confirm stopping ${String(stopCandidates.length)} running terminals`
-                : "Stop all running terminals"
-            }
-            tone="danger"
-            loading={stopAll.isPending}
-            disabled={cancel.isPending}
-            onClick={() => {
-              if (stopCandidates === undefined) {
-                setStopCandidates(liveTerminals.map((job) => job.id));
-
-                return;
+          {ended.length > 0 && (
+            <Button
+              onClick={() =>
+                chatWindow.act({
+                  kind: "clear",
+                  parent: sessionId,
+                  tasks: ended.map((terminal) => terminal.id),
+                })
               }
+            >
+              Clear Finished
+            </Button>
+          )}
+          {live.length > 0 && (
+            <Button
+              aria-description={
+                stopCandidates !== undefined
+                  ? `Confirm stopping ${String(stopCandidates.length)} running terminals`
+                  : "Stop all running terminals"
+              }
+              tone="danger"
+              loading={stopAll.isPending}
+              disabled={cancel.isPending}
+              onClick={() => {
+                if (stopCandidates === undefined) {
+                  setStopCandidates(live.map((terminal) => terminal.id));
 
-              stopAll.mutate(stopCandidates);
-              setStopCandidates(undefined);
-            }}
-          >
-            Stop Terminals
-          </Button>
+                  return;
+                }
+
+                stopAll.mutate(stopCandidates);
+                setStopCandidates(undefined);
+              }}
+            >
+              Stop Terminals
+            </Button>
+          )}
           <TrayIconAction icon="close" label="Close terminal list" onClick={close} />
         </div>
         {stopCandidates !== undefined && (
@@ -153,35 +157,39 @@ export function BackgroundWork({
           data-nyte-scrollport
           {...props(trayStyles.list, trayParts.listHeight(availableHeight))}
         >
-          {liveTerminals.map((job) => (
-            <Row key={job.id} xstyle={trayParts.row} interactive>
+          {terminals.map((terminal) => (
+            <Row key={terminal.id} xstyle={trayParts.row} interactive>
               <Row.Primary
-                id={`${trayId}-${job.id}`}
-                aria-label={`Open terminal for ${job.command}`}
-                title={job.command}
+                id={`${trayId}-${terminal.id}`}
+                aria-label={`Open terminal for ${terminal.job.command}`}
+                title={terminal.job.command}
                 onClick={() => {
-                  const terminal = onOpenTerminal(job);
-
-                  readDeferred("workbench")?.focusTerminal(terminal);
+                  openJobOutput(sessionId, terminal.job);
                   onViewChange({ kind: "closed" });
                 }}
               >
                 <Row.Leading aria-hidden="true">
-                  <Icon name="console" size={16} />
+                  <TaskMark state={terminal.state} />
                 </Row.Leading>
-                <Row.Label>{job.command}</Row.Label>
+                <Row.Label>{terminal.job.command}</Row.Label>
               </Row.Primary>
-              <Row.Actions xstyle={styles.actions}>
-                <Button
-                  aria-description={`Stop ${job.command}`}
-                  tone="danger"
-                  loading={stopAll.isPending || (cancel.isPending && cancel.variables === job.id)}
-                  disabled={pendingAction}
-                  onClick={() => cancel.mutate(job.id)}
-                >
-                  Stop Terminal
-                </Button>
-              </Row.Actions>
+              {terminal.live ? (
+                <Row.Actions xstyle={styles.actions}>
+                  <Button
+                    aria-description={`Stop ${terminal.job.command}`}
+                    tone="danger"
+                    loading={
+                      stopAll.isPending || (cancel.isPending && cancel.variables === terminal.id)
+                    }
+                    disabled={pendingAction}
+                    onClick={() => cancel.mutate(terminal.id)}
+                  >
+                    Stop Terminal
+                  </Button>
+                </Row.Actions>
+              ) : (
+                <Row.Meta>{taskLabel(terminal.state)}</Row.Meta>
+              )}
             </Row>
           ))}
         </div>
@@ -190,21 +198,14 @@ export function BackgroundWork({
             {stopAll.isPending ? "Stopping terminals…" : "Stopping terminal…"}
           </div>
         )}
-        {cancel.isSuccess && (
+        {missing && (
           <div role="status" {...props(trayParts.notice)}>
-            {jobActionMessage(cancel.data)}
-          </div>
-        )}
-        {stopAll.isSuccess && (
-          <div role="status" {...props(trayParts.notice)}>
-            {stopAll.data.every((outcome) => outcome.kind === "requested")
-              ? "Cancellation requested."
-              : "Some work has already finished or is no longer available."}
+            The host no longer has this job.
           </div>
         )}
         {(cancel.isError || stopAll.isError) && (
           <div role="alert" {...props(intent.danger, trayParts.notice, trayParts.error)}>
-            Failed to update background work. Try again.
+            Couldn’t stop the terminal. Try again.
           </div>
         )}
       </Tray>
@@ -214,7 +215,7 @@ export function BackgroundWork({
           variant="outline"
           pill
           size="sm"
-          aria-description={`Open terminals (${count})`}
+          aria-description={`Open terminals (${pillCounts(terminals)})`}
           aria-controls={trayId}
           aria-expanded={trayOpen}
           onClick={() => {
@@ -227,14 +228,17 @@ export function BackgroundWork({
             setStopCandidates(undefined);
             cancel.reset();
             stopAll.reset();
-            onViewChange({ kind: "terminals", openedOver: liveTerminals.map((job) => job.id) });
+            onViewChange({
+              kind: "terminals",
+              openedOver: terminals.map((terminal) => terminal.id),
+            });
           }}
         >
-          <span {...props(trayParts.pillIndicator)}>
-            <Spinner />
+          <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
+            <TaskMark state={pillState(terminals)} />
           </span>
           <span aria-hidden="true" {...props(trayParts.pillCount)}>
-            {liveTerminals.length}
+            {count}
           </span>
           <span>{noun}</span>
         </Button>

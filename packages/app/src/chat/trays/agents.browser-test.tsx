@@ -9,8 +9,8 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import type { HostState } from "../../contract/nyte.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
-import { PaneController } from "../../panes/pane-controller.ts";
 import { activePane } from "../../panes/pane-layout.ts";
+import { windowTabs } from "../../tabs/window-tabs.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { installConnection } from "../../data/connection.ts";
@@ -146,7 +146,16 @@ function view(
     execution,
     reportsHeld: false,
     seenThrough: null,
-    background: [],
+    background:
+      key === "parent"
+        ? AGENTS.map((agent) => ({
+            kind: "child",
+            id: agent.key,
+            title: agent.title,
+            state: "working",
+            startedBy: asId<"call">(`call-${agent.key}`),
+          }))
+        : [],
     configuration: {
       selected: configuration,
       effective: configuration,
@@ -361,7 +370,7 @@ export async function run(): Promise<string> {
   });
 
   const root = createRoot(container);
-  const panes = new PaneController({ storageKey: "agents-tray-test" });
+  const panes = windowTabs.controller();
   panes.selectSession(PARENT);
 
   flushSync(() =>
@@ -400,13 +409,15 @@ export async function run(): Promise<string> {
     }
   }, 25);
 
-  const transcript = (): Element | null =>
-    container.querySelector("[role='region'][aria-label='Messages']");
+  const transcript = (): Element | undefined =>
+    [...container.querySelectorAll("[role='region'][aria-label='Messages']")].find((region) =>
+      region.checkVisibility(),
+    );
 
   const card = (title: string): HTMLButtonElement => {
     const scope = transcript();
 
-    if (scope === null) throw new Error("No transcript");
+    if (scope === undefined) throw new Error("No transcript");
 
     return button(scope, title);
   };
@@ -419,10 +430,15 @@ export async function run(): Promise<string> {
   );
   await new Promise((resolve) => window.setTimeout(resolve, 500));
 
-  const opened = await record(container, () => card("Map the core").click(), "chat:core");
+  await record(container, () => button(container, "Agents").click(), "list");
+  const opened = await record(
+    container,
+    () => button(container, "Open Map the core").click(),
+    "chat:core",
+  );
 
-  if (!opensWhole(opened, "none", "chat:core"))
-    return `Opening an agent showed its tray before its chat: ${JSON.stringify(opened)}`;
+  if (!opensWhole(opened, "list", "chat:core"))
+    return `Opening an agent showed an empty tray before its chat: ${JSON.stringify(opened)}`;
 
   const back = await record(container, () => button(container, "Back to agents").click(), "list");
 
@@ -438,7 +454,8 @@ export async function run(): Promise<string> {
     return `Switching agents showed an empty tray: ${JSON.stringify(switched)}`;
 
   await record(container, () => button(container, "Close agents").click(), "none");
-  await record(container, () => card("Map the core").click(), "chat:core");
+  await record(container, () => button(container, "Agents").click(), "list");
+  await record(container, () => button(container, "Open Map the core").click(), "chat:core");
   button(container, "Open as full chat").click();
   await until(() => {
     const selection = activePane(panes.getSnapshot().layout).selection;
@@ -450,6 +467,19 @@ export async function run(): Promise<string> {
       transcript()?.textContent.includes(latest("core")) === true
     );
   }, "the agent's chat in the pane");
+
+  panes.selectSession(PARENT);
+  await until(() => transcript()?.textContent.includes("Map the app") === true, "the parent again");
+  card("Map the app").click();
+  await until(() => {
+    const selection = activePane(panes.getSnapshot().layout).selection;
+
+    return (
+      selection.kind === "session" &&
+      selection.sessionId === asId<"session">("app") &&
+      readTray(container) === "none"
+    );
+  }, "a transcript link to open the agent's chat in the pane, not the tray");
 
   window.clearInterval(streaming);
   flushSync(() => root.unmount());
