@@ -431,6 +431,7 @@ export async function run(): Promise<string> {
   await new Promise((resolve) => window.setTimeout(resolve, 500));
 
   await record(container, () => button(container, "Agents").click(), "list");
+  await new Promise((resolve) => window.setTimeout(resolve, 500));
   const opened = await record(
     container,
     () => button(container, "Open Map the core").click(),
