@@ -277,6 +277,7 @@ export function mergeSessionRows(
   const rows = new Map(
     [...merged.values()].flatMap((listed) => {
       const view = sources.views.get(listed.id);
+
       const session = sources.project(
         view === undefined ? listed : { ...listed, heads: view.heads },
       );

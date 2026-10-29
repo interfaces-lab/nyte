@@ -11,6 +11,7 @@ export const headBackground: RewriteStep = {
       if (!isJsonObject(event) || event.kind !== "session" || !isJsonObject(event.info))
         return null;
       const heads = Array.isArray(event.info.heads) ? event.info.heads : [];
+
       const counted = heads.map((head) =>
         isJsonObject(head) && !("background" in head)
           ? { ...head, background: { working: 0, waiting: 0 } }

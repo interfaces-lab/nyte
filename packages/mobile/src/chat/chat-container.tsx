@@ -43,9 +43,11 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
 
   const childSessions = children.kind === "ready" ? children.value : undefined;
   const delegateNames = indexDelegateNames(childSessions ?? []);
+
   const asking = childSessions?.find(
     (child) => executionMark(mainHead(child)?.execution) === "waiting",
   );
+
   const askingId = asking?.id;
 
   const [askingView] = useWatch(askingId === undefined ? undefined : client.session(askingId));

@@ -78,10 +78,12 @@ test("an open view's heads replace the listed ones as a unit, and closing it han
 
 test("a chat reads as its own run ended whatever its subagents do, and carries its background counts", () => {
   const root = sessionRow("root", { heads: heads(FAILED, false, { working: 1, waiting: 0 }) });
+
   const middle = sessionRow("middle", {
     parent: root.id,
     heads: heads(COMPLETED, false, { working: 0, waiting: 1 }),
   });
+
   const leaf = sessionRow("leaf", { parent: middle.id }, LIVE);
   const chats = chatsFor([root, middle, leaf]);
 
