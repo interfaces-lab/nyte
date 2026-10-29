@@ -1,6 +1,6 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
 import { showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
@@ -20,13 +20,9 @@ import { nextPin, PINNED } from "./step-group-pin.ts";
 import type { StepGroupPinEvent } from "./step-group-pin.ts";
 import { useStepGroupOpen } from "./step-group-open.ts";
 import { stepGroupContent } from "./step-group-content.ts";
-import { liveStatusLabel, PLANNING_LABEL, stepGroupLine } from "./step-group-presentation.ts";
-import type { LiveStatus } from "./step-group-presentation.ts";
-import { usePlanningTime } from "./planning-time.ts";
+import { stepGroupLine } from "./step-group-presentation.ts";
 
 const STEP_LIMIT = 200;
-
-const LABEL_THROTTLE_MS = 200;
 
 const FOCUSABLE = "a[href], button, [tabindex]";
 
@@ -69,52 +65,6 @@ function StepLineView({
   }
 
   return <ThinkingLine text={entry.markdown} streaming={streaming} live={live} />;
-}
-
-function useSteadyLabel(label: string | undefined): string {
-  const [shown, setShown] = useState(label ?? PLANNING_LABEL);
-  const changedAt = useRef<number | undefined>(undefined);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- label throttle timer, restarted per label
-  useLayoutEffect(() => {
-    const now = performance.now();
-    const changed = changedAt.current ?? now;
-    changedAt.current = changed;
-
-    if (label === undefined || label === shown) return undefined;
-
-    const show = (): void => {
-      changedAt.current = performance.now();
-      setShown(label);
-    };
-
-    const wait = changed + LABEL_THROTTLE_MS - now;
-
-    if (wait <= 0) {
-      show();
-
-      return undefined;
-    }
-
-    const timer = window.setTimeout(show, wait);
-
-    return () => window.clearTimeout(timer);
-  }, [label, shown]);
-
-  return shown;
-}
-
-function LiveStepVerb({
-  status,
-  newest,
-}: {
-  status: LiveStatus;
-  newest: StepMessage["id"] | undefined;
-}): ReactElement {
-  const planningMs = usePlanningTime(status === "planning", newest);
-  const label = useSteadyLabel(liveStatusLabel(status, planningMs));
-
-  return <span {...props(stepGroupStyles.verb, activityStyles.shimmer)}>{label}</span>;
 }
 
 export function StepGroupView({
@@ -263,11 +213,9 @@ export function StepGroupView({
 
   const summaryLine = (
     <>
-      {line.kind === "status" ? (
-        <LiveStepVerb status={line.status} newest={last?.id} />
-      ) : (
-        <span {...props(stepGroupStyles.verb, running && activityStyles.shimmer)}>{line.verb}</span>
-      )}
+      <span {...props(stepGroupStyles.verb, running && activityStyles.shimmer)}>
+        {line.kind === "thinking" ? "Thinking" : line.verb}
+      </span>
       {line.kind === "summary" && line.detail !== undefined && (
         <span {...props(stepGroupStyles.summary)}>{line.detail}</span>
       )}

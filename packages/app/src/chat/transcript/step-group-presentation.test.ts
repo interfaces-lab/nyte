@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { PartStatus, ToolClass, ToolPartState } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { liveStatusLabel, stepGroupLine } from "./step-group-presentation.ts";
+import { planningLabel } from "@nyte-ai/plugin/client/presentation";
+import { stepGroupLine } from "./step-group-presentation.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 
 type Outcome = Extract<ToolPartState, { readonly phase: "settled" }>["outcome"] | "running";
@@ -157,16 +158,19 @@ test("a finished step counts each path once", () => {
   );
 });
 
-test("a live step without calls names what the agent is doing", () => {
-  assert.deepEqual(line([thought(true)], true), { kind: "status", status: "thinking" });
-  assert.deepEqual(line([thought(false)], true), { kind: "status", status: "planning" });
-  assert.equal(liveStatusLabel("thinking", 20_000), "Thinking");
+test("a live step without calls is thinking, and once it settles it reads as a thought, never as planning", () => {
+  assert.deepEqual(line([thought(true)], true), { kind: "thinking" });
+  assert.deepEqual(summary([thought(false)]), {
+    kind: "summary",
+    verb: "Thought",
+    detail: undefined,
+  });
 });
 
-test("a live step with nothing in flight plans after 200 ms and slows at 15 s", () => {
-  assert.equal(liveStatusLabel("planning", 0), undefined);
-  assert.equal(liveStatusLabel("planning", 199), undefined);
-  assert.equal(liveStatusLabel("planning", 200), "Planning next moves");
-  assert.equal(liveStatusLabel("planning", 14_999), "Planning next moves");
-  assert.equal(liveStatusLabel("planning", 15_000), "Taking longer than expected…");
+test("the live row plans after 200 ms and slows at 15 s", () => {
+  assert.equal(planningLabel(0), undefined);
+  assert.equal(planningLabel(199), undefined);
+  assert.equal(planningLabel(200), "Planning next moves");
+  assert.equal(planningLabel(14_999), "Planning next moves");
+  assert.equal(planningLabel(15_000), "Taking longer than expected…");
 });

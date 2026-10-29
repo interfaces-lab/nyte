@@ -29,12 +29,6 @@ async function settle() {
   for (let index = 0; index < 4; index += 1) await frame();
 }
 
-const STALL_MS = 5_000;
-
-async function until(done: () => boolean, deadline: number) {
-  while (!done() && performance.now() < deadline) await wait(50);
-}
-
 function thought(id: string, text: string, at: number, live = false): StepMessage {
   return {
     id: asId<"message">(id),
@@ -227,85 +221,6 @@ function timeline(changes: readonly Change[], from: number): string {
     .join(" → ");
 }
 
-async function startSlowProbe() {
-  const lane = document.createElement("div");
-  lane.style.cssText = "position:fixed;right:0;bottom:0;width:480px";
-  document.body.append(lane);
-  const root = createRoot(lane);
-
-  const render = (messages: readonly StepMessage[], mode: "visible" | "hidden" = "visible") =>
-    flushSync(() =>
-      root.render(
-        <Activity mode={mode}>
-          <StepGroupView
-            messages={messages}
-            cwd={undefined}
-            added={0}
-            removed={0}
-            running
-            density="compact"
-          />
-        </Activity>,
-      ),
-    );
-
-  render([thought("probe", "Weighing the probe", 0, true)]);
-  await settle();
-  check(header(lane) === "Thinking", "A live thought names itself");
-  const labels = recordLabels(lane, () => header(lane));
-  const settled = performance.now();
-  const probe = thought("probe", "Weighing the probe", 0);
-  render([probe]);
-
-  return async () => {
-    await until(
-      () => labels.changes.some((change) => change.label === "Taking longer than expected…"),
-      settled + 15_000 + STALL_MS,
-    );
-    labels.stop();
-    const seen = timeline(labels.changes, settled);
-    const planning = labels.changes[1];
-    const slow = labels.changes[2];
-
-    check(
-      labels.changes.length === 3 &&
-        planning?.label === "Planning next moves" &&
-        planning.at - settled >= 200 &&
-        planning.at - settled <= 200 + STALL_MS,
-      `A finished thought keeps its label for 200 ms, then the header plans: ${seen}`,
-    );
-    check(
-      slow?.label === "Taking longer than expected…" &&
-        slow.at - settled >= 15_000 &&
-        slow.at - settled <= 15_000 + STALL_MS,
-      `After 15 s of planning the header says it is taking longer: ${seen}`,
-    );
-
-    render([probe, thought("hidden", "Hidden work", 1, true)], "hidden");
-    await until(
-      () => (lane.textContent ?? "").includes("Hidden work"),
-      performance.now() + STALL_MS,
-    );
-    render([probe, thought("hidden", "Hidden work", 1)], "hidden");
-    await settle();
-    const replans = recordLabels(lane, () => header(lane));
-    const revealed = performance.now();
-    render([probe, thought("hidden", "Hidden work", 1)]);
-    await until(() => replans.changes.length > 1, revealed + 200 + STALL_MS);
-    replans.stop();
-    flushSync(() => root.unmount());
-    lane.remove();
-    const replanned = replans.changes[1];
-
-    check(
-      replans.changes.length === 2 &&
-        replanned?.label === "Planning next moves" &&
-        replanned.at - revealed >= 200,
-      `Work done while the chat is hidden restarts the planning clock: ${timeline(replans.changes, revealed)}`,
-    );
-  };
-}
-
 async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMessage[]) => void) {
   render([read("quick-a", 0, true)]);
   await wait(300);
@@ -345,38 +260,23 @@ async function quickSteps(outer: HTMLElement, render: (messages: readonly StepMe
   );
 }
 
-async function planningSteps(
+async function thinkingSteps(
   outer: HTMLElement,
-  render: (messages: readonly StepMessage[]) => void,
+  render: (messages: readonly StepMessage[], running: boolean) => void,
 ) {
-  render([thought("plan-a", "Weighing the lease", 0)]);
-  await settle();
-  check(
-    header(outer) === "Planning next moves",
-    `A live group with nothing in flight says it is planning (saw ${header(outer)})`,
-  );
-  await wait(300);
-  render([thought("plan-a", "Weighing the lease", 0), thought("plan-b", "And the hold", 1, true)]);
+  render([thought("plan-a", "Weighing the lease", 0, true)], true);
   await settle();
   check(header(outer) === "Thinking", `Live thinking names itself (saw ${header(outer)})`);
-  await wait(300);
   const labels = recordLabels(outer, () => header(outer));
   const settled = performance.now();
-  render([thought("plan-a", "Weighing the lease", 0), thought("plan-b", "And the hold", 1)]);
-  await until(
-    () => labels.changes.some((change) => change.label === "Planning next moves"),
-    settled + 200 + STALL_MS,
-  );
+  render([thought("plan-a", "Weighing the lease", 0)], false);
+  await wait(300);
   labels.stop();
   const seen = timeline(labels.changes, settled);
-  const planning = labels.changes[1];
 
   check(
-    labels.changes.length === 2 &&
-      planning?.label === "Planning next moves" &&
-      planning.at - settled >= 200 &&
-      planning.at - settled <= 200 + STALL_MS,
-    `Finished thinking holds its label for 200 ms, then the header plans: ${seen}`,
+    labels.changes.map((change) => change.label).join(" → ") === "Thinking → Thought",
+    `A settled thought reads as a thought and never as planning: ${seen}`,
   );
 }
 
@@ -632,10 +532,9 @@ export async function run() {
   const paragraph = (text: string) => paragraphs().find((node) => node.textContent === text);
 
   try {
-    const slow = await startSlowProbe();
     await quickSteps(outer, (messages) => render(messages, true));
     flushSync(() => root.render(null));
-    await planningSteps(outer, (messages) => render(messages, true));
+    await thinkingSteps(outer, render);
     flushSync(() => root.render(null));
     await liveSequence(outer, root);
     flushSync(() => root.render(null));
@@ -795,7 +694,6 @@ export async function run() {
     transcript(compact("later", thought("live-4", "Live thought", 0, true)));
     await settle();
     check(expandedState() === "false", "A later live group starts from its density default");
-    await slow();
 
     return "passed";
   } finally {

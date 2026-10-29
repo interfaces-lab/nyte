@@ -172,7 +172,7 @@ test("a reply with no work before it, or a turn still running, shows no work lin
   ]);
 });
 
-test("the live row names the planning status unless the last group names it itself", () => {
+test("the live row stays while the turn works whatever its last group holds, and a settled group stops running", () => {
   const thinking: Message = {
     id: asId<"message">("th"),
     turn,
@@ -186,12 +186,15 @@ test("the live row names the planning status unless the last group names it itse
     status: { kind: "settled", commit: asId<"commit">("th"), endedAt: 1 },
   };
 
-  const live = (messages: readonly Message[]) =>
-    rowsFor(
-      [endedTurn(messages, { id: turn, state: { kind: "working", activity: null } })],
-      true,
-    ).find((row) => row.kind === "live");
+  const rows = (messages: readonly Message[]) =>
+    rowsFor([endedTurn(messages, { id: turn, state: { kind: "working", activity: null } })], true);
 
-  expect(live([thinking])).toMatchObject({ settledWork: true });
-  expect(live([thinking, work("r1", 1, 2)])).toMatchObject({ settledWork: false });
+  for (const messages of [[thinking], [thinking, work("r1", 1, 2)]]) {
+    expect(rows(messages).find((row) => row.kind === "live")).toMatchObject({ working: true });
+    expect(rows(messages).find((row) => row.kind === "step")).toMatchObject({ running: false });
+  }
+
+  expect(
+    rows([{ ...thinking, status: { kind: "live", run: null } }]).find((row) => row.kind === "step"),
+  ).toMatchObject({ running: true });
 });
