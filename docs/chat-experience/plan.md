@@ -46,42 +46,42 @@ Status: `todo`, `doing`, `done`, `deferred`.
 
 | ID | Item | Proven by | Status |
 | --- | --- | --- | --- |
-| A1 | Persist view settings (grouping, sort, filters, Show fields), folded workspaces and revealed counts across reloads | unit test on the stored view; reload in a renderer test | todo |
-| A2 | Calendar buckets for the Updated grouping: Today, Yesterday, Last 7 Days, Last 30 Days, Older | unit test in sidebar-view | todo |
-| A3 | A Pinned section above the workspaces in grouped views; pinned chats leave their folder | unit test; renderer test | todo |
-| A4 | The Archived filter shows archived chats only | unit test | todo |
-| A5 | The open chat's row stays visible past the fold and inside a folded workspace | unit test | todo |
-| A6 | Fix the PR filter (every choice but "No PR" returns nothing) and make the Show fields toggles change the row | unit tests | todo |
-| A7 | "Mark as Read" on rows and "Mark All as Read" on workspaces | renderer or e2e test | todo |
-| A8 | Arrow-key navigation in the chat list (Up, Down, Home, End, Left, Right) | renderer test | todo |
-| A9 | Double-click a row to rename | renderer test | todo |
-| A10 | Confirm before archiving a chat that is working | renderer test | todo |
-| A11 | Copy: "No chats yet" | covered by existing tests | todo |
-| A12 | Proportions: row padding 6, row gap 2, 24 px hover buttons in a 52 px trailing slot with the age kept visible, default width 256 | visual check in the navigation e2e chapter | todo |
+| A1 | Persist view settings (grouping, sort, filters, Show fields), folded workspaces and revealed counts across reloads | unit test on the stored view; reload in a renderer test | done |
+| A2 | Calendar buckets for the Updated grouping: Today, Yesterday, Last 7 Days, Last 30 Days, Older | unit test in sidebar-view | done |
+| A3 | A Pinned section above the workspaces in grouped views; pinned chats leave their folder | unit test; renderer test | done |
+| A4 | The Archived filter shows archived chats only | unit test | done |
+| A5 | The open chat's row stays visible past the fold and inside a folded workspace | unit test | done |
+| A6 | Fix the PR filter (every choice but "No PR" returns nothing) and make the Show fields toggles change the row | unit tests | done |
+| A7 | "Mark as Read" on rows and "Mark All as Read" on workspaces | renderer or e2e test | done |
+| A8 | Arrow-key navigation in the chat list (Up, Down, Home, End, Left, Right) | renderer test | done |
+| A9 | Double-click a row to rename | renderer test | done |
+| A10 | Confirm before archiving a chat that is working | renderer test | done |
+| A11 | Copy: "No chats yet" | covered by existing tests | done |
+| A12 | Proportions: row padding 6, row gap 2, 24 px hover buttons in a 52 px trailing slot with the age kept visible, default width 256 | visual check in the navigation e2e chapter | done |
 
 ### B. Composer
 
 | ID | Item | Proven by | Status |
 | --- | --- | --- | --- |
-| B1 | While a run is working, the placeholder names what Enter does ("Steer without stopping" or "Queue for next turn") | composer states test | todo |
-| B2 | One name for steering everywhere in the queue UI: "Steer", tooltip "Sends without stopping the agent" | composer queue test | todo |
-| B3 | Prompt history: Ctrl+Alt+Up/Down walks this chat's last 10 prompts, then returns to the draft | composer test | todo |
-| B4 | Cmd/Ctrl+/ opens the model picker; closing it returns focus to the composer | composer test | todo |
-| B5 | Cmd/Ctrl+V with no field focused pastes into the composer | composer test | todo |
-| B6 | The terminal chip stays visible and pressed while its list is open, and closes it | tray test | todo |
-| B7 | Proportions: radius 20, editor minimum 36, send button 24, dock chip 28, tray gap 8 | composer e2e chapter | todo |
-| B8 | Context ring, only when the host reports used and limit tokens | renderer test, or `deferred` if the host doesn't report them | todo |
+| B1 | While a run is working, the placeholder names what Enter does ("Steer without stopping" or "Queue for next turn") | composer states test | done |
+| B2 | One name for steering everywhere in the queue UI: "Steer", tooltip "Sends without stopping the agent" | composer queue test | done |
+| B3 | Prompt history: Ctrl+Alt+Up/Down walks this chat's last 10 prompts, then returns to the draft | composer test | done |
+| B4 | Cmd/Ctrl+/ opens the model picker; closing it returns focus to the composer | composer test | done (follow-up chats; new-chat screen needs a one-line wiring) |
+| B5 | Cmd/Ctrl+V with no field focused pastes into the composer | composer test | done |
+| B6 | The terminal chip stays visible and pressed while its list is open, and closes it | tray test | done |
+| B7 | Proportions: radius 20, editor minimum 36, send button 24, dock chip 28, tray gap 8 | composer e2e chapter | partly: radius 22 via existing token, gap 8, natural editor height; 24 px send and 28 px chip not adopted |
+| B8 | Context ring, only when the host reports used and limit tokens | renderer test, or `deferred` if the host doesn't report them | done (ring sits beside Send; Nyte has no footer row) |
 
 ### C. Transcript content
 
 | ID | Item | Proven by | Status |
 | --- | --- | --- | --- |
-| C1 | Step groups show their counts while live, use the group's overall verb, and count searches ("Explored 2 files, 2 searches") | step-group presentation unit tests | todo |
-| C2 | A finished turn shows one "Worked for 2m 47s" line | unit test; chat e2e assertion | todo |
-| C3 | Reply actions row: copy and relative time | renderer test; chat e2e assertion | todo |
-| C4 | Code-block copy confirmation resets after 2 s | renderer test | todo |
-| C5 | The inline subagent link shows a working glyph while the child runs | renderer test | todo |
-| C6 | Conversation proportions: column and gutters per 03-transcript.md §9 | transcript-frames renderer test stays green | todo |
+| C1 | Step groups show their counts while live, use the group's overall verb, and count searches ("Explored 2 files, 2 searches") | step-group presentation unit tests | done (search count deferred: no search tool kind in schema) |
+| C2 | A finished turn shows one "Worked for 2m 47s" line | unit test; chat e2e assertion | done |
+| C3 | Reply actions row: copy and relative time | renderer test; chat e2e assertion | done |
+| C4 | Code-block copy confirmation resets after 2 s | renderer test | done |
+| C5 | The inline subagent link shows a working glyph while the child runs | renderer test | done |
+| C6 | Conversation proportions: column and gutters per 03-transcript.md §9 | transcript-frames renderer test stays green | done (no value change: 840 px column kept per §9) |
 
 ### D. Scrolling and unread
 
@@ -97,22 +97,22 @@ Status: `todo`, `doing`, `done`, `deferred`.
 
 | ID | Item | Proven by | Status |
 | --- | --- | --- | --- |
-| E1 | One chat hover card for sidebar rows and tabs: title, `owner/repo` and branch, `~` path, machine ("Local"), click to copy, 250 ms delay | renderer test | todo |
-| E2 | The "Run finished" toast appears only when the chat isn't visible in any pane | plugin or app test | todo |
-| E3 | The agents tray distinguishes failed from completed | unit test | todo |
-| E4 | Right panel defaults to 50 % with a 384 px minimum, stored as a ratio | controller unit test | todo |
-| E5 | The Changes rail entry shows `+N −N` line totals | renderer test | todo |
+| E1 | One chat hover card for sidebar rows and tabs: title, `owner/repo` and branch, `~` path, machine ("Local"), click to copy, 250 ms delay | renderer test | done |
+| E2 | The "Run finished" toast appears only when the chat isn't visible in any pane | plugin or app test | partly: quiet for the focused pane; other split pane needs a visible-chats API |
+| E3 | The agents tray distinguishes failed from completed | unit test | done |
+| E4 | Right panel defaults to 50 % with a 384 px minimum, stored as a ratio | controller unit test | done |
+| E5 | The Changes rail entry shows `+N −N` line totals | renderer test | done |
 
 ### F. Tabs
 
 | ID | Item | Proven by | Status |
 | --- | --- | --- | --- |
-| F1 | One preview slot per window: a plain sidebar click opens the chat in an italic preview tab that the next plain click replaces | tabs model tests; navigation e2e | todo |
-| F2 | A preview becomes permanent on double-click, sending a message, dragging, splitting, or "Keep Open" | tabs model tests | todo |
-| F3 | Opening a subagent opens a preview tab next to its parent instead of replacing the parent | navigation or subagents e2e | todo |
-| F4 | Previews are dropped on restart and a replaced preview isn't offered by reopen-closed-tab | tabs model tests | todo |
-| F5 | Tabs size to their content up to 280 px; the strip fades at its edges | tab strip test | todo |
-| F6 | Delete closes the focused tab | tab strip test | todo |
+| F1 | One preview slot per window: a plain sidebar click opens the chat in an italic preview tab that the next plain click replaces | tabs model tests; navigation e2e | done |
+| F2 | A preview becomes permanent on double-click, sending a message, dragging, splitting, or "Keep Open" | tabs model tests | partly: sending a message doesn't keep the preview yet (composer hook) |
+| F3 | Opening a subagent opens a preview tab next to its parent instead of replacing the parent | navigation or subagents e2e | done |
+| F4 | Previews are dropped on restart and a replaced preview isn't offered by reopen-closed-tab | tabs model tests | done |
+| F5 | Tabs size to their content up to 280 px; the strip fades at its edges | tab strip test | done |
+| F6 | Delete closes the focused tab | tab strip test | done |
 
 ### Deferred
 
@@ -124,6 +124,18 @@ Status: `todo`, `doing`, `done`, `deferred`.
 | Back/forward history, compact rail, OS notifications | Separate desktop work; none blocks the chat experience |
 | Workspace drag-to-reorder, stale workspace folding | Need A1 first |
 | Reply fork, dictation, queue reorder | Need host operations or a separate project |
+
+## Architecture
+
+The goal is a faithful port of Glass's behaviour and practices, with clearer logic and file structure than Nyte has today, not a pixel replica. The six packages add behaviour; this track makes the shell's shared concepts (chat identity, run status, read state, visibility, opening a chat, focus) each have one owner that every surface reads. It follows the architect workflow; outputs live in [architecture/](architecture).
+
+| Phase | Output | Status |
+| --- | --- | --- |
+| Ground | `architecture/grounding.md`: traced model of today's shell with file:line | done |
+| Sketch | Three candidate designs from different models, screened against the red flags | doing |
+| Synthesize | `architecture/rationale.md` and the type sketch: module map, types, signatures | todo |
+| Implement | Consolidation on `chat-experience` after the six packages merge | todo |
+| Scrap check | Record whether implementation fought the sketch, and the redesign if so | todo |
 
 ## Map
 
