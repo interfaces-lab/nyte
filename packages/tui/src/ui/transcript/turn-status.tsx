@@ -1,14 +1,13 @@
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
-import { failureNotice } from "@nyte-ai/plugin/client/presentation";
+import { failureNotice, PLANNING_LABEL } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import {
   ACTIVITY_RETRY_LABEL,
   ACTIVITY_THINKING_LABEL,
   ACTIVITY_WAITING_LABEL,
   ACTIVITY_WORKED_LABEL,
-  ACTIVITY_WORKING_LABEL,
   GLYPHS,
   RECOVERY_STEPS,
 } from "../../lib/constants.ts";
@@ -32,7 +31,7 @@ export function statusLine(status: TurnStatus, theme: CliTheme, now: number): Li
       return { text: "", color: theme.dim, spinner: null };
     case "working":
       return {
-        text: status.activity === null ? ACTIVITY_WORKING_LABEL : ` ${status.activity}`,
+        text: ` ${status.activity ?? PLANNING_LABEL}`,
         color: theme.dim,
         spinner: theme.running,
       };

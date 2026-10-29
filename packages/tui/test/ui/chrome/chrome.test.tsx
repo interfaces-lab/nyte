@@ -143,7 +143,7 @@ describe("tasks line", () => {
 
     await using app = await mount(state, () => <TasksLine />, { width: 60, height: 2 });
 
-    expect(app.captureCharFrame()).toContain("● 1 running in background · ↓ view");
+    expect(app.captureCharFrame()).toContain("● 1 working in the background · ↓ view");
     await app.mockMouse.click(5, 0);
     expect(app.dispatched).toContainEqual({
       kind: "open",
