@@ -132,10 +132,26 @@ The goal is a faithful port of Glass's behaviour and practices, with clearer log
 | Phase | Output | Status |
 | --- | --- | --- |
 | Ground | `architecture/grounding.md`: traced model of today's shell with file:line | done |
-| Sketch | Three candidate designs from different models, screened against the red flags | doing |
-| Synthesize | `architecture/rationale.md` and the type sketch: module map, types, signatures | todo |
-| Implement | Consolidation on `chat-experience` after the six packages merge | todo |
+| Sketch | Three candidate designs from different models, screened against the red flags | done (`architecture/candidates/`) |
+| Synthesize | `architecture/rationale.md` and the type sketch: module map, types, signatures | done: Sol base, Opus and Astra grafts |
+| Implement | H1–H3 below, on `chat-experience` after the six packages merge | doing |
 | Scrap check | Record whether implementation fought the sketch, and the redesign if so | todo |
+
+### H. Architecture (this branch)
+
+| ID | Item | Proven by | Status |
+| --- | --- | --- | --- |
+| H1 | One chat directory: a `Chat` per id with title, parent, location and run status, joined once from the session list, views and workspaces; folder boundary enforced by lint | unit tests on the directory; existing renderer and e2e suites | todo |
+| H2 | One run status every surface reads (sidebar row, tab, tray, composer, announcer, toast); the per-surface mappings are deleted. Stopped, failed, completed and approval stay distinct | unit tests on the status refinement; agents tray and sidebar tests | todo |
+| H3 | One "looking" projection over window state, tray detail, workbench cover and window focus; it gates marking read, the divider boundary, unread suppression and the finished-run toast (completes E2 for split panes) | unit tests on the projection; transcript unread and notification tests | todo |
+
+### Next branch
+
+| Item | Why it waits |
+| --- | --- |
+| Replace the pane controller and window tabs with one window state; every placement writer through `openChat` | Rewrites every placement writer at once; it lands alone with the e2e chapters green twice (rationale.md) |
+| Per-chat folder for file, git and workbench inputs | Changes every file-tool consumer; independent of H1–H3 |
+| Window-owned focus requests; move thin views into `ui/` | Follow the window state |
 
 ## Map
 
