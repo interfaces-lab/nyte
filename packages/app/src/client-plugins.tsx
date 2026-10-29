@@ -12,6 +12,7 @@ import { canvasRenderers } from "./conversation/canvas-frame.tsx";
 import { PartOrigin } from "./conversation/part-origin.ts";
 import { RawPartView } from "./conversation/raw-part.tsx";
 import { connected, connection, sessionsWatch } from "./sdk.tsx";
+import { chatWindow } from "./window/index.ts";
 
 let mounting: Promise<ClientPlugins> | undefined;
 
@@ -31,6 +32,7 @@ export function watchClientPlugins(
 
         return id === undefined ? null : current.session(id);
       },
+      looking: () => chatWindow.getSnapshot().looking,
       notify: (input) =>
         toast.add({
           type: input.level === "error" ? "error" : input.level === "warning" ? "warning" : "info",

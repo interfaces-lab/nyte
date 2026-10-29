@@ -34,13 +34,13 @@ it("notifies once when a root session's run fails and stays quiet for a stop or 
   ]);
 });
 
-it("stays quiet when the run ends in the session on screen", async () => {
+it("stays quiet for every session someone is looking at, in either pane", async () => {
   await using host = await open(fakeModels(), []);
   const shown = (await host.sessions.start({ content: "Hi." })).session;
+  const beside = (await host.sessions.start({ content: "Hi." })).session;
   const behind = (await host.sessions.start({ content: "Hi." })).session;
-  await behind.update({ name: "Behind" });
   const notified: Parameters<ClientApi["ui"]["notify"]>[0][] = [];
-  const api = { ...clientApi(host, notified), session: shown };
+  const api = { ...clientApi(host, notified), looking: new Set([shown.id, beside.id]) };
   const handler = notifications.hooks.run_ended_anywhere;
 
   const context = {
@@ -64,7 +64,8 @@ it("stays quiet when the run ends in the session on screen", async () => {
   const completed = { kind: "completed", usage } as const;
 
   await handler({ session: shown.id, run: asId("r1"), end: completed }, context);
-  await handler({ session: behind.id, run: asId("r2"), end: completed }, context);
+  await handler({ session: beside.id, run: asId("r2"), end: completed }, context);
+  await handler({ session: behind.id, run: asId("r3"), end: completed }, context);
 
-  expect(notified).toEqual([{ title: "Behind", message: "Run finished", level: "info" }]);
+  expect(notified).toEqual([{ title: "New chat", message: "Run finished", level: "info" }]);
 });

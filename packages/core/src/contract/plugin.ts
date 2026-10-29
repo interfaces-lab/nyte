@@ -212,6 +212,9 @@ export interface ClientApi {
   readonly client: { readonly name: string; readonly frameworks: readonly string[] };
 
   readonly session: Session | null;
+
+  /** Sessions someone is looking at right now: on screen in every pane that shows one, uncovered, in a focused window. */
+  readonly looking: ReadonlySet<SessionId>;
   readonly ui: {
     notify(input: {
       readonly title?: string;
