@@ -30,7 +30,7 @@ test("background agents share one block, report in one line each, and wake the p
 
   const tabs = page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
   const child = log.getByRole("button", { name: /^Map the core/u }).first();
-  const back = chatPane(page).getByRole("button", { name: "Back to parent chat" });
+  const back = chatPane(page).getByRole("link", { name: "Back to parent chat" });
   await expect(tabs).toHaveCount(1);
   await expect(back, "a root chat has no parent link").toHaveCount(0);
   await child.click();
