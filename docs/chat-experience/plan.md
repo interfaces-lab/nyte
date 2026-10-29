@@ -161,6 +161,21 @@ Deviations from the sketch, kept for the next branch to weigh:
 | Per-chat folder for file, git and workbench inputs | Changes every file-tool consumer; independent of H1–H3 |
 | Window-owned focus requests; move thin views into `ui/` | Follow the window state |
 
+## Audit round 2: the whole app
+
+A code-only review of the whole desktop app. Reviewers get a snapshot of this branch with every Markdown file removed, so their judgement rests on code alone. Each area has two reviewers on different models (Opus 5.5 high, GPT-6.1 Sol xhigh); findings both reach count as confirmed, the rest are checked in code before they become work.
+
+| Area | Question | Status |
+| --- | --- | --- |
+| Structure | Can a newcomer navigate `packages/app/src` and `packages/desktop/src`? Folder map, oversized files and folders, import graph | reviewed → P1 |
+| Linkage | How subagents, background jobs and terminals connect to their owner chat across every surface | reviewed → P4 |
+| Tokens | Do type, spacing, size, radius, colour, elevation and motion form clean levels, used consistently? | reviewed → P6 |
+| Workbench | Model versus view in `workbench/`; the rail's overlapping launchers and open tabs | reviewed → P5 |
+| Rendering | How files open and render; images stuck at "Opening file…" | reviewed → P3 |
+| Run-state gate | Desktop and TUI say "Working…" when only background subagents run; a chat whose own run ended must read as done and take a new message at once | reviewed → P2 |
+
+Findings, decisions and the packages they became: [audit/README.md](audit/README.md).
+
 ## Map
 
 What each package may break, and what it must not touch.
