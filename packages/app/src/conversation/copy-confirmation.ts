@@ -1,0 +1,23 @@
+import { useRef, useState } from "react";
+
+const COPIED_MS = 2_000;
+
+/** Copies text and confirms it for 2 s; a click while the confirmation shows copies nothing. */
+export function useCopyConfirmation() {
+  const [copied, setCopied] = useState(false);
+  const reset = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const copy = (text: string): void => {
+    if (copied) return;
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        clearTimeout(reset.current);
+        setCopied(true);
+        reset.current = setTimeout(() => setCopied(false), COPIED_MS);
+      })
+      .catch(() => undefined);
+  };
+
+  return { copied, copy };
+}

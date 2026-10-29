@@ -8,6 +8,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { loadDeferred } from "../deferred.tsx";
 import { keys } from "../query-keys.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { useCopyConfirmation } from "./copy-confirmation.ts";
 import { codeBlockStyles } from "./prose.stylex.ts";
 
 interface HighlightedCode {
@@ -134,8 +135,8 @@ export function CodeBlock({
   const language = lang.trim().toLowerCase().split(/\s+/u)[0] ?? "";
   const figure = useRef<HTMLElement>(null);
   const [nearViewport, setNearViewport] = useState(false);
-  const [copiedCode, setCopiedCode] = useState<string>();
-  const copied = copiedCode === code;
+  const confirmation = useCopyConfirmation();
+  const copied = confirmation.copied;
 
   useMountEffect(() => {
     const element = figure.current;
@@ -170,12 +171,7 @@ export function CodeBlock({
                 icon={copied ? "checkmark" : "copy"}
                 data-copied={copied || undefined}
                 aria-label={language === "" ? "Copy code block" : `Copy ${language} code block`}
-                onClick={() => {
-                  navigator.clipboard
-                    .writeText(code)
-                    .then(() => setCopiedCode(code))
-                    .catch(() => undefined);
-                }}
+                onClick={() => confirmation.copy(code)}
               />
             }
           />
