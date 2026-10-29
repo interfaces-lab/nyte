@@ -284,7 +284,7 @@ export function ChatsList({
     );
   }
 
-  const live = rows.filter(({ session }) => chatMark(session, rail.chats) !== "idle").length;
+  const live = rows.filter(({ session }) => chatMark(session, rail.chats) !== "done").length;
 
   const page = sessionPage(
     rows.length,

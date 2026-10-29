@@ -132,7 +132,7 @@ function newTab(state: TabState): TabState {
     kind: "chat",
     title,
     icon: "new-chat",
-    mark: "idle",
+    mark: "done",
     unread: false,
   };
 
@@ -179,7 +179,7 @@ function inboxMark(needs: readonly Need[], design: NeedsDesign): Pick<ShellTab, 
   if (needs.some((need) => need.kind === "failed")) return { mark: "failed", unread: false };
 
   return {
-    mark: "idle",
+    mark: "done",
     unread: design.finished && needs.some((need) => need.kind === "finished"),
   };
 }
@@ -640,7 +640,7 @@ export function TabsPage(): ReactElement {
                       key={tab.id}
                       icon={tab.icon}
                       leading={
-                        tab.mark !== "idle" || tab.unread ? (
+                        tab.mark !== "done" || tab.unread ? (
                           <StatusDot mark={tab.mark} unread={tab.unread} />
                         ) : undefined
                       }

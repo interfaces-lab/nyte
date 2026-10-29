@@ -3,6 +3,7 @@ import type { TSchema } from "typebox";
 import { FailureType } from "./errors.ts";
 import { idSchema } from "./ids.ts";
 import { JobEndType } from "./jobs.ts";
+import type { JobState } from "./jobs.ts";
 import { cyclicWithJson, JsonType, withJson } from "./json.ts";
 import { UsageType } from "./models.ts";
 import { standard } from "./schema.ts";
@@ -79,6 +80,28 @@ export const BackgroundItemType = Type.Object({
 });
 
 export type BackgroundItem = Decoded<typeof BackgroundItemType>;
+
+/**
+ * How a job stands as a background item, the one reading every surface uses: running is working,
+ * an exit with code 0 or a stop someone asked for is done, and anything else is a failure.
+ */
+export function jobTaskState(state: JobState): BackgroundItem["state"] {
+  switch (state.kind) {
+    case "running":
+      return "working";
+    case "exited":
+      return state.reason === "terminated" || (state.reason === "exited" && state.code === 0)
+        ? "done"
+        : "failed";
+    case "lost":
+      return "failed";
+    default: {
+      const _exhaustive: never = state;
+
+      return _exhaustive;
+    }
+  }
+}
 
 export const WaitOutcomeType = Type.Union([
   Type.Object({

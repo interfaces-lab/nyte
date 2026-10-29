@@ -6,12 +6,11 @@ import {
   completionTrigger,
   executionMark,
   failureNotice,
-  rowLabel,
   rowMark,
   runMark,
   runStatus,
-  runStatusLabel,
   sessionTitle,
+  taskLabel,
   toolOutput,
   toolStatus,
   toolTitle,
@@ -135,7 +134,7 @@ it("marks a session failed only when its last run failed", () => {
   };
 
   expect(executionMark(failed)).toBe("failed");
-  expect(executionMark(undefined)).toBe("idle");
+  expect(executionMark(undefined)).toBe("done");
 });
 
 function ended(end: Extract<Execution, { kind: "idle" }>["lastRun"]): Execution {
@@ -176,15 +175,15 @@ it("keeps a run's outcome and an approval wait apart, and draws background work 
   const retrying: Execution = { kind: "retrying", run: started, until: 2, reason: "Busy" };
 
   const cases: readonly [Execution | undefined, string, string][] = [
-    [undefined, "idle", "idle"],
-    [ended(null), "idle", "idle"],
-    [completed, "completed", "idle"],
-    [stopped, "stopped", "idle"],
+    [undefined, "idle", "done"],
+    [ended(null), "idle", "done"],
+    [completed, "completed", "done"],
+    [stopped, "stopped", "done"],
     [failed, "failed", "failed"],
     [responding, "working", "working"],
     [delegating, "working", "working"],
     [approval, "waiting-for-approval", "waiting"],
-    [retrying, "retrying", "retry"],
+    [retrying, "retrying", "retrying"],
   ];
 
   for (const [execution, kind, mark] of cases) {
@@ -199,30 +198,18 @@ it("keeps a run's outcome and an approval wait apart, and draws background work 
   const asking = { working: 1, waiting: 1 };
 
   const rows: readonly [Execution, typeof none, string][] = [
-    [completed, none, "idle"],
+    [completed, none, "done"],
     [completed, working, "background"],
     [failed, working, "failed"],
     [failed, asking, "waiting"],
     [stopped, asking, "waiting"],
     [responding, asking, "working"],
     [approval, working, "waiting"],
-    [retrying, working, "retry"],
+    [retrying, working, "retrying"],
   ];
 
   expect(rows.map(([execution, background]) => rowMark(runStatus(execution), background))).toEqual(
     rows.map(([, , mark]) => mark),
-  );
-  expect(rows.map(([execution, background]) => rowLabel(runStatus(execution), background))).toEqual(
-    [
-      "Completed",
-      "2 working in the background",
-      "Failed",
-      "Needs attention in the background",
-      "Needs attention in the background",
-      "Working",
-      "Needs attention",
-      "Retrying",
-    ],
   );
   expect([none, working, asking].map(backgroundLabel)).toEqual([
     undefined,
@@ -234,19 +221,18 @@ it("keeps a run's outcome and an approval wait apart, and draws background work 
   expect(runStatus(approval)).toEqual({ kind: "waiting-for-approval", run: run.id });
   expect(runStatus(failed)).toEqual({ kind: "failed", failure });
 
-  const labels = [
-    [undefined, "Idle"],
-    [completed, "Completed"],
-    [stopped, "Stopped"],
-    [failed, "Failed"],
-    [responding, "Working"],
-    [retrying, "Retrying"],
-    [approval, "Needs attention"],
-  ] as const;
-
-  expect(labels.map(([execution]) => runStatusLabel(runStatus(execution)))).toEqual(
-    labels.map(([, label]) => label),
-  );
+  expect(
+    rows.map(([execution, background]) => taskLabel(rowMark(runStatus(execution), background))),
+  ).toEqual([
+    "Done",
+    "Working in the background",
+    "Failed",
+    "Needs attention",
+    "Needs attention",
+    "Working",
+    "Needs attention",
+    "Retrying",
+  ]);
 });
 
 it("titles an unnamed root a new chat and an unnamed child a subagent", () => {

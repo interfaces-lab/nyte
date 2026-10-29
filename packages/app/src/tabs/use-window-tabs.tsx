@@ -142,11 +142,11 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
     const place = tabPlace(tab);
     const view = tab.view;
     const chat = place.kind === "session" ? chats.get(place.sessionId) : undefined;
-    const mark = chat === undefined ? "idle" : rowMark(chat.status, chat.background);
+    const mark = chat === undefined ? "done" : rowMark(chat.status, chat.background);
 
     const glyph =
       place.kind === "session" ? (
-        mark === "idle" ? undefined : (
+        mark === "done" ? undefined : (
           <StatusDot mark={mark} />
         )
       ) : (

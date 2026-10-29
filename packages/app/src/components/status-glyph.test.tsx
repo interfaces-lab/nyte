@@ -80,7 +80,7 @@ test("run marks take priority over Unread and each reads its own label", () => {
   const retrying: Execution = { kind: "retrying", run, until: 2, reason: "Busy" };
 
   const cases = [
-    [LIVE, "Running", 0],
+    [LIVE, "Working", 0],
     [approval, "Needs attention", 0],
     [retrying, "Retrying", 0],
     [FAILED, "Failed", 0],

@@ -5,8 +5,8 @@ import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { rowLabel, rowMark } from "@nyte-ai/plugin/client/presentation";
-import type { BackgroundWork, RunStatus, SessionMark } from "@nyte-ai/plugin/client/presentation";
+import { rowMark, taskLabel } from "@nyte-ai/plugin/client/presentation";
+import type { BackgroundWork, RunStatus, TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { useChats } from "../../chats/index.ts";
 import type { ChatDirectory } from "../../chats/index.ts";
@@ -27,7 +27,7 @@ interface ListedAgent {
   readonly title: string;
   readonly status: RunStatus;
   readonly background: BackgroundWork;
-  readonly mark: SessionMark;
+  readonly mark: TaskState;
 }
 
 const styles = create({
@@ -77,7 +77,7 @@ export function listSubagents(
   });
 
   const shown = known
-    .filter((agent) => agent.mark !== "idle")
+    .filter((agent) => agent.mark !== "done")
     .toSorted(
       (left, right) =>
         Number(left.mark !== "waiting") - Number(right.mark !== "waiting") ||
@@ -87,7 +87,7 @@ export function listSubagents(
 
   const active = shown.filter((agent) => agent.mark !== "failed");
 
-  const settled = known.find((agent) => agent.session.id === pinnedId && agent.mark === "idle");
+  const settled = known.find((agent) => agent.session.id === pinnedId && agent.mark === "done");
 
   return { active, listed: settled === undefined ? shown : [...shown, settled] };
 }
@@ -270,7 +270,7 @@ export function SubagentTray({
                       </Row.Leading>
                       <Row.Label>{title}</Row.Label>
                     </Row.Primary>
-                    <Row.Meta>{rowLabel(agent.status, agent.background)}</Row.Meta>
+                    <Row.Meta>{taskLabel(agent.mark)}</Row.Meta>
                   </Row>
                 );
               })}

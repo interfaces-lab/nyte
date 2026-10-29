@@ -6,6 +6,7 @@ import type { JSX } from "@opentui/solid";
 import { createMemo, Match, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
 import {
+  agentGroupSummary,
   showsReport,
   showsText,
   showsThinking,
@@ -81,36 +82,17 @@ function segment(blocks: readonly Message[]): readonly Segment[] {
   return segments;
 }
 
-const UNFINISHED = new Set(["queued", "running", "waiting", "retrying", "stopping"]);
-
 function AgentGroup(props: { readonly messages: readonly Message[] }): JSX.Element {
   const app = useApp();
   const scope = useTranscript();
 
-  const header = createMemo(() => {
-    const statuses = props.messages.flatMap((message) =>
-      showsTool(message) ? [agentStatus(message, scope.tasks())] : [],
-    );
-
-    const total = statuses.length;
-    const running = statuses.filter((status) => UNFINISHED.has(status)).length;
-
-    if (running > 0)
-      return {
-        title: `Running ${String(total)} agents…`,
-        tail: running === total ? "" : ` (${String(total - running)} done)`,
-      };
-    const failed = statuses.filter((status) => status === "failed").length;
-    const stopped = statuses.filter((status) => status === "stopped").length;
-
-    return {
-      title: `${String(total)} agents ${failed + stopped === 0 ? "completed" : "finished"}`,
-      tail: [
-        failed === 0 ? "" : ` · ${String(failed)} failed`,
-        stopped === 0 ? "" : ` · ${String(stopped)} stopped`,
-      ].join(""),
-    };
-  });
+  const header = createMemo(() =>
+    agentGroupSummary(
+      props.messages.flatMap((message) =>
+        showsTool(message) ? [agentStatus(message, scope.tasks())] : [],
+      ),
+    ),
+  );
 
   return (
     <box id={`agents:${props.messages[0]?.id ?? ""}`} flexDirection="column" width="100%">
@@ -118,7 +100,9 @@ function AgentGroup(props: { readonly messages: readonly Message[] }): JSX.Eleme
         <span style={{ fg: app.kit.theme().foreground, attributes: TextAttributes.BOLD }}>
           {header().title}
         </span>
-        <span style={{ fg: app.kit.theme().dim }}>{header().tail}</span>
+        <span style={{ fg: app.kit.theme().dim }}>
+          {header().detail === undefined ? "" : ` ${header().detail}`}
+        </span>
       </text>
       <Keyed each={props.messages} by={(message) => message.id}>
         {(message) => <MessageView message={message} pending={false} />}

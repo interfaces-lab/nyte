@@ -5,7 +5,7 @@ import { createPortal, flushSync } from "react-dom";
 import type { ReactElement, ReactNode } from "react";
 import type { Delivery, HeldMessage, MessageId, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { PLANNING_LABEL, runMark, runStatusLabel } from "@nyte-ai/plugin/client/presentation";
+import { PLANNING_LABEL, runMark, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { RunStatus, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -692,7 +692,7 @@ export function Composer({
                       <StatusDot mark={runMark(status)} />
                       <span {...props(composerStyles.floatingStatusText, markerStyles.shimmer)}>
                         {status.kind === "waiting-for-approval"
-                          ? runStatusLabel(status)
+                          ? taskLabel(runMark(status))
                           : (activity ?? PLANNING_LABEL)}
                       </span>
                     </span>

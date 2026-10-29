@@ -74,7 +74,7 @@ test("a job's inspector shows its status and output tail at widths 40 and 100", 
     const frame = app.frame();
 
     expect(frame).toContain("pnpm test");
-    expect(frame).toContain("running");
+    expect(frame).toContain("Working");
     expect(frame).toContain("first output line");
     expect(frame).toContain("second output line");
   }
@@ -99,7 +99,7 @@ test("the host resolves the task from the screen, with its elapsed time", async 
   const frame = app.frame();
 
   expect(frame).not.toContain("Loading…");
-  expect(frame).toContain("running · 1m 5s");
+  expect(frame).toContain("Working · 1m 5s");
   expect(frame).toContain("first output line");
 });
 
