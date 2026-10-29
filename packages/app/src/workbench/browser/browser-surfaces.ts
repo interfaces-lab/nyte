@@ -1,14 +1,10 @@
 import { useSyncExternalStore } from "react";
 import type {
-  BrowserBridge,
   BrowserDownload,
   BrowserKey,
   BrowserSurfaceState,
   HostEvent,
 } from "../../contract/bridge.ts";
-import { errorMessage } from "../../contract/errors.ts";
-import { nyte } from "../../contract/nyte.ts";
-import { parseWebUrl } from "./browser-address.ts";
 import { openUrl } from "../commands.ts";
 import { browserSurface } from "../model.ts";
 import type { WorkbenchTabId, WorkbenchViewKey } from "../model.ts";
@@ -140,53 +136,8 @@ export function applyBrowserKey(event: Extract<HostEvent, { kind: "browser_key" 
   keyListeners.get(event.surface)?.(event.key);
 }
 
-export function browserBridge(): BrowserBridge {
-  const browser = nyte.host.browser;
-
-  if (browser === undefined) throw new Error("This host does not provide browser tabs");
-
-  return browser;
-}
-
-type BrowserOwner = { readonly kind: "home" } | { readonly kind: "project"; readonly path: string };
-
-/** The surfaces a mounted panel holds; a page opened for a surface since released is not mirrored. */
-const held = new Set<string>();
-
-/**
- * Holds `surface` for a mounted panel and opens `url` in it; the surface may already be an
- * agent's page, which then shows as it is. Returns the release.
- */
-export function holdBrowserSurface(
-  surface: string,
-  url: string,
-  owner: BrowserOwner,
-  failed: (message: string) => void,
-): () => void {
-  held.add(surface);
-  void openBrowserPage(surface, url, owner).then(undefined, (cause: unknown) =>
-    failed(errorMessage(cause)),
-  );
-
-  return () => {
-    held.delete(surface);
-    forgetBrowserSurface(surface);
-    void browserBridge().close({ surface });
-  };
-}
-
-/** Points a held surface at `url`; a value that is not a web address opens nothing. */
-export async function openBrowserPage(
-  surface: string,
-  url: string,
-  owner: BrowserOwner,
-): Promise<void> {
-  if (parseWebUrl(url) === undefined) return;
-
+export function claimBrowserSurface(surface: string): void {
   if (!views.has(surface)) set(surface, EMPTY);
-  const state = await browserBridge().open({ surface, url, owner });
-
-  if (held.has(surface)) applyBrowserEvent({ kind: "browser_changed", surface, state });
 }
 
 /** Shows an agent's page in its workspace's Browser tab for that page, quietly adding one if none is open. */
@@ -201,7 +152,7 @@ export function applyBrowserAgentOpened(
   });
 }
 
-function forgetBrowserSurface(surface: string): void {
+export function forgetBrowserSurface(surface: string): void {
   if (!views.has(surface)) return;
   const next = new Map(views);
   next.delete(surface);

@@ -158,7 +158,6 @@ function PanelContent({
     case "browser":
       return (
         <BrowserPanel
-          key={browserSurface(tab)}
           surface={browserSurface(tab)}
           visible={visible}
           historyVisible={sidebarVisible}
