@@ -5,6 +5,9 @@ import {
   completionTrigger,
   executionMark,
   failureNotice,
+  runMark,
+  runStatus,
+  sessionTitle,
   toolOutput,
   toolStatus,
   toolTitle,
@@ -129,6 +132,79 @@ it("marks a session failed only when its last run failed", () => {
 
   expect(executionMark(failed)).toBe("failed");
   expect(executionMark(undefined)).toBe("idle");
+});
+
+function ended(end: Extract<Execution, { kind: "idle" }>["lastRun"]): Execution {
+  return { kind: "idle", lastRun: end };
+}
+
+it("keeps a run's outcome, an approval wait and a working subagent apart", () => {
+  const run = { id: asId<"run">("run"), head: asId<"head">("main"), startedAt: 0, attempt: 1 };
+  const started = { ...run, origin: { kind: "input", message: asId<"message">("m") } } as const;
+
+  const usage = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    reasoning: null,
+    total: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+
+  const failure = { class: "network", message: "Offline." } as const;
+
+  const completed = ended({ id: run.id, end: { kind: "completed", usage }, endedAt: 1 });
+  const stopped = ended({ id: run.id, end: { kind: "stopped" }, endedAt: 1 });
+  const failed = ended({ id: run.id, end: { kind: "failed", failure }, endedAt: 1 });
+
+  const responding: Execution = {
+    kind: "live",
+    run: started,
+    phase: "responding",
+    stopping: true,
+  };
+
+  const part = { kind: "part", part: asId<"part">("p") } as const;
+  const approval: Execution = { kind: "waiting", run: started, on: part };
+  const child = { kind: "run", session: asId<"session">("c"), run: run.id } as const;
+  const delegating: Execution = { kind: "waiting", run: started, on: child };
+  const retrying: Execution = { kind: "retrying", run: started, until: 2, reason: "Busy" };
+
+  const cases: readonly [Execution | undefined, boolean, string, string][] = [
+    [undefined, false, "idle", "idle"],
+    [ended(null), false, "idle", "idle"],
+    [completed, false, "completed", "idle"],
+    [stopped, false, "stopped", "idle"],
+    [failed, false, "failed", "failed"],
+    [responding, false, "working", "working"],
+    [delegating, false, "working", "working"],
+    [approval, false, "waiting-for-approval", "waiting"],
+    [retrying, false, "retrying", "retry"],
+    [completed, true, "subagent-working", "working"],
+    [failed, true, "subagent-working", "working"],
+    [stopped, true, "subagent-working", "working"],
+    [approval, true, "waiting-for-approval", "waiting"],
+    [responding, true, "working", "working"],
+  ];
+
+  for (const [execution, subagent, kind, mark] of cases) {
+    const status = runStatus(execution, subagent);
+
+    expect([status.kind, runMark(status)]).toEqual([kind, mark]);
+
+    if (!subagent) expect(executionMark(execution)).toBe(mark);
+  }
+
+  expect(runStatus(responding)).toEqual({ kind: "working", run: run.id, stopping: true });
+  expect(runStatus(approval)).toEqual({ kind: "waiting-for-approval", run: run.id });
+  expect(runStatus(failed)).toEqual({ kind: "failed", failure });
+});
+
+it("titles an unnamed root a new chat and an unnamed child a subagent", () => {
+  expect(sessionTitle({ name: "Release", parent: null })).toBe("Release");
+  expect(sessionTitle({ name: null, parent: null })).toBe("New chat");
+  expect(sessionTitle({ name: null, parent: asId("root") })).toBe("Subagent");
 });
 
 it("finds the mention or command around the caret", () => {

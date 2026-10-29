@@ -6,6 +6,8 @@ import type {
   HeadInfo,
   Message,
   MessageSource,
+  RunEnd,
+  RunId,
   SessionInfo,
   ToolClass,
   ToolPartState,
@@ -241,28 +243,114 @@ export function toolOutput(state: ToolPartState): string {
 export type SessionMark = "waiting" | "retry" | "working" | "failed" | "idle";
 
 /**
- * The mark for an execution; a session without one is idle.
+ * Where a chat's run stands, for every surface that shows it. A run waiting on a part waits for
+ * the user's approval or answer, a run waiting on a child, job or timer is working, and the
+ * active kinds carry the run a Stop targets. `subagent-working` is a chat whose own run is over
+ * while a subagent it started still runs: it has nothing of its own to stop.
  *
  * @category presentation
  */
-export function executionMark(execution: Execution | undefined): SessionMark {
+export type RunStatus =
+  | { readonly kind: "idle" }
+  | { readonly kind: "completed" }
+  | { readonly kind: "stopped" }
+  | { readonly kind: "failed"; readonly failure: Failure }
+  | { readonly kind: "working"; readonly run: RunId; readonly stopping: boolean }
+  | { readonly kind: "retrying"; readonly run: RunId }
+  | { readonly kind: "waiting-for-approval"; readonly run: RunId }
+  | { readonly kind: "subagent-working" };
+
+const IDLE: RunStatus = { kind: "idle" };
+
+const SUBAGENT_WORKING: RunStatus = { kind: "subagent-working" };
+
+/**
+ * The status of a head's execution; a session without one is idle. A run of its own outranks a
+ * working subagent, which outranks how its own last run ended.
+ *
+ * @category presentation
+ */
+export function runStatus(execution: Execution | undefined, subagentWorking = false): RunStatus {
   switch (execution?.kind) {
     case undefined:
-      return "idle";
+      return subagentWorking ? SUBAGENT_WORKING : IDLE;
     case "idle":
-      return execution.lastRun?.end.kind === "failed" ? "failed" : "idle";
+      if (subagentWorking) return SUBAGENT_WORKING;
+
+      return execution.lastRun === null ? IDLE : endedStatus(execution.lastRun.end);
     case "live":
-      return "working";
+      return { kind: "working", run: execution.run.id, stopping: execution.stopping };
     case "waiting":
-      return execution.on.kind === "part" ? "waiting" : "working";
+      return execution.on.kind === "part"
+        ? { kind: "waiting-for-approval", run: execution.run.id }
+        : { kind: "working", run: execution.run.id, stopping: false };
     case "retrying":
-      return "retry";
+      return { kind: "retrying", run: execution.run.id };
     default: {
       const _exhaustive: never = execution;
 
       return _exhaustive;
     }
   }
+}
+
+/**
+ * The status a run leaves behind when it ends. Stopping is never a failure.
+ *
+ * @category presentation
+ */
+export function endedStatus(end: RunEnd): RunStatus {
+  switch (end.kind) {
+    case "completed":
+      return { kind: "completed" };
+    case "stopped":
+      return { kind: "stopped" };
+    case "failed":
+      return { kind: "failed", failure: end.failure };
+    default: {
+      const _exhaustive: never = end;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * The mark a list draws for a status: a subagent still working draws as working, and a run that
+ * ended draws nothing unless it failed.
+ *
+ * @category presentation
+ */
+export function runMark(status: RunStatus): SessionMark {
+  switch (status.kind) {
+    case "idle":
+    case "completed":
+    case "stopped":
+      return "idle";
+    case "failed":
+      return "failed";
+    case "working":
+    case "subagent-working":
+      return "working";
+    case "retrying":
+      return "retry";
+    case "waiting-for-approval":
+      return "waiting";
+    default: {
+      const _exhaustive: never = status;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * The mark for an execution; a session without one is idle.
+ *
+ * @category presentation
+ */
+export function executionMark(execution: Execution | undefined): SessionMark {
+  return runMark(runStatus(execution));
 }
 
 /**
@@ -281,6 +369,15 @@ export function mainHead(session: Pick<SessionInfo, "heads">): HeadInfo | undefi
  */
 export function sessionMark(session: Pick<SessionInfo, "heads">): SessionMark {
   return executionMark(mainHead(session)?.execution);
+}
+
+/**
+ * The title a session goes by: its name, else what it is.
+ *
+ * @category presentation
+ */
+export function sessionTitle(session: Pick<SessionInfo, "name" | "parent">): string {
+  return session.name ?? (session.parent === null ? "New chat" : "Subagent");
 }
 
 /**

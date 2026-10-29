@@ -1,5 +1,6 @@
-import type { RunEnd } from "@nyte-ai/schema";
+import type { Failure } from "@nyte-ai/schema";
 import type { Plugin } from "@nyte-ai/plugin/client";
+import { endedStatus, sessionTitle } from "./presentation.ts";
 
 /**
  * Tells the user when a run ends in a session this client can see but isn't
@@ -19,20 +20,20 @@ export default {
       const info = await api.sdk.session(event.session).info();
 
       if (info.parent !== null) return;
-      const title = info.name ?? undefined;
-      const { end } = event;
+      const title = sessionTitle(info);
+      const status = endedStatus(event.end);
 
-      if (end.kind === "completed")
+      if (status.kind === "completed")
         api.ui.notify({ title, message: "Run finished", level: "info" });
-      else if (end.kind === "failed")
-        api.ui.notify({ title, message: `Run failed: ${line(end)}`, level: "error" });
+      else if (status.kind === "failed")
+        api.ui.notify({ title, message: `Run failed: ${line(status.failure)}`, level: "error" });
     },
   },
 } satisfies Plugin;
 
 /** Returns a failure's message as one line of at most 120 characters. */
-function line(end: Extract<RunEnd, { readonly kind: "failed" }>): string {
-  const text = end.failure.message.replace(/\s+/g, " ").trim();
+function line(failure: Failure): string {
+  const text = failure.message.replace(/\s+/g, " ").trim();
 
   return text.length > 120 ? `${text.slice(0, 119)}…` : text;
 }
