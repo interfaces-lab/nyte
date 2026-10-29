@@ -14,6 +14,8 @@ import {
 import { derivedStore } from "../derived-store.ts";
 import type { StoreSource } from "../derived-store.ts";
 import { expose, shownChats } from "./exposure.ts";
+import { reduceTrays } from "./tray.ts";
+import type { TrayAction, TrayView } from "./tray.ts";
 
 export interface WindowSnapshot {
   /** Chats on screen, whether or not anyone can read them now; text paces only in these. */
@@ -22,23 +24,21 @@ export interface WindowSnapshot {
   readonly looking: ReadonlySet<SessionId>;
   /** Chats with a finished reply nobody has read, except those the user is looking at. */
   readonly unread: ReadonlySet<SessionId>;
-  /** The agent each chat's tray shows over it, by parent. */
-  readonly details: ReadonlyMap<SessionId, SessionId>;
+  /** Each chat's open tray, by parent; a chat without one shows its tray closed. */
+  readonly trays: ReadonlyMap<SessionId, TrayView>;
   /** The workbench is maximized over the chats instead of showing them. */
   readonly covered: boolean;
 }
 
-export type ChatWindowAction =
-  | { readonly kind: "detail-opened"; readonly parent: SessionId; readonly child: SessionId }
-  | { readonly kind: "detail-closed"; readonly parent: SessionId };
+export type { TrayView } from "./tray.ts";
 
 /** What this window holds itself; the rest of its view it reads from the stores it listens to. */
 interface Own {
-  readonly details: ReadonlyMap<SessionId, SessionId>;
+  readonly trays: ReadonlyMap<SessionId, TrayView>;
   readonly settings: boolean;
 }
 
-let own: Own = { details: new Map(), settings: false };
+let own: Own = { trays: new Map(), settings: false };
 
 const ownListeners = new Set<() => void>();
 
@@ -102,12 +102,12 @@ const sources = {
 const store = derivedStore(
   sources,
   (read, previous: WindowSnapshot) => {
-    const details = read.own.read().details;
+    const trays = read.own.read().trays;
     const covered = read.covered.read();
 
     const exposure = expose({
       tabs: read.tabs.read(),
-      details,
+      trays,
       settings: read.own.read().settings,
       covered,
       focused: read.focused.read(),
@@ -118,7 +118,7 @@ const store = derivedStore(
       shown: sameSet(previous.shown, exposure.shown) ? previous.shown : exposure.shown,
       looking: sameSet(previous.looking, exposure.looking) ? previous.looking : exposure.looking,
       unread: sameSet(previous.unread, exposure.unread) ? previous.unread : exposure.unread,
-      details,
+      trays,
       covered,
     };
   },
@@ -126,29 +126,13 @@ const store = derivedStore(
     shown: new Set<SessionId>(),
     looking: new Set<SessionId>(),
     unread: new Set<SessionId>(),
-    details: new Map<SessionId, SessionId>(),
+    trays: new Map<SessionId, TrayView>(),
     covered: false,
   },
 );
 
-function act(action: ChatWindowAction): void {
-  const next = new Map(own.details);
-
-  switch (action.kind) {
-    case "detail-opened":
-      next.set(action.parent, action.child);
-      break;
-    case "detail-closed":
-      next.delete(action.parent);
-      break;
-    default: {
-      const _exhaustive: never = action;
-
-      return _exhaustive;
-    }
-  }
-
-  setOwn({ ...own, details: next });
+function act(action: TrayAction): void {
+  setOwn({ ...own, trays: reduceTrays(own.trays, action) });
 }
 
 /** This window: what it shows, what the user is looking at, and the actions that change it. */

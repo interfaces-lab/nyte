@@ -18,11 +18,9 @@ import { trayStyles } from "../../theme/tray.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 import { useCommitCount } from "../../work-counts.ts";
+import type { TrayView } from "../../window/index.ts";
 
-export type SubagentTrayView =
-  | { readonly kind: "closed" }
-  | { readonly kind: "list"; readonly retainedSessionId: SessionId | undefined }
-  | { readonly kind: "detail"; readonly sessionId: SessionId };
+export type SubagentTrayView = Exclude<TrayView, { readonly kind: "terminals" }>;
 
 interface ListedAgent {
   readonly session: SessionInfo;

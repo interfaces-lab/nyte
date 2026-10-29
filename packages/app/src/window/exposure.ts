@@ -3,12 +3,13 @@ import type { Chat, ChatDirectory } from "../chats/index.ts";
 import { orderedPanes } from "../layout/pane-layout.ts";
 import { activeTab } from "../tabs/model.ts";
 import type { WindowState } from "../tabs/model.ts";
+import type { TrayView } from "./tray.ts";
 
 /** What the window puts in front of the user, as state rather than as what happens to be mounted. */
 export interface WindowView {
   readonly tabs: WindowState;
-  /** The agent each chat's tray shows over it, by parent. */
-  readonly details: ReadonlyMap<SessionId, SessionId>;
+  /** Each chat's open tray, by parent. */
+  readonly trays: ReadonlyMap<SessionId, TrayView>;
   /** Settings has the stage, so no chat is on screen. */
   readonly settings: boolean;
   /** The workbench is maximized over the chats. */
@@ -50,17 +51,19 @@ function place(view: WindowView): Omit<Exposure, "unread"> {
     pane.selection.kind === "session" ? [pane.selection.sessionId] : [],
   );
 
-  const details = panes.flatMap((parent) => {
-    const child = view.details.get(parent);
+  const detail = (parent: SessionId): SessionId | undefined => {
+    const tray = view.trays.get(parent);
 
-    return child === undefined ? [] : [child];
-  });
+    return tray?.kind === "detail" ? tray.sessionId : undefined;
+  };
+
+  const details = panes.flatMap((parent) => detail(parent) ?? []);
 
   return {
     shown: new Set([...panes, ...details]),
     looking:
       view.focused && !view.covered
-        ? new Set([...panes.filter((parent) => !view.details.has(parent)), ...details])
+        ? new Set([...panes.filter((parent) => detail(parent) === undefined), ...details])
         : NONE,
   };
 }

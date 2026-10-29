@@ -8,6 +8,8 @@ import type { WindowAction, WindowState } from "../tabs/model.ts";
 import { chatsFor, COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
 import { expose, shownChats } from "./exposure.ts";
 import type { WindowView } from "./exposure.ts";
+import { reduceTrays } from "./tray.ts";
+import type { TrayView } from "./tray.ts";
 
 const left = asId<"session">("left");
 
@@ -16,6 +18,8 @@ const right = asId<"session">("right");
 const agent = asId<"session">("agent");
 
 const behind = asId<"session">("behind");
+
+const showsAgent: TrayView = { kind: "detail", sessionId: agent };
 
 const unreadHeads = [
   {
@@ -55,7 +59,7 @@ function pane(state: WindowState, action: PaneLayoutAction): WindowState {
 function view(tabs: WindowState, change: Partial<WindowView> = {}): WindowView {
   return {
     tabs,
-    details: new Map(),
+    trays: new Map(),
     settings: false,
     covered: false,
     focused: true,
@@ -112,19 +116,43 @@ test("both panes of a split are looked at, whichever has focus", () => {
 });
 
 test("a tray's agent is looked at instead of the chat it covers", () => {
-  const exposure = expose(view(split, { details: new Map([[left, agent]]) }));
+  const exposure = expose(view(split, { trays: new Map([[left, showsAgent]]) }));
 
   expect(sorted(exposure.shown)).toEqual([agent, left, right]);
   expect(sorted(exposure.looking)).toEqual([agent, right]);
 
-  const hidden = expose(view(split, { details: new Map([[behind, agent]]) }));
+  const hidden = expose(view(split, { trays: new Map([[behind, showsAgent]]) }));
 
   expect(hidden.shown.has(agent), "a tray in a tab not on screen shows nothing").toBe(false);
 });
 
+test("each chat has one tray view, and only an open agent covers the chat under it", () => {
+  const listed = reduceTrays(new Map(), {
+    kind: "tray",
+    parent: left,
+    view: { kind: "list", retainedSessionId: undefined },
+  });
+
+  const detail = reduceTrays(listed, { kind: "tray", parent: left, view: showsAgent });
+
+  const terminals = reduceTrays(detail, {
+    kind: "tray",
+    parent: left,
+    view: { kind: "terminals" },
+  });
+
+  expect(sorted(expose(view(split, { trays: listed })).looking)).toEqual([left, right]);
+  expect(sorted(expose(view(split, { trays: detail })).looking)).toEqual([agent, right]);
+  expect(detail.get(left), "an agent replaces the list it was opened from").toBe(showsAgent);
+  expect(sorted(expose(view(split, { trays: terminals })).shown)).toEqual([left, right]);
+  expect(
+    reduceTrays(terminals, { kind: "tray", parent: left, view: { kind: "closed" } }).size,
+  ).toBe(0);
+});
+
 test("a maximized workbench or an unfocused window keeps chats shown but not looked at", () => {
   for (const change of [{ covered: true }, { focused: false }]) {
-    const exposure = expose(view(split, { ...change, details: new Map([[left, agent]]) }));
+    const exposure = expose(view(split, { ...change, trays: new Map([[left, showsAgent]]) }));
 
     expect(sorted(exposure.shown)).toEqual([agent, left, right]);
     expect(exposure.looking.size).toBe(0);
