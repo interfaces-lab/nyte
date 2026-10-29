@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { SessionId, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { QueryObserver, skipToken } from "@tanstack/react-query";
-import { appSessionActions, keys, queryClient, workspacesQuery } from "../queries.ts";
+import { appSessionActions, keys, queryClient, useSession, workspacesQuery } from "../queries.ts";
 import { openViews, sessionsWatch, subscribeOpenViews } from "../sdk.tsx";
 import { joinChats } from "./directory.ts";
 import type { Chat, ChatDirectory } from "./directory.ts";
@@ -14,13 +14,22 @@ export type ChatResult =
   | { readonly kind: "missing" }
   | { readonly kind: "ready"; readonly chat: Chat };
 
-/** One chat as every surface shows it. Re-renders only when that chat changes. */
+/**
+ * One chat as every surface shows it. Re-renders only when that chat changes. A chat the
+ * lists don't carry yet, such as one just started, is read on its own and joined the same way.
+ */
 export function useChat(id: SessionId): ChatResult {
-  return useSyncExternalStore(
+  const listed = useSyncExternalStore(
     subscribeChats,
     () => readChat(id),
     () => readChat(id),
   );
+
+  const unlisted = useSession(listed.kind === "missing" ? id : undefined).data;
+
+  return listed.kind === "missing" && unlisted !== undefined && unlisted !== null
+    ? readUnlisted(unlisted)
+    : listed;
 }
 
 /** What `select` makes of every chat; a change that selects an equal value doesn't render. */
@@ -61,6 +70,30 @@ function readChat(id: SessionId): ChatResult {
   if (known !== undefined) return known;
   const result: ChatResult = { kind: "ready", chat };
   results.set(chat, result);
+
+  return result;
+}
+
+const unlistedResults = new WeakMap<SessionInfo, ChatResult>();
+
+function readUnlisted(session: SessionInfo): ChatResult {
+  const known = unlistedResults.get(session);
+
+  if (known !== undefined) return known;
+
+  const chat = joinChats(
+    {
+      lists: [[session]],
+      views: openViews(),
+      workspaces: queryClient.getQueryData(keys.workspaces),
+      project: (listed) => listed,
+    },
+    new Map(),
+  ).get(session.id);
+
+  const result: ChatResult = chat === undefined ? MISSING : { kind: "ready", chat };
+
+  unlistedResults.set(session, result);
 
   return result;
 }

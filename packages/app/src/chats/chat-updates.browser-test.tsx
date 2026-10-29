@@ -11,14 +11,19 @@ import { installConnection, sessionsWatch } from "../sdk.tsx";
 import { useChat } from "./index.ts";
 
 const rootA = sessionRow("root-a");
+
 const rootB = sessionRow("root-b");
+
 const middle = sessionRow("middle", { parent: rootA.id });
+
 const active = sessionRow(
   "active",
   { parent: middle.id },
   { kind: "live", run: liveRun, phase: "responding", stopping: false },
 );
+
 const idle = sessionRow("idle", { parent: rootB.id });
+
 const source = viewStream<readonly SessionInfo[]>([rootA, rootB, middle, active, idle]);
 
 installConnection(scriptedConnection({ sessions: source }).connection);

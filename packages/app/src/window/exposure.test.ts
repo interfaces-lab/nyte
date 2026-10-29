@@ -6,7 +6,7 @@ import type { PaneLayoutAction } from "../layout/pane-layout.ts";
 import { activeTab, initialWindow, reduce, tabLayout } from "../tabs/model.ts";
 import type { WindowAction, WindowState } from "../tabs/model.ts";
 import { chatsFor, COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
-import { expose } from "./exposure.ts";
+import { expose, shownChats } from "./exposure.ts";
 import type { WindowView } from "./exposure.ts";
 
 const left = asId<"session">("left");
@@ -87,6 +87,21 @@ test("an unread chat stays unread everywhere except while someone is looking at 
 
   expect(sorted(expose(view(single, { chats })).unread)).toEqual([behind]);
   expect(sorted(expose(view(single, { chats, focused: false })).unread)).toEqual([behind, left]);
+});
+
+test("every surface reads the same unread answer as the dot", () => {
+  const chats = chatsFor([
+    sessionRow("left", { heads: unreadHeads }),
+    sessionRow("behind", { heads: unreadHeads }),
+  ]);
+
+  const unread = expose(view(single, { chats })).unread;
+  const shown = shownChats(chats, unread);
+
+  expect(shown.get(left)?.unread).toBe(false);
+  expect(shown.get(behind)?.unread).toBe(true);
+  expect(shown.get(behind)).toBe(chats.get(behind));
+  expect(shownChats(chats, unread)).toBe(shown);
 });
 
 test("both panes of a split are looked at, whichever has focus", () => {

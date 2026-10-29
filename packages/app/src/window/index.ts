@@ -1,7 +1,8 @@
 import type { RegisteredRouter } from "@tanstack/react-router";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { SessionId } from "@nyte-ai/sdk";
-import { chatDirectory, subscribeChats } from "../chats/index.ts";
+import { chatDirectory, subscribeChats, useChats } from "../chats/index.ts";
+import type { ChatDirectory } from "../chats/index.ts";
 import type { HostState } from "../nyte.ts";
 import { keys, queryClient } from "../queries.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -10,7 +11,7 @@ import {
   workbenchShowsChat,
   workbenchViewKey,
 } from "../workbench/controller.ts";
-import { expose } from "./exposure.ts";
+import { expose, shownChats } from "./exposure.ts";
 import type { WindowView } from "./exposure.ts";
 
 export interface WindowSnapshot {
@@ -158,6 +159,14 @@ export function useChatWindow<S>(
   isEqual?: (previous: S, next: S) => boolean,
 ): S {
   return useSyncExternalStoreWithSelector(subscribe, getSnapshot, getSnapshot, select, isEqual);
+}
+
+/** The chat directory as this window shows it: unread only where nobody is looking. */
+export function useShownChats(): ChatDirectory {
+  const chats = useChats((directory) => directory);
+  const unread = useChatWindow((snapshot) => snapshot.unread);
+
+  return shownChats(chats, unread);
 }
 
 /** Follows whether settings has the stage, which leaves no chat on screen. */

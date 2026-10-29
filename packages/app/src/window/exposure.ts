@@ -1,5 +1,5 @@
 import type { SessionId } from "@nyte-ai/sdk";
-import type { ChatDirectory } from "../chats/index.ts";
+import type { Chat, ChatDirectory } from "../chats/index.ts";
 import { orderedPanes } from "../layout/pane-layout.ts";
 import { activeTab } from "../tabs/model.ts";
 import type { WindowState } from "../tabs/model.ts";
@@ -63,4 +63,23 @@ function place(view: WindowView): Omit<Exposure, "unread"> {
         ? new Set([...panes.filter((parent) => !view.details.has(parent)), ...details])
         : NONE,
   };
+}
+
+const shown = new WeakMap<ChatDirectory, WeakMap<ReadonlySet<SessionId>, ChatDirectory>>();
+
+/** The directory with each chat's unread flag set to whether this window shows it unread. */
+export function shownChats(chats: ChatDirectory, unread: ReadonlySet<SessionId>): ChatDirectory {
+  const known = shown.get(chats)?.get(unread);
+
+  if (known !== undefined) return known;
+
+  const next = new Map(
+    [...chats].map(([id, chat]): readonly [SessionId, Chat] =>
+      chat.unread === unread.has(id) ? [id, chat] : [id, { ...chat, unread: unread.has(id) }],
+    ),
+  );
+
+  shown.set(chats, (shown.get(chats) ?? new WeakMap()).set(unread, next));
+
+  return next;
 }

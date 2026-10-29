@@ -34,7 +34,8 @@ import {
   type RailWorkspace,
 } from "../queries.ts";
 import { localSessions } from "../session-list.ts";
-import { chatFolderPath, useChats } from "../chats/index.ts";
+import { chatFolderPath } from "../chats/index.ts";
+import { useShownChats } from "../window/index.ts";
 import { connection } from "../sdk.tsx";
 import { closeSettings, type SettingsSection } from "../settings/index.ts";
 import type { OpenIntent } from "../tabs/model.ts";
@@ -173,7 +174,7 @@ export function Sidebar(): ReactElement {
   const renameSession = useRenameSession();
   const forgetWorkspace = useForgetWorkspace();
   const { layout } = usePaneControllerSnapshot();
-  const chats = useChats((directory) => directory);
+  const chats = useShownChats();
   const now = useNowMinute();
   const page = useStagePage();
   const paletteOpen = useOverlays().search;
