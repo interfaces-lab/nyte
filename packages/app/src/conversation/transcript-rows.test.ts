@@ -51,6 +51,7 @@ function view(
     usage: USAGE,
     execution: COMPLETED,
     reportsHeld: false,
+    seenThrough: null,
     background: [],
     configuration: { selected: null, effective: null },
     context: { tokens: 0, window: 1_000, lastRequest: null },

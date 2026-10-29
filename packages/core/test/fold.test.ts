@@ -456,6 +456,7 @@ describe("fold", () => {
       usage,
       execution,
       reportsHeld: false,
+      seenThrough: null,
       background: [],
       configuration: { selected: configuration, effective: configuration },
       context: { tokens: 120, window: 1000, lastRequest: usage },

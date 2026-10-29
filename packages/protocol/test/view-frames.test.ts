@@ -63,6 +63,7 @@ const base: SessionView = {
   },
   execution: { kind: "idle", lastRun: null },
   reportsHeld: true,
+  seenThrough: null,
   background: [],
   configuration: { selected: null, effective: null },
   context: { tokens: 0, window: 0, lastRequest: null },
@@ -94,7 +95,15 @@ describe("view frames", () => {
     const appended = { ...base, seq: asSeq(2), messages: [m1, m2, streaming] };
     const grown = { ...appended, seq: asSeq(3), messages: [m1, m2, answer("Hello.", 3)] };
     const slid = { ...grown, seq: asSeq(4), messages: [m2, answer("Hello.", 3), user("m3")] };
-    const moved = { ...slid, seq: asSeq(5), revision: asId<"revision">("r2"), messages: [] };
+
+    const moved = {
+      ...slid,
+      seq: asSeq(5),
+      revision: asId<"revision">("r2"),
+      messages: [],
+      seenThrough: 7,
+    };
+
     const views = [base, appended, grown, slid, moved];
     const frames = await sent(views);
     let shown: SessionView | null = null;
@@ -119,6 +128,7 @@ describe("view frames", () => {
       seq: 5,
       revision: "r2",
       messages: { runs: [], items: [] },
+      seenThrough: 7,
     });
   });
 

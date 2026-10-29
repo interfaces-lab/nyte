@@ -73,6 +73,7 @@ function view(messages: readonly Message[]): SessionView {
     usage: USAGE,
     execution: { kind: "live", run: RUN, phase: "responding", stopping: false },
     reportsHeld: false,
+    seenThrough: null,
     background: [],
     configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
     context: { tokens: 0, window: 1_000, lastRequest: null },

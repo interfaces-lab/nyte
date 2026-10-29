@@ -188,6 +188,7 @@ export const sessionCases = {
       usage,
       execution: { kind: "idle", lastRun: { id: run, end: { kind: "stopped" }, endedAt: 5 } },
       reportsHeld: true,
+      seenThrough: 5,
       background: [background],
       configuration: { selected: null, effective: configuration },
       context: contextView,
