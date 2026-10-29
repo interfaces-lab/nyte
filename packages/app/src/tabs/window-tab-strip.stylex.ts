@@ -113,13 +113,6 @@ export const stripStyles = create({
     whiteSpace: "nowrap",
   },
   splitMark: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
-  unread: {
-    width: 6,
-    height: 6,
-    flexShrink: 0,
-    borderRadius: "50%",
-    backgroundColor: role.contentInteractiveTertiary,
-  },
   close: { display: "inline-flex", flexShrink: 0, opacity: "var(--_close-opacity)" },
   closeVisible: { opacity: 1 },
   control: { display: "inline-flex", flexShrink: 0, WebkitAppRegion: "no-drag" },

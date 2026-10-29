@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { sidebarStyles as rail } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
-import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
+import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { shell, sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -238,7 +238,7 @@ function OpenRow({
       >
         <Row.Leading xstyle={rail.rowIcon}>
           {tab.kind === "chat" ? (
-            <StatusDot mark={tab.mark} unread={tab.unread} />
+            <TaskMark state={tab.mark} unread={tab.unread} />
           ) : (
             <Icon name={tab.icon} size={14} />
           )}
@@ -641,7 +641,7 @@ export function TabsPage(): ReactElement {
                       icon={tab.icon}
                       leading={
                         tab.mark !== "done" || tab.unread ? (
-                          <StatusDot mark={tab.mark} unread={tab.unread} />
+                          <TaskMark state={tab.mark} unread={tab.unread} />
                         ) : undefined
                       }
                       meta={tab.id === state.active ? "Current" : undefined}

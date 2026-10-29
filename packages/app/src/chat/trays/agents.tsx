@@ -10,7 +10,7 @@ import type { BackgroundWork, RunStatus, TaskState } from "@nyte-ai/plugin/clien
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { useChats } from "../../chats/index.ts";
 import type { ChatDirectory } from "../../chats/index.ts";
-import { StatusDot } from "../../components/ui.tsx";
+import { TaskMark } from "../../components/task-mark.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { useChildSessions } from "../../data/sessions.ts";
 import { connection } from "../../data/connection.ts";
@@ -178,11 +178,11 @@ export function SubagentTray({
         >
           <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
             {running.some((agent) => agent.mark !== "waiting") ? (
-              <StatusDot mark="working" />
+              <TaskMark state="working" />
             ) : active.some((agent) => agent.mark === "waiting") ? (
               <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
             ) : (
-              <StatusDot mark={active.length > 0 ? "background" : "failed"} />
+              <TaskMark state={active.length > 0 ? "background" : "failed"} />
             )}
           </span>
           <span>Agents</span>
@@ -265,7 +265,7 @@ export function SubagentTray({
                         {agent.mark === "waiting" ? (
                           <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
                         ) : (
-                          <StatusDot mark={agent.mark} />
+                          <TaskMark state={agent.mark} />
                         )}
                       </Row.Leading>
                       <Row.Label>{title}</Row.Label>

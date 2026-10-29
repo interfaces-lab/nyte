@@ -40,7 +40,7 @@ import { deliveryChoices, nextToSteer } from "./composer-keys.ts";
 import { deliverEdit, deliverSubmission } from "./composer-send.ts";
 import { contentDraftText } from "../../references/message-references.ts";
 import { preferences, useSetting } from "../../preferences/index.ts";
-import { StatusDot } from "../../components/ui.tsx";
+import { TaskMark } from "../../components/task-mark.tsx";
 import { workbenchController } from "../../workbench/controller.ts";
 import { workbenchViewKey } from "../../workbench/model.ts";
 import { composerStyles } from "./composer.stylex.ts";
@@ -689,7 +689,7 @@ export function Composer({
                 <>
                   {liveRun !== undefined && (
                     <span {...props(text.base, composerStyles.floatingStatus)}>
-                      <StatusDot mark={runMark(status)} />
+                      <TaskMark state={runMark(status)} />
                       <span {...props(composerStyles.floatingStatusText, markerStyles.shimmer)}>
                         {status.kind === "waiting-for-approval"
                           ? taskLabel(runMark(status))

@@ -154,7 +154,6 @@ function TabItem({
                 <Icon name={tab.split === "down" ? "split-down" : "split-right"} size={12} />
               </span>
             )}
-            {tab.unread && <span aria-hidden="true" {...props(stripStyles.unread)} />}
           </ChatCardTrigger>
           <ChatCardContent
             placement="tab"

@@ -64,8 +64,8 @@ const styles = create({
   statusUnread: { width: glyph.box, height: glyph.box, backgroundColor: "transparent" },
 });
 
-function statusMarkStyle(mark: TaskState) {
-  switch (mark) {
+function statusMarkStyle(state: TaskState) {
+  switch (state) {
     case "working":
       return [intent.primary, styles.statusSpinner];
     case "retrying":
@@ -79,47 +79,48 @@ function statusMarkStyle(mark: TaskState) {
     case "done":
       return styles.statusIdle;
     default: {
-      const _exhaustive: never = mark;
+      const _exhaustive: never = state;
 
       return _exhaustive;
     }
   }
 }
 
-export function StatusDot({
-  mark,
+/**
+ * The one mark for where a task stands, in every list, tab, tray and transcript row: a chat, a
+ * subagent or a job. A done task draws nothing unless its reply is unread; screen readers hear
+ * the task's word.
+ */
+export function TaskMark({
+  state,
   unread = false,
 }: {
-  mark: TaskState;
-  unread?: boolean;
+  readonly state: TaskState;
+  readonly unread?: boolean;
 }): ReactElement | null {
-  if (mark === "done" && !unread) return null;
+  if (state === "done" && !unread) return null;
 
   return (
     <span
       role="img"
-      aria-label={mark === "done" ? `${taskLabel(mark)}, unread` : taskLabel(mark)}
-      {...props(styles.statusDot, mark === "done" ? styles.statusUnread : statusMarkStyle(mark))}
+      aria-label={state === "done" ? "Unread" : taskLabel(state)}
+      {...props(styles.statusDot, state === "done" ? styles.statusUnread : statusMarkStyle(state))}
     >
-      {mark === "done" && <UnreadMark />}
-      {(mark === "working" || mark === "retrying") && <Spinner />}
-      {mark === "waiting" && <Icon name="bubble-question" size={14} variant="filled" />}
-      {mark === "background" && <Icon name="layers" size={14} />}
-      {mark === "failed" && <Icon name="warning" size={14} variant="filled" />}
+      {state === "done" && (
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 15 15"
+          fill="currentColor"
+          shapeRendering="crispEdges"
+          {...props(surfaceTheme.blue, styles.unreadMark)}
+        >
+          <path d={MOON} />
+        </svg>
+      )}
+      {(state === "working" || state === "retrying") && <Spinner />}
+      {state === "waiting" && <Icon name="bubble-question" size={14} variant="filled" />}
+      {state === "background" && <Icon name="layers" size={14} />}
+      {state === "failed" && <Icon name="warning" size={14} variant="filled" />}
     </span>
-  );
-}
-
-export function UnreadMark(): ReactElement {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 15 15"
-      fill="currentColor"
-      shapeRendering="crispEdges"
-      {...props(surfaceTheme.blue, styles.unreadMark)}
-    >
-      <path d={MOON} />
-    </svg>
   );
 }

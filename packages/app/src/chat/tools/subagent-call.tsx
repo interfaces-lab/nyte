@@ -13,7 +13,7 @@ import type {
 import { sessionTitle, toolNoun, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { TextRoll } from "../../components/text-roll.tsx";
-import { UnreadMark } from "../../components/ui.tsx";
+import { TaskMark } from "../../components/task-mark.tsx";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -188,7 +188,7 @@ function SubagentRow({
         {status.indicator === "running" ? (
           <Spinner />
         ) : status.indicator === "unread" ? (
-          <UnreadMark />
+          <TaskMark state="done" unread />
         ) : (
           <span
             {...props(

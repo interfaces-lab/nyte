@@ -6,7 +6,7 @@ import type { Execution, SessionInfo } from "@nyte-ai/sdk";
 import { chatsFor, COMPLETED, sessionRow } from "../../test/view-fixtures.ts";
 import { chatMark, sessionsForView } from "../sidebar/sidebar-view.ts";
 import { DEFAULT_SESSION_VIEW } from "../preferences/session-view.ts";
-import { StatusGlyph } from "./status-glyph.tsx";
+import { TaskMark } from "./task-mark.tsx";
 
 const run = {
   id: asId<"run">("run"),
@@ -48,7 +48,7 @@ function unread(
 
 /** `unread` stands for the window's answer, which the window's own tests cover. */
 function glyph(row: SessionInfo, rows: readonly SessionInfo[] = [row], unread = true): string {
-  return renderToStaticMarkup(<StatusGlyph mark={chatMark(row, chatsFor(rows))} unread={unread} />);
+  return renderToStaticMarkup(<TaskMark state={chatMark(row, chatsFor(rows))} unread={unread} />);
 }
 
 function grouped(

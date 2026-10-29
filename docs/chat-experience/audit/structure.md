@@ -26,7 +26,7 @@
 | `lib/` | Helpers with no domain: number and time formats, deferred chunks, small hooks | `format.ts`, `deferred.tsx` |
 | `theme/` | Tokens, fonts, appearance and the global stylesheet | `schema.stylex.ts` |
 | `preferences/` | Stored preferences | `index.ts` |
-| `components/` | App-wide pieces with no feature: chat card, status marks, overlay occlusion | `ui.tsx` |
+| `components/` | App-wide pieces with no feature: chat card, the task mark, overlay occlusion | `task-mark.tsx` |
 | `chats/` | The directory of chats and what state each is in | `index.ts` (the only import) |
 | `diff/` | Diff rendering and patch loading, shared by the transcript and Changes | `diff-view.tsx` |
 | `references/` | Mentions and references a message carries, and "Add to chat" | `message-references.ts` |

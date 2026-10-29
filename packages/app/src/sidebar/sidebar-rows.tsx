@@ -34,7 +34,7 @@ import { useNowMinute } from "../lib/use-now-minute.ts";
 import { sessionWatch, warmSession } from "../data/watches.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { useChatWindow } from "../window/index.ts";
-import { StatusGlyph } from "../components/status-glyph.tsx";
+import { TaskMark } from "../components/task-mark.tsx";
 
 const WARM_DELAY_MS = 50;
 
@@ -196,7 +196,7 @@ export function SessionRow({
     return (
       <Row xstyle={[styles.rowSurface, styles.sessionRenameRow]}>
         <Row.Leading xstyle={styles.rowIcon}>
-          <StatusGlyph mark={mark} unread={unread} />
+          <TaskMark state={mark} unread={unread} />
         </Row.Leading>
         <Row.Label>
           <Input
@@ -289,7 +289,7 @@ export function SessionRow({
         {...listeners}
       >
         <Row.Leading xstyle={[styles.rowIcon, ask !== undefined && styles.rowIconAsk]}>
-          <StatusGlyph mark={mark} unread={unread} />
+          <TaskMark state={mark} unread={unread} />
         </Row.Leading>
         {ask === undefined ? (
           titleLine

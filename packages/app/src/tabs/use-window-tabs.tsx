@@ -5,7 +5,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
 import { activateWorkspace } from "../sidebar/use-show-session.ts";
-import { StatusDot } from "../components/ui.tsx";
+import { TaskMark } from "../components/task-mark.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
@@ -142,13 +142,18 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
     const place = tabPlace(tab);
     const view = tab.view;
     const chat = place.kind === "session" ? chats.get(place.sessionId) : undefined;
-    const mark = chat === undefined ? "done" : rowMark(chat.status, chat.background);
+    const sessions = places.flatMap((candidate) =>
+      candidate.kind === "session" ? [candidate.sessionId] : [],
+    );
+
+    const tabUnread = sessions.some((sessionId) => unread.has(sessionId));
 
     const glyph =
       place.kind === "session" ? (
-        mark === "done" ? undefined : (
-          <StatusDot mark={mark} />
-        )
+        <TaskMark
+          state={chat === undefined ? "done" : rowMark(chat.status, chat.background)}
+          unread={tabUnread}
+        />
       ) : (
         <Icon
           name={
@@ -162,17 +167,13 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
         />
       );
 
-    const sessions = places.flatMap((candidate) =>
-      candidate.kind === "session" ? [candidate.sessionId] : [],
-    );
-
     return {
       id: tab.id,
       title: placeTitle(place, chats),
       tooltip: places.map((candidate) => placeTitle(candidate, chats)).join(" | "),
       sessions,
       glyph,
-      unread: sessions.some((sessionId) => unread.has(sessionId)),
+      unread: tabUnread,
       preview: view.kind === "preview",
       split:
         view.kind === "panes" && view.layout.kind === "split" ? view.layout.direction : undefined,
