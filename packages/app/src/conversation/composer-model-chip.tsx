@@ -5,7 +5,19 @@ import { useCatalog, useConfigureSession, useSessionChoice } from "../queries.ts
 import { ModelPicker, type ModelPickerChange } from "./model-picker.tsx";
 import { modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 
-export function SessionModelChip({ sessionId }: { sessionId: SessionId }): ReactElement | null {
+export function SessionModelChip({
+  sessionId,
+  open,
+  onOpenChange,
+  finalFocus,
+  keyShortcuts,
+}: {
+  sessionId: SessionId;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  finalFocus?: () => HTMLElement | null | undefined;
+  keyShortcuts?: string;
+}): ReactElement | null {
   const catalog = useCatalog(sessionId);
   const choice = useSessionChoice(sessionId);
   const configure = useConfigureSession(sessionId);
@@ -49,6 +61,10 @@ export function SessionModelChip({ sessionId }: { sessionId: SessionId }): React
         fast={selected?.fast === true}
         loading={catalog.isPending}
         disabled={catalog.isError}
+        open={open}
+        onOpenChange={onOpenChange}
+        finalFocus={finalFocus}
+        keyShortcuts={keyShortcuts}
         onChange={handleChange}
       />
       {catalog.isError && (

@@ -37,6 +37,7 @@ import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
+import { preferences } from "../preferences/index.ts";
 import { Composer } from "./composer.tsx";
 import { conversationMessages } from "./transcript-rows.ts";
 
@@ -126,7 +127,7 @@ function view(
     reportsHeld: false,
     background: [],
     configuration: { selected: configuration, effective: configuration },
-    context: { tokens: 0, window: 1_000, lastRequest: null },
+    context: { tokens: 250, window: 1_000, lastRequest: null },
     heads: [],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
@@ -461,13 +462,16 @@ async function editQueuedMessage({
 const STATES: readonly ComposerState[] = [
   {
     name: "idle",
-    view: view(COMPLETED),
-    check: ({ editor, button }) => [
+    view: { ...view(COMPLETED), context: { tokens: 0, window: 0, lastRequest: null } },
+    check: ({ region, editor, button }) => [
       ...(editor.dataset.placeholder === "Add a follow-up"
         ? []
         : ["placeholder is not the follow-up prompt"]),
       ...(inert(button("Send message")) ? [] : ["Send is live with nothing to send"]),
       ...(button("Stop response") === null ? [] : ["Stop shows with no run"]),
+      ...(region.querySelector("[role='meter']") === null
+        ? []
+        : ["the context ring shows before the host knows the window"]),
     ],
   },
   {
@@ -484,12 +488,28 @@ const STATES: readonly ComposerState[] = [
   {
     name: "working",
     view: view(live()),
-    check: ({ button }) => [
-      ...(button("Stop response") !== null && !inert(button("Stop response"))
-        ? []
-        : ["Stop is not live"]),
-      ...(button("Send message") === null ? [] : ["Send shows beside Stop with nothing to send"]),
-    ],
+    check: async ({ region, editor, button }) => {
+      const steering = editor.dataset.placeholder;
+      const ring = region.querySelector("[role='meter']")?.getAttribute("aria-valuetext");
+      preferences.runningMessage.set("queue");
+
+      const queueing = await until(
+        () => (editor.dataset.placeholder === steering ? null : editor.dataset.placeholder),
+        "the placeholder to follow the setting",
+      );
+
+      preferences.runningMessage.set("steer");
+
+      return [
+        ...(button("Stop response") !== null && !inert(button("Stop response"))
+          ? []
+          : ["Stop is not live"]),
+        ...(button("Send message") === null ? [] : ["Send shows beside Stop with nothing to send"]),
+        ...(steering === "Steer without stopping" ? [] : [`steering placeholder is "${steering}"`]),
+        ...(queueing === "Queue for next turn" ? [] : [`queueing placeholder is "${queueing}"`]),
+        ...(ring === "25% context used" ? [] : [`the context ring reads "${ring ?? "nothing"}"`]),
+      ];
+    },
   },
   {
     name: "stopping",

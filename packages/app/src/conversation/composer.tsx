@@ -19,8 +19,9 @@ import {
   useSessionActivity,
   useSessionChoice,
 } from "../queries.ts";
-import { connection } from "../sdk.tsx";
+import { connection, sessionWatch } from "../sdk.tsx";
 import { nyte } from "../nyte.ts";
+import { clientActionAriaShortcut, clientActions } from "../client-actions.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../layout/session-view-state.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -34,6 +35,9 @@ import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "./composer-file-drop.ts";
 import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerImageAttachment } from "./composer-files.ts";
+import { ContextRing } from "./composer-context.tsx";
+import { recallStep, recentPrompts } from "./composer-history.ts";
+import type { RecallDirection } from "./composer-history.ts";
 import { deliveryChoices, nextToSteer } from "./composer-keys.ts";
 import { deliverEdit, deliverSubmission } from "./composer-send.ts";
 import { contentDraftText } from "./message-references.ts";
@@ -141,6 +145,7 @@ export function Composer({
   const stopping = execution?.kind === "live" && execution.stopping;
   const [target, setTarget] = useState<ComposerTarget>({ kind: "new" });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const host = useHostState();
   const mac = nyte.platform === "darwin";
   const link = useHostLink();
@@ -208,6 +213,32 @@ export function Composer({
   const retarget = (next: ComposerTarget): void => {
     latestTarget.current = next;
     setTarget(next);
+  };
+
+  const recalled = useRef<
+    { readonly position: number; readonly draft: ComposerViewState } | undefined
+  >(undefined);
+
+  const recall = (direction: RecallDirection): boolean => {
+    const prompts = recentPrompts(sessionWatch(sessionId).value?.messages ?? []);
+    const position = recallStep(prompts.length, recalled.current?.position, direction);
+
+    if (position === recalled.current?.position) return false;
+    const draft = recalled.current?.draft ?? latestViewState.current;
+    const prompt = position === undefined ? undefined : prompts[position];
+    recalled.current = position === undefined ? undefined : { position, draft };
+    updateViewState((current) =>
+      prompt === undefined
+        ? {
+            ...current,
+            draft: draft.draft,
+            selectionStart: draft.selectionStart,
+            selectionEnd: draft.selectionEnd,
+          }
+        : { ...current, draft: prompt, selectionStart: prompt.length, selectionEnd: prompt.length },
+    );
+
+    return true;
   };
 
   const editHold = useRef<EditHold | undefined>(undefined);
@@ -366,6 +397,7 @@ export function Composer({
       attachments: sentAttachments,
       delivery,
       onLeave: () => {
+        recalled.current = undefined;
         updateViewState((current) => ({
           ...current,
           draft: "",
@@ -524,7 +556,7 @@ export function Composer({
       );
   };
 
-  const nextQueued = nextToSteer(pending, deliveryChoices);
+  const nextQueued = nextToSteer(pending);
   const nextQueuedAction = nextQueued === undefined ? undefined : rowActions.get(nextQueued.id);
 
   const nextIdleQueued =
@@ -714,9 +746,7 @@ export function Composer({
                     await questions.advance(document);
                   }
             }
-            placeholder={
-              questions === undefined ? FOLLOW_UP_PLACEHOLDER : "Answer in your own words"
-            }
+            placeholder={FOLLOW_UP_PLACEHOLDER}
             floating={floating}
             disabled={questions?.pending === true || questions?.settled === true || savingEdit}
             busy={liveRun !== undefined}
@@ -734,6 +764,7 @@ export function Composer({
                   }
             }
             onEmptySubmit={questions === undefined ? sendNextQueued : undefined}
+            onRecall={questions === undefined && target.kind === "new" ? recall : undefined}
             completeCommand={(name, prefix) =>
               connection().session(sessionId).completeCommand(name, prefix)
             }
@@ -755,7 +786,19 @@ export function Composer({
               }));
               setAttachmentError(undefined);
             }}
-            model={questions === undefined ? <SessionModelChip sessionId={sessionId} /> : undefined}
+            model={
+              questions === undefined ? (
+                <SessionModelChip
+                  sessionId={sessionId}
+                  open={modelPickerOpen}
+                  onOpenChange={setModelPickerOpen}
+                  finalFocus={() => editorRef.current?.readElement()}
+                  keyShortcuts={clientActionAriaShortcut(clientActions.selectModel, mac)}
+                />
+              ) : undefined
+            }
+            onOpenModelPicker={questions === undefined ? () => setModelPickerOpen(true) : undefined}
+            contextUsage={<ContextRing sessionId={sessionId} />}
             inputRef={attachInput}
             onFocusChange={(focused) => updateViewState((current) => ({ ...current, focused }))}
             editing={

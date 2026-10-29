@@ -78,6 +78,13 @@ export const clientActions = {
     chord: "primary-shift",
     scope: "workspace",
   },
+  selectModel: {
+    id: "select-model",
+    label: "Select Model",
+    key: "/",
+    chord: "primary",
+    scope: "workspace",
+  },
   openFolder: {
     id: "open-folder",
     label: "Open Folder…",
