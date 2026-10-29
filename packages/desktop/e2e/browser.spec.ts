@@ -21,6 +21,21 @@ async function guestPages(application: ElectronApplication) {
   );
 }
 
+async function pageShown(application: ElectronApplication, url: string): Promise<boolean> {
+  return application.evaluate(
+    ({ BrowserWindow, WebContentsView }, guestUrl) =>
+      BrowserWindow.getAllWindows().some((window) =>
+        window.contentView.children.some(
+          (view) =>
+            view instanceof WebContentsView &&
+            view.webContents.getURL() === guestUrl &&
+            view.getVisible(),
+        ),
+      ),
+    url,
+  );
+}
+
 async function clickGuestControl(
   application: ElectronApplication,
   url: string,
@@ -220,38 +235,19 @@ test("the integrated browser journey", async ({ desktop }) => {
     expect(scriptRequests).toBe(0);
   });
 
-  await test.step("the shield menu names the host", async () => {
+  await test.step("the shield menu names the host and pauses the page over its still", async () => {
+    const still = panel.locator('img[src^="data:image/jpeg"]');
+    await expect(still).toHaveCount(1);
+    await expect.poll(() => pageShown(application, url)).toBe(true);
     await shield.click();
     await expect(
       page.getByRole("menuitemcheckbox", { name: "Block on 127.0.0.1", exact: true }),
     ).toBeChecked();
+    await expect.poll(() => pageShown(application, url)).toBe(false);
+    await expect(still).toHaveCount(1);
     await page.getByRole("menu").press("Escape");
     await expect(page.getByRole("menu")).toBeHidden();
-  });
-
-  await test.step.skip("pause and restore blocking for this host", async () => {
-    const loaded = pageRequests;
-    await shield.click();
-
-    const hostSwitch = page.getByRole("menuitemcheckbox", {
-      name: "Block on 127.0.0.1",
-      exact: true,
-    });
-
-    await hostSwitch.click();
-    await expect(hostSwitch).not.toBeChecked();
-    await expect.poll(() => pageRequests).toBe(loaded + 1);
-    await expect.poll(() => scriptRequests).toBe(1);
-    await expect(shield).toHaveAttribute("title", "Paused for 127.0.0.1");
-    await expect(shield).toHaveText("paused");
-
-    await hostSwitch.click();
-    await expect(hostSwitch).toBeChecked();
-    await expect.poll(() => pageRequests).toBe(loaded + 2);
-    await expect(shield).toHaveAttribute("title", "1 blocked on this page");
-    expect(scriptRequests).toBe(1);
-    await page.getByRole("menu").press("Escape");
-    await expect(page.getByRole("menu")).toBeHidden();
+    await expect.poll(() => pageShown(application, url)).toBe(true);
   });
 
   await test.step("open a guest link in a second workbench tab", async () => {

@@ -180,12 +180,6 @@ const styles = create({
     objectPosition: "top",
     pointerEvents: "none",
   },
-  frozenVeil: {
-    position: "absolute",
-    inset: 0,
-    backgroundColor: role.bgScrim,
-    pointerEvents: "none",
-  },
 });
 
 interface SurfaceHold {
@@ -215,6 +209,10 @@ interface SurfacePlacement {
   readonly cancelFocus: () => void;
 }
 
+/**
+ * Keeps the native view on the slot. Overlays are measured in an animation frame and the
+ * page hides on the next one, so the overlay has painted over the still first.
+ */
 function useSurfacePlacement(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,
@@ -286,7 +284,7 @@ function useSurfacePlacement(
 
     window.addEventListener("resize", schedule);
     document.addEventListener("scroll", scrolled, { capture: true, passive: true });
-    const unsubscribe = subscribeOverlayRects(measure);
+    const unsubscribe = subscribeOverlayRects(schedule);
     placeRef.current = schedule;
     measure();
 
@@ -319,16 +317,27 @@ function useSurfacePlacement(
   };
 }
 
-function usePageFrame(surface: string, url: string, covered: boolean): string | undefined {
+/**
+ * A still of the page, kept under the native view so hiding it never shows a blank slot.
+ * It refreshes every second while the page shows; a capture for another page or surface
+ * lands under its own key and is never drawn.
+ */
+function usePageFrame(
+  surface: string,
+  url: string,
+  shown: boolean,
+  covered: boolean,
+): string | undefined {
   const frame = useQuery({
     queryKey: keys.browserFrame(surface, url),
     queryFn: () => browserBridge().captureFrame({ surface }),
-    enabled: covered && url !== "",
+    enabled: shown,
+    refetchInterval: covered ? false : 1000,
     staleTime: 0,
     gcTime: 0,
   });
 
-  return frame.data;
+  return shown ? frame.data : undefined;
 }
 
 const PERMISSION_NAMES = new Map([
@@ -422,7 +431,7 @@ export function BrowserPanel({
   const showSurface = visible && hasPage && state.error === undefined;
 
   const page = useSurfacePlacement(slotRef, surface, showSurface);
-  const pageFrame = usePageFrame(surface, hasPage ? state.url : "", page.covered);
+  const pageFrame = usePageFrame(surface, hasPage ? state.url : "", showSurface, page.covered);
 
   const holdRef = useRef<SurfaceHold | undefined>(undefined);
 
@@ -812,7 +821,6 @@ export function BrowserPanel({
           {pageFrame !== undefined && (
             <img src={pageFrame} alt="" aria-hidden="true" {...props(styles.frozenFrame)} />
           )}
-          {page.covered && pageFrame !== undefined && <div {...props(styles.frozenVeil)} />}
           {!hasPage && failure === undefined && (
             <div {...props(styles.message)}>
               <span {...props(styles.messageTitle)}>Type an address or a search</span>

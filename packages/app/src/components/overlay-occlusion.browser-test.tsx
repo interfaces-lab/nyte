@@ -29,6 +29,10 @@ function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
+function still(): Element | null {
+  return document.querySelector('section[aria-label="Browser"] img[src^="data:image/"]');
+}
+
 async function until(predicate: () => boolean, what: string): Promise<void> {
   const deadline = performance.now() + 5_000;
 
@@ -87,6 +91,7 @@ export async function run(): Promise<string> {
   await until(() => window.__nyteBounds.length > 0 && last().visible, "the page to be shown");
   const shown = last();
   check(shown.bounds.width > 0 && shown.bounds.height > 0, "The page was placed at zero size");
+  await until(() => still() !== null, "the still to sit under the shown page");
 
   render(true);
   await until(() => !last().visible, "the page to hide under the menu");
@@ -98,6 +103,7 @@ export async function run(): Promise<string> {
       hidden.bounds.height === shown.bounds.height,
     "Hiding the page moved or resized it instead of leaving its bounds alone",
   );
+  check(still() !== null, "The still left when the page hid");
 
   render(false);
   await until(() => last().visible, "the page to come back when the menu closes");

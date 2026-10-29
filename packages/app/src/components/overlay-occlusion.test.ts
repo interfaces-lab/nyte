@@ -18,6 +18,7 @@ const state = {
   deniedPermissions: [],
 };
 const resolved = () => Promise.resolve(undefined);
+const still = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
 window.nyte = new Proxy(
   {
     host: {
@@ -28,7 +29,7 @@ window.nyte = new Proxy(
         menu: resolved,
         perform: resolved,
         close: resolved,
-        captureFrame: resolved,
+        captureFrame: () => Promise.resolve(still),
         find: () => Promise.resolve({ active: 0, total: 0 }),
         cancelDownload: resolved,
         login: resolved,
@@ -44,7 +45,7 @@ window.nyte = new Proxy(
 );
 `;
 
-test("a menu over a browser panel hides the page and gives it back on close", async () => {
+test("a menu over a browser panel hides the page over its still and gives it back on close", async () => {
   expect(
     await testRenderer(new URL("./overlay-occlusion.browser-test.tsx", import.meta.url), setup),
   ).toBe("passed");
