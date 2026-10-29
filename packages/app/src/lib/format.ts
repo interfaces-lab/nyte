@@ -22,6 +22,20 @@ export function formatTokens(tokens: number): string {
   return `${(tokens / 1_000_000_000).toFixed(2)}B`;
 }
 
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${String(bytes)} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = 0;
+
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+
+  return `${value < 10 ? value.toFixed(1) : String(Math.round(value))} ${units[unit] ?? "GB"}`;
+}
+
 export function formatPercent(fraction: number): string {
   if (fraction <= 0) return "0%";
 

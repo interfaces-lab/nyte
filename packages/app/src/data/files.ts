@@ -1,4 +1,4 @@
-import type { FileEntryView, FilesApi, FileVersion } from "@nyte-ai/sdk";
+import type { FileDocument, FileEntryView, FilesApi, FileVersion } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -56,7 +56,7 @@ export function useWorkspaceFile(path: string | undefined) {
     queryFn: async () => {
       if (path === undefined) throw new Error("Select a file to open it");
 
-      return (await workspaceFiles()).read(path);
+      return (await workspaceFiles()).read(path, { as: "document" });
     },
     enabled: path !== undefined,
     staleTime: 1_000,
@@ -80,12 +80,11 @@ export function useSaveWorkspaceFile() {
       ),
     onSuccess: (outcome, input) => {
       if (outcome.kind !== "saved") return;
-      client.setQueryData(keys.workspaceFile(input.path), {
-        kind: "text" as const,
-        path: input.path,
-        contents: input.contents,
-        version: outcome.version,
-      });
+      client.setQueryData<FileDocument>(keys.workspaceFile(input.path), (document) =>
+        document?.kind === "text"
+          ? { ...document, contents: input.contents, version: outcome.version }
+          : document,
+      );
     },
   });
 }

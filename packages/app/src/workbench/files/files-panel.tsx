@@ -28,11 +28,11 @@ import { nyte } from "../../contract/nyte.ts";
 import { preferences, useSetting, type Preference } from "../../preferences/index.ts";
 import { refreshVcs, useVcsSnapshot } from "../../data/vcs.ts";
 import { useHostState } from "../../data/host.ts";
-import { useMentionFiles } from "../../data/files.ts";
+import { useMentionFiles, useWorkspaceFile } from "../../data/files.ts";
 import { workbench } from "../../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "../model.ts";
-import { WorkspaceFileEditor } from "./file-editor.tsx";
+import { opensReadOnly, WorkspaceFileEditor } from "./file-editor.tsx";
 import { FilesEmptyState } from "./files-empty-state.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
 import { fileActions, useFileTabs } from "./file-store.ts";
@@ -162,6 +162,8 @@ export function FilesPanel({
     hostState.current = host.data;
   }, [host.data]);
   const activeFile = tabs.active;
+  const activeDocument = useWorkspaceFile(activeFile?.path).data;
+  const readOnly = activeDocument !== undefined && opensReadOnly(activeDocument);
 
   const unsaved = activeFile?.dirty === true;
 
@@ -392,7 +394,7 @@ export function FilesPanel({
             </MenuItem>
             <MenuItem
               layout="plain"
-              disabled={activeFile === undefined}
+              disabled={activeDocument?.kind !== "text" || readOnly}
               onClick={() => {
                 if (activeFile !== undefined) void editors.current.get(activeFile.path)?.format();
               }}
@@ -411,7 +413,7 @@ export function FilesPanel({
             </MenuItem>
             <MenuItem
               layout="plain"
-              disabled={activeFile === undefined}
+              disabled={activeFile === undefined || readOnly}
               onClick={() => {
                 if (activeFile !== undefined) copyPath(activeFile.displayPath);
               }}

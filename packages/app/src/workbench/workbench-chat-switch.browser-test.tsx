@@ -195,7 +195,14 @@ const refuse = async (): Promise<never> => {
 };
 
 const files: FilesApi = {
-  read: async (path) => ({ kind: "text", path, contents: CONTENTS, version: asId("v1") }),
+  read: async (path) => ({
+    kind: "text",
+    path,
+    scope: "workspace",
+    mime: "text/plain",
+    contents: CONTENTS,
+    version: asId("v1"),
+  }),
   bytes: refuse,
   stat: refuse,
   write: refuse,
@@ -294,6 +301,8 @@ export async function run(): Promise<string> {
   queryClient.setQueryData(keys.workspaceFile(FILE.path), {
     kind: "text",
     path: FILE.path,
+    scope: "workspace",
+    mime: "text/plain",
     contents: CONTENTS,
     version: asId<"file-version">("v1"),
   });
