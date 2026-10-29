@@ -18,12 +18,16 @@ import { describeChats } from "./directory.ts";
 import type { Chat, ChatDirectory } from "./directory.ts";
 import { childTask, describeTask, matchesKey } from "./tasks.ts";
 import type { ChildTask, Task, TaskKey } from "./tasks.ts";
+import { waitingBelow } from "./waiting.ts";
+import type { WaitingChat } from "./waiting.ts";
 
 export type { Chat, ChatDirectory, ChatLocation, Folder, UnreadTip } from "./directory.ts";
 
 export type { ChildTask, JobTask, Task, TaskKey } from "./tasks.ts";
 
 export { childTitle, delegateKey, findTask, trayTasks } from "./tasks.ts";
+
+export type { WaitingChat } from "./waiting.ts";
 
 export type ChatResult =
   | { readonly kind: "loading" }
@@ -110,6 +114,13 @@ export function useChildTasks(parent: SessionId): readonly ChildTask[] {
       ),
     sameTasks,
   );
+}
+
+/** Every chat below `session`, at any depth, whose own run waits on the user, with its view: what the approval and question trays ask. */
+export function useWaitingDescendants(session: SessionId): readonly WaitingChat[] {
+  const store = waitingBelow(session, { read: chatDirectory, subscribe: subscribeChats });
+
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
 function useSessionJobs(session: SessionId | undefined): readonly JobView[] | undefined {

@@ -30,11 +30,6 @@ export const sessionsWatch = watchFamily(
     current.sessions.watch({ parents: { kind: parents } }),
 );
 
-export const childrenWatch = watchFamily(
-  (current, session: SessionId): AsyncIterable<readonly SessionInfo[]> =>
-    current.sessions.watch({ parents: { kind: "children", session } }),
-);
-
 const OPENING_TAIL = 40;
 
 const NO_TRANSCRIPTS: ReadonlySet<SessionId> = new Set();
@@ -176,17 +171,13 @@ const WARM_MS = 5_000;
 const hotSet = new Map<SessionId, () => void>();
 
 export function warmSession(session: SessionId): void {
-  const holds = [
-    sessionWatch(session).subscribe(() => undefined),
-    childrenWatch(session).subscribe(() => undefined),
-  ];
+  const hold = sessionWatch(session).subscribe(() => undefined);
 
   const release = (): void => {
     clearTimeout(timer);
 
     if (hotSet.get(session) === release) hotSet.delete(session);
-
-    for (const leave of holds) leave();
+    hold();
   };
 
   const timer = setTimeout(release, WARM_MS);
