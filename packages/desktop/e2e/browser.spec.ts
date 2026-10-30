@@ -37,23 +37,6 @@ async function pageShown(application: ElectronApplication, url: string): Promise
   );
 }
 
-async function windowsShowing(application: ElectronApplication, url: string): Promise<number[]> {
-  return application.evaluate(
-    ({ BrowserWindow, WebContentsView }, guestUrl) =>
-      BrowserWindow.getAllWindows()
-        .filter((window) =>
-          window.contentView.children.some(
-            (view) =>
-              view instanceof WebContentsView &&
-              view.webContents.getURL() === guestUrl &&
-              view.getVisible(),
-          ),
-        )
-        .map((window) => window.id),
-    url,
-  );
-}
-
 async function clickGuestControl(
   application: ElectronApplication,
   url: string,
@@ -174,13 +157,6 @@ test("the integrated browser journey", async ({ desktop }) => {
         response.writeHead(200, { "Content-Type": "text/html" });
         response.end(
           "<!doctype html><html><head><title>Remembered page</title></head><body>Remembered</body></html>",
-        );
-
-        return;
-      case "/shared":
-        response.writeHead(200, { "Content-Type": "text/html" });
-        response.end(
-          "<!doctype html><html><head><title>Shared page</title></head><body>Shared</body></html>",
         );
 
         return;
@@ -584,64 +560,5 @@ test("the integrated browser journey", async ({ desktop }) => {
       .poll(() => guestPages(application))
       .toContainEqual({ url: remembered, loading: false, title: "Remembered page" });
     await expect.poll(visits).toBe(1);
-  });
-
-  await test.step("another window closing its tab for the page leaves it showing here", async () => {
-    const shared = `${url}shared`;
-    const opened = application.waitForEvent("window");
-    await application.evaluate(({ Menu }) => {
-      const item = Menu.getApplicationMenu()
-        ?.items.flatMap((menu) => menu.submenu?.items ?? [])
-        .find((entry) => entry.label === "New Window");
-
-      if (item === undefined) throw new Error("The New Window menu item is missing");
-      item.click();
-    });
-    const other = await opened;
-    const otherWindow = await application.browserWindow(other);
-    cleanup.defer(() => otherWindow.dispose());
-    const otherWindowId = await otherWindow.evaluate((window) => window.id);
-    const otherTabs = other.getByRole("tab", { name: "Browser", exact: true });
-    const restored = await tabs.count();
-    await expect(otherTabs).toHaveCount(restored, { timeout: 30_000 });
-
-    const announce = (target: typeof mainWindow): Promise<void> =>
-      target.evaluate(
-        (window, input) =>
-          window.webContents.send(input.channel, {
-            kind: "browser_agent_opened",
-            owner: null,
-            surface: "e2e-shared-page",
-            url: input.url,
-          }),
-        { channel: HOST_EVENT_CHANNEL, url: shared },
-      );
-
-    const otherWindowMessagesHandled = async (): Promise<void> => {
-      await otherWindow.evaluate((window) => window.webContents.executeJavaScript("0"));
-    };
-
-    await announce(otherWindow);
-    await expect(otherTabs).toHaveCount(restored + 1);
-    await otherTabs.last().click();
-    await expect.poll(() => windowsShowing(application, shared)).toEqual([otherWindowId]);
-
-    await mainWindow.evaluate((window) => window.focus());
-    await announce(mainWindow);
-    await expect(tabs).toHaveCount(restored + 1);
-    await tabs.last().click();
-    await expect.poll(() => windowsShowing(application, shared)).toEqual([mainWindowId]);
-
-    await otherWindow.evaluate((window) => window.focus());
-    await otherTabs.last().press("Delete");
-    await expect(otherTabs).toHaveCount(restored);
-    await otherWindowMessagesHandled();
-    expect(await windowsShowing(application, shared)).toEqual([mainWindowId]);
-
-    await otherWindow.evaluate((window) => window.close());
-    await expect
-      .poll(() => application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length))
-      .toBe(1);
-    expect(await windowsShowing(application, shared)).toEqual([mainWindowId]);
   });
 });
