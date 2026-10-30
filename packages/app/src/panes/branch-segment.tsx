@@ -20,7 +20,7 @@ import { toast } from "@nyte-ai/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { useCopyConfirmation } from "../components/copy-confirmation.ts";
 import { errorMessage } from "../contract/errors.ts";
-import { gitFor, useGitRefs } from "../data/vcs.ts";
+import { gitFor, refreshVcs, useGitRefs } from "../data/vcs.ts";
 import { gitStatusWatch } from "../data/watches.ts";
 import { useWatch } from "../data/watch-store.ts";
 import { ContextHint, ContextTrigger, type ContextSize } from "./context-selector.tsx";
@@ -120,7 +120,13 @@ function BranchMenu({
   const checkout = useMutation({
     mutationFn: async (name: string) => (await gitFor(workspace)).checkout({ name }),
     onSuccess: (outcome, name) => {
-      if (outcome.kind !== "applied") refused(`Couldn’t switch to ${name}`, outcome);
+      if (outcome.kind === "applied") {
+        void refreshVcs();
+
+        return;
+      }
+
+      refused(`Couldn’t switch to ${name}`, outcome);
     },
     onError: (cause, name) => failed(`Couldn’t switch to ${name}`, cause),
   });

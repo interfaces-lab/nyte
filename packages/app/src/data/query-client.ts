@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import type { ChangeSource, GitScope, SessionId, WorkspaceId } from "@nyte-ai/sdk";
+import type { ChangeSource, GitCommitId, GitScope, SessionId, WorkspaceId } from "@nyte-ai/sdk";
 
 export const keys = {
   host: ["host"] as const,
@@ -27,8 +27,12 @@ export const keys = {
     ignoreWhitespace: boolean,
     revision: string | undefined,
   ) => ["git", "changes", workspace, scope, ignoreWhitespace, revision] as const,
-  gitLog: (workspace: WorkspaceId | undefined, limit: number, cursor: string | undefined) =>
-    ["git", "log", workspace, limit, cursor] as const,
+  gitLog: (
+    workspace: WorkspaceId | undefined,
+    head: GitCommitId | null | undefined,
+    limit: number,
+    cursor: string | undefined,
+  ) => ["git", "log", workspace, head, limit, cursor] as const,
   gitRefs: (workspace: WorkspaceId) => ["git", "refs", workspace] as const,
   recordedChanges: (
     workspace: WorkspaceId | undefined,
