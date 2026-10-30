@@ -153,7 +153,12 @@ export function parseConnectionPayload(text: string): Connection {
   return parseConnection({ name: link.searchParams.get("name") ?? "My Mac", url, token });
 }
 
-export function describeHostError(cause: unknown): string {
+/**
+ * What a failed host call means for the person holding the phone. An `invalid` answer from a host
+ * running a newer Nyte (`newerHost`) most likely means this app can't read what the host sends, or
+ * sends what the host no longer takes, so it asks for an update.
+ */
+export function describeHostError(cause: unknown, newerHost: boolean): string {
   if (!(cause instanceof SdkError)) return "Couldn't reach the host. Check that Nyte is running.";
 
   switch (cause.code) {
@@ -167,6 +172,9 @@ export function describeHostError(cause: unknown): string {
     case "stale":
       return "Another device changed this first. Try again.";
     case "invalid":
+      return newerHost
+        ? "Nyte on your Mac is newer than this app. Update Nyte on this iPhone."
+        : "The host couldn't complete the request.";
     case "internal":
       return "The host couldn't complete the request.";
     default: {

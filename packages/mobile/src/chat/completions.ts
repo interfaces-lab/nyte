@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { CommandInfo, Connection, SessionCatalogView, WorkspaceId } from "@nyte-ai/sdk";
 import { describeHostError } from "../connection/connection.ts";
+import { useHost } from "../connection/host-context.tsx";
 
 export interface CompletionTrigger {
   readonly kind: "@" | "/";
@@ -141,6 +142,7 @@ export function useCompletions(
   enabled: boolean,
   epoch: number,
 ): Completions {
+  const { newerHost } = useHost();
   const trigger = enabled ? completionTrigger(draft, Math.min(caret, draft.length)) : undefined;
   const kind = trigger?.kind;
   const query = trigger?.query ?? "";
@@ -180,7 +182,7 @@ export function useCompletions(
       : filesQuery.status === "pending"
         ? { kind: "loading" }
         : filesQuery.status === "error"
-          ? { kind: "failed", message: describeHostError(filesQuery.error) }
+          ? { kind: "failed", message: describeHostError(filesQuery.error, newerHost) }
           : { kind: "ready", value: filesQuery.data };
 
   const commands = catalog?.commands ?? [];

@@ -1,6 +1,7 @@
 import type { Connection, ModelInfo } from "@nyte-ai/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { describeHostError } from "../connection/connection.ts";
+import { useHost } from "../connection/host-context.tsx";
 
 type ModelCatalogState =
   | { kind: "loading" }
@@ -8,6 +9,8 @@ type ModelCatalogState =
   | { kind: "ready"; models: readonly ModelInfo[]; defaultModel: ModelInfo | undefined };
 
 export function useModelCatalog(client: Connection, enabled = true) {
+  const { newerHost } = useHost();
+
   const query = useQuery({
     queryKey: ["models"],
     enabled,
@@ -28,7 +31,7 @@ export function useModelCatalog(client: Connection, enabled = true) {
     query.status === "pending"
       ? { kind: "loading" }
       : query.status === "error"
-        ? { kind: "failed", message: describeHostError(query.error) }
+        ? { kind: "failed", message: describeHostError(query.error, newerHost) }
         : { kind: "ready", models: query.data.models, defaultModel: query.data.defaultModel };
 
   return { catalog, refresh: query.refetch };

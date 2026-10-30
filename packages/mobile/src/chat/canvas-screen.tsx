@@ -20,7 +20,8 @@ const FILL = { kind: "fill" } as const;
 export function CanvasScreen({ sessionId, part }: { sessionId: SessionId; part: PartId }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const handle = useHost().client.session(sessionId).part(part);
+  const { client, newerHost } = useHost();
+  const handle = client.session(sessionId).part(part);
   const [watched] = useWatch(handle);
 
   const view =
@@ -28,7 +29,10 @@ export function CanvasScreen({ sessionId, part }: { sessionId: SessionId; part: 
 
   if (view === undefined && watched.kind === "failed")
     return (
-      <EmptyState title="Couldn't load the canvas" description={describeHostError(watched.error)} />
+      <EmptyState
+        title="Couldn't load the canvas"
+        description={describeHostError(watched.error, newerHost)}
+      />
     );
 
   if (view === undefined)

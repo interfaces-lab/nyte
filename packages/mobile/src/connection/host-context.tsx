@@ -1,10 +1,13 @@
 import { createContext, use, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import type { Connection as HostConnection } from "@nyte-ai/sdk";
+import Constants from "expo-constants";
 import { fetch } from "expo/fetch";
+import { gt, valid } from "semver";
 import type { Connection, SavedConnection } from "./connection.ts";
 import type { ConnectFailure } from "./connect-copy.ts";
 import { connectionStore, hostVerifier } from "./host.ts";
+import { useWatch } from "./use-watch.ts";
 import { releaseCopy } from "../account/account-copy.ts";
 import { useAccount } from "../account/account-provider.tsx";
 import { RELEASE_TIMEOUT_MS, releaseOnHost } from "../account/revocation.ts";
@@ -41,9 +44,12 @@ export type HostSession = {
   readonly disconnect: () => Promise<void>;
 };
 
-const HostContext = createContext<HostSession | undefined>(undefined);
+/** A session as screens see it, with whether the host runs a newer Nyte than this app. */
+export type ConnectedHost = HostSession & { readonly newerHost: boolean };
 
-export function useHost(): HostSession {
+const HostContext = createContext<ConnectedHost | undefined>(undefined);
+
+export function useHost(): ConnectedHost {
   const host = use(HostContext);
 
   if (host === undefined) throw new Error("The host connection is not available.");
@@ -51,8 +57,22 @@ export function useHost(): HostSession {
   return host;
 }
 
+/** Follows the host's view for its Nyte version, which changes when the Mac updates while the phone stays connected. */
 export function HostProvider({ session, children }: { session: HostSession; children: ReactNode }) {
-  return <HostContext.Provider value={session}>{children}</HostContext.Provider>;
+  const [view] = useWatch(session.client);
+
+  const version =
+    view.kind === "ready"
+      ? view.value.version
+      : view.kind === "failed"
+        ? view.last?.version
+        : undefined;
+
+  const host = valid(version);
+  const app = valid(Constants.expoConfig?.version);
+  const newerHost = host !== null && app !== null && gt(host, app);
+
+  return <HostContext.Provider value={{ ...session, newerHost }}>{children}</HostContext.Provider>;
 }
 
 /** The saved connection and its host check. The Keychain read is the app's only boot fetch; the store, not a query cache, holds it because it carries the bearer. */
