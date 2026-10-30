@@ -20,7 +20,6 @@ const question = definePart({
   fallback: (_state, { id }) => `Ask ${id}`,
 });
 
-/** The state of `child`'s item in `parent`'s background, once it is `state`. */
 function childState(
   parent: Session,
   child: SessionId,
@@ -33,7 +32,6 @@ function childState(
   });
 }
 
-/** Starts the run on `session`'s main head as the turn numbered `count` and parks it on a question to the user. */
 async function askUser(
   kernel: Kernel,
   host: Omit<Host, "listen">,

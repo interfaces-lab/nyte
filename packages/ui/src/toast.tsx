@@ -32,9 +32,8 @@ const ANCHORED = "@supports (position-anchor: --a)";
 
 const styles = create({
   /**
-   * At the window's bottom-end inset. Where anchor positioning is supported, above the element
-   * named `toastSchema.anchor` instead, end-aligned with it and no wider; without one, the
-   * anchor() fallbacks keep the bottom-end inset.
+   * Above the element named `toastSchema.anchor` where anchor positioning is supported. Without
+   * support or without that element, the anchor() fallbacks keep the bottom-end inset.
    */
   viewport: {
     position: "fixed",

@@ -42,7 +42,7 @@ export interface TurnModel {
 
 export type TurnStatus =
   | { readonly kind: "unanswered" }
-  /** A null activity is a live run that shows no progress: it is planning. */
+  /** Null while the run shows no progress: it is planning. */
   | { readonly kind: "working"; readonly activity: string | null; readonly startedAt: number }
   | { readonly kind: "thinking"; readonly startedAt: number }
   | { readonly kind: "waiting"; readonly question: boolean }

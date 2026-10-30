@@ -16,7 +16,6 @@ const CACHE_ROOT = resolve(import.meta.dirname, ".cache");
 
 export const LONG_TURNS = 36;
 
-/** Turns of the unread chat its reader has seen; the replies after them are unread. */
 export const READ_TURNS = 5;
 
 export const UNREAD_TURNS = 8;
@@ -99,7 +98,7 @@ function openOffline(home: string) {
   });
 }
 
-/** Marks the chat's tip seen as the desktop's principal, which reaches the host through a token, so the desktop opens it with that read mark. */
+/** Reads through the desktop's token, so the desktop opens the chat with this read mark. */
 async function readAsDesktop(host: Host, session: SessionId): Promise<void> {
   await using listener = await host.listen({
     transport: { kind: "fetch" },

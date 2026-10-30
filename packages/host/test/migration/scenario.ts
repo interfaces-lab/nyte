@@ -326,7 +326,7 @@ const described = schemaArbitrary(variant("session")).filter(isJsonObject);
 
 const modelRef = schemaArbitrary(withJson(ModelRefType));
 
-/** A session event as a store before head background counts logged it: no head row has `background`. */
+/** A session event as stores logged it before head background counts. */
 function withoutBackground(event: JsonObject) {
   const info = isJsonObject(event.info) ? event.info : {};
   const heads = Array.isArray(info.heads) ? info.heads : [];

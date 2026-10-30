@@ -51,7 +51,6 @@ graph LR
 \`\`\`
 `;
 
-/** A PDF of letter pages, each with its line of text in Helvetica. */
 function samplePdf(lines: readonly string[]): Buffer {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",

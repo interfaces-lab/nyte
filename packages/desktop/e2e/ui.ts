@@ -27,7 +27,6 @@ export function messages(page: Page): Locator {
   return page.getByRole("region", { name: "Messages", exact: true });
 }
 
-/** A chat's tab, whether it is a preview or kept. */
 export function chatTab(page: Page, name: string): Locator {
   return page
     .getByRole("tablist", { name: "Tabs" })
@@ -35,9 +34,8 @@ export function chatTab(page: Page, name: string): Locator {
 }
 
 /**
- * Switches the theme as Settings › Appearance does: through the stored preference, which the app
- * applies to the page and hands to the native window. Setting the native theme and the media query
- * alone lets the app hand the window "system" again, so a light page would sit on a dark window.
+ * Goes through the stored preference as Settings does. Setting only the native theme and the media
+ * query lets the app hand the window "system" again, leaving a light page on a dark window.
  */
 export async function setTheme(
   desktop: { readonly application: ElectronApplication; readonly page: Page },

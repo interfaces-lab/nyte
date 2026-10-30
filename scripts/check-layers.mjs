@@ -1,17 +1,7 @@
 /**
  * `pnpm layers` fails when a folder of packages/app/src imports a folder in a higher layer.
- *
- * A folder is the first path segment under `src/`. Folders in one layer may import each
- * other; a folder may import any lower layer and never a higher one. Every static
- * `import` and `export … from` counts, type-only ones too, because the layers describe
- * where a reader finds a concept, not only what loads at run time; TYPE_REACH lists the
- * few files whose type-only imports may reach up. Tests, browser-test
- * fixtures and `fixtures/` folders are left out: they may reach any layer to drive
- * what they test. A folder missing from LAYERS, or a root file other than the entry
- * points, fails the check so a new one is placed on purpose.
- *
- * Usage: node scripts/check-layers.mjs [--report]
- *   --report prints the violations and exits 0.
+ * Type-only imports count too: the layers say where a reader finds a concept, not only what
+ * loads at run time. Tests and fixtures are left out so they can drive any layer.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -24,7 +14,7 @@ const root = resolve(import.meta.dirname, "..");
 
 const source = join(root, "packages/app/src");
 
-/** Lowest first. See docs/chat-experience/audit/structure.md for what each folder owns. */
+/** Lowest first. */
 const LAYERS = [
   ["contract"],
   ["lib", "data"],
@@ -48,10 +38,7 @@ const LAYERS = [
   ["boot", "web", "app.tsx", "index.ts"],
 ];
 
-/**
- * Files whose type-only imports may reach a higher layer, with the reason. Their value
- * imports still follow the layers.
- */
+/** Type-only imports in these files may reach a higher layer; their value imports may not. */
 const TYPE_REACH = new Map([
   [
     "lib/deferred-entries.ts",
@@ -59,7 +46,6 @@ const TYPE_REACH = new Map([
   ],
 ]);
 
-/** Root files that are not modules of any folder. */
 const UNPLACED = new Set(["vite-env.d.ts"]);
 
 const TEST = /\.(?:test|browser-test)\.tsx?$|\.fixtures?\.ts$|\/fixtures\//;
@@ -77,7 +63,6 @@ const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclud
   .map((path) => join(source, path))
   .filter((path) => existsSync(path));
 
-/** The folder a file of src belongs to: its first segment, or the file itself at the root. */
 function readFolder(file) {
   return relative(source, file).split("/")[0];
 }

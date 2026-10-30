@@ -276,7 +276,6 @@ export function resumeChoices(state: State, sessions: readonly SessionInfo[]): r
     );
 }
 
-/** A listed session's mark and words: its own run while one goes, else the background work it started, else how its run ended when it failed. */
 function sessionStanding(session: SessionInfo): Partial<Pick<Choice, "status" | "mark">> {
   const mark = sessionMark(session);
   const text = taskLabel(mark);

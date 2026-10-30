@@ -313,7 +313,7 @@ export function localFiles(
   };
 }
 
-/** Answers whether a file sits inside the workspace by real paths, so a symlink counts where it points. */
+/** Compares real paths, so a symlink counts where it points. */
 async function findScope(root: string, path: string): Promise<"workspace" | "external"> {
   const inside = relative(await realpath(root), await realpath(path));
 

@@ -111,7 +111,6 @@ function readSeenThrough(state: FoldState, head: HeadName): number | null {
   return mark === null ? null : (state.commits.get(mark)?.at ?? null);
 }
 
-/** The heads as views send them: each head's info with its unread mark and the counts of its background items. */
 function headsFor(state: FoldState): readonly HeadInfo[] {
   const seen = state.seen.get(state.principal) ?? NOTHING_SEEN;
 
@@ -131,7 +130,7 @@ function headsFor(state: FoldState): readonly HeadInfo[] {
   return heads;
 }
 
-/** `info` with `unread` and `background`, the same object for the same values. */
+/** Returns the same object for the same values. */
 function showHead(info: HeadInfo, unread: boolean, background: HeadInfo["background"]): HeadInfo {
   const known = shownHead.get(info) ?? info;
 

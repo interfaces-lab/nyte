@@ -81,10 +81,7 @@ export const BackgroundItemType = Type.Object({
 
 export type BackgroundItem = Decoded<typeof BackgroundItemType>;
 
-/**
- * How a job stands as a background item, the one reading every surface uses: running is working,
- * an exit with code 0 or a stop someone asked for is done, and anything else is a failure.
- */
+/** Every surface reads a job's state through this. A stop someone asked for is done, not failed. */
 export function jobTaskState(state: JobState): BackgroundItem["state"] {
   switch (state.kind) {
     case "running":

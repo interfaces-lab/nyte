@@ -2,7 +2,6 @@ import { isJsonObject } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import type { RewriteStep } from "./migrations.ts";
 
-/** Head rows count background work; a logged `session` event's rows count none. */
 export const headBackground: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-29-head-background",

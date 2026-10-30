@@ -23,17 +23,11 @@ const uiLibraryImports = [
   },
 ];
 
-/** Each concept folder in the app is reached through its index; the files beside it are its internals. */
 const conceptFolderImports = ["chats", "window"].map((folder) => ({
   group: [`**/${folder}/*`, `!**/${folder}/index.ts`],
   message: `Import ${folder}/ through ${folder}/index.ts. Its other files are internal; export what you need from the index.`,
 }));
 
-/**
- * Each desktop process folder may not reach into another's code: main, the
- * utility host, the workers and the preload scripts meet only through `shared/`,
- * which imports none of them.
- */
 const desktopProcessImports = (...folders: readonly string[]) =>
   folders.map((folder) => ({
     regex: `^(\\.\\./)+${folder}/`,

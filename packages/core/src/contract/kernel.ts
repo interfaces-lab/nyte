@@ -211,11 +211,10 @@ interface Handles {
 }
 
 export interface ChildTable {
-  /** Follows the child `record` describes, from `own` when the caller read how its run stands, else from its next run change; a session without a parent is not a child. */
+  /** Takes `own` only while this process knows nothing of the child's run. A session without a parent is ignored. */
   link(record: SessionRecord, own: BackgroundItem["state"] | null): void;
-  /** Follows the child `record` describes with `own`, read from the store after another process committed, over what this process knew: that process's run changes reach this bus only while the child is folded here. A reading a local change overtook is corrected by the next poll. */
+  /** Takes `own`, read from the store, over what this process knew: another process's run changes reach this bus only while the child is folded here. A stale reading is corrected by the next poll. */
   reconcile(record: SessionRecord, own: BackgroundItem["state"] | null): void;
-  /** Stops following a deleted child, removing its item from its parent's background. */
   forget(session: SessionId): void;
   background(
     session: SessionId,

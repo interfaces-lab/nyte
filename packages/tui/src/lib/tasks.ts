@@ -48,7 +48,7 @@ export function statusMark(state: TaskState): StatusMark {
   }
 }
 
-/** A tool line's mark: a stopped or interrupted call is dimmed, not done. */
+/** A stopped or interrupted call is dimmed, not done. */
 export function toneMark(tone: ToolTone): StatusMark {
   switch (tone) {
     case "running":
@@ -73,7 +73,7 @@ function agentExecution(task: Extract<Task, { kind: "agent" }>): Execution | und
   return task.view?.execution ?? task.info.heads.find((head) => head.name === "main")?.execution;
 }
 
-/** A child reads as its chat's row does in every client; its open view's heads win over the listed ones as a unit. */
+/** Matches the child's chat row in every client. The open view's heads replace the listed ones whole, never merged. */
 export function taskStatus(task: Task): TaskState {
   return task.kind === "agent" ? sessionMark(task.view ?? task.info) : jobTaskState(task.job.state);
 }

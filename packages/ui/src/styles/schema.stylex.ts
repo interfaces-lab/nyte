@@ -16,7 +16,6 @@ export const space = defineConsts({
   s8: "calc(var(--nyte-space-unit) * 8)",
 });
 
-/** Glyph steps: an `Icon`'s `size`, and the slot a status mark or spinner sits in. */
 export const glyph = defineConsts({
   "2xs": "var(--nyte-glyph-2xs)",
   xs: "var(--nyte-glyph-xs)",
@@ -50,7 +49,7 @@ export const toast = defineConsts({
   paddingBlock: "var(--nyte-toast-padding-block)",
   inset: "var(--nyte-toast-inset)",
   overhang: "var(--nyte-toast-overhang)",
-  /** The anchor name an app gives the element toasts stack above, such as the active composer. */
+  /** The anchor name an app gives the element toasts stack above. */
   anchor: "--nyte-toast-anchor",
 });
 
