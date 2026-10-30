@@ -172,10 +172,13 @@ async function recallPrompts(editor: HTMLElement): Promise<void> {
     throw new Error(`recall read the history before ${recallReads || "nothing"}`);
 }
 
-/** Ctrl+/ opens the model picker from the composer or from no field, and closing it returns to the composer. */
-async function openModelPicker(region: HTMLElement, editor: HTMLElement): Promise<void> {
+/** Ctrl+/ opens the model picker from the composer or from no field, and closing it returns to the composer, in a chat and on the new-chat screen alike. */
+async function openModelPicker(editor: HTMLElement): Promise<void> {
   const menu = () => document.querySelector("[role='menu']");
-  const trigger = region.querySelector("button[aria-keyshortcuts]");
+
+  const trigger = editor
+    .closest("[data-composer-frame]")
+    ?.querySelector("button[aria-keyshortcuts]");
 
   if (trigger?.getAttribute("aria-keyshortcuts") !== "Control+/")
     throw new Error("the model button does not advertise Ctrl+/");
@@ -263,8 +266,16 @@ export async function run(): Promise<string> {
 
     await until(() => stage.querySelector("[aria-label='Messages'] [data-row-key]"), "the chat");
     await recallPrompts(editor);
-    await openModelPicker(region, editor);
+    await openModelPicker(editor);
     await pasteFromNowhere(editor);
+
+    flushSync(() => panes.newChat());
+    await openModelPicker(
+      await until(
+        () => stage.querySelector<HTMLElement>("[data-placeholder^='Ask Nyte']"),
+        "the new chat's editor",
+      ),
+    );
 
     return "passed";
   } finally {

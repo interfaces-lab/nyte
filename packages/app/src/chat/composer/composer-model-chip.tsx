@@ -10,14 +10,10 @@ export function SessionModelChip({
   sessionId,
   open,
   onOpenChange,
-  finalFocus,
-  keyShortcuts,
 }: {
   sessionId: SessionId;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  finalFocus?: () => HTMLElement | null | undefined;
-  keyShortcuts?: string;
 }): ReactElement | null {
   const catalog = useCatalog(sessionId);
   const choice = useSessionChoice(sessionId);
@@ -64,8 +60,6 @@ export function SessionModelChip({
         disabled={catalog.isError}
         open={open}
         onOpenChange={onOpenChange}
-        finalFocus={finalFocus}
-        keyShortcuts={keyShortcuts}
         onChange={handleChange}
       />
       {catalog.isError && (

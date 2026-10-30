@@ -19,7 +19,6 @@ import { useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
 import { connection } from "../../data/connection.ts";
 import { sessionWatch } from "../../data/watches.ts";
 import { nyte } from "../../contract/nyte.ts";
-import { clientActionAriaShortcut, clientActions } from "../../contract/client-actions.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../../panes/session-view-state.ts";
 import type { ComposerViewState } from "../../panes/session-view-state.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -834,8 +833,6 @@ export function Composer({
                   sessionId={sessionId}
                   open={modelPickerOpen}
                   onOpenChange={setModelPickerOpen}
-                  finalFocus={() => editorRef.current?.readElement()}
-                  keyShortcuts={clientActionAriaShortcut(clientActions.selectModel, mac)}
                 />
               ) : undefined
             }

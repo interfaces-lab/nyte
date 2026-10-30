@@ -9,7 +9,7 @@ import {
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { createContext, use, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -88,6 +88,12 @@ const styles = create({
   optionLabel: { display: "inline-flex", alignItems: "center", gap: space.s2, minWidth: 0 },
 });
 
+/** What a pane's composer gives the picker in its frame: the shortcut that opens it, and the editor focus returns to when it closes. */
+export const ComposerPicker = createContext<
+  | { readonly keyShortcuts: string; readonly editor: () => HTMLElement | null | undefined }
+  | undefined
+>(undefined);
+
 interface ModelPickerProps {
   catalog: DesktopCatalog | undefined;
   current: DesktopModelOption | undefined;
@@ -97,9 +103,6 @@ interface ModelPickerProps {
   loading?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  /** Where focus goes when the picker closes; the trigger by default. */
-  finalFocus?: () => HTMLElement | null | undefined;
-  keyShortcuts?: string;
   onChange: (change: ModelPickerChange) => void;
 }
 
@@ -112,11 +115,10 @@ export function ModelPicker({
   loading = false,
   open: openProp,
   onOpenChange,
-  finalFocus,
-  keyShortcuts,
   onChange,
 }: ModelPickerProps): ReactElement {
   const navigate = useNavigate();
+  const composer = use(ComposerPicker);
   const [ownOpen, setOwnOpen] = useState(false);
   const open = openProp ?? ownOpen;
   const setOpen = onOpenChange ?? setOwnOpen;
@@ -161,7 +163,7 @@ export function ModelPicker({
             size="sm"
             disabled={disabled}
             loading={loading}
-            aria-keyshortcuts={keyShortcuts}
+            aria-keyshortcuts={composer?.keyShortcuts}
             aria-description={
               label.detail === undefined
                 ? `Model: ${label.name}`
@@ -177,7 +179,7 @@ export function ModelPicker({
           </Button>
         }
       />
-      <MenuContent xstyle={styles.palette} finalFocus={finalFocus}>
+      <MenuContent xstyle={styles.palette} finalFocus={composer?.editor}>
         {fastAvailable && (
           <MenuSwitchItem
             layout="plain"
