@@ -44,6 +44,11 @@ The quick brown fox jumps.
 - [ ] Edit in place
 
 See [the guide](guide.md).
+
+\`\`\`mermaid
+graph LR
+  Draft --> Ship
+\`\`\`
 `;
 
 test("the workbench journey", async ({ desktop }) => {
@@ -109,6 +114,9 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(editor.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
     await expect(files.getByRole("definition")).toHaveText(["Field notes", "[e2e, markdown]"]);
     await expect(editor.getByRole("checkbox")).toHaveCount(2);
+    const diagram = editor.getByRole("figure", { name: "Mermaid diagram" }).locator("svg");
+    await expect(diagram).toBeVisible();
+    await expect(diagram).toContainText("Ship");
 
     const paragraph = editor.getByRole("paragraph").filter({ hasText: "The quick brown fox" });
     const box = await paragraph.boundingBox();

@@ -42,6 +42,11 @@ export function greet(name: string): string {
 }
 \`\`\`
 
+\`\`\`mermaid
+graph LR
+  Draft --> Review --> Ship
+\`\`\`
+
 ## Table
 
 | Column | Value |
