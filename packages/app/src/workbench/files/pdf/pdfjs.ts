@@ -24,13 +24,47 @@ export interface PdfReader {
   ) => Promise<PdfFile>;
 }
 
-/** The worker starts with the first open. */
+/** The worker starts with the first open. Once it fails, every queued and later task rejects. */
 export function createPdfReader(workerUrl: URL): PdfReader {
   let worker: PDFWorker | undefined;
+  let failure: Error | undefined;
+  const running = new Set<(error: Error) => void>();
   let tail: Promise<unknown> = Promise.resolve();
 
+  const start = (): PDFWorker => {
+    if (worker !== undefined) return worker;
+    const port = new Worker(workerUrl, { type: "module", name: "pdf.js" });
+
+    port.addEventListener("error", (event) => {
+      failure = new Error(
+        event instanceof ErrorEvent && event.message !== ""
+          ? event.message
+          : "The PDF reader could not start.",
+      );
+
+      for (const reject of running) reject(failure);
+    });
+    worker = PDFWorker.create({ port });
+
+    return worker;
+  };
+
   const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
-    const run = tail.then(task);
+    const run = tail.then(
+      () =>
+        new Promise<T>((resolve, reject) => {
+          if (failure !== undefined) {
+            reject(failure);
+
+            return;
+          }
+
+          const pending = task();
+          running.add(reject);
+          void pending.then(resolve, reject).finally(() => running.delete(reject));
+        }),
+    );
+
     tail = Promise.allSettled([run]);
 
     return run;
@@ -38,15 +72,21 @@ export function createPdfReader(workerUrl: URL): PdfReader {
 
   return {
     open: async (data, hold) => {
-      const port = (worker ??= PDFWorker.create({
-        port: new Worker(workerUrl, { type: "module", name: "pdf.js" }),
-      }));
+      const document = await enqueue(async () => {
+        const task = getDocument({
+          data,
+          worker: start(),
+          isEvalSupported: false,
+          disableAutoFetch: true,
+        });
 
-      const document = await enqueue(
-        () =>
-          getDocument({ data, worker: port, isEvalSupported: false, disableAutoFetch: true })
-            .promise,
-      );
+        const [opened] = await Promise.allSettled([task.promise]);
+
+        if (opened.status === "fulfilled") return opened.value;
+        await task.destroy();
+
+        throw opened.reason;
+      });
 
       hold(() => void enqueue(() => document.destroy()));
 
