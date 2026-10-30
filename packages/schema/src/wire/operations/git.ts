@@ -86,6 +86,16 @@ export const GIT_OPERATIONS = {
     }),
     output: GitOutcomeSchema,
   },
+  "git.checkout": {
+    ...WRITE,
+    kind: "command",
+    input: wireObject({
+      ...WORKSPACE,
+      input: Type.Object({ name: Type.String() }),
+      options: Type.Optional(GitWriteType),
+    }),
+    output: GitOutcomeSchema,
+  },
   "git.push": {
     ...WRITE,
     kind: "command",

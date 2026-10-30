@@ -102,6 +102,7 @@ const git: GitApi = {
   discard: refuse,
   commit: refuse,
   branch: refuse,
+  checkout: refuse,
   push: async () => {
     pushes.push(Date.now());
 

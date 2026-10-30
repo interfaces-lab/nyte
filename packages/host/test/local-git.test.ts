@@ -423,7 +423,7 @@ describe.skipIf(!hasGit)("localGit", () => {
     expect(await git.stage(["missing.txt"])).toMatchObject({ kind: "rejected" });
   });
 
-  it("branches, pushes to a remote with an upstream, and answers busy while the index is locked", async () => {
+  it("branches, checks out a branch or relays git's refusal, pushes to a remote with an upstream, and answers busy while the index is locked", async () => {
     const { root, git } = await repository();
     const remote = await folder();
     sh(remote, "init", "-q", "--bare");
@@ -439,7 +439,19 @@ describe.skipIf(!hasGit)("localGit", () => {
     expect((await repo(git)).upstream).toEqual({ name: "origin/work", ahead: 0, behind: 0 });
     expect(await git.push()).toEqual({ kind: "unchanged" });
 
+    await writeFile(join(root, "a.txt"), "changed on work\n");
+    sh(root, "commit", "-q", "-am", "work");
+    expect(await git.checkout({ name: "main" })).toMatchObject({ kind: "applied" });
+    expect((await repo(git)).branch).toBe("main");
+    await writeFile(join(root, "a.txt"), "local edit\n");
+    expect(await git.checkout({ name: "work" })).toMatchObject({
+      kind: "rejected",
+      reason: expect.stringContaining("would be overwritten by checkout"),
+    });
+    expect((await repo(git)).branch).toBe("main");
+
     await writeFile(join(root, ".git", "index.lock"), "");
+    expect(await git.checkout({ name: "topic" })).toEqual({ kind: "busy", runs: [] });
     expect(await git.stage(["a.txt"])).toEqual({ kind: "busy", runs: [] });
     expect(await git.commit({ message: "x", files: "all" })).toEqual({ kind: "busy", runs: [] });
     expect(await git.branch({ name: "free", checkout: false })).toMatchObject({ kind: "applied" });

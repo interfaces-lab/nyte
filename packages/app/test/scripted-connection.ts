@@ -220,6 +220,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     discard: refuse,
     commit: refuse,
     branch: refuse,
+    checkout: refuse,
     push: refuse,
     ...script.git,
   };

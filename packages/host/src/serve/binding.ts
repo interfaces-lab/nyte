@@ -484,6 +484,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await git(id)).commit(input, options),
     "git.branch": async ({ workspace: id, input, options }) =>
       (await git(id)).branch(input, options),
+    "git.checkout": async ({ workspace: id, input, options }) =>
+      (await git(id)).checkout(input, options),
     "git.push": async ({ workspace: id, input, options }) => (await git(id)).push(input, options),
 
     "github.account": () => connection.github.account(),
