@@ -51,11 +51,47 @@ graph LR
 \`\`\`
 `;
 
+/** A PDF of letter pages, each with its line of text in Helvetica. */
+function samplePdf(lines: readonly string[]): Buffer {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${lines.map((_, index) => `${4 + index * 2} 0 R`).join(" ")}] /Count ${lines.length} >>`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ...lines.flatMap((line, index) => {
+      const content = `BT /F1 48 Tf 72 680 Td (${line}) Tj ET`;
+
+      return [
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${5 + index * 2} 0 R >>`,
+        `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+      ];
+    }),
+  ];
+
+  const parts = ["%PDF-1.4\n"];
+  const offsets: number[] = [];
+
+  for (const [index, object] of objects.entries()) {
+    offsets.push(parts.join("").length);
+    parts.push(`${index + 1} 0 obj\n${object}\nendobj\n`);
+  }
+
+  const xref = parts.join("").length;
+  const entries = offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`);
+
+  parts.push(
+    `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${entries.join("")}`,
+    `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`,
+  );
+
+  return Buffer.from(parts.join(""), "latin1");
+}
+
 test("the workbench journey", async ({ desktop }) => {
   const { page } = desktop;
   const notesPath = join(desktop.home, "notes.md");
   await writeFile(notesPath, NOTES);
   await writeFile(join(desktop.home, "guide.md"), "# Guide\n");
+  await writeFile(join(desktop.home, "field-guide.pdf"), samplePdf(["First", "Second", "Third"]));
 
   await test.step("the rail opens into a panel with an empty tab strip", async () => {
     await openChat(page, FIXTURES.beta);
@@ -150,6 +186,36 @@ test("the workbench journey", async ({ desktop }) => {
     const tabs = workbenchTabs(page);
     await closeTab(tabs, tabs.getByRole("tab", { name: "guide.md" }));
     await closeTab(tabs, tabs.getByRole("tab", { name: "notes.md" }));
+  });
+
+  await test.step("a PDF opens with its first page drawn, its page count and a zoom control", async () => {
+    const files = workbench(page).getByRole("region", { name: "Files" });
+    await files.getByRole("treeitem", { name: /field-guide\.pdf/u }).click();
+    const document = files.getByRole("region", { name: "field-guide.pdf" });
+    await expect(document.getByRole("img")).toHaveCount(3);
+    await expect(files.getByText("Page 1 of 3")).toBeVisible();
+
+    const canvas = document.getByRole("img", { name: "Page 1", exact: true }).locator("canvas");
+
+    await expect
+      .poll(() =>
+        canvas.evaluate((element) => {
+          if (!(element instanceof HTMLCanvasElement)) return false;
+
+          const pixels = element
+            .getContext("2d")
+            ?.getImageData(0, 0, element.width, element.height);
+
+          return pixels?.data.some((channel) => channel < 128) ?? false;
+        }),
+      )
+      .toBe(true);
+
+    await files.getByRole("button", { name: "Zoom in" }).click();
+    await expect(files.getByText("125%")).toBeVisible();
+
+    const tabs = workbenchTabs(page);
+    await closeTab(tabs, tabs.getByRole("tab", { name: "field-guide.pdf" }));
   });
 
   await test.step("Changes reports that the home folder is not a repository", async () => {
