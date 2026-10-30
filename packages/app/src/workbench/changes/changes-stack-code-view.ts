@@ -137,8 +137,7 @@ export function createChangesCodeViewItems() {
         continue;
       }
 
-      const contents =
-        source.kind === "diff" ? source.patch : source.kind === "raw" ? source.text : "";
+      const contents = source.kind === "diff" ? source.patch : "";
 
       const notice = source.kind === "notice" ? source.text : undefined;
       const nativeCollapsed = pathCollapsed;

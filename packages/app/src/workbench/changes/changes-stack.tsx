@@ -104,7 +104,14 @@ const styles = create({
   },
 });
 
-const STACK_CSS = `${PIERRE_TOKEN_CSS}${DIFF_SEPARATOR_CSS}`;
+/** A notice is an empty file with its words above the first line; that line is not shown. */
+const NOTICE_CSS = `
+[data-code]:has([data-line-annotation="-1,-1"]) :is([data-column-number], [data-line]) {
+  display: none;
+}
+`;
+
+const STACK_CSS = `${PIERRE_TOKEN_CSS}${DIFF_SEPARATOR_CSS}${NOTICE_CSS}`;
 
 const SCROLL_SETTLE_MS = 150;
 
