@@ -32,7 +32,7 @@ import { useRenameSession, useWorkspaceSessions } from "../data/sessions.ts";
 import { useSessionActions } from "../data/session-actions.ts";
 import { localSessions } from "../data/session-list.ts";
 import { chatFolderPath, useChats } from "../chats/index.ts";
-import { chatWindow, useChatWindow } from "../window/index.ts";
+import { chatWindow, unreadOnHost, useChatWindow } from "../window/index.ts";
 import { closeSettings, type SettingsSection } from "../settings/index.ts";
 import type { OpenIntent } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -211,7 +211,7 @@ export function Sidebar(): ReactElement {
             shelf:
               listedWhenBlank?.has(paneSession.id) === false
                 ? "inbox"
-                : deriveShelf(paneSession, chats, unread, undefined),
+                : deriveShelf(paneSession, chats, unreadOnHost(chats), undefined),
           },
     );
 
