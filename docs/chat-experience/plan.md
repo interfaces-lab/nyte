@@ -109,7 +109,7 @@ Status: `todo`, `doing`, `done`, `deferred`.
 | ID | Item | Proven by | Status |
 | --- | --- | --- | --- |
 | F1 | One preview slot per window: a plain sidebar click opens the chat in an italic preview tab that the next plain click replaces | tabs model tests; navigation e2e | done |
-| F2 | A preview becomes permanent on double-click, sending a message, dragging, splitting, or "Keep Open" | tabs model tests | partly: sending a message doesn't keep the preview yet (composer hook) |
+| F2 | A preview becomes permanent on double-click, sending a message, dragging, splitting, or "Keep Open" | tabs model tests; `chat/composer/preview-send.test.ts` | done |
 | F3 | Opening a subagent opens a preview tab next to its parent instead of replacing the parent | navigation or subagents e2e | done |
 | F4 | Previews are dropped on restart and a replaced preview isn't offered by reopen-closed-tab | tabs model tests | done |
 | F5 | Tabs size to their content up to 280 px; the strip fades at its edges | tab strip test | done |

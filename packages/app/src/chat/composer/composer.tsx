@@ -43,6 +43,7 @@ import { preferences, useSetting } from "../../preferences/index.ts";
 import { TaskMark } from "../../components/task-mark.tsx";
 import { workbenchViewKey } from "../../workbench/paths.ts";
 import { workbench } from "../../workbench/store.ts";
+import { windowTabs } from "../../tabs/window-tabs.ts";
 import { composerStyles } from "./composer.stylex.ts";
 import { markerStyles } from "../transcript/activity.stylex.ts";
 import {
@@ -397,6 +398,7 @@ export function Composer({
   ): Promise<void> => {
     if (attachmentReads !== 0) return;
     const sentAttachments = attachments;
+    const submittingTab = windowTabs.paneTabId();
 
     const outcome = await deliverSubmission({
       sessionId,
@@ -404,6 +406,7 @@ export function Composer({
       attachments: sentAttachments,
       delivery,
       onLeave: () => {
+        windowTabs.dispatch({ kind: "keep-tab", tabId: submittingTab });
         recalled.current = undefined;
         updateViewState((current) => ({
           ...current,
