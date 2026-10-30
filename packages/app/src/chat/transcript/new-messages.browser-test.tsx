@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import type { Message, ModelCatalogView, SessionView } from "@nyte-ai/sdk";
+import type { HeadInfo, Message, ModelCatalogView, SessionView } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import type { HostState } from "../../contract/nyte.ts";
@@ -18,6 +18,7 @@ import { windowTabs } from "../../tabs/window-tabs.ts";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
 import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
+import type { ViewStream } from "../../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../../test/view-fixtures.ts";
 
 const ID = asId<"session">("new-messages");
@@ -102,10 +103,64 @@ function view(count: number, last?: string): SessionView {
 
 const stream = viewStream(view(TURNS));
 
+const COLD = asId<"session">("cold-open");
+
+let coldSeen = false;
+
+/** The cold chat's main head: its tip is the last reply, unread until the chat is seen. */
+function coldHead(): HeadInfo {
+  return {
+    name: asId<"head">("main"),
+    tip: { kind: "commit", id: asId<"commit">(`answer-${String(TURNS)}`) },
+    stack: null,
+    execution: COMPLETED,
+    unread: !coldSeen,
+    background: { working: 0, waiting: 0 },
+  };
+}
+
+/** The cold chat as the host folds it: once seen, its read mark is past every reply. */
+function coldView(): SessionView {
+  return {
+    ...view(TURNS),
+    seenThrough: coldSeen ? TURNS * 10 + 5 : SEEN_THROUGH,
+    heads: [coldHead()],
+  };
+}
+
+const coldFrames = viewStream(coldView());
+
+const coldOpened = Promise.withResolvers<void>();
+
+/** The cold chat's view sends nothing until the test lets its first frame through. */
+const coldStream: ViewStream = {
+  latest: coldFrames.latest,
+  push: coldFrames.push,
+  watch: async function* () {
+    await coldOpened.promise;
+    yield* coldFrames.watch();
+  },
+};
+
 installConnection(
   scriptedConnection({
-    sessions: [sessionRow("new-messages", { name: "New messages" })],
-    views: new Map([[ID, stream]]),
+    sessions: [
+      sessionRow("new-messages", { name: "New messages" }),
+      sessionRow("cold-open", { name: "Cold open", heads: [coldHead()] }),
+    ],
+    views: new Map([
+      [ID, stream],
+      [COLD, coldStream],
+    ]),
+    session: (id) =>
+      id === COLD
+        ? {
+            see: async () => {
+              coldSeen = true;
+              coldFrames.push(coldView());
+            },
+          }
+        : {},
   }).connection,
 );
 
@@ -312,6 +367,24 @@ export async function run(): Promise<string> {
     check(
       Math.abs(viewport.scrollTop - held) <= 1 && distance() > 4,
       "a reader's 2 px upward wheel stops following",
+    );
+
+    panes.selectSession(COLD);
+    await frames(10);
+    check(!coldSeen, "an unread chat isn't marked read before its view arrives");
+    coldOpened.resolve();
+    await until(() => coldSeen, "the cold chat to be marked read");
+    await frames(10);
+    check(
+      pill("up")?.textContent === "3 New Messages",
+      `a cold open keeps its up pill once marked read: ${String(pill("up")?.textContent)}`,
+    );
+    pill("up")?.querySelector("button")?.click();
+    await frames(5);
+    check(
+      container.querySelector("[data-row-key='unread-divider:answer-38'] [data-unread-divider]") !==
+        null,
+      "a cold open keeps its divider once marked read",
     );
 
     return failures.length === 0 ? "passed" : failures.join("\n");
