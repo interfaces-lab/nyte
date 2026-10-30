@@ -5,10 +5,9 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
 import { Button } from "@nyte-ai/ui/button";
 import { keys } from "../../data/query-client.ts";
+import { loadDeferred } from "../../lib/deferred.tsx";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { CodeBlock } from "./code-block.tsx";
 import type { DiagramResult } from "./mermaid-render.ts";
@@ -55,55 +54,31 @@ const styles = create({
 
 type DiagramState = DiagramResult | { readonly kind: "pending" };
 
-const renderResponse = Type.Object({
-  id: Type.String(),
-  result: Type.Union([
-    Type.Object({ kind: Type.Literal("diagram"), svg: Type.String() }),
-    Type.Object({ kind: Type.Literal("source") }),
-  ]),
-});
-
-export function renderMermaid(source: string, signal: AbortSignal): Promise<DiagramResult> {
-  if (signal.aborted) return Promise.resolve({ kind: "source" });
-
-  return new Promise((resolve) => {
-    const worker = new Worker(new URL("./mermaid-worker.ts", import.meta.url), { type: "module" });
-    let finished = false;
-
-    const settle = (result: DiagramResult): void => {
-      if (finished) return;
-      finished = true;
-      signal.removeEventListener("abort", cancel);
-      worker.terminate();
-      resolve(result);
-    };
-
-    const cancel = (): void => settle({ kind: "source" });
-    worker.addEventListener("message", (event: MessageEvent<unknown>) => {
-      if (Value.Check(renderResponse, event.data)) settle(event.data.result);
-    });
-    worker.addEventListener("error", cancel, { once: true });
-    worker.addEventListener("messageerror", cancel, { once: true });
-    signal.addEventListener("abort", cancel, { once: true });
-
-    try {
-      worker.postMessage({ id: "render", source });
-    } catch {
-      cancel();
-    }
+/**
+ * beautiful-mermaid's ELK layout runs only on the main thread: in a worker it takes itself for
+ * ELK's own worker script. Each diagram waits for a task of its own, so a chat full of them
+ * doesn't lay out in one long task.
+ */
+async function renderMermaid(source: string): Promise<DiagramResult> {
+  const runtime = await loadDeferred("mermaid");
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve);
   });
+
+  return runtime.renderDiagram(source);
 }
 
 export function MermaidDiagram({ source }: { readonly source: string }): ReactElement {
   const render = useQuery({
     queryKey: keys.mermaid(source),
-    queryFn: ({ signal }) => renderMermaid(source, signal),
+    queryFn: () => renderMermaid(source),
   });
 
   const [sourceVisible, setSourceVisible] = useState(false);
   const rendered: DiagramState = render.data ?? { kind: "pending" };
 
-  if (rendered.kind === "source") return <CodeBlock code={source} lang="mermaid" />;
+  if (render.isError || rendered.kind === "source")
+    return <CodeBlock code={source} lang="mermaid" />;
 
   return (
     <figure aria-label="Mermaid diagram" {...props(styles.figure)}>

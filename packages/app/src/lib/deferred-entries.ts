@@ -1,6 +1,7 @@
 import type { chartsRuntime } from "../settings/usage-charts.deferred.ts";
 import type { codeRuntime } from "../chat/markdown/code.deferred.tsx";
 import type { highlightRuntime } from "../chat/markdown/highlight.deferred.ts";
+import type { mermaidRuntime } from "../chat/markdown/mermaid.deferred.ts";
 import type { ghosttyRuntime } from "../workbench/terminal/ghostty.deferred.ts";
 import type { workbenchRuntime } from "../workbench/panels.deferred.tsx";
 
@@ -12,6 +13,10 @@ export const deferredEntries = {
   highlight: {
     module: new URL("../chat/markdown/highlight.deferred.ts", import.meta.url).href,
     packages: ["@pierre/highlights/"],
+  },
+  mermaid: {
+    module: new URL("../chat/markdown/mermaid.deferred.ts", import.meta.url).href,
+    packages: ["beautiful-mermaid/", "elkjs/"],
   },
   workbench: {
     module: new URL("../workbench/panels.deferred.tsx", import.meta.url).href,
@@ -30,6 +35,7 @@ export const deferredEntries = {
 export interface DeferredRuntimes {
   code: typeof codeRuntime;
   highlight: typeof highlightRuntime;
+  mermaid: typeof mermaidRuntime;
   workbench: typeof workbenchRuntime;
   ghostty: typeof ghosttyRuntime;
   charts: typeof chartsRuntime;
