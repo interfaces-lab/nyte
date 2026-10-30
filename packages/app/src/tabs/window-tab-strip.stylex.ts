@@ -38,9 +38,10 @@ export const stripStyles = create({
     animationTimingFunction: "linear",
     animationFillMode: "both",
   },
+  /** Tabs keep their title's width up to the cap and the strip scrolls, as Cursor's does, so no title shrinks to a few letters. */
   slot: {
     display: "flex",
-    flex: "0 1 auto",
+    flex: "none",
     minWidth: tab.minWidth,
     maxWidth: tab.maxWidth,
     WebkitAppRegion: "no-drag",
