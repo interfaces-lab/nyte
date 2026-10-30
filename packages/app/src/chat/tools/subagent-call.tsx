@@ -6,7 +6,6 @@ import type { MessageSource, SessionId, ToolClass, UserContent } from "@nyte-ai/
 import {
   agentGroupSummary,
   callTaskState,
-  rowMark,
   taskEnded,
   taskLabel,
   toolNoun,
@@ -549,7 +548,7 @@ export function SubagentCitation({
   const chat = found.kind === "ready" ? found.chat : undefined;
   const title = childTitle(chat);
   const name = label === "" || label === session ? title : label;
-  const state = chat === undefined ? "done" : rowMark(chat.status, chat.background);
+  const state = chat?.mark ?? "done";
 
   const link = (
     <a

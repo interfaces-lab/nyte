@@ -96,6 +96,21 @@ test("a chat reads as its own run ended whatever its subagents do, and carries i
     background: { working: 0, waiting: 1 },
   });
   expect(chats.get(leaf.id)?.status.kind).toBe("working");
+
+  expect(
+    [...chats.values()].map((chat) => chat.mark),
+    "each chat carries the one mark every surface draws",
+  ).toEqual(["failed", "waiting", "working"]);
+  expect(
+    chatsFor([sessionRow("busy", { heads: heads(COMPLETED, false, { working: 1, waiting: 0 }) })])
+      .values()
+      .next().value?.mark,
+  ).toBe("background");
+  expect(
+    chatsFor([sessionRow("headless", { heads: [] })])
+      .values()
+      .next().value?.mark,
+  ).toBe("done");
 });
 
 test("a chat carries its main head's tip past the read mark, whatever its run did; deciding unread is the window's", () => {

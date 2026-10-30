@@ -1,6 +1,5 @@
 import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
-import { rowMark } from "@nyte-ai/plugin/client/presentation";
 import { Icon } from "@nyte-ai/ui/icon";
 import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
@@ -150,10 +149,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
 
     const glyph =
       place.kind === "session" ? (
-        <TaskMark
-          state={chat === undefined ? "done" : rowMark(chat.status, chat.background)}
-          unread={tabUnread}
-        />
+        <TaskMark state={chat?.mark ?? "done"} unread={tabUnread} />
       ) : (
         <Icon
           name={

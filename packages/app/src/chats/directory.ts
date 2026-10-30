@@ -1,5 +1,10 @@
-import { mainHead, runStatus, sessionTitle } from "@nyte-ai/plugin/client/presentation";
-import type { BackgroundWork, RunStatus } from "@nyte-ai/plugin/client/presentation";
+import {
+  mainHead,
+  runStatus,
+  sessionMark,
+  sessionTitle,
+} from "@nyte-ai/plugin/client/presentation";
+import type { BackgroundWork, RunStatus, TaskState } from "@nyte-ai/plugin/client/presentation";
 import type {
   CommitId,
   HeadName,
@@ -38,6 +43,8 @@ export interface Chat {
   readonly status: RunStatus;
   /** The main head's background items that are working, and those waiting on the user. */
   readonly background: BackgroundWork;
+  /** The state every surface draws for the chat, from its own run and its background work. */
+  readonly mark: TaskState;
   /** The main head's tip while it is past the read mark; null once read. */
   readonly unreadTip: UnreadTip | null;
 }
@@ -69,6 +76,7 @@ export function describeChats(
         location: workspaces === undefined ? LOADING : locate(session.workspace, workspaces),
         status: runStatus(head?.execution),
         background: head?.background ?? NO_BACKGROUND,
+        mark: sessionMark(session),
         unreadTip:
           head?.unread === true && head.tip.kind === "commit"
             ? { head: head.name, commit: head.tip.id }
