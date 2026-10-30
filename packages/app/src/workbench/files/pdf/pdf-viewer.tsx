@@ -6,7 +6,7 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { control, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { createPdfPages } from "./pdf-pages.ts";
-import type { PdfFile } from "./pdfjs.ts";
+import type { PageSize, PdfFile } from "./pdfjs.ts";
 
 const MIN_ZOOM = 0.5;
 
@@ -72,9 +72,30 @@ function shortcutZoom(event: KeyboardEvent, zoom: number): number | undefined {
 
 export function PdfViewer(input: { readonly file: PdfFile; readonly label: string }): ReactElement {
   const [current, setCurrent] = useState(1);
-  const [attach] = useState(() => createPdfPages(input.file, setCurrent));
+  const [sizes, setSizes] = useState<ReadonlyMap<number, PageSize>>(new Map());
+
+  const [attach] = useState(() =>
+    createPdfPages(input.file, {
+      onPage: setCurrent,
+      onSize: (page, size) =>
+        setSizes((known) => {
+          const previous = known.get(page);
+
+          return previous?.width === size.width && previous.height === size.height
+            ? known
+            : new Map(known).set(page, size);
+        }),
+    }),
+  );
+
   const [zoom, setZoom] = useState(1);
-  const widest = input.file.pages.reduce((width, page) => Math.max(width, page.width), 0);
+
+  const pages = Array.from(
+    { length: input.file.document.numPages },
+    (_, index) => sizes.get(index + 1) ?? input.file.firstPage,
+  );
+
+  const widest = pages.reduce((width, page) => Math.max(width, page.width), 0);
 
   return (
     <div
@@ -96,11 +117,11 @@ export function PdfViewer(input: { readonly file: PdfFile; readonly label: strin
         {...props(styles.viewport, focus.ringInset)}
       >
         <div {...props(styles.column(`${zoom * 100}%`))}>
-          {input.file.pages.map((page) => (
+          {pages.map((page, index) => (
             <div
-              key={page.number}
+              key={index}
               role="img"
-              aria-label={`Page ${page.number}`}
+              aria-label={`Page ${index + 1}`}
               {...props(
                 styles.page(`${(page.width / widest) * 100}%`, `${page.width} / ${page.height}`),
               )}
@@ -110,7 +131,7 @@ export function PdfViewer(input: { readonly file: PdfFile; readonly label: strin
       </div>
       <div {...props(styles.status)}>
         <span {...props(styles.position)}>
-          Page {current} of {input.file.pages.length}
+          Page {current} of {pages.length}
         </span>
         <Button
           iconOnly

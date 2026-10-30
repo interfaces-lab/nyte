@@ -7,7 +7,7 @@ declare global {
   }
 }
 
-function check(condition: boolean, message: string): void {
+function check(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
@@ -44,9 +44,25 @@ async function failedOpenLeavesTheQueueMoving(): Promise<void> {
   );
 }
 
+async function opensWithoutReadingLaterPages(): Promise<void> {
+  const reader = createPdfReader(new URL(window.pdfWorker));
+  const data = samplePdf([{ size: [300, 400] }, {}, { broken: true }]);
+  const file = await within(5000, Promise.allSettled([reader.open(data, () => {})]));
+
+  check(
+    file !== "timed out" && file[0].status === "fulfilled",
+    "A PDF with an unreadable third page did not open",
+  );
+  check(
+    file[0].value.document.numPages === 3 && file[0].value.firstPage.width === 300,
+    "The PDF opened with the wrong page count or first page",
+  );
+}
+
 export async function run(): Promise<string> {
   await workerThatFailsToLoad();
   await failedOpenLeavesTheQueueMoving();
+  await opensWithoutReadingLaterPages();
 
   return "passed";
 }

@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
-import type { PDFPageProxy, PageViewport } from "pdfjs-dist";
-import type { PdfFile } from "./pdfjs.ts";
+import type { PDFPageProxy } from "pdfjs-dist";
+import type { PageSize, PdfFile } from "./pdfjs.ts";
 
 /** A page within half a viewport of the visible area is drawn; one within one and a half keeps the canvas it has; any other gives its canvas up. */
 const RENDER_MARGIN = "50% 0px";
@@ -42,11 +42,15 @@ interface Anchor {
 /** A ref callback with a cleanup, which React never calls with null; its type still admits null. */
 type Attach = (element: HTMLElement | null) => (() => void) | undefined;
 
-/**
- * The scroll container's first child must be the page column, its children the pages in order.
- * `onPage` hears the current page, from 1, after each scroll.
- */
-export function createPdfPages(file: PdfFile, onPage: (page: number) => void): Attach {
+export interface PageEvents {
+  /** The current page, from 1, after each scroll. */
+  readonly onPage: (page: number) => void;
+  /** A page's size, each time it loads to be drawn. */
+  readonly onSize: (page: number, size: PageSize) => void;
+}
+
+/** The scroll container's first child must be the page column, its children the pages in order. */
+export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
   const byElement = new Map<Element, PageState>();
   let viewport: HTMLElement | undefined;
   let anchor: Anchor | undefined;
@@ -63,7 +67,9 @@ export function createPdfPages(file: PdfFile, onPage: (page: number) => void): A
     if (state.demand !== "render" || viewport === undefined) return;
     const page = await file.document.getPage(state.number);
     state.page = page;
-    const scale = rasterScale(page.getViewport({ scale: 1 }), state.element.clientWidth, viewport);
+    const size = page.getViewport({ scale: 1 });
+    events.onSize(state.number, { width: size.width, height: size.height });
+    const scale = rasterScale(size, state.element.clientWidth, viewport);
 
     if (scale === state.scale) return;
     const pixels = page.getViewport({ scale });
@@ -159,7 +165,7 @@ export function createPdfPages(file: PdfFile, onPage: (page: number) => void): A
     const scroll = (): void => {
       if (element.clientHeight === 0) return;
       anchor = anchorAt(states, element);
-      onPage(currentPage(states, element) + 1);
+      events.onPage(currentPage(states, element) + 1);
     };
 
     element.addEventListener("scroll", scroll, { passive: true });
@@ -252,7 +258,7 @@ function restore(
 }
 
 /** Device pixels per PDF unit. */
-function rasterScale(size: PageViewport, width: number, viewport: HTMLElement): number {
+function rasterScale(size: PageSize, width: number, viewport: HTMLElement): number {
   const density = window.devicePixelRatio;
 
   const budget = Math.min(
