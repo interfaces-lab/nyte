@@ -21,7 +21,7 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { chatTitle, useChat } from "../chats/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { button, glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
@@ -86,7 +86,7 @@ const styles = create({
     alignItems: "center",
     flexShrink: 0,
     maxWidth: 200,
-    height: button.heightSm,
+    height: control.heightSm,
     minHeight: target.min,
     WebkitAppRegion: "no-drag",
     borderRadius: radius.control,

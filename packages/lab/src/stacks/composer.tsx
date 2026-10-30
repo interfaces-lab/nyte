@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
-import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -63,7 +63,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: space.s2,
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingInline: space.s2,
     borderRadius: radius.control,
     color: role.contentPrimary,

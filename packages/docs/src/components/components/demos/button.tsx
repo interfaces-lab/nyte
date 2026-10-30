@@ -13,6 +13,9 @@ export function ButtonVariantsDemo() {
         Danger
       </Button>
       <Button variant="plain">Plain</Button>
+      <Button variant="quiet" size="xs">
+        Quiet
+      </Button>
       <Button variant="text">Text</Button>
     </>
   );

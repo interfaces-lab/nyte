@@ -7,7 +7,7 @@ import { editPatch } from "./edit-patch.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
-import { button, glyph, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, glyph, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -163,7 +163,7 @@ const styles = create({
     display: "flex",
     alignItems: "flex-end",
     justifyContent: "center",
-    height: button.heightXs,
+    height: control.heightXs,
     paddingBottom: space.px,
     backgroundImage: `linear-gradient(to bottom, transparent 0%, ${role.bgBase} 100%)`,
     color: {

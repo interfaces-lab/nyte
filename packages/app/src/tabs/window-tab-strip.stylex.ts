@@ -1,4 +1,4 @@
-import { button, glyph, media, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, control, glyph, media, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { tab } from "../theme/schema.stylex.ts";
@@ -56,7 +56,7 @@ export const stripStyles = create({
     alignItems: "center",
     flex: 1,
     minWidth: 0,
-    height: button.heightMd,
+    height: control.heightMd,
     borderRadius: button.radiusMd,
     backgroundColor: {
       default: "transparent",

@@ -3,7 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { Icon } from "@nyte-ai/ui/icon";
-import { avatar, button, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { avatar, control, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -64,7 +64,7 @@ const styles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: space.s1_5,
-    height: button.heightSm,
+    height: control.heightSm,
     paddingInline: space.s2,
     borderRadius: radius.control,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,

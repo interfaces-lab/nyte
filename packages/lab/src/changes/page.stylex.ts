@@ -1,5 +1,5 @@
 import { create, when } from "@stylexjs/stylex";
-import { button, glyph, input, radius, row } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, glyph, radius, row } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const styles = create({
@@ -62,7 +62,7 @@ export const styles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    height: button.heightMd,
+    height: control.heightMd,
     paddingInline: 8,
     borderStyle: "none",
     borderRadius: radius.pill,
@@ -108,7 +108,7 @@ export const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 6,
-    minHeight: input.heightLg,
+    minHeight: control.heightLg,
     paddingInline: "10px 4px",
     borderRadius: radius.control,
     backgroundColor: role.bgElevated,
@@ -131,7 +131,7 @@ export const styles = create({
   },
   split: { display: "flex", gap: 1 },
   primary: {
-    height: button.heightLg,
+    height: control.heightLg,
     borderStyle: "none",
     backgroundColor: {
       default: role.buttonFill,
@@ -151,7 +151,7 @@ export const styles = create({
   primaryMenu: {
     display: "grid",
     placeItems: "center",
-    width: button.heightLg,
+    width: control.heightLg,
     borderStartEndRadius: radius.control,
     borderEndEndRadius: radius.control,
   },
@@ -161,7 +161,7 @@ export const styles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 2,
-    height: button.heightSm,
+    height: control.heightSm,
     paddingInline: 6,
     borderStyle: "none",
     borderRadius: radius.indicator,
@@ -174,8 +174,8 @@ export const styles = create({
   send: {
     display: "grid",
     placeItems: "center",
-    width: button.heightSm,
-    height: button.heightSm,
+    width: control.heightSm,
+    height: control.heightSm,
     borderStyle: "none",
     borderRadius: radius.pill,
     backgroundColor: role.bgMuted,
@@ -337,7 +337,7 @@ export const styles = create({
   },
   segment: {
     flex: 1,
-    height: button.heightSm,
+    height: control.heightSm,
     borderStyle: "none",
     borderRadius: radius.indicator,
     backgroundColor: "transparent",
@@ -392,7 +392,7 @@ export const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 8,
-    height: button.heightLg,
+    height: control.heightLg,
     paddingInline: 10,
     borderStyle: "none",
     borderRadius: radius.control,
@@ -465,7 +465,7 @@ export const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 6,
-    height: button.heightXl,
+    height: control.heightXl,
     paddingInline: "12px 6px",
     flexShrink: 0,
   },

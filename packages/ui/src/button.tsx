@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
-import { button, media, radius, space, target } from "./styles/schema.stylex.ts";
+import { button, control, media, radius, space, target } from "./styles/schema.stylex.ts";
 import {
   mergeStyleProps,
   type StateStyledProps,
@@ -25,7 +25,7 @@ import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts"
 import { ControlGlyphs, Icon, type GlyphSize, type IconName } from "./icon.tsx";
 import { Spinner } from "./spinner.tsx";
 
-const control = create({
+const controlStyles = create({
   base: {
     "--_btn-hit-inset": `calc(max(0px, ${target.min} - var(--_btn-height)) / 2)`,
     position: "relative",
@@ -85,7 +85,7 @@ const control = create({
     width: "var(--_btn-height)",
     minWidth: 0,
     marginInline: "var(--_btn-hit-inset)",
-    paddingInline: button.iconPaddingInline,
+    paddingInline: button.paddingInlineTight,
     "::before": { insetInline: "calc(-1 * var(--_btn-hit-inset))" },
   },
   joined: {
@@ -126,37 +126,37 @@ const ButtonGroupContext = createContext(false);
 const buttonSizes = create({
   "2xs": {
     "--_btn-radius": button.radius2xs,
-    "--_btn-height": button.height2xs,
+    "--_btn-height": control.height2xs,
     paddingInline: button.paddingInline2xs,
     gap: button.gap2xs,
   },
   xs: {
     "--_btn-radius": button.radiusXs,
-    "--_btn-height": button.heightXs,
+    "--_btn-height": control.heightXs,
     paddingInline: button.paddingInlineXs,
     gap: button.gapXs,
   },
   sm: {
     "--_btn-radius": button.radiusSm,
-    "--_btn-height": button.heightSm,
+    "--_btn-height": control.heightSm,
     paddingInline: button.paddingInlineSm,
     gap: button.gapSm,
   },
   md: {
     "--_btn-radius": button.radiusMd,
-    "--_btn-height": button.heightMd,
+    "--_btn-height": control.heightMd,
     paddingInline: button.paddingInlineMd,
     gap: button.gapMd,
   },
   lg: {
     "--_btn-radius": button.radiusLg,
-    "--_btn-height": button.heightLg,
+    "--_btn-height": control.heightLg,
     paddingInline: button.paddingInlineLg,
     gap: button.gapLg,
   },
   xl: {
     "--_btn-radius": button.radiusXl,
-    "--_btn-height": button.heightXl,
+    "--_btn-height": control.heightXl,
     paddingInline: button.paddingInlineXl,
     gap: button.gapXl,
   },
@@ -200,6 +200,22 @@ const buttonVariants = create({
     backgroundColor: {
       default: "transparent",
       '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
+    },
+  },
+  /** `plain` in tertiary ink with tight padding: a segment in a quiet row, such as the composer footer. */
+  quiet: {
+    paddingInline: button.paddingInlineTight,
+    fontWeight: type.weightRegular,
+    backgroundImage: "none",
+    backgroundColor: {
+      default: "transparent",
+      '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
+    },
+    color: {
+      default: role.contentTertiary,
+      ":hover:not([data-disabled])": { [media.hover]: role.contentPrimary },
+      ":active:not([data-disabled])": role.contentPrimary,
+      '[aria-expanded="true"]:not([data-disabled])': role.contentPrimary,
     },
   },
   text: {
@@ -341,18 +357,18 @@ export function buttonStyle<State>(
     props(
       size === "2xs" || size === "xs" ? text.sm : text.base,
       tone !== "neutral" && intent[tone],
-      control.base,
+      controlStyles.base,
       buttonSizes[size],
       pill && pillSizes[size],
-      iconOnly && control.iconOnly,
+      iconOnly && controlStyles.iconOnly,
       buttonVariants[variant],
-      pill && control.pill,
-      joined && control.joined,
-      joined && iconOnly && control.joinedIcon,
+      pill && controlStyles.pill,
+      joined && controlStyles.joined,
+      joined && iconOnly && controlStyles.joinedIcon,
       size === "2xs" ? focus.ringInset : focus.ring,
       xstyle,
       glyphPressed && contentStyles.glyphPressed,
-      !joined && control.dimmed,
+      !joined && controlStyles.dimmed,
     ),
     className,
     style,

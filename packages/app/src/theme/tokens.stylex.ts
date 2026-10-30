@@ -28,7 +28,7 @@ export const layout = defineVars({
   "--nyte-sidebar-section-gap": "8px",
   "--nyte-sidebar-list-gap": "2px",
   "--nyte-sidebar-icon-slot": "20px",
-  "--nyte-sidebar-action-size": "var(--nyte-btn-height-sm)",
+  "--nyte-sidebar-action-size": "var(--nyte-control-height-sm)",
   "--nyte-sidebar-trailing-width": "44px",
   "--nyte-sidebar-meta-width": "40px",
   "--nyte-settings-content-width": "680px",

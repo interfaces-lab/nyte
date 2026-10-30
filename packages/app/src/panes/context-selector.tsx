@@ -18,7 +18,7 @@ import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { contextStyles } from "./context-selector.stylex.ts";
 
-/** `md` in the new-chat row, `xs` in the footer under a chat's composer. */
+/** `md` in the new-chat row; `xs`, a quiet segment, in the footer under a chat's composer. */
 export type ContextSize = "xs" | "md";
 
 const CHEVRON_SIZES = { xs: "2xs", md: "xs" } as const satisfies Record<ContextSize, GlyphSize>;
@@ -63,7 +63,7 @@ export function ContextTrigger({
 }): ReactElement {
   return (
     <Button
-      variant="plain"
+      variant={size === "xs" ? "quiet" : "plain"}
       size={size}
       xstyle={[contextStyles.controlLayout, size === "xs" && contextStyles.footerLayout]}
       {...rest}

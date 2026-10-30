@@ -2,7 +2,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { layer, menu } from "./styles/schema.stylex.ts";
+import { layer, menu, row } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
@@ -71,7 +71,7 @@ const styles = create({
     gridTemplateColumns: "minmax(0, 1fr) auto",
     alignItems: "center",
     columnGap: menu.itemGap,
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingBlock: menu.itemPaddingBlock,
     paddingInline: menu.itemPaddingInline,
     borderRadius: menu.itemRadius,

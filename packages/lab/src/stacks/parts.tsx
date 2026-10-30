@@ -4,7 +4,7 @@ import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
-import { avatar, button, glyph, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { avatar, control, glyph, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
@@ -89,7 +89,7 @@ export const styles = create({
     whiteSpace: "nowrap",
     alignItems: "center",
     gap: space.s1_5,
-    height: button.heightMd,
+    height: control.heightMd,
     marginInlineStart: `calc(-1 * ${space.s2})`,
     paddingInline: space.s2,
     borderWidth: 0,

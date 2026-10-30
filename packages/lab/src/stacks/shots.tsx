@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { createContext, use, useState } from "react";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
-import { button, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -196,7 +196,7 @@ const styles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 3,
-    height: button.height2xs,
+    height: control.height2xs,
     paddingInline: 5,
     borderRadius: 5,
     backgroundColor: role.bgMuted,

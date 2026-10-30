@@ -1,4 +1,4 @@
-import { button, row, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -83,7 +83,7 @@ const styles = create({
     alignItems: "center",
     gap: space.s2,
     flexShrink: 0,
-    minHeight: button.heightMd,
+    minHeight: control.heightMd,
     paddingInline: space.s1_5,
     overflowX: "auto",
     borderBottomWidth: 1,

@@ -6,6 +6,7 @@ import type { ReactElement, ReactNode } from "react";
 import { focus } from "./styles/a11y.stylex.ts";
 import {
   button,
+  control,
   glyph,
   layer,
   media,
@@ -219,8 +220,8 @@ const styles = create({
     display: "grid",
     placeItems: "center",
     boxSizing: "border-box",
-    width: button.heightSm,
-    height: button.heightSm,
+    width: control.heightSm,
+    height: control.heightSm,
     minWidth: target.min,
     minHeight: target.min,
     padding: 0,

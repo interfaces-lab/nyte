@@ -6,7 +6,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { input, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -119,7 +119,7 @@ const styles = create({
   replyInput: {
     flex: 1,
     minWidth: 0,
-    height: input.heightMd,
+    height: control.heightMd,
     borderWidth: 0,
     backgroundColor: "transparent",
     color: role.contentPrimary,

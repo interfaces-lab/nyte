@@ -6,7 +6,7 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
-import { button, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, control, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -113,7 +113,7 @@ const styles = create({
     alignItems: "center",
     gap: button.gapXs,
     minWidth: 0,
-    minHeight: button.heightSm,
+    minHeight: control.heightSm,
   },
   checkName: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 });

@@ -22,24 +22,20 @@ const SPACE_STEPS = new Map([
 const BOX_HANDLES = [
   [14, "glyph.sm"],
   [16, "glyph.md"],
-  [16, "button.height2xs"],
+  [16, "control.height2xs"],
   [16, "checkbox.sizeMd"],
   [20, "glyph.lg"],
-  [20, "button.heightXs"],
+  [20, "control.heightXs"],
   [20, "avatar.xs"],
-  [24, "button.heightSm"],
+  [24, "control.heightSm"],
   [24, "target.min"],
   [24, "avatar.sm"],
-  [28, "button.heightMd"],
-  [28, "input.heightMd"],
+  [28, "control.heightMd"],
   [28, "row.heightMd"],
-  [28, "menu.itemHeight"],
   [28, "avatar.md"],
-  [32, "button.heightLg"],
-  [32, "input.heightLg"],
+  [32, "control.heightLg"],
   [32, "row.heightLg"],
-  [36, "button.heightXl"],
-  [36, "input.heightXl"],
+  [36, "control.heightXl"],
   [36, "avatar.lg"],
 ];
 
@@ -137,7 +133,7 @@ const touchHandles = (property) => {
 
   if (property.startsWith("margin")) return ["target.gap"];
 
-  return ["target.min", "button.heightMd", "row.heightMd"];
+  return ["target.min", "control.heightMd", "row.heightMd"];
 };
 
 /**

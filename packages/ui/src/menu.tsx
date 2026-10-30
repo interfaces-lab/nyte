@@ -3,7 +3,16 @@ import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
-import { glyph, layer, media, menu, radius, space, switchControl } from "./styles/schema.stylex.ts";
+import {
+  glyph,
+  layer,
+  media,
+  menu,
+  radius,
+  row,
+  space,
+  switchControl,
+} from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StateStyledProps, type StyledProps, type XStyle } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { intent, surfaceTheme, type Tint } from "./surface-theme.ts";
@@ -73,7 +82,7 @@ export const menuStyles = create({
     gridTemplateColumns: `${glyph.sm} minmax(0, 1fr) minmax(${menu.metaMinWidth}, auto)`,
     alignItems: "start",
     columnGap: menu.itemGap,
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingBlock: menu.itemPaddingBlock,
     paddingInline: menu.itemPaddingInline,
     borderRadius: menu.itemRadius,
@@ -135,7 +144,7 @@ export const menuStyles = create({
   groupLabel: {
     display: "flex",
     alignItems: "center",
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingInline: space.s1_5,
     paddingBlock: space.s0_5,
     color: role.contentSecondary,
@@ -211,7 +220,7 @@ const itemLayouts = create({
     gridTemplateColumns: "auto",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: menu.itemHeight,
+    minWidth: row.heightMd,
     paddingInline: space.s1_5,
     paddingBlock: space.s0_5,
     borderRadius: radius.control,

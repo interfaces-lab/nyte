@@ -54,17 +54,22 @@ hue.
 
 ## Layers
 
-| Kind       | Order                                            | Consumer API                                                                                                            |
-| ---------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| Colour     | Ramps → theme → neutral or tinted roles          | `role`                                                                                                                  |
-| Size       | Values → components → app layout                 | `button`, `input`, `switchControl`, `checkbox`, `row`, `menu`, `dialog`, `toast`, `glyph`, `clipboardPreview`, `radius` |
-| Type       | Font inputs and derived type scale               | `type`                                                                                                                  |
-| Motion     | Durations and easing                             | `motion`                                                                                                                |
-| Shadow     | Size values and shadow inks → elevation          | `shadow`                                                                                                                |
-| Appearance | Display, pointer, transparency, and focus inputs | `appearance`                                                                                                            |
+| Kind       | Order                                            | Consumer API                                                                                                                       |
+| ---------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Colour     | Ramps → theme → neutral or tinted roles          | `role`                                                                                                                             |
+| Size       | Values → components → app layout                 | `control`, `button`, `input`, `switchControl`, `checkbox`, `row`, `menu`, `dialog`, `toast`, `glyph`, `clipboardPreview`, `radius` |
+| Type       | Font inputs and derived type scale               | `type`                                                                                                                             |
+| Motion     | Durations and easing                             | `motion`                                                                                                                           |
+| Shadow     | Size values and shadow inks → elevation          | `shadow`                                                                                                                           |
+| Appearance | Display, pointer, transparency, and focus inputs | `appearance`                                                                                                                       |
 
 `radius` has five names: `indicator`, `control`, `card`, `surface`, and `pill`.
 Component radii stay on their component handles. Component sizes grow under `(pointer: coarse)`.
+
+`control` is the one control-height scale: `height2xs` to `heightXl`, 16 to 36px, and 28 to
+48px under a coarse pointer. Buttons, inputs, and toggles take a step. `row.heightMd` and
+`row.heightLg` take the `md` and `lg` steps but never fall below `target.min`, so a row or menu
+item is 44px on touch.
 
 Roles resolve through `light-dark()`, so `color-scheme` on an ancestor picks the appearance. The
 focus ring ignores hue scopes.
