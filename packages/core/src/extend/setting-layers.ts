@@ -66,7 +66,6 @@ export async function settingInfos(
   return infos.flatMap((info) => (info === null ? [] : [info]));
 }
 
-/** The layers that hold a value for `definition`, a `secret` one's without its secret values. */
 export async function readSettingLayers(
   store: StoreConnection,
   definition: Pick<SettingDefinition, "id" | "scope" | "secret">,

@@ -8,10 +8,6 @@ import { openText } from "../extend/plugin-api.ts";
 import { kvRef } from "../store/refs.ts";
 import { readKv } from "../store/session.ts";
 
-/**
- * The environment variables commands start with, keyed `NAME` for every workspace or
- * `<workspace id>/NAME` for one. Secret entries are sealed and never read back.
- */
 export const VARIABLES: SettingDefinition<Readonly<Record<string, SecretEntry>>> = {
   id: "variables.entries",
   label: "Environment variables",
@@ -32,11 +28,6 @@ export const variablesPlugin: Plugin<"core"> = {
   contribute: { settings: [VARIABLES] },
 };
 
-/**
- * Answers what a command in `workspace` starts with: the every-workspace variables, replaced
- * by the workspace's own. A worktree takes the variables of the workspace it was made from.
- * A secret the host's key can no longer open is left out.
- */
 export async function resolveVariables(
   kernel: Kernel,
   workspace: WorkspaceRecord,

@@ -5,11 +5,6 @@ export interface Assignment {
 
 const ASSIGNMENT = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/;
 
-/**
- * Reads pasted `.env` text: `KEY=value`, `export KEY=value`, quoted values that may span
- * lines, and `#` comments. Lines that aren't assignments are skipped; text with none answers
- * an empty list, so a plain paste stays a plain paste.
- */
 export function parseEnv(text: string): readonly Assignment[] {
   const lines = text.split(/\r?\n/);
   const found: Assignment[] = [];
@@ -24,7 +19,7 @@ export function parseEnv(text: string): readonly Assignment[] {
     const quote = raw[0];
 
     if (quote !== '"' && quote !== "'") {
-      found.push({ name, value: raw.replace(/\s+#.*$/, "").trim() });
+      found.push({ name, value: raw.replace(/#.*$/, "").trim() });
       continue;
     }
 

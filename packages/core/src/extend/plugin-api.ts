@@ -208,7 +208,6 @@ function validateStorageKey(key: string): string {
   return key;
 }
 
-/** Seals `text` with the host's secrets key as `{ iv, ciphertext }`; a host without one refuses. */
 export async function sealText(
   kernel: Kernel,
   text: string,
@@ -230,7 +229,6 @@ export async function sealText(
   return { iv: iv.toBase64(), ciphertext: sealed.toBase64() };
 }
 
-/** Opens what `sealText` made, or answers undefined for anything else or a host without a key. */
 export async function openText(
   kernel: Kernel,
   sealed: Json | undefined,

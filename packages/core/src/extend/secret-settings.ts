@@ -3,7 +3,6 @@ import type { Json } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import { sealText } from "./plugin-api.ts";
 
-/** A `secret` setting's stored map as anyone reads it: every secret entry without its value. */
 export function redactSecretEntries(stored: Json): Json {
   if (!isJsonObject(stored)) return stored;
 
@@ -15,11 +14,6 @@ export function redactSecretEntries(stored: Json): Json {
   );
 }
 
-/**
- * Turns a written `secret` setting map into the stored one: a secret value is sealed, and a
- * secret entry written without a value keeps the sealed one from `stored`. A key the write
- * leaves out is gone.
- */
 export async function sealSecretEntries(
   kernel: Kernel,
   written: Json,

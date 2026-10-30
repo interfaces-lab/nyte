@@ -67,16 +67,9 @@ export interface SettingDefinition<T = unknown> {
   }[];
   readonly default: T;
   readonly scope: "host" | "session";
-  /**
-   * Makes the value a map of `SecretEntry`, host scope only. An entry marked `secret` keeps its
-   * value sealed with the host's secrets key and never answers it: clients and `Setting.get`
-   * see the entry without `value`. Writing a secret entry without `value` keeps the sealed one.
-   * `settings.json` cannot seed a secret setting.
-   */
   readonly secret?: true;
 }
 
-/** One entry of a `secret` setting's map. */
 export interface SecretEntry {
   readonly secret: boolean;
   readonly value?: string;

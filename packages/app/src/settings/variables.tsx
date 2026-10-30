@@ -24,7 +24,6 @@ import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { parseEnv } from "./dotenv.ts";
 import { SettingsSection } from "./rows.tsx";
 
-/** The `variables` built-in's setting: keys are `NAME` or `<workspace id>/NAME`. */
 const ID = "variables.entries";
 
 const EntriesType = Type.Record(
@@ -59,7 +58,6 @@ interface Pair {
   readonly key: number;
   readonly name: string;
   readonly value: string;
-  /** Null until the user chooses; until then the name decides. */
   readonly secret: boolean | null;
 }
 
@@ -213,11 +211,6 @@ function VariableRow({
   );
 }
 
-/**
- * Bands like Vercel's form: the folder, then key and value pairs, then the actions. A new
- * entry takes several pairs, so a pasted `.env` file becomes one row per line; a blank extra
- * row is ignored. Each pair starts secret when its name looks like a key or token.
- */
 function VariableEditor({
   entries,
   variable,
@@ -352,7 +345,11 @@ function VariableEditor({
               }
               valueIssue={submitted && !row.blank ? row.issues.value : undefined}
               first={index === 0}
-              keepsSecret={variable?.secret === true && secretPair(row.pair)}
+              keepsSecret={
+                variable?.secret === true &&
+                variable.key === keyFor(folder, row.pair.name) &&
+                secretPair(row.pair)
+              }
               onRemove={
                 single || pairs.length === 1
                   ? null
@@ -402,7 +399,6 @@ function VariableEditor({
   );
 }
 
-/** One key, value, secret toggle and remove button on the editor's grid, issues below. */
 function PairRow({
   pair,
   nameIssue,
@@ -537,7 +533,6 @@ function keyFor(folder: string | null, name: string): string {
   return folder === null ? name : `${folder}/${name}`;
 }
 
-/** A pair is secret when the user said so, or until then when its name looks like a key. */
 function secretPair(pair: Pair): boolean {
   return pair.secret ?? SECRET_NAME.test(pair.name);
 }
@@ -545,10 +540,6 @@ function secretPair(pair: Pair): boolean {
 const NARROW = "@container (max-width: 500px)";
 
 const styles = create({
-  /**
-   * Name over value on the left, folder and actions on the right. Narrow widths move the
-   * folder under the value instead of stacking the actions below.
-   */
   variable: {
     display: "grid",
     gridTemplateColumns: { default: "minmax(0, 1fr) auto auto", [NARROW]: "minmax(0, 1fr) auto" },
@@ -592,10 +583,8 @@ const styles = create({
   actions: { gridArea: "actions", display: "flex", gap: space.s1 },
   lock: { display: "inline-flex", flexShrink: 0, color: role.contentSecondary },
   truncate: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  /** Code at the code size, on the line box of the text beside it. */
   code: { fontFamily: type.fontMono, fontSize: type.fontCode },
   multiline: { display: "flex", flexDirection: "column", minWidth: 0 },
-  /** A multi-line secret can't be a password input; Chromium masks it the same way. Inherited. */
   masked: { WebkitTextSecurity: "disc" },
   addRow: {
     display: "flex",
@@ -603,7 +592,6 @@ const styles = create({
     paddingInline: `calc(${settings.rowPaddingInline} - ${space.s2})`,
   },
   editor: { display: "flex", flexDirection: "column", backgroundColor: role.bgElevated },
-  /** One band of the editor, a hairline above every band but the first. */
   band: {
     display: "flex",
     flexWrap: "wrap",
@@ -617,7 +605,6 @@ const styles = create({
   },
   bandTitle: { color: role.contentPrimary },
   pairs: { flexDirection: "column", alignItems: "stretch" },
-  /** Key, value, secret, and remove share columns, so every row lines up with the labels. */
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr)) auto",
