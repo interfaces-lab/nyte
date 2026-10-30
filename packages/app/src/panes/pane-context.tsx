@@ -62,10 +62,6 @@ export function usePaneControllerSnapshot(): PaneControllerSnapshot {
   return useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
 }
 
-/**
- * Whether this pane's composer is the one toasts stack above: the active pane's, unless the
- * workbench covers the chat and the composer doesn't float over it.
- */
 export function useToastAnchor(paneId: PaneId, floating: boolean): boolean {
   const { layout } = usePaneControllerSnapshot();
   const covered = useChatWindow((snapshot) => snapshot.covered);

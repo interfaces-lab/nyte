@@ -37,7 +37,6 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 
 const SessionLink = createLink(ButtonLink);
 
-/** Back to the chat that started this one, through the window tabs' open, as the child's own links came here. */
 function ParentLink({ parent }: { readonly parent: SessionId }): ReactElement {
   return (
     <SessionLink

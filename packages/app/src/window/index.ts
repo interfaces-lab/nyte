@@ -25,7 +25,6 @@ export interface WindowSnapshot {
   readonly unread: ReadonlySet<SessionId>;
   /** Each chat's open tray, by parent; a chat without one shows its tray closed. */
   readonly trays: ReadonlyMap<SessionId, TrayView>;
-  /** Each chat's ended tasks the user cleared from its trays, by parent. */
   readonly cleared: ReadonlyMap<SessionId, ReadonlySet<string>>;
   /** The workbench is maximized over the chats instead of showing them. */
   readonly covered: boolean;
@@ -35,7 +34,6 @@ export { showTray, type TrayView } from "./tray.ts";
 
 export { unreadOnHost } from "./exposure.ts";
 
-/** What this window holds itself; the rest of its view it reads from the stores it listens to. */
 interface Own {
   readonly trays: Trays;
   readonly settings: boolean;
@@ -137,7 +135,6 @@ function act(action: TrayAction): void {
   setOwn({ ...own, trays: reduceTrays(own.trays, action) });
 }
 
-/** Moves each chat's read mark to the tip it is unread through; a chat with nothing unread is left alone. A failure says so. */
 function markRead(ids: readonly SessionId[]): void {
   const chats = chatDirectory();
 
@@ -158,7 +155,6 @@ function markRead(ids: readonly SessionId[]): void {
   );
 }
 
-/** This window: what it shows, what the user is looking at, and the actions that change it. */
 export const chatWindow = {
   getSnapshot: store.getSnapshot,
   subscribe: store.subscribe,
@@ -166,7 +162,6 @@ export const chatWindow = {
   markRead,
 };
 
-/** What `select` makes of this window; a change that selects an equal value doesn't render. */
 export function useChatWindow<S>(
   select: (snapshot: WindowSnapshot) => S,
   isEqual?: (previous: S, next: S) => boolean,
@@ -180,7 +175,6 @@ export function useChatWindow<S>(
   );
 }
 
-/** Follows whether settings has the stage, which leaves no chat on screen. */
 export function followStage(router: RegisteredRouter): () => void {
   const read = (): void => {
     const settings = router.state.matches.some((match) => match.routeId === "/settings/$section");

@@ -133,7 +133,7 @@ export const preferences = {
     SessionViewSchema,
     DEFAULT_SESSION_VIEW,
   ),
-  /** Folded workspace ids; `null` is Home. */
+  /** `null` is Home. */
   sidebarFolded: definePreference(
     { key: SIDEBAR, field: "folded" },
     Type.Array(Type.Union([Type.String(), Type.Null()])),

@@ -38,7 +38,7 @@ export const stripStyles = create({
     animationTimingFunction: "linear",
     animationFillMode: "both",
   },
-  /** Tabs keep their title's width up to the cap and the strip scrolls, as Cursor's does, so no title shrinks to a few letters. */
+  /** Tabs keep their title's width up to the cap and the strip scrolls, so no title shrinks to a few letters. */
   slot: {
     display: "flex",
     flex: "none",

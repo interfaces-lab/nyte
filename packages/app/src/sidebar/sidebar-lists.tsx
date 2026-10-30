@@ -38,7 +38,6 @@ export interface ListedSession {
 
 export interface ListReveal {
   readonly revealed: (key: string) => number;
-  /** Stores the list's new revealed count and focuses the first row it shows. */
   readonly reveal: (key: string, count: number, listId: string, visibleCount: number) => void;
 }
 

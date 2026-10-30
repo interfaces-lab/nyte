@@ -2,11 +2,7 @@ import type { KeyboardEvent } from "react";
 
 const STOPS = "button:not(:disabled), a[href]";
 
-/**
- * Moves focus through the sidebar list's visible rows, headers and controls: Up, Down, Home and
- * End step through them, Right unfolds a header or steps into it, Left folds a header or goes from
- * a chat to its header. Moving focus never opens a chat. Hover actions stay out of the order.
- */
+/** Moving focus never opens a chat, and hover actions stay out of the order. */
 export function moveSidebarFocus(event: KeyboardEvent<HTMLElement>): void {
   const current = event.target;
 

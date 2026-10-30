@@ -220,7 +220,6 @@ export class SessionViewStateStore {
     this.#window.emit();
   }
 
-  /** Moves a draft into this tab's pane, from wherever in the window it was. */
   activateDraft(paneId: PaneId, draftId: string): boolean {
     const located = this.#window.find(draftId);
 

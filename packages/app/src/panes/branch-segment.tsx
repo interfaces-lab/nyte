@@ -43,10 +43,6 @@ const styles = create({
   createLabel: { display: "inline-flex", alignItems: "center", gap: space.s2 },
 });
 
-/**
- * The branch checked out in a workspace, absent outside a repository. `switchable` opens a
- * searchable menu that checks out a branch or creates one; otherwise a click copies the name.
- */
 export function BranchSegment({
   workspace,
   switchable,

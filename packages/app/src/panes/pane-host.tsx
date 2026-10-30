@@ -32,10 +32,6 @@ import { ReferenceOpenerProvider } from "../references/reference-opener.tsx";
 import { workbenchReferenceOpener } from "../workbench/commands.ts";
 import { workbenchViewKey } from "../workbench/paths.ts";
 
-/**
- * Sends keys pressed outside any field to the active pane's composer: printable keys and paste land
- * in it, and the model shortcut opens its picker from anywhere but another field.
- */
 function TypeToCompose({
   input,
 }: {
