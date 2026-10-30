@@ -162,7 +162,7 @@ export async function advance(
 
     if (found === null || !found.record.heads.some((entry) => entry.name === head))
       return { kind: "idle" };
-    kernel.children.link(found.record, null);
+    kernel.children.link(found.record, null, 0);
     await kernel.plugins.runtime(session).ready;
     const refused = await claim(kernel, session, head);
 
@@ -293,7 +293,7 @@ async function recover(
 
   if (operations) {
     if (record.parent !== null)
-      kernel.children.link(record, await readChildState(kernel.store, record));
+      kernel.children.link(record, await readChildState(kernel.store, record), 0);
     await recoverMoves(kernel, session);
     await recoverStarts(kernel, session);
   }

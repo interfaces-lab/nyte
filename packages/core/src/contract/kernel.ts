@@ -211,10 +211,8 @@ interface Handles {
 }
 
 export interface ChildTable {
-  /** Takes `own` only while this process knows nothing of the child's run. A session without a parent is ignored. */
-  link(record: SessionRecord, own: BackgroundItem["state"] | null): void;
-  /** Takes `own`, read from the store after the {@link ChildTable.heard} count `since`, over what this process knew, unless a run event for the child arrived on the bus after `since`: then it returns false and takes nothing. */
-  reconcile(record: SessionRecord, own: BackgroundItem["state"] | null, since: number): boolean;
+  /** Follows `record` when it has a parent and takes `own`, read from the store after the {@link ChildTable.heard} count `since`, unless a run event for the child arrived on the bus after `since`: then it returns false and takes nothing. A `since` of 0 takes `own` only while this process has heard no run event for the child. */
+  link(record: SessionRecord, own: BackgroundItem["state"] | null, since: number): boolean;
   /** How many run events of children this process has heard on the bus. */
   heard(): number;
   forget(session: SessionId): void;

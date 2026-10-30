@@ -593,7 +593,7 @@ function openFoldFeed(
         cursor = last.seq;
       }
 
-      if (open) await linkStoredChildren(kernel, session, children, "reconcile");
+      if (open) await linkStoredChildren(kernel, session, children);
     },
     dispose() {
       open = false;

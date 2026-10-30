@@ -96,14 +96,7 @@ export function createChildTable(
   };
 
   return {
-    link(record, own) {
-      const child = follow(record);
-
-      if (child === null || child.own !== null || own === null) return;
-      child.own = own;
-      refresh(record.id, child);
-    },
-    reconcile(record, own, since) {
+    link(record, own, since) {
       const child = follow(record);
 
       if (child !== null && child.heard > since) return false;
@@ -154,7 +147,6 @@ export async function linkStoredChildren(
   kernel: Pick<Kernel, "store" | "children">,
   parent: SessionId,
   seen: Map<SessionId, StoredChild>,
-  link: "link" | "reconcile" = "link",
 ): Promise<void> {
   const since = kernel.children.heard();
   let after: { readonly at: number; readonly id: SessionId } | undefined;
@@ -178,9 +170,7 @@ export async function linkStoredChildren(
         const own = await readChildState(kernel.store, found.record);
         const at = found.record.lastActivityAt;
 
-        if (link === "link") kernel.children.link(found.record, own);
-        else if (!kernel.children.reconcile(found.record, own, since)) return { id, at };
-        seen.set(id, { version, at });
+        if (kernel.children.link(found.record, own, since)) seen.set(id, { version, at });
 
         return { id, at };
       }),
