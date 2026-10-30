@@ -280,12 +280,20 @@ const CALL_STATES = {
   stopped: "done",
 } as const satisfies Readonly<Record<ToolTone, TaskState>>;
 
-/** @category presentation */
+/**
+ * Whether a task has finished, either done or failed.
+ *
+ * @category presentation
+ */
 export function taskEnded(state: TaskState): boolean {
   return state === "done" || state === "failed";
 }
 
-/** @category presentation */
+/**
+ * The heading over a group of agents: how many still run, else how many finished and failed.
+ *
+ * @category presentation
+ */
 export function agentGroupSummary(states: readonly TaskState[]): {
   readonly title: string;
   readonly detail: string | undefined;
@@ -322,12 +330,21 @@ export type RunStatus =
   | { readonly kind: "retrying"; readonly run: RunId }
   | { readonly kind: "waiting-for-approval"; readonly run: RunId };
 
-/** @category presentation */
+/**
+ * How many of a head's background items are still working and how many wait on the user.
+ *
+ * @category presentation
+ */
 export type BackgroundWork = HeadInfo["background"];
 
 const IDLE: RunStatus = { kind: "idle" };
 
-/** @category presentation */
+/**
+ * A head's execution as a run status; none reads as idle, and a run waiting on a child, job or
+ * timer reads as working.
+ *
+ * @category presentation
+ */
 export function runStatus(execution: Execution | undefined): RunStatus {
   switch (execution?.kind) {
     case undefined:
@@ -350,7 +367,11 @@ export function runStatus(execution: Execution | undefined): RunStatus {
   }
 }
 
-/** @category presentation */
+/**
+ * The status a run leaves when it ends; a stopped run is never a failure.
+ *
+ * @category presentation
+ */
 export function endedStatus(end: RunEnd): RunStatus {
   switch (end.kind) {
     case "completed":
@@ -367,7 +388,11 @@ export function endedStatus(end: RunEnd): RunStatus {
   }
 }
 
-/** @category presentation */
+/**
+ * A chat's own run as a task state; a run that ended is done unless it failed.
+ *
+ * @category presentation
+ */
 export function runMark(status: RunStatus): TaskState {
   switch (status.kind) {
     case "idle":
@@ -390,7 +415,13 @@ export function runMark(status: RunStatus): TaskState {
   }
 }
 
-/** @category presentation */
+/**
+ * The state a list row shows, taking the first that applies: the chat's own active run,
+ * background work waiting on the user, the chat's own failure, background work still running,
+ * then how the chat's last run ended.
+ *
+ * @category presentation
+ */
 export function rowMark(status: RunStatus, background: BackgroundWork): TaskState {
   if ("run" in status) return runMark(status);
 
@@ -401,7 +432,11 @@ export function rowMark(status: RunStatus, background: BackgroundWork): TaskStat
   return background.working > 0 ? "background" : runMark(status);
 }
 
-/** @category presentation */
+/**
+ * Words for a chat's background work, or `undefined` while none is working or waiting.
+ *
+ * @category presentation
+ */
 export function backgroundLabel(background: BackgroundWork): string | undefined {
   if (background.waiting > 0) return `${taskLabel("waiting")} in the background`;
 
@@ -429,10 +464,18 @@ export function planningLabel(planningMs: number): string | undefined {
  */
 export const PLANNING_LABEL = "Planning next moves";
 
-/** @category presentation */
+/**
+ * How long without progress before the live row says a run is planning.
+ *
+ * @category presentation
+ */
 export const PLANNING_DELAY_MS = 200;
 
-/** @category presentation */
+/**
+ * How long without progress before the live row says a run is taking longer than expected.
+ *
+ * @category presentation
+ */
 export const SLOW_PLANNING_MS = 15_000;
 
 /**
@@ -464,7 +507,11 @@ export function sessionMark(session: Pick<SessionInfo, "heads">): TaskState {
   return head === undefined ? "done" : rowMark(runStatus(head.execution), head.background);
 }
 
-/** @category presentation */
+/**
+ * A session's title: its name, else "New chat" for a top-level chat or {@link SUBAGENT_TITLE}.
+ *
+ * @category presentation
+ */
 export function sessionTitle(session: Pick<SessionInfo, "name" | "parent">): string {
   return session.name ?? (session.parent === null ? "New chat" : SUBAGENT_TITLE);
 }
