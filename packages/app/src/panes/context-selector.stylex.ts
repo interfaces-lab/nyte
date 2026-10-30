@@ -1,6 +1,7 @@
 import { create } from "@stylexjs/stylex";
-import { button, menu, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { menu, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { conversation } from "../theme/schema.stylex.ts";
 
 export const contextStyles = create({
   row: {
@@ -10,18 +11,7 @@ export const contextStyles = create({
     minWidth: 0,
   },
   controlLayout: { minWidth: 0, maxWidth: 280, flexShrink: 1 },
-  readout: {
-    display: "inline-flex",
-    alignItems: "center",
-    height: button.heightMd,
-    paddingInline: space.s1,
-    color: role.contentSecondary,
-    fontFamily: type.fontSans,
-    fontSize: type.fontBase,
-    fontWeight: type.weightRegular,
-    lineHeight: type.leadingBase,
-    whiteSpace: "nowrap",
-  },
+  footerLayout: { maxWidth: conversation.composerFooterSegmentMaxWidth },
   text: {
     minWidth: 0,
     overflow: "hidden",

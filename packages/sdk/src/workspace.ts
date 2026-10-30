@@ -164,6 +164,7 @@ function gitApi(rows: Rows, workspace: WorkspaceId): GitApi {
     discard: (paths, options) => rows.call("git.discard", { workspace, paths, options }),
     commit: (input, options) => rows.call("git.commit", { workspace, input, options }),
     branch: (input, options) => rows.call("git.branch", { workspace, input, options }),
+    checkout: (input, options) => rows.call("git.checkout", { workspace, input, options }),
     push: (input, options) => rows.call("git.push", { workspace, input, options }),
   };
 }

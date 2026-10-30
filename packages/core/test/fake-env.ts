@@ -759,6 +759,7 @@ function fakeGit(): GitApi {
     discard: async () => ({ kind: "applied", revision }),
     commit: async () => ({ kind: "applied", revision }),
     branch: async () => ({ kind: "applied", revision }),
+    checkout: async () => ({ kind: "applied", revision }),
     push: async () => ({ kind: "applied", revision }),
   };
 }

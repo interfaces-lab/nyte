@@ -105,6 +105,8 @@ export interface GitApi {
     input: { readonly name: string; readonly checkout: boolean },
     options?: GitWrite,
   ): Promise<GitOutcome>;
+  /** Switches to an existing branch; git's refusal, such as local changes it would overwrite, comes back as `rejected`. */
+  checkout(input: { readonly name: string }, options?: GitWrite): Promise<GitOutcome>;
   push(input?: { readonly setUpstream?: boolean }, options?: GitWrite): Promise<GitOutcome>;
 }
 

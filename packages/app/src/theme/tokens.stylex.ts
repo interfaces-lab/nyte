@@ -58,6 +58,7 @@ export const layout = defineVars({
   "--nyte-composer-inset": "14px",
   "--nyte-composer-new-chat-radius": "22px",
   "--nyte-composer-expanded-radius": "var(--nyte-composer-new-chat-radius)",
+  "--nyte-composer-footer-segment-max-width": "248px",
   "--nyte-tray-radius": "12px",
   "--nyte-tray-gap": "8px",
   "--nyte-tray-padding-inline": "12px",

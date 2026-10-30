@@ -33,7 +33,7 @@ import { composerSource } from "./composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
-import { ContextRing } from "./composer-context.tsx";
+import { ComposerFooter } from "./composer-footer.tsx";
 import { recallStep, recentPrompts } from "./composer-history.ts";
 import type { RecallDirection } from "./composer-history.ts";
 import { deliveryChoices, nextToSteer } from "./composer-keys.ts";
@@ -112,6 +112,7 @@ export function Composer({
   backgroundWork,
   floatingMount = null,
   toastAnchor = false,
+  active = false,
 }: {
   sessionId: SessionId;
   status: RunStatus;
@@ -127,6 +128,8 @@ export function Composer({
   };
   floatingMount?: HTMLDivElement | null;
   toastAnchor?: boolean;
+  /** Whether this composer's pane is the active one, so the footer's menus take their shortcuts. */
+  active?: boolean;
 }): ReactElement {
   useCommitCount("render:composer");
   const runningMessage = useSetting(preferences.runningMessage);
@@ -805,7 +808,6 @@ export function Composer({
                 />
               ) : undefined
             }
-            contextUsage={<ContextRing sessionId={sessionId} />}
             inputRef={attachInput}
             onFocusChange={(focused) => updateViewState((current) => ({ ...current, focused }))}
             editing={
@@ -818,6 +820,7 @@ export function Composer({
                   }
             }
           />
+          {!floating && <ComposerFooter sessionId={sessionId} active={active} />}
         </div>
       </div>
     </div>

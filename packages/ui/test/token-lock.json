@@ -753,6 +753,7 @@
     "app/src/theme/tokens.stylex.ts layout": [
       "--nyte-active-workbench-width",
       "--nyte-composer-expanded-radius",
+      "--nyte-composer-footer-segment-max-width",
       "--nyte-composer-inset",
       "--nyte-composer-new-chat-radius",
       "--nyte-conversation-edge-fade",
@@ -1051,6 +1052,7 @@
     ],
     "app/src/theme/schema.stylex.ts conversation": [
       "composerExpandedRadius",
+      "composerFooterSegmentMaxWidth",
       "composerInset",
       "composerNewChatRadius",
       "edgeFade",

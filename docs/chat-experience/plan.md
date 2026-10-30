@@ -71,7 +71,7 @@ Status: `todo`, `doing`, `done`, `deferred`.
 | B6 | The terminal chip stays visible and pressed while its list is open, and closes it | tray test | done |
 | B7 | Proportions: radius 20, editor minimum 36, send button 24, dock chip 28, tray gap 8 | composer e2e chapter | partly: radius 22 via existing token, gap 8, natural editor height; 24 px send and 28 px chip not adopted |
 | B8 | Context ring, only when the host reports used and limit tokens | renderer test, or `deferred` if the host doesn't report them | done; moving to the footer (B9) |
-| B9 | Footer under the composer as in Cursor: branch (menu: branches, checkout, create) and environment on the left, context ring on the right; 32 px row, 12 px tertiary text, 20 px segments; the title bar drops its folder/branch crumb | composer e2e chapter | todo |
+| B9 | Footer under the composer as in Cursor: branch (menu: branches, checkout, create) and environment on the left, context ring on the right; 32 px row, 12 px tertiary text, 20 px segments; the title bar drops its folder/branch crumb | composer e2e chapter | done |
 
 ### C. Transcript content
 

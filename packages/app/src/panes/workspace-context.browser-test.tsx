@@ -3,7 +3,7 @@ import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import type { WorkspaceInfo } from "@nyte-ai/sdk";
+import type { GitApi, GitStatus, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { keys, queryClient } from "../data/query-client.ts";
 import { installConnection } from "../data/connection.ts";
@@ -170,10 +170,129 @@ async function checkMenu(): Promise<string> {
   }
 }
 
+const revision = asId<"git-revision">("r1");
+
+const onMain: GitStatus = {
+  kind: "repository",
+  root: "/u/dev/nyte",
+  head: asId<"git-commit">("4f2a9c1d0e"),
+  branch: "main",
+  upstream: null,
+  revision,
+  staged: [],
+  unstaged: [],
+  untracked: [],
+  conflicts: [],
+};
+
+const checkedOut: string[] = [];
+
+const git: Partial<GitApi> = {
+  watch: async function* () {
+    yield onMain;
+    await new Promise<never>(() => undefined);
+  },
+  refs: async () => ({
+    current: "main",
+    branches: ["main", "topic", "release"].map((name) => ({
+      name,
+      commit: asId<"git-commit">(name),
+      upstream: null,
+    })),
+    remotes: [],
+  }),
+  checkout: async ({ name }) => {
+    checkedOut.push(name);
+
+    return { kind: "applied", revision };
+  },
+};
+
+function options(): readonly string[] {
+  return Array.from(document.querySelectorAll("[role='option']"), (row) =>
+    (row.textContent ?? "").trim(),
+  );
+}
+
+function type(field: HTMLInputElement, text: string): void {
+  field.focus();
+  field.select();
+  document.execCommand("insertText", false, text);
+}
+
+async function checkBranches(): Promise<string> {
+  queryClient.clear();
+  queryClient.setQueryData(keys.host, {
+    workspace: { id: asId<"workspace">("nyte"), path: "/u/dev/nyte", name: "nyte" },
+  });
+  installConnection(scriptedConnection({ workspaces, sessions, git }).connection);
+  const container = document.createElement("div");
+  container.style.cssText = "position:fixed;left:0;bottom:0;padding:16px";
+  document.body.append(container);
+  const root = createRoot(container);
+
+  flushSync(() =>
+    root.render(
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider delay={0} closeDelay={0} timeout={0}>
+          <WorkspaceContext active />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    ),
+  );
+
+  try {
+    const trigger = await until(
+      () =>
+        Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+          (button) => button.textContent === "main",
+        ),
+      "the branch segment reading main",
+    );
+
+    trigger.click();
+
+    const search = await until(
+      () => document.querySelector<HTMLInputElement>("input[aria-label='Search branches']"),
+      "the branch search",
+    );
+
+    await until(
+      () => options().join("|") === "main|topic|release|Create Branch…",
+      `every branch and Create Branch…, listed: ${options().join("|")}`,
+    );
+
+    type(search, "zz");
+    await until(
+      () => document.body.textContent?.includes("No branches found"),
+      "No branches found",
+    );
+    expectRule(
+      options().join("|") === "Create Branch…",
+      `a search with no match offers only Create Branch…: ${options().join("|")}`,
+    );
+
+    type(search, "top");
+    await until(() => options().join("|") === "topic|Create Branch…", "topic alone");
+    search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await until(() => checkedOut.length > 0, "a checkout");
+    expectRule(checkedOut.join("|") === "topic", `checked out ${checkedOut.join("|")}`);
+
+    return failures.length === 0 ? "passed" : failures.join("\n");
+  } finally {
+    flushSync(() => root.unmount());
+    container.remove();
+    queryClient.clear();
+  }
+}
+
 export function run(): Promise<string> {
   const watchdog = new Promise<string>((resolve) =>
     window.setTimeout(() => resolve(`timed out\n${failures.join("\n")}`), 30_000),
   );
 
-  return Promise.race([checkMenu(), watchdog]);
+  return Promise.race([
+    checkMenu().then((menu) => (menu === "passed" ? checkBranches() : menu)),
+    watchdog,
+  ]);
 }

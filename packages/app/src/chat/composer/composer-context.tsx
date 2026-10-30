@@ -1,14 +1,23 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { formatTokens } from "../../lib/format.ts";
 import { sessionWatch } from "../../data/watches.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 
 const styles = create({
-  ring: { flexShrink: 0, width: glyph.md, height: glyph.md, fill: "none" },
+  box: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    width: button.heightXs,
+    height: button.heightXs,
+  },
+  ring: { width: glyph.md, height: glyph.md, fill: "none" },
   track: { stroke: role.borderPrimary },
   used: {
     stroke: role.contentSecondary,
@@ -28,27 +37,34 @@ export function ContextRing({ sessionId }: { readonly sessionId: SessionId }): R
   const used = `${String(percent)}% context used`;
 
   return (
-    <svg
-      role="meter"
-      aria-label="Context"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={percent}
-      aria-valuetext={used}
-      viewBox="0 0 16 16"
-      {...props(styles.ring)}
-    >
-      <title>{`${used} · ${formatTokens(tokens)} of ${formatTokens(limit)} tokens`}</title>
-      <circle cx={8} cy={8} r={6} strokeWidth={2} {...props(styles.track)} />
-      <circle
-        cx={8}
-        cy={8}
-        r={6}
-        strokeWidth={2}
-        pathLength={100}
-        strokeDasharray={`${String(percent)} 100`}
-        {...props(styles.used)}
-      />
-    </svg>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            role="meter"
+            aria-label="Context"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent}
+            aria-valuetext={used}
+            {...props(styles.box)}
+          />
+        }
+      >
+        <svg aria-hidden="true" viewBox="0 0 16 16" {...props(styles.ring)}>
+          <circle cx={8} cy={8} r={6} strokeWidth={2} {...props(styles.track)} />
+          <circle
+            cx={8}
+            cy={8}
+            r={6}
+            strokeWidth={2}
+            pathLength={100}
+            strokeDasharray={`${String(percent)} 100`}
+            {...props(styles.used)}
+          />
+        </svg>
+      </TooltipTrigger>
+      <TooltipContent side="top">{`${used}\n${formatTokens(tokens)} of ${formatTokens(limit)} tokens`}</TooltipContent>
+    </Tooltip>
   );
 }

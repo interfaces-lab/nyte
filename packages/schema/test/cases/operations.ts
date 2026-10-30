@@ -688,6 +688,11 @@ export const operations = {
     { workspace, input: { name: "fix", checkout: true } },
     { workspace, input: { name: "fix" } },
   ),
+  "git.checkout input": operation(
+    OPERATIONS["git.checkout"].input,
+    { workspace, input: { name: "fix" }, options: { expect: gitRevision } },
+    { workspace, input: { name: 1 } },
+  ),
   "git.push input": operation(
     OPERATIONS["git.push"].input,
     { workspace, input: { setUpstream: true } },

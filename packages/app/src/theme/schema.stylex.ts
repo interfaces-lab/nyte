@@ -26,6 +26,7 @@ export const conversation = defineConsts({
   composerInset: "var(--nyte-composer-inset)",
   composerNewChatRadius: "var(--nyte-composer-new-chat-radius)",
   composerExpandedRadius: "var(--nyte-composer-expanded-radius)",
+  composerFooterSegmentMaxWidth: "var(--nyte-composer-footer-segment-max-width)",
 });
 
 export const tray = defineConsts({
