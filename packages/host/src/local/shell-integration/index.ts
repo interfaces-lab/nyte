@@ -24,21 +24,25 @@ export async function prepareShellIntegration(input: {
 }): Promise<TerminalIntegration> {
   const shell = basename(input.file);
 
+  const plain = {
+    ...createShellStream(null),
+    args: input.args,
+    env: input.env,
+    dispose: () => undefined,
+  };
+
   if (
     !input.loginShell ||
     process.platform === "win32" ||
     input.env.NYTE_SHELL_INTEGRATION === "0" ||
     (shell !== "zsh" && shell !== "bash")
   )
-    return {
-      ...createShellStream(null),
-      args: input.args,
-      env: input.env,
-      dispose: () => undefined,
-    };
+    return plain;
 
   const nonce = randomBytes(32).toString("hex");
-  const folder = await mkdtemp(join(tmpdir(), "nyte-shell-"));
+  const folder = await mkdtemp(join(tmpdir(), "nyte-shell-")).catch(() => null);
+
+  if (folder === null) return plain;
 
   const launch =
     shell === "zsh"
@@ -53,11 +57,17 @@ export async function prepareShellIntegration(input: {
           env: {},
         };
 
-  await Promise.all(
+  const written = await Promise.allSettled(
     Object.entries(launch.files).map(([name, text]) =>
       writeFile(join(folder, name), text, { mode: 0o600 }),
     ),
   );
+
+  if (written.some((result) => result.status === "rejected")) {
+    rmSync(folder, { recursive: true, force: true });
+
+    return plain;
+  }
 
   const stream = createShellStream(nonce);
   const hidden = createNonceFilter(nonce);

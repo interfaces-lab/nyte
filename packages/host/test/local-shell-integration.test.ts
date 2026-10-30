@@ -1,9 +1,18 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Job } from "@nyte-ai/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { localExec } from "../src/index.ts";
 
 const folders: string[] = [];
@@ -13,6 +22,9 @@ afterEach(async () => {
 });
 
 const PROMPT = "<ready> ";
+
+/** The temporary folder before a test points TMPDIR elsewhere. */
+const TEMP = tmpdir();
 
 const WAIT_MS = 10_000;
 
@@ -50,7 +62,7 @@ async function openTerminal(
   files: Readonly<Record<string, string>>,
   env?: Readonly<Record<string, string>>,
 ): Promise<Terminal> {
-  const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-terminal-home-")));
+  const home = await realpath(await mkdtemp(join(TEMP, "nyte-terminal-home-")));
   folders.push(home);
 
   for (const [name, text] of Object.entries(files)) {
@@ -297,6 +309,43 @@ for (const shell of shells)
             await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
           } finally {
             await terminal.close();
+          }
+        },
+        TEST_MS,
+      );
+
+      it(
+        "starts without integration, leaving no startup folder, when its temporary folder or files cannot be written",
+        async () => {
+          const temp = await mkdtemp(join(TEMP, "nyte-temp-"));
+          folders.push(temp);
+          vi.stubEnv("TMPDIR", temp);
+
+          try {
+            const mask = process.umask(0o222);
+
+            const job = await localExec(temp, { shell: () => path })([], {
+              pty: { columns: 80, rows: 24 },
+              env: { HOME: temp, ZDOTDIR: temp, NYTE_SHELL_INTEGRATION: "1" },
+            }).finally(() => process.umask(mask));
+
+            await job.stop();
+            expect((await readdir(temp)).filter((name) => name.startsWith("nyte-shell-"))).toEqual(
+              [],
+            );
+
+            await chmod(temp, 0o500);
+            const terminal = await openTerminal(path, prompt);
+
+            try {
+              await terminal.submit("echo started-${__nyte_nonce-without}.");
+              await terminal.shows("started-without.");
+            } finally {
+              await terminal.close();
+            }
+          } finally {
+            vi.unstubAllEnvs();
+            await chmod(temp, 0o700);
           }
         },
         TEST_MS,
