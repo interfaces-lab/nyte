@@ -619,10 +619,7 @@ export function Composer({
   const returnToEditor = (): void => editorRef.current?.focus({ preventScroll: true });
 
   const dock = (
-    <div
-      ref={attachTranscriptDock}
-      {...props(composerStyles.dock, floating && composerStyles.dockFloating)}
-    >
+    <div ref={attachTranscriptDock} {...props(composerStyles.dock)}>
       <div
         data-composer-region
         {...props(composerStyles.region, floating && composerStyles.regionFloating)}

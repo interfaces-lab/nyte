@@ -30,8 +30,6 @@ const COMPOSER_RING_DROP = `0 0 0 2px ${role.borderInteractivePrimary}`;
 
 const COMPOSER_COMPACT_HEIGHT = 40;
 
-const COMPOSER_PILL_HALF_HEIGHT = 20;
-
 const PILLS_ROW_OFFSET = 8;
 
 const USER_PROMPT_PADDING_BLOCK = 8;
@@ -42,7 +40,6 @@ const USER_IMAGES_GAP = 8;
 
 export const composerStyles = create({
   portalSlot: { display: "contents" },
-  dockFloating: { "::before": { content: "none" } },
   regionFloating: { paddingInline: 0, paddingBottom: 0 },
   frameFloating: { boxShadow: shadow.shadowLg },
   floatingStatus: {
@@ -70,17 +67,6 @@ export const composerStyles = create({
     bottom: 0,
     zIndex: layer.stickyContent,
     pointerEvents: "none",
-    "::before": {
-      content: "''",
-      position: "absolute",
-      insetInline: 0,
-      insetBlockStart: `calc(-1 * ${conversation.edgeFade})`,
-      bottom: 0,
-      zIndex: -1,
-      backgroundColor: role.bgBase,
-      maskImage: `linear-gradient(to bottom, transparent, black calc(${conversation.edgeFade} + ${COMPOSER_PILL_HALF_HEIGHT}px))`,
-      pointerEvents: "none",
-    },
   },
   region: {
     display: "flex",
