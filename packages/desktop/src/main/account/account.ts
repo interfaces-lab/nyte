@@ -8,7 +8,7 @@ import type { AccountConfig } from "../../shared/account/protocol.ts";
 import { ACCOUNT_HOST, signedInPage } from "../../shared/account/scheme.ts";
 import type { accountScheme } from "../../shared/account/scheme.ts";
 import { createSignInKeeper } from "./account-keeper.ts";
-import type { AccountSession } from "../../shared/account-session.ts";
+import type { AccountSession } from "@nyte-ai/connect/host";
 import type { AccountStore } from "./account-store.ts";
 
 const CLIENT_TOKEN_KEY = "__clerk_client_jwt";

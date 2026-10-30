@@ -39,11 +39,14 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { DesktopHost } from "../desktop-host.ts";
 import { testDesktop } from "./desktop-host.ts";
-import { AccountCancelled } from "../../shared/account-session.ts";
-import type { AccountSession, AccountState } from "../../shared/account-session.ts";
 import type { ConnectConfig } from "../../shared/connect-config.ts";
-import { ConnectRuntime } from "@nyte-ai/connect/host";
-import type { ConnectTiming, LinkAuthorizer } from "@nyte-ai/connect/host";
+import { AccountCancelled, ConnectRuntime } from "@nyte-ai/connect/host";
+import type {
+  AccountSession,
+  AccountState,
+  ConnectTiming,
+  LinkAuthorizer,
+} from "@nyte-ai/connect/host";
 import { RelayServer } from "./relay-server.ts";
 
 export const ORIGIN = "https://connect.nyte.test";

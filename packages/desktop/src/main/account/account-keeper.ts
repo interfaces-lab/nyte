@@ -1,5 +1,5 @@
 import { Value } from "typebox/value";
-import type { AccountState } from "../../shared/account-session.ts";
+import type { AccountState } from "@nyte-ai/connect/host";
 import type { AccountStore } from "./account-store.ts";
 
 type SignInKeeper = {

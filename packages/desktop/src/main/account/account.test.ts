@@ -21,7 +21,7 @@ import {
 } from "../../shared/account/policy.ts";
 import { accountScheme } from "../../shared/account/scheme.ts";
 import { createSignInKeeper } from "./account-keeper.ts";
-import { AccountCancelled } from "../../shared/account-session.ts";
+import { AccountCancelled } from "@nyte-ai/connect/host";
 import { AccountStore } from "./account-store.ts";
 import type { SecretSealer } from "./account-store.ts";
 import { electronExecutable, isolatedElectronEnvironment } from "../fixtures/electron.ts";

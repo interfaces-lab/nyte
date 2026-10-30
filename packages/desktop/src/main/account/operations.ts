@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { AccountCancelled } from "../../shared/account-session.ts";
+import { AccountCancelled } from "@nyte-ai/connect/host";
 import type {
   AccountAnswer,
   AccountCommand,
