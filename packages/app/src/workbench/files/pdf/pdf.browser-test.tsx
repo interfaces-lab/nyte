@@ -1,9 +1,11 @@
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import "../../../theme/tokens.stylex.ts";
+import { createPdfPages } from "./pdf-pages.ts";
 import { PdfViewer } from "./pdf-viewer.tsx";
 import { samplePdf } from "./pdf.fixture.ts";
 import { createPdfReader } from "./pdfjs.ts";
+import type { PdfFile } from "./pdfjs.ts";
 
 declare global {
   interface Window {
@@ -63,6 +65,13 @@ async function opensWithoutReadingLaterPages(): Promise<void> {
   );
 }
 
+/** About half a second of drawing: tens of thousands of strokes. */
+const SLOW_PAGE = Array.from(
+  { length: 60_000 },
+  (_, index) =>
+    `${index % 600} ${(index * 7) % 780} m ${(index * 13) % 600} ${(index * 3) % 780} l S`,
+).join("\n");
+
 const nextFrame = () =>
   new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
@@ -78,6 +87,91 @@ async function eventually<T>(read: () => T | undefined): Promise<T | undefined> 
   }
 
   return undefined;
+}
+
+/** Letter-sized slots in the scroller and column `createPdfPages` expects, scrolled to page `top`, from 1. */
+function mountPages(file: PdfFile, pages: number, top: number) {
+  const scroller = document.createElement("div");
+  scroller.style.cssText = "width: 400px; height: 300px; overflow: auto";
+  const column = document.createElement("div");
+
+  const slots = Array.from({ length: pages }, () => {
+    const slot = document.createElement("div");
+    slot.style.cssText = "width: 100%; aspect-ratio: 612 / 792";
+
+    return slot;
+  });
+
+  column.append(...slots);
+  scroller.append(column);
+  document.body.append(scroller);
+  scroller.scrollTop = slots[top - 1].offsetTop;
+  const failures: string[] = [];
+
+  const teardown = createPdfPages(file, {
+    onPage: () => {},
+    onSize: () => {},
+    onFailure: (page, message) => {
+      if (message !== undefined) failures.push(`page ${page}: ${message}`);
+    },
+  })(scroller);
+
+  return {
+    slots,
+    failures,
+    teardown: () => {
+      teardown?.();
+      scroller.remove();
+    },
+  };
+}
+
+/** A page only arrives in a message from the worker, so a few microtasks after the queue opens, the first paint is waiting for one. */
+async function teardownMidLoad(): Promise<void> {
+  const reader = createPdfReader(new URL(window.pdfWorker));
+  const file = await reader.open(samplePdf(Array.from({ length: 6 }, () => ({}))), () => {});
+  const gate = Promise.withResolvers<void>();
+  void file.enqueue(() => gate.promise);
+  const pages = mountPages(file, 6, 5);
+  await nextFrame();
+  gate.resolve();
+
+  for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+  pages.teardown();
+  await file.enqueue(async () => {});
+
+  check(
+    pages.failures.length === 0,
+    `Pages torn down mid-load failed: ${pages.failures.join("; ")}`,
+  );
+  check(
+    pages.slots.every((slot) => slot.childElementCount === 0),
+    "A page torn down mid-load was drawn",
+  );
+}
+
+async function teardownCancelsDrawing(): Promise<void> {
+  const reader = createPdfReader(new URL(window.pdfWorker));
+  const file = await reader.open(samplePdf([{ content: SLOW_PAGE }]), () => {});
+  const started = performance.now();
+  const full = mountPages(file, 1, 1);
+  await nextFrame();
+  await file.enqueue(async () => {});
+  const drawing = performance.now() - started;
+  full.teardown();
+
+  const pages = mountPages(file, 1, 1);
+  await nextFrame();
+  const tornDown = performance.now();
+  pages.teardown();
+  await file.enqueue(async () => {});
+  const waited = performance.now() - tornDown;
+
+  check(
+    waited < drawing / 4,
+    `Teardown waited ${Math.round(waited)} ms for a draw that takes ${Math.round(drawing)} ms`,
+  );
+  check(pages.failures.length === 0, `A cancelled draw failed: ${pages.failures.join("; ")}`);
 }
 
 async function failedPageShowsAnError(): Promise<void> {
@@ -108,6 +202,8 @@ export async function run(): Promise<string> {
   await failedOpenLeavesTheQueueMoving();
   await opensWithoutReadingLaterPages();
   await failedPageShowsAnError();
+  await teardownMidLoad();
+  await teardownCancelsDrawing();
 
   return "passed";
 }

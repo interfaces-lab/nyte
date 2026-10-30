@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import type { PDFPageProxy } from "pdfjs-dist";
+import type { PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { errorMessage } from "../../../contract/errors.ts";
 import type { PageSize, PdfFile } from "./pdfjs.ts";
 
@@ -24,6 +24,7 @@ type Demand = "render" | "retain" | "release";
 interface PageState {
   readonly number: number;
   readonly element: HTMLElement;
+  readonly scroller: HTMLElement;
   render: boolean;
   retain: boolean;
   demand: Demand;
@@ -31,6 +32,7 @@ interface PageState {
   canvas: HTMLCanvasElement | undefined;
   scale: number | undefined;
   page: PDFPageProxy | undefined;
+  task: RenderTask | undefined;
 }
 
 /** Where the view is: a page, how far past its top the view's top edge sits as a share of its height, and the horizontal scroll as a share of the scroll width. */
@@ -55,7 +57,6 @@ export interface PageEvents {
 /** The scroll container's first child must be the page column, its children the pages in order. */
 export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
   const byElement = new Map<Element, PageState>();
-  let viewport: HTMLElement | undefined;
   let anchor: Anchor | undefined;
 
   const schedule = (state: PageState): void => {
@@ -69,24 +70,42 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
   const paint = async (state: PageState): Promise<void> => {
     state.queued = false;
 
-    if (state.demand !== "render" || viewport === undefined) return;
+    if (!state.render) return;
     const page = await file.document.getPage(state.number);
+
+    if (state.demand === "release") {
+      page.cleanup();
+
+      return;
+    }
+
     state.page = page;
     const size = page.getViewport({ scale: 1 });
     events.onSize(state.number, { width: size.width, height: size.height });
-    const scale = rasterScale(size, state.element.clientWidth, viewport);
+
+    if (state.demand !== "render") return;
+    const scale = rasterScale(size, state.element.clientWidth, state.scroller);
 
     if (scale === state.scale) return;
     const pixels = page.getViewport({ scale });
     const canvas = state.element.ownerDocument.createElement("canvas");
     canvas.width = Math.max(1, Math.floor(pixels.width));
     canvas.height = Math.max(1, Math.floor(pixels.height));
-    await page.render({ canvas, viewport: pixels }).promise;
+    const task = page.render({ canvas, viewport: pixels });
+    state.task = task;
+    const [rendered] = await Promise.allSettled([task.promise]);
+    state.task = undefined;
 
     if (!state.render) {
       clear(canvas);
 
       return;
+    }
+
+    if (rendered.status === "rejected") {
+      clear(canvas);
+
+      throw rendered.reason;
     }
 
     canvas.className = props(styles.canvas).className ?? "";
@@ -102,7 +121,14 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
     events.onFailure(state.number, undefined);
   };
 
+  const cancel = (state: PageState): void => {
+    state.task?.cancel();
+    state.task = undefined;
+  };
+
   const release = (state: PageState): void => {
+    cancel(state);
+
     if (state.canvas !== undefined) clear(state.canvas);
     state.canvas = undefined;
     state.scale = undefined;
@@ -124,6 +150,8 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
 
       if (demand === "render") schedule(state);
 
+      if (demand === "retain") cancel(state);
+
       if (demand === "release") release(state);
     }
   };
@@ -138,6 +166,7 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
       .map((child, index): PageState => ({
         number: index + 1,
         element: child,
+        scroller: element,
         render: false,
         retain: false,
         demand: "release",
@@ -145,10 +174,10 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
         canvas: undefined,
         scale: undefined,
         page: undefined,
+        task: undefined,
       }));
 
     for (const state of states) byElement.set(state.element, state);
-    viewport = element;
 
     const observers = [
       new IntersectionObserver((entries) => update(entries, "render"), {
@@ -194,7 +223,6 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
       }
 
       byElement.clear();
-      viewport = undefined;
     };
   };
 }
