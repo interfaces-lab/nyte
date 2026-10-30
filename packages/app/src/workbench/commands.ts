@@ -76,7 +76,8 @@ type CloseOutcome =
 /**
  * Closes a tab, or says what the user has to confirm first: a file's unsaved edits, or a shell
  * that is still running something. A confirmed shell closes with {@link endTerminal}; a dirty
- * file waits in the file store's pending close.
+ * file waits in the file store's pending close. A failed idle check rejects, and the caller
+ * asks before ending the shell.
  */
 export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Promise<CloseOutcome> {
   const tab = workbench.getView(view).tabs.find((candidate) => candidate.id === id);
@@ -88,14 +89,12 @@ export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Prom
 
   const terminal = tab?.kind === "terminal" ? getTerminal(id) : undefined;
 
-  if (terminal?.kind === "shell" && terminal.state.kind === "running") {
-    const idle = await terminalActions.idle(id).then(
-      (answer) => answer,
-      () => false,
-    );
-
-    if (!idle) return { kind: "confirm", reason: "running" };
-  }
+  if (
+    terminal?.kind === "shell" &&
+    terminal.state.kind === "running" &&
+    !(await terminalActions.idle(id))
+  )
+    return { kind: "confirm", reason: "running" };
 
   if (terminal !== undefined) {
     await endTerminal(view, id);
