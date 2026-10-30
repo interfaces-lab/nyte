@@ -1,8 +1,12 @@
-import { mkdir } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
 import { chatPane, clearComposer, composer, messages, openChat, openNewChat, send } from "./ui.ts";
+
+const run = promisify(execFile);
 
 test.use({ chapter: "composer" });
 
@@ -164,4 +168,135 @@ test("an attached image starts a new chat with its first message", async ({ desk
     `Echo: Describe the dot[File Image 1, ${String(DOT_PNG.byteLength)} bytes, image/png]`,
   ]);
   await expect(log.getByRole("img", { name: "Image 1" })).toBeVisible();
+});
+
+test("the footer under the composer shows where the chat runs, and its branch menu checks out and creates branches", async ({
+  desktop,
+}, testInfo) => {
+  const { page, application, home } = desktop;
+  const repo = join(home, "repo");
+
+  const git = async (...args: readonly string[]): Promise<string> =>
+    (await run("git", [...args], { cwd: repo })).stdout.trim();
+
+  await mkdir(repo);
+  await git("init", "-q", "-b", "main");
+  await git("config", "user.name", "Ada");
+  await git("config", "user.email", "ada@example.com");
+  await git("config", "commit.gpgsign", "false");
+  await writeFile(join(repo, "a.txt"), "main\n");
+  await git("add", "-A");
+  await git("commit", "-q", "-m", "first");
+  await git("switch", "-q", "-c", "topic");
+  await writeFile(join(repo, "a.txt"), "topic\n");
+  await git("commit", "-q", "-am", "topic");
+  await git("switch", "-q", "main");
+  await application.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
+  }, repo);
+  await page.keyboard.press("ControlOrMeta+o");
+  await openNewChat(page);
+
+  const pane = chatPane(page);
+  const footer = pane.locator("[data-composer-footer]");
+  const branch = (name: string) => footer.getByRole("button", { name, exact: true });
+  const search = page.getByRole("combobox", { name: "Search branches" });
+
+  await test.step("the new-chat row and the chat's footer name the same branch and machine", async () => {
+    await expect(pane.getByRole("button", { name: "main", exact: true })).toBeVisible();
+    await send(page, "Hello from the repo");
+    await expect(messages(page).getByText("Echo: Hello from the repo")).toBeVisible();
+    await expect(branch("main")).toBeVisible();
+    await expect(footer.getByRole("button", { name: "This Mac" })).toBeVisible();
+  });
+
+  await test.step("the title bar no longer shows the folder or branch", async () => {
+    const banner = page.getByRole("banner");
+    await expect(banner.getByText("Hello from the repo").first()).toBeVisible();
+    await expect(banner.getByText("repo", { exact: true })).toHaveCount(0);
+    await expect(banner.getByText("main", { exact: true })).toHaveCount(0);
+  });
+
+  await test.step("picking a branch from the search checks it out", async () => {
+    await branch("main").click();
+    await expect(search).toBeFocused();
+    await expect(page.getByRole("option")).toHaveText(["main", "topic", "Create Branch…"]);
+    await search.pressSequentially("top");
+    await expect(page.getByRole("option")).toHaveText(["topic", "Create Branch…"]);
+    await search.press("Enter");
+    await expect(branch("topic")).toBeVisible();
+    expect(await git("branch", "--show-current")).toBe("topic");
+  });
+
+  await test.step("Create Branch… creates a branch from the search and switches to it", async () => {
+    await branch("topic").click();
+    await search.pressSequentially("feature");
+    await expect(page.getByText("No branches found")).toBeVisible();
+    await page.getByRole("option", { name: "Create Branch…" }).click();
+    const name = page.getByRole("textbox", { name: "New branch name" });
+    await expect(name).toHaveValue("feature");
+    await name.press("Enter");
+    await expect(branch("feature")).toBeVisible();
+    expect(await git("branch", "--show-current")).toBe("feature");
+  });
+
+  await test.step("the context ring at the footer's end reads the context used on hover", async () => {
+    const ring = footer.getByRole("meter", { name: "Context" });
+    await expect(ring).toHaveAttribute("aria-valuetext", /^\d+% context used$/u);
+    const readout = page.getByText(/^\d+% context used\n[\d.,]+K? of [\d.,]+K? tokens$/u);
+    await ring.hover();
+    await expect(readout).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(readout).toBeHidden();
+  });
+
+  await test.step("the footer keeps Cursor's proportions in light and dark", async () => {
+    const measured = await footer.evaluate((row) => ({
+      row: row.getBoundingClientRect().height,
+      segments: [...row.querySelectorAll("button")].map((button) => button.offsetHeight),
+    }));
+
+    expect(measured.row).toBe(32);
+    expect(measured.segments).toEqual([20, 20]);
+
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    });
+
+    for (const scheme of ["light", "dark"] as const) {
+      await application.evaluate(({ nativeTheme }, source) => {
+        nativeTheme.themeSource = source;
+      }, scheme);
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.mouse.move(0, 0);
+      await pane
+        .locator("[data-composer-region]")
+        .screenshot({ path: testInfo.outputPath(`composer-footer-${scheme}.png`) });
+      await page
+        .getByRole("banner")
+        .screenshot({ path: testInfo.outputPath(`title-bar-${scheme}.png`) });
+    }
+
+    await testInfo.attach("footer-proportions", {
+      body: JSON.stringify(measured),
+      contentType: "application/json",
+    });
+  });
+
+  await test.step("git's refusal to switch shows its own message", async () => {
+    await writeFile(join(repo, "a.txt"), "local edit\n");
+    await branch("feature").click();
+    await search.pressSequentially("main");
+    await search.press("Enter");
+    await expect(page.getByText("Couldn’t switch to main")).toBeVisible();
+    await expect(page.getByText(/would be overwritten by checkout/u)).toBeVisible();
+    await expect(branch("feature")).toBeVisible();
+  });
+
+  await test.step("the machine segment opens the environment menu", async () => {
+    await footer.getByRole("button", { name: "This Mac" }).click();
+    await expect(page.getByRole("menuitem", { name: "Environments…" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menuitem", { name: "Environments…" })).toBeHidden();
+  });
 });

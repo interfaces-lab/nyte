@@ -12,7 +12,7 @@ Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwrig
 | `navigation.spec.ts` | Tabs, the chat card, history, Chat actions, Environments, Customize, Search |
 | `settings.spec.ts` | Every settings page, the settings search, Back |
 | `chat.spec.ts` | Seeded chats folded past five, a first message, stop, provider errors, thinking |
-| `composer.spec.ts` | Send state, Shift+Enter, drafts, the running placeholder, prompt history, the skills list, attachments, the model button and its Ctrl/Cmd+/ shortcut, paste with no field focused; an image attached through Attach Files… starting a new chat in an open folder |
+| `composer.spec.ts` | Send state, Shift+Enter, drafts, the running placeholder, prompt history, the skills list, attachments, the model button and its Ctrl/Cmd+/ shortcut, paste with no field focused; an image attached through Attach Files… starting a new chat in an open folder; the footer under the composer in a git folder: branch and machine segments, checking out, creating and git's refusal, the context ring's readout, its proportions and screenshots in light and dark |
 | `markdown.spec.ts` | Headings, lists, code blocks, tables in an answer |
 | `subagents.spec.ts` | Two background agents: one block, a line per report, the parent wakes; a transcript link opens the child next to its parent and its tab menu reopens the parent; a tray row previews, Open as full chat opens the tab, Clear Finished empties the tray |
 | `transcript.spec.ts` | A 36-turn chat: virtualised window, scroll to top and back |
