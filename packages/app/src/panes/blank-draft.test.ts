@@ -4,6 +4,7 @@ import { asId } from "@nyte-ai/schema";
 import { PaneController } from "./pane-controller.ts";
 import { activeSelection } from "./pane-layout.ts";
 import type { PaneId } from "./pane-layout.ts";
+import type { ComposerImageAttachment } from "./session-view-state.ts";
 
 function writeDraft(controller: PaneController, text: string, paneId: PaneId = "primary"): void {
   const draft = controller.viewState.readBlank(paneId);
@@ -260,4 +261,39 @@ test("a started chat's draft is written away before the window reloads", () => {
   const reloaded = new PaneController({ storage, storageKey: "panes-started" });
   assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "");
   assert.deepEqual(reloaded.viewState.drafts(), []);
+});
+
+test("a reload keeps a draft's text and small images but not an image too large to store", () => {
+  vi.useFakeTimers();
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
+  const storage = memoryStorage();
+  const first = new PaneController({ storage, storageKey: "panes-images" });
+  const draft = first.viewState.readBlank("primary");
+
+  const image = (id: string, size: number) =>
+    ({
+      id,
+      name: `${id}.png`,
+      content: { type: "image", data: "A".repeat(size), mimeType: "image/png" },
+    }) satisfies ComposerImageAttachment;
+
+  first.viewState.writeBlank("primary", {
+    ...draft,
+    composer: {
+      ...draft.composer,
+      draft: "Look at these",
+      attachments: [image("icon", 1024), image("screenshot", 4 * 1024 * 1024)],
+    },
+  });
+  vi.advanceTimersByTime(200);
+
+  const reloaded = new PaneController({ storage, storageKey: "panes-images" });
+  const composer = reloaded.viewState.readBlank("primary").composer;
+  assert.equal(composer.draft, "Look at these");
+  assert.deepEqual(
+    composer.attachments.map((attachment) => attachment.id),
+    ["icon"],
+  );
 });
