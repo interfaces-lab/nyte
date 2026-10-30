@@ -288,6 +288,19 @@ test("a child opens as a preview after its parent, which it keeps", () => {
     chat("child"),
   ]);
   expect(previews(previewed)).toEqual([false, true]);
+
+  const behind = run([
+    { kind: "open", place: chat("a"), target: "preview" },
+    { kind: "open", place: chat("parent"), target: "permanent" },
+    { kind: "open", place: chat("child"), target: "next-to-parent" },
+  ]);
+
+  expect(places(behind), "a preview before the parent closes; the child goes after it").toEqual([
+    chat("parent"),
+    chat("child"),
+  ]);
+  expect(previews(behind)).toEqual([false, true]);
+  expect(tabPlace(activeTab(behind))).toEqual(chat("child"));
 });
 
 test("previews don't outlast the window, and chats deleted or archived don't reopen", () => {

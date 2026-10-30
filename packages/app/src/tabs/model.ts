@@ -291,7 +291,7 @@ function open(
 
   const parentKept = target === "next-to-parent" ? keepTab(state, state.activeTabId) : state;
 
-  return openPreview(parentKept, place, createId);
+  return openPreview(parentKept, place, target, createId);
 }
 
 function openTab(
@@ -306,15 +306,19 @@ function openTab(
   return shown ? activate(opened, tab.id) : opened;
 }
 
-/** The preview takes a waiting new chat, else the preview's tab, else a new tab after the active one. */
+/**
+ * The preview takes a waiting new chat, else the preview's tab, else a new tab after the active one.
+ * A child opened from its parent always goes after the parent, and the old preview closes.
+ */
 function openPreview(
   state: WindowState,
   place: PaneSelection,
+  target: "preview" | "next-to-parent",
   createId: () => string,
 ): WindowState {
   const active = activeTab(state);
   const replaced = state.tabs.find((tab) => tab.view.kind === "preview");
-  const slot = showsNewChat(active) ? active : replaced;
+  const slot = showsNewChat(active) ? active : target === "preview" ? replaced : undefined;
 
   const tab: Tab = {
     id: slot?.id ?? createId(),
