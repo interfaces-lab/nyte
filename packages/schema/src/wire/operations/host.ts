@@ -73,6 +73,12 @@ export const HOST_OPERATIONS = {
     input: wireObject({ ...PROVIDER, account: Type.String() }),
     output: NOTHING,
   },
+  "models.renameAccount": {
+    ...OWNER,
+    kind: "command",
+    input: wireObject({ ...PROVIDER, account: Type.String(), label: Type.String() }),
+    output: NOTHING,
+  },
   "models.usage": {
     ...OWNER,
     kind: "query",

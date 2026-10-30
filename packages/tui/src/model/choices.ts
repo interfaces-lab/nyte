@@ -173,6 +173,8 @@ export function liveChoices(state: State, purpose: ListPurpose): readonly Choice
           : [choice("forget", "Forget my answer", "Follow the Project trust setting")]),
       ];
     }
+    case "account-name":
+      return [];
     case "question":
     case "approval":
     case "accounts":
@@ -201,6 +203,8 @@ export function listTitle(state: State, purpose: ListPurpose): string {
       return "Skills";
     case "accounts":
       return "Accounts";
+    case "account-name":
+      return `Rename ${purpose.account.label}`;
     case "queue":
       return "Queued messages";
     case "settings":

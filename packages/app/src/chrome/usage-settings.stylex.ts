@@ -18,14 +18,14 @@ export const usageStyles = create({
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
-  spend: { flex: "1 1 320px", gap: space.s4 },
+  spend: { flex: "2 1 320px", gap: space.s4 },
   chart: { flexGrow: 1 },
   superseded: {
     opacity: 0.6,
     transitionProperty: "opacity",
     transitionDuration: motion.durationNormal,
   },
-  limits: { flex: "0 0 248px", gap: space.s3 },
+  limits: { flex: "1 1 280px", gap: space.s4 },
 
   spendHead: {
     display: "flex",
@@ -62,13 +62,43 @@ export const usageStyles = create({
   quiet: { ...figure, color: role.contentTertiary },
 
   limitsHead: { display: "flex", alignItems: "center", justifyContent: "space-between" },
-  meterHead: {
-    display: "flex",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    gap: space.s2,
+  /** One grid for every account, so labels, bars, percents and resets line up across them. */
+  limitGrid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(3.5rem, max-content) minmax(32px, 1fr) auto auto",
+    alignItems: "center",
+    columnGap: space.s2_5,
+    rowGap: space.s2,
   },
-  meterValue: { ...figure, color: role.contentPrimary },
+  /** An account or a skeleton row; its children sit in the grid's columns. */
+  limitRow: { display: "contents" },
+  limitSpan: { gridColumn: "1 / -1", margin: 0 },
+  accountHead: {
+    display: "flex",
+    alignItems: "center",
+    gridColumn: "1 / -1",
+    gap: space.s1_5,
+    minWidth: 0,
+  },
+  accountGap: { marginBlockStart: space.s2 },
+  accountIcon: { flexShrink: 0, color: role.contentSecondary },
+  accountName: { flexShrink: 0, color: role.contentPrimary, fontWeight: type.weightMedium },
+  accountLabel: {
+    minWidth: 0,
+    overflow: "hidden",
+    color: role.contentTertiary,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  limitLabel: {
+    overflow: "hidden",
+    color: role.contentSecondary,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  limitMeter: { minWidth: 0 },
+  limitValue: { ...figure, color: role.contentPrimary, textAlign: "end" },
+  limitReset: { ...figure, color: role.contentTertiary, textAlign: "end", whiteSpace: "nowrap" },
   meterHot: { color: role.contentInteractivePrimary },
 
   breakdown: { display: "flex", flexDirection: "column", gap: space.s2, minWidth: 0 },

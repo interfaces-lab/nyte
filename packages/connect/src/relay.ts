@@ -128,6 +128,7 @@ export const RELAY_OPERATIONS = [
   "models.list",
   "models.accounts",
   "models.selectAccount",
+  "models.renameAccount",
   "models.usage",
   "models.refresh",
   "models.setDefault",

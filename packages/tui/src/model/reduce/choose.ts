@@ -347,12 +347,20 @@ const CHOOSERS: Choosers = {
           now,
           reduce,
         ),
-  accounts: (state, purpose, msg) => {
+  accounts: (state, purpose, msg, now, reduce) => {
     const account = purpose.accounts.find(
       (candidate) => JSON.stringify([candidate.provider, candidate.id]) === msg.choice,
     );
 
     if (account === undefined) return stay(state);
+
+    if (msg.action === "chat.account.rename")
+      return openDialog(
+        state,
+        { kind: "list", purpose: { kind: "account-name", account } },
+        now,
+        reduce,
+      );
     const closed = withoutDialog(state, msg.dialog);
 
     if (account.active) return stay(closed);
@@ -370,6 +378,29 @@ const CHOOSERS: Choosers = {
           provider: account.provider,
           account: account.id,
           label: account.label,
+        },
+      ],
+    };
+  },
+  "account-name": (state, purpose, msg) => {
+    const closed = withoutDialog(state, msg.dialog);
+    const accounts = closed.local.dialogs.at(-1);
+
+    const done =
+      accounts?.kind === "list" && accounts.purpose.kind === "accounts"
+        ? withoutDialog(closed, accounts.id)
+        : closed;
+
+    if (msg.typed === null || msg.typed === purpose.account.label) return stay(done);
+
+    return {
+      state: done,
+      effects: [
+        {
+          kind: "rename-account",
+          provider: purpose.account.provider,
+          account: purpose.account.id,
+          label: msg.typed,
         },
       ],
     };

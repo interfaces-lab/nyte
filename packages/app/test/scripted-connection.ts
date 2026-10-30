@@ -217,6 +217,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       list: refuse,
       accounts: refuse,
       selectAccount: refuse,
+      renameAccount: refuse,
       usage: refuse,
       refresh: refuse,
       setDefault: refuse,

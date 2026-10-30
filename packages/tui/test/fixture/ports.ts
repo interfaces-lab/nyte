@@ -314,6 +314,7 @@ export function fakeHost(): FakeHost {
     listModels: async () => catalog,
     accounts: async () => [],
     selectAccount: async () => undefined,
+    renameAccount: async () => undefined,
     usage: async () => [],
     refreshModels: async () => undefined,
     login: async () => {

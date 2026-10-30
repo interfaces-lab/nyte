@@ -1,6 +1,6 @@
 import { hashKey, useQuery } from "@tanstack/react-query";
-import type { QueryCache, QueryKey } from "@tanstack/react-query";
-import type { BlobId } from "@nyte-ai/sdk";
+import type { QueryCache, QueryKey, UseQueryResult } from "@tanstack/react-query";
+import type { BlobId, ByteReader } from "@nyte-ai/sdk";
 import { connection } from "./sdk.tsx";
 
 const handedOut = new WeakMap<QueryCache, Map<string, string>>();
@@ -23,8 +23,12 @@ function ownedUrls(cache: QueryCache): Map<string, string> {
   return urls;
 }
 
-async function readBlobUrl(blob: BlobId, cache: QueryCache, key: QueryKey): Promise<string> {
-  const reader = await connection().blob(blob);
+async function readObjectUrl(
+  open: () => Promise<ByteReader>,
+  cache: QueryCache,
+  key: QueryKey,
+): Promise<string> {
+  const reader = await open();
   const chunks: Uint8Array<ArrayBuffer>[] = [];
 
   for await (const chunk of reader.chunks()) chunks.push(new Uint8Array(chunk));
@@ -39,11 +43,17 @@ async function readBlobUrl(blob: BlobId, cache: QueryCache, key: QueryKey): Prom
   return url;
 }
 
-export function useBlobUrl(blob: BlobId): string | undefined {
-  const read = useQuery({
-    queryKey: ["blob", blob],
-    queryFn: ({ client, queryKey }) => readBlobUrl(blob, client.getQueryCache(), queryKey),
+/** Reads the bytes `open` streams into an object URL the query cache revokes when it drops the query. */
+export function useObjectUrl(
+  queryKey: QueryKey,
+  open: () => Promise<ByteReader>,
+): UseQueryResult<string> {
+  return useQuery({
+    queryKey,
+    queryFn: (context) => readObjectUrl(open, context.client.getQueryCache(), context.queryKey),
   });
+}
 
-  return read.data;
+export function useBlobUrl(blob: BlobId): string | undefined {
+  return useObjectUrl(["blob", blob], () => connection().blob(blob)).data;
 }

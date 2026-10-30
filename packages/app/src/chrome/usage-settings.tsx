@@ -3,14 +3,16 @@ import { Meter } from "@nyte-ai/ui/meter";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { intent, surfaceTheme, type Tint } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 // oxlint-disable-next-line no-restricted-imports -- the compiler widens deriveUsage/deriveTools to every later call that reads them, so a limits refetch would re-derive the report
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Deferred } from "../deferred.tsx";
-import { useAccountLimits, useUsageReport } from "../queries.ts";
+import { queryClient, useAccountLimits, usageReportOptions, useUsageReport } from "../queries.ts";
+import { providerIcon } from "../conversation/model-picker-state.ts";
 import { useChromeTab } from "./use-chrome-tab.ts";
 import { amongOptions } from "./sidebar-view.ts";
 import { skeletonStyles as bone, usageStyles as styles } from "./usage-settings.stylex.ts";
@@ -31,6 +33,7 @@ import {
   USAGE_RANGE_LABELS,
   USAGE_RANGES,
   windowLabel,
+  type AccountLimits,
   type UsageDerived,
   type UsageRange,
   type UsageRow,
@@ -76,6 +79,11 @@ function rowTint(row: UsageRow, rank: number): Tint | undefined {
 
 function shareWidth(share: number): string {
   return `${String(Math.min(Math.max(share, 0), 1) * 100)}%`;
+}
+
+/** Reads the default range ahead of opening Usage, so the page usually opens on data. */
+export function prefetchUsage(): void {
+  void queryClient.prefetchQuery(usageReportOptions(usageWindow(RANGE_OPTIONS[0], Date.now())));
 }
 
 function useUsageRange() {
@@ -286,9 +294,11 @@ function LimitsCard({
 }: {
   readonly limits: ReturnType<typeof useAccountLimits>;
 }): ReactElement | null {
-  const plans = limits.data?.map(deriveAccount).filter((plan) => plan !== null);
+  const accounts = limits.data
+    ?.map((usage) => deriveAccount(usage, limits.dataUpdatedAt))
+    .filter((account) => account !== null);
 
-  if (plans !== undefined && plans.length === 0 && limits.error === null) return null;
+  if (accounts !== undefined && accounts.length === 0 && limits.error === null) return null;
 
   return (
     <section aria-label="Limits" {...props(styles.card, styles.limits)}>
@@ -308,62 +318,106 @@ function LimitsCard({
           Couldn&apos;t read plan limits. {limits.error.message}
         </p>
       )}
-      {plans === undefined
+      {accounts === undefined
         ? limits.error === null && (
-            <span aria-busy="true" {...props(styles.spendTitle)}>
-              <Bone width="70%" height={10} />
-              <Bone width="100%" height={4} />
-            </span>
+            <div aria-busy="true" {...props(styles.limitGrid)}>
+              <span {...props(styles.accountHead)}>
+                <Bone width={14} height={14} />
+                <Bone width={112} height={10} />
+              </span>
+              {[0, 1].map((slot) => (
+                <span key={slot} {...props(styles.limitRow)}>
+                  <Bone width={48} height={10} />
+                  <Bone width="100%" height={4} />
+                  <Bone width={28} height={10} />
+                  <Bone width={40} height={10} />
+                </span>
+              ))}
+            </div>
           )
-        : plans.map((plan) => (
-            <Fragment key={plan.title}>
-              {plan.message !== undefined && (
-                <p role={plan.failed ? "alert" : undefined} {...props(text.xs, styles.quiet)}>
-                  {plan.message}
-                </p>
-              )}
-              {plan.meters.map((meter) => {
-                const tier = limitTier(meter.used);
-                const label = `${plan.title} · ${meter.label}`;
-
-                return (
-                  <Meter.Root
-                    key={`${plan.title}/${meter.key}`}
-                    value={meter.used}
-                    getAriaValueText={() => `${String(meter.used)}% used`}
-                  >
-                    <span {...props(styles.meterHead)}>
-                      <Meter.Label xstyle={text.base}>{label}</Meter.Label>
-                      <span
-                        {...props(
-                          text.base,
-                          tier === "warm" && intent.warning,
-                          tier === "hot" && intent.danger,
-                          styles.meterValue,
-                          tier !== "calm" && styles.meterHot,
-                        )}
-                      >
-                        {String(meter.used)}%
-                      </span>
-                    </span>
-                    <Meter.Track xstyle={surfaceTheme.gray}>
-                      <Meter.Indicator
-                        xstyle={
-                          tier === "calm"
-                            ? undefined
-                            : tier === "warm"
-                              ? intent.warning
-                              : intent.danger
-                        }
-                      />
-                    </Meter.Track>
-                    <span {...props(text.xs, styles.quiet)}>{meter.reset}</span>
-                  </Meter.Root>
-                );
-              })}
-            </Fragment>
-          ))}
+        : accounts.length > 0 && (
+            <div {...props(styles.limitGrid)}>
+              {accounts.map((account, index) => (
+                <AccountLimitRows key={account.key} account={account} first={index === 0} />
+              ))}
+            </div>
+          )}
     </section>
+  );
+}
+
+function AccountLimitRows({
+  account,
+  first,
+}: {
+  readonly account: AccountLimits;
+  readonly first: boolean;
+}): ReactElement {
+  const title = account.account === undefined ? account.name : `${account.name} ${account.account}`;
+
+  return (
+    <div role="group" aria-label={title} {...props(styles.limitRow)}>
+      <span {...props(styles.accountHead, !first && styles.accountGap)}>
+        <Icon name={providerIcon(account.provider)} size={14} {...props(styles.accountIcon)} />
+        <span {...props(text.sm, styles.accountName)}>{account.name}</span>
+        {account.account !== undefined && (
+          <span {...props(text.sm, styles.accountLabel)}>{account.account}</span>
+        )}
+      </span>
+      {account.message !== undefined && (
+        <p
+          role={account.failed ? "alert" : undefined}
+          {...props(text.xs, styles.quiet, styles.limitSpan)}
+        >
+          {account.message}
+        </p>
+      )}
+      {account.meters.map((meter) => {
+        const tier = limitTier(meter.used);
+
+        return (
+          <div key={meter.key} {...props(styles.limitRow)}>
+            <span aria-hidden="true" {...props(text.sm, styles.limitLabel)}>
+              {meter.label}
+            </span>
+            <Meter.Root
+              value={meter.used}
+              aria-label={`${title} ${meter.label}`}
+              getAriaValueText={() => `${String(meter.used)}% used. ${meter.resetsAt}`}
+              xstyle={styles.limitMeter}
+            >
+              <Meter.Track xstyle={surfaceTheme.gray}>
+                <Meter.Indicator
+                  xstyle={
+                    tier === "calm" ? undefined : tier === "warm" ? intent.warning : intent.danger
+                  }
+                />
+              </Meter.Track>
+            </Meter.Root>
+            <span
+              aria-hidden="true"
+              {...props(
+                text.sm,
+                tier === "warm" && intent.warning,
+                tier === "hot" && intent.danger,
+                styles.limitValue,
+                tier !== "calm" && styles.meterHot,
+              )}
+            >
+              {String(meter.used)}%
+            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={<span aria-hidden="true" {...props(text.sm, styles.limitReset)} />}
+              >
+                {meter.resetsIn}
+              </TooltipTrigger>
+              <TooltipContent>{meter.resetsAt}</TooltipContent>
+            </Tooltip>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

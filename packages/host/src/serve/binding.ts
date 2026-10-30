@@ -185,6 +185,11 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
       return null;
     },
+    "models.renameAccount": async ({ provider, account, label }) => {
+      await connection.models.renameAccount(provider, account, label);
+
+      return null;
+    },
     "models.usage": () => connection.models.usage(),
     "models.refresh": async ({ provider }) => {
       await connection.models.refresh(provider);

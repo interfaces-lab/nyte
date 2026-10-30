@@ -78,6 +78,7 @@ export interface HostPort {
   listModels(): Promise<ModelCatalogView>;
   accounts(provider: string | null): Promise<readonly ModelAccount[]>;
   selectAccount(provider: string, account: string): Promise<void>;
+  renameAccount(provider: string, account: string, label: string): Promise<void>;
   usage(): Promise<readonly ProviderUsage[]>;
   refreshModels(provider: string): Promise<void>;
   login(

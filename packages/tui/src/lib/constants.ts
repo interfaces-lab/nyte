@@ -46,6 +46,7 @@ export const CHAT_KEYBINDS = {
   "chat.queue.up": "ctrl+up",
   "chat.queue.down": "ctrl+down",
   "chat.task.stop": "ctrl+x",
+  "chat.account.rename": "ctrl+r",
   "chat.tools.toggle": "ctrl+o",
   "chat.skills.open": "ctrl+s",
   "chat.commands.open": "ctrl+k",

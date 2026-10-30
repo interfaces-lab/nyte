@@ -232,6 +232,18 @@ export async function selectAccount(
   }
 }
 
+export async function renameAccount(
+  effect: Of<"rename-account">,
+  context: HandlerContext,
+): Promise<void> {
+  try {
+    await context.ports.host.renameAccount(effect.provider, effect.account, effect.label);
+    context.dispatch({ kind: "inform", tone: "ok", text: `Renamed to ${effect.label}.` });
+  } catch (error) {
+    context.dispatch({ kind: "inform", tone: "error", text: `error: ${errorMessage(error)}` });
+  }
+}
+
 async function afterCredentials(
   context: HandlerContext,
   action: "login" | "logout" | "select",

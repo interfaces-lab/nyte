@@ -14,6 +14,8 @@ export const keys = {
   firstFrameRoots: ["first-frame", "roots"] as const,
   modelCatalog: (generation: string) => ["catalog", "models", generation] as const,
   accountLimits: (generation: string) => ["account-limits", generation] as const,
+  modelAccounts: (provider: string, generation: string) =>
+    ["model-accounts", provider, generation] as const,
   usage: (sinceDay: string | null, untilDay: string) => ["usage", sinceDay, untilDay] as const,
   githubAccount: ["github-account"] as const,
   github: ["github"] as const,

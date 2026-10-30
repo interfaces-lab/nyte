@@ -14,7 +14,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { MouseEvent, ReactElement, Ref } from "react";
-import type { FileDocument, FileEvent } from "@nyte-ai/sdk";
+import type { FileDocument, FileEvent, FileVersion } from "@nyte-ai/sdk";
 import { button, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { diffStyles } from "../conversation/diff.stylex.ts";
@@ -34,6 +34,7 @@ import {
 } from "../queries.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { watchFamily } from "../sdk.tsx";
+import { useObjectUrl } from "../use-blob-url.ts";
 import { FindWidget } from "./find-widget.tsx";
 import type { FindWidgetHandle } from "./find-widget.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -112,6 +113,16 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
   },
+  image: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    padding: space.s5,
+  },
+  picture: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain" },
   message: {
     padding: space.s5,
     color: role.contentSecondary,
@@ -200,9 +211,10 @@ function DiskSync({ path }: { readonly path: string }): null {
 
 export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
   const document = useWorkspaceFile(input.file.path);
+  const data = document.data;
 
-  if (document.data?.kind === "text")
-    return <TextFileEditor {...input} document={document.data} reload={document.refetch} />;
+  if (data?.kind === "text")
+    return <TextFileEditor {...input} document={data} reload={document.refetch} />;
 
   return (
     <div
@@ -210,15 +222,64 @@ export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
       inert={!input.active}
       {...props(styles.root, !input.active && styles.hidden)}
     >
-      <div role={document.isError ? "alert" : "status"} {...props(text.sm, styles.message)}>
-        {document.isError
-          ? `The file could not be opened. ${document.error.message}`
-          : document.data?.kind === "binary"
-            ? "Binary files cannot be edited here."
-            : document.data?.kind === "large"
-              ? "This file is too large for the workbench editor."
-              : "Opening file…"}
+      {input.active && <DiskSync key={input.file.path} path={input.file.path} />}
+      {(data?.kind === "binary" || data?.kind === "large") && IMAGE_FILE.test(data.path) ? (
+        <FileImage
+          key={data.version}
+          path={data.path}
+          version={data.version}
+          name={input.file.displayPath}
+        />
+      ) : (
+        <div role={document.isError ? "alert" : "status"} {...props(text.sm, styles.message)}>
+          {document.isError
+            ? `The file could not be opened. ${document.error.message}`
+            : data?.kind === "binary"
+              ? "Binary files cannot be edited here."
+              : data?.kind === "large"
+                ? "This file is too large for the workbench editor."
+                : "Opening file…"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The raster formats Chromium decodes in an `<img>`; SVG reads as text and opens in the editor. */
+const IMAGE_FILE = /\.(?:png|jpe?g|gif|webp|avif|bmp|ico)$/i;
+
+function FileImage({
+  path,
+  version,
+  name,
+}: {
+  readonly path: string;
+  readonly version: FileVersion;
+  readonly name: string;
+}): ReactElement {
+  const image = useObjectUrl(["files", "bytes", path, version], async () =>
+    (await workspaceFiles()).bytes(path),
+  );
+
+  const [broken, setBroken] = useState(false);
+
+  if (image.isError || broken)
+    return (
+      <div role="alert" {...props(text.sm, styles.message)}>
+        The image could not be displayed.
       </div>
+    );
+
+  if (image.data === undefined)
+    return (
+      <div role="status" {...props(text.sm, styles.message)}>
+        Opening file…
+      </div>
+    );
+
+  return (
+    <div {...props(styles.image)}>
+      <img src={image.data} alt={name} onError={() => setBroken(true)} {...props(styles.picture)} />
     </div>
   );
 }

@@ -67,6 +67,12 @@ export const operations = {
     { provider: "test" },
   ),
   "models.selectAccount output": operation(OPERATIONS["models.selectAccount"].output, null, 0),
+  "models.renameAccount input": operation(
+    OPERATIONS["models.renameAccount"].input,
+    { provider: "test", account: "work", label: "Work" },
+    { provider: "test", account: "work" },
+  ),
+  "models.renameAccount output": operation(OPERATIONS["models.renameAccount"].output, null, 0),
   "models.usage input": operation(OPERATIONS["models.usage"].input, {}, 1),
   "models.usage output": operation(OPERATIONS["models.usage"].output, [], [{}]),
   "models.refresh input": operation(

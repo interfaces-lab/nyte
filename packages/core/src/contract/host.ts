@@ -224,6 +224,9 @@ export interface ModelsApi {
   /** Activates a saved login for subsequent requests. Requires owner authority. */
   selectAccount(provider: string, account: string): Promise<void>;
 
+  /** Renames a saved login; rejects an empty name. Requires owner authority. */
+  renameAccount(provider: string, account: string, label: string): Promise<void>;
+
   /** Loads cached provider usage, refreshing expired entries. Requires owner authority. */
   usage(): Promise<readonly ProviderUsage[]>;
 

@@ -729,7 +729,7 @@ export function useHostRelease(): { readonly version: string } | undefined {
     : undefined;
 }
 
-function useCatalogGeneration(): string {
+export function useCatalogGeneration(): string {
   return useWatchSelect(hostWatch("host"), (state) => state.value?.catalog) ?? "initial";
 }
 
@@ -783,6 +783,7 @@ export function usageReportOptions(window: UsageWindow) {
     placeholderData: keepPreviousData,
     refetchOnMount: true,
     staleTime: USAGE_STALE_AFTER_MS,
+    gcTime: Infinity,
   } as const;
 }
 
@@ -801,9 +802,7 @@ export function useUsageReport(window: UsageWindow): UsageQueryView {
   return {
     read: query.data,
     superseded: query.isPlaceholderData,
-    error: query.isError
-      ? (query.error ?? new Error("The host could not read local history."))
-      : null,
+    error: query.error,
     isFetching: query.isFetching,
     refresh: () => void query.refetch({ cancelRefetch: false }),
   };
@@ -815,6 +814,7 @@ function accountLimitsOptions(generation: string) {
     queryFn: async () => (await connected()).models.usage(),
     refetchOnMount: true,
     staleTime: USAGE_STALE_AFTER_MS,
+    gcTime: Infinity,
   } as const;
 }
 

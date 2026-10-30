@@ -69,6 +69,8 @@ export function hostPort(
     listModels: () => host.models.list(),
     accounts: (provider) => host.models.accounts(provider ?? undefined),
     selectAccount: (provider, account) => host.models.selectAccount(provider, account),
+    renameAccount: (provider, account, label) =>
+      host.models.renameAccount(provider, account, label),
     usage: () => host.models.usage(),
     refreshModels: (provider) => host.models.refresh(provider),
     async login(provider, driver) {

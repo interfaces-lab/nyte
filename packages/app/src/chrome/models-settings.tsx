@@ -1,19 +1,30 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { toast } from "@nyte-ai/ui/toast";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
+import {
+  Menu,
+  MenuContent,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "@nyte-ai/ui/menu";
 import { Input } from "@nyte-ai/ui/input";
 import { Switch } from "@nyte-ai/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { modelIcon, providerIcon } from "../conversation/model-picker-state.ts";
 import { nyte } from "../nyte.ts";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../catalog.ts";
-import { useCatalog, useSetListing, useSetPreference } from "../queries.ts";
+import { useCatalog, useCatalogGeneration, useSetListing, useSetPreference } from "../queries.ts";
+import { keys } from "../query-keys.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { connection } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
@@ -294,6 +305,67 @@ function ApiKeyForm({
   );
 }
 
+function AccountNameForm({
+  provider,
+  current,
+  pending,
+  field,
+  onSubmit,
+  onCancel,
+}: {
+  provider: string;
+  current: string;
+  pending: boolean;
+  field: RefObject<HTMLInputElement | null>;
+  onSubmit: (label: string) => void;
+  onCancel: () => void;
+}): ReactElement {
+  const [name, setName] = useState(current);
+  const label = name.trim();
+
+  useMountEffect(() => {
+    field.current?.focus();
+    field.current?.select();
+  });
+
+  return (
+    <form
+      {...props(styles.keyForm)}
+      onSubmit={(event) => {
+        event.preventDefault();
+
+        if (!pending && label !== "" && label !== current) onSubmit(label);
+      }}
+    >
+      <div {...props(styles.keyRow)}>
+        <Input
+          ref={field}
+          aria-label={`${provider} account name`}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="Account name"
+          value={name}
+          disabled={pending}
+          xstyle={styles.keyInput}
+          onValueChange={setName}
+        />
+        <Button
+          type="submit"
+          variant="solid"
+          tone="primary"
+          loading={pending}
+          disabled={label === "" || label === current}
+        >
+          Save
+        </Button>
+        <Button variant="outline" disabled={pending} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function ProviderRow({
   provider,
   models,
@@ -302,9 +374,13 @@ function ProviderRow({
   models: readonly DesktopModelOption[];
 }): ReactElement {
   const setPreference = useSetPreference();
+  const client = useQueryClient();
+  const generation = useCatalogGeneration();
   const [keyFormOpen, setKeyFormOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const keyField = useRef<HTMLInputElement>(null);
+  const nameField = useRef<HTMLInputElement>(null);
   const running = useLoginAttempt(provider.id);
   const disconnected = provider.credential === "missing";
   const unknown = provider.credential === "unknown";
@@ -332,6 +408,36 @@ function ProviderRow({
     onSuccess: () => toast.add({ type: "success", title: `Signed out of ${provider.name}` }),
     onError: () =>
       toast.add({ type: "error", title: `Couldn't sign out of ${provider.name}. Try again.` }),
+  });
+
+  const refreshAccounts = () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: ["model-accounts", provider.id] }),
+      client.invalidateQueries({ queryKey: ["account-limits"] }),
+    ]);
+
+  const rename = useMutation({
+    mutationFn: (input: { readonly account: string; readonly label: string }) =>
+      connection().models.renameAccount(provider.id, input.account, input.label),
+    onSuccess: (_result, input) => {
+      setRenameOpen(false);
+      toast.add({ type: "success", title: `Renamed account to ${input.label}` });
+
+      return refreshAccounts();
+    },
+    onError: (error) =>
+      toast.add({
+        type: "error",
+        title: "Couldn't rename the account. Try again.",
+        description: error.message,
+      }),
+  });
+
+  const switchAccount = useMutation({
+    mutationFn: (account: string) => connection().models.selectAccount(provider.id, account),
+    onSuccess: () => refreshAccounts(),
+    onError: () =>
+      toast.add({ type: "error", title: `Couldn't switch ${provider.name} accounts. Try again.` }),
   });
 
   const recheck = useMutation({
@@ -385,14 +491,65 @@ function ProviderRow({
   const canSignOut = !disconnected && !unknown && signsInHere;
   const browsable = !disconnected && !unknown && models.length > 0;
 
+  const accounts =
+    useQuery({
+      queryKey: keys.modelAccounts(provider.id, generation),
+      queryFn: () => connection().models.accounts(provider.id),
+      enabled: canSignOut,
+    }).data ?? [];
+
+  const active = accounts.find((account) => account.active);
+
   const status = canSignOut ? (
     <ConnectionMenu
       label={provider.name}
       tone="on"
       status="Connected"
-      loading={logout.isPending}
+      loading={logout.isPending || switchAccount.isPending}
       disabled={login.isPending || setPreference.isPending}
+      finalFocus={() => nameField.current ?? true}
     >
+      {accounts.length > 1 ? (
+        <MenuGroup>
+          <MenuGroupLabel>Accounts</MenuGroupLabel>
+          <MenuRadioGroup value={active?.id ?? null}>
+            {accounts.map((account) => (
+              <MenuRadioItem
+                key={account.id}
+                value={account.id}
+                onClick={() => {
+                  if (account.active) return;
+                  setRenameOpen(false);
+                  switchAccount.mutate(account.id);
+                }}
+              >
+                {account.label}
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+        </MenuGroup>
+      ) : (
+        active !== undefined && (
+          <MenuGroup>
+            <MenuGroupLabel>{active.label}</MenuGroupLabel>
+          </MenuGroup>
+        )
+      )}
+      {active !== undefined && (
+        <>
+          <MenuItem
+            icon="pencil"
+            onClick={() => {
+              rename.reset();
+              setModelsOpen(false);
+              setRenameOpen(true);
+            }}
+          >
+            Rename Account…
+          </MenuItem>
+          <MenuSeparator />
+        </>
+      )}
       <MenuItem variant="danger" onClick={() => logout.mutate()}>
         Disconnect Provider
       </MenuItem>
@@ -473,7 +630,10 @@ function ProviderRow({
               <Button
                 variant="outline"
                 aria-expanded={modelsOpen}
-                onClick={() => setModelsOpen((open) => !open)}
+                onClick={() => {
+                  setRenameOpen(false);
+                  setModelsOpen((open) => !open);
+                }}
               >
                 {provider.id === "acp" ? "Agents" : "Models"}
                 <span {...props(srOnly)}> for {provider.name}</span>
@@ -499,6 +659,15 @@ function ProviderRow({
               login.reset();
               setKeyFormOpen(false);
             }}
+          />
+        ) : renameOpen && canSignOut && active !== undefined ? (
+          <AccountNameForm
+            provider={provider.name}
+            current={active.label}
+            pending={rename.isPending}
+            field={nameField}
+            onSubmit={(label) => rename.mutate({ account: active.id, label })}
+            onCancel={() => setRenameOpen(false)}
           />
         ) : modelsOpen && browsable ? (
           <ModelList provider={provider} models={models} />

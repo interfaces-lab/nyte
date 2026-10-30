@@ -1,6 +1,14 @@
 import { errorMessage } from "../lib/format.ts";
 import type { Effect } from "../model/effect.ts";
-import { login, loginAnswer, logout, mcpAction, mcpLogin, selectAccount } from "./auth.ts";
+import {
+  login,
+  loginAnswer,
+  logout,
+  mcpAction,
+  mcpLogin,
+  renameAccount,
+  selectAccount,
+} from "./auth.ts";
 import { boot } from "./boot.ts";
 import type { BootOptions } from "./boot.ts";
 import {
@@ -198,6 +206,7 @@ const ROUTES: Routes = {
   login: host(login),
   logout: host(logout),
   "select-account": host(selectAccount),
+  "rename-account": host(renameAccount),
   notify: local(notify),
   exit: local(exit),
   "refresh-workspace": local(refreshWorkspaceFacts),

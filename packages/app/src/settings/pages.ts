@@ -2,7 +2,7 @@ import type { ComponentType } from "react";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { ProvidersSettings } from "../chrome/models-settings.tsx";
 import { ProfileSettingsPage } from "./profile.tsx";
-import { UsageRangePicker, UsageSettings } from "../chrome/usage-settings.tsx";
+import { prefetchUsage, UsageRangePicker, UsageSettings } from "../chrome/usage-settings.tsx";
 import { AdvancedSettings } from "./advanced.tsx";
 import { AgentSettings } from "./agent.tsx";
 import { AppearanceSettings } from "./appearance.tsx";
@@ -23,6 +23,8 @@ export interface PageInfo {
   readonly keywords: readonly string[];
   readonly Page: ComponentType;
   readonly Actions?: ComponentType;
+  /** Starts the page's reads before it opens, when the pointer or focus reaches its link. */
+  readonly prefetch?: () => void;
 }
 
 export const SETTINGS_PAGES = {
@@ -98,6 +100,7 @@ export const SETTINGS_PAGES = {
     keywords: ["tokens", "cost", "spend", "billing", "cache", "activity", "charts", "history"],
     Page: UsageSettings,
     Actions: UsageRangePicker,
+    prefetch: prefetchUsage,
   },
   agent: {
     icon: "agent",

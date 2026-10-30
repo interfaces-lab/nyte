@@ -603,52 +603,84 @@ export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
   });
 }
 
-interface LimitMeter {
+export interface LimitMeter {
   readonly key: string;
   readonly label: string;
   readonly used: number;
-  readonly reset: string;
+  /** Time left until the window resets, like "4h 12m"; empty when the provider gave no reset time. */
+  readonly resetsIn: string;
+  readonly resetsAt: string;
 }
 
-interface AccountView {
-  readonly title: string;
+export interface AccountLimits {
+  readonly key: string;
+  readonly provider: string;
+  readonly name: string;
+  readonly account: string | undefined;
   readonly meters: readonly LimitMeter[];
   readonly message: string | undefined;
   readonly failed: boolean;
 }
 
-export function deriveAccount(account: ProviderUsage): AccountView | null {
-  const title =
-    account.account === null ? account.name : `${account.name} · ${account.account.label}`;
+const MINUTE_MS = 60_000;
 
-  if (account.state.kind === "unavailable")
-    return account.state.reason === "failed"
-      ? { title, meters: [], message: `${title} · ${account.state.message}`, failed: true }
+const HOUR_MS = 60 * MINUTE_MS;
+
+const DAY_MS = 24 * HOUR_MS;
+
+/** How long until `at`, to the two largest units: "5d 3h", "4h 12m", "8m". */
+export function formatResetsIn(at: number, now: number): string {
+  const left = at - now;
+
+  if (left < MINUTE_MS) return "now";
+  const days = Math.floor(left / DAY_MS);
+  const hours = Math.floor((left % DAY_MS) / HOUR_MS);
+  const minutes = Math.floor((left % HOUR_MS) / MINUTE_MS);
+
+  if (days > 0) return hours === 0 ? `${String(days)}d` : `${String(days)}d ${String(hours)}h`;
+
+  if (hours > 0)
+    return minutes === 0 ? `${String(hours)}h` : `${String(hours)}h ${String(minutes)}m`;
+
+  return `${String(minutes)}m`;
+}
+
+/** One provider account's limit windows, in the order the provider reports them, as of `now`. */
+export function deriveAccount(usage: ProviderUsage, now: number): AccountLimits | null {
+  const base = {
+    key: usage.provider,
+    provider: usage.provider,
+    name: usage.name,
+    account: usage.account?.label,
+  };
+
+  if (usage.state.kind === "unavailable")
+    return usage.state.reason === "failed"
+      ? { ...base, meters: [], message: usage.state.message, failed: true }
       : null;
 
-  const meters = account.state.limits
-    .map((window) => ({
-      key: window.label,
-      label: window.label,
-      used: window.limit === 0 ? 0 : Math.round((window.used / window.limit) * 100),
-      reset:
-        window.resetsAt === null
-          ? "Reset time unknown"
-          : `Resets ${new Date(window.resetsAt).toLocaleString(undefined, {
-              weekday: "short",
-              hour: "numeric",
-              minute: "2-digit",
-            })}`,
-    }))
-    .toSorted((left, right) => right.used - left.used);
+  const meters = usage.state.limits.map((window) => ({
+    key: window.label,
+    label: window.label,
+    used: window.limit === 0 ? 0 : Math.round((window.used / window.limit) * 100),
+    resetsIn: window.resetsAt === null ? "" : formatResetsIn(window.resetsAt, now),
+    resetsAt:
+      window.resetsAt === null
+        ? "Reset time unknown"
+        : `Resets ${new Date(window.resetsAt).toLocaleString(undefined, {
+            weekday: "short",
+            hour: "numeric",
+            minute: "2-digit",
+          })}`,
+  }));
 
   return {
-    title,
+    ...base,
     meters,
-    message: account.state.stale
-      ? `${title} · Cached limits${account.state.error === null ? "" : ` · ${account.state.error}`}`
+    message: usage.state.stale
+      ? `Showing cached limits${usage.state.error === null ? "." : `: ${usage.state.error}`}`
       : meters.length === 0
-        ? `${account.name} reported no limit.`
+        ? "No limits reported."
         : undefined,
     failed: false,
   };

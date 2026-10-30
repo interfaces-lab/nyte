@@ -7,7 +7,12 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Row } from "@nyte-ai/ui/row";
 import { sidebarStyles as rail } from "../chrome/sidebar.stylex.ts";
-import { SETTINGS_PAGES, settingsSectionGroups, type SettingsSection } from "./pages.ts";
+import {
+  SETTINGS_PAGES,
+  settingsSectionGroups,
+  type PageInfo,
+  type SettingsSection,
+} from "./pages.ts";
 import { closeSettings } from "./return.ts";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 
@@ -117,6 +122,8 @@ export function SettingsNavigation({
                 }
                 aria-current={section === id ? "page" : undefined}
                 onClick={() => setSearch("")}
+                onPointerEnter={prefetchPage(id)}
+                onFocus={prefetchPage(id)}
                 xstyle={[
                   rail.navRow,
                   index === highlighted && section !== id && styles.navItemHighlighted,
@@ -136,4 +143,10 @@ export function SettingsNavigation({
       </div>
     </div>
   );
+}
+
+function prefetchPage(id: SettingsSection): PageInfo["prefetch"] {
+  const page: PageInfo = SETTINGS_PAGES[id];
+
+  return page.prefetch;
 }

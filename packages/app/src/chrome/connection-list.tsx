@@ -5,7 +5,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuTrigger } from "@nyte-ai/ui/menu";
 import { create, props } from "@stylexjs/stylex";
-import type { ReactElement, ReactNode, Ref } from "react";
+import type { ComponentProps, ReactElement, ReactNode, Ref } from "react";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -104,12 +104,14 @@ export function ConnectionMenu({
   loading = false,
   disabled = false,
   ref,
+  finalFocus,
   children,
 }: ConnectionStanding & {
   readonly label: string;
   readonly loading?: boolean;
   readonly disabled?: boolean;
   readonly ref?: Ref<HTMLButtonElement>;
+  readonly finalFocus?: ComponentProps<typeof MenuContent>["finalFocus"];
   readonly children: ReactNode;
 }): ReactElement {
   return (
@@ -123,7 +125,9 @@ export function ConnectionMenu({
           </Button>
         }
       />
-      <MenuContent align="end">{children}</MenuContent>
+      <MenuContent align="end" finalFocus={finalFocus}>
+        {children}
+      </MenuContent>
     </Menu>
   );
 }

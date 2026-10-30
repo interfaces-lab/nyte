@@ -114,6 +114,7 @@ const NO_MODELS: ModelsApi = {
   list: async () => unavailable("models"),
   accounts: async () => unavailable("models"),
   selectAccount: async () => unavailable("models"),
+  renameAccount: async () => unavailable("models"),
   usage: async () => unavailable("models"),
   refresh: async () => unavailable("models"),
   setDefault: async () => unavailable("models"),

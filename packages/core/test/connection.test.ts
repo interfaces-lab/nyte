@@ -28,6 +28,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
   const rows: Record<string, () => unknown> = {
     "models.accounts": () => sdk.models.accounts(),
     "models.selectAccount": () => sdk.models.selectAccount("p", "account"),
+    "models.renameAccount": () => sdk.models.renameAccount("p", "account", "Work"),
     "models.usage": () => sdk.models.usage(),
     "models.refresh": () => sdk.models.refresh(),
     "models.setDefault": () => sdk.models.setDefault({ provider: "p", id: "m" }),
@@ -152,7 +153,7 @@ describe("connection gate (§52 rule 5)", () => {
       covered: false,
     });
 
-    expect(elevated).toHaveLength(39);
+    expect(elevated).toHaveLength(40);
     expect(await elevatedRows(participant, participant.workspace(at))).toEqual(denied);
     expect(await elevatedRows(invocation.sdk, invocation.workspace)).toEqual(denied);
   });

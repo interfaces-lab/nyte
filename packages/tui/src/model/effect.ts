@@ -31,6 +31,12 @@ export type Effect =
       readonly account: string;
       readonly label: string;
     }
+  | {
+      readonly kind: "rename-account";
+      readonly provider: string;
+      readonly account: string;
+      readonly label: string;
+    }
   | { readonly kind: "follow"; readonly target: SessionId | "new"; readonly announce: boolean }
   | { readonly kind: "load-earlier"; readonly session: SessionId }
   | { readonly kind: "see"; readonly session: SessionId; readonly commit: CommitId }
