@@ -8,6 +8,7 @@ import { main, setup, until } from "../src/harness.ts";
 import { definePart } from "../src/index.ts";
 import { memoryStore } from "../src/store.ts";
 import type { Kernel, StepOutcome } from "../src/contract/kernel.ts";
+import type { StoreConnection } from "../src/contract/store.ts";
 import type { Host, Session } from "../src/index.ts";
 import type { Script } from "../src/harness.ts";
 
@@ -165,6 +166,56 @@ describe("child background items", () => {
       expect(await childState(parent, child.id, "waiting")).toBe("waiting");
     } finally {
       unpoll();
+      await views.return?.();
+    }
+  });
+
+  it("reads no settled child again when a refresh finds its session unchanged", async () => {
+    const memory = await memoryStore().open();
+    const reads = { objects: 0, lists: 0 };
+
+    const counted: StoreConnection = {
+      ...memory,
+      objects: {
+        ...memory.objects,
+        get(id) {
+          reads.objects += 1;
+
+          return memory.objects.get(id);
+        },
+      },
+      refs: {
+        ...memory.refs,
+        list(prefix) {
+          reads.lists += 1;
+
+          return memory.refs.list(prefix);
+        },
+      },
+    };
+
+    const { kernel, host, script: turns } = await setup({ store: counted });
+    const { session: parent } = await host.sessions.start({ content: "Delegate." });
+
+    for (const count of [1, 2, 3]) {
+      const { session: child } = await host.sessions.start({ parent: parent.id, content: "Go." });
+      const step = host.execution.advance({ session: child.id, head: main });
+      (await turns.started(count)).finish();
+      await step;
+    }
+
+    const views = parent.watch()[Symbol.asyncIterator]();
+
+    try {
+      await views.next();
+      await kernel.folds.refresh();
+      reads.objects = 0;
+      reads.lists = 0;
+      await kernel.folds.refresh();
+
+      expect(reads).toEqual({ objects: 0, lists: 0 });
+      expect(kernel.children.background(parent.id)).toHaveLength(3);
+    } finally {
       await views.return?.();
     }
   });

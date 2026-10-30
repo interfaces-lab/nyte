@@ -1,10 +1,18 @@
-import { asSeq } from "@nyte-ai/schema";
-import type { BackgroundItem, CallId, HeadName, SessionEvent, SessionId } from "@nyte-ai/schema";
+import { asId, asSeq } from "@nyte-ai/schema";
+import type {
+  BackgroundItem,
+  CallId,
+  HeadName,
+  Revision,
+  SessionEvent,
+  SessionId,
+} from "@nyte-ai/schema";
 import type { ChildTable, Kernel } from "../contract/kernel.ts";
 import { backgroundItems } from "../fold/background.ts";
+import { decodeSessionRecord } from "../contract/records.ts";
 import type { SessionRecord } from "../contract/records.ts";
 import type { StoreConnection } from "../contract/store.ts";
-import { listSessionRecords, liveRun, MAIN } from "../store/session.ts";
+import { liveRun, load, MAIN, SESSION_PAGE } from "../store/session.ts";
 
 interface Child {
   readonly parent: SessionId;
@@ -122,16 +130,49 @@ export function createChildTable(
 
 const CHILD_TITLE = "Subagent";
 
-/** Links every stored child of `parent`, so its background also lists children whose runs ended before this process started. */
+/** A stored child as its last read found it: its session's version, and its activity time to page past it. */
+export interface StoredChild {
+  readonly version: Revision;
+  readonly at: number;
+}
+
+/** Links each stored child of `parent` whose session moved since `seen` recorded it, so its background also lists children whose runs ended before this process started. */
 export async function linkStoredChildren(
   kernel: Pick<Kernel, "store" | "children">,
   parent: SessionId,
+  seen: Map<SessionId, StoredChild>,
   link: "link" | "reconcile" = "link",
 ): Promise<void> {
-  const records = await listSessionRecords(kernel.store, { kind: "children", session: parent });
+  let after: { readonly at: number; readonly id: SessionId } | undefined;
 
-  for (const record of records)
-    kernel.children[link](record, await readChildState(kernel.store, record));
+  for (;;) {
+    const rows = await kernel.store.sessions.list({
+      parents: { kind: "children", session: parent },
+      after,
+      limit: SESSION_PAGE,
+    });
+
+    const page = await Promise.all(
+      rows.map(async ({ ref, version }) => {
+        const id = asId<"session">(ref.name.slice("sessions/".length));
+        const known = seen.get(id);
+
+        if (known?.version === version) return { id, at: known.at };
+        const found = await load(kernel.store, ref, decodeSessionRecord);
+
+        if (found === null) return null;
+        kernel.children[link](found.record, await readChildState(kernel.store, found.record));
+        seen.set(id, { version, at: found.record.lastActivityAt });
+
+        return { id, at: found.record.lastActivityAt };
+      }),
+    );
+
+    const last = page.findLast((entry) => entry !== null);
+
+    if (rows.length < SESSION_PAGE || last === undefined) return;
+    after = last;
+  }
 }
 
 export async function readChildState(

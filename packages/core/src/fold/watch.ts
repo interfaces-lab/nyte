@@ -27,6 +27,7 @@ import type {
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeRunRecord } from "../contract/records.ts";
 import { linkStoredChildren } from "../engine/children.ts";
+import type { StoredChild } from "../engine/children.ts";
 import { settleAnswersFrom } from "../store/parts.ts";
 import { collectSessionEvents } from "../store/log.ts";
 import { headRef, parseHeadRef, runRef } from "../store/refs.ts";
@@ -427,6 +428,7 @@ function openFoldFeed(
   let held: FeedItem[] | null = [];
   let reading: Promise<void> = Promise.resolve();
   let mark: number | undefined;
+  const children = new Map<SessionId, StoredChild>();
 
   const deliver = (item: FeedItem): void => {
     const event = item.event;
@@ -509,7 +511,7 @@ function openFoldFeed(
 
       if (!open) return;
       await readPast();
-      await linkStoredChildren(kernel, session);
+      await linkStoredChildren(kernel, session, children);
 
       if (!open) return;
 
@@ -591,7 +593,7 @@ function openFoldFeed(
         cursor = last.seq;
       }
 
-      if (open) await linkStoredChildren(kernel, session, "reconcile");
+      if (open) await linkStoredChildren(kernel, session, children, "reconcile");
     },
     dispose() {
       open = false;
