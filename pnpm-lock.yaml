@@ -310,6 +310,15 @@ importers:
       ghostty-web:
         specifier: github:anomalyco/ghostty-web#e91e38a9ceb13c566ddfa15185a9393849f712a9
         version: https://codeload.github.com/anomalyco/ghostty-web/tar.gz/e91e38a9ceb13c566ddfa15185a9393849f712a9(patch_hash=22e723a7e416378c3e2d805d1ec15d83c4de327ad8614eadacc945c163de7782)
+      mdast-util-from-markdown:
+        specifier: ^2.0.3
+        version: 2.0.3(supports-color@10.2.2)
+      mdast-util-gfm:
+        specifier: ^3.1.0
+        version: 3.1.0(supports-color@10.2.2)
+      micromark-extension-gfm:
+        specifier: ^3.0.0
+        version: 3.0.0
       motion:
         specifier: ^14.5.0
         version: 14.5.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -350,6 +359,9 @@ importers:
       '@playwright/test':
         specifier: ^1.64.1
         version: 1.64.1
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
