@@ -283,6 +283,27 @@ for (const shell of shells)
       );
 
       it(
+        "keeps the nonce out of `set`, `typeset` and `declare -p`",
+        async () => {
+          const terminal = await openTerminal(path, prompt);
+
+          try {
+            await terminal.submit('echo "$__nyte_nonce" > $HOME/nonce');
+            await terminal.submit("set; typeset; declare -p; echo dumped-$((40+2))");
+            await terminal.shows("dumped-42");
+            const secret = (await readFile(join(terminal.home, "nonce"), "utf8")).trim();
+
+            expect(secret).toMatch(/^[0-9a-f]{64}$/);
+            expect(terminal.text()).toContain("__nyte_nonce=");
+            expect(terminal.text()).not.toContain(secret.slice(15));
+          } finally {
+            await terminal.close();
+          }
+        },
+        TEST_MS,
+      );
+
+      it(
         "falls back to the process table, which cannot tell a `set +m` command from a prompt hook, when opted out before it starts, in the user's startup files, or at the prompt",
         async () => {
           const busy = async (terminal: Terminal): Promise<boolean> => {

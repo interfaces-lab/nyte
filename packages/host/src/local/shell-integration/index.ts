@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { createShellStream } from "./stream.ts";
+import { createNonceFilter, createShellStream } from "./stream.ts";
 import type { ShellStream } from "./stream.ts";
 import { bashScript } from "./bash.ts";
 import { zshFiles } from "./zsh.ts";
@@ -59,8 +59,13 @@ export async function prepareShellIntegration(input: {
     ),
   );
 
+  const stream = createShellStream(nonce);
+  const hidden = createNonceFilter(nonce);
+
   return {
-    ...createShellStream(nonce),
+    read: (text) => hidden.read(stream.read(text)),
+    end: () => hidden.read(stream.end()) + hidden.end(),
+    state: () => stream.state(),
     args: launch.args,
     env: { ...input.env, ...launch.env, NYTE_SHELL_NONCE: nonce },
     dispose: () => rmSync(folder, { recursive: true, force: true }),

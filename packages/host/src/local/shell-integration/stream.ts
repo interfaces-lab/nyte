@@ -23,6 +23,9 @@ const SUB = "\x1a";
 /** A 633 payload longer than this is discarded through its terminator. */
 const MARKER_LIMIT = 16 * 1024;
 
+/** A shorter partial nonce at the end of a chunk is shown rather than held, so typed text never waits and at most 60 of its 256 bits show. */
+const HOLD_FROM = 16;
+
 const MARKER = /^Nyte;1;([0-9a-f]{64});(?:A;(0|[1-9][0-9]{0,5})|(C)|X)$/;
 
 type Mode =
@@ -196,6 +199,56 @@ export function createShellStream(nonce: string | null): ShellStream {
       return held;
     },
     state: () => state,
+  };
+}
+
+/** Removes `nonce` from text that arrives in chunks, as `set` or `typeset` would print it. */
+export function createNonceFilter(nonce: string) {
+  let shown = 0;
+  let held = "";
+
+  const read = (text: string): string => {
+    const matched = shown + held.length;
+    const rest = nonce.slice(matched);
+
+    if (matched > 0 && text.startsWith(rest)) {
+      shown = 0;
+      held = "";
+
+      return read(text.slice(rest.length));
+    }
+
+    if (matched > 0 && rest.startsWith(text)) {
+      if (matched + text.length >= HOLD_FROM) {
+        held += text;
+
+        return "";
+      }
+
+      shown += text.length;
+
+      return text;
+    }
+
+    const kept = (held + text).replaceAll(nonce, "");
+    let tail = Math.min(kept.length, nonce.length - 1);
+
+    while (tail > 0 && !nonce.startsWith(kept.slice(-tail))) tail -= 1;
+    shown = tail < HOLD_FROM ? tail : 0;
+    held = tail < HOLD_FROM ? "" : kept.slice(-tail);
+
+    return kept.slice(0, kept.length - held.length);
+  };
+
+  return {
+    read,
+    end() {
+      const rest = held;
+      shown = 0;
+      held = "";
+
+      return rest;
+    },
   };
 }
 

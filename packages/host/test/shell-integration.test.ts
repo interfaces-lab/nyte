@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createShellStream } from "../src/local/shell-integration/stream.ts";
+import { createNonceFilter, createShellStream } from "../src/local/shell-integration/stream.ts";
 import type { ShellState } from "../src/local/shell-integration/stream.ts";
 
 const nonce = "0123456789abcdef".repeat(4);
@@ -224,5 +224,46 @@ describe("createShellStream", () => {
     expect(stream.read("\x1b]633;Nyte;1;")).toBe("");
     expect(stream.read(`${nonce};C\x07ok`)).toBe("ok");
     expect(stream.state()).toEqual({ kind: "running" });
+  });
+});
+
+describe("createNonceFilter", () => {
+  const before = "__nyte_nonce=";
+
+  const after = "\r\n";
+
+  it("removes the nonce at every split, showing only up to 15 leading characters cut off at a chunk's end", () => {
+    for (let split = 0; split <= before.length + nonce.length + after.length; split += 1) {
+      const filter = createNonceFilter(nonce);
+      const text = before + nonce + after;
+      const into = split - before.length;
+
+      expect({
+        split,
+        shown: filter.read(text.slice(0, split)) + filter.read(text.slice(split)) + filter.end(),
+      }).toEqual({
+        split,
+        shown: before + (into > 0 && into < 16 ? nonce.slice(0, into) : "") + after,
+      });
+    }
+
+    const filter = createNonceFilter(nonce);
+
+    expect(
+      (before + nonce + after)
+        .split("")
+        .map((char) => filter.read(char))
+        .join("") + filter.end(),
+    ).toBe(before + nonce.slice(0, 15) + after);
+  });
+
+  it("removes every nonce in a chunk and releases a held prefix once it differs", () => {
+    const filter = createNonceFilter(nonce);
+
+    expect(filter.read(`a${nonce}b${nonce}c`)).toBe("abc");
+    expect(filter.read(`d${nonce.slice(0, 20)}`)).toBe("d");
+    expect(filter.read("x")).toBe(`${nonce.slice(0, 20)}x`);
+    expect(filter.read(nonce.slice(0, 30))).toBe("");
+    expect(filter.end()).toBe(nonce.slice(0, 30));
   });
 });
