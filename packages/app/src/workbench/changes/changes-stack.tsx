@@ -424,7 +424,7 @@ function StackHeader({
         <span {...props(diffStyles.stackHeaderGlyph, diffStyles.stackHeaderIcon)}>
           <FileTypeIcon path={path} />
         </span>
-        <Collapsible.Chevron size={12} xstyle={diffStyles.stackHeaderChevron} />
+        <Collapsible.Chevron size="xs" xstyle={diffStyles.stackHeaderChevron} />
         <span {...props(diffStyles.stackPath, styles.path)}>{path}</span>
         {(added > 0 || removed > 0) && (
           <span

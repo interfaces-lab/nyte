@@ -371,7 +371,7 @@ function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElem
             <FileTypeIcon path={row.label} />
           ) : (
             <span aria-hidden="true" {...props(composerStyles.suggestionPreviewPathIcon)}>
-              <Icon name="folder" size={12} />
+              <Icon name="folder" size="xs" />
             </span>
           )}
           <span {...props(composerStyles.suggestionPreviewPathLabel)}>{row.label}</span>
@@ -396,7 +396,7 @@ function SuggestionPreview({
       {attribution !== undefined && (
         <div {...props(text.sm, composerStyles.suggestionPreviewAttribution)}>
           <span aria-hidden="true" {...props(composerStyles.suggestionPreviewIcon)}>
-            <Icon name={suggestion.icon} size={12} />
+            <Icon name={suggestion.icon} size="xs" />
           </span>
           {attribution}
         </div>
@@ -809,7 +809,7 @@ export function useComposerSuggestions({
                         onClick={() => click(suggestion)}
                       >
                         <span aria-hidden="true" {...props(composerStyles.suggestionIcon)}>
-                          <Icon name={suggestion.icon} size={12} />
+                          <Icon name={suggestion.icon} size="xs" />
                         </span>
                         <span {...props(composerStyles.suggestionText)}>
                           <span {...props(composerStyles.suggestionLabel)}>

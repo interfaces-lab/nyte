@@ -240,7 +240,7 @@ const SHOTS: Readonly<
       <div {...props(styles.zoom)}>
         <div {...props(styles.rowScene)}>
           <span {...props(styles.window)} style={{ height: 32 }}>
-            <Icon name="layers" size={12} />
+            <Icon name="layers" size="xs" />
             Polish
           </span>
           <span
@@ -271,15 +271,15 @@ const SHOTS: Readonly<
       <div {...props(styles.zoom)}>
         <div {...props(styles.composer)}>
           <span {...props(styles.composerGlyph)}>
-            <Icon name="plus" size={10} />
+            <Icon name="plus" size="2xs" />
           </span>
           <span {...props(styles.composerSpacer)} />
           <span {...props(styles.chip, stage === "before" && styles.chipClipped)}>
-            <Icon name="model-anthropic" size={9} />
+            <Icon name="model-anthropic" size="2xs" />
             <span {...props(styles.chipText)}>Claude Opus 5.5</span>
           </span>
           <span {...props(styles.send)}>
-            <Icon name="arrow-up" size={10} />
+            <Icon name="arrow-up" size="2xs" />
           </span>
         </div>
       </div>
@@ -298,7 +298,7 @@ const SHOTS: Readonly<
           <span {...props(styles.panelBody)}>
             {stage === "after" && (
               <span {...props(styles.panelIcon)}>
-                <Icon name="diff" size={16} />
+                <Icon name="diff" size="md" />
               </span>
             )}
             <span {...props(stage === "after" ? styles.panelSmall : styles.panelText)}>
@@ -387,7 +387,7 @@ export function Shot({ id }: { readonly id: ShotId }): ReactElement {
                 stage === "after" && shot.verdict && styles.verdict,
               )}
             >
-              {stage === "after" && shot.verdict && <Icon name="checkmark" size={12} />}
+              {stage === "after" && shot.verdict && <Icon name="checkmark" size="xs" />}
               {stage === "before" ? shot.before : shot.after}
             </figcaption>
           </figure>

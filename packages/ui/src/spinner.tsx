@@ -12,7 +12,10 @@ const CELLS = 5;
 
 const PITCH = 3;
 
-const SIZE = CELLS * PITCH;
+/** The cells span 14 px; a 1 px margin centres them in the 16 px glyph slot. */
+const INSET = 1;
+
+const SIZE = CELLS * PITCH + INSET;
 
 const FRAME_COUNT = 16;
 
@@ -32,7 +35,7 @@ const DISC = Array.from({ length: CELLS * CELLS }, (_, index) => {
 const FRAMES = Array.from({ length: FRAME_COUNT }, (_, frame) => frame);
 
 const square = (frame: number) => (cell: { readonly x: number; readonly y: number }) =>
-  `M${frame * SIZE + cell.x * PITCH} ${cell.y * PITCH}h${PITCH - 1}v${PITCH - 1}h-${PITCH - 1}z`;
+  `M${frame * SIZE + INSET + cell.x * PITCH} ${INSET + cell.y * PITCH}h${PITCH - 1}v${PITCH - 1}h-${PITCH - 1}z`;
 
 const OUTLINE = FRAMES.flatMap((frame) => DISC.map(square(frame))).join("");
 
@@ -57,8 +60,8 @@ const styles = create({
   root: {
     display: "inline-block",
     flexShrink: 0,
-    width: glyph.box,
-    height: glyph.box,
+    width: glyph.md,
+    height: glyph.md,
     overflow: "hidden",
     color: "inherit",
   },

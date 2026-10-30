@@ -81,17 +81,17 @@ export function PaletteLegend(): ReactElement {
         <span {...props(text.sm, styles.item)}>
           <span {...props(styles.keys)}>
             <Keycap icon label="Up arrow">
-              <Icon name="arrow-up" size={12} />
+              <Icon name="arrow-up" size="xs" />
             </Keycap>
             <Keycap icon label="Down arrow">
-              <Icon name="arrow-down" size={12} />
+              <Icon name="arrow-down" size="xs" />
             </Keycap>
           </span>
           Navigate
         </span>
         <span {...props(text.sm, styles.item)}>
           <Keycap icon label="Enter">
-            <Icon name="return" size={12} />
+            <Icon name="return" size="xs" />
           </Keycap>
           Select
         </span>

@@ -126,7 +126,7 @@ export function AccountFooterMenu({
               {signedIn?.avatarUrl !== undefined ? (
                 <img alt="" src={signedIn.avatarUrl} {...props(styles.avatar)} />
               ) : (
-                <Icon name={signedIn === undefined ? "laptop" : "user"} size={14} />
+                <Icon name={signedIn === undefined ? "laptop" : "user"} size="sm" />
               )}
             </Row.Leading>
             <Row.Label xstyle={styles.accountLabel}>

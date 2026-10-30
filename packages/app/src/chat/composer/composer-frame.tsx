@@ -263,7 +263,7 @@ export function ComposerFrame({
           compact && composerStyles.editingIndicatorCompact,
         )}
       >
-        <Icon name="pencil" size={14} />
+        <Icon name="pencil" size="sm" />
         <span role="status" {...props(composerStyles.queuedText)}>
           Editing queued message
         </span>

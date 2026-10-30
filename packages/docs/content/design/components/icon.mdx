@@ -21,8 +21,8 @@ import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 ```tsx
 <Icon name="folder" />
 <Icon name="warning" variant="filled" />
-<Icon name="warning" size={14} label="Warning" />
-<Icon name="sparkle" size={12} />
+<Icon name="warning" size="sm" label="Warning" />
+<Icon name="sparkle" size="xs" />
 ```
 
 ### Panel toggle
@@ -50,7 +50,7 @@ const [visible, setVisible] = useState(true);
 | Prop        | Type                     | Default      | Description                                 |
 | ----------- | ------------------------ | ------------ | ------------------------------------------- |
 | `name`      | `IconName`               |              |                                             |
-| `size`      | `number`                 | `16`         | Width and height in pixels.                 |
+| `size`      | `GlyphSize`              | `"md"`       | A glyph step. See [GlyphSize](#glyphsize).  |
 | `variant`   | `"outlined" \| "filled"` | `"outlined"` | Fill needs a `FilledIconName`.              |
 | `label`     | `string`                 |              | Announced as `role="img"`. Omit to hide it. |
 | `xstyle`    | `XStyle`                 |              | See [Theming](/design/theming).             |
@@ -63,7 +63,20 @@ const [visible, setVisible] = useState(true);
 | --------- | ------------------- | ------- | ----------------------------- |
 | `side`    | `"left" \| "right"` |         | The panel's edge.             |
 | `visible` | `boolean`           |         | Whether the panel is showing. |
-| `size`    | `number`            | `16`    | Width and height in pixels.   |
+| `size`    | `GlyphSize`         | `"md"`  | A glyph step.                 |
+
+### GlyphSize
+
+| Step    | Size at the default UI size |
+| ------- | --------------------------- |
+| `"2xs"` | 10px                        |
+| `"xs"`  | 12px                        |
+| `"sm"`  | 14px                        |
+| `"md"`  | 16px                        |
+| `"lg"`  | 20px                        |
+
+The steps are the `glyph` handles in `@nyte-ai/ui/styles/schema.stylex`. A status mark or a
+`Spinner` sits in a `glyph.md` slot.
 
 ### IconName
 

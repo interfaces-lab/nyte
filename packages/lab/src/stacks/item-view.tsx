@@ -241,7 +241,7 @@ export function ItemView({
                       <span {...props(styles.quiet)}>Opens after review</span>
                     ) : (
                       <>
-                        <Icon name="pull-request" size={14} />
+                        <Icon name="pull-request" size="sm" />
                         {number}
                       </>
                     ),
@@ -252,7 +252,7 @@ export function ItemView({
                   label: session.lead ? `${session.name} (lead)` : session.name,
                   value: (
                     <>
-                      <Icon name={MODELS[session.model].icon} size={14} />
+                      <Icon name={MODELS[session.model].icon} size="sm" />
                       {MODELS[session.model].name}
                       <span {...props(styles.state)}>{session.state}</span>
                     </>

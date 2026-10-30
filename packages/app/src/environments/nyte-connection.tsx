@@ -30,7 +30,7 @@ const styles = create({
 
 const TITLE = "Nyte account";
 
-const glyph = <Icon name="laptop" size={16} />;
+const glyph = <Icon name="laptop" size="md" />;
 
 function LinkedConnection({
   view,

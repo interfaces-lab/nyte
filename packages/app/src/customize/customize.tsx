@@ -337,7 +337,7 @@ function PluginRow({
 
   return (
     <ConnectionRow
-      glyph={<Icon name={plugin.icon} size={16} />}
+      glyph={<Icon name={plugin.icon} size="md" />}
       title={plugin.name}
       detail={
         plugin.failure !== undefined ? (
@@ -389,7 +389,7 @@ function PluginsTab({
           ))}
           {adding !== undefined && (
             <ConnectionRow
-              glyph={<Icon name="folder-add" size={16} />}
+              glyph={<Icon name="folder-add" size="md" />}
               title="Add your own plugin"
               control={
                 <Button variant="outline" icon="folder-open" onClick={() => void adding()}>
@@ -409,7 +409,7 @@ function SkillRow({ skill }: { readonly skill: SkillView }): ReactElement {
 
   return (
     <ConnectionRow
-      glyph={<Icon name="skills" size={16} />}
+      glyph={<Icon name="skills" size="md" />}
       title={skill.info.name}
       detail={skill.info.description === "" ? undefined : skill.info.description}
       control={
@@ -597,7 +597,7 @@ export function CustomizeSurface({
             </Tabs.Root>
             <InputGroup variant="quiet" xstyle={styles.search}>
               <span {...props(styles.searchIcon)}>
-                <Icon name="search" size={14} />
+                <Icon name="search" size="sm" />
               </span>
               <Input
                 type="search"

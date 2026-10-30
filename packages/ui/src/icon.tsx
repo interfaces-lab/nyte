@@ -150,6 +150,7 @@ import {
 } from "react";
 
 import { mergeStyleProps } from "./style.ts";
+import { glyph } from "./styles/schema.stylex.ts";
 import type { Restyle } from "./styles/contracts.ts";
 
 type Glyph = ComponentType<CentralIconBaseProps>;
@@ -373,6 +374,17 @@ const styles = create({
   },
 });
 
+const glyphSizes = create({
+  "2xs": { width: glyph["2xs"], height: glyph["2xs"] },
+  xs: { width: glyph.xs, height: glyph.xs },
+  sm: { width: glyph.sm, height: glyph.sm },
+  md: { width: glyph.md, height: glyph.md },
+  lg: { width: glyph.lg, height: glyph.lg },
+});
+
+/** A step on the glyph scale: 10, 12, 14, 16 or 20 px at the default size. */
+export type GlyphSize = keyof typeof glyphSizes;
+
 const ControlGlyphContext = createContext(false);
 
 export function ControlGlyphs({ children }: { readonly children: ReactNode }): ReactElement {
@@ -380,6 +392,7 @@ export function ControlGlyphs({ children }: { readonly children: ReactNode }): R
 }
 
 interface IconFrameProps {
+  readonly size: GlyphSize;
   readonly label?: string;
   readonly children: ReactNode;
   readonly className?: string;
@@ -387,10 +400,17 @@ interface IconFrameProps {
   readonly xstyle?: Restyle<"Icon">;
 }
 
-function IconFrame({ label, children, className, style, xstyle }: IconFrameProps): ReactElement {
+function IconFrame({
+  size,
+  label,
+  children,
+  className,
+  style,
+  xstyle,
+}: IconFrameProps): ReactElement {
   const controlled = use(ControlGlyphContext);
   const a11y = label === undefined ? { "aria-hidden": true } : { role: "img", "aria-label": label };
-  const frame = mergeStyleProps(props(styles.frame, xstyle), className, style);
+  const frame = mergeStyleProps(props(styles.frame, glyphSizes[size], xstyle), className, style);
 
   return (
     <span
@@ -405,7 +425,7 @@ function IconFrame({ label, children, className, style, xstyle }: IconFrameProps
 }
 
 export type IconProps = {
-  readonly size?: number;
+  readonly size?: GlyphSize;
   readonly label?: string;
   readonly className?: string;
   readonly style?: CSSProperties;
@@ -416,14 +436,14 @@ export type IconProps = {
 );
 
 export function Icon(iconProps: IconProps): ReactElement {
-  const { size = 16, label, className, style, xstyle } = iconProps;
+  const { size = "md", label, className, style, xstyle } = iconProps;
 
   const Glyph =
     iconProps.variant === "filled" ? FILLED_GLYPHS[iconProps.name] : GLYPHS[iconProps.name];
 
   return (
-    <IconFrame label={label} className={className} style={style} xstyle={xstyle}>
-      <Glyph size={size} mode="raw" ariaHidden={true} />
+    <IconFrame size={size} label={label} className={className} style={style} xstyle={xstyle}>
+      <Glyph size="100%" mode="raw" ariaHidden={true} />
     </IconFrame>
   );
 }
@@ -447,18 +467,22 @@ const PANEL_FRAME_PATH =
 export interface PanelToggleIconProps {
   readonly side: PanelSide;
   readonly visible: boolean;
-  readonly size?: number;
+  readonly size?: GlyphSize;
 }
 
-export function PanelToggleIcon({ side, visible, size = 16 }: PanelToggleIconProps): ReactElement {
+export function PanelToggleIcon({
+  side,
+  visible,
+  size = "md",
+}: PanelToggleIconProps): ReactElement {
   const reducedMotion = useReducedMotion();
 
   return (
-    <IconFrame>
+    <IconFrame size={size}>
       <svg
         aria-hidden="true"
-        width={size}
-        height={size}
+        width="100%"
+        height="100%"
         viewBox="0 0 24 24"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"

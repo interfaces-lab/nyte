@@ -26,8 +26,8 @@ export const trayParts = create({
     display: "grid",
     placeItems: "center",
     flexShrink: 0,
-    width: glyph.box,
-    height: glyph.box,
+    width: glyph.md,
+    height: glyph.md,
   },
   listHeight: (height: number) => ({ maxHeight: Math.min(260, height) }),
   row: {
@@ -105,17 +105,15 @@ export function TrayPill({
 export function TrayIconAction({
   icon,
   label,
-  size = 16,
   onClick,
 }: {
   readonly icon: IconName;
   readonly label: string;
-  readonly size?: number;
   readonly onClick: () => void;
 }): ReactElement {
   return (
     <Button iconOnly aria-label={label} onClick={onClick}>
-      <Icon name={icon} size={size} />
+      <Icon name={icon} />
     </Button>
   );
 }

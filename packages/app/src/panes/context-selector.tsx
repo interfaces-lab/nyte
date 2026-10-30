@@ -3,7 +3,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useEffectEvent, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Button, buttonGlyphSize, type ButtonProps } from "@nyte-ai/ui/button";
-import { Icon, type IconName } from "@nyte-ai/ui/icon";
+import { Icon, type GlyphSize, type IconName } from "@nyte-ai/ui/icon";
 import { Kbd, type KbdProps } from "@nyte-ai/ui/kbd";
 import { Menu, MenuContent, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -21,7 +21,7 @@ import { contextStyles } from "./context-selector.stylex.ts";
 /** `md` in the new-chat row, `xs` in the footer under a chat's composer. */
 export type ContextSize = "xs" | "md";
 
-const CHEVRON_SIZES = { xs: 10, md: 12 } satisfies Record<ContextSize, number>;
+const CHEVRON_SIZES = { xs: "2xs", md: "xs" } as const satisfies Record<ContextSize, GlyphSize>;
 
 export function ContextHint({
   label,

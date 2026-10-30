@@ -214,7 +214,7 @@ export function ContextMenuRadioItem({
           <>
             {meta}
             <ContextMenuPrimitive.RadioItemIndicator {...props(menuStyles.indicator)}>
-              <Icon name="checkmark" size={11} />
+              <Icon name="checkmark" size="2xs" />
             </ContextMenuPrimitive.RadioItemIndicator>
           </>
         }
@@ -251,7 +251,7 @@ export function ContextMenuCheckboxItem({
           <>
             {meta}
             <ContextMenuPrimitive.CheckboxItemIndicator {...props(menuStyles.indicator)}>
-              <Icon name="checkmark" size={11} />
+              <Icon name="checkmark" size="2xs" />
             </ContextMenuPrimitive.CheckboxItemIndicator>
           </>
         }
@@ -293,7 +293,7 @@ export function ContextMenuSubTrigger({
         meta={
           <>
             {value !== undefined && <span {...props(menuStyles.submenuValue)}>{value}</span>}
-            <Icon name="chevron-right" size={11} />
+            <Icon name="chevron-right" size="2xs" />
           </>
         }
       >

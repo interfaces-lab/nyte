@@ -28,13 +28,13 @@ export function PreviewCardDemo() {
         <span {...props(styles.title)}>Fix flaky tests</span>
         <span {...props(styles.detail)}>
           <span {...props(styles.detailIcon)}>
-            <Icon name="git-branch" size={14} />
+            <Icon name="git-branch" size="sm" />
           </span>
           <span>nyte-ai/nyte</span>
         </span>
         <span {...props(styles.detail)}>
           <span {...props(styles.detailIcon)}>
-            <Icon name="folder" size={14} />
+            <Icon name="folder" size="sm" />
           </span>
           <span>~/Developer/nyte</span>
         </span>

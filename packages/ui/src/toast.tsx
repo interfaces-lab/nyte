@@ -286,7 +286,7 @@ function CopyButton({
     >
       <span {...props(styles.copyLabel, copied && styles.hidden)}>Copy error</span>
       <span {...props(styles.copyLabel, styles.copied, !copied && styles.hidden)}>
-        <Icon name="checkmark" size={12} />
+        <Icon name="checkmark" size="xs" />
         Copied
       </span>
     </button>
@@ -314,13 +314,13 @@ function ToastList(): ReactElement[] {
         <Toast.Content {...props(text.base, styles.content, below && styles.withActionsBelow)}>
           {status !== undefined && (
             <span {...props(status.intent, styles.icon)}>
-              <Icon name={status.name} size={16} />
+              <Icon name={status.name} size="md" />
             </span>
           )}
           <Toast.Title {...props(text.base, styles.title)} />
           {!below && buttons}
           <Toast.Close aria-label="Dismiss notification" {...props(styles.close, focus.ring)}>
-            <Icon name="x" size={12} />
+            <Icon name="x" size="xs" />
           </Toast.Close>
           <Toast.Description {...props(text.sm, styles.description)} />
           {below && <div {...props(styles.actions)}>{buttons}</div>}

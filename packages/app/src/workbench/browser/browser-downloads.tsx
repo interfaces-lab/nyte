@@ -84,7 +84,7 @@ export function DownloadsBar({ surface, downloads }: DownloadsBarProps): ReactEl
         return (
           <div key={download.id} {...props(styles.item)}>
             <span {...props(styles.glyph)}>
-              {running ? <Spinner /> : <Icon name={done ? "checkmark" : "x"} size={12} />}
+              {running ? <Spinner /> : <Icon name={done ? "checkmark" : "x"} size="xs" />}
             </span>
             <span {...props(styles.name, !running && !done && styles.failed)} title={download.path}>
               {download.filename}

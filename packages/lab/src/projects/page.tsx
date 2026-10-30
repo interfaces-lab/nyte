@@ -152,7 +152,7 @@ function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
       preview: false,
       glyph:
         found === undefined ? (
-          <Icon name="layers" size={14} />
+          <Icon name="layers" size="sm" />
         ) : found.status === null ? undefined : (
           <StatusGlyph status={found.status} />
         ),

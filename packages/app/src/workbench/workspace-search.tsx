@@ -282,7 +282,7 @@ export function WorkspaceSearch({
         <div {...props(styles.toolbar)}>
           <InputGroup xstyle={[styles.field, styles.searchField, query !== "" && styles.populated]}>
             <span {...props(styles.searchIcon)}>
-              <Icon name="search" size={12} />
+              <Icon name="search" size="xs" />
             </span>
             <Input
               type="text"
@@ -404,7 +404,7 @@ export function WorkspaceSearchResults({
       {result.files.map((file) => (
         <section key={file.path} aria-label={file.displayPath}>
           <h3 {...props(styles.fileHeading)}>
-            <Icon name="file" size={16} />
+            <Icon name="file" size="md" />
             <span title={file.displayPath} {...props(styles.path)}>
               {file.displayPath}
             </span>

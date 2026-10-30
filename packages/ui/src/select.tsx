@@ -184,7 +184,7 @@ export function SelectItem({
     >
       <SelectPrimitive.ItemText {...props(styles.itemText)}>{children}</SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator {...props(styles.itemIndicator)}>
-        <Icon name="checkmark" size={11} />
+        <Icon name="checkmark" size="2xs" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   );

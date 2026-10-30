@@ -93,7 +93,7 @@ export function SitePage({
       {...props(styles.site, dark ? styles.gray1Dark : styles.gray1Light, focus.ringInset)}
     >
       <div {...handle} {...props(styles.nav, handle !== undefined && styles.grab)}>
-        <Icon name="globe" size={14} />
+        <Icon name="globe" size="sm" />
         <span {...props(styles.address)}>
           {site.host}
           {site.path}

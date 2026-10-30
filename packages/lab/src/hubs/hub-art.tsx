@@ -196,7 +196,9 @@ function FlatIcon({
     <g transform={`matrix(${FLAT} ${FLAT / 2} ${-FLAT} ${FLAT / 2} ${cx} ${cy})`}>
       <foreignObject x={-size / 2} y={-size / 2} width={size} height={size}>
         <div {...props(styles.glyph, lit && styles.glyphLit)}>
-          <Icon name={name} size={size} />
+          <span {...props(styles.glyphZoom(size))}>
+            <Icon name={name} />
+          </span>
         </div>
       </foreignObject>
     </g>
@@ -430,6 +432,8 @@ const styles = create({
     transitionDuration: motion.durationNormal,
   },
   glyphLit: { color: role.contentPrimary },
+  /** Scales a default 16 px `Icon` to the drawing's size. */
+  glyphZoom: (size: number) => ({ display: "flex", zoom: size / 16 }),
   track: {
     fill: "none",
     stroke: role.borderPrimary,

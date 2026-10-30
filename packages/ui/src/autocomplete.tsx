@@ -343,7 +343,7 @@ export function AutocompleteItem({
     >
       <span {...props(styles.itemText)}>{children}</span>
       <Combobox.ItemIndicator {...props(styles.itemIndicator, itemIndicatorVariants[variant])}>
-        <Icon name="checkmark" size={11} />
+        <Icon name="checkmark" size="2xs" />
       </Combobox.ItemIndicator>
     </Combobox.Item>
   );

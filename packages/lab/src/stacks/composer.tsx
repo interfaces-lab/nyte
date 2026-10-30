@@ -366,7 +366,7 @@ export function Composer({
           {request !== null && (
             <>
               <span {...props(styles.planGlyph)}>
-                <Icon name="arrow-right" size={12} />
+                <Icon name="arrow-right" size="xs" />
               </span>
               <span {...props(styles.planText)}>{describePlan(request, stack)}</span>
             </>
@@ -403,7 +403,7 @@ function optionsFor(
         insert: `@${agent.name}`,
         label: agent.name,
         meta: `${MODELS[agent.model].name} · ${agent.does}`,
-        glyph: <Icon name={MODELS[agent.model].icon} size={14} />,
+        glyph: <Icon name={MODELS[agent.model].icon} size="sm" />,
       }));
 
   return pulls.flatMap((pull) =>

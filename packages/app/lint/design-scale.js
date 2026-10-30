@@ -21,7 +21,6 @@ const SPACE_STEPS = new Map([
 
 const BOX_HANDLES = [
   [14, "glyph.sm"],
-  [15, "glyph.box"],
   [16, "glyph.md"],
   [16, "button.height2xs"],
   [16, "checkbox.sizeMd"],

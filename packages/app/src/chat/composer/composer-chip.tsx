@@ -57,7 +57,7 @@ export function ComposerChipView({
         {reference.kind === "file" && !mentionsFolder(reference.file) ? (
           <FileTypeIcon path={reference.file.path} />
         ) : (
-          <Icon name={referenceIcon(reference)} size={12} />
+          <Icon name={referenceIcon(reference)} size="xs" />
         )}
       </span>
       {label}

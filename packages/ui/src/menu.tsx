@@ -242,7 +242,7 @@ export function MenuItemBody({
     <>
       {layout === "menu" && (
         <span aria-hidden="true" {...props(menuStyles.icon)}>
-          {leading ?? (icon !== undefined && <Icon name={icon} size={14} />)}
+          {leading ?? (icon !== undefined && <Icon name={icon} size="sm" />)}
         </span>
       )}
       <span {...props(menuStyles.label)}>{children}</span>
@@ -489,7 +489,7 @@ export function MenuRadioItem({
           <>
             {meta}
             <MenuPrimitive.RadioItemIndicator {...props(menuStyles.indicator)}>
-              <Icon name="checkmark" size={11} />
+              <Icon name="checkmark" size="2xs" />
             </MenuPrimitive.RadioItemIndicator>
           </>
         }
@@ -526,7 +526,7 @@ export function MenuCheckboxItem({
           <>
             {meta}
             <MenuPrimitive.CheckboxItemIndicator {...props(menuStyles.indicator)}>
-              <Icon name="checkmark" size={11} />
+              <Icon name="checkmark" size="2xs" />
             </MenuPrimitive.CheckboxItemIndicator>
           </>
         }
@@ -602,7 +602,7 @@ export function MenuSubTrigger({
         meta={
           <>
             {value !== undefined && <span {...props(menuStyles.submenuValue)}>{value}</span>}
-            <Icon name="chevron-right" size={11} />
+            <Icon name="chevron-right" size="2xs" />
           </>
         }
       >

@@ -126,7 +126,7 @@ export function ImagePreview({
           <div {...props(styles.toolbar)}>
             <Dialog.Title xstyle={[text.base, styles.title]}>{name}</Dialog.Title>
             <Dialog.Close aria-label="Close image preview" xstyle={[styles.close, focus.ring]}>
-              <Icon name="x" size={16} />
+              <Icon name="x" size="md" />
             </Dialog.Close>
           </div>
           <img src={src} alt={name} {...props(styles.image)} />

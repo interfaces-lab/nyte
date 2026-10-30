@@ -22,7 +22,7 @@ import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
 import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
-import { ControlGlyphs, Icon, type IconName } from "./icon.tsx";
+import { ControlGlyphs, Icon, type GlyphSize, type IconName } from "./icon.tsx";
 import { Spinner } from "./spinner.tsx";
 
 const control = create({
@@ -296,11 +296,11 @@ export type ButtonProps = Omit<
   };
 
 const glyphSizes = {
-  text: { "2xs": 12, xs: 12, sm: 14, md: 14, lg: 14, xl: 16 },
-  iconOnly: { "2xs": 12, xs: 12, sm: 14, md: 16, lg: 16, xl: 18 },
-} as const satisfies Record<string, Record<ButtonSize, number>>;
+  text: { "2xs": "xs", xs: "xs", sm: "sm", md: "sm", lg: "sm", xl: "md" },
+  iconOnly: { "2xs": "xs", xs: "xs", sm: "sm", md: "md", lg: "md", xl: "lg" },
+} as const satisfies Record<string, Record<ButtonSize, GlyphSize>>;
 
-export function buttonGlyphSize(size: ButtonSize, iconOnly: boolean): number {
+export function buttonGlyphSize(size: ButtonSize, iconOnly: boolean): GlyphSize {
   return glyphSizes[iconOnly ? "iconOnly" : "text"][size];
 }
 
@@ -468,7 +468,7 @@ export function PickerTrigger({
     >
       <ControlGlyphs>
         <span {...props(picker.value)}>{children}</span>
-        <Icon name="chevron-down" size={12} />
+        <Icon name="chevron-down" size="xs" />
       </ControlGlyphs>
     </ButtonPrimitive>
   );

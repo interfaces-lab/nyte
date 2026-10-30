@@ -389,7 +389,7 @@ function GitHubAccountRow({
 function RepositoryRow({ repository }: { readonly repository: GitHubRepository }): ReactElement {
   return (
     <Row
-      glyph={<Icon name="git" size={14} />}
+      glyph={<Icon name="git" size="sm" />}
       title={`${repository.owner}/${repository.name}`}
       description={`Remote ${repository.remoteName}`}
       control={<OpenOnGitHub url={repository.url} />}
@@ -440,7 +440,7 @@ function PullRequestRow({
     case "none":
       return (
         <Row
-          glyph={<Icon name="pull-request" size={14} />}
+          glyph={<Icon name="pull-request" size="sm" />}
           title="Pull request"
           description="None for the current branch"
         />
@@ -448,7 +448,7 @@ function PullRequestRow({
     case "unavailable":
       return (
         <Row
-          glyph={<Icon name="pull-request" size={14} />}
+          glyph={<Icon name="pull-request" size="sm" />}
           title="Pull request"
           description="Sign in to GitHub to see it"
         />
@@ -458,7 +458,7 @@ function PullRequestRow({
 
       return (
         <Row
-          glyph={<Icon name={pullRequestIcon(pullRequest)} size={14} />}
+          glyph={<Icon name={pullRequestIcon(pullRequest)} size="sm" />}
           title={`#${pullRequest.number} ${pullRequest.title}`}
           description={`${pullRequestState(pullRequest)} · ${pullRequest.headRefName} → ${pullRequest.baseRefName}`}
           control={<OpenOnGitHub url={pullRequest.url} />}
@@ -469,7 +469,7 @@ function PullRequestRow({
     case "error":
       return (
         <Row
-          glyph={<Icon name="pull-request" size={14} />}
+          glyph={<Icon name="pull-request" size="sm" />}
           title="Pull request"
           description={context.message}
           control={
@@ -527,11 +527,11 @@ function MacGroup({
   const environments = (
     <Button variant="ghost" onClick={onOpenEnvironments}>
       Environments
-      <Icon name="chevron-right" size={12} />
+      <Icon name="chevron-right" size="xs" />
     </Button>
   );
 
-  const macGlyph = <Icon name="laptop" size={16} />;
+  const macGlyph = <Icon name="laptop" size="md" />;
 
   if (view === undefined || view.kind === "unavailable") {
     return (

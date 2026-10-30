@@ -305,7 +305,7 @@ export function EditCallView({
             xstyle={[styles.expand, open && styles.expandOpen, focus.ringInset]}
           >
             <span {...props(styles.headerIcon, open && styles.expandIconOpen)}>
-              <Icon name="chevron-down" size={14} />
+              <Icon name="chevron-down" size="sm" />
             </span>
           </Collapsible.Trigger>
         )}
@@ -358,7 +358,7 @@ export function EditCallView({
         {verb === undefined && <span {...props(styles.action)}>{toolNoun(toolClass)}</span>}
         {!running && <Stats added={added} removed={removed} line />}
         <ToolOutcome status={status} />
-        {diff !== undefined && <Collapsible.Chevron size={10} xstyle={styles.chevron} />}
+        {diff !== undefined && <Collapsible.Chevron size="2xs" xstyle={styles.chevron} />}
       </Collapsible.Trigger>
       {diff !== undefined && (
         <Collapsible.Panel data-tool-body>

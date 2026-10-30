@@ -16,11 +16,13 @@ export const space = defineConsts({
   s8: "calc(var(--nyte-space-unit) * 8)",
 });
 
+/** Glyph steps: an `Icon`'s `size`, and the slot a status mark or spinner sits in. */
 export const glyph = defineConsts({
+  "2xs": "var(--nyte-glyph-2xs)",
+  xs: "var(--nyte-glyph-xs)",
   sm: "var(--nyte-glyph-sm)",
   md: "var(--nyte-glyph-md)",
   lg: "var(--nyte-glyph-lg)",
-  box: "var(--nyte-glyph-box)",
 });
 
 export const media = defineConsts({

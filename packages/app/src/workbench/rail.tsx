@@ -48,7 +48,7 @@ function StatusRow({
   return (
     <Row xstyle={[text.base, workbenchStyles.railRow]}>
       <Row.Leading>
-        <Icon name={icon} size={14} />
+        <Icon name={icon} size="sm" />
       </Row.Leading>
       <Row.Label xstyle={[workbenchStyles.railLabel, !quiet && workbenchStyles.railValue]}>
         {label}
@@ -103,7 +103,7 @@ function CostRow({
           }
         >
           <Row.Leading>
-            <Icon name="speed-low" size={14} />
+            <Icon name="speed-low" size="sm" />
           </Row.Leading>
           <Row.Label xstyle={[workbenchStyles.railLabel, workbenchStyles.railValue]}>
             {label}
@@ -217,7 +217,7 @@ function ChangesRow({
     <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
       <Row.Primary onClick={onOpen}>
         <Row.Leading>
-          <Icon name="diff" size={14} />
+          <Icon name="diff" size="sm" />
         </Row.Leading>
         <Row.Label
           xstyle={[workbenchStyles.railLabel, summary.changed && workbenchStyles.railValue]}
@@ -245,7 +245,7 @@ function RailRow({
     <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
       <Row.Primary title={title} onClick={onClick}>
         <Row.Leading>
-          <Icon name={icon} size={14} />
+          <Icon name={icon} size="sm" />
         </Row.Leading>
         <Row.Label xstyle={workbenchStyles.railLabel}>{label}</Row.Label>
       </Row.Primary>
@@ -256,9 +256,9 @@ function RailRow({
 function DoubleChevron({ back = false }: { readonly back?: boolean }): ReactElement {
   return (
     <span {...props(workbenchStyles.doubleChevron, back && workbenchStyles.doubleChevronBack)}>
-      <Icon name="chevron-right" size={11} />
+      <Icon name="chevron-right" size="2xs" />
       <span {...props(workbenchStyles.doubleChevronTrail)}>
-        <Icon name="chevron-right" size={11} />
+        <Icon name="chevron-right" size="2xs" />
       </span>
     </span>
   );

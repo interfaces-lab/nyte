@@ -201,7 +201,7 @@ function TabSheet({
 function Glyph({ tab }: { readonly tab: ShellTab }): ReactElement {
   if (tab.mark !== "done" || tab.unread) return <TaskMark state={tab.mark} unread={tab.unread} />;
 
-  return <Icon name={tab.icon} size={14} />;
+  return <Icon name={tab.icon} size="sm" />;
 }
 
 function Tab({
@@ -258,7 +258,7 @@ function Tab({
       {!pinned && <span {...props(styles.label)}>{tab.title}</span>}
       {tab.split !== undefined && !pinned && (
         <span {...props(styles.trailingMark, styles.collapsible)}>
-          <Icon name={tab.split === "down" ? "split-down" : "split-right"} size={12} />
+          <Icon name={tab.split === "down" ? "split-down" : "split-right"} size="xs" />
         </span>
       )}
       {!pinned && (
@@ -453,8 +453,8 @@ const styles = create({
     display: "grid",
     placeItems: "center",
     flexShrink: 0,
-    width: glyph.box,
-    height: glyph.box,
+    width: glyph.md,
+    height: glyph.md,
   },
   label: {
     display: { default: "block", [COLLAPSED]: "none" },

@@ -101,8 +101,8 @@ export const stripStyles = create({
   glyph: {
     display: { default: "grid", ":empty": "none" },
     placeItems: "center",
-    width: glyph.box,
-    height: glyph.box,
+    width: glyph.md,
+    height: glyph.md,
     flexShrink: 0,
   },
   label: {

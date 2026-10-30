@@ -107,7 +107,7 @@ export function HubsPage(): ReactElement {
                   onClick={() => setActive(page.id)}
                 >
                   <Row.Leading xstyle={rail.navLeading}>
-                    <Icon name={page.icon} size={14} />
+                    <Icon name={page.icon} size="sm" />
                   </Row.Leading>
                   <Row.Label>{page.title}</Row.Label>
                 </Row>

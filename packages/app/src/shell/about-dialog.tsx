@@ -83,7 +83,7 @@ export function AboutDialog({
     >
       <Dialog.Popup xstyle={styles.popup}>
         <Dialog.Close aria-label="Close About" xstyle={[styles.close, focus.ring]}>
-          <Icon name="x" size={20} />
+          <Icon name="x" size="lg" />
         </Dialog.Close>
         <img src={icon} alt="" width={112} height={112} {...props(styles.icon)} />
         <Dialog.Title xstyle={styles.title}>{info.name}</Dialog.Title>

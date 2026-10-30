@@ -143,8 +143,8 @@ const styles = create({
   },
   running: {
     display: "inline-flex",
-    width: glyph.box,
-    height: glyph.box,
+    width: glyph.md,
+    height: glyph.md,
     flexShrink: 0,
   },
   close: {
@@ -184,7 +184,7 @@ function CanvasTabContent({
       {...props(editing && surfaceTheme.purple, styles.content, editing && styles.agentTerminal)}
     >
       <span {...props(styles.tabIcon)}>
-        <Icon name={WORKBENCH_KINDS.canvas.icon} size={16} />
+        <Icon name={WORKBENCH_KINDS.canvas.icon} size="md" />
       </span>
       <span {...props(styles.label)}>{tab.title}</span>
       {editing && (
@@ -292,7 +292,7 @@ export function WorkbenchTabStrip({
               >
                 <span {...props(styles.content)}>
                   <span {...props(styles.tabIcon)}>
-                    <Icon name="imac" size={16} />
+                    <Icon name="imac" size="md" />
                   </span>
                   <span {...props(styles.label)}>
                     {sessionId === undefined ? "New chat" : <ChatTabLabel sessionId={sessionId} />}
@@ -385,7 +385,7 @@ export function WorkbenchTabStrip({
                           <FileTypeIcon path={tab.path} />
                         ) : (
                           <span {...props(styles.tabIcon)}>
-                            <Icon name={WORKBENCH_KINDS[tab.kind].icon} size={16} />
+                            <Icon name={WORKBENCH_KINDS[tab.kind].icon} size="md" />
                           </span>
                         )}
                         <span

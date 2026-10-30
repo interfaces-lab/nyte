@@ -198,7 +198,7 @@ export function Activity({
       {last === -1 && (
         <li {...props(styles.event, styles.tail)}>
           <span {...props(styles.marker, styles.tailMarker)}>
-            <Icon name="bubble-question" size={14} />
+            <Icon name="bubble-question" size="sm" />
           </span>
           <div {...props(styles.body)}>{tail}</div>
         </li>
@@ -288,7 +288,7 @@ export function Checks({ checks }: { readonly checks: readonly Check[] }): React
                     ? "checkmark"
                     : "clock"
               }
-              size={12}
+              size="xs"
             />
           </span>
           {check.name}
@@ -308,7 +308,7 @@ function Diff({
   return (
     <div {...props(styles.diff)}>
       <div {...props(text.sm, styles.diffHead)}>
-        <Icon name="file" size={12} />
+        <Icon name="file" size="xs" />
         {file}
       </div>
       <pre {...props(text.code, styles.diffBody)}>

@@ -118,7 +118,7 @@ export function WorkspaceControls({
               pressed={filtersActive}
               onPressedChange={() => undefined}
             >
-              <Icon name="filters" size={14} />
+              <Icon name="filters" size="sm" />
             </Toggle>
           }
         />
@@ -294,7 +294,7 @@ export function WorkspaceControls({
                 onClick={onOpenFolder}
                 title={undefined}
               >
-                <Icon name="folder-add" size={14} />
+                <Icon name="folder-add" size="sm" />
               </Button>
             }
           />

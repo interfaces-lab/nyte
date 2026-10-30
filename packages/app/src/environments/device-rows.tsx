@@ -48,7 +48,7 @@ export function DeviceRows({
       {devices.map((device) => (
         <ConnectionRow
           key={device.id}
-          glyph={<Icon name={/browser/i.test(device.name) ? "globe" : "phone"} size={16} />}
+          glyph={<Icon name={/browser/i.test(device.name) ? "globe" : "phone"} size="md" />}
           title={device.name}
           detail={device.detail}
           control={

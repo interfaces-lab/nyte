@@ -219,7 +219,7 @@ function SourceRow({
 
   return (
     <ConnectionRow
-      glyph={<Icon name={source.icon} size={20} />}
+      glyph={<Icon name={source.icon} size="lg" />}
       title={source.title}
       detail={detail}
       control={control}

@@ -699,7 +699,7 @@ export function BrowserPanel({
         >
           {secure === "https" && draft === undefined && (
             <span {...props(styles.addressIcon)} title="Secure connection">
-              <Icon name="lock" size={12} />
+              <Icon name="lock" size="xs" />
             </span>
           )}
           {hasPage && draft === undefined && state.deniedPermissions.length > 0 && (
@@ -709,7 +709,7 @@ export function BrowserPanel({
               aria-label={blockedPermissionsLabel(state.deniedPermissions)}
               title={blockedPermissionsLabel(state.deniedPermissions)}
             >
-              <Icon name="circle-x" size={12} />
+              <Icon name="circle-x" size="xs" />
             </span>
           )}
         </AddressField>
@@ -753,7 +753,7 @@ export function BrowserPanel({
             title="An agent is driving this page"
             aria-label="Agent active"
           >
-            <Icon name="sparkle" size={12} />
+            <Icon name="sparkle" size="xs" />
           </span>
         )}
         {toolbarActions}
@@ -876,7 +876,7 @@ export function BrowserPanel({
                       }}
                     >
                       <Row.Leading>
-                        <Icon name="globe" size={13} />
+                        <Icon name="globe" size="sm" />
                       </Row.Leading>
                       <Row.Body>
                         <Row.Label>{entry.title || displayAddress(entry.url)}</Row.Label>

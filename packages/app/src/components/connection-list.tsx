@@ -119,7 +119,7 @@ export function ConnectionMenu({
           <Button ref={ref} loading={loading} disabled={disabled}>
             <span {...props(srOnly)}>{label}: </span>
             <ConnectionStatus tone={tone}>{status}</ConnectionStatus>
-            <Icon name="chevron-down" size={12} />
+            <Icon name="chevron-down" size="xs" />
           </Button>
         }
       />

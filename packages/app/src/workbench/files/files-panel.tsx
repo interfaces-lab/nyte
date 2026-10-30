@@ -637,7 +637,7 @@ function FileBreadcrumbs({
           <Fragment key={segments.slice(0, index + 1).join("/")}>
             {index > 0 && (
               <span aria-hidden="true" {...props(breadcrumbStyles.separator)}>
-                <Icon name="chevron-right" size={10} />
+                <Icon name="chevron-right" size="2xs" />
               </span>
             )}
             <FileCrumb

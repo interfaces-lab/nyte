@@ -278,8 +278,8 @@ export function ChatsList({
           <div {...props(text.base, styles.quiet, styles.sessionQuiet)}>Nothing new</div>
         )}
         {shelfPanel("working", "Working", <TaskMark state="working" />, false)}
-        {shelfPanel("done", "Done", <Icon name="inbox-checked" size={14} />, true)}
-        {shelfPanel("archived", "Archived", <Icon name="archive" size={14} />, true)}
+        {shelfPanel("done", "Done", <Icon name="inbox-checked" size="sm" />, true)}
+        {shelfPanel("archived", "Archived", <Icon name="archive" size="sm" />, true)}
       </div>
     );
   }
@@ -473,10 +473,10 @@ export function WorkspaceRow({
         <Row.Leading xstyle={styles.rowIcon}>
           <span {...props(styles.workspaceGlyph)}>
             <span {...props(styles.workspaceFolder)}>
-              <Icon name={expanded ? "folder-open" : "folder"} size={14} />
+              <Icon name={expanded ? "folder-open" : "folder"} size="sm" />
             </span>
             <span {...props(styles.workspaceChevron, expanded && styles.workspaceChevronOpen)}>
-              <Icon name="chevron-down" size={13} />
+              <Icon name="chevron-down" size="xs" />
             </span>
           </span>
         </Row.Leading>

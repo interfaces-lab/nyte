@@ -81,13 +81,13 @@ export function SettingsNavigation({
         onClick={() => closeSettings(router)}
       >
         <Row.Leading xstyle={rail.navLeading}>
-          <Icon name="arrow-left" size={14} />
+          <Icon name="arrow-left" size="sm" />
         </Row.Leading>
         <Row.Label>Back</Row.Label>
       </Row>
       <InputGroup variant="quiet" xstyle={styles.search}>
         <span {...props(styles.searchIcon)}>
-          <Icon name="search" size={14} />
+          <Icon name="search" size="sm" />
         </span>
         <Input
           ref={searchRef}
@@ -123,7 +123,7 @@ export function SettingsNavigation({
                 ]}
               >
                 <Row.Leading xstyle={rail.navLeading}>
-                  <Icon name={SETTINGS_PAGES[id].icon} size={14} />
+                  <Icon name={SETTINGS_PAGES[id].icon} size="sm" />
                 </Row.Leading>
                 <Row.Label>{SETTINGS_PAGES[id].title}</Row.Label>
               </Row>

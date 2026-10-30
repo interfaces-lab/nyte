@@ -240,7 +240,7 @@ function OpenRow({
           {tab.kind === "chat" ? (
             <TaskMark state={tab.mark} unread={tab.unread} />
           ) : (
-            <Icon name={tab.icon} size={14} />
+            <Icon name={tab.icon} size="sm" />
           )}
         </Row.Leading>
         <Row.Label xstyle={rail.sessionLabel}>{tab.title}</Row.Label>
@@ -265,13 +265,13 @@ function Sidebar({
       <div {...props(rail.primaryActions)}>
         <Row variant="nav" xstyle={rail.navRow} onClick={onNew}>
           <Row.Leading xstyle={rail.navLeading}>
-            <Icon name="new-chat" size={14} />
+            <Icon name="new-chat" size="sm" />
           </Row.Leading>
           <Row.Label>New Chat</Row.Label>
         </Row>
         <Row variant="nav" xstyle={rail.navRow}>
           <Row.Leading xstyle={rail.navLeading}>
-            <Icon name="search" size={14} />
+            <Icon name="search" size="sm" />
           </Row.Leading>
           <Row.Label>Search</Row.Label>
         </Row>
@@ -594,7 +594,7 @@ export function TabsPage(): ReactElement {
                     render={
                       <Button size="sm" variant="ghost">
                         {SPACE}
-                        <Icon name="chevron-down" size={12} />
+                        <Icon name="chevron-down" size="xs" />
                       </Button>
                     }
                   />

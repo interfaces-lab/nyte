@@ -51,7 +51,7 @@ export function RowDemo() {
             onClick={() => setCurrentId(session.id)}
           >
             <Row.Leading>
-              <Icon name="new-chat" size={14} />
+              <Icon name="new-chat" size="sm" />
             </Row.Leading>
             <Row.Label>{session.title}</Row.Label>
             <Row.Meta>{session.updatedAt}</Row.Meta>
@@ -98,7 +98,7 @@ export function RowNavDemo() {
           onClick={() => setCurrent(section.id)}
         >
           <Row.Leading>
-            <Icon name={section.icon} size={14} />
+            <Icon name={section.icon} size="sm" />
           </Row.Leading>
           <Row.Label>{section.title}</Row.Label>
         </Row>

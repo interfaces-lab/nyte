@@ -380,7 +380,7 @@ export function SettingsPage(): ReactElement {
               xstyle={rail.navRow}
             >
               <Row.Leading xstyle={rail.navLeading}>
-                <Icon name={section.icon} size={14} />
+                <Icon name={section.icon} size="sm" />
               </Row.Leading>
               <Row.Label>{section.title}</Row.Label>
               <Row.Meta>

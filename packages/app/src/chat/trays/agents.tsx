@@ -268,7 +268,6 @@ export function SubagentTray({
               )}
               <TrayIconAction
                 icon="expand"
-                size={15}
                 label="Open as full chat"
                 onClick={() => {
                   onViewChange({ kind: "closed" });

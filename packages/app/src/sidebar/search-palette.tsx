@@ -217,7 +217,7 @@ export function SearchPalette({
         <Command.Item
           key={action.key}
           value={action.key}
-          leading={<Icon name={action.icon} size={16} />}
+          leading={<Icon name={action.icon} size="md" />}
           meta={action.meta}
           onClick={() => run(action.run)}
         >

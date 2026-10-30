@@ -155,7 +155,7 @@ function TabItem({
             <span {...props(stripStyles.label)}>{tab.title}</span>
             {tab.split !== undefined && (
               <span {...props(stripStyles.splitMark)}>
-                <Icon name={tab.split === "down" ? "split-down" : "split-right"} size={12} />
+                <Icon name={tab.split === "down" ? "split-down" : "split-right"} size="xs" />
               </span>
             )}
           </ChatCardTrigger>

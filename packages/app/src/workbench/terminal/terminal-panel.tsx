@@ -216,7 +216,7 @@ export function TerminalPanel({
       {tab?.kind === "job" && <JobSync key={tab.workspace} workspace={tab.workspace} />}
       {tab === undefined ? (
         <div {...props(text.base, terminalStyles.empty)}>
-          <Icon name="console" size={24} />
+          <Icon name="console" size="lg" />
           <span>Terminal unavailable.</span>
         </div>
       ) : (

@@ -82,7 +82,7 @@ const styles = create({
     display: "inline-flex",
     flexShrink: 0,
     justifyContent: "center",
-    width: glyph.box,
+    width: glyph.md,
     color: role.contentSecondary,
   },
   title: { flexShrink: 1, minWidth: 0 },
@@ -123,7 +123,7 @@ function CheckGlyph({ state }: { readonly state: CheckState }): ReactElement {
 
   return (
     <span {...props(glyph.tone, styles.glyph)}>
-      <Icon name={glyph.icon} size={12} label={glyph.label} />
+      <Icon name={glyph.icon} size="xs" label={glyph.label} />
     </span>
   );
 }
@@ -181,7 +181,7 @@ export function ChangesPullRequest({
     <section aria-label="Pull request" {...props(styles.root)}>
       <div {...props(text.sm, styles.header)}>
         <span {...props(styles.glyph)}>
-          <Icon name={pullRequestIcon(pullRequest)} size={14} />
+          <Icon name={pullRequestIcon(pullRequest)} size="sm" />
         </span>
         <ButtonLink
           href={pullRequest.url}

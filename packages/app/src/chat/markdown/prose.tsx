@@ -101,7 +101,7 @@ function FileCitation({
             <span {...props(proseStyles.linkLead)}>
               <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
                 {mentionsFolder(reference.file) ? (
-                  <Icon name="folder" size={12} />
+                  <Icon name="folder" size="xs" />
                 ) : (
                   <FileTypeIcon path={reference.file.path} />
                 )}

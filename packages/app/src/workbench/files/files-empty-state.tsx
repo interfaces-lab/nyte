@@ -56,7 +56,7 @@ export function FilesEmptyState({
     <div {...props(styles.root)}>
       <div {...props(styles.content)}>
         <InputGroup>
-          <Icon name="search" size={16} />
+          <Icon name="search" size="md" />
           <Input
             autoFocus
             aria-label="Go to file"
@@ -119,14 +119,14 @@ export function FilesEmptyState({
               {!explorerVisible && (
                 <Row variant="nav" onClick={onShowExplorer}>
                   <Row.Leading>
-                    <Icon name="folder-open" size={16} />
+                    <Icon name="folder-open" size="md" />
                   </Row.Leading>
                   <Row.Label>Show Explorer</Row.Label>
                 </Row>
               )}
               <Row variant="nav" onClick={onSearch}>
                 <Row.Leading>
-                  <Icon name="search" size={16} />
+                  <Icon name="search" size="md" />
                 </Row.Leading>
                 <Row.Label>Search in Files</Row.Label>
                 <Row.Meta>
@@ -187,7 +187,7 @@ function FileLabel({
   return (
     <>
       <Row.Leading>
-        <Icon name="file" size={16} />
+        <Icon name="file" size="md" />
       </Row.Leading>
       <Row.Label>
         <span {...props(xstyle)}>{path.slice(slash + 1)}</span>

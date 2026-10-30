@@ -112,7 +112,7 @@ function McpServerRow({
 
   return (
     <ConnectionRow
-      glyph={<Icon name="mcp" size={16} />}
+      glyph={<Icon name="mcp" size="md" />}
       title={server.name}
       detail={serverStatus(server)}
       control={
@@ -187,7 +187,7 @@ function IssueRow({ issue }: { readonly issue: ValidationIssue }): ReactElement 
     <ConnectionRow
       glyph={
         <span {...props(intent.danger, styles.failed)}>
-          <Icon name="circle-x" size={16} />
+          <Icon name="circle-x" size="md" />
         </span>
       }
       title={issue.message}

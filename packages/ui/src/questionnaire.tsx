@@ -299,7 +299,7 @@ export function QuestionnaireChoice({
       >
         <span {...props(styles.dot)} />
         <span {...props(styles.check)}>
-          <Icon name="checkmark" size={12} />
+          <Icon name="checkmark" size="xs" />
         </span>
       </span>
       <Questionnaire.ChoiceLabel data-slot="questionnaire-choice-label" {...props(styles.copy)}>

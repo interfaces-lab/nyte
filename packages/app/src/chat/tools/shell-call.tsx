@@ -526,10 +526,10 @@ export function ShellCallView({
           >
             <span aria-hidden="true" {...props(styles.iconSwap)}>
               <span {...props(styles.iconDefault)}>
-                <Icon name="console" size={14} />
+                <Icon name="console" size="sm" />
               </span>
               <span {...props(styles.iconHover)}>
-                <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
+                <Icon name={open ? "chevron-down" : "chevron-right"} size="sm" />
               </span>
             </span>
             <span {...props(styles.description, running && activityStyles.shimmer)}>{heading}</span>
@@ -570,7 +570,7 @@ export function ShellCallView({
       )}
       <span {...props(toolLineStyles.details)}>{label}</span>
       <ToolOutcome status={status} />
-      <Collapsible.Chevron size={12} xstyle={toolLineStyles.chevron} />
+      <Collapsible.Chevron size="xs" xstyle={toolLineStyles.chevron} />
     </Collapsible.Trigger>
   );
 

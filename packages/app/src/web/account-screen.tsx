@@ -103,7 +103,7 @@ function DesktopList({
             onClick={() => onPick(environment, "controller")}
           >
             <Row.Leading xstyle={environment.online && styles.leading}>
-              <Icon name="laptop" size={16} />
+              <Icon name="laptop" size="md" />
             </Row.Leading>
             <Row.Body>
               <Row.Label id={`${labelId}-${environment.id}`} xstyle={styles.wrap}>
@@ -434,7 +434,7 @@ function AccountFlow({
     return (
       <div {...props(styles.frame)}>
         <div {...props(text.sm, styles.bar)}>
-          <Icon name="laptop" size={14} />
+          <Icon name="laptop" size="sm" />
           <span {...props(styles.barName)}>{name}</span>
           <Button size="xs" disabled={progress !== undefined} onClick={() => void leave(false)}>
             Switch Desktop

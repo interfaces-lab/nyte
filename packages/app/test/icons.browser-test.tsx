@@ -117,7 +117,7 @@ export function mount(): void {
         {iconReferences.flatMap((reference) => [
           <div key={`${reference.name}:outlined`} data-icon-pair={`${reference.name}:outlined`}>
             <span data-sample>
-              <Icon name={reference.name} size={16} />
+              <Icon name={reference.name} size="md" />
             </span>
             <span data-reference>
               <reference.outlined size={16} mode="raw" ariaHidden />
@@ -127,7 +127,7 @@ export function mount(): void {
             ? [
                 <div key={`${reference.name}:filled`} data-icon-pair={`${reference.name}:filled`}>
                   <span data-sample>
-                    <Icon name={reference.name} variant="filled" size={16} />
+                    <Icon name={reference.name} variant="filled" size="md" />
                   </span>
                   <span data-reference>
                     <reference.filled size={16} mode="raw" ariaHidden />
@@ -139,7 +139,7 @@ export function mount(): void {
         {(["left", "right"] as const).flatMap((side) =>
           [false, true].map((visible) => (
             <div key={`${side}:${visible}`} data-panel={`${side}:${visible}`}>
-              <PanelToggleIcon side={side} visible={visible} size={16} />
+              <PanelToggleIcon side={side} visible={visible} size="md" />
             </div>
           )),
         )}
@@ -147,7 +147,7 @@ export function mount(): void {
           [false, true].map((pressed) => (
             <div key={`${disabled}:${pressed}`} data-control={`${disabled}:${pressed}`}>
               <Toggle iconOnly aria-label="Toggle panel" disabled={disabled} pressed={pressed}>
-                <PanelToggleIcon side="left" visible={pressed} size={16} />
+                <PanelToggleIcon side="left" visible={pressed} size="md" />
               </Toggle>
             </div>
           )),
@@ -159,7 +159,7 @@ export function mount(): void {
                 <Icon
                   name="warning"
                   variant="filled"
-                  size={16}
+                  size="md"
                   style={{ color: "red", opacity: 0.2 }}
                 />
               </Button>
@@ -168,13 +168,13 @@ export function mount(): void {
         )}
         <div data-control="local">
           <Button iconOnly aria-label="Back">
-            <Icon name="arrow-left" size={16} style={{ color: "red", opacity: 0.2 }} />
+            <Icon name="arrow-left" size="md" style={{ color: "red", opacity: 0.2 }} />
           </Button>
         </div>
         <div data-control="toolbar">
           <Toolbar.Root>
             <Toolbar.Button render={<Button iconOnly aria-label="Back" />}>
-              <Icon name="arrow-left" size={16} style={{ color: "red", opacity: 0.2 }} />
+              <Icon name="arrow-left" size="md" style={{ color: "red", opacity: 0.2 }} />
             </Toolbar.Button>
           </Toolbar.Root>
         </div>

@@ -868,7 +868,7 @@ export function TranscriptButton(): ReactElement | null {
                 transcript.focusComposer?.();
               }}
             >
-              <Icon name="arrow-down" size={14} />
+              <Icon name="arrow-down" size="sm" />
             </Button>
           }
         />

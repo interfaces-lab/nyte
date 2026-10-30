@@ -176,7 +176,7 @@ function ItemRow({
         {item.checks.length > 0 && !finished && (
           <Meta icon={<CheckDots checks={item.checks} />}>{checkSummary(item.checks)}</Meta>
         )}
-        {crew !== "" && !finished && <Meta icon={<Icon name="agent" size={12} />}>{crew}</Meta>}
+        {crew !== "" && !finished && <Meta icon={<Icon name="agent" size="xs" />}>{crew}</Meta>}
       </span>
     </button>
   );

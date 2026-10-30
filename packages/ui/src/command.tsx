@@ -288,7 +288,7 @@ function CommandInput({
   return (
     <Autocomplete.InputGroup data-slot="command-input-group" {...props(styles.inputGroup)}>
       <span aria-hidden="true" {...props(styles.inputIcon)}>
-        <Icon name="search" size={15} />
+        <Icon name="search" size="md" />
       </span>
       <Autocomplete.Input
         data-slot="command-input"

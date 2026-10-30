@@ -132,7 +132,7 @@ export function Checkbox({
               {state.indeterminate ? (
                 <span {...props(styles.dash)} />
               ) : (
-                <Icon name="checkmark" size={10} />
+                <Icon name="checkmark" size="2xs" />
               )}
             </span>
           )}

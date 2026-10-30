@@ -23,7 +23,7 @@ function NavRow({
   return (
     <Row variant="nav" xstyle={sidebarStyles.navRow}>
       <Row.Leading xstyle={sidebarStyles.navLeading}>
-        <Icon name={icon} size={14} />
+        <Icon name={icon} size="sm" />
       </Row.Leading>
       <Row.Label>{label}</Row.Label>
       {keys !== undefined && (
@@ -138,7 +138,7 @@ export function StacksSidebar({
             {stacks.map((stack) => (
               <DropZone key={stack.id} stack={stack.id} label="sidebar">
                 <ListRow
-                  glyph={<Icon name={stack.icon} size={14} />}
+                  glyph={<Icon name={stack.icon} size="sm" />}
                   label={stack.name}
                   meta={stack.waiting === 0 ? undefined : `${String(stack.waiting)} for you`}
                   selected={stack.id === selected}
@@ -157,7 +157,7 @@ export function StacksSidebar({
                     home === undefined ? (
                       chat.working && <TaskMark state="working" />
                     ) : (
-                      <Icon name={home.icon} size={14} label={`In ${home.name}`} />
+                      <Icon name={home.icon} size="sm" label={`In ${home.name}`} />
                     )
                   }
                   label={chat.title}

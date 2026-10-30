@@ -141,7 +141,7 @@ function NewChatRow({
       onClick={() => panes.newChat()}
     >
       <Row.Leading xstyle={styles.navLeading}>
-        <Icon name="new-chat" size={14} />
+        <Icon name="new-chat" size="sm" />
       </Row.Leading>
       <Row.Label>New Chat</Row.Label>
       <span {...props(styles.shortcutSlot, styles.shortcutPersistent)}>
@@ -451,7 +451,7 @@ export function Sidebar(): ReactElement {
             trigger={
               <Row variant="nav" xstyle={styles.navRow}>
                 <Row.Leading xstyle={styles.navLeading}>
-                  <Icon name="search" size={14} />
+                  <Icon name="search" size="sm" />
                 </Row.Leading>
                 <Row.Label>Search</Row.Label>
                 <span {...props(styles.shortcutSlot)}>
@@ -470,7 +470,7 @@ export function Sidebar(): ReactElement {
             onClick={() => shellActions.openCustomize(paneSessionId)}
           >
             <Row.Leading xstyle={styles.navLeading}>
-              <Icon name="customize" size={14} />
+              <Icon name="customize" size="sm" />
             </Row.Leading>
             <Row.Label>Customize</Row.Label>
           </Row>
@@ -485,7 +485,7 @@ export function Sidebar(): ReactElement {
               onClick={() => shellActions.openEnvironments()}
             >
               <Row.Leading xstyle={styles.navLeading}>
-                <Icon name="server" size={14} />
+                <Icon name="server" size="sm" />
               </Row.Leading>
               <Row.Label>Environments</Row.Label>
             </Row>
@@ -501,10 +501,10 @@ export function Sidebar(): ReactElement {
             xstyle={styles.navRow}
           >
             <Row.Leading xstyle={styles.navLeading}>
-              <Icon name="settings" size={14} />
+              <Icon name="settings" size="sm" />
             </Row.Leading>
             <Row.Label>Settings</Row.Label>
-            <Icon name="chevron-right" size={14} />
+            <Icon name="chevron-right" size="sm" />
           </Row>
         </div>
 

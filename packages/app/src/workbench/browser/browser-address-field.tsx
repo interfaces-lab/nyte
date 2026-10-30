@@ -346,7 +346,7 @@ export function AddressField({
               onClick={() => go(row.url)}
             >
               <span {...props(styles.icon)}>
-                <Icon name={ICONS[row.kind]} size={13} />
+                <Icon name={ICONS[row.kind]} size="sm" />
               </span>
               <span {...props(styles.label)}>{optionLabel(row)}</span>
               {(row.kind === "history" || row.kind === "bookmark") && row.label !== "" && (
