@@ -1,11 +1,10 @@
-// The startup files are adapted from VS Code's shellIntegration-env.zsh, -profile.zsh, -rc.zsh and
-// -login.zsh, Copyright (c) Microsoft Corporation, MIT License (see ./LICENSE and ./UPSTREAM.md).
+// Adapted from VS Code's zsh shell integration, Copyright (c) Microsoft Corporation, MIT License (see ./LICENSE).
 
 const HEADER = `# Nyte shell integration, written for one terminal and removed when it exits.
 # Adapted from VS Code's zsh shell integration, Copyright (c) Microsoft Corporation, MIT License.
 `;
 
-/** Runs the user's startup file `name` from their ZDOTDIR as zsh would, at the top level so its declarations stay global, keeping any ZDOTDIR it sets. */
+/** Runs at the top level so the user's declarations stay global, keeping any ZDOTDIR the file sets. */
 const delegate = (name: string): string => `if [[ -f $__nyte_user_zdotdir/${name} ]]; then
   ZDOTDIR=$__nyte_user_zdotdir
   builtin source $__nyte_user_zdotdir/${name}
@@ -14,7 +13,7 @@ const delegate = (name: string): string => `if [[ -f $__nyte_user_zdotdir/${name
 fi
 `;
 
-/** The files of the ZDOTDIR a zsh terminal starts with: each runs the user's own file of the same name, and `.zlogin` hands ZDOTDIR back and installs `nyte.zsh`'s hooks once the user's startup has finished. */
+/** `.zlogin` hands ZDOTDIR back only after the user's last startup file, since zsh reads each from ZDOTDIR. */
 export const zshFiles = {
   ".zshenv": `${HEADER}
 () {
@@ -54,7 +53,7 @@ __nyte_emit() {
   builtin printf '\\033]633;Nyte;1;%s;%s\\007' $__nyte_nonce $1
 }
 
-# Reports the prompt before any user hook runs, so a slow prompt helper never reads as a command.
+# First in the hooks, so a slow prompt helper never reads as a command.
 __nyte_precmd() {
   builtin local __nyte_status=$?
   builtin emulate -L zsh -o no_xtrace

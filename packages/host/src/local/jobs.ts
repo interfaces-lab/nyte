@@ -369,7 +369,7 @@ async function terminal(
   };
 }
 
-/** Whether the shell `pid` is idle by the OS process table, which `reported` only tightens: a command line it reported running or background jobs at its prompt make any live child count, and a running command line also the shell itself on the CPU, since `exec` or removed hooks stop its reports. */
+/** The shell's reports only tighten the process check, since `exec` or removed hooks silence them while it reports a command running. */
 async function inspectTerminalProcesses(
   pid: number,
   shell: string,

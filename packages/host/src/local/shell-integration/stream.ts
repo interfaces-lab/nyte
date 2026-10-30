@@ -1,13 +1,13 @@
-/** What a terminal's shell last reported through Nyte's authenticated OSC 633 extension: `inactive` until a marker carrying the terminal's nonce arrives (and again after `X`), `prompt` with the number of jobs in the shell's job table, `running` while a submitted command line runs. */
+/** Only a marker carrying the terminal's nonce changes the state, and `X` turns it back to `inactive`. */
 export type ShellState =
   | { readonly kind: "inactive" }
   | { readonly kind: "prompt"; readonly jobs: number }
   | { readonly kind: "running" };
 
 export type ShellStream = {
-  /** The text with every complete OSC 633 envelope removed, holding back a sequence split across chunks until it completes. */
+  /** Holds back a sequence split across chunks until it completes. */
   read(text: string): string;
-  /** The held-back text at the end of output, without a partial OSC 633 envelope. */
+  /** Drops a partial OSC 633 envelope. */
   end(): string;
   state(): ShellState;
 };
@@ -23,7 +23,7 @@ const SUB = "\x1a";
 /** A 633 payload longer than this is discarded through its terminator. */
 const MARKER_LIMIT = 16 * 1024;
 
-/** A shorter partial nonce at the end of a chunk is shown rather than held, so typed text never waits and at most 60 of its 256 bits show. */
+/** A shorter partial nonce at a chunk's end is shown rather than held, so typed text never waits and at most 60 of 256 bits show. */
 const HOLD_FROM = 16;
 
 const MARKER = /^Nyte;1;([0-9a-f]{64});(?:A;(0|[1-9][0-9]{0,5})|(C)|X)$/;
@@ -38,7 +38,7 @@ type Mode =
 
 const TEXT: Mode = { kind: "text" };
 
-/** Splits a terminal's output into what it shows and what its shell reports. Only `ESC ] 633 ; Nyte ; 1 ; <nonce> ; A;<jobs> | C | X` terminated by BEL or ST changes the state, and only with `nonce` (none when null); every other OSC 633 is removed too, and other OSC, DCS, SOS, PM and APC strings pass through without being searched for markers. */
+/** Every OSC 633 is removed, but other OSC, DCS, SOS, PM and APC strings pass through unsearched so a marker inside one is never trusted. */
 export function createShellStream(nonce: string | null): ShellStream {
   let state: ShellState = { kind: "inactive" };
   let mode: Mode = TEXT;
@@ -202,7 +202,7 @@ export function createShellStream(nonce: string | null): ShellStream {
   };
 }
 
-/** Removes `nonce` from text that arrives in chunks, as `set` or `typeset` would print it. */
+/** `set`, `typeset` and `declare -f` print the nonce, and output that knows it can forge markers. */
 export function createNonceFilter(nonce: string) {
   let shown = 0;
   let held = "";
@@ -252,7 +252,7 @@ export function createNonceFilter(nonce: string) {
   };
 }
 
-/** The index of the first BEL, CAN, SUB or ESC in `text` from `from`, which ends or interrupts a terminal string; the length when there is none. */
+/** BEL, CAN, SUB and ESC each end or interrupt a terminal string. */
 function findStop(text: string, from: number): number {
   for (let index = from; index < text.length; index += 1) {
     const char = text.charAt(index);

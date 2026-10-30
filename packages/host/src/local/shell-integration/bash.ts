@@ -1,7 +1,6 @@
-// The login startup and the DEBUG trap composition are adapted from VS Code's shellIntegration-bash.sh,
-// Copyright (c) Microsoft Corporation, MIT License (see ./LICENSE and ./UPSTREAM.md).
+// Adapted from VS Code's shellIntegration-bash.sh, Copyright (c) Microsoft Corporation, MIT License (see ./LICENSE).
 
-/** The init file a bash terminal starts with (`bash --init-file <it> -i`, since `--init-file` does not apply to a login shell): it takes the nonce out of the environment, runs the startup files a login shell would, then reports the prompt from the start of `PROMPT_COMMAND` (or bash-preexec's `precmd_functions`) and the first command of each accepted line from a DEBUG trap (or its `preexec_functions`). */
+/** The init file of `bash --init-file <it> -i`, which must emulate login startup itself because `--init-file` does not apply to a login shell. */
 export const bashScript = `# Nyte shell integration, written for one terminal and removed when it exits.
 # Adapted from VS Code's bash shell integration, Copyright (c) Microsoft Corporation, MIT License.
 
@@ -53,7 +52,7 @@ __nyte_command() {
   [[ -n $__nyte_off ]] || __nyte_emit C
 }
 
-# Passes the incoming status on to a user's DEBUG trap and otherwise returns 0, since with extdebug a failing trap skips the command.
+# With extdebug a failing DEBUG trap skips the command, so this returns 0 unless a user's trap follows.
 __nyte_preexec() {
   local __nyte_status=$?
   if [[ -n $__nyte_ready && $BASH_SUBSHELL == 0 && -z \${COMP_LINE-} && $BASH_COMMAND != __nyte_prompt_begin* ]]; then
@@ -64,7 +63,7 @@ __nyte_preexec() {
   return $__nyte_status
 }
 
-# At the top level, since bash 3.2 neither shows a function the DEBUG trap nor keeps one it sets there.
+# Top level, since bash 3.2 neither shows a function the DEBUG trap nor keeps one it sets there.
 if [[ -n $__nyte_nonce && \${NYTE_SHELL_INTEGRATION-} != 0 ]]; then
   __nyte_off=
   __nyte_ready=

@@ -15,7 +15,7 @@ export type TerminalIntegration = ShellStream & {
   dispose(): void;
 };
 
-/** How a terminal starts and reads its output. An interactive zsh or bash login shell (the terminal of an empty command on macOS or Linux, unless `NYTE_SHELL_INTEGRATION=0`) starts through Nyte's startup files in a private temporary folder (bash as `--init-file … -i`, which runs the login startup files itself), with a fresh nonce in `NYTE_SHELL_NONCE` that the shell takes out of its environment before the user's startup files run; its hooks then report the prompt and each command through markers that only this stream accepts. Every other terminal keeps its arguments and environment, and its stream only removes OSC 633 markers. */
+/** Integrates only an interactive zsh or bash login shell outside Windows, and falls back to a plain terminal when its startup files cannot be written. */
 export async function prepareShellIntegration(input: {
   readonly file: string;
   readonly args: readonly string[];
