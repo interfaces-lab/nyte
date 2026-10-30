@@ -1,13 +1,14 @@
 import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
+import type { SessionId } from "@nyte-ai/sdk";
 import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
 import { activateWorkspace } from "../sidebar/use-show-session.ts";
 import { TaskMark } from "../components/task-mark.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
-import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
+import { sessionRows, subscribeSessionRow } from "../data/session-rows.ts";
 import { useChatWindow } from "../window/index.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
@@ -85,33 +86,73 @@ export function useWindowTabsSync(): void {
         windowTabs.dispatch({ kind: "open", place: location, target: "permanent" });
     };
 
-    const forgetGone = (): void => {
-      const { listed, hosted } = sessionRows();
-
-      if (!listed) return;
-
-      const live = new Set(
-        [...hosted.values()].filter((session) => !session.archived).map((session) => session.id),
-      );
-
-      windowTabs.dispatch({ kind: "forget-closed", live });
-    };
-
     adopt();
     follow();
-    forgetGone();
     const unsubscribeRouter = router.subscribe("onResolved", adopt);
     const unsubscribeTabs = windowTabs.subscribe(follow);
     const unsubscribeChats = subscribeChats(follow);
-    const unsubscribeAllSessions = subscribeSessionRows(forgetGone);
+    const unsubscribeClosed = forgetGoneChats();
 
     return () => {
       unsubscribeRouter();
       unsubscribeTabs();
       unsubscribeChats();
-      unsubscribeAllSessions();
+      unsubscribeClosed();
     };
   });
+}
+
+/**
+ * Forgets closed tabs whose chat is known gone: archived, or missing from its own read. A chat the
+ * host's lists lack may only be outside its most active, so each closed tab's chat is read on its
+ * own. Each read hears the rows with a notice of its own: the rows keep one per listener, so a
+ * shared one would stop with the first read that ends.
+ */
+function forgetGoneChats(): () => void {
+  const reads = new Map<SessionId, () => void>();
+
+  const forget = (): void => {
+    const { hosted, missing } = sessionRows();
+
+    const archived = [...hosted.values()].flatMap((session) =>
+      session.archived ? [session.id] : [],
+    );
+
+    windowTabs.dispatch({ kind: "forget-closed", gone: new Set([...missing, ...archived]) });
+  };
+
+  const read = (): void => {
+    const closed = new Set(
+      windowTabs
+        .getSnapshot()
+        .closed.flatMap(({ tab }) =>
+          tabPlaces(tab).flatMap((place) => (place.kind === "session" ? [place.sessionId] : [])),
+        ),
+    );
+
+    for (const [id, leave] of reads)
+      if (!closed.has(id)) {
+        leave();
+        reads.delete(id);
+      }
+
+    for (const id of closed)
+      if (!reads.has(id))
+        reads.set(
+          id,
+          subscribeSessionRow(id, () => forget()),
+        );
+  };
+
+  read();
+  forget();
+  const unsubscribe = windowTabs.subscribe(read);
+
+  return () => {
+    unsubscribe();
+
+    for (const leave of reads.values()) leave();
+  };
 }
 
 function placeTitle(place: Place, chats: ChatDirectory): string {

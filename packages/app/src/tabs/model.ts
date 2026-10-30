@@ -82,8 +82,8 @@ export type WindowAction =
   | { readonly kind: "cycle-tab"; readonly step: 1 | -1 }
   /** The user dragged `tabId`; moving a preview keeps it. */
   | { readonly kind: "reorder"; readonly tabIds: readonly string[]; readonly tabId: string }
-  /** Closed tabs showing a chat outside `live` were deleted or archived, and don't reopen. */
-  | { readonly kind: "forget-closed"; readonly live: ReadonlySet<SessionId> };
+  /** Closed tabs showing a chat in `gone`, known deleted or archived, don't reopen. */
+  | { readonly kind: "forget-closed"; readonly gone: ReadonlySet<SessionId> };
 
 const BLANK: PaneSelection = { kind: "blank" };
 
@@ -413,9 +413,9 @@ function reduceLayout(state: WindowState, tabId: string, layout: PaneLayout): Wi
   return withTab(state, { ...tab, view: { kind: "panes", layout } });
 }
 
-function forgetClosed(state: WindowState, live: ReadonlySet<SessionId>): WindowState {
+function forgetClosed(state: WindowState, gone: ReadonlySet<SessionId>): WindowState {
   const closed = state.closed.filter(({ tab }) =>
-    tabPlaces(tab).every((place) => place.kind !== "session" || live.has(place.sessionId)),
+    tabPlaces(tab).every((place) => place.kind !== "session" || !gone.has(place.sessionId)),
   );
 
   return closed.length === state.closed.length ? state : { ...state, closed };
@@ -509,7 +509,7 @@ export function reduce(
     }
 
     case "forget-closed":
-      return forgetClosed(state, action.live);
+      return forgetClosed(state, action.gone);
 
     default: {
       const _exhaustive: never = action;

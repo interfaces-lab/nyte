@@ -334,7 +334,7 @@ test("previews don't outlast the window, and chats deleted or archived don't reo
     "a closed preview reopens as a lasting tab",
   ).toEqual(["panes", "panes"]);
 
-  closed = run([{ kind: "forget-closed", live: new Set([asId<"session">("a")]) }], closed);
+  closed = run([{ kind: "forget-closed", gone: new Set([asId<"session">("kept")]) }], closed);
   closed = run([{ kind: "reopen-tab" }, { kind: "reopen-tab" }], closed);
   expect(places(closed), "kept was deleted").toEqual([{ kind: "blank" }, chat("a")]);
   expect(previews(closed)).toEqual([false, false]);
