@@ -411,7 +411,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   setBounds(message: BrowserBoundsMessage, window: HostWindow): void {
     const surface = this.#surfaces.get(message.surface);
 
-    if (surface === undefined) return;
+    if (surface === undefined || (!message.visible && surface.home !== window)) return;
     const moved = message.visible && surface.home !== window;
 
     if (moved) surface.home = window;
@@ -475,6 +475,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       if (surface.home === window) {
         surface.home = undefined;
         surface.attachedTo = undefined;
+        surface.visible = false;
       }
 
       this.release(surface.id, `view:${window}`);
