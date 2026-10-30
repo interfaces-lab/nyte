@@ -25,6 +25,7 @@ export const zshFiles = {
 }
 typeset -g __nyte_zdotdir=$ZDOTDIR
 typeset -g __nyte_user_zdotdir=\${NYTE_USER_ZDOTDIR:-$HOME}
+builtin unset NYTE_USER_ZDOTDIR
 if [[ $__nyte_user_zdotdir != "$__nyte_zdotdir" ]]; then
 ${delegate(".zshenv")}fi
 `,
@@ -37,7 +38,6 @@ fi
 ${delegate(".zshrc")}`,
   ".zlogin": `${HEADER}
 ${delegate(".zlogin")}ZDOTDIR=$__nyte_user_zdotdir
-builtin unset NYTE_USER_ZDOTDIR
 builtin source $__nyte_zdotdir/nyte.zsh
 `,
   "nyte.zsh": `${HEADER}

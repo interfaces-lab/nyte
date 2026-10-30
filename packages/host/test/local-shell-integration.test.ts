@@ -386,6 +386,34 @@ describe.skipIf(!ptyLoads || zsh === undefined)("an integrated zsh terminal's st
   );
 
   it(
+    "starts processes from the user's startup files with the user's ZDOTDIR and none of Nyte's variables",
+    async () => {
+      const record = (name: string): string => `/usr/bin/env > $HOME/${name}.env\n`;
+
+      const terminal = await openTerminal(shell, {
+        ".zshenv": record("zshenv"),
+        ".zprofile": record("zprofile"),
+        ".zshrc": `${record("zshrc")}PS1='${PROMPT}'\n`,
+      });
+
+      try {
+        const seen = await Promise.all(
+          ["zshenv", "zprofile", "zshrc"].map(async (name) =>
+            (await readFile(join(terminal.home, `${name}.env`), "utf8"))
+              .split("\n")
+              .filter((line) => /ZDOTDIR|NYTE_(?!SHELL_INTEGRATION=)|nyte-shell-/.test(line)),
+          ),
+        );
+
+        expect(seen).toEqual(Array(3).fill([`ZDOTDIR=${terminal.home}`]));
+      } finally {
+        await terminal.close();
+      }
+    },
+    TEST_MS,
+  );
+
+  it(
     "keeps its startup folder while readers detach and removes it when the shell exits",
     async () => {
       const terminal = await openTerminal(shell, { ".zshrc": `PS1='${PROMPT}'\n` });
