@@ -72,7 +72,7 @@ function shortcutZoom(event: KeyboardEvent, zoom: number): number | undefined {
 
 export function PdfViewer(input: { readonly file: PdfFile; readonly label: string }): ReactElement {
   const [current, setCurrent] = useState(1);
-  const [attach] = useState(() => createPdfPages(input.file.document, setCurrent));
+  const [attach] = useState(() => createPdfPages(input.file, setCurrent));
   const [zoom, setZoom] = useState(1);
   const widest = input.file.pages.reduce((width, page) => Math.max(width, page.width), 0);
 

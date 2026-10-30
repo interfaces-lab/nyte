@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
-import type { PDFDocumentProxy, PDFPageProxy, PageViewport } from "pdfjs-dist";
-import { enqueue } from "./pdfjs.ts";
+import type { PDFPageProxy, PageViewport } from "pdfjs-dist";
+import type { PdfFile } from "./pdfjs.ts";
 
 /** A page within half a viewport of the visible area is drawn; one within one and a half keeps the canvas it has; any other gives its canvas up. */
 const RENDER_MARGIN = "50% 0px";
@@ -46,7 +46,7 @@ type Attach = (element: HTMLElement | null) => (() => void) | undefined;
  * The scroll container's first child must be the page column, its children the pages in order.
  * `onPage` hears the current page, from 1, after each scroll.
  */
-export function createPdfPages(document: PDFDocumentProxy, onPage: (page: number) => void): Attach {
+export function createPdfPages(file: PdfFile, onPage: (page: number) => void): Attach {
   const byElement = new Map<Element, PageState>();
   let viewport: HTMLElement | undefined;
   let anchor: Anchor | undefined;
@@ -54,14 +54,14 @@ export function createPdfPages(document: PDFDocumentProxy, onPage: (page: number
   const schedule = (state: PageState): void => {
     if (state.queued) return;
     state.queued = true;
-    void enqueue(() => paint(state));
+    void file.enqueue(() => paint(state));
   };
 
   const paint = async (state: PageState): Promise<void> => {
     state.queued = false;
 
     if (state.demand !== "render" || viewport === undefined) return;
-    const page = await document.getPage(state.number);
+    const page = await file.document.getPage(state.number);
     state.page = page;
     const scale = rasterScale(page.getViewport({ scale: 1 }), state.element.clientWidth, viewport);
 
