@@ -50,7 +50,6 @@ function currentWorkspacePath(): string | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
 }
 
-/** Hides the workbench from its terminal, else shows the user's terminal, else starts one. */
 function toggleTerminal(): void {
   const workspacePath = currentWorkspacePath();
   const viewKey = workbenchViewKey(workspacePath);

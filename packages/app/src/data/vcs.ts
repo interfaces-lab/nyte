@@ -33,7 +33,6 @@ export async function gitFor(workspace: WorkspaceId): Promise<GitApi> {
   return capability.api;
 }
 
-/** The workspace's local branches, read again each time `enabled` turns on. */
 export function useGitRefs(workspace: WorkspaceId, enabled: boolean) {
   return useQuery({
     queryKey: keys.gitRefs(workspace),
@@ -64,7 +63,7 @@ export function useVcsChanges(
   });
 }
 
-/** The history behind HEAD, keyed by HEAD so a checkout, commit or reset anywhere reads it anew. */
+/** Keyed by HEAD so a checkout, commit or reset anywhere reads it anew. */
 export function useVcsLog(
   input: { readonly limit: number; readonly cursor?: Cursor | undefined },
   enabled: boolean,

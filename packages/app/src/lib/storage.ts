@@ -1,7 +1,6 @@
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-/** What a store reads and writes; the window's local or session storage, or a test's map. */
 export type StorageArea = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 interface ReadOptions {
@@ -9,12 +8,10 @@ interface ReadOptions {
   readonly text?: boolean;
 }
 
-/** The window's local storage; none outside a browser. */
 export function localArea(): Storage | undefined {
   return globalThis.window === undefined ? undefined : window.localStorage;
 }
 
-/** The value at `key`; one missing, unreadable, or failing `schema` reads as `fallback`. */
 export function readStored<S extends TSchema, Fallback>(
   area: StorageArea | undefined,
   key: string,
@@ -31,7 +28,7 @@ export function readStored<S extends TSchema, Fallback>(
   return Value.Check(schema, value) ? value : fallback;
 }
 
-/** Stores `value` as JSON; a write the storage refuses throws. */
+/** A write the storage refuses throws. */
 export function writeStored(area: StorageArea | undefined, key: string, value: unknown): void {
   area?.setItem(key, JSON.stringify(value));
 }
@@ -42,7 +39,7 @@ export function removeStored(area: StorageArea | undefined, key: string): void {
 
 const UNREADABLE = Symbol("unreadable");
 
-/** The storage boundary, and the one guarded parse: anything may have written this text. */
+/** The one guarded parse: anything may have written this text. */
 function parseJson(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -51,7 +48,6 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** A stored value with listeners, read once on first use. */
 export interface Persisted<T> {
   readonly get: () => T;
   readonly set: (value: T) => void;

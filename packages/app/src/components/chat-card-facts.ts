@@ -24,11 +24,6 @@ export interface ChatCardSources {
 
 const HOME = /^(?:\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[\\/]|$)/u;
 
-/**
- * What a chat's hover card says, in order: the repository with its branch,
- * the worktree the chat runs in, and the folder with the machine it is on.
- * A chat outside any listed folder has only its title.
- */
 export function chatCardFacts(sources: ChatCardSources): ChatCardFacts {
   const title = sources.chat.title;
   const location = sources.chat.location;

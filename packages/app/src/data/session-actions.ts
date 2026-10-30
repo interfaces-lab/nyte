@@ -279,7 +279,7 @@ function actionsFor(client: QueryClient): SessionActions {
   return actions;
 }
 
-/** The app's session actions, for readers outside React. */
+/** For readers outside React. */
 export function appSessionActions(): SessionActions {
   return actionsFor(queryClient);
 }

@@ -168,7 +168,6 @@ function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
-/** Hovers `trigger` and returns the card once its facts have loaded, after checking the delay. */
 async function openCard(trigger: Element): Promise<HTMLElement> {
   const started = performance.now();
   hover(trigger);

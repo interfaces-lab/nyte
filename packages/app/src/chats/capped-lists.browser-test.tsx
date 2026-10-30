@@ -36,7 +36,6 @@ function waitingChild(id: SessionId, title: string): BackgroundItem {
   return { kind: "child", id, title, state: "waiting", startedBy: null };
 }
 
-/** A session's main head, as both its row and its open view carry it. */
 function heads(execution: Execution, waiting = 0): readonly HeadInfo[] {
   return [
     {

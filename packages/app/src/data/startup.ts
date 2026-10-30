@@ -28,7 +28,6 @@ const startupReads = Promise.withResolvers<void>();
 
 let holdingStartupReads = false;
 
-/** Holds reads that can wait until the first screen is up; startup releases them. */
 export function holdStartupReads(): void {
   holdingStartupReads = true;
 }

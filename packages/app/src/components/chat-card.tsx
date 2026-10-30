@@ -50,15 +50,10 @@ const styles = create({
   footer: { paddingInline: row.paddingInlineMd, paddingBlockEnd: space.s1 },
 });
 
-/** The element a chat card opens from, after a short rest of the pointer or on keyboard focus. */
 export function ChatCardTrigger(trigger: ComponentProps<typeof PreviewCardTrigger>): ReactElement {
   return <PreviewCardTrigger delay={OPEN_DELAY_MS} closeDelay={CLOSE_DELAY_MS} {...trigger} />;
 }
 
-/**
- * The card about the chats behind a sidebar row or a tab: one block per chat,
- * the focused pane's first, or only `label` when there is no chat behind it.
- */
 export function ChatCardContent({
   placement,
   label,

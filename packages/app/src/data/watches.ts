@@ -47,14 +47,13 @@ export function paceTranscripts(shown: () => ReadonlySet<SessionId>): void {
   shownTranscripts = shown;
 }
 
-/** What an open view says about its session's row: every head, as the view last showed it. */
 export type OpenView = Pick<SessionView, "heads">;
 
 let views: ReadonlyMap<SessionId, OpenView> = new Map();
 
 const viewListeners = new Set<() => void>();
 
-/** Every session whose view is open, as its view last reported it, before text pacing; a new map once any changes. */
+/** Before text pacing; a new map once any view changes. */
 export function openViews(): ReadonlyMap<SessionId, OpenView> {
   return views;
 }

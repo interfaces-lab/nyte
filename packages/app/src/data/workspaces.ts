@@ -8,7 +8,6 @@ import { jobsWatch } from "./watches.ts";
 import { connected } from "./connection.ts";
 import { useWatch } from "./watch-store.ts";
 
-/** The folder list as every reader asks for it. */
 export const workspacesQuery = {
   queryKey: keys.workspaces,
   queryFn: async () => (await connected()).workspaces.list(),

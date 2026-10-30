@@ -13,7 +13,6 @@ import { sessionsWatch } from "../data/watches.ts";
 import { useCommitCount } from "../lib/work-counts.ts";
 import { chatTitle, useChat, useChats } from "./index.ts";
 
-/** A row whose main head counts `working` background items. */
 function working(row: SessionInfo, count: number): SessionInfo {
   return {
     ...row,
@@ -71,7 +70,6 @@ function Roots(): ReactElement {
   );
 }
 
-/** A chat the lists don't carry, as its own reader and the directory each show it. */
 function Unlisted(): string {
   const chat = useChat(started.id);
   const listed = useChats((chats) => chatTitle(chats.get(started.id)));
