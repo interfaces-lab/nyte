@@ -18,7 +18,10 @@ import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 - A new colour need is a new role in `roles.stylex.ts` with a handle in `vars.stylex.ts`.
 - Readable text uses `contentPrimary` or `contentSecondary`. `contentTertiary` is for
   placeholders, disabled hints, and decoration.
-- Glyphs use `contentInteractiveTertiary` or a stronger role.
+- Glyphs use `contentInteractiveTertiary` or a stronger role. Interactive primary, secondary,
+  and tertiary stay three distinct levels in every scope.
+- `contentAccent` is the scope's hue as ink: error and attention text, status dots, and accent
+  strokes. It is not a text level.
 - Meaning picks a hue through an intent; a category picks one through a scope. Both reuse the
   same role names.
 - Nothing paints a page background in the desktop app; the window's material shows through.

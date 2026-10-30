@@ -163,7 +163,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
                 ? "customize"
                 : "server"
           }
-          size={13}
+          size="sm"
         />
       );
 

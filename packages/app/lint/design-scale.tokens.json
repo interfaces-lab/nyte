@@ -1,0 +1,37 @@
+{
+  "space": [
+    [1, "px"],
+    [2, "s0_5"],
+    [4, "s1"],
+    [6, "s1_5"],
+    [8, "s2"],
+    [10, "s2_5"],
+    [12, "s3"],
+    [16, "s4"],
+    [20, "s5"],
+    [24, "s6"],
+    [32, "s8"]
+  ],
+  "boxes": [
+    [10, "glyph.2xs"],
+    [12, "glyph.xs"],
+    [14, "glyph.sm"],
+    [16, "checkbox.sizeMd"],
+    [16, "control.height2xs"],
+    [16, "glyph.md"],
+    [20, "avatar.xs"],
+    [20, "checkbox.sizeLg"],
+    [20, "control.heightXs"],
+    [20, "glyph.lg"],
+    [24, "avatar.sm"],
+    [24, "control.heightSm"],
+    [24, "target.min"],
+    [28, "avatar.md"],
+    [28, "control.heightMd"],
+    [28, "row.heightMd"],
+    [32, "control.heightLg"],
+    [32, "row.heightLg"],
+    [36, "avatar.lg"],
+    [36, "control.heightXl"]
+  ]
+}

@@ -3,7 +3,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useEffectEvent, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Button, buttonGlyphSize, type ButtonProps } from "@nyte-ai/ui/button";
-import { Icon, type IconName } from "@nyte-ai/ui/icon";
+import { Icon, type GlyphSize, type IconName } from "@nyte-ai/ui/icon";
 import { Kbd, type KbdProps } from "@nyte-ai/ui/kbd";
 import { Menu, MenuContent, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -18,10 +18,10 @@ import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { contextStyles } from "./context-selector.stylex.ts";
 
-/** `md` in the new-chat row, `xs` in the footer under a chat's composer. */
+/** `md` in the new-chat row; `xs`, a quiet segment, in the footer under a chat's composer. */
 export type ContextSize = "xs" | "md";
 
-const CHEVRON_SIZES = { xs: 10, md: 12 } satisfies Record<ContextSize, number>;
+const CHEVRON_SIZES = { xs: "2xs", md: "xs" } as const satisfies Record<ContextSize, GlyphSize>;
 
 export function ContextHint({
   label,
@@ -63,7 +63,7 @@ export function ContextTrigger({
 }): ReactElement {
   return (
     <Button
-      variant="plain"
+      variant={size === "xs" ? "quiet" : "plain"}
       size={size}
       xstyle={[contextStyles.controlLayout, size === "xs" && contextStyles.footerLayout]}
       {...rest}

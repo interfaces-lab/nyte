@@ -8,7 +8,7 @@ import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { appearance, motion, role } from "./styles/vars.stylex.ts";
-import { Icon } from "./icon.tsx";
+import { Icon, type GlyphSize } from "./icon.tsx";
 
 const styles = create({
   trigger: {
@@ -199,13 +199,13 @@ function CollapsiblePreview({
 }
 
 function CollapsibleChevron({
-  size = 11,
+  size = "2xs",
   xstyle,
   className,
   style,
   ...rest
 }: StyledProps<ComponentProps<"span">, Restyle<"Collapsible.Chevron">> & {
-  readonly size?: number;
+  readonly size?: GlyphSize;
 }): ReactElement {
   return (
     <span

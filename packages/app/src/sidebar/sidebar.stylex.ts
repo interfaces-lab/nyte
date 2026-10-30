@@ -342,6 +342,7 @@ export const sidebarStyles = create({
     borderRadius: radius.control,
     color: { default: role.contentInteractiveSecondary, ":disabled": role.contentDisabled },
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   footer: {
     display: "flex",

@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import type { BrowserDownload } from "../../contract/bridge.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
-import { Spinner } from "@nyte-ai/ui/spinner";
+import { Loader } from "@nyte-ai/ui/loader";
 import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { revealLabel } from "../../components/context-menu.ts";
@@ -29,6 +29,7 @@ const styles = create({
     paddingInline: space.s2_5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   glyph: { display: "inline-flex", flexShrink: 0, width: glyph.sm, justifyContent: "center" },
   name: {
@@ -84,7 +85,7 @@ export function DownloadsBar({ surface, downloads }: DownloadsBarProps): ReactEl
         return (
           <div key={download.id} {...props(styles.item)}>
             <span {...props(styles.glyph)}>
-              {running ? <Spinner /> : <Icon name={done ? "checkmark" : "x"} size={12} />}
+              {running ? <Loader /> : <Icon name={done ? "checkmark" : "x"} size="xs" />}
             </span>
             <span {...props(styles.name, !running && !done && styles.failed)} title={download.path}>
               {download.filename}

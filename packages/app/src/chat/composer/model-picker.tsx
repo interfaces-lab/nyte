@@ -173,7 +173,7 @@ export function ModelPicker({
             {label.detail !== undefined && (
               <span {...props(styles.triggerDetail)}>{label.detail}</span>
             )}
-            <Icon name="chevron-down" size={10} />
+            <Icon name="chevron-down" size="2xs" />
           </Button>
         }
       />
@@ -293,7 +293,7 @@ export function ModelPicker({
                       <AutocompleteItem variant="inline" key={option.key} value={option}>
                         {group.id === "favorites" || option.provider === "acp" ? (
                           <span {...props(styles.optionLabel)}>
-                            <Icon name={modelIcon(option)} size={14} />
+                            <Icon name={modelIcon(option)} size="sm" />
                             {option.name}
                           </span>
                         ) : (

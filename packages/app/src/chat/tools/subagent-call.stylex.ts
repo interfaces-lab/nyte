@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { button, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const subagentCallStyles = create({
@@ -12,7 +12,7 @@ export const subagentCallStyles = create({
     minWidth: 0,
     paddingBlock: 0,
     paddingInline: 0,
-    minHeight: button.heightSm,
+    minHeight: control.heightSm,
     textAlign: "start",
   },
   header: { paddingBlock: space.s1_5 },

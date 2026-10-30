@@ -231,7 +231,7 @@ function BranchMenu({
                     ) : (
                       <AutocompleteItem variant="inline" key="create" value={row}>
                         <span {...props(contextStyles.text, styles.createLabel)}>
-                          <Icon name="plus" size={14} />
+                          <Icon name="plus" size="sm" />
                           Create Branch…
                         </span>
                       </AutocompleteItem>

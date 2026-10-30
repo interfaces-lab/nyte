@@ -432,7 +432,7 @@ function WorkbenchViewHost({
                   xstyle={workbenchStyles.launcherCard}
                   onClick={() => launch(viewKey, kind)}
                 >
-                  <Icon name={WORKBENCH_KINDS[kind].icon} size={20} />
+                  <Icon name={WORKBENCH_KINDS[kind].icon} size="lg" />
                   {WORKBENCH_KINDS[kind].label}
                 </Row>
               </div>

@@ -2,7 +2,7 @@ import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Icon } from "@nyte-ai/ui/icon";
-import { Spinner } from "@nyte-ai/ui/spinner";
+import { Loader } from "@nyte-ai/ui/loader";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
@@ -59,7 +59,7 @@ const styles = create({
 function SignInPending(): ReactElement {
   return (
     <div role="status" {...props(styles.panel)}>
-      <Spinner />
+      <Loader />
       <span {...props(srOnly)}>Loading sign-in</span>
     </div>
   );
@@ -68,7 +68,7 @@ function SignInPending(): ReactElement {
 function SignInFinishing(): ReactElement {
   return (
     <div role="status" {...props(styles.panel)}>
-      <Spinner />
+      <Loader />
       <p {...props(styles.message)}>Finishing sign-in…</p>
     </div>
   );

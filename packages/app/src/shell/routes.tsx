@@ -46,6 +46,7 @@ const styles = create({
     margin: 0,
     color: role.contentSecondary,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
 });
 

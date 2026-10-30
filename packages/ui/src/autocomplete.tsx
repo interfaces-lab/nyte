@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
-import { glyph, input, layer, menu, radius, space } from "./styles/schema.stylex.ts";
+import { control, glyph, layer, menu, radius, row, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
@@ -15,8 +15,8 @@ import { Icon } from "./icon.tsx";
 
 const styles = create({
   clear: {
-    minWidth: menu.itemHeight,
-    minHeight: menu.itemHeight,
+    minWidth: row.heightMd,
+    minHeight: row.heightMd,
   },
   positioner: { zIndex: layer.menu, outline: "none" },
   popup: {
@@ -57,7 +57,7 @@ const styles = create({
     boxSizing: "border-box",
     flexShrink: 0,
     width: "100%",
-    height: input.heightXl,
+    height: control.heightXl,
     margin: 0,
     paddingBlock: 0,
     paddingInline: space.s3,
@@ -89,7 +89,7 @@ const styles = create({
     gridTemplateColumns: "minmax(0, 1fr) 12px",
     alignItems: "center",
     columnGap: space.s1_5,
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingBlock: 0,
     paddingInline: space.s3,
     borderRadius: radius.control,
@@ -136,7 +136,7 @@ const styles = create({
 
 const inputVariants = create({
   popup: {},
-  inline: { height: menu.itemHeight, paddingInline: space.s2, boxShadow: "none" },
+  inline: { height: row.heightMd, paddingInline: space.s2, boxShadow: "none" },
 });
 
 const listVariants = create({
@@ -155,7 +155,7 @@ const itemVariants = create({
   inline: {
     gridTemplateColumns: `minmax(0, 1fr) ${glyph.sm}`,
     columnGap: space.s2,
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingBlock: space.s1,
     paddingInline: space.s2,
     borderRadius: menu.itemRadius,
@@ -343,7 +343,7 @@ export function AutocompleteItem({
     >
       <span {...props(styles.itemText)}>{children}</span>
       <Combobox.ItemIndicator {...props(styles.itemIndicator, itemIndicatorVariants[variant])}>
-        <Icon name="checkmark" size={11} />
+        <Icon name="checkmark" size="2xs" />
       </Combobox.ItemIndicator>
     </Combobox.Item>
   );

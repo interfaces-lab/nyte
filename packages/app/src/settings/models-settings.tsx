@@ -106,7 +106,7 @@ function ModelList({
           return (
             <li key={option.key} {...props(styles.modelRow)}>
               <span {...props(text.base, styles.modelName, !shown && styles.modelHidden)}>
-                {agents && <Icon name={modelIcon(option)} size={16} />}
+                {agents && <Icon name={modelIcon(option)} size="md" />}
                 <span {...props(styles.modelNameText)}>{option.name}</span>
                 {!agents && (
                   <span {...props(text.sm, styles.modelMeta)}>
@@ -125,9 +125,9 @@ function ModelList({
                 }
               >
                 {favorite ? (
-                  <Icon name="star" variant="filled" size={14} />
+                  <Icon name="star" variant="filled" size="sm" />
                 ) : (
-                  <Icon name="star" size={14} />
+                  <Icon name="star" size="sm" />
                 )}
               </Button>
               <Switch
@@ -403,7 +403,7 @@ function ProviderRow({
 
   return (
     <ConnectionRow
-      glyph={<Icon name={providerIcon(provider.id)} size={20} />}
+      glyph={<Icon name={providerIcon(provider.id)} size="lg" />}
       title={
         <span {...props(styles.providerTitle)}>
           {provider.name}
@@ -431,7 +431,7 @@ function ProviderRow({
                   <Button variant="outline" loading={login.isPending} disabled={busy}>
                     Connect Provider
                     <span {...props(srOnly)}> {provider.name}</span>
-                    <Icon name="chevron-down" size={12} />
+                    <Icon name="chevron-down" size="xs" />
                   </Button>
                 }
               />
@@ -477,7 +477,7 @@ function ProviderRow({
               >
                 {provider.id === "acp" ? "Agents" : "Models"}
                 <span {...props(srOnly)}> for {provider.name}</span>
-                <Icon name={modelsOpen ? "chevron-down" : "chevron-right"} size={12} />
+                <Icon name={modelsOpen ? "chevron-down" : "chevron-right"} size="xs" />
               </Button>
             )}
           </span>

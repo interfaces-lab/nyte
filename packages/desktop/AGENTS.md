@@ -1,5 +1,8 @@
 # Desktop
 
+Fonts and loading indicators follow the Fonts and Loading indicators sections of
+`packages/app/AGENTS.md`.
+
 - Preserve the Electron main/preload/renderer boundary. Session behavior belongs in core.
 - Ask for workspace trust once; child tasks inherit it. Extra approval checks belong
   in plugins. Keep API/IPC input validation.

@@ -540,7 +540,7 @@ export function ChangesCard({
           <Row render={<li />} interactive xstyle={turnStyles.changesFile}>
             <Row.Primary aria-expanded={false} onClick={() => setExpanded(true)}>
               <Row.Leading xstyle={turnStyles.changesFileIcon}>
-                <Icon name="more-horizontal" size={14} />
+                <Icon name="more-horizontal" size="sm" />
               </Row.Leading>
               <Row.Label>{`Show ${String(files.length - shown.length)} more`}</Row.Label>
             </Row.Primary>

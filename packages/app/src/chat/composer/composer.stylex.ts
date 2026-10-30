@@ -2,12 +2,13 @@ import { create, keyframes } from "@stylexjs/stylex";
 import {
   button,
   clipboardPreview,
+  control,
   glyph,
   layer,
   media,
   menu,
-  row,
   radius,
+  row,
   space,
   target,
   toast,
@@ -49,7 +50,7 @@ export const composerStyles = create({
     alignItems: "center",
     gap: button.gapSm,
     maxWidth: "100%",
-    height: button.heightSm,
+    height: control.heightSm,
     paddingInline: button.pillPaddingInlineSm,
     borderRadius: radius.pill,
     backgroundColor: role.bgElevated,
@@ -118,7 +119,7 @@ export const composerStyles = create({
     maxWidth: "100%",
     minHeight: {
       default: 0,
-      ":has([data-scroll-shown='true'])": button.heightSm,
+      ":has([data-scroll-shown='true'])": control.heightSm,
     },
     marginTop: {
       default: 0,
@@ -127,7 +128,7 @@ export const composerStyles = create({
     },
     paddingBottom: {
       default: 0,
-      ":has([data-slot='tray'] > :not([inert])):has([data-scroll-shown='true'])": `calc(${button.heightSm} + ${tray.gap})`,
+      ":has([data-slot='tray'] > :not([inert])):has([data-scroll-shown='true'])": `calc(${control.heightSm} + ${tray.gap})`,
     },
     pointerEvents: "auto",
   },
@@ -191,13 +192,14 @@ export const composerStyles = create({
     display: "flex",
     alignItems: "center",
     gap: space.s2,
-    minHeight: button.heightMd,
+    minHeight: control.heightMd,
     paddingInline: space.s2_5,
     borderRadius: radius.control,
     backgroundColor: role.bgElevated,
     boxShadow: CODE_RING,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   queuedText: {
     flex: 1,
@@ -216,6 +218,7 @@ export const composerStyles = create({
   queueHint: {
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   /** On whatever is stacked on the composer, so toasts clear its trays too. */
   toastAnchor: { anchorName: toast.anchor },
@@ -514,7 +517,7 @@ export const composerStyles = create({
   layoutNewChat: { gap: space.s1_5 },
   layoutCompact: {
     display: "grid",
-    gridTemplateColumns: `${button.heightMd} minmax(64px, 1fr) minmax(0, auto) auto`,
+    gridTemplateColumns: `${control.heightMd} minmax(64px, 1fr) minmax(0, auto) auto`,
     alignItems: "center",
     gap: space.s2,
   },
@@ -522,7 +525,7 @@ export const composerStyles = create({
     display: "flex",
     alignItems: "center",
     gap: target.gap,
-    minHeight: button.heightMd,
+    minHeight: control.heightMd,
   },
   controlsNewChat: { paddingInline: space.s3, paddingBlockEnd: space.s2 },
   controlsInset: { paddingInline: space.s2, paddingBlockEnd: space.s2 },

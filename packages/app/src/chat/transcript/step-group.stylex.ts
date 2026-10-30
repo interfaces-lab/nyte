@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { button, media, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, media, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../../theme/schema.stylex.ts";
 import { appearance, motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -31,7 +31,7 @@ export const stepGroupStyles = create({
     gap: space.s1,
     width: "100%",
     maxWidth: "100%",
-    minHeight: button.heightSm,
+    minHeight: control.heightSm,
     minWidth: 0,
     textAlign: "start",
     color: role.contentSecondary,

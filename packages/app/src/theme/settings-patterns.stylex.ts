@@ -7,9 +7,9 @@ export const settingsPatterns = create({
   pageTitle: {
     margin: 0,
     color: role.contentPrimary,
-    fontSize: settings.pageTitleSize,
+    fontSize: type.font2xl,
     fontWeight: type.weightMedium,
-    lineHeight: settings.pageTitleLineHeight,
+    lineHeight: type.leading2xl,
     letterSpacing: 0,
   },
   section: {
@@ -27,9 +27,9 @@ export const settingsPatterns = create({
   sectionTitle: {
     margin: 0,
     color: role.contentPrimary,
-    fontSize: settings.sectionTitleSize,
+    fontSize: type.fontLg,
     fontWeight: type.weightMedium,
-    lineHeight: settings.sectionTitleLineHeight,
+    lineHeight: type.leadingLg,
   },
   sectionDescription: {
     margin: 0,

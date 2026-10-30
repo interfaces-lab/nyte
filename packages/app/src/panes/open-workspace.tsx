@@ -28,6 +28,7 @@ const styles = create({
     color: role.contentSecondary,
     fontFamily: type.fontMono,
     fontSize: type.fontCode,
+    lineHeight: type.leadingCode,
     overflowWrap: "anywhere",
     userSelect: "text",
   },

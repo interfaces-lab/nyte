@@ -170,7 +170,7 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
         {state === undefined ? null : state.kind === "off" ? (
           <>
             <ConnectionRow
-              glyph={<Icon name="devices" size={16} />}
+              glyph={<Icon name="devices" size="md" />}
               title="Over Tailscale"
               detail={tailnetDetail(state.tailnet)}
               control={
@@ -196,7 +196,7 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
           </>
         ) : state.reach === "cloudflare" ? (
           <ConnectionRow
-            glyph={<Icon name="cloudflare" size={16} />}
+            glyph={<Icon name="cloudflare" size="md" />}
             title={`Serving ${servedTargetLabel(state.target)}`}
             detail={state.address}
             control={
@@ -217,7 +217,7 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
           />
         ) : (
           <ConnectionRow
-            glyph={<Icon name="devices" size={16} />}
+            glyph={<Icon name="devices" size="md" />}
             title={`Serving ${servedTargetLabel(state.target)}`}
             detail={state.target.kind === "home" ? undefined : state.target.workspace.path}
             control={

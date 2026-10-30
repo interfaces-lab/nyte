@@ -203,7 +203,7 @@ export const workbenchStyles = create({
     "--trees-bg-muted-override": role.bgHover,
     "--trees-fg-override": role.contentSecondary,
     "--trees-fg-muted-override": role.contentTertiary,
-    "--trees-accent-override": role.contentInteractiveTertiary,
+    "--trees-accent-override": role.contentAccent,
     "--trees-border-color-override": role.borderSecondaryTranslucent,
     "--trees-indent-guide-bg-override": role.borderSecondaryTranslucent,
     "--trees-selected-bg-override": role.bgInteractiveSecondaryTranslucent,

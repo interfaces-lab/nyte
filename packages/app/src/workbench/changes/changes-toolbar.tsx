@@ -115,6 +115,7 @@ const styles = create({
     overflow: "hidden",
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
@@ -281,7 +282,7 @@ function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): Reac
 
   return (
     <span aria-label={description} title={description} {...props(text.sm, styles.branch)}>
-      <Icon name={branch.kind === "detached" ? "git" : "git-branch"} size={12} />
+      <Icon name={branch.kind === "detached" ? "git" : "git-branch"} size="xs" />
       <span {...props(styles.branchLabel)}>{branch.label}</span>
       {branch.kind === "detached" && <span {...props(text.xs, styles.branchTag)}>detached</span>}
       {branch.kind === "unborn" && <span {...props(text.xs, styles.branchTag)}>no commits</span>}
@@ -386,7 +387,7 @@ export function ChangesToolbar({
                 <span {...props(styles.scopeLabel)}>{scopeLabel}</span>
                 <ScopeMeta key={scopeKey} stats={scopeStats} fileCount={scopeFileCount} />
                 <span {...props(styles.scopeChevron)}>
-                  <Icon name="chevron-down" size={10} />
+                  <Icon name="chevron-down" size="2xs" />
                 </span>
               </Button>
             }

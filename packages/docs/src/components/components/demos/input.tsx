@@ -25,11 +25,11 @@ export function InputGroupDemo() {
   return (
     <div className="grid w-80 gap-3">
       <InputGroup>
-        <Icon name="search" size={12} />
+        <Icon name="search" size="xs" />
         <Input placeholder="Search" aria-label="Search workspace" />
       </InputGroup>
       <InputGroup variant="quiet">
-        <Icon name="search" size={13} />
+        <Icon name="search" size="sm" />
         <Input placeholder="Search models" aria-label="Search models" />
       </InputGroup>
     </div>

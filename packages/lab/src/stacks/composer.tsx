@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
-import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -63,7 +63,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: space.s2,
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingInline: space.s2,
     borderRadius: radius.control,
     color: role.contentPrimary,
@@ -366,7 +366,7 @@ export function Composer({
           {request !== null && (
             <>
               <span {...props(styles.planGlyph)}>
-                <Icon name="arrow-right" size={12} />
+                <Icon name="arrow-right" size="xs" />
               </span>
               <span {...props(styles.planText)}>{describePlan(request, stack)}</span>
             </>
@@ -403,7 +403,7 @@ function optionsFor(
         insert: `@${agent.name}`,
         label: agent.name,
         meta: `${MODELS[agent.model].name} · ${agent.does}`,
-        glyph: <Icon name={MODELS[agent.model].icon} size={14} />,
+        glyph: <Icon name={MODELS[agent.model].icon} size="sm" />,
       }));
 
   return pulls.flatMap((pull) =>

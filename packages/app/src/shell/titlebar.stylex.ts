@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { button, layer, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, layer, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar, workbench } from "../theme/schema.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -10,7 +10,7 @@ export const titlebarStyles = create({
     display: "flex",
     alignItems: "center",
     height: shell.titlebarHeight,
-    minHeight: button.heightMd,
+    minHeight: control.heightMd,
     flexShrink: 0,
     WebkitAppRegion: "drag",
   },
@@ -73,8 +73,8 @@ export const titlebarStyles = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: button.heightMd,
-    height: button.heightMd,
+    width: control.heightMd,
+    height: control.heightMd,
     flexShrink: 0,
     WebkitAppRegion: "no-drag",
   },

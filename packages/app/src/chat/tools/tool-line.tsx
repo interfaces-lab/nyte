@@ -246,7 +246,7 @@ export function ToolLineView({
     <>
       {copy.server !== undefined && (
         <span {...props(toolLineStyles.icon)}>
-          <Icon name="mcp" size={14} />
+          <Icon name="mcp" size="sm" />
         </span>
       )}
       {status.tense !== "none" && (
@@ -320,7 +320,7 @@ export function ToolLineView({
           }
         >
           {content}
-          <Collapsible.Chevron size={12} xstyle={toolLineStyles.chevron} />
+          <Collapsible.Chevron size="xs" xstyle={toolLineStyles.chevron} />
         </PreviewCardTrigger>
         <PreviewCardContent side="bottom" align="start" sideOffset={8} xstyle={toolLineStyles.card}>
           <div {...props(toolLineStyles.cardText)}>{excerptText(excerpt)}</div>

@@ -193,6 +193,7 @@ export const restyleContracts = {
     allow: ["layout", "color"],
   },
   Spinner: placed("packages/ui/src/spinner.tsx"),
+  Loader: placed("packages/ui/src/loader.tsx"),
   Kbd: placed("packages/ui/src/kbd.tsx", ["plain", "keycap", "held"]),
   Avatar: placed("packages/ui/src/avatar.tsx", ["size", "corners", "tone"]),
   AvatarImage: placed("packages/ui/src/avatar.tsx"),

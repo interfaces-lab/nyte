@@ -281,7 +281,7 @@ export function TunnelRow({
     onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
   });
 
-  const glyph = <Icon name="cloudflare" size={16} />;
+  const glyph = <Icon name="cloudflare" size="md" />;
   const title = "Over Cloudflare Tunnel";
 
   switch (tunnel.kind) {

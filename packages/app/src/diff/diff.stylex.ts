@@ -101,6 +101,7 @@ export const diffStyles = create({
     gap: space.s1_5,
     flexShrink: 0,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     fontVariantNumeric: "tabular-nums",
   },
   header: {
@@ -121,6 +122,7 @@ export const diffStyles = create({
     color: role.contentSecondary,
     fontFamily: type.fontMono,
     fontSize: type.fontCode,
+    lineHeight: type.leadingCode,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
@@ -129,6 +131,7 @@ export const diffStyles = create({
     gap: space.s1_5,
     flexShrink: 0,
     fontSize: type.fontCode,
+    lineHeight: type.leadingCode,
     fontVariantNumeric: "tabular-nums",
   },
   added: { color: role.contentSecondary },

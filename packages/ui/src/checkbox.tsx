@@ -86,8 +86,8 @@ const styles = create({
     backgroundColor: "currentColor",
   },
   attention: {
-    borderColor: role.contentInteractiveTertiary,
-    color: role.contentInteractiveTertiary,
+    borderColor: role.contentAccent,
+    color: role.contentAccent,
     "::after": {
       content: "''",
       width: 6,
@@ -132,7 +132,7 @@ export function Checkbox({
               {state.indeterminate ? (
                 <span {...props(styles.dash)} />
               ) : (
-                <Icon name="checkmark" size={10} />
+                <Icon name="checkmark" size="2xs" />
               )}
             </span>
           )}

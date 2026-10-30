@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import { button, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useChat } from "../../chats/index.ts";
 import { nyte } from "../../contract/nyte.ts";
@@ -32,7 +32,7 @@ const styles = create({
     alignItems: "center",
     gap: space.s1,
     minWidth: 0,
-    height: button.heightXs,
+    height: control.heightXs,
   },
 });
 

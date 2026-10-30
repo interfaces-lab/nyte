@@ -5,7 +5,7 @@ import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
-import { button, glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, control, glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { motion as motionTokens, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { shell } from "@nyte-ai/app/theme/schema.stylex.ts";
@@ -201,7 +201,7 @@ function TabSheet({
 function Glyph({ tab }: { readonly tab: ShellTab }): ReactElement {
   if (tab.mark !== "done" || tab.unread) return <TaskMark state={tab.mark} unread={tab.unread} />;
 
-  return <Icon name={tab.icon} size={14} />;
+  return <Icon name={tab.icon} size="sm" />;
 }
 
 function Tab({
@@ -258,7 +258,7 @@ function Tab({
       {!pinned && <span {...props(styles.label)}>{tab.title}</span>}
       {tab.split !== undefined && !pinned && (
         <span {...props(styles.trailingMark, styles.collapsible)}>
-          <Icon name={tab.split === "down" ? "split-down" : "split-right"} size={12} />
+          <Icon name={tab.split === "down" ? "split-down" : "split-right"} size="xs" />
         </span>
       )}
       {!pinned && (
@@ -395,7 +395,7 @@ const styles = create({
     flexShrink: 0,
     minWidth: 0,
   },
-  slotShrink: { flexShrink: 1, flexBasis: 176, minWidth: button.heightMd },
+  slotShrink: { flexShrink: 1, flexBasis: 176, minWidth: control.heightMd },
   slotActive: { zIndex: 1 },
   tab: {
     position: "relative",
@@ -422,7 +422,7 @@ const styles = create({
     justifyContent: { default: "flex-start", [COLLAPSED]: "center" },
     paddingInline: { default: 8, [COLLAPSED]: 0 },
   },
-  tabPinned: { flexShrink: 0, width: button.heightMd, paddingInline: 0, justifyContent: "center" },
+  tabPinned: { flexShrink: 0, width: control.heightMd, paddingInline: 0, justifyContent: "center" },
   /** Same content box as `active`, which trades this margin for padding, so a click moves nothing. */
   inactive: {
     marginBottom: LIFT,
@@ -453,8 +453,8 @@ const styles = create({
     display: "grid",
     placeItems: "center",
     flexShrink: 0,
-    width: glyph.box,
-    height: glyph.box,
+    width: glyph.md,
+    height: glyph.md,
   },
   label: {
     display: { default: "block", [COLLAPSED]: "none" },

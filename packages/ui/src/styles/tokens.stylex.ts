@@ -42,11 +42,16 @@ export const typography = defineVars({
   "--nyte-font-size-xs": "calc(var(--nyte-font-size-base) * 11 / 13)",
   "--nyte-font-size-sm": "calc(var(--nyte-font-size-base) * 12 / 13)",
   "--nyte-font-size-lg": "calc(var(--nyte-font-size-base) * 15 / 13)",
-  "--nyte-font-size-2xl": "calc(var(--nyte-font-size-base) * 19 / 13)",
+  "--nyte-font-size-xl": "calc(var(--nyte-font-size-base) * 19 / 13)",
+  "--nyte-font-size-2xl": "calc(var(--nyte-font-size-base) * 24 / 13)",
+  "--nyte-font-size-3xl": "calc(var(--nyte-font-size-base) * 28 / 13)",
   "--nyte-line-height-xs": "round(up, calc(var(--nyte-font-size-base) * 14 / 13), 1px)",
   "--nyte-line-height-sm": "round(up, calc(var(--nyte-font-size-base) * 16 / 13), 1px)",
   "--nyte-line-height-base": "round(up, calc(var(--nyte-font-size-base) * 18 / 13), 1px)",
   "--nyte-line-height-lg": "round(up, calc(var(--nyte-font-size-base) * 24 / 13), 1px)",
+  "--nyte-line-height-xl": "round(up, calc(var(--nyte-font-size-base) * 24 / 13), 1px)",
+  "--nyte-line-height-2xl": "round(up, calc(var(--nyte-font-size-base) * 32 / 13), 1px)",
+  "--nyte-line-height-3xl": "round(up, calc(var(--nyte-font-size-base) * 34 / 13), 1px)",
   "--nyte-line-height-code": "round(up, calc(var(--nyte-font-size-code) * 18 / 12), 1px)",
   "--nyte-letter-spacing-base": "0em",
   "--nyte-letter-spacing-lg": "-0.016em",
@@ -69,11 +74,20 @@ export const motion = defineVars({
   "--nyte-easing-in-out-strong": "cubic-bezier(0.77, 0, 0.175, 1)",
 });
 
+/**
+ * The one control-height scale. Buttons, inputs, and toggles take a step; rows and menu items
+ * take one and never fall below the touch target.
+ */
+export const controls = defineVars({
+  "--nyte-control-height-2xs": { default: "16px", "@media (pointer: coarse)": "28px" },
+  "--nyte-control-height-xs": { default: "20px", "@media (pointer: coarse)": "32px" },
+  "--nyte-control-height-sm": { default: "24px", "@media (pointer: coarse)": "36px" },
+  "--nyte-control-height-md": { default: "28px", "@media (pointer: coarse)": "40px" },
+  "--nyte-control-height-lg": { default: "32px", "@media (pointer: coarse)": "44px" },
+  "--nyte-control-height-xl": { default: "36px", "@media (pointer: coarse)": "48px" },
+});
+
 export const components = defineVars({
-  "--nyte-btn-height-2xs": {
-    default: "16px",
-    "@media (pointer: coarse)": "28px",
-  },
   "--nyte-btn-padding-inline-2xs": {
     default: "4px",
     "@media (pointer: coarse)": "8px",
@@ -89,10 +103,6 @@ export const components = defineVars({
   "--nyte-btn-gap-2xs": {
     default: "4px",
     "@media (pointer: coarse)": "6px",
-  },
-  "--nyte-btn-height-xs": {
-    default: "20px",
-    "@media (pointer: coarse)": "32px",
   },
   "--nyte-btn-padding-inline-xs": {
     default: "6px",
@@ -110,10 +120,6 @@ export const components = defineVars({
     default: "4px",
     "@media (pointer: coarse)": "8px",
   },
-  "--nyte-btn-height-sm": {
-    default: "24px",
-    "@media (pointer: coarse)": "36px",
-  },
   "--nyte-btn-padding-inline-sm": {
     default: "8px",
     "@media (pointer: coarse)": "10px",
@@ -129,10 +135,6 @@ export const components = defineVars({
   "--nyte-btn-gap-sm": {
     default: "6px",
     "@media (pointer: coarse)": "8px",
-  },
-  "--nyte-btn-height-md": {
-    default: "28px",
-    "@media (pointer: coarse)": "40px",
   },
   "--nyte-btn-padding-inline-md": {
     default: "8px",
@@ -150,10 +152,6 @@ export const components = defineVars({
     default: "6px",
     "@media (pointer: coarse)": "10px",
   },
-  "--nyte-btn-height-lg": {
-    default: "32px",
-    "@media (pointer: coarse)": "44px",
-  },
   "--nyte-btn-padding-inline-lg": {
     default: "10px",
     "@media (pointer: coarse)": "14px",
@@ -169,10 +167,6 @@ export const components = defineVars({
   "--nyte-btn-gap-lg": {
     default: "8px",
     "@media (pointer: coarse)": "10px",
-  },
-  "--nyte-btn-height-xl": {
-    default: "36px",
-    "@media (pointer: coarse)": "48px",
   },
   "--nyte-btn-padding-inline-xl": {
     default: "12px",
@@ -190,11 +184,7 @@ export const components = defineVars({
     default: "8px",
     "@media (pointer: coarse)": "12px",
   },
-  "--nyte-icon-btn-padding-inline": "4px",
-  "--nyte-input-height-md": {
-    default: "28px",
-    "@media (pointer: coarse)": "40px",
-  },
+  "--nyte-btn-padding-inline-tight": "4px",
   "--nyte-input-inset-md": "4px",
   "--nyte-input-padding-end-md": "calc(4px + 2px)",
   "--nyte-input-textarea-min-height-md": {
@@ -209,10 +199,6 @@ export const components = defineVars({
     default: "8px",
     "@media (pointer: coarse)": "12px",
   },
-  "--nyte-input-height-lg": {
-    default: "32px",
-    "@media (pointer: coarse)": "44px",
-  },
   "--nyte-input-inset-lg": "6px",
   "--nyte-input-padding-end-lg": "calc(6px + 2px)",
   "--nyte-input-textarea-min-height-lg": {
@@ -226,10 +212,6 @@ export const components = defineVars({
   "--nyte-input-radius-lg": {
     default: "8px",
     "@media (pointer: coarse)": "14px",
-  },
-  "--nyte-input-height-xl": {
-    default: "36px",
-    "@media (pointer: coarse)": "48px",
   },
   "--nyte-input-inset-xl": "8px",
   "--nyte-input-padding-end-xl": "calc(8px + 2px)",
@@ -267,43 +249,32 @@ export const components = defineVars({
   },
   "--nyte-checkbox-size-lg": "20px",
   "--nyte-checkbox-radius": "4px",
-  "--nyte-row-height-md": {
-    default: "28px",
-    "@media (pointer: coarse)": "44px",
-  },
-  "--nyte-row-height-lg": {
-    default: "32px",
-    "@media (pointer: coarse)": "44px",
-  },
+  "--nyte-row-height-md": "max(var(--nyte-control-height-md), var(--nyte-target-min))",
+  "--nyte-row-height-lg": "max(var(--nyte-control-height-lg), var(--nyte-target-min))",
   "--nyte-row-padding-inline-md": "4px",
   "--nyte-row-padding-inline-lg": "6px",
   "--nyte-row-gap": "6px",
   "--nyte-row-radius": "8px",
   "--nyte-target-min": { default: "24px", "@media (pointer: coarse)": "44px" },
   "--nyte-target-gap": { default: "2px", "@media (pointer: coarse)": "8px" },
+  "--nyte-glyph-2xs": "10px",
+  "--nyte-glyph-xs": "12px",
   "--nyte-glyph-sm": "14px",
   "--nyte-glyph-md": "16px",
   "--nyte-glyph-lg": "20px",
-  "--nyte-glyph-box": "15px",
   "--nyte-avatar-xs": "20px",
   "--nyte-avatar-sm": "24px",
   "--nyte-avatar-md": "28px",
   "--nyte-avatar-lg": "36px",
   "--nyte-slider-thumb": { default: "14px", "@media (pointer: coarse)": "22px" },
-  "--nyte-menu-item-height": {
-    default: "28px",
-    "@media (pointer: coarse)": "44px",
-  },
   "--nyte-menu-meta-min-width": "32px",
   "--nyte-menu-padding": "6px",
   "--nyte-menu-radius": "14px",
   "--nyte-menu-item-radius": "8px",
   "--nyte-menu-item-gap": "6px",
   "--nyte-menu-item-padding-inline": "4px",
-  "--nyte-menu-item-padding-block": {
-    default: "calc((28px - var(--nyte-line-height-base)) / 2)",
-    "@media (pointer: coarse)": "calc((44px - var(--nyte-line-height-base)) / 2)",
-  },
+  "--nyte-menu-item-padding-block":
+    "calc((var(--nyte-row-height-md) - var(--nyte-line-height-base)) / 2)",
   "--nyte-menu-width": "200px",
   "--nyte-model-menu-width": "230px",
   "--nyte-parameter-menu-width": "220px",

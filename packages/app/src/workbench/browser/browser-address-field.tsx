@@ -1,4 +1,4 @@
-import { layer, menu, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { layer, menu, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
@@ -41,7 +41,7 @@ const styles = create({
     alignItems: "center",
     gap: menu.itemGap,
     minWidth: 0,
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingBlock: menu.itemPaddingBlock,
     paddingInline: menu.itemPaddingInline,
     borderRadius: menu.itemRadius,
@@ -346,7 +346,7 @@ export function AddressField({
               onClick={() => go(row.url)}
             >
               <span {...props(styles.icon)}>
-                <Icon name={ICONS[row.kind]} size={13} />
+                <Icon name={ICONS[row.kind]} size="sm" />
               </span>
               <span {...props(styles.label)}>{optionLabel(row)}</span>
               {(row.kind === "history" || row.kind === "bookmark") && row.label !== "" && (

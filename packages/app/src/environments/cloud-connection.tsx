@@ -150,17 +150,17 @@ export function CloudConnection(): ReactElement {
   return (
     <>
       {state === undefined ? (
-        <ConnectionRow glyph={<Icon name="cloud" size={16} />} title="Server" detail="Checking…" />
+        <ConnectionRow glyph={<Icon name="cloud" size="md" />} title="Server" detail="Checking…" />
       ) : state.kind === "none" ? (
         <ConnectionRow
-          glyph={<Icon name="cloud" size={16} />}
+          glyph={<Icon name="cloud" size="md" />}
           title="Not connected"
           detail="Deploy a Nyte host, then paste its URL and token."
           expansion={form}
         />
       ) : (
         <ConnectionRow
-          glyph={<Icon name="cloud" size={16} />}
+          glyph={<Icon name="cloud" size="md" />}
           title={state.baseUrl}
           detail={serverDetail(state)}
           control={

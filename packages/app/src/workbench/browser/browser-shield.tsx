@@ -22,6 +22,7 @@ const styles = create({
     alignItems: "center",
     gap: space.s1,
     fontSize: type.fontCode,
+    lineHeight: type.leadingCode,
     fontFamily: type.fontMono,
     fontVariantNumeric: "tabular-nums",
   },
@@ -67,7 +68,7 @@ export function ShieldMenu({ state, onChanged }: ShieldMenuProps): ReactElement 
         render={
           <Button aria-haspopup="menu" title={summary}>
             <span {...props(styles.badge, !active && styles.off)}>
-              <Icon name="shield" size={12} />
+              <Icon name="shield" size="xs" />
               {active ? String(state.blocked) : state.blocking === "paused" ? "paused" : "off"}
             </span>
           </Button>

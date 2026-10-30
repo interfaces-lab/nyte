@@ -1,48 +1,15 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import tokenScale from "./design-scale.tokens.json" with { type: "json" };
 
 const stringLiteral = Type.Object({ type: Type.Literal("Literal"), value: Type.String() });
 
 const numberLiteral = Type.Object({ type: Type.Literal("Literal"), value: Type.Number() });
 
-const SPACE_STEPS = new Map([
-  [1, "px"],
-  [2, "s0_5"],
-  [4, "s1"],
-  [6, "s1_5"],
-  [8, "s2"],
-  [10, "s2_5"],
-  [12, "s3"],
-  [16, "s4"],
-  [20, "s5"],
-  [24, "s6"],
-  [32, "s8"],
-]);
+/** Generated from the tokens by the ui package's `sync:tokens`; its typecheck fails when stale. */
+const SPACE_STEPS = new Map(tokenScale.space);
 
-const BOX_HANDLES = [
-  [14, "glyph.sm"],
-  [15, "glyph.box"],
-  [16, "glyph.md"],
-  [16, "button.height2xs"],
-  [16, "checkbox.sizeMd"],
-  [20, "glyph.lg"],
-  [20, "button.heightXs"],
-  [20, "avatar.xs"],
-  [24, "button.heightSm"],
-  [24, "target.min"],
-  [24, "avatar.sm"],
-  [28, "button.heightMd"],
-  [28, "input.heightMd"],
-  [28, "row.heightMd"],
-  [28, "menu.itemHeight"],
-  [28, "avatar.md"],
-  [32, "button.heightLg"],
-  [32, "input.heightLg"],
-  [32, "row.heightLg"],
-  [36, "button.heightXl"],
-  [36, "input.heightXl"],
-  [36, "avatar.lg"],
-];
+const BOX_HANDLES = tokenScale.boxes;
 
 const boxHandlesAt = (px) => BOX_HANDLES.flatMap(([size, handle]) => (size === px ? [handle] : []));
 
@@ -138,7 +105,7 @@ const touchHandles = (property) => {
 
   if (property.startsWith("margin")) return ["target.gap"];
 
-  return ["target.min", "button.heightMd", "row.heightMd"];
+  return ["target.min", "control.heightMd", "row.heightMd"];
 };
 
 /**

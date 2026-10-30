@@ -2,7 +2,7 @@ import { Input as InputPrimitive } from "@base-ui/react/input";
 import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ComponentProps, type ReactElement } from "react";
 
-import { input, space, target } from "./styles/schema.stylex.ts";
+import { control, input, space, target } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
@@ -115,7 +115,7 @@ const sizes = create({
     "--_input-textarea-min-height": input.textareaMinHeightMd,
     "--_input-textarea-padding-block": input.textareaPaddingBlockMd,
     minHeight: target.min,
-    height: input.heightMd,
+    height: control.heightMd,
   },
   lg: {
     "--_input-radius": input.radiusLg,
@@ -124,7 +124,7 @@ const sizes = create({
     "--_input-textarea-min-height": input.textareaMinHeightLg,
     "--_input-textarea-padding-block": input.textareaPaddingBlockLg,
     minHeight: target.min,
-    height: input.heightLg,
+    height: control.heightLg,
   },
   xl: {
     "--_input-radius": input.radiusXl,
@@ -133,7 +133,7 @@ const sizes = create({
     "--_input-textarea-min-height": input.textareaMinHeightXl,
     "--_input-textarea-padding-block": input.textareaPaddingBlockXl,
     minHeight: target.min,
-    height: input.heightXl,
+    height: control.heightXl,
   },
 });
 

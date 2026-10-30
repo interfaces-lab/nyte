@@ -12,6 +12,9 @@ export const text = create({
     letterSpacing: type.letterBase,
   },
   lg: { fontSize: type.fontLg, lineHeight: type.leadingLg, letterSpacing: type.letterLg },
+  xl: { fontSize: type.fontXl, lineHeight: type.leadingXl, letterSpacing: type.letterLg },
+  "2xl": { fontSize: type.font2xl, lineHeight: type.leading2xl, letterSpacing: type.letterLg },
+  "3xl": { fontSize: type.font3xl, lineHeight: type.leading3xl, letterSpacing: type.letterLg },
   code: {
     fontFamily: type.fontMono,
     fontSize: type.fontCode,

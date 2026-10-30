@@ -4,7 +4,7 @@ import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
-import { avatar, button, glyph, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { avatar, control, glyph, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
@@ -89,7 +89,7 @@ export const styles = create({
     whiteSpace: "nowrap",
     alignItems: "center",
     gap: space.s1_5,
-    height: button.heightMd,
+    height: control.heightMd,
     marginInlineStart: `calc(-1 * ${space.s2})`,
     paddingInline: space.s2,
     borderWidth: 0,
@@ -171,7 +171,7 @@ export function Tile({
         size === "sm" ? styles.tileSm : styles.tileLg,
       )}
     >
-      <Icon name={surface.icon} size={size === "sm" ? 14 : 22} />
+      <Icon name={surface.icon} size={size === "sm" ? "sm" : "lg"} />
     </span>
   );
 }
@@ -181,9 +181,9 @@ export function StatusGlyph({ status }: { readonly status: Status }): ReactEleme
     <span {...props(styles.glyph)}>
       {status === "needs-you" && <TaskMark state="waiting" />}
       {status === "working" && <TaskMark state="working" />}
-      {status === "watching" && <Icon name="eye" size={14} label="Watching" />}
-      {status === "merged" && <Icon name="merged" size={14} label="Merged" />}
-      {status === "done" && <Icon name="checkmark" size={14} label="Done" />}
+      {status === "watching" && <Icon name="eye" size="sm" label="Watching" />}
+      {status === "merged" && <Icon name="merged" size="sm" label="Merged" />}
+      {status === "done" && <Icon name="checkmark" size="sm" label="Done" />}
     </span>
   );
 }
@@ -279,7 +279,7 @@ export function Properties({
 export function ModelLabel({ model }: { readonly model: ModelId }): ReactElement {
   return (
     <>
-      <Icon name={MODELS[model].icon} size={14} />
+      <Icon name={MODELS[model].icon} size="sm" />
       {MODELS[model].name}
     </>
   );
@@ -302,7 +302,7 @@ export function ModelPicker({
       >
         <ModelLabel model={value} />
         <span {...props(styles.pickerChevron)}>
-          <Icon name="chevron-up-down" size={12} />
+          <Icon name="chevron-up-down" size="xs" />
         </span>
       </MenuTrigger>
       <MenuContent align="start">
@@ -364,7 +364,7 @@ export function Header({
                   index === 1 && trail.length > 2 && styles.crumbCollapsible,
                 )}
               >
-                <Icon name="chevron-right" size={12} />
+                <Icon name="chevron-right" size="xs" />
               </span>
             )}
             {crumb.onClick === undefined ? (

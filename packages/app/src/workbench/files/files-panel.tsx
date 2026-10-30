@@ -61,14 +61,25 @@ const styles = create({
     paddingInline: space.s2_5,
     color: role.contentSecondary,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
-  dirty: { flexShrink: 0, color: role.contentSecondary, fontSize: type.fontXs },
+  dirty: {
+    flexShrink: 0,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
+  },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   editors: { position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   sidebarBody: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   hidden: { display: "none" },
-  empty: { padding: space.s5, color: role.contentSecondary, fontSize: type.fontSm },
+  empty: {
+    padding: space.s5,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
   menu: {
     minWidth: "min(220px, var(--available-width))",
     maxWidth: "min(420px, var(--available-width))",
@@ -602,6 +613,7 @@ const breadcrumbStyles = create({
     overflow: "clip",
     color: role.contentSecondary,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
   },
   crumb: { minWidth: 0, flexShrink: 1 },
@@ -637,7 +649,7 @@ function FileBreadcrumbs({
           <Fragment key={segments.slice(0, index + 1).join("/")}>
             {index > 0 && (
               <span aria-hidden="true" {...props(breadcrumbStyles.separator)}>
-                <Icon name="chevron-right" size={10} />
+                <Icon name="chevron-right" size="2xs" />
               </span>
             )}
             <FileCrumb

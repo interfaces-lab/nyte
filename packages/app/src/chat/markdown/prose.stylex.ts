@@ -156,6 +156,7 @@ export const proseStyles = create({
     minWidth: "100%",
     borderCollapse: "collapse",
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   cell: {
     paddingBlock: space.s1,

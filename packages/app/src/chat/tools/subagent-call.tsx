@@ -331,7 +331,7 @@ export function SubagentLineView({
   const agent = (
     <>
       <span aria-hidden="true" {...props(lineStyles.agentIcon)}>
-        <Icon name="agent" size={14} />
+        <Icon name="agent" size="sm" />
       </span>
       {label}
     </>
@@ -378,7 +378,7 @@ export function SubagentLineView({
           aria-label="Show result"
           xstyle={[lineStyles.chevronTrigger, focus.ringInset]}
         >
-          <Collapsible.Chevron size={12} xstyle={toolLineStyles.chevron} />
+          <Collapsible.Chevron size="xs" xstyle={toolLineStyles.chevron} />
         </Collapsible.Trigger>
       )}
     </div>
@@ -446,7 +446,7 @@ export function SubagentReportLine({
     source.kind === "child" ? (
       <>
         <span aria-hidden="true" {...props(lineStyles.agentIcon)}>
-          <Icon name="agent" size={14} />
+          <Icon name="agent" size="sm" />
         </span>
         {task?.title ?? childTitle(undefined)}
       </>
@@ -514,7 +514,7 @@ function CitationModel({ session }: { readonly session: SessionId }): ReactEleme
 
   return (
     <span {...props(citationStyles.detail)}>
-      <Icon name={modelIcon(model)} size={12} />
+      <Icon name={modelIcon(model)} size="xs" />
       <span {...props(citationStyles.detailText)}>
         {thinkingLevel === undefined || thinkingLevel === "off"
           ? name
@@ -532,7 +532,7 @@ function CitationFolder({ chat }: { readonly chat: Chat }): ReactElement | null 
 
   return (
     <span title={location.path} {...props(citationStyles.detail)}>
-      <Icon name={branch === undefined ? "folder" : "git-branch"} size={12} />
+      <Icon name={branch === undefined ? "folder" : "git-branch"} size="xs" />
       <span {...props(citationStyles.detailText)}>{branch ?? location.name}</span>
     </span>
   );
@@ -564,7 +564,7 @@ export function SubagentCitation({
     >
       <span {...props(proseStyles.linkLead)}>
         <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
-          {state === "done" ? <Icon name="agent" size={12} /> : <TaskMark state={state} />}
+          {state === "done" ? <Icon name="agent" size="xs" /> : <TaskMark state={state} />}
         </span>
         {name}
       </span>

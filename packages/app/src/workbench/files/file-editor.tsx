@@ -15,7 +15,7 @@ import {
 } from "react";
 import type { MouseEvent, ReactElement, ReactNode, Ref } from "react";
 import type { FileDocument, FileEvent } from "@nyte-ai/sdk";
-import { button, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { diffStyles } from "../../diff/diff.stylex.ts";
 import { revealLabel, showContextMenu } from "../../components/context-menu.ts";
@@ -140,7 +140,7 @@ const styles = create({
     alignItems: "center",
     gap: space.s2,
     flexShrink: 0,
-    minHeight: button.heightMd,
+    minHeight: control.heightMd,
     paddingInline: space.s2_5,
     color: role.contentSecondary,
     fontSize: type.fontXs,

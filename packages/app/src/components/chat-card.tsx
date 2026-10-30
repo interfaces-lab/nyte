@@ -132,7 +132,7 @@ function FactLine({ fact }: { readonly fact: ChatFact }): ReactElement {
         onClick={() => confirmation.copy(fact.copy)}
       >
         <Row.Leading xstyle={styles.icon}>
-          <Icon name={ICONS[fact.kind]} size={14} />
+          <Icon name={ICONS[fact.kind]} size="sm" />
         </Row.Leading>
         <Row.Body>
           <Row.Label xstyle={[text.sm, styles.wrap]}>{fact.text}</Row.Label>
@@ -141,7 +141,7 @@ function FactLine({ fact }: { readonly fact: ChatFact }): ReactElement {
           )}
         </Row.Body>
         <Row.Meta xstyle={styles.copy}>
-          <Icon name={confirmation.copied ? "checkmark" : "copy"} size={12} />
+          <Icon name={confirmation.copied ? "checkmark" : "copy"} size="xs" />
         </Row.Meta>
       </Row.Primary>
     </Row>

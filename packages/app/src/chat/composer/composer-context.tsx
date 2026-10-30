@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import { button, glyph } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, glyph } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { formatTokens } from "../../lib/format.ts";
@@ -14,8 +14,8 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    width: button.heightXs,
-    height: button.heightXs,
+    width: control.heightXs,
+    height: control.heightXs,
   },
   ring: { width: glyph.md, height: glyph.md, fill: "none" },
   track: { stroke: role.borderPrimary },

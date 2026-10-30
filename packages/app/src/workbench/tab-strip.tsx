@@ -17,11 +17,12 @@ import {
   ContextMenuTrigger,
 } from "@nyte-ai/ui/context-menu";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
+import { Loader } from "@nyte-ai/ui/loader";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { chatTitle, useChat } from "../chats/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import { button, glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
@@ -86,7 +87,7 @@ const styles = create({
     alignItems: "center",
     flexShrink: 0,
     maxWidth: 200,
-    height: button.heightSm,
+    height: control.heightSm,
     minHeight: target.min,
     WebkitAppRegion: "no-drag",
     borderRadius: radius.control,
@@ -139,12 +140,12 @@ const styles = create({
     height: 6,
     flexShrink: 0,
     borderRadius: "50%",
-    backgroundColor: role.contentInteractiveTertiary,
+    backgroundColor: role.contentAccent,
   },
   running: {
     display: "inline-flex",
-    width: glyph.box,
-    height: glyph.box,
+    width: glyph.md,
+    height: glyph.md,
     flexShrink: 0,
   },
   close: {
@@ -184,7 +185,7 @@ function CanvasTabContent({
       {...props(editing && surfaceTheme.purple, styles.content, editing && styles.agentTerminal)}
     >
       <span {...props(styles.tabIcon)}>
-        <Icon name={WORKBENCH_KINDS.canvas.icon} size={16} />
+        <Icon name={WORKBENCH_KINDS.canvas.icon} size="md" />
       </span>
       <span {...props(styles.label)}>{tab.title}</span>
       {editing && (
@@ -292,7 +293,7 @@ export function WorkbenchTabStrip({
               >
                 <span {...props(styles.content)}>
                   <span {...props(styles.tabIcon)}>
-                    <Icon name="imac" size={16} />
+                    <Icon name="imac" size="md" />
                   </span>
                   <span {...props(styles.label)}>
                     {sessionId === undefined ? "New chat" : <ChatTabLabel sessionId={sessionId} />}
@@ -385,7 +386,7 @@ export function WorkbenchTabStrip({
                           <FileTypeIcon path={tab.path} />
                         ) : (
                           <span {...props(styles.tabIcon)}>
-                            <Icon name={WORKBENCH_KINDS[tab.kind].icon} size={16} />
+                            <Icon name={WORKBENCH_KINDS[tab.kind].icon} size="md" />
                           </span>
                         )}
                         <span
@@ -401,7 +402,7 @@ export function WorkbenchTabStrip({
                         )}
                         {running && (
                           <span aria-label="Running" {...props(styles.running)}>
-                            <Spinner />
+                            <Loader />
                           </span>
                         )}
                       </span>

@@ -39,9 +39,9 @@ export const accountAppearance = {
       color: "var(--_title)",
     },
     buttonArrowIcon: { display: "none" },
-    formFieldInput: { height: "var(--nyte-input-height-md)", paddingBlock: 0 },
-    formButtonPrimary: { height: "var(--nyte-btn-height-md)", paddingBlock: 0 },
-    socialButtonsBlockButton: { height: "var(--nyte-btn-height-md)", paddingBlock: 0 },
+    formFieldInput: { height: "var(--nyte-control-height-md)", paddingBlock: 0 },
+    formButtonPrimary: { height: "var(--nyte-control-height-md)", paddingBlock: 0 },
+    socialButtonsBlockButton: { height: "var(--nyte-control-height-md)", paddingBlock: 0 },
   },
 } satisfies NonNullable<ClerkProviderProps["appearance"]>;
 

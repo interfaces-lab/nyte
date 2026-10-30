@@ -118,7 +118,7 @@ const styles = create({
     backgroundColor: "currentColor",
   },
   check: { display: "var(--_question-check-display)" },
-  error: { margin: 0, color: role.contentInteractiveTertiary },
+  error: { margin: 0, color: role.contentAccent },
   actions: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: space.s2 },
 });
 
@@ -299,7 +299,7 @@ export function QuestionnaireChoice({
       >
         <span {...props(styles.dot)} />
         <span {...props(styles.check)}>
-          <Icon name="checkmark" size={12} />
+          <Icon name="checkmark" size="xs" />
         </span>
       </span>
       <Questionnaire.ChoiceLabel data-slot="questionnaire-choice-label" {...props(styles.copy)}>

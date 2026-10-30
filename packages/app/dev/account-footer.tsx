@@ -1,7 +1,5 @@
 import "./install.ts";
-import "@fontsource-variable/inter/opsz.css";
-import "@fontsource-variable/inter/opsz-italic.css";
-import "@fontsource-variable/jetbrains-mono/wght.css";
+import "../src/theme/faces.ts";
 import "../src/theme/boot.ts";
 import "../src/theme/focus-modality.ts";
 import "../src/theme/global.css";

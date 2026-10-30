@@ -67,10 +67,6 @@ export const settings = defineConsts({
   rowPadding: "var(--nyte-settings-row-padding)",
   rowPaddingInline: "var(--nyte-settings-row-padding-inline)",
   controlMaxWidth: "var(--nyte-settings-control-max-width)",
-  pageTitleSize: "var(--nyte-settings-page-title-size)",
-  pageTitleLineHeight: "var(--nyte-settings-page-title-line-height)",
-  sectionTitleSize: "var(--nyte-settings-section-title-size)",
-  sectionTitleLineHeight: "var(--nyte-settings-section-title-line-height)",
 });
 
 export const workbench = defineConsts({

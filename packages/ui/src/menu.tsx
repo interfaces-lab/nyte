@@ -3,7 +3,16 @@ import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
-import { glyph, layer, media, menu, radius, space, switchControl } from "./styles/schema.stylex.ts";
+import {
+  glyph,
+  layer,
+  media,
+  menu,
+  radius,
+  row,
+  space,
+  switchControl,
+} from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StateStyledProps, type StyledProps, type XStyle } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { intent, surfaceTheme, type Tint } from "./surface-theme.ts";
@@ -73,7 +82,7 @@ export const menuStyles = create({
     gridTemplateColumns: `${glyph.sm} minmax(0, 1fr) minmax(${menu.metaMinWidth}, auto)`,
     alignItems: "start",
     columnGap: menu.itemGap,
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingBlock: menu.itemPaddingBlock,
     paddingInline: menu.itemPaddingInline,
     borderRadius: menu.itemRadius,
@@ -135,7 +144,7 @@ export const menuStyles = create({
   groupLabel: {
     display: "flex",
     alignItems: "center",
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingInline: space.s1_5,
     paddingBlock: space.s0_5,
     color: role.contentSecondary,
@@ -211,7 +220,7 @@ const itemLayouts = create({
     gridTemplateColumns: "auto",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: menu.itemHeight,
+    minWidth: row.heightMd,
     paddingInline: space.s1_5,
     paddingBlock: space.s0_5,
     borderRadius: radius.control,
@@ -242,7 +251,7 @@ export function MenuItemBody({
     <>
       {layout === "menu" && (
         <span aria-hidden="true" {...props(menuStyles.icon)}>
-          {leading ?? (icon !== undefined && <Icon name={icon} size={14} />)}
+          {leading ?? (icon !== undefined && <Icon name={icon} size="sm" />)}
         </span>
       )}
       <span {...props(menuStyles.label)}>{children}</span>
@@ -489,7 +498,7 @@ export function MenuRadioItem({
           <>
             {meta}
             <MenuPrimitive.RadioItemIndicator {...props(menuStyles.indicator)}>
-              <Icon name="checkmark" size={11} />
+              <Icon name="checkmark" size="2xs" />
             </MenuPrimitive.RadioItemIndicator>
           </>
         }
@@ -526,7 +535,7 @@ export function MenuCheckboxItem({
           <>
             {meta}
             <MenuPrimitive.CheckboxItemIndicator {...props(menuStyles.indicator)}>
-              <Icon name="checkmark" size={11} />
+              <Icon name="checkmark" size="2xs" />
             </MenuPrimitive.CheckboxItemIndicator>
           </>
         }
@@ -602,7 +611,7 @@ export function MenuSubTrigger({
         meta={
           <>
             {value !== undefined && <span {...props(menuStyles.submenuValue)}>{value}</span>}
-            <Icon name="chevron-right" size={11} />
+            <Icon name="chevron-right" size="2xs" />
           </>
         }
       >

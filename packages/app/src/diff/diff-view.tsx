@@ -1,5 +1,5 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { button, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, control, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@pierre/diffs";
@@ -24,7 +24,7 @@ type DiffViewVariant = "inline" | "card" | "workbench" | "stack";
 
 export const DIFF_SEPARATOR_CSS = `
 [data-separator="line-info"] {
-  height: calc(${button.heightMd} + 16px);
+  height: calc(${control.heightMd} + 16px);
   background-color: transparent;
 }
 
@@ -51,7 +51,7 @@ export const DIFF_SEPARATOR_CSS = `
 }
 
 [data-expand-index] [data-separator-wrapper] {
-  grid-template-columns: ${button.heightMd} minmax(0, 1fr);
+  grid-template-columns: ${control.heightMd} minmax(0, 1fr);
 }
 
 [data-separator-multi-button] {
@@ -107,7 +107,7 @@ export const DIFF_SEPARATOR_CSS = `
 @media (pointer: coarse) {
   [data-expand-index] [data-separator-wrapper][data-separator-multi-button] {
     grid-template-rows: none;
-    grid-template-columns: ${button.heightMd} ${button.heightMd} minmax(0, 1fr);
+    grid-template-columns: ${control.heightMd} ${control.heightMd} minmax(0, 1fr);
   }
 }
 `;

@@ -326,7 +326,7 @@ export function SessionRow({
           onClick={onArchive}
         >
           <span {...props(styles.actionGlyphArchive)}>
-            <Icon name={session.archived ? "unarchive" : "archive"} size={12} />
+            <Icon name={session.archived ? "unarchive" : "archive"} size="xs" />
           </span>
         </Button>
       </Row.Actions>

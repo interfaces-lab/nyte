@@ -141,7 +141,7 @@ function Notice({
     <p role={alert === true ? "alert" : "status"} {...props(text.sm, styles.notice)}>
       <Icon
         name="warning"
-        size={14}
+        size="sm"
         {...props(
           alert === true && intent.warning,
           styles.noticeIcon,

@@ -49,9 +49,9 @@ export const usageStyles = create({
   amount: {
     ...figure,
     color: role.contentPrimary,
-    fontSize: `calc(${type.fontBase} * 28 / 13)`,
+    fontSize: type.font3xl,
     fontWeight: type.weightSemibold,
-    lineHeight: `calc(${type.fontBase} * 34 / 13)`,
+    lineHeight: type.leading3xl,
     letterSpacing: "-0.02em",
   },
   fact: {
@@ -205,7 +205,7 @@ export const usageStyles = create({
     marginBlockStart: space.px,
     color: role.contentTertiary,
   },
-  noticeIconAlert: { color: role.contentInteractiveTertiary },
+  noticeIconAlert: { color: role.contentAccent },
   noticeCopy: { flex: 1, minWidth: 0, paddingBlockStart: space.px },
 });
 

@@ -2,6 +2,7 @@ import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { Loader } from "@nyte-ai/ui/loader";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
@@ -10,7 +11,7 @@ import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 
 const MOON = Array.from({ length: 25 }, (_, index) => ({ x: index % 5, y: Math.floor(index / 5) }))
   .filter(({ x, y }) => (x - 2) ** 2 + (y - 2) ** 2 < 6.25)
-  .map(({ x, y }) => `M${x * 3} ${y * 3}h2v2h-2z`)
+  .map(({ x, y }) => `M${x * 3 + 1} ${y * 3 + 1}h2v2h-2z`)
   .join("");
 
 const pulse = keyframes({
@@ -22,9 +23,9 @@ const pulse = keyframes({
 const styles = create({
   unreadMark: {
     flexShrink: 0,
-    width: glyph.box,
-    height: glyph.box,
-    color: role.contentInteractiveTertiary,
+    width: glyph.md,
+    height: glyph.md,
+    color: role.contentAccent,
     animationName: { default: pulse, "@media (prefers-reduced-motion: reduce)": "none" },
     animationDuration: "1600ms",
     animationTimingFunction: "ease-in-out",
@@ -41,7 +42,7 @@ const styles = create({
     flexShrink: 0,
     pointerEvents: "none",
   },
-  statusSpinner: { width: glyph.box, height: glyph.box, color: role.contentSecondary },
+  statusSpinner: { width: glyph.md, height: glyph.md, color: role.contentSecondary },
   statusWaiting: {
     width: glyph.sm,
     height: glyph.sm,
@@ -61,7 +62,7 @@ const styles = create({
     color: role.contentSecondary,
   },
   statusIdle: { backgroundColor: "transparent" },
-  statusUnread: { width: glyph.box, height: glyph.box, backgroundColor: "transparent" },
+  statusUnread: { width: glyph.md, height: glyph.md, backgroundColor: "transparent" },
 });
 
 function statusMarkStyle(state: TaskState) {
@@ -89,14 +90,16 @@ function statusMarkStyle(state: TaskState) {
 /**
  * The one mark for where a task stands, in every list, tab, tray and transcript row: a chat, a
  * subagent or a job. A done task draws nothing unless its reply is unread; screen readers hear
- * the task's word.
+ * the task's word. A job is a process, not AI work, so it runs with a `Loader`, not a `Spinner`.
  */
 export function TaskMark({
   state,
   unread = false,
+  job = false,
 }: {
   readonly state: TaskState;
   readonly unread?: boolean;
+  readonly job?: boolean;
 }): ReactElement | null {
   if (state === "done" && !unread) return null;
 
@@ -109,7 +112,7 @@ export function TaskMark({
       {state === "done" && (
         <svg
           aria-hidden="true"
-          viewBox="0 0 15 15"
+          viewBox="0 0 16 16"
           fill="currentColor"
           shapeRendering="crispEdges"
           {...props(surfaceTheme.blue, styles.unreadMark)}
@@ -117,10 +120,10 @@ export function TaskMark({
           <path d={MOON} />
         </svg>
       )}
-      {(state === "working" || state === "retrying") && <Spinner />}
-      {state === "waiting" && <Icon name="bubble-question" size={14} variant="filled" />}
-      {state === "background" && <Icon name="layers" size={14} />}
-      {state === "failed" && <Icon name="warning" size={14} variant="filled" />}
+      {(state === "working" || state === "retrying") && (job ? <Loader /> : <Spinner />)}
+      {state === "waiting" && <Icon name="bubble-question" size="sm" variant="filled" />}
+      {state === "background" && <Icon name="layers" size="sm" />}
+      {state === "failed" && <Icon name="warning" size="sm" variant="filled" />}
     </span>
   );
 }

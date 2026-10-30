@@ -1,4 +1,4 @@
-import { button, row, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -83,7 +83,7 @@ const styles = create({
     alignItems: "center",
     gap: space.s2,
     flexShrink: 0,
-    minHeight: button.heightMd,
+    minHeight: control.heightMd,
     paddingInline: space.s1_5,
     overflowX: "auto",
     borderBottomWidth: 1,
@@ -125,7 +125,7 @@ const styles = create({
     paddingBlock: space.s1_5,
     color: { default: role.contentSecondary, "[data-selected]": role.contentPrimary },
   },
-  historyAddress: { fontSize: type.fontXs },
+  historyAddress: { fontSize: type.fontXs, lineHeight: type.leadingXs },
   message: {
     display: "flex",
     maxWidth: 360,
@@ -136,6 +136,7 @@ const styles = create({
   messageTitle: {
     color: role.contentPrimary,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     fontWeight: type.weightSemibold,
   },
   messageDetail: {
@@ -154,6 +155,7 @@ const styles = create({
     backgroundColor: role.bgBase,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   noticeText: {
     flex: 1,
@@ -170,6 +172,7 @@ const styles = create({
     paddingInline: space.s1_5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   frozenFrame: {
     position: "absolute",
@@ -699,7 +702,7 @@ export function BrowserPanel({
         >
           {secure === "https" && draft === undefined && (
             <span {...props(styles.addressIcon)} title="Secure connection">
-              <Icon name="lock" size={12} />
+              <Icon name="lock" size="xs" />
             </span>
           )}
           {hasPage && draft === undefined && state.deniedPermissions.length > 0 && (
@@ -709,7 +712,7 @@ export function BrowserPanel({
               aria-label={blockedPermissionsLabel(state.deniedPermissions)}
               title={blockedPermissionsLabel(state.deniedPermissions)}
             >
-              <Icon name="circle-x" size={12} />
+              <Icon name="circle-x" size="xs" />
             </span>
           )}
         </AddressField>
@@ -753,7 +756,7 @@ export function BrowserPanel({
             title="An agent is driving this page"
             aria-label="Agent active"
           >
-            <Icon name="sparkle" size={12} />
+            <Icon name="sparkle" size="xs" />
           </span>
         )}
         {toolbarActions}
@@ -876,7 +879,7 @@ export function BrowserPanel({
                       }}
                     >
                       <Row.Leading>
-                        <Icon name="globe" size={13} />
+                        <Icon name="globe" size="sm" />
                       </Row.Leading>
                       <Row.Body>
                         <Row.Label>{entry.title || displayAddress(entry.url)}</Row.Label>

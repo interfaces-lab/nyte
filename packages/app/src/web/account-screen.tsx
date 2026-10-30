@@ -8,7 +8,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { Spinner } from "@nyte-ai/ui/spinner";
+import { Loader } from "@nyte-ai/ui/loader";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
@@ -103,7 +103,7 @@ function DesktopList({
             onClick={() => onPick(environment, "controller")}
           >
             <Row.Leading xstyle={environment.online && styles.leading}>
-              <Icon name="laptop" size={16} />
+              <Icon name="laptop" size="md" />
             </Row.Leading>
             <Row.Body>
               <Row.Label id={`${labelId}-${environment.id}`} xstyle={styles.wrap}>
@@ -114,7 +114,7 @@ function DesktopList({
           </Row.Primary>
           <Row.Meta>
             {connecting === environment.id ? (
-              <Spinner />
+              <Loader />
             ) : (
               environment.online && (
                 <Button
@@ -434,7 +434,7 @@ function AccountFlow({
     return (
       <div {...props(styles.frame)}>
         <div {...props(text.sm, styles.bar)}>
-          <Icon name="laptop" size={14} />
+          <Icon name="laptop" size="sm" />
           <span {...props(styles.barName)}>{name}</span>
           <Button size="xs" disabled={progress !== undefined} onClick={() => void leave(false)}>
             Switch Desktop
@@ -569,7 +569,7 @@ function AccountBoundary({ config, onConnected }: AccountScreenProps): ReactElem
       >
         <p role="status" {...props(styles.status)}>
           <ClerkLoading>
-            <Spinner />
+            <Loader />
             <span {...props(srOnly)}>Loading sign-in</span>
           </ClerkLoading>
         </p>
