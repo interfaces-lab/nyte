@@ -172,20 +172,20 @@ test("a reply with no work before it, or a turn still running, shows no work lin
   ]);
 });
 
-test("the live row stays while the turn works whatever its last group holds, and a settled group stops running", () => {
-  const thinking: Message = {
-    id: asId<"message">("th"),
-    turn,
-    at: 1,
-    kind: "part",
-    part: asId<"part">("th"),
-    partKind: "thinking",
-    role: "step",
-    state: { markdown: "Weighing it", merged: 1, signature: null },
-    version: 1,
-    status: { kind: "settled", commit: asId<"commit">("th"), endedAt: 1 },
-  };
+const thinking: Message = {
+  id: asId<"message">("th"),
+  turn,
+  at: 1,
+  kind: "part",
+  part: asId<"part">("th"),
+  partKind: "thinking",
+  role: "step",
+  state: { markdown: "Weighing it", merged: 1, signature: null },
+  version: 1,
+  status: { kind: "settled", commit: asId<"commit">("th"), endedAt: 1 },
+};
 
+test("the live row stays while the turn works whatever its last group holds, and a settled group stops running", () => {
   const rows = (messages: readonly Message[]) =>
     rowsFor([endedTurn(messages, { id: turn, state: { kind: "working", activity: null } })], true);
 
@@ -197,4 +197,41 @@ test("the live row stays while the turn works whatever its last group holds, and
   expect(
     rows([{ ...thinking, status: { kind: "live", run: null } }]).find((row) => row.kind === "step"),
   ).toMatchObject({ running: true });
+});
+
+test("reasoning that settles while its run waits on the next response stops running", () => {
+  const streaming = {
+    ...view([prompt, { ...thinking, status: { kind: "live", run: null } }], null),
+    turns: [
+      endedTurn([], { id: turn, prompt: prompt.id, state: { kind: "working", activity: null } })
+        .info,
+    ],
+    execution: {
+      kind: "live",
+      run: {
+        id: asId<"run">("run"),
+        head: asId<"head">("main"),
+        startedAt: 1,
+        attempt: 1,
+        origin: { kind: "input", message: prompt.id },
+      },
+      phase: "responding",
+      stopping: false,
+    },
+  } satisfies SessionView;
+
+  const settled = {
+    ...streaming,
+    seq: asSeq(2),
+    messages: [prompt, thinking],
+  } satisfies SessionView;
+
+  const projector = transcriptProjector();
+
+  expect(projector.row({ value: streaming, error: undefined }, "step:th")).toMatchObject({
+    running: true,
+  });
+  expect(projector.row({ value: settled, error: undefined }, "step:th")).toMatchObject({
+    running: false,
+  });
 });
