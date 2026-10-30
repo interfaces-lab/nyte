@@ -263,7 +263,7 @@ function FileView(
     case "image":
       return <FileImage active={input.active} document={document} />;
     case "pdf":
-      return <FilePdf key={document.version} active={input.active} document={document} />;
+      return <FilePdf active={input.active} document={document} />;
     case "binary":
       return (
         <FileMessage active={input.active} title="This file can't be shown here.">
@@ -423,7 +423,10 @@ function PdfDocument(input: {
       inert={!input.active}
       {...props(styles.root, !input.active && styles.hidden)}
     >
-      <runtime.PdfViewer file={pdf.data} label={path.split("/").at(-1) ?? path} />
+      <runtime.PdfViewer
+        file={pdf.isPlaceholderData ? undefined : pdf.data}
+        label={path.split("/").at(-1) ?? path}
+      />
     </div>
   );
 }

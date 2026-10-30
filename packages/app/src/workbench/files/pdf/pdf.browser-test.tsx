@@ -1,6 +1,9 @@
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import type { ByteReader } from "@nyte-ai/sdk";
 import "../../../theme/tokens.stylex.ts";
+import { pdfQuery } from "../pdf-query.ts";
 import { createPdfPages } from "./pdf-pages.ts";
 import { PdfViewer } from "./pdf-viewer.tsx";
 import { samplePdf } from "./pdf.fixture.ts";
@@ -108,13 +111,17 @@ function mountPages(file: PdfFile, pages: number, top: number) {
   scroller.scrollTop = slots[top - 1].offsetTop;
   const failures: string[] = [];
 
-  const teardown = createPdfPages(file, {
-    onPage: () => {},
-    onSize: () => {},
-    onFailure: (page, message) => {
-      if (message !== undefined) failures.push(`page ${page}: ${message}`);
+  const teardown = createPdfPages(
+    file,
+    { current: undefined },
+    {
+      onPage: () => {},
+      onSize: () => {},
+      onFailure: (page, message) => {
+        if (message !== undefined) failures.push(`page ${page}: ${message}`);
+      },
     },
-  })(scroller);
+  )(column);
 
   return {
     slots,
@@ -197,6 +204,94 @@ async function failedPageShowsAnError(): Promise<void> {
   check(drawn !== null, "The page before a broken one was not drawn");
 }
 
+function byteReader(data: Uint8Array<ArrayBuffer>): ByteReader {
+  return {
+    size: data.length,
+    mime: "application/pdf",
+    async *chunks() {
+      yield data;
+    },
+    close: async () => {},
+    [Symbol.asyncDispose]: async () => {},
+  };
+}
+
+async function newVersionClosesTheOld(): Promise<void> {
+  const reader = createPdfReader(new URL(window.pdfWorker));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const gate = Promise.withResolvers<void>();
+
+  const read = (version: string) =>
+    pdfQuery(
+      "report.pdf",
+      version,
+      async () => {
+        if (version === "2") await gate.promise;
+
+        return byteReader(samplePdf([{}, {}]));
+      },
+      reader.open,
+    );
+
+  const observer = new QueryObserver(client, read("1"));
+  const unsubscribe = observer.subscribe(() => {});
+  const first = await eventually(() => observer.getCurrentResult().data);
+  observer.setOptions(read("2"));
+  const opening = observer.getCurrentResult();
+  gate.resolve();
+  const closed = await eventually(() => (first?.document.loadingTask.destroyed ? true : undefined));
+  unsubscribe();
+  client.clear();
+
+  check(first !== undefined, "The first version never opened");
+  check(
+    opening.isPlaceholderData && opening.data === first,
+    "While the next version opened, the viewer had no document to stay mounted on",
+  );
+  check(closed === true, "The previous version's document stayed open");
+}
+
+async function newVersionKeepsZoomAndPage(): Promise<void> {
+  const reader = createPdfReader(new URL(window.pdfWorker));
+  const pages = Array.from({ length: 5 }, () => ({}));
+  const first = await reader.open(samplePdf(pages), () => {});
+  const second = await reader.open(samplePdf(pages), () => {});
+  const host = document.createElement("div");
+  host.style.cssText = "display: flex; width: 500px; height: 700px";
+  document.body.append(host);
+  const root = createRoot(host);
+  flushSync(() => root.render(<PdfViewer file={first} label="report.pdf" />));
+  const zoomIn = host.querySelector('[aria-label="Zoom in"]');
+  check(zoomIn instanceof HTMLElement, "The viewer has no zoom control");
+  flushSync(() => zoomIn.click());
+  await nextFrame();
+  const scroller = host.querySelector('[role="region"]');
+  const target = host.querySelector('[aria-label="Page 3"]');
+  check(scroller !== null && target instanceof HTMLElement, "The viewer has no third page");
+  scroller.scrollTop = target.offsetTop;
+  await eventually(() => (host.textContent?.includes("Page 3 of 5") ? true : undefined));
+
+  flushSync(() => root.render(<PdfViewer file={undefined} label="report.pdf" />));
+  await nextFrame();
+  flushSync(() => root.render(<PdfViewer file={second} label="report.pdf" />));
+  await nextFrame();
+  await nextFrame();
+  const page = host.querySelector('[aria-label="Page 3"]');
+  const status = host.textContent ?? "";
+
+  const offset =
+    page === null
+      ? Infinity
+      : page.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+
+  root.unmount();
+  host.remove();
+
+  check(status.includes("125%"), `The next version reset the zoom: ${status}`);
+  check(status.includes("Page 3 of 5"), `The next version moved off page 3: ${status}`);
+  check(Math.abs(offset) < 40, `The next version put page 3 ${Math.round(offset)} px from the top`);
+}
+
 export async function run(): Promise<string> {
   await workerThatFailsToLoad();
   await failedOpenLeavesTheQueueMoving();
@@ -204,6 +299,8 @@ export async function run(): Promise<string> {
   await failedPageShowsAnError();
   await teardownMidLoad();
   await teardownCancelsDrawing();
+  await newVersionClosesTheOld();
+  await newVersionKeepsZoomAndPage();
 
   return "passed";
 }

@@ -36,7 +36,7 @@ interface PageState {
 }
 
 /** Where the view is: a page, how far past its top the view's top edge sits as a share of its height, and the horizontal scroll as a share of the scroll width. */
-interface Anchor {
+export interface Anchor {
   readonly index: number;
   readonly fraction: number;
   readonly left: number;
@@ -54,10 +54,16 @@ export interface PageEvents {
   readonly onFailure: (page: number, message: string | undefined) => void;
 }
 
-/** The scroll container's first child must be the page column, its children the pages in order. */
-export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
+/**
+ * Attaches to the page column, whose parent is the scroll container and whose children are the
+ * pages in order. `position` outlives the document, so the next one opens where this one was.
+ */
+export function createPdfPages(
+  file: PdfFile,
+  position: { current: Anchor | undefined },
+  events: PageEvents,
+): Attach {
   const byElement = new Map<Element, PageState>();
-  let anchor: Anchor | undefined;
 
   const schedule = (state: PageState): void => {
     if (state.queued) return;
@@ -156,17 +162,17 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
     }
   };
 
-  return (element) => {
-    const column = element?.firstElementChild;
+  return (column) => {
+    const scroller = column?.parentElement;
 
-    if (element === null || column === null || column === undefined) return undefined;
+    if (column === null || scroller === null || scroller === undefined) return undefined;
 
     const states = Array.from(column.children)
       .filter((child) => child instanceof HTMLElement)
       .map((child, index): PageState => ({
         number: index + 1,
         element: child,
-        scroller: element,
+        scroller,
         render: false,
         retain: false,
         demand: "release",
@@ -181,11 +187,11 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
 
     const observers = [
       new IntersectionObserver((entries) => update(entries, "render"), {
-        root: element,
+        root: scroller,
         rootMargin: RENDER_MARGIN,
       }),
       new IntersectionObserver((entries) => update(entries, "retain"), {
-        root: element,
+        root: scroller,
         rootMargin: RETAIN_MARGIN,
       }),
     ];
@@ -193,7 +199,7 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
     const resize = new ResizeObserver(() => {
       if (column.clientWidth === 0) return;
 
-      if (anchor !== undefined) restore(states, anchor, element);
+      if (position.current !== undefined) restore(states, position.current, scroller);
 
       for (const state of states) if (state.demand === "render") schedule(state);
     });
@@ -202,15 +208,15 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
     resize.observe(column);
 
     const scroll = (): void => {
-      if (element.clientHeight === 0) return;
-      anchor = anchorAt(states, element);
-      events.onPage(currentPage(states, element) + 1);
+      if (scroller.clientHeight === 0) return;
+      position.current = anchorAt(states, scroller);
+      events.onPage(currentPage(states, scroller) + 1);
     };
 
-    element.addEventListener("scroll", scroll, { passive: true });
+    scroller.addEventListener("scroll", scroll, { passive: true });
 
     return () => {
-      element.removeEventListener("scroll", scroll);
+      scroller.removeEventListener("scroll", scroll);
 
       for (const observer of observers) observer.disconnect();
       resize.disconnect();

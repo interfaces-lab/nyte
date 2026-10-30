@@ -1,11 +1,12 @@
 import { create, props } from "@stylexjs/stylex";
-import { useState } from "react";
-import type { KeyboardEvent, ReactElement } from "react";
+import { useRef, useState } from "react";
+import type { KeyboardEvent, ReactElement, RefObject } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { control, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { createPdfPages } from "./pdf-pages.ts";
+import type { Anchor } from "./pdf-pages.ts";
 import type { PageSize, PdfFile } from "./pdfjs.ts";
 
 const MIN_ZOOM = 0.5;
@@ -87,43 +88,14 @@ function shortcutZoom(event: KeyboardEvent, zoom: number): number | undefined {
   return event.key === "0" ? 1 : undefined;
 }
 
-export function PdfViewer(input: { readonly file: PdfFile; readonly label: string }): ReactElement {
+/** Stays mounted across a document's versions; `file` is undefined while the next one opens. */
+export function PdfViewer(input: {
+  readonly file: PdfFile | undefined;
+  readonly label: string;
+}): ReactElement {
   const [current, setCurrent] = useState(1);
-  const [sizes, setSizes] = useState<ReadonlyMap<number, PageSize>>(new Map());
-  const [failures, setFailures] = useState<ReadonlyMap<number, string>>(new Map());
-
-  const [attach] = useState(() =>
-    createPdfPages(input.file, {
-      onPage: setCurrent,
-      onSize: (page, size) =>
-        setSizes((known) => {
-          const previous = known.get(page);
-
-          return previous?.width === size.width && previous.height === size.height
-            ? known
-            : new Map(known).set(page, size);
-        }),
-      onFailure: (page, message) =>
-        setFailures((known) => {
-          if (known.get(page) === message) return known;
-          const next = new Map(known);
-
-          if (message === undefined) next.delete(page);
-          else next.set(page, message);
-
-          return next;
-        }),
-    }),
-  );
-
   const [zoom, setZoom] = useState(1);
-
-  const pages = Array.from(
-    { length: input.file.document.numPages },
-    (_, index) => sizes.get(index + 1) ?? input.file.firstPage,
-  );
-
-  const widest = pages.reduce((width, page) => Math.max(width, page.width), 0);
+  const position = useRef<Anchor | undefined>(undefined);
 
   return (
     <div
@@ -137,42 +109,27 @@ export function PdfViewer(input: { readonly file: PdfFile; readonly label: strin
       }}
     >
       <div
-        ref={attach}
         role="region"
         aria-label={input.label}
         tabIndex={0}
         data-nyte-scrollport
         {...props(styles.viewport, focus.ringInset)}
       >
-        <div {...props(styles.column(`${zoom * 100}%`))}>
-          {pages.map((page, index) => {
-            const failure = failures.get(index + 1);
-
-            return (
-              <div
-                key={index}
-                role="img"
-                aria-label={
-                  failure === undefined ? `Page ${index + 1}` : `Page ${index + 1}: ${failure}`
-                }
-                {...props(
-                  styles.page(`${(page.width / widest) * 100}%`, `${page.width} / ${page.height}`),
-                )}
-              >
-                {failure !== undefined && (
-                  <div {...props(styles.failure)}>
-                    <span {...props(styles.failureTitle)}>This page could not be drawn.</span>
-                    <span>{failure}</span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        {input.file !== undefined && (
+          <PdfPages
+            key={input.file.document.loadingTask.docId}
+            file={input.file}
+            zoom={zoom}
+            position={position}
+            onPage={setCurrent}
+          />
+        )}
       </div>
       <div {...props(styles.status)}>
         <span {...props(styles.position)}>
-          Page {current} of {pages.length}
+          {input.file === undefined
+            ? "Opening…"
+            : `Page ${current} of ${input.file.document.numPages}`}
         </span>
         <Button
           iconOnly
@@ -194,6 +151,75 @@ export function PdfViewer(input: { readonly file: PdfFile; readonly label: strin
           +
         </Button>
       </div>
+    </div>
+  );
+}
+
+function PdfPages(input: {
+  readonly file: PdfFile;
+  readonly zoom: number;
+  readonly position: RefObject<Anchor | undefined>;
+  readonly onPage: (page: number) => void;
+}): ReactElement {
+  const [sizes, setSizes] = useState<ReadonlyMap<number, PageSize>>(new Map());
+  const [failures, setFailures] = useState<ReadonlyMap<number, string>>(new Map());
+
+  const [attach] = useState(() =>
+    createPdfPages(input.file, input.position, {
+      onPage: input.onPage,
+      onSize: (page, size) =>
+        setSizes((known) => {
+          const previous = known.get(page);
+
+          return previous?.width === size.width && previous.height === size.height
+            ? known
+            : new Map(known).set(page, size);
+        }),
+      onFailure: (page, message) =>
+        setFailures((known) => {
+          if (known.get(page) === message) return known;
+          const next = new Map(known);
+
+          if (message === undefined) next.delete(page);
+          else next.set(page, message);
+
+          return next;
+        }),
+    }),
+  );
+
+  const pages = Array.from(
+    { length: input.file.document.numPages },
+    (_, index) => sizes.get(index + 1) ?? input.file.firstPage,
+  );
+
+  const widest = pages.reduce((width, page) => Math.max(width, page.width), 0);
+
+  return (
+    <div ref={attach} {...props(styles.column(`${input.zoom * 100}%`))}>
+      {pages.map((page, index) => {
+        const failure = failures.get(index + 1);
+
+        return (
+          <div
+            key={index}
+            role="img"
+            aria-label={
+              failure === undefined ? `Page ${index + 1}` : `Page ${index + 1}: ${failure}`
+            }
+            {...props(
+              styles.page(`${(page.width / widest) * 100}%`, `${page.width} / ${page.height}`),
+            )}
+          >
+            {failure !== undefined && (
+              <div {...props(styles.failure)}>
+                <span {...props(styles.failureTitle)}>This page could not be drawn.</span>
+                <span>{failure}</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
