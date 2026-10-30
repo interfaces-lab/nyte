@@ -86,8 +86,8 @@ const styles = create({
     backgroundColor: "currentColor",
   },
   attention: {
-    borderColor: role.contentInteractiveTertiary,
-    color: role.contentInteractiveTertiary,
+    borderColor: role.contentAccent,
+    color: role.contentAccent,
     "::after": {
       content: "''",
       width: 6,

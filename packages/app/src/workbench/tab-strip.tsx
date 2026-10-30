@@ -139,7 +139,7 @@ const styles = create({
     height: 6,
     flexShrink: 0,
     borderRadius: "50%",
-    backgroundColor: role.contentInteractiveTertiary,
+    backgroundColor: role.contentAccent,
   },
   running: {
     display: "inline-flex",

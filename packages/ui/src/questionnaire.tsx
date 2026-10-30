@@ -118,7 +118,7 @@ const styles = create({
     backgroundColor: "currentColor",
   },
   check: { display: "var(--_question-check-display)" },
-  error: { margin: 0, color: role.contentInteractiveTertiary },
+  error: { margin: 0, color: role.contentAccent },
   actions: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: space.s2 },
 });
 

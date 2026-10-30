@@ -47,13 +47,13 @@ export const appearanceStyles = create({
   diffRemovedLine: {
     borderInlineStartWidth: 3,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.contentInteractiveTertiary,
+    borderInlineStartColor: role.contentAccent,
     backgroundColor: role.bgInteractiveSecondaryTranslucent,
   },
   diffAddedLine: {
     borderInlineStartWidth: 3,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.contentInteractiveTertiary,
+    borderInlineStartColor: role.contentAccent,
     backgroundColor: role.bgInteractiveSecondaryTranslucent,
   },
   codePreviewText: {

@@ -609,7 +609,7 @@ const styles = create({
     height: space.s2,
     flexShrink: 0,
     borderRadius: radius.pill,
-    backgroundColor: role.contentInteractiveTertiary,
+    backgroundColor: role.contentAccent,
   },
   scopeName: {
     flexGrow: 1,
@@ -679,7 +679,7 @@ const styles = create({
     width: value,
     height: space.s3,
     borderRadius: 1,
-    backgroundColor: role.contentInteractiveTertiary,
+    backgroundColor: role.contentAccent,
   }),
   typeList: {
     display: "flex",
@@ -724,7 +724,7 @@ const styles = create({
     insetInlineStart: 0,
     width: space.s4,
     borderRadius: radius.pill,
-    backgroundColor: role.contentInteractiveTertiary,
+    backgroundColor: role.contentAccent,
     transform: {
       default: null,
       [when.ancestor(":hover", motionRow)]: {

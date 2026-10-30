@@ -24,7 +24,7 @@ const styles = create({
     flexShrink: 0,
     width: glyph.box,
     height: glyph.box,
-    color: role.contentInteractiveTertiary,
+    color: role.contentAccent,
     animationName: { default: pulse, "@media (prefers-reduced-motion: reduce)": "none" },
     animationDuration: "1600ms",
     animationTimingFunction: "ease-in-out",

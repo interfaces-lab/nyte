@@ -44,7 +44,7 @@ scopes are `brown`, `orange`,
 | Status text                   | `intent.success`, `intent.warning`, or `intent.danger` | `contentSecondary`                                                       |
 | Filled action                 | `intent.primary`                                       | `buttonFill` and `contentOnInteractiveStrong`                            |
 | Syntax token                  | A hue per token kind                                   | `contentSecondary`                                                       |
-| Dot, file glyph, chart series | A hue per category                                     | `contentInteractiveTertiary`                                             |
+| Dot, file glyph, chart series | A hue per category                                     | `contentAccent`                                                          |
 | Added diff line or word       | `surfaceTheme.green`                                   | `bgInteractiveSecondaryTranslucent` or `bgInteractivePrimaryTranslucent` |
 | Removed diff line or word     | `surfaceTheme.red`                                     | The same background roles                                                |
 | Avatar                        | A hue per avatar                                       | `bgInteractiveSecondaryTranslucent` and `contentInteractivePrimary`      |
@@ -71,6 +71,9 @@ focus ring ignores hue scopes.
 
 Readable text uses `contentPrimary` or `contentSecondary`. `contentTertiary` is for placeholders,
 disabled hints, and decoration. Glyphs use `contentInteractiveTertiary` or a stronger role.
+Interactive primary, secondary, and tertiary stay three distinct levels in every scope.
+`contentAccent` is the scope's hue as ink: error and attention text, status dots, and accent
+strokes. Under `intent.danger` it is the error colour; under a category scope it is that hue.
 
 Import handles instead of writing `var(--nyte-…)`. Use a design-scale literal when no handle
 exists.

@@ -205,7 +205,7 @@ export const usageStyles = create({
     marginBlockStart: space.px,
     color: role.contentTertiary,
   },
-  noticeIconAlert: { color: role.contentInteractiveTertiary },
+  noticeIconAlert: { color: role.contentAccent },
   noticeCopy: { flex: 1, minWidth: 0, paddingBlockStart: space.px },
 });
 

@@ -10,6 +10,7 @@ export const role = defineConsts({
   contentInteractivePrimary: "var(--nyte-content-interactive-primary)",
   contentInteractiveSecondary: "var(--nyte-content-interactive-secondary)",
   contentInteractiveTertiary: "var(--nyte-content-interactive-tertiary)",
+  contentAccent: "var(--nyte-content-accent)",
   contentOnInteractiveStrong: "var(--nyte-content-on-interactive-strong)",
   contentOnControl: "var(--nyte-content-on-control)",
   borderPrimary: "var(--nyte-border-primary)",

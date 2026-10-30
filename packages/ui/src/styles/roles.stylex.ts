@@ -38,6 +38,8 @@ export const roles = defineVars({
   "--nyte-content-interactive-primary": contrast(step(120, 20), step(140, 20)),
   "--nyte-content-interactive-secondary": contrast(step(100, 50), step(100, 40)),
   "--nyte-content-interactive-tertiary": contrast(step(80, 90), step(100, 40)),
+  /** The scope's hue as ink: error and attention text, status dots, accent strokes. */
+  "--nyte-content-accent": contrast(step(80, 90), step(100, 40)),
   "--nyte-content-on-interactive-strong": "var(--nyte-theme-0)",
   "--nyte-content-on-control": "var(--nyte-neutral-0)",
 
@@ -102,9 +104,10 @@ export const roles = defineVars({
 const hued = {
   "--nyte-content-primary": contrast(step(110, 30), step(140, 10)),
   "--nyte-content-tertiary": contrast(step(60, 100), step(110, 30)),
-  "--nyte-content-interactive-primary": contrast(step(100, 70), step(100, 40)),
-  "--nyte-content-interactive-secondary": contrast(step(100, 70), step(100, 60)),
+  "--nyte-content-interactive-primary": contrast(step(120, 50), step(120, 40)),
+  "--nyte-content-interactive-secondary": contrast(step(110, 70), step(100, 60)),
   "--nyte-content-interactive-tertiary": contrast(step(100, 90), step(100, 60)),
+  "--nyte-content-accent": contrast(step(100, 90), step(100, 60)),
   "--nyte-border-primary": step(30, 110),
   "--nyte-bg-scrim-translucent": glass(40, 130),
   "--nyte-bg-interactive-strong": "var(--nyte-theme-80)",
