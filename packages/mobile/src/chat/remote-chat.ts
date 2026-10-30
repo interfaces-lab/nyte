@@ -18,6 +18,7 @@ import type {
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { describeHostError } from "../connection/connection.ts";
+import { useHost } from "../connection/host-context.tsx";
 import { useWatch } from "../connection/use-watch.ts";
 import { uploadDraft, type DraftContent } from "../media/attachments.ts";
 
@@ -35,10 +36,10 @@ export type SendOutcome =
   | { kind: "failed"; error: string }
   | { kind: "ignored" };
 
-function describeSendError(cause: unknown): string {
+function describeSendError(cause: unknown, newerHost: boolean): string {
   return cause instanceof Error && !(cause instanceof SdkError)
     ? cause.message
-    : describeHostError(cause);
+    : describeHostError(cause, newerHost);
 }
 
 /** The draft as a message the host can take, with its photos uploaded, or why it couldn't be. */
@@ -46,18 +47,23 @@ async function uploadMessage(
   client: Connection,
   session: Session,
   content: DraftContent,
+  newerHost: boolean,
 ): Promise<{ kind: "uploaded"; message: UserContent } | { kind: "failed"; error: string }> {
   try {
     const workspace = client.workspace((await session.info()).workspace);
 
     return { kind: "uploaded", message: await uploadDraft(workspace, content) };
   } catch (cause) {
-    return { kind: "failed", error: describeSendError(cause) };
+    return { kind: "failed", error: describeSendError(cause, newerHost) };
   }
 }
 
 /** What kept the head from switching to `model`, or `undefined` once it switched. */
-async function configureModel(head: Head, model: ModelInfo): Promise<string | undefined> {
+async function configureModel(
+  head: Head,
+  model: ModelInfo,
+  newerHost: boolean,
+): Promise<string | undefined> {
   try {
     const outcome = await head.configure({ model: model.ref });
 
@@ -67,7 +73,7 @@ async function configureModel(head: Head, model: ModelInfo): Promise<string | un
       ? "That model is no longer available on your Mac. Refresh the model list."
       : "Your Mac couldn't apply that model choice.";
   } catch (cause) {
-    return describeHostError(cause);
+    return describeHostError(cause, newerHost);
   }
 }
 
@@ -77,6 +83,7 @@ async function configureModel(head: Head, model: ModelInfo): Promise<string | un
  * on, and `steerNow` moves a queued one into the running response.
  */
 export function useRemoteChat(client: Connection, sessionId: SessionId, headName?: HeadName) {
+  const { newerHost } = useHost();
   const session = client.session(sessionId);
   const head = headName === undefined ? session : session.head(headName);
 
@@ -105,7 +112,7 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     setSending(true);
     setSendError(undefined);
 
-    const upload = await uploadMessage(client, session, content);
+    const upload = await uploadMessage(client, session, content, newerHost);
     setSending(false);
 
     if (upload.kind === "failed") {
@@ -118,7 +125,10 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
       .send(upload.message, delivery === undefined ? undefined : { delivery })
       .then(
         (receipt): SendAnswer => ({ kind: "sent", message: receipt.message }),
-        (cause: unknown): SendAnswer => ({ kind: "refused", error: describeSendError(cause) }),
+        (cause: unknown): SendAnswer => ({
+          kind: "refused",
+          error: describeSendError(cause, newerHost),
+        }),
       );
 
     void answer.then((outcome) => {
@@ -131,7 +141,7 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
   const selectModel = async (model: ModelInfo): Promise<boolean> => {
     if (modelSelection?.kind === "saving") return false;
     setModelSelection({ kind: "saving", model });
-    const failure = await configureModel(head, model);
+    const failure = await configureModel(head, model, newerHost);
     setModelSelection(failure === undefined ? undefined : { kind: "failed", message: failure });
 
     return failure === undefined;
@@ -162,7 +172,7 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     try {
       await session.run(execution.run.id).stop();
     } catch (cause) {
-      setStopError(describeHostError(cause));
+      setStopError(describeHostError(cause, newerHost));
     }
   };
 
@@ -183,7 +193,7 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
     error:
       sendError ??
       stopError ??
-      (watched.kind === "failed" ? describeHostError(watched.error) : undefined),
+      (watched.kind === "failed" ? describeHostError(watched.error, newerHost) : undefined),
     send,
     withdraw,
     steerNow,

@@ -45,7 +45,7 @@ function basename(path: string): string {
 /** A finished run's review. One readiness value drives the headline, its symbol, its tint, and the detail line, so the four never describe different states. */
 export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const theme = useTheme();
-  const { client } = useHost();
+  const { client, newerHost } = useHost();
   const insets = useSafeAreaInsets();
   const chat = useRemoteChat(client, sessionId);
   const [merging, setMerging] = useState(false);
@@ -127,7 +127,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
       await client.session(sessionId).send(MERGE_PROMPT);
       router.back();
     } catch (cause) {
-      setMergeError(describeHostError(cause));
+      setMergeError(describeHostError(cause, newerHost));
     }
 
     setMerging(false);

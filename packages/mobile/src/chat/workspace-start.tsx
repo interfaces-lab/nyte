@@ -41,7 +41,7 @@ export type RegistryFolders =
     };
 
 export function useRegistryFolders(): RegistryFolders {
-  const { client, scope } = useHost();
+  const { client, scope, newerHost } = useHost();
   const [chosenId, setChosenId] = useMMKVString(selectionKey(scope), workspaceStorage);
 
   const query = useQuery({
@@ -54,7 +54,7 @@ export function useRegistryFolders(): RegistryFolders {
   if (query.isError)
     return {
       kind: "failed",
-      message: describeHostError(query.error),
+      message: describeHostError(query.error, newerHost),
       refresh: () => void query.refetch(),
     };
 
@@ -77,7 +77,7 @@ export function usePendingStart(): PendingStart | undefined {
 const replayed = new Set<string>();
 
 export function useStartSender() {
-  const { client, scope } = useHost();
+  const { client, scope, newerHost } = useHost();
   const navigation = useNavigation();
   const mounted = useRef(true);
 
@@ -106,7 +106,7 @@ export function useStartSender() {
       case "asking":
         return undefined;
       case "unanswered":
-        return describeHostError(outcome.cause);
+        return describeHostError(outcome.cause, newerHost);
       default: {
         const exhaustive: never = outcome;
 

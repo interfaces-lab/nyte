@@ -13,6 +13,7 @@ import type { Connection, FileStatus, PatchEntry, PatchSet, SessionId } from "@n
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { describeHostError } from "../connection/connection.ts";
+import { useHost } from "../connection/host-context.tsx";
 import { useRemoteChat } from "./remote-chat.ts";
 import { changedFiles, fileStatus } from "./turn-changes.ts";
 import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
@@ -136,6 +137,7 @@ export function ChangesScreen({
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { newerHost } = useHost();
   const [source, setSource] = useState<Source>(initialSource ?? "agent");
   const [views, setViews] = useState<ReadonlyMap<string, FileView>>(new Map());
   const [pulling, setPulling] = useState(false);
@@ -218,7 +220,7 @@ export function ChangesScreen({
     macDiffsQuery.status === "pending"
       ? { kind: "loading" }
       : macDiffsQuery.status === "error"
-        ? { kind: "failed", message: describeHostError(macDiffsQuery.error) }
+        ? { kind: "failed", message: describeHostError(macDiffsQuery.error, newerHost) }
         : { kind: "ready", diffs: macDiffsQuery.data };
 
   const agentEdits = agentQuery.data ?? [];
