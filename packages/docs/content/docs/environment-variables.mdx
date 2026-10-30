@@ -1,0 +1,30 @@
+---
+title: Environment variables
+description: Give commands, terminals, and agents the variables your project needs, including API keys.
+---
+
+Variables you add in **Settings > Environment variables** reach every command Nyte starts in a folder: shell commands from any agent, Claude Code's included, terminals, and agents Nyte starts over ACP. They're added on top of what Nyte got from your login shell, and replace a variable of the same name.
+
+## Add variables
+
+1. Open **Settings > Environment variables** and click **Add Variable**.
+2. Choose a **Folder**, or keep **Every folder**.
+3. Enter a **Key** and **Value**. Click **Add Another** for more, or paste the contents of a `.env` file into **Key** to add every line at once.
+4. Click **Add Variable**.
+
+A variable set for one folder replaces one with the same name set for every folder. Worktree chats use the variables of the folder they were made from.
+
+## Secrets
+
+Turn on the lock next to a value to make it secret. Names that end in `KEY`, `TOKEN`, `SECRET`, or `PASSWORD` start secret.
+
+|                               | Plain      | Secret                                               |
+| ----------------------------- | ---------- | ---------------------------------------------------- |
+| Stored                        | As written | Encrypted with the key in `~/.nyte/secret.key`       |
+| Shown in Settings             | Yes        | No. You can replace or remove it, never read it back |
+| Sent to your phone or browser | Yes        | No                                                   |
+| Reaches commands              | Yes        | Yes                                                  |
+
+A command can still print a secret it receives, for example with `printenv`, and that output appears in the chat like any other.
+
+`settings.json` can't set secrets. A host that runs without a secrets key, such as a deploy without `NYTE_SECRET_KEY`, refuses them and keeps plain variables working.

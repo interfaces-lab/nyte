@@ -5,6 +5,7 @@ import type { SettingDefinition } from "../contract/plugin.ts";
 import { kvRef } from "../store/refs.ts";
 import { MAIN, readKv, readSession } from "../store/session.ts";
 import { check, convertJsonSchema } from "../util/json-schema.ts";
+import { redactSecretEntries } from "./secret-settings.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 interface Defined {
@@ -65,17 +66,20 @@ export async function settingInfos(
   return infos.flatMap((info) => (info === null ? [] : [info]));
 }
 
+/** The layers that hold a value for `definition`, a `secret` one's without its secret values. */
 export async function readSettingLayers(
   store: StoreConnection,
-  definition: Pick<SettingDefinition, "id" | "scope">,
+  definition: Pick<SettingDefinition, "id" | "scope" | "secret">,
   session: SessionId | null,
 ): Promise<readonly Layer[]> {
-  const [own, host] = await Promise.all([
+  const [own, stored] = await Promise.all([
     definition.scope === "session" && session !== null
       ? sessionValue(store, session, definition.id)
       : undefined,
     readKv(store, kvRef("host", "settings", definition.id)),
   ]);
+
+  const host = stored !== undefined && definition.secret ? redactSecretEntries(stored) : stored;
 
   return [
     ...(own === undefined ? [] : [{ value: own, from: "session" } as const]),

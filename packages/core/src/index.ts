@@ -69,6 +69,7 @@ export type {
   RuntimeVerdict,
   SearchProvider,
   SearchResult,
+  SecretEntry,
   Setting,
   SettingDefinition,
   Side,

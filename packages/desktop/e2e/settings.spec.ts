@@ -18,6 +18,8 @@ test("the settings journey", async ({ desktop }) => {
       "Agent",
       "Editor",
       "Terminal",
+      "Environment variables",
+      "Source control",
       "Providers",
     ]);
   });

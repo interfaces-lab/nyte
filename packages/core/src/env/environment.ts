@@ -23,6 +23,7 @@ import { applyBatch } from "../engine/batches.ts";
 import { workspaceRef } from "../store/refs.ts";
 import { load, requireSession } from "../store/session.ts";
 import { wrapBrowser } from "./browser.ts";
+import { resolveVariables } from "./variables.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 export class UnavailableError extends SdkError {
@@ -126,7 +127,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
       );
     }
 
-    return attachment(kernel, serving, attached, scope, slot);
+    return attachment(kernel, serving, attached, record, scope, slot);
   };
 
   const attaching = (session: SessionId): Promise<Attachment> => {
@@ -323,6 +324,7 @@ function attachment(
   kernel: Kernel,
   provider: EnvironmentProvider,
   base: ExecutionEnv,
+  workspace: WorkspaceRecord,
   scope: FileScope,
   slot: Slot | null,
 ): Attachment {
@@ -365,7 +367,13 @@ function attachment(
       return current().files;
     },
     async exec(command, options) {
-      const job = await current().env.exec(command, options);
+      const variables = await resolveVariables(kernel, workspace);
+
+      const job = await current().env.exec(command, {
+        ...options,
+        env: { ...variables, ...options?.env },
+      });
+
       running += 1;
 
       void job

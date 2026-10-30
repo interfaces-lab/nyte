@@ -10,6 +10,7 @@ import { BrowserSettings } from "./browser.tsx";
 import { EditorSettings } from "./editor.tsx";
 import { GeneralSettings } from "./general.tsx";
 import { TerminalSettings } from "./terminal.tsx";
+import { VariablesSettings } from "./variables.tsx";
 import { SourceControlSettings } from "./source-control.tsx";
 import { available, settingsContext } from "./capability.ts";
 import type { Capability } from "./capability.ts";
@@ -133,6 +134,14 @@ export const SETTINGS_PAGES = {
     needs: [],
     keywords: ["shell", "scrollback", "cursor", "blink"],
     Page: TerminalSettings,
+  },
+  variables: {
+    icon: "brackets",
+    title: "Environment variables",
+    group: "tools",
+    needs: [],
+    keywords: ["env", "environment", ".env", "secret", "api key", "token", "variables"],
+    Page: VariablesSettings,
   },
   "source-control": {
     icon: "git-branch",

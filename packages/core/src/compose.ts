@@ -85,6 +85,7 @@ import { createPartTable } from "./store/parts.ts";
 import { hostIdentityRef, kvRef } from "./store/refs.ts";
 import { readHeld, readKv } from "./store/session.ts";
 import { dev } from "./util/dev-log.ts";
+import { variablesPlugin } from "./env/variables.ts";
 import { cleanWorktrees, sweepWorktrees, worktreesPlugin } from "./env/worktrees.ts";
 
 export type ComposeOptions = OpenOptions & {
@@ -128,6 +129,7 @@ const BUILTINS: readonly Plugin<"core">[] = [
   resourcesPlugin,
   interruptionsPlugin,
   worktreesPlugin,
+  variablesPlugin,
 ];
 
 const CLEAN_WORKTREES_MS = 24 * 60 * 60 * 1000;
@@ -284,17 +286,27 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
   const issues: ValidationIssue[] = [];
   let applied = 0;
 
-  const sessionScoped = new Set(
-    [...kernel.plugins.builtins, ...kernel.plugins.host].flatMap((plugin) =>
-      (plugin.contribute?.settings ?? []).flatMap((setting) =>
-        setting.scope === "session" ? [setting.id] : [],
-      ),
-    ),
+  const declared = [...kernel.plugins.builtins, ...kernel.plugins.host].flatMap(
+    (plugin) => plugin.contribute?.settings ?? [],
   );
 
+  const sessionScoped = new Set(
+    declared.flatMap((setting) => (setting.scope === "session" ? [setting.id] : [])),
+  );
+
+  const secret = new Set(declared.flatMap((setting) => (setting.secret ? [setting.id] : [])));
   const settings = createSettingsApi(kernel);
 
   for (const [id, value] of Object.entries(seed.settings)) {
+    if (secret.has(id)) {
+      issues.push({
+        severity: "warning",
+        path: [id],
+        message: `${id} holds secrets, so settings.json can't seed it. Set it in Settings.`,
+      });
+      continue;
+    }
+
     if ((await readKv(kernel.store, kvRef("host", "settings", id))) !== undefined) continue;
     const outcome = await settings.apply(id, value);
 
