@@ -223,7 +223,10 @@ const ListItem = Node.create({
   addKeyboardShortcuts() {
     return {
       Enter: () => {
-        const item = this.editor.state.selection.$from.node(-1);
+        const $from = this.editor.state.selection.$from;
+
+        if ($from.depth === 0) return false;
+        const item = $from.node(-1);
         const checked = item.type.name === this.name && item.attrs["checked"] !== null;
 
         return this.editor.commands.splitListItem(this.name, checked ? { checked: false } : {});
