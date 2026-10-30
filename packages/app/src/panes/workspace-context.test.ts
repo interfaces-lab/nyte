@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
 test.each(["fine", "coarse"] as const)(
-  "the workspace menu lists each folder once, newest first, with Open Folder… in view (%s pointer)",
+  "the workspace menu lists each folder once, newest first, with Open Folder… in view, and the branch menu searches and checks out (%s pointer)",
   { timeout: 90_000 },
   async (pointer) => {
     expect(

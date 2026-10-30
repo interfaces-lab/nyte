@@ -1,9 +1,9 @@
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useEffectEvent, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { Button } from "@nyte-ai/ui/button";
-import { Icon, type IconProps } from "@nyte-ai/ui/icon";
+import type { ReactElement, ReactNode } from "react";
+import { Button, buttonGlyphSize, type ButtonProps } from "@nyte-ai/ui/button";
+import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Kbd, type KbdProps } from "@nyte-ai/ui/kbd";
 import { Menu, MenuContent, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -18,7 +18,12 @@ import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { contextStyles } from "./context-selector.stylex.ts";
 
-function ContextHint({
+/** `md` in the new-chat row, `xs` in the footer under a chat's composer. */
+export type ContextSize = "xs" | "md";
+
+const CHEVRON_SIZES = { xs: 10, md: 12 } satisfies Record<ContextSize, number>;
+
+export function ContextHint({
   label,
   value,
   keys = [],
@@ -40,17 +45,57 @@ function ContextHint({
   );
 }
 
+/** A context control's face: an optional icon, the value, and a chevron when it opens a menu. */
+export function ContextTrigger({
+  size,
+  icon,
+  value,
+  chevron = true,
+  ...rest
+}: Omit<
+  ButtonProps,
+  "size" | "variant" | "icon" | "iconOnly" | "pill" | "children" | "aria-label" | "xstyle"
+> & {
+  readonly size: ContextSize;
+  readonly icon?: IconName;
+  readonly value: string;
+  readonly chevron?: boolean;
+}): ReactElement {
+  return (
+    <Button
+      variant="plain"
+      size={size}
+      xstyle={[contextStyles.controlLayout, size === "xs" && contextStyles.footerLayout]}
+      {...rest}
+    >
+      {icon !== undefined && (
+        <span {...props(contextStyles.icon)}>
+          <Icon name={icon} size={buttonGlyphSize(size, false)} />
+        </span>
+      )}
+      <span {...props(contextStyles.text)}>{value}</span>
+      {chevron && (
+        <span {...props(contextStyles.icon)}>
+          <Icon name="chevron-down" size={CHEVRON_SIZES[size]} />
+        </span>
+      )}
+    </Button>
+  );
+}
+
 export function ContextSelector({
   action,
   value,
   icon,
+  size = "md",
   active,
   footer,
   children,
 }: {
   readonly action: (typeof clientActions)["selectWorkspace" | "selectEnvironment"];
   readonly value: string;
-  readonly icon?: IconProps["name"];
+  readonly icon?: IconName;
+  readonly size?: ContextSize;
   readonly active: boolean;
   readonly footer?: ReactNode;
   readonly children: ReactNode;
@@ -77,22 +122,13 @@ export function ContextSelector({
           render={
             <MenuTrigger
               render={
-                <Button
+                <ContextTrigger
                   ref={triggerRef}
-                  variant="plain"
+                  size={size}
+                  icon={icon}
+                  value={value}
                   aria-keyshortcuts={clientActionAriaShortcut(action, mac)}
-                  xstyle={contextStyles.controlLayout}
-                >
-                  {icon !== undefined && (
-                    <span {...props(contextStyles.icon)}>
-                      <Icon name={icon} size={14} />
-                    </span>
-                  )}
-                  <span {...props(contextStyles.text)}>{value}</span>
-                  <span {...props(contextStyles.icon)}>
-                    <Icon name="chevron-down" size={12} />
-                  </span>
-                </Button>
+                />
               }
             />
           }

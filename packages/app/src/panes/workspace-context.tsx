@@ -14,11 +14,11 @@ import { folderPicker, handleOpenOutcome } from "./open-workspace.tsx";
 import { clientActions } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 import { useHostState } from "../data/host.ts";
-import { useVcsSnapshot } from "../data/vcs.ts";
 import { useWorkspaceSessions } from "../data/sessions.ts";
 import { useWorkspaces } from "../data/workspaces.ts";
 import { ContextSelector } from "./context-selector.tsx";
 import { contextStyles } from "./context-selector.stylex.ts";
+import { BranchSegment } from "./branch-segment.tsx";
 import { EnvironmentMenu } from "./environment-menu.tsx";
 
 const INLINE_FOLDERS = 5;
@@ -27,7 +27,6 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
   const host = useHostState();
   const workspace = host.data.workspace;
   const workspaces = useWorkspaces();
-  const vcs = useVcsSnapshot(workspace !== undefined);
   const github = useGitHubState(useGitHub());
   const repository = github.data?.repository;
 
@@ -37,14 +36,6 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
       : repository === undefined
         ? workspace.name
         : `${repository.owner}/${repository.name}`;
-
-  const status = vcs.data?.kind === "repository" ? vcs.data : undefined;
-
-  const branch =
-    status === undefined
-      ? undefined
-      : (status.branch ??
-        (status.head === null ? undefined : `Detached ${status.head.slice(0, 7)}`));
 
   const openFolder = folderPicker();
 
@@ -144,14 +135,8 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
           )}
         </MenuRadioGroup>
       </ContextSelector>
-      {branch !== undefined && (
-        <span {...props(contextStyles.readout, contextStyles.controlLayout)}>
-          <span {...props(contextStyles.text)} title={branch}>
-            {branch}
-          </span>
-        </span>
-      )}
-      {nyte.clientSurface === "desktop" && <EnvironmentMenu active={active} />}
+      {workspace !== undefined && <BranchSegment workspace={workspace.id} switchable size="md" />}
+      {nyte.clientSurface === "desktop" && <EnvironmentMenu active={active} size="md" />}
     </div>
   );
 }

@@ -21,11 +21,26 @@ export async function workspaceGit(): Promise<GitApi> {
   const id = selectedWorkspaceId();
 
   if (id === undefined) throw new Error("Open a workspace to read its repository");
-  const capability = await (await connected()).workspace(id).git();
+
+  return gitFor(id);
+}
+
+export async function gitFor(workspace: WorkspaceId): Promise<GitApi> {
+  const capability = await (await connected()).workspace(workspace).git();
 
   if (capability.kind !== "available") throw new Error(capability.reason);
 
   return capability.api;
+}
+
+/** The workspace's local branches, read again each time `enabled` turns on. */
+export function useGitRefs(workspace: WorkspaceId, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.gitRefs(workspace),
+    queryFn: async () => (await gitFor(workspace)).refs(),
+    enabled,
+    staleTime: 0,
+  });
 }
 
 export function useVcsChanges(
