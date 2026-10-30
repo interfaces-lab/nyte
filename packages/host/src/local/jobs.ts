@@ -15,6 +15,7 @@ import {
 } from "@nyte-ai/core";
 import type { EndSpan, ExecutionEnv, Job } from "@nyte-ai/core";
 import { findExecutable, killTree, run, spawnCommand } from "./command.ts";
+import { prepareShellIntegration } from "./shell-integration/index.ts";
 
 type PtyModule = {
   spawn(file: string, args: string[] | string, options: IPtyForkOptions): IPty;
@@ -43,7 +44,7 @@ const DONE = { done: true, value: undefined } as const;
 
 let loaded: PtyModule | null | undefined;
 
-/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell()` read at each start, else `$SHELL`, else `/bin/sh`, as a login shell; §37h), a pty's environment carrying `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Nyte` without Electron's `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`, and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` (with `stdio: "protocol"`, stderr's frames tagged `stream: "stderr"` and the pipe paced like a pty, so a reader open from the start misses nothing) and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped, and `exit { code }` last; a merged pipe never stalls, and a pty or a protocol pipe pauses while its slowest open reader is 256 KiB behind, resuming once it is within 64 KiB. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` checks the OS process table for a login shell with no live child outside its own process group, whose id is the pty's pid (job control gives each command its own group, while prompt hooks such as starship or mise run as command substitutions in the shell's), false for a pipe or explicit command and true once it ended; `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s (on Windows, which has no signals, it ends a pipe's process tree at once with `taskkill /T /F`), and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
+/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell()` read at each start, else `$SHELL`, else `/bin/sh`, as a login shell; §37h), a pty's environment carrying `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Nyte` without Electron's `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`, and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` (with `stdio: "protocol"`, stderr's frames tagged `stream: "stderr"` and the pipe paced like a pty, so a reader open from the start misses nothing) and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped, and `exit { code }` last; a merged pipe never stalls, and a pty or a protocol pipe pauses while its slowest open reader is 256 KiB behind, resuming once it is within 64 KiB. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` is false while an integrated zsh or bash login shell reports a running command line, and otherwise checks the OS process table for a login shell with no live child outside its own process group, whose id is the pty's pid (job control gives each command its own group, while prompt hooks such as starship or mise run as command substitutions in the shell's), and no live child at all once an integrated shell reported background jobs at its prompt; false for a pipe or explicit command and true once it ended; a pty's output never carries OSC 633 markers; `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s (on Windows, which has no signals, it ends a pipe's process tree at once with `taskkill /T /F`), and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
 export function localExec(
   root: string,
   options?: {
@@ -303,17 +304,27 @@ async function terminal(
           : [shell, "-l"]
         : command;
 
+  const loginShell = typeof command !== "string" && command.length === 0;
+
+  const integration = await prepareShellIntegration({
+    file: file ?? shell,
+    args,
+    env: terminalEnv(options.env),
+    loginShell,
+  });
+
   let term: IPty;
 
   try {
-    term = pty.spawn(file ?? shell, args, {
+    term = pty.spawn(file ?? shell, [...integration.args], {
       name: "xterm-256color",
       cols: options.size.columns,
       rows: options.size.rows,
       cwd: options.cwd,
-      env: terminalEnv(options.env),
+      env: integration.env,
     });
   } catch (error) {
+    integration.dispose();
     throw new SdkError(
       "unavailable",
       `Cannot start ${file ?? shell} in a pty: ${error instanceof Error ? error.message : String(error)}`,
@@ -322,8 +333,16 @@ async function terminal(
 
   const encoder = new TextEncoder();
 
-  term.onData((text) => log.push(encoder.encode(text)));
-  term.onExit(({ exitCode, signal }) => finish(signal ? null : exitCode));
+  const show = (text: string): void => {
+    if (text !== "") log.push(encoder.encode(text));
+  };
+
+  term.onData((text) => show(integration.read(text)));
+  term.onExit(({ exitCode, signal }) => {
+    show(integration.end());
+    integration.dispose();
+    finish(signal ? null : exitCode);
+  });
   log.throttle({ pause: () => term.pause(), resume: () => term.resume() });
 
   return {
@@ -337,37 +356,17 @@ async function terminal(
       return true;
     },
     async idle() {
-      if (typeof command === "string" || command.length !== 0) return false;
+      if (!loginShell) return false;
+      const state = integration.state();
 
-      const result = await run(
-        windows ? "powershell.exe" : "ps",
-        windows
-          ? [
-              "-NoProfile",
-              "-NonInteractive",
-              "-Command",
-              `Get-CimInstance Win32_Process -Filter "ParentProcessId = ${term.pid} AND Name != 'conhost.exe' AND Name != 'OpenConsole.exe'" | Select-Object -ExpandProperty ProcessId`,
-            ]
-          : ["-A", "-o", "pid=,ppid=,pgid=,stat=,comm="],
-        { cwd: options.cwd, timeoutMs: 1_500 },
+      if (state.kind === "running") return false;
+
+      return inspectTerminalProcesses(
+        term.pid,
+        shell,
+        options.cwd,
+        state.kind === "prompt" && state.jobs > 0,
       );
-
-      if (result.code !== 0) throw new SdkError("unavailable", "Cannot inspect terminal processes");
-      const processes = result.stdout.toString("utf8").trim();
-
-      if (windows) return processes === "";
-
-      return !processes.split("\n").some((line) => {
-        const [pid, parent, group, state, ...name] = line.trim().split(/\s+/);
-
-        if (state?.startsWith("Z")) return false;
-
-        if (Number(parent) === term.pid) return Number(group) !== term.pid;
-
-        return (
-          Number(pid) === term.pid && basename(name.join(" ")).replace(/^-/, "") !== basename(shell)
-        );
-      });
     },
     kill(signal) {
       try {
@@ -375,6 +374,44 @@ async function terminal(
       } catch {}
     },
   };
+}
+
+/** Whether the shell `pid` is idle by the OS process table: false while it has a live child outside its own process group (job control gives each command its own group, while prompt hooks such as starship or mise run as command substitutions in the shell's), or any live child at all with `jobs`, when the shell reported background jobs at its prompt (without job control they stay in its group); also false once another program replaced the shell. */
+async function inspectTerminalProcesses(
+  pid: number,
+  shell: string,
+  cwd: string,
+  jobs: boolean,
+): Promise<boolean> {
+  const windows = process.platform === "win32";
+
+  const result = await run(
+    windows ? "powershell.exe" : "ps",
+    windows
+      ? [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `Get-CimInstance Win32_Process -Filter "ParentProcessId = ${pid} AND Name != 'conhost.exe' AND Name != 'OpenConsole.exe'" | Select-Object -ExpandProperty ProcessId`,
+        ]
+      : ["-A", "-o", "pid=,ppid=,pgid=,stat=,comm="],
+    { cwd, timeoutMs: 1_500 },
+  );
+
+  if (result.code !== 0) throw new SdkError("unavailable", "Cannot inspect terminal processes");
+  const processes = result.stdout.toString("utf8").trim();
+
+  if (windows) return processes === "";
+
+  return !processes.split("\n").some((line) => {
+    const [id, parent, group, state, ...name] = line.trim().split(/\s+/);
+
+    if (state?.startsWith("Z")) return false;
+
+    if (Number(parent) === pid) return jobs || Number(group) !== pid;
+
+    return Number(id) === pid && basename(name.join(" ")).replace(/^-/, "") !== basename(shell);
+  });
 }
 
 function loadPty(): PtyModule | null {
