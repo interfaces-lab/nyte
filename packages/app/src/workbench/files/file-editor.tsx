@@ -28,7 +28,6 @@ import {
 import { keys } from "../../data/query-client.ts";
 import { loadDeferred } from "../../lib/deferred.tsx";
 import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
-import { releaseWithQuery } from "../../lib/query-release.ts";
 import { useSaveWorkspaceFile, useWorkspaceFile, workspaceFiles } from "../../data/files.ts";
 import { formatBytes } from "../../lib/format.ts";
 import { useBlobUrl } from "../../lib/use-blob-url.ts";
@@ -47,6 +46,7 @@ import { createFileDocument } from "./file-document.ts";
 import { fileActions } from "./file-store.ts";
 import { MarkdownDocument } from "./markdown-document.tsx";
 import { opensAsMarkdown } from "./markdown-parse.ts";
+import { pdfQuery } from "./pdf-query.ts";
 import type { FileTab } from "./file-store.ts";
 
 type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
@@ -387,19 +387,14 @@ function PdfDocument(input: {
   const path = input.document.path;
   const runtime = input.runtime;
 
-  const pdf = useQuery({
-    queryKey: ["files", "pdf", path, input.document.version],
-    queryFn: async (context) => {
-      await using reader = await (await workspaceFiles()).bytes(path);
-      const chunks: Uint8Array<ArrayBuffer>[] = [];
-
-      for await (const chunk of reader.chunks()) chunks.push(new Uint8Array(chunk));
-
-      return runtime.openPdf(await new Blob(chunks).bytes(), (close) =>
-        releaseWithQuery(context, close),
-      );
-    },
-  });
+  const pdf = useQuery(
+    pdfQuery(
+      path,
+      input.document.version,
+      async () => (await workspaceFiles()).bytes(path),
+      runtime.openPdf,
+    ),
+  );
 
   if (pdf.data === undefined) {
     if (!pdf.isError) return <FileMessage active={input.active} title="Opening file…" />;
