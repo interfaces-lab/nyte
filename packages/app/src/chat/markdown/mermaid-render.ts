@@ -20,7 +20,7 @@ export function renderDiagram(source: string): DiagramResult {
     const svg = renderMermaidSVG(source, {
       bg: role.bgMutedTranslucent,
       fg: role.contentPrimary,
-      accent: role.contentInteractiveTertiary,
+      accent: role.contentAccent,
       muted: role.contentSecondary,
       surface: role.bgElevated,
       border: role.borderSecondaryTranslucent,
