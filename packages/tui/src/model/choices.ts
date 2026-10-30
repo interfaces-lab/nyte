@@ -1,5 +1,5 @@
 import type { SessionInfo } from "@nyte-ai/sdk";
-import { mainHead, rowMark, runStatus, taskLabel } from "@nyte-ai/plugin/client/presentation";
+import { sessionMark, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import { CHAT_KEYBINDS, GLYPHS } from "../lib/constants.ts";
 import type { ChatCommand } from "../lib/constants.ts";
 import { shortId } from "../lib/format.ts";
@@ -278,10 +278,7 @@ export function resumeChoices(state: State, sessions: readonly SessionInfo[]): r
 
 /** A listed session's mark and words: its own run while one goes, else the background work it started, else how its run ended when it failed. */
 function sessionStanding(session: SessionInfo): Partial<Pick<Choice, "status" | "mark">> {
-  const head = mainHead(session);
-  const status = runStatus(head?.execution);
-  const background = head?.background ?? { working: 0, waiting: 0 };
-  const mark = rowMark(status, background);
+  const mark = sessionMark(session);
   const text = taskLabel(mark);
 
   switch (mark) {

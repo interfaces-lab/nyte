@@ -1,8 +1,7 @@
 import type { Execution, JobView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
 import {
   jobTaskState,
-  runMark,
-  runStatus,
+  sessionMark,
   showsText,
   showsTool,
   taskEnded,
@@ -74,10 +73,9 @@ function agentExecution(task: Extract<Task, { kind: "agent" }>): Execution | und
   return task.view?.execution ?? task.info.heads.find((head) => head.name === "main")?.execution;
 }
 
+/** A child reads as its chat's row does in every client; its open view's heads win over the listed ones as a unit. */
 export function taskStatus(task: Task): TaskState {
-  return task.kind === "agent"
-    ? runMark(runStatus(agentExecution(task)))
-    : jobTaskState(task.job.state);
+  return task.kind === "agent" ? sessionMark(task.view ?? task.info) : jobTaskState(task.job.state);
 }
 
 export function canStopTask(task: Task): boolean {

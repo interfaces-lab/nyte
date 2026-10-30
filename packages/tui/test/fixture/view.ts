@@ -326,7 +326,16 @@ export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionVie
     background: [],
     configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
     context: { tokens: 1_000, window: 100_000, lastRequest: null },
-    heads: [],
+    heads: [
+      {
+        name: asId("main"),
+        tip: { kind: "start" },
+        stack: null,
+        execution,
+        unread: false,
+        background: { working: 0, waiting: 0 },
+      },
+    ],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
