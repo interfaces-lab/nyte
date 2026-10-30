@@ -262,6 +262,26 @@ for (const shell of shells)
       );
 
       it(
+        "falls back to the process table once `exec` replaces the shell",
+        async () => {
+          const terminal = await openTerminal(path, { ...prompt, ".bashrc": `PS1='${PROMPT}'\n` });
+
+          try {
+            await terminal.submit(`exec ${path}`);
+            await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
+
+            await terminal.type("echo busy-$((40+2)); sleep 30");
+            await terminal.shows("busy-42");
+
+            expect(await terminal.job.idle()).toBe(false);
+          } finally {
+            await terminal.close();
+          }
+        },
+        TEST_MS,
+      );
+
+      it(
         "ignores markers a command prints and keeps every OSC 633 out of the output",
         async () => {
           const terminal = await openTerminal(path, { ...prompt, fake: fakeMarkers });
