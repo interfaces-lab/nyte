@@ -96,8 +96,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   release(id: string, holder: BrowserHolder): void {
     const surface = this.#surfaces.get(id);
 
-    if (surface === undefined) return;
-    surface.holders.delete(holder);
+    if (surface === undefined || !surface.holders.delete(holder)) return;
 
     if (surface.holders.size === 0) {
       this.#destroy(surface);
@@ -192,11 +191,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
         message: "Only web addresses open in the browser panel.",
       });
 
-    const surface = this.retain(
-      input.surface,
-      `view:${input.surface}`,
-      input.owner ?? { kind: "home" },
-    );
+    const surface = this.retain(input.surface, `view:${window}`, input.owner ?? { kind: "home" });
 
     surface.home = window;
 
@@ -325,8 +320,8 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     });
   }
 
-  close(input: { readonly surface: string }): void {
-    this.release(input.surface, `view:${input.surface}`);
+  close(input: { readonly surface: string }, window: HostWindow): void {
+    this.release(input.surface, `view:${window}`);
   }
 
   async captureFrame(input: { readonly surface: string }): Promise<string | undefined> {
@@ -477,10 +472,12 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     this.#chromeFocus.delete(window);
 
     for (const surface of this.#surfaces.values()) {
-      if (surface.home !== window) continue;
-      surface.home = undefined;
-      surface.attachedTo = undefined;
-      this.release(surface.id, `view:${surface.id}`);
+      if (surface.home === window) {
+        surface.home = undefined;
+        surface.attachedTo = undefined;
+      }
+
+      this.release(surface.id, `view:${window}`);
     }
   }
 
