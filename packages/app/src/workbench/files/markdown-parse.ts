@@ -42,7 +42,7 @@ interface Context {
 
 type Mark = NonNullable<JSONContent["marks"]>[number];
 
-const FRONTMATTER = /^---[ \t]*\n(?:[\s\S]*?\n)?(?:---|\.\.\.)[ \t]*(?:\n|$)/u;
+const FRONTMATTER = /^---[ \t]*\r?\n(?:[\s\S]*?\n)?(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/u;
 
 const MARKDOWN_PATH = /\.(?:md|markdown)$/iu;
 
@@ -96,9 +96,11 @@ export function parseMarkdown(text: string): ParsedMarkdown {
 
 /** The frontmatter's top-level properties, or undefined when the file has none. */
 export function readFrontmatter(text: string): [key: string, value: string][] | undefined {
-  const frontmatter = FRONTMATTER.exec(text.replaceAll("\r\n", "\n"))?.[0];
+  const frontmatter = FRONTMATTER.exec(text)?.[0];
 
-  return frontmatter === undefined ? undefined : frontmatterEntries(frontmatter);
+  return frontmatter === undefined
+    ? undefined
+    : frontmatterEntries(frontmatter.replaceAll("\r\n", "\n"));
 }
 
 function collectDefinitions(nodes: readonly RootContent[]): [string, string][] {
