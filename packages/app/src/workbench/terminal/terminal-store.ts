@@ -50,7 +50,6 @@ interface JobTerminalTab extends TerminalTabFields {
   readonly kind: "job";
   readonly workspace: WorkspaceId;
   readonly jobId: JobView["id"];
-  /** The chat that started the job, as the job reports it. */
   readonly session: SessionId | null;
   readonly state: JobTerminalState;
   readonly rendering: TerminalRenderingState;
@@ -435,7 +434,6 @@ export function reattachShells(
   }
 }
 
-/** Brings the workspace's job tabs up to date with its job list. */
 function syncJobs(workspace: WorkspaceId, jobs: readonly JobView[]): void {
   const commands = new Map(jobs.map((job) => [job.id, job]));
   const tabs = new Map(snapshot.tabs);

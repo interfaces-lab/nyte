@@ -4,7 +4,6 @@ import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { BackgroundItem, CallId, JobId, JobView, SessionId, ToolClass } from "@nyte-ai/sdk";
 import type { Chat } from "./directory.ts";
 
-/** Work a chat started, as the host lists it in the chat's background: a subagent or a job. */
 export type Task = ChildTask | JobTask;
 
 export interface ChildTask {
@@ -12,7 +11,6 @@ export interface ChildTask {
   readonly id: SessionId;
   readonly title: string;
   readonly state: TaskState;
-  /** The call that started it; null for one started another way. */
   readonly startedBy: CallId | null;
   /** Its own run is going, so a stop has something to stop. */
   readonly live: boolean;
@@ -29,12 +27,10 @@ export interface JobTask {
   readonly live: boolean;
 }
 
-/** Which background item a row speaks of: the one its call started, or the one it names. */
 export type TaskKey =
   | { readonly kind: BackgroundItem["kind"]; readonly call: CallId }
   | { readonly kind: BackgroundItem["kind"]; readonly id: string };
 
-/** The child a delegate call speaks of: the one it names, else the one it started. */
 export function delegateKey(
   toolClass: Extract<ToolClass, { readonly kind: "delegate" }>,
   call: CallId,
@@ -44,7 +40,6 @@ export function delegateKey(
     : { kind: "child", id: toolClass.child };
 }
 
-/** Whether a background item or a task is the one `key` picks: one join for every row. */
 export function matchesKey(
   entry: Pick<BackgroundItem, "id" | "startedBy"> & { readonly kind: string },
   key: TaskKey,
@@ -58,15 +53,10 @@ export function findTask(tasks: readonly Task[], key: TaskKey): Task | undefined
   return tasks.find((task) => matchesKey(task, key));
 }
 
-/** What a surface calls a child chat: its chat's title; before the directory lists it, the title its delegate call or the host gave it. */
 export function childTitle(chat: Chat | undefined, delegated: string | null = null): string {
   return chat?.title ?? delegated ?? SUBAGENT_TITLE;
 }
 
-/**
- * A background item as a task. A subagent adds what its chat knows; a job reads from the
- * workspace's job list. A held page is not a task.
- */
 export function describeTask(
   item: BackgroundItem,
   chat: Chat | undefined,
@@ -101,9 +91,8 @@ export function describeTask(
 }
 
 /**
- * A child chat as a task. Its background item says how it stands and which call started it, so
- * every row of the parent agrees even while the child's chat lags; the chat adds its title, a
- * retry and work left in its own background, which the item doesn't carry.
+ * How it stands and which call started it come from its background item, not its chat, so every
+ * row of the parent agrees while the child's chat lags.
  */
 export function childTask(
   id: SessionId,
@@ -128,10 +117,6 @@ function childState(state: BackgroundItem["state"], mark: TaskState | undefined)
   return state;
 }
 
-/**
- * The tasks a tray lists: every one still going, and each ended one until the user clears it.
- * Those waiting on the user come first, then those still going, then ended ones, newest first.
- */
 export function trayTasks<T extends Task>(
   tasks: readonly T[],
   cleared: ReadonlySet<string>,

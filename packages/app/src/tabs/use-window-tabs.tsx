@@ -103,10 +103,9 @@ export function useWindowTabsSync(): void {
 }
 
 /**
- * Forgets closed tabs whose chat is known gone: archived, or missing from its own read. A chat the
- * host's lists lack may only be outside its most active, so each closed tab's chat is read on its
- * own. Each read hears the rows with a notice of its own: the rows keep one per listener, so a
- * shared one would stop with the first read that ends.
+ * A chat the host's lists lack may only be outside its most active, so each closed tab's chat is
+ * read on its own. Each read hears the rows with a notice of its own: the rows keep one per
+ * listener, so a shared one would stop with the first read that ends.
  */
 function forgetGoneChats(): () => void {
   const reads = new Map<SessionId, () => void>();

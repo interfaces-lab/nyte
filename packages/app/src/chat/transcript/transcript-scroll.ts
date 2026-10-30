@@ -7,7 +7,7 @@ export const TRANSCRIPT_PADDING_END = 114;
 /** How far from the end the view may sit before it offers a way back. */
 export const NEAR_END = 60;
 
-/** Where the reader is: `away` from the end while reading, and where the marked row sits against the view, null while the transcript opens or without a marked row. */
+/** `marker` is null while the transcript opens or without a marked row. */
 export interface TranscriptPlace {
   readonly away: boolean;
   readonly marker: "above" | "inside" | "below" | null;
@@ -70,7 +70,6 @@ export function navigates(event: KeyboardEvent): boolean {
   );
 }
 
-/** Whether a navigation key moves the view up. */
 export function navigatesUp(event: KeyboardEvent): boolean {
   return /^(ArrowUp|PageUp|Home)$/.test(event.key) || (event.key === " " && event.shiftKey);
 }

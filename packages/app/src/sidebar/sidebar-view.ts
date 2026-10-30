@@ -36,12 +36,10 @@ export const COLLAPSED_SESSION_LIMIT = 5;
 
 const SESSION_PAGE_SIZE = 8;
 
-/** The state a listed chat draws; a chat the directory doesn't have yet is done. */
 export function chatMark(session: SessionInfo, chats: ChatDirectory): TaskState {
   return chats.get(session.id)?.mark ?? "done";
 }
 
-/** A chat's status in the sidebar; `unread` is the window's answer, which leaves out chats the user is looking at. */
 function deriveSessionStatus(
   session: SessionInfo,
   chats: ChatDirectory,
@@ -67,7 +65,6 @@ function deriveSessionStatus(
   }
 }
 
-/** Whether the chat's own run is going, or it or work it started waits on the user. */
 export function sessionIsRunning(session: SessionInfo, chats: ChatDirectory): boolean {
   const mark = chatMark(session, chats);
 
@@ -260,7 +257,7 @@ export function sessionsForView(
   return groupSessions(ordered, settings.grouping, environment, now, chats, unread);
 }
 
-/** A workspace's chats in a grouped view: pinned chats leave it for the Pinned section above. */
+/** Pinned chats leave it for the Pinned section above. */
 export function folderView(
   sessions: readonly SessionInfo[],
   settings: SessionViewSettings,
@@ -286,9 +283,8 @@ export interface SessionPage {
 }
 
 /**
- * Pages a list of `total` rows that shows `base` of them before anything is revealed. `selected`
- * is the open chat's index or -1; an open chat past the fold raises the page to include it. A
- * single leftover row is shown rather than hidden behind "Show 1 More".
+ * `selected` is the open chat's index or -1; an open chat past the fold raises the page to include
+ * it. A single leftover row is shown rather than hidden behind "Show 1 More".
  */
 export function sessionPage(
   total: number,

@@ -11,11 +11,6 @@ import { appSessionActions } from "./session-actions.ts";
 import { childrenWatch, openViews, sessionsWatch, subscribeOpenViews } from "./watches.ts";
 import type { OpenView } from "./watches.ts";
 
-/**
- * Every session row this connection knows, as each surface should show it: the host's lists
- * merged, an open view's heads in place of the listed ones, and pending renames, pins, archives
- * and deletes applied. A row that comes out the same keeps its identity.
- */
 export interface SessionRows {
   readonly rows: ReadonlyMap<SessionId, SessionInfo>;
   /** Each row as the host lists it, before open views and pending actions: what the host still has. */
@@ -24,27 +19,23 @@ export interface SessionRows {
   readonly roots: readonly SessionInfo[] | undefined;
   /** The host's list of every session has arrived, so a row it lacks is read on its own. */
   readonly listed: boolean;
-  /** Asked-for sessions the host says don't exist. */
   readonly missing: ReadonlySet<SessionId>;
 }
 
-/** The current rows. */
 export const sessionRows = (): SessionRows => store.getSnapshot();
 
-/** Hears every change to the rows; the host's lists are watched while anyone listens. */
 export const subscribeSessionRows = (notice: () => void): (() => void) => store.subscribe(notice);
 
-/** One session's row, or undefined while the rows don't hold it. */
 export function findSessionRow(id: SessionId): SessionInfo | undefined {
   return sessionRows().rows.get(id);
 }
 
-/** Hears the rows, and reads `id` on its own while the host's lists don't carry it. */
+/** Also reads `id` on its own while the host's lists don't carry it. */
 export function subscribeSessionRow(id: SessionId, notice: () => void): () => void {
   return ask(asked, id, notice);
 }
 
-/** Hears the rows, with every child of `parent` among them however many sessions the host's lists carry. */
+/** Also hears every child of `parent`, however many sessions the host's lists carry. */
 export function subscribeChildRows(parent: SessionId, notice: () => void): () => void {
   return ask(askedParents, parent, notice);
 }
@@ -66,7 +57,7 @@ function ask(counts: Map<SessionId, number>, id: SessionId, notice: () => void):
   };
 }
 
-/** What `select` makes of one session's row: undefined while it loads, null once it is known missing. Renders only when the selection changes. */
+/** Undefined while the row loads, null once it is known missing. */
 export function useSessionRow<S>(
   id: SessionId | undefined,
   select: (session: SessionInfo) => S,
@@ -85,7 +76,6 @@ export function useSessionRow<S>(
   );
 }
 
-/** The root chats, as `SessionRows.roots`. */
 export function useRootRows(): readonly SessionInfo[] | undefined {
   return useSyncExternalStore(
     subscribeSessionRows,
@@ -97,7 +87,7 @@ export function useRootRows(): readonly SessionInfo[] | undefined {
 export const readSession = async (sessionId: SessionId) =>
   (await connected()).session(sessionId).info();
 
-/** One session's own read, for a session the lists don't carry; a missing one reads as null. */
+/** For a session the lists don't carry; a missing one reads as null. */
 export function sessionQuery(sessionId: SessionId) {
   return {
     queryKey: keys.session(sessionId),
@@ -110,10 +100,8 @@ export function missingAsNull(cause: unknown): null {
   throw cause;
 }
 
-/** How many readers ask for each session by id. */
 const asked = new Map<SessionId, number>();
 
-/** How many readers ask for each session's children. */
 const askedParents = new Map<SessionId, number>();
 
 const askListeners = new Set<() => void>();
@@ -127,7 +115,6 @@ const NOTHING_UNLISTED: Unlisted = { rows: [], missing: new Set() };
 
 let unlistedReads = NOTHING_UNLISTED;
 
-/** Each asked-for session the lists don't carry, read on its own while the rows are heard. */
 const unlisted: StoreSource<Unlisted> = {
   read: () => unlistedReads,
   subscribe(notice) {
@@ -210,7 +197,6 @@ const NO_CHILD_ROWS: readonly SessionInfo[] = [];
 
 let childRows = NO_CHILD_ROWS;
 
-/** The children of each asked-for parent, watched while the rows are heard. */
 const children: StoreSource<readonly SessionInfo[]> = {
   read: () => childRows,
   subscribe(notice) {
@@ -316,17 +302,16 @@ const store = derivedStore(
 );
 
 export interface RowSources {
-  /** The host's lists, most complete first: a session takes its row from the first list that has it. */
+  /** Most complete first: a session takes its row from the first list that has it. */
   readonly lists: readonly (readonly SessionInfo[] | undefined)[];
-  /** The root chats in the order they list. */
   readonly roots: readonly SessionInfo[] | undefined;
-  /** Each session whose view is open; its heads replace the listed ones. */
+  /** Each open view's heads replace the listed ones. */
   readonly views: ReadonlyMap<SessionId, OpenView>;
   /** The session as pending renames, pins, archives and deletes leave it; null once deleted. */
   readonly project: (session: SessionInfo) => SessionInfo | null;
 }
 
-/** The rows `sources` make; a row equal to one in `previous` keeps its identity, and so do the map and the roots when nothing in them changed. */
+/** A row equal to one in `previous` keeps its identity, and so do the map and the roots when nothing in them changed. */
 export function mergeSessionRows(
   sources: RowSources,
   previous: Pick<SessionRows, "rows" | "hosted" | "roots">,

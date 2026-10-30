@@ -22,7 +22,7 @@ export interface Folder {
   readonly name: string;
 }
 
-/** Where a chat runs. Until the folder list loads it is unknown, which is not the same as having no folder. */
+/** Until the folder list loads the location is unknown, which is not the same as having no folder. */
 export type ChatLocation =
   | { readonly kind: "loading" }
   /** The chat's workspace isn't a local folder in the list; the host opens Home for it. */
@@ -30,7 +30,7 @@ export type ChatLocation =
   | (Folder & {
       readonly kind: "folder";
       readonly available: boolean;
-      /** A worktree runs in its own folder; `source` is the folder it was made from, when listed. */
+      /** `source` is the folder the worktree was made from, null when it isn't listed. */
       readonly worktree: { readonly branch: string; readonly source: Folder | null } | null;
     });
 
@@ -39,13 +39,10 @@ export interface Chat {
   readonly parent: SessionId | null;
   readonly title: string;
   readonly location: ChatLocation;
-  /** How the chat's own run stands; work it started in the background never changes it. */
+  /** The chat's own run; work it started in the background never changes it. */
   readonly status: RunStatus;
-  /** The main head's background items that are working, and those waiting on the user. */
   readonly background: BackgroundWork;
-  /** The state every surface draws for the chat, from its own run and its background work. */
   readonly mark: TaskState;
-  /** The main head's tip while it is past the read mark; null once read. */
   readonly unreadTip: UnreadTip | null;
 }
 
@@ -57,8 +54,8 @@ export interface UnreadTip {
 export type ChatDirectory = ReadonlyMap<SessionId, Chat>;
 
 /**
- * One chat per session row, placed in the folder list. A chat that comes out the same as in
- * `previous` keeps its identity, and so does the directory when no chat changed.
+ * A chat that comes out the same as in `previous` keeps its identity, and so does the directory
+ * when no chat changed.
  */
 export function describeChats(
   sessions: Iterable<SessionInfo>,

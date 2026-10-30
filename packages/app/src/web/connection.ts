@@ -24,7 +24,6 @@ export function parseConnection(value: Connection): Connection {
   return checked.connection;
 }
 
-/** The connection as Nyte dials it, or what is wrong with it. */
 function checkConnection(value: Connection): CheckedConnection {
   const token = value.token.trim();
 

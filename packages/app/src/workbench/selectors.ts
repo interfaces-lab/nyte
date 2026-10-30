@@ -80,10 +80,8 @@ export function railModel(input: {
   };
 }
 
-/** How a tab reads in the rail and the tab strip. */
 interface TabPresentation {
   readonly label: string;
-  /** The full path or directory behind the label, when there is one. */
   readonly title: string | undefined;
 }
 

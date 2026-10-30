@@ -1,7 +1,6 @@
 import type { Fragment, Mark, Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { MarkdownLayout } from "./markdown-parse.ts";
 
-/** The parsed document's nodes beside their source, so unchanged parts serialize as written. */
 export interface MarkdownOrigin {
   readonly layout: MarkdownLayout;
   readonly blocks: ReadonlyMap<number, ProseMirrorNode>;
@@ -39,7 +38,7 @@ function index(value: unknown): number | undefined {
   return Number.isInteger(value) ? Number(value) : undefined;
 }
 
-/** Writes the document as markdown; a block or paragraph left as parsed comes back byte for byte. */
+/** A block or paragraph left as parsed comes back byte for byte. */
 export function serializeMarkdown(doc: ProseMirrorNode, origin: MarkdownOrigin): string {
   const layout = origin.layout;
   const empty = doc.childCount === 1 && doc.firstChild?.type.name === "paragraph";
@@ -180,7 +179,6 @@ function serializeList(list: ProseMirrorNode, origin: MarkdownOrigin): string {
   return joinBlocks(list, items);
 }
 
-/** Joins a container's children with the blank lines the source had between them. */
 function joinBlocks(container: ProseMirrorNode, blocks: readonly string[]): string {
   const gaps: unknown = container.attrs["gaps"];
   const spread = container.attrs["spread"] === true;
@@ -250,7 +248,6 @@ function serializeTable(table: ProseMirrorNode, origin: MarkdownOrigin): string 
   return [lines[0] ?? "", rule, ...lines.slice(1)].join("\n");
 }
 
-/** The cells of a table line, outer pipes removed. */
 function tableCells(line: string): string[] {
   return line
     .trim()
@@ -269,7 +266,6 @@ function delimiterCell(align: string | undefined, width: number): string {
   return "-".repeat(width);
 }
 
-/** Pads a cell to its column's source width; a cell edited past that width goes unpadded. */
 function pad(text: string, width: number, align: string | undefined): string {
   const space = Math.max(0, width - text.length);
 
@@ -339,7 +335,6 @@ function serializeInline(node: ProseMirrorNode, context: InlineContext): string 
   return parts.join("");
 }
 
-/** The opening backticks and padding of a code span; the closing is its mirror. */
 function codeFence(mark: Mark, text: string): string {
   const longest = Math.max(0, ...[...text.matchAll(/`+/gu)].map((match) => match[0].length));
   const ticks = Number(mark.attrs["ticks"] ?? 1);
@@ -396,7 +391,6 @@ function serializeLeaf(node: ProseMirrorNode, context: InlineContext, lineStart:
   }
 }
 
-/** Escapes what would otherwise read as markdown syntax in text the user typed. */
 function escapeText(text: string, lineStart: boolean, context: InlineContext): string {
   const paired = context.paired ?? "";
 

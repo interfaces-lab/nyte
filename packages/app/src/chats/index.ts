@@ -35,10 +35,7 @@ export type ChatResult =
   | { readonly kind: "missing" }
   | { readonly kind: "ready"; readonly chat: Chat };
 
-/**
- * One chat as every surface shows it. Re-renders only when that chat changes. Asking for a chat
- * the lists don't carry yet, such as one just started, reads it on its own.
- */
+/** Asking for a chat the lists don't carry yet, such as one just started, reads it on its own. */
 export function useChat(id: SessionId): ChatResult {
   return useSyncExternalStore(
     (notice) => subscribeChat(id, notice),
@@ -47,7 +44,6 @@ export function useChat(id: SessionId): ChatResult {
   );
 }
 
-/** What `select` makes of every chat; a change that selects an equal value doesn't render. */
 export function useChats<S>(
   select: (chats: ChatDirectory) => S,
   isEqual?: (previous: S, next: S) => boolean,
@@ -61,14 +57,12 @@ export function useChats<S>(
   );
 }
 
-/** What a surface calls a chat; one the directory doesn't have yet is still a chat, never blank. */
 export function chatTitle(chat: Chat | undefined): string {
   return chat?.title ?? "Chat";
 }
 
 const NO_ITEMS: readonly BackgroundItem[] = [];
 
-/** The tasks a chat started, as the host lists them in its open view's background. */
 export function useChatTasks(session: SessionId | undefined): readonly Task[] {
   const background =
     useWatchSelect(
@@ -89,7 +83,6 @@ export function useChatTasks(session: SessionId | undefined): readonly Task[] {
   );
 }
 
-/** The one task of a chat's background that `key` picks, or undefined while it lists none. Renders only when that task changes. */
 export function useTask(session: SessionId | undefined, key: TaskKey): Task | undefined {
   const item = useWatchSelect(
     session === undefined ? undefined : sessionWatch(session),
@@ -106,7 +99,6 @@ export function useTask(session: SessionId | undefined, key: TaskKey): Task | un
   return item === undefined ? undefined : describeTask(item, chat, jobs);
 }
 
-/** A chat's children as tasks, from the host's list of its children, for a chat whose view isn't open. */
 export function useChildTasks(parent: SessionId): readonly ChildTask[] {
   return useChildChats(
     parent,
@@ -118,14 +110,13 @@ export function useChildTasks(parent: SessionId): readonly ChildTask[] {
   );
 }
 
-/** Every chat below `session`, at any depth, whose own run waits on the user, with its view: what the approval and question trays ask. */
 export function useWaitingDescendants(session: SessionId): readonly WaitingChat[] {
   const store = waitingBelow(session);
 
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
-/** What `select` makes of every chat, with each child of `parent` among them however many chats the host's lists carry. */
+/** Includes every child of `parent`, however many chats the host's lists carry. */
 function useChildChats<S>(
   parent: SessionId | undefined,
   select: (chats: ChatDirectory) => S,
@@ -176,7 +167,7 @@ function sameTasks(previous: readonly ChildTask[], next: readonly ChildTask[]): 
   );
 }
 
-/** The folder the host opens for a chat: its own, null for Home, undefined until the folder list loads. */
+/** Null for Home, undefined until the folder list loads. */
 export function chatFolderPath(id: SessionId): string | null | undefined {
   const location = chatDirectory().get(id)?.location;
 
@@ -234,8 +225,6 @@ const directory = derivedStore(
   new Map<SessionId, Chat>(),
 );
 
-/** A chat for every session row, described again only when the rows or the folders changed. */
 export const chatDirectory = directory.getSnapshot;
 
-/** Hears every change to the directory's sources; the sources are watched while anyone listens. */
 export const subscribeChats = directory.subscribe;

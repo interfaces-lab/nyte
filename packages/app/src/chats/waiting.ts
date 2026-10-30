@@ -4,7 +4,6 @@ import type { SessionId, SessionView } from "@nyte-ai/sdk";
 import type { DerivedStore } from "../data/derived-store.ts";
 import { sessionWatch } from "../data/watches.ts";
 
-/** A chat below another whose own run waits on the user, with its view, which holds what it asks. */
 export interface WaitingChat {
   readonly id: SessionId;
   readonly title: string;
@@ -21,10 +20,8 @@ const NONE: readonly WaitingChat[] = [];
 const stores = new Map<SessionId, DerivedStore<readonly WaitingChat[]>>();
 
 /**
- * Every chat below `root`, at any depth, whose own run waits on the user's approval or answer.
- * The host marks a child item waiting while it or anything below it waits, so this walks down
- * those items from `root`'s view through each waiting child's own, and holds the views it walks
- * open while anyone listens.
+ * The host marks a child item waiting while it or anything below it waits, so this walks down only
+ * those items, and holds the views it walks open while anyone listens.
  */
 export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat[]> {
   const known = stores.get(root);
@@ -98,7 +95,6 @@ export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat
   return store;
 }
 
-/** The child items below `session` the host marks waiting, depth first, as each one's open view lists them. */
 function waitingChildren(session: SessionId): readonly WaitingChild[] {
   return (sessionWatch(session).value?.background ?? []).flatMap((item) => {
     if (item.kind !== "child" || item.state !== "waiting") return [];

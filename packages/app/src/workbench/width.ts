@@ -26,7 +26,6 @@ export function shareWidth(share: number): ShareWidth {
     : DEFAULT_WIDTH;
 }
 
-/** The panel's width in pixels on a stage `stageWidth` wide, kept inside the stage's bounds. */
 export function workbenchPanelWidth(width: WorkbenchWidth, stageWidth: number): number {
   return clampWorkbenchWidthToBounds(
     width.kind === "share" ? width.share * stageWidth : width.pixels,

@@ -385,7 +385,6 @@ export function NeighbourWarm({
   return null;
 }
 
-/** The second line a row adds when the chat needs the user: an approval, a question below it, or its own failure. */
 function askLine(chat: Chat, mark: TaskState): string | undefined {
   if (chat.status.kind === "waiting-for-approval") return taskLabel(mark);
 

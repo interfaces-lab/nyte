@@ -21,7 +21,6 @@ export type Place = PaneSelection | Page;
 
 type SinglePane = Extract<PaneLayout, { readonly kind: "single" }>;
 
-/** A preview shows one chat until the user keeps it; the next preview takes its place. */
 export type View =
   | { readonly kind: "page"; readonly page: Page }
   | { readonly kind: "panes"; readonly layout: PaneLayout }
@@ -33,7 +32,6 @@ export interface Tab {
   readonly view: View;
 }
 
-/** What a window keeps once a tab closes or the app quits: never a preview. */
 export interface LastingTab extends Tab {
   readonly view: Exclude<View, { readonly kind: "preview" }>;
 }
@@ -80,7 +78,7 @@ export type WindowAction =
   | { readonly kind: "activate-tab"; readonly tabId: string }
   | { readonly kind: "activate-index"; readonly index: number }
   | { readonly kind: "cycle-tab"; readonly step: 1 | -1 }
-  /** The user dragged `tabId`; moving a preview keeps it. */
+  /** Moving a preview keeps it. */
   | { readonly kind: "reorder"; readonly tabIds: readonly string[]; readonly tabId: string }
   /** Closed tabs showing a chat in `gone`, known deleted or archived, don't reopen. */
   | { readonly kind: "forget-closed"; readonly gone: ReadonlySet<SessionId> };
@@ -147,7 +145,6 @@ export function initialWindow(id: string): WindowState {
   };
 }
 
-/** A kept tab stays until it's closed; keeping a preview changes nothing else about it. */
 function keep(tab: Tab): LastingTab {
   const view = tab.view;
 
@@ -306,10 +303,6 @@ function openTab(
   return shown ? activate(opened, tab.id) : opened;
 }
 
-/**
- * The preview takes a waiting new chat, else the preview's tab, else a new tab after the active one.
- * A child opened from its parent always goes after the parent, and the old preview closes.
- */
 function openPreview(
   state: WindowState,
   place: PaneSelection,
@@ -360,7 +353,6 @@ export function withoutPreviews(state: WindowState, createId: () => string): Win
   return removeTabs(state, new Set(previews), state.closed, createId);
 }
 
-/** Removes tabs; if the active one leaves, the tab used before it takes over, then right, then left. */
 function removeTabs(
   state: WindowState,
   tabIds: ReadonlySet<string>,

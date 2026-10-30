@@ -13,7 +13,6 @@ export interface ApprovalRequest {
   readonly origin: string | undefined;
 }
 
-/** The approval the chat's composer answers: its own first, else the first a chat below it at any depth waits on. */
 export function useApprovalRequest(sessionId: SessionId): ApprovalRequest | undefined {
   const parts = useWatchSelect(sessionWatch(sessionId), (state) => state.value?.parts);
   const waiting = useWaitingDescendants(sessionId);

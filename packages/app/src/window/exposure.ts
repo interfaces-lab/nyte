@@ -5,10 +5,8 @@ import { activeTab } from "../tabs/model.ts";
 import type { WindowState } from "../tabs/model.ts";
 import type { TrayView } from "./tray.ts";
 
-/** What the window puts in front of the user, as state rather than as what happens to be mounted. */
 export interface WindowView {
   readonly tabs: WindowState;
-  /** Each chat's open tray, by parent. */
   readonly trays: ReadonlyMap<SessionId, TrayView>;
   /** Settings has the stage, so no chat is on screen. */
   readonly settings: boolean;
@@ -37,7 +35,7 @@ export function expose(view: WindowView): Exposure {
   return { ...placed, unread };
 }
 
-/** Chats whose completed run left a reply past the host's read mark, whoever is looking at them; until a visit moves the mark, this still holds the chat just opened. */
+/** Includes chats the user is looking at: until a visit moves the mark, this still holds the chat just opened. */
 export function unreadOnHost(chats: ChatDirectory): ReadonlySet<SessionId> {
   return new Set(
     [...chats.values()].flatMap((chat) =>

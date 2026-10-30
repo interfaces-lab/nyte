@@ -145,7 +145,6 @@ const TranscriptRowView = memo(function TranscriptRowView({
   }
 });
 
-/** A chat's transcript. Its unread visit lasts while the window shows the chat: none opens off screen, and leaving ends it. */
 export function Timeline({
   sessionId,
   store,

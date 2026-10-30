@@ -107,7 +107,6 @@ const COLD = asId<"session">("cold-open");
 
 let coldSeen = false;
 
-/** The cold chat's main head: its tip is the last reply, unread until the chat is seen. */
 function coldHead(): HeadInfo {
   return {
     name: asId<"head">("main"),
@@ -119,7 +118,6 @@ function coldHead(): HeadInfo {
   };
 }
 
-/** The cold chat as the host folds it: once seen, its read mark is past every reply. */
 function coldView(): SessionView {
   return {
     ...view(TURNS),

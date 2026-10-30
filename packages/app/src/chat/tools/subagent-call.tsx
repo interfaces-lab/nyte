@@ -107,7 +107,6 @@ const lineStyles = create({
   },
 });
 
-/** Opens a child chat from a link in its parent: a preview tab right after the parent's with a tab strip, else the chat in its pane. */
 function openChild(child: SessionId): void {
   windowTabs.openChat(child, "next-to-parent");
 }
@@ -151,7 +150,6 @@ function SubagentStatusLine({
   );
 }
 
-/** A child's row: its task once the host lists it, else what its call says, starting up while it runs. */
 function SubagentRow({
   title,
   task,
@@ -397,7 +395,6 @@ export function SubagentLineView({
   );
 }
 
-/** The words a job's report starts with: its first line. */
 function reportTitle(content: UserContent): string {
   const words =
     typeof content === "string"
@@ -407,10 +404,6 @@ function reportTitle(content: UserContent): string {
   return words.split("\n")[0] ?? "";
 }
 
-/**
- * The line a child's or a job's report shows: how it ended and what it is, opening the child's
- * chat or the job's output. A job the host no longer keeps says its output is gone.
- */
 export function SubagentReportLine({
   source,
   content,

@@ -48,7 +48,6 @@ export type WorkbenchViewAction =
       readonly tab: KindTab<"file">;
       readonly replace: WorkbenchTabId | undefined;
     }
-  /** Shows Changes at `scope`, revealing `path`, in the open Changes tab or a new one with `id`. */
   | {
       readonly kind: "open-changes";
       readonly id: WorkbenchTabId;

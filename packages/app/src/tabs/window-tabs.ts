@@ -168,9 +168,8 @@ class WindowTabs {
   }
 
   /**
-   * Opens a chat by intent: the intent decides its tab, and a window without a strip shows it in
-   * its one chat tab. A pane's own opens (`openSessionInPane`, a drop on a pane edge) still place
-   * chats through the pane controller instead.
+   * A pane's own opens (`openSessionInPane`, a drop on a pane edge) place chats through the pane
+   * controller instead.
    */
   openChat(sessionId: SessionId, intent: OpenIntent): void {
     this.dispatch({ kind: "open", place: { kind: "session", sessionId }, target: intent });

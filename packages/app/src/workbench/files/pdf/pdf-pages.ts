@@ -43,11 +43,8 @@ interface Anchor {
 type Attach = (element: HTMLElement | null) => (() => void) | undefined;
 
 /**
- * Returns the ref callback of a document's scroll container, whose first child is the page column
- * and its children the pages in order. Pages are drawn into canvases as they come near the view,
- * one at a time on the worker, and give their canvases up as they leave; a page is drawn again
- * when its width no longer matches its canvas. A change to the column's size (zoom, resize) keeps
- * the view on its place. `onPage` hears the current page, from 1, after each scroll.
+ * The scroll container's first child must be the page column, its children the pages in order.
+ * `onPage` hears the current page, from 1, after each scroll.
  */
 export function createPdfPages(document: PDFDocumentProxy, onPage: (page: number) => void): Attach {
   const byElement = new Map<Element, PageState>();
@@ -186,7 +183,6 @@ export function createPdfPages(document: PDFDocumentProxy, onPage: (page: number
   };
 }
 
-/** The index of the last page whose top is at or above `y`, in the scroll container's coordinates. */
 function pageAt(pages: readonly { readonly element: HTMLElement }[], y: number): number {
   let low = 0;
   let high = pages.length - 1;
@@ -201,7 +197,6 @@ function pageAt(pages: readonly { readonly element: HTMLElement }[], y: number):
   return low;
 }
 
-/** The index of the page that fills most of the view: the first at the top, the last at the bottom. */
 function currentPage(
   pages: readonly { readonly element: HTMLElement }[],
   scroller: HTMLElement,
@@ -256,7 +251,7 @@ function restore(
   scroller.scrollLeft = anchor.left * scroller.scrollWidth;
 }
 
-/** Device pixels per PDF unit for a page shown `width` CSS pixels wide: sharp at the screen's density, within the canvas limits and a budget of viewports. */
+/** Device pixels per PDF unit. */
 function rasterScale(size: PageViewport, width: number, viewport: HTMLElement): number {
   const density = window.devicePixelRatio;
 

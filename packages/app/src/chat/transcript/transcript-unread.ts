@@ -2,22 +2,17 @@ import type { MessageId } from "@nyte-ai/sdk";
 import { NOWHERE } from "./transcript-scroll.ts";
 import type { TranscriptPlace } from "./transcript-scroll.ts";
 
-/** Pill labels stop counting here. */
 const PILL_LIMIT = 30;
 
-/** An assistant message with text, in the row that shows it: what the divider marks unread and the down pill counts. */
 export interface Reply {
   readonly id: MessageId;
   readonly at: number;
   readonly row: string;
 }
 
-/**
- * The reader's visit to one chat. None of it is stored: leaving the chat ends the visit, and the
- * next one starts again from the read mark the host keeps.
- */
+/** Never stored: the next visit starts again from the read mark the host keeps. */
 export interface UnreadVisit {
-  /** Replies that started after this time are unread, and the divider sits before the first of them; null while it follows the latest reply, so replies the reader watches arrive get none. */
+  /** Replies that started after this time are unread. Null while it follows the latest reply, so replies the reader watches arrive get no divider. */
   readonly boundary: number | null;
   /** The divider whose up pill is done: clicked, seen, or overtaken by new arrivals. */
   readonly acknowledged: MessageId | null;
@@ -26,10 +21,6 @@ export interface UnreadVisit {
   readonly place: TranscriptPlace;
 }
 
-/**
- * `observed`: the replies or the window's attention changed. `placed`: the reader moved.
- * `revealed`: the reader jumped to the divider. `dismissed`: the reader closed a pill.
- */
 export type UnreadEvent =
   | { readonly kind: "observed"; readonly active: boolean }
   | { readonly kind: "placed"; readonly place: TranscriptPlace }
@@ -47,7 +38,7 @@ export interface Unread {
   readonly pill: NewMessagesPill | null;
 }
 
-/** Starts a visit at the read mark as the host kept it, before this visit advances it. Without one there is no divider. */
+/** Takes the read mark as the host kept it, before this visit advances it. */
 export function openVisit(seenThrough: number | null): UnreadVisit {
   return { boundary: seenThrough, acknowledged: null, since: null, place: NOWHERE };
 }

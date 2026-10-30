@@ -624,7 +624,6 @@ const breadcrumbStyles = create({
   tree: { display: "block", height: "min(320px, var(--available-height))", width: "100%" },
 });
 
-/** The active file's path, each folder a menu of its files; a file outside the workspace reads as plain text. */
 function FileBreadcrumbs({
   path,
   external,

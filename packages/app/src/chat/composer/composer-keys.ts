@@ -43,7 +43,6 @@ export function recallDirection(
   return event.key === "ArrowDown" ? "newer" : undefined;
 }
 
-/** What the composer is for right now; it decides what Enter does and how the composer says so. */
 export type ComposerSituation =
   | { readonly kind: "idle" }
   | { readonly kind: "running"; readonly preference: RunningMessagePreference }
@@ -52,11 +51,10 @@ export type ComposerSituation =
   | { readonly kind: "editing-message" };
 
 interface EnterBehavior {
-  /** How Enter delivers; the alternate chord delivers the other way. */
+  /** The alternate chord delivers the other way. */
   readonly delivery: Delivery;
   readonly label: string;
   readonly title: string;
-  /** Replaces the surface's own placeholder while it applies. */
   readonly placeholder?: string;
 }
 

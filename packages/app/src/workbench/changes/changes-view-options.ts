@@ -37,7 +37,6 @@ const stored = persisted(
   EMPTY_CHANGES_VIEW_OPTIONS,
 );
 
-/** Keeps the scopes changed most recently, so the record stays small. */
 function evictOldest(
   scopes: Readonly<Record<string, Static<typeof scopedOptionsSchema>>>,
 ): Readonly<Record<string, Static<typeof scopedOptionsSchema>>> {
@@ -93,7 +92,6 @@ export type CommitAction = (typeof COMMIT_ACTIONS)[number];
 
 export const DEFAULT_COMMIT_ACTION: CommitAction = "commit-push";
 
-/** The commit bar's last chosen action. */
 export const storedCommitAction = persisted(
   "nyte.desktop.changes-commit-action.v2",
   Type.Enum(COMMIT_ACTIONS),

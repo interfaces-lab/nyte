@@ -22,13 +22,9 @@ import { Tray, TrayIconAction, trayParts, useTrayRoot } from "./tray.tsx";
 
 export type TerminalsTrayView = Extract<TrayView, { readonly kind: "closed" | "terminals" }>;
 
-/** A job the chat runs in the background, which the host still keeps. */
 export type TerminalTask = JobTask & { readonly job: JobView };
 
-/**
- * The terminals a chat's tray lists, by the one tray rule: its jobs in the background the host
- * still keeps. A job its call still holds shows in that call's row instead.
- */
+/** A job its call still holds shows in that call's row instead. */
 export function listTerminals(
   tasks: readonly Task[],
   cleared: ReadonlySet<string>,
@@ -47,17 +43,12 @@ const styles = create({
 
 interface BackgroundWorkProps {
   readonly sessionId: SessionId;
-  /** The terminals the tray lists. */
   readonly terminals: readonly TerminalTask[];
   readonly open: boolean;
   readonly onViewChange: (view: TerminalsTrayView) => void;
   readonly viewport: HTMLElement | null;
 }
 
-/**
- * The chat's background jobs over its composer: a pill and the list. Every job still running is
- * listed, and each ended one until the user clears it; any of them opens its output.
- */
 export function BackgroundWork({
   sessionId,
   terminals,

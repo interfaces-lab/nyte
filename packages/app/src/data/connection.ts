@@ -53,7 +53,7 @@ export function connection(): Connection {
   return installed;
 }
 
-/** Every watch family, cleared when another connection replaces this one. */
+/** Cleared when another connection replaces this one. */
 export const registries = new Set<{ clear(): void }>();
 
 export function hostChanged(cause: unknown): boolean {

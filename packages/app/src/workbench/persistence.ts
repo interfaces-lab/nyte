@@ -148,7 +148,7 @@ function restoreWidth(stored: Static<typeof persistedWorkbenchView>): WorkbenchW
     : { kind: "pixels", pixels: stored.width };
 }
 
-/** Restores each stored view; a file tab goes to the view whose workspace holds it. */
+/** A file tab goes to the view whose workspace holds it. */
 export function restoreSnapshot(
   persisted: PersistedWorkbenchSnapshot | undefined,
   capabilities: () => ClientCapabilities,

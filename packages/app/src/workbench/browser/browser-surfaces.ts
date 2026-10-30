@@ -140,7 +140,6 @@ export function claimBrowserSurface(surface: string): void {
   if (!views.has(surface)) set(surface, EMPTY);
 }
 
-/** Shows an agent's page in its workspace's Browser tab for that page, quietly adding one if none is open. */
 export function applyBrowserAgentOpened(
   store: Pick<WorkbenchStore, "dispatch">,
   event: Extract<HostEvent, { kind: "browser_agent_opened" }>,

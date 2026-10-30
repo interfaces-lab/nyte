@@ -281,7 +281,6 @@ export function branchReadout(snapshot: GitStatus | undefined): BranchReadout | 
   };
 }
 
-/** What the working tree holds, for the rail's Changes row. */
 export function changesSummary(repository: Extract<GitStatus, { readonly kind: "repository" }>) {
   const files = worktreeFiles(repository).length;
   const changes = [...repository.staged, ...repository.unstaged];

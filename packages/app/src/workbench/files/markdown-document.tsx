@@ -41,7 +41,7 @@ import {
 import { markdownOrigin, serializeMarkdown } from "./markdown-serialize.ts";
 import { markdownStyles } from "./markdown.stylex.ts";
 
-/** The file buffer the document reads and writes; the source editor edits the same one. */
+/** The source editor edits the same buffer. */
 interface MarkdownBuffer {
   readonly getSnapshot: () => { readonly contents: string };
   readonly subscribe: (listener: () => void) => () => void;
@@ -105,7 +105,6 @@ const styles = create({
   imageLabel: { color: role.contentSecondary, fontFamily: type.fontSans },
 });
 
-/** A markdown file as a styled document, edited in place and written back through the buffer. */
 export function MarkdownDocument(input: MarkdownDocumentProps): ReactElement {
   const [session] = useState(() => createMarkdownSession(input));
 
@@ -137,7 +136,6 @@ export function MarkdownDocument(input: MarkdownDocumentProps): ReactElement {
   );
 }
 
-/** The editor over the buffer. A link opens on click when read-only, and on Cmd- or Ctrl-click while editing. */
 function createMarkdownSession(input: MarkdownDocumentProps) {
   const parsed = parseMarkdown(input.buffer.getSnapshot().contents);
   let written = input.buffer.getSnapshot().contents;
@@ -211,7 +209,6 @@ function createMarkdownSession(input: MarkdownDocumentProps) {
   };
 }
 
-/** The workspace file a relative link or image source names, resolved against the document. */
 function workspaceFile(href: string, base: string) {
   const url = href.startsWith("#") ? null : URL.parse(href, base);
 
@@ -331,7 +328,6 @@ function WorkspaceImage(input: { readonly path: string; readonly alt: string }):
 
 const highlightKey = new PluginKey<DecorationSet>("markdownHighlight");
 
-/** Colours code blocks with the chat's highlighter, which loads on demand. */
 function codeHighlighting(): Plugin<DecorationSet> {
   const cache = new Map<string, HighlightLines | null>();
   let view: EditorView | undefined;

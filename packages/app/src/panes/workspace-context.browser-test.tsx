@@ -267,7 +267,6 @@ const files: FilesApi = {
   upload: refuse,
 };
 
-/** What the Commits menu lists while it is open. */
 function History(): ReactElement {
   const history = useVcsLog({ limit: 50 }, true);
 
@@ -276,7 +275,6 @@ function History(): ReactElement {
   );
 }
 
-/** What a mounted file list, the explorer's or the composer's, holds. */
 function FileList(): ReactElement {
   const listed = useMentionFiles(true);
 

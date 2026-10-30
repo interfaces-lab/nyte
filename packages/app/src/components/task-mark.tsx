@@ -65,11 +65,7 @@ function statusMarkStyle(state: TaskState) {
   }
 }
 
-/**
- * The one mark for where a task stands, in every list, tab, tray and transcript row: a chat, a
- * subagent or a job. A done task draws nothing unless its reply is unread; screen readers hear
- * the task's word. A job is a process, not AI work, so it runs with a `Loader`, not a `Spinner`.
- */
+/** A job is a process, not AI work, so it runs with a `Loader`, not a `Spinner`. */
 export function TaskMark({
   state,
   unread = false,

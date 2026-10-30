@@ -30,7 +30,6 @@ function selectAllThenEnter(): void {
   markdown.editor.destroy();
 }
 
-/** Copying writes the schema's HTML, and pasting parses it back. */
 function cutAndPasteTasks(): void {
   const markdown = markdownEditor("Before.\n\n- [ ] one\n- [x] two\n\nAfter.\n");
   const editor = markdown.editor;

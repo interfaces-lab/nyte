@@ -12,13 +12,12 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
 
-/** The source a document was parsed from, so unchanged parts serialize back byte for byte. */
+/** Kept so unchanged parts serialize back byte for byte. */
 export interface MarkdownLayout {
   /** Frontmatter and blank lines before the first block. */
   readonly prefix: string;
   /** Each top-level block's source and the text up to the next block. */
   readonly blocks: readonly { readonly source: string; readonly gap: string }[];
-  /** The text after the last block. */
   readonly trailing: string;
   /** The source of each textblock's inline content, container prefixes removed. */
   readonly inlines: readonly string[];
@@ -94,7 +93,6 @@ export function parseMarkdown(text: string): ParsedMarkdown {
   };
 }
 
-/** The frontmatter's top-level properties, or undefined when the file has none. */
 export function readFrontmatter(text: string): [key: string, value: string][] | undefined {
   const frontmatter = FRONTMATTER.exec(text)?.[0];
 
@@ -122,7 +120,6 @@ function slice(node: Nodes, context: Context): string {
   return context.source.slice(start(node), end(node));
 }
 
-/** The node's source with the containers' prefixes removed from every line after the first. */
 function rawLines(text: string, context: Context): string {
   return text
     .split("\n")
@@ -240,7 +237,6 @@ function nonEmpty(content: JSONContent[]): JSONContent[] {
   return content.length === 0 ? [{ type: "paragraph" }] : content;
 }
 
-/** Whether a blank line separates each pair of siblings. */
 function gaps(nodes: readonly Nodes[], context: Context): boolean[] {
   return nodes
     .slice(1)
@@ -304,7 +300,6 @@ function convertTable(table: Table, context: Context): JSONContent {
   };
 }
 
-/** Registers the source of a textblock's inline content and returns its index. */
 function inlineSource(children: readonly PhrasingContent[], context: Context): number {
   const first = children[0];
   const last = children.at(-1);
@@ -444,7 +439,7 @@ function rawInline(node: Nodes, context: Context, marks: readonly Mark[]): JSONC
   };
 }
 
-/** Top-level `key: value` pairs; a nested value reads as one line. */
+/** A nested value reads as one line. */
 function frontmatterEntries(frontmatter: string): [string, string][] {
   const lines = frontmatter.split("\n");
 

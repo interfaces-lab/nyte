@@ -75,7 +75,6 @@ export function useWorkbenchSnapshot(): WorkbenchSnapshot {
   return useSyncExternalStore(workbench.subscribe, workbench.getSnapshot, workbench.getSnapshot);
 }
 
-/** One workspace's workbench: its view, and the scope its tabs are available in. */
 export function useWorkbenchView(workspacePath: string | undefined) {
   const key = workbenchViewKey(workspacePath);
   const read = (): WorkbenchViewState => workbench.getView(key);

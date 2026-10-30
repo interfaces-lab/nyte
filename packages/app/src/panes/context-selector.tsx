@@ -18,7 +18,6 @@ import { nyte } from "../contract/nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { contextStyles } from "./context-selector.stylex.ts";
 
-/** `md` in the new-chat row; `xs`, a quiet segment, in the footer under a chat's composer. */
 export type ContextSize = "xs" | "md";
 
 const CHEVRON_SIZES = { xs: "2xs", md: "xs" } as const satisfies Record<ContextSize, GlyphSize>;
@@ -45,7 +44,6 @@ export function ContextHint({
   );
 }
 
-/** A context control's face: an optional icon, the value, and a chevron when it opens a menu. */
 export function ContextTrigger({
   size,
   icon,

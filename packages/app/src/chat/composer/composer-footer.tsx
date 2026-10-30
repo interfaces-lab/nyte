@@ -36,7 +36,6 @@ const styles = create({
   },
 });
 
-/** Under a chat's composer: where the chat runs on the left, how full its context is on the right. */
 export function ComposerFooter({
   sessionId,
   active,

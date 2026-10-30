@@ -29,7 +29,6 @@ export interface WindowTabItem {
   readonly tooltip: string;
   /** The chats in the tab's panes, the focused pane's first. */
   readonly sessions: readonly SessionId[];
-  /** The chat that started the focused pane's chat; absent for a root chat or a page. */
   readonly parent?: SessionId;
   readonly glyph: ReactNode;
   readonly unread: boolean;
@@ -225,7 +224,7 @@ function TabItem({
   );
 }
 
-/** Mounted again for each selected tab: brings it into view, since the strip scrolls rather than shrinking its tabs. */
+/** Mounted again for each selected tab, since the strip scrolls rather than shrinking its tabs. */
 function RevealSelected({ list }: { readonly list: RefObject<HTMLDivElement | null> }): null {
   useMountEffect(() => {
     list.current

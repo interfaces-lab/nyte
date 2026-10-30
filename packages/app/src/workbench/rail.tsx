@@ -264,7 +264,6 @@ function DoubleChevron({ back = false }: { readonly back?: boolean }): ReactElem
   );
 }
 
-/** The collapsed workbench: the chat's and branch's status, the open tabs, and what else opens. */
 export function Rail({
   viewKey,
   view,
@@ -364,7 +363,6 @@ export function Rail({
   );
 }
 
-/** The workbench folded to icons: one per kind a launcher opens. */
 export function CompactRail({
   viewKey,
   scope,

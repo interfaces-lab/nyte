@@ -94,7 +94,6 @@ const rows = transcriptRows({
   retrying: undefined,
 }).filter((row) => row.kind === "response");
 
-/** The one reply of a turn, while it streams or once the turn has ended. */
 function streamedReply(ended: boolean): TurnItemRow | undefined {
   return transcriptRows({
     loading: false,

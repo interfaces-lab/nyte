@@ -39,9 +39,8 @@ function flushQueued(): void {
 }
 
 /**
- * Queues a store's React notice for one flush on the next frame, so React renders once per frame
- * however many deltas arrive. A timer flushes while a hidden window pauses frames; without frames
- * (Node) it notifies at once.
+ * One flush per frame, so React renders once however many deltas arrive. A timer flushes while a
+ * hidden window pauses frames; without frames (Node) it notifies at once.
  */
 function notifyByFrame(notice: () => void): void {
   if (typeof requestAnimationFrame !== "function") {
@@ -111,7 +110,6 @@ export class WatchStore<T> {
     if (this.active) this.stop = this.start();
   };
 
-  /** Starts over on the current connection, keeping its listeners: drops the value and reopens while anyone listens. */
   reset(): void {
     this.stop?.();
     this.stop = undefined;
@@ -121,10 +119,8 @@ export class WatchStore<T> {
     if (this.active) this.stop = this.start();
   }
 
-  /** Hears every value as it arrives. */
   subscribe = (listener: () => void): (() => void) => this.listen(this.listeners, listener);
 
-  /** Like `subscribe`, but hears streamed values at most once a frame, for React to render. */
   subscribeByFrame = (listener: () => void): (() => void) => this.listen(this.renders, listener);
 
   getState = (): WatchState<T> => this.state;
@@ -307,8 +303,8 @@ export function useWatch<T>(
 export type WatchSource<T> = Pick<WatchStore<T>, "subscribeByFrame" | "getState">;
 
 /**
- * Reads one selection of a watch and re-renders only when it changes. Without `isEqual` a
- * change is a new reference, so a selection derived into a fresh object needs `isEqual`.
+ * Without `isEqual` a change is a new reference, so a selection derived into a fresh object needs
+ * `isEqual`.
  */
 export function useWatchSelect<T, S>(
   store: WatchSource<T> | undefined,

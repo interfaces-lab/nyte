@@ -113,7 +113,7 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
   return { verb: LEAD_VERBS[lead].past, detail: workDetail(work, lead) };
 }
 
-/** The work a group's verb names: any edit outranks exploring, which outranks running, so the verb only climbs as calls arrive. */
+/** Edits outrank exploring, which outranks running, so the verb only climbs as calls arrive. */
 function leadingWork(calls: readonly ToolMessage[]): Lead {
   const kinds = new Set(calls.map((call) => call.state.class.kind));
 
@@ -122,7 +122,6 @@ function leadingWork(calls: readonly ToolMessage[]): Lead {
   return kinds.has("read") || kinds.has("list") ? "explore" : "run";
 }
 
-/** Counts unique paths, not calls: two reads of one file read one file. */
 function tallyWork(calls: readonly ToolMessage[]): Work {
   const paths = (kind: "edit" | "read" | "list") =>
     new Set(

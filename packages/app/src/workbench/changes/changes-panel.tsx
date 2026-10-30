@@ -122,7 +122,7 @@ function usePatchLoader(
   return patches;
 }
 
-/** The rows, kept while their inputs hold: a recorded scope's patch key follows the list's identity. */
+/** Kept while their inputs hold: a recorded scope's patch key follows the list's identity. */
 function useChangeRows(
   source: ChangeRow["source"],
   working: readonly VcsChangeRow[],
