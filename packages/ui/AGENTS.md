@@ -1,5 +1,8 @@
 Load the nyte-styles skill before writing StyleX, tokens, or the base stylesheet.
 
+Font roles and faces, and which loading indicator to show (`Spinner` or `Loader`), follow the Fonts
+and Loading indicators sections of `packages/app/AGENTS.md`.
+
 # Typography
 
 Use the shared typography metrics instead of copying solid line heights from design exports: the `text` presets (`@nyte-ai/ui/styles/text.stylex`), or the `type.leading*` handles. At the default 13px UI size --nyte-line-height-xs is 14px, --nyte-line-height-sm (compact) is 16px, --nyte-line-height-base is 18px, and --nyte-line-height-lg is 24px.
