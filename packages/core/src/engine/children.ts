@@ -83,6 +83,22 @@ export function createChildTable(
       child.own = own;
       refresh(record.id, child);
     },
+    forget(session) {
+      const child = children.get(session);
+
+      if (child === undefined) return;
+      children.delete(session);
+
+      if (child.item === null) return;
+      kernel.bus.publish(child.parent, {
+        seq: asSeq(0),
+        at: Date.now(),
+        head: child.head,
+        kind: "background",
+        change: "removed",
+        item: child.item,
+      });
+    },
     background: (session) =>
       [...children.values()].flatMap((child) =>
         child.parent === session && child.item !== null

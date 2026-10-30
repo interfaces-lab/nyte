@@ -41,4 +41,18 @@ describe("child background items", () => {
 
     expect(await childState(parent, child.id, "done")).toBe("done");
   });
+
+  it("drops a deleted child from its parent's open view and stops following it", async () => {
+    const { kernel, host, script: turns } = await setup();
+    const { session: parent } = await host.sessions.start({ content: "Delegate." });
+    const { session: child } = await host.sessions.start({ parent: parent.id, content: "Go." });
+    const step = host.execution.advance({ session: child.id, head: main });
+    (await turns.started(1)).finish();
+    await step;
+
+    expect(await childState(parent, child.id, "done")).toBe("done");
+    expect(await child.remove()).toEqual({ kind: "removed" });
+    expect((await parent.view()).background).toEqual([]);
+    expect(kernel.children.background(parent.id)).toEqual([]);
+  });
 });

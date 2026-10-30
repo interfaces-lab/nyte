@@ -522,7 +522,10 @@ export const events = {
       changes: { added: 1, removed: 0, paths: ["a.ts"] },
     },
   ],
-  background: [{ seq: asSeq(25), at: 1, head, kind: "background", item: background }],
+  background: [
+    { seq: asSeq(25), at: 1, head, kind: "background", item: background },
+    { seq: asSeq(25), at: 1, head, kind: "background", change: "removed", item: background },
+  ],
   configured: [
     { seq: asSeq(26), at: 1, head, kind: "configured", selected: configuration, effective: null },
   ],
