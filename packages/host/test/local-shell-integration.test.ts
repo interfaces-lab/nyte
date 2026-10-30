@@ -1,9 +1,18 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Job } from "@nyte-ai/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { localExec } from "../src/index.ts";
 
 const folders: string[] = [];
@@ -13,6 +22,9 @@ afterEach(async () => {
 });
 
 const PROMPT = "<ready> ";
+
+/** The temporary folder before a test points TMPDIR elsewhere. */
+const TEMP = tmpdir();
 
 const WAIT_MS = 10_000;
 
@@ -50,7 +62,7 @@ async function openTerminal(
   files: Readonly<Record<string, string>>,
   env?: Readonly<Record<string, string>>,
 ): Promise<Terminal> {
-  const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-terminal-home-")));
+  const home = await realpath(await mkdtemp(join(TEMP, "nyte-terminal-home-")));
   folders.push(home);
 
   for (const [name, text] of Object.entries(files)) {
@@ -262,6 +274,26 @@ for (const shell of shells)
       );
 
       it(
+        "falls back to the process table once `exec` replaces the shell",
+        async () => {
+          const terminal = await openTerminal(path, { ...prompt, ".bashrc": `PS1='${PROMPT}'\n` });
+
+          try {
+            await terminal.submit(`exec ${path}`);
+            await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
+
+            await terminal.type("echo busy-$((40+2)); sleep 30");
+            await terminal.shows("busy-42");
+
+            expect(await terminal.job.idle()).toBe(false);
+          } finally {
+            await terminal.close();
+          }
+        },
+        TEST_MS,
+      );
+
+      it(
         "ignores markers a command prints and keeps every OSC 633 out of the output",
         async () => {
           const terminal = await openTerminal(path, { ...prompt, fake: fakeMarkers });
@@ -275,6 +307,65 @@ for (const shell of shells)
             expect(terminal.text()).not.toContain("633;");
             await interrupt(terminal);
             await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
+          } finally {
+            await terminal.close();
+          }
+        },
+        TEST_MS,
+      );
+
+      it(
+        "starts without integration, leaving no startup folder, when its temporary folder or files cannot be written",
+        async () => {
+          const temp = await mkdtemp(join(TEMP, "nyte-temp-"));
+          folders.push(temp);
+          vi.stubEnv("TMPDIR", temp);
+
+          try {
+            const mask = process.umask(0o222);
+
+            const job = await localExec(temp, { shell: () => path })([], {
+              pty: { columns: 80, rows: 24 },
+              env: { HOME: temp, ZDOTDIR: temp, NYTE_SHELL_INTEGRATION: "1" },
+            }).finally(() => process.umask(mask));
+
+            await job.stop();
+            expect((await readdir(temp)).filter((name) => name.startsWith("nyte-shell-"))).toEqual(
+              [],
+            );
+
+            await chmod(temp, 0o500);
+            const terminal = await openTerminal(path, prompt);
+
+            try {
+              await terminal.submit("echo started-${__nyte_dir-without}.");
+              await terminal.shows("started-without.");
+            } finally {
+              await terminal.close();
+            }
+          } finally {
+            vi.unstubAllEnvs();
+            await chmod(temp, 0o700);
+          }
+        },
+        TEST_MS,
+      );
+
+      it(
+        "keeps the nonce out of `set`, `typeset`, `declare -p`, `declare -f` and the shell's initial environment",
+        async () => {
+          const terminal = await openTerminal(path, prompt);
+
+          try {
+            await terminal.submit("cp $__nyte_dir/nonce $HOME/nonce");
+            await terminal.submit(
+              "set; typeset; declare -p; declare -f; ps eww -p $$; echo dumped-$((40+2))",
+            );
+            await terminal.shows("dumped-42");
+            const secret = (await readFile(join(terminal.home, "nonce"), "utf8")).trim();
+
+            expect(secret).toMatch(/^[0-9a-f]{64}$/);
+            expect(terminal.text()).not.toContain(secret.slice(32));
           } finally {
             await terminal.close();
           }
@@ -303,7 +394,7 @@ for (const shell of shells)
           const runtime = await openTerminal(path, prompt);
 
           try {
-            await before.submit("echo started-${__nyte_nonce-without}.");
+            await before.submit("echo started-${__nyte_dir-without}.");
             await before.shows("started-without.");
             await runtime.submit("NYTE_SHELL_INTEGRATION=0");
 
@@ -365,12 +456,40 @@ describe.skipIf(!ptyLoads || zsh === undefined)("an integrated zsh terminal's st
   );
 
   it(
+    "starts processes from the user's startup files with the user's ZDOTDIR and none of Nyte's variables",
+    async () => {
+      const record = (name: string): string => `/usr/bin/env > $HOME/${name}.env\n`;
+
+      const terminal = await openTerminal(shell, {
+        ".zshenv": record("zshenv"),
+        ".zprofile": record("zprofile"),
+        ".zshrc": `${record("zshrc")}PS1='${PROMPT}'\n`,
+      });
+
+      try {
+        const seen = await Promise.all(
+          ["zshenv", "zprofile", "zshrc"].map(async (name) =>
+            (await readFile(join(terminal.home, `${name}.env`), "utf8"))
+              .split("\n")
+              .filter((line) => /ZDOTDIR|NYTE_(?!SHELL_INTEGRATION=)|nyte-shell-/.test(line)),
+          ),
+        );
+
+        expect(seen).toEqual(Array(3).fill([`ZDOTDIR=${terminal.home}`]));
+      } finally {
+        await terminal.close();
+      }
+    },
+    TEST_MS,
+  );
+
+  it(
     "keeps its startup folder while readers detach and removes it when the shell exits",
     async () => {
       const terminal = await openTerminal(shell, { ".zshrc": `PS1='${PROMPT}'\n` });
 
       try {
-        await terminal.submit("print -r -- startup=$__nyte_zdotdir.");
+        await terminal.submit("print -r -- startup=$__nyte_dir.");
         const folder = /startup=(\S+)\./.exec(terminal.text().split("\n").at(-2) ?? "")?.[1] ?? "";
 
         expect(existsSync(join(folder, "nyte.zsh"))).toBe(true);
@@ -414,6 +533,26 @@ describe.skipIf(!ptyLoads || bash === undefined)("an integrated bash terminal's 
         expect(terminal.text()).not.toMatch(NONCE);
         expect(terminal.text()).not.toContain("633;");
         expect(await readFile(join(terminal.home, "startup.log"), "utf8")).toBe("bash_profile\n");
+      } finally {
+        await terminal.close();
+      }
+    },
+    TEST_MS,
+  );
+
+  it(
+    "runs ~/.bash_logout on exit as a login shell would, before the user's EXIT trap",
+    async () => {
+      const terminal = await openTerminal(shell, {
+        ".bash_profile": `PS1='${PROMPT}'\ntrap 'echo trap >> $HOME/exit.log' EXIT\n`,
+        ".bash_logout": "echo logout >> $HOME/exit.log\n",
+      });
+
+      try {
+        await terminal.type("exit");
+        await terminal.job.settled();
+
+        expect(await readFile(join(terminal.home, "exit.log"), "utf8")).toBe("logout\ntrap\n");
       } finally {
         await terminal.close();
       }

@@ -15,7 +15,7 @@ export type TerminalIntegration = ShellStream & {
   dispose(): void;
 };
 
-/** How a terminal starts and reads its output. An interactive zsh or bash login shell (the terminal of an empty command on macOS or Linux, unless `NYTE_SHELL_INTEGRATION=0`) starts through Nyte's startup files in a private temporary folder (bash as `--init-file … -i`, which runs the login startup files itself), with a fresh nonce in `NYTE_SHELL_NONCE` that the shell takes out of its environment before the user's startup files run; its hooks then report the prompt and each command through markers that only this stream accepts. Every other terminal keeps its arguments and environment, and its stream only removes OSC 633 markers. */
+/** Integrates only an interactive zsh or bash login shell outside Windows, and falls back to a plain terminal when its startup files cannot be written. */
 export async function prepareShellIntegration(input: {
   readonly file: string;
   readonly args: readonly string[];
@@ -24,21 +24,25 @@ export async function prepareShellIntegration(input: {
 }): Promise<TerminalIntegration> {
   const shell = basename(input.file);
 
+  const plain = {
+    ...createShellStream(null),
+    args: input.args,
+    env: input.env,
+    dispose: () => undefined,
+  };
+
   if (
     !input.loginShell ||
     process.platform === "win32" ||
     input.env.NYTE_SHELL_INTEGRATION === "0" ||
     (shell !== "zsh" && shell !== "bash")
   )
-    return {
-      ...createShellStream(null),
-      args: input.args,
-      env: input.env,
-      dispose: () => undefined,
-    };
+    return plain;
 
   const nonce = randomBytes(32).toString("hex");
-  const folder = await mkdtemp(join(tmpdir(), "nyte-shell-"));
+  const folder = await mkdtemp(join(tmpdir(), "nyte-shell-")).catch(() => null);
+
+  if (folder === null) return plain;
 
   const launch =
     shell === "zsh"
@@ -53,16 +57,24 @@ export async function prepareShellIntegration(input: {
           env: {},
         };
 
-  await Promise.all(
-    Object.entries(launch.files).map(([name, text]) =>
+  const remove = (): void => rmSync(folder, { recursive: true, force: true });
+
+  const written = await Promise.allSettled(
+    Object.entries({ ...launch.files, nonce: `${nonce}\n` }).map(([name, text]) =>
       writeFile(join(folder, name), text, { mode: 0o600 }),
     ),
   );
 
+  if (written.some((result) => result.status === "rejected")) {
+    remove();
+
+    return plain;
+  }
+
   return {
     ...createShellStream(nonce),
     args: launch.args,
-    env: { ...input.env, ...launch.env, NYTE_SHELL_NONCE: nonce },
-    dispose: () => rmSync(folder, { recursive: true, force: true }),
+    env: { ...input.env, ...launch.env },
+    dispose: remove,
   };
 }

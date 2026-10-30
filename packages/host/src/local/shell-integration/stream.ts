@@ -1,13 +1,13 @@
-/** What a terminal's shell last reported through Nyte's authenticated OSC 633 extension: `inactive` until a marker carrying the terminal's nonce arrives (and again after `X`), `prompt` with the number of jobs in the shell's job table, `running` while a submitted command line runs. */
+/** Only a marker carrying the terminal's nonce changes the state, and `X` turns it back to `inactive`. */
 export type ShellState =
   | { readonly kind: "inactive" }
   | { readonly kind: "prompt"; readonly jobs: number }
   | { readonly kind: "running" };
 
 export type ShellStream = {
-  /** The text with every complete OSC 633 envelope removed, holding back a sequence split across chunks until it completes. */
+  /** Holds back a sequence split across chunks until it completes. */
   read(text: string): string;
-  /** The held-back text at the end of output, without a partial OSC 633 envelope. */
+  /** Drops a partial OSC 633 envelope. */
   end(): string;
   state(): ShellState;
 };
@@ -25,17 +25,24 @@ const MARKER_LIMIT = 16 * 1024;
 
 const MARKER = /^Nyte;1;([0-9a-f]{64});(?:A;(0|[1-9][0-9]{0,5})|(C)|X)$/;
 
+/** BEL, CAN, SUB and ESC each end or interrupt a terminal string. */
+const STOP = new RegExp(`[${BEL}${CAN}${SUB}${ESC}]`, "g");
+
 type Mode =
   | { readonly kind: "text" }
   | { readonly kind: "escape" }
   | { readonly kind: "number"; readonly digits: string }
-  | { readonly kind: "marker"; readonly payload: string; readonly escaped: boolean }
-  | { readonly kind: "overflow"; readonly escaped: boolean }
-  | { readonly kind: "string"; readonly bell: boolean; readonly escaped: boolean };
+  /** `payload` is undefined for a string that is shown, and null for a marker past `MARKER_LIMIT`. */
+  | {
+      readonly kind: "string";
+      readonly bell: boolean;
+      readonly escaped: boolean;
+      readonly payload: string | null | undefined;
+    };
 
 const TEXT: Mode = { kind: "text" };
 
-/** Splits a terminal's output into what it shows and what its shell reports. Only `ESC ] 633 ; Nyte ; 1 ; <nonce> ; A;<jobs> | C | X` terminated by BEL or ST changes the state, and only with `nonce` (none when null); every other OSC 633 is removed too, and other OSC, DCS, SOS, PM and APC strings pass through without being searched for markers. */
+/** Every OSC 633 is removed, but other OSC, DCS, SOS, PM and APC strings pass through unsearched so a marker inside one is never trusted. */
 export function createShellStream(nonce: string | null): ShellStream {
   let state: ShellState = { kind: "inactive" };
   let mode: Mode = TEXT;
@@ -72,108 +79,68 @@ export function createShellStream(nonce: string | null): ShellStream {
           index += 1;
 
           if (char === "]") mode = { kind: "number", digits: "" };
-          else if (char === "P" || char === "X" || char === "^" || char === "_") {
-            shown += ESC + char;
-            mode = { kind: "string", bell: false, escaped: false };
-          } else if (char === ESC) shown += ESC;
+          else if (char === ESC) shown += ESC;
           else {
             shown += ESC + char;
-            mode = TEXT;
+            mode = "PX^_".includes(char)
+              ? { kind: "string", bell: false, escaped: false, payload: undefined }
+              : TEXT;
           }
 
           continue;
         case "number":
-          if (mode.digits.length < 3 && char === "633".charAt(mode.digits.length)) {
+          if ("633".startsWith(mode.digits + char)) {
             mode = { kind: "number", digits: mode.digits + char };
             index += 1;
-
-            continue;
-          }
-
-          if (mode.digits === "633" && (char === ";" || char === BEL || char === ESC)) {
-            index += 1;
-
-            if (char === BEL) {
-              report("");
-              mode = TEXT;
-            } else mode = { kind: "marker", payload: "", escaped: char === ESC };
-
-            continue;
-          }
-
-          if (mode.digits === "633" && (char === CAN || char === SUB)) {
-            mode = TEXT;
-
-            continue;
-          }
-
-          shown += `${ESC}]${mode.digits}`;
-          mode = { kind: "string", bell: true, escaped: false };
-
-          continue;
-        case "marker":
-        case "overflow": {
-          if (mode.escaped) {
-            if (char === "\\") {
-              index += 1;
-
-              if (mode.kind === "marker") report(mode.payload);
-              mode = TEXT;
-            } else mode = { kind: "escape" };
-
-            continue;
-          }
-
-          const end = findStop(text, index);
-
-          const payload = mode.kind === "marker" ? mode.payload + text.slice(index, end) : "";
-
-          mode =
-            mode.kind === "overflow" || payload.length > MARKER_LIMIT
-              ? { kind: "overflow", escaped: false }
-              : { kind: "marker", payload, escaped: false };
-          index = end;
-
-          if (end === text.length) continue;
-          const terminator = text.charAt(end);
-          index += 1;
-
-          if (terminator === ESC) mode = { ...mode, escaped: true };
-          else {
-            if (terminator === BEL && mode.kind === "marker") report(mode.payload);
-
-            if (terminator === CAN || terminator === SUB) shown += terminator;
-            mode = TEXT;
+          } else if (mode.digits === "633" && `;${BEL}${CAN}${SUB}${ESC}`.includes(char)) {
+            if (char === ";") index += 1;
+            mode = { kind: "string", bell: true, escaped: false, payload: "" };
+          } else {
+            shown += `${ESC}]${mode.digits}`;
+            mode = { kind: "string", bell: true, escaped: false, payload: undefined };
           }
 
           continue;
-        }
-
         case "string": {
           if (mode.escaped) {
             if (char === "\\") {
-              shown += `${ESC}\\`;
               index += 1;
+
+              if (mode.payload === undefined) shown += `${ESC}\\`;
+              else if (mode.payload !== null) report(mode.payload);
               mode = TEXT;
             } else mode = { kind: "escape" };
 
             continue;
           }
 
-          const end = findStop(text, index);
-          shown += text.slice(index, end);
+          STOP.lastIndex = index;
+          const end = STOP.exec(text)?.index ?? text.length;
+          const part = text.slice(index, end);
+
+          const payload =
+            mode.payload === undefined || mode.payload === null
+              ? mode.payload
+              : mode.payload + part;
+
+          if (payload === undefined) shown += part;
+          mode = { ...mode, payload: (payload?.length ?? 0) > MARKER_LIMIT ? null : payload };
           index = end;
 
           if (end === text.length) continue;
           const terminator = text.charAt(end);
           index += 1;
 
-          if (terminator === ESC) mode = { ...mode, escaped: true };
-          else {
-            shown += terminator;
+          if (terminator === ESC) {
+            mode = { ...mode, escaped: true };
 
-            if (terminator !== BEL || mode.bell) mode = TEXT;
+            continue;
           }
+
+          if (mode.payload === undefined || terminator !== BEL) shown += terminator;
+          else if (mode.payload !== null) report(mode.payload);
+
+          if (terminator !== BEL || mode.bell) mode = TEXT;
         }
       }
     }
@@ -185,7 +152,8 @@ export function createShellStream(nonce: string | null): ShellStream {
     read,
     end() {
       const held =
-        mode.kind === "escape" || (mode.kind === "string" && mode.escaped)
+        mode.kind === "escape" ||
+        (mode.kind === "string" && mode.escaped && mode.payload === undefined)
           ? ESC
           : mode.kind === "number"
             ? `${ESC}]${mode.digits}`
@@ -197,15 +165,4 @@ export function createShellStream(nonce: string | null): ShellStream {
     },
     state: () => state,
   };
-}
-
-/** The index of the first BEL, CAN, SUB or ESC in `text` from `from`, which ends or interrupts a terminal string; the length when there is none. */
-function findStop(text: string, from: number): number {
-  for (let index = from; index < text.length; index += 1) {
-    const char = text.charAt(index);
-
-    if (char === BEL || char === CAN || char === SUB || char === ESC) return index;
-  }
-
-  return text.length;
 }
