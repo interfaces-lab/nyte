@@ -1,52 +1,97 @@
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
+import { getDocument, PDFWorker } from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
-/** Vite resolves the package path and ships the worker as an asset, unbundled. */
-const WORKER_URL = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url);
-
+/** At scale 1, in PDF units, after the page's rotation. */
 export interface PageSize {
-  /** From 1. */
-  readonly number: number;
   readonly width: number;
   readonly height: number;
 }
 
 export interface PdfFile {
   readonly document: PDFDocumentProxy;
-  /** Each page's size at scale 1, in PDF units, after its rotation. */
-  readonly pages: readonly PageSize[];
+  /** Every page is assumed this size until it loads. */
+  readonly firstPage: PageSize;
+  /** Runs `task` on the reader's worker once every task before it settles, so the worker opens, draws or closes one thing at a time. */
+  readonly enqueue: <T>(task: () => Promise<T>) => Promise<T>;
 }
 
-let tail: Promise<unknown> = Promise.resolve();
-
-/** Runs `task` on the shared pdf.js worker once every task before it settles, so the worker opens, draws or closes one thing at a time. */
-export function enqueue<T>(task: () => Promise<T>): Promise<T> {
-  const run = tail.then(task);
-  tail = Promise.allSettled([run]);
-
-  return run;
+export interface PdfReader {
+  /** `hold` receives the document's close as soon as it is open, so a document whose first page can't be read still closes. */
+  readonly open: (
+    data: Uint8Array<ArrayBuffer>,
+    hold: (close: () => void) => void,
+  ) => Promise<PdfFile>;
 }
 
-/** `hold` receives the document's close as soon as it is open, so a document whose pages can't be read still closes. */
-export async function openPdf(
-  data: Uint8Array<ArrayBuffer>,
-  hold: (close: () => void) => void,
-): Promise<PdfFile> {
-  GlobalWorkerOptions.workerPort ??= new Worker(WORKER_URL, { type: "module", name: "pdf.js" });
+/** The worker starts with the first open. Once it fails, every queued and later task rejects. */
+export function createPdfReader(workerUrl: URL): PdfReader {
+  let worker: PDFWorker | undefined;
+  let failure: Error | undefined;
+  const running = new Set<(error: Error) => void>();
+  let tail: Promise<unknown> = Promise.resolve();
 
-  const document = await enqueue(
-    () => getDocument({ data, isEvalSupported: false, disableAutoFetch: true }).promise,
-  );
+  const start = (): PDFWorker => {
+    if (worker !== undefined) return worker;
+    const port = new Worker(workerUrl, { type: "module", name: "pdf.js" });
 
-  hold(() => void enqueue(() => document.destroy()));
+    port.addEventListener("error", (event) => {
+      failure = new Error(
+        event instanceof ErrorEvent && event.message !== ""
+          ? event.message
+          : "The PDF reader could not start.",
+      );
 
-  const pages = await Promise.all(
-    Array.from({ length: document.numPages }, async (_, index) => {
-      const viewport = (await document.getPage(index + 1)).getViewport({ scale: 1 });
+      for (const reject of running) reject(failure);
+    });
+    worker = PDFWorker.create({ port });
 
-      return { number: index + 1, width: viewport.width, height: viewport.height };
-    }),
-  );
+    return worker;
+  };
 
-  return { document, pages };
+  const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
+    const run = tail.then(
+      () =>
+        new Promise<T>((resolve, reject) => {
+          if (failure !== undefined) {
+            reject(failure);
+
+            return;
+          }
+
+          const pending = task();
+          running.add(reject);
+          void pending.then(resolve, reject).finally(() => running.delete(reject));
+        }),
+    );
+
+    tail = Promise.allSettled([run]);
+
+    return run;
+  };
+
+  return {
+    open: async (data, hold) => {
+      const document = await enqueue(async () => {
+        const task = getDocument({
+          data,
+          worker: start(),
+          isEvalSupported: false,
+          disableAutoFetch: true,
+        });
+
+        const [opened] = await Promise.allSettled([task.promise]);
+
+        if (opened.status === "fulfilled") return opened.value;
+        await task.destroy();
+
+        throw opened.reason;
+      });
+
+      hold(() => void enqueue(() => document.destroy()));
+
+      const first = (await enqueue(() => document.getPage(1))).getViewport({ scale: 1 });
+
+      return { document, firstPage: { width: first.width, height: first.height }, enqueue };
+    },
+  };
 }

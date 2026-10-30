@@ -1,14 +1,36 @@
 import { hashKey } from "@tanstack/react-query";
-import type { QueryCache, QueryKey } from "@tanstack/react-query";
+import type { QueryCache, QueryFunctionContext } from "@tanstack/react-query";
 
 const held = new WeakMap<QueryCache, Map<string, () => void>>();
 
-/** Runs `release` when `cache` drops `key`, or when `key` is held again and this release is replaced. */
-export function releaseWithQuery(cache: QueryCache, key: QueryKey, release: () => void): void {
-  const releases = cacheReleases(cache);
-  const hash = hashKey(key);
+/**
+ * Gives `release` to the fetch `context` belongs to. A cancelled fetch runs it at once; one that
+ * lands runs it when the cache drops the query or a later fetch of the query lands.
+ */
+export function releaseWithQuery(
+  context: Pick<QueryFunctionContext, "client" | "queryKey" | "signal">,
+  release: () => void,
+): void {
+  if (context.signal.aborted) {
+    release();
+
+    return;
+  }
+
+  const releases = cacheReleases(context.client.getQueryCache());
+  const hash = hashKey(context.queryKey);
+  const holder = () => release();
   releases.get(hash)?.();
-  releases.set(hash, release);
+  releases.set(hash, holder);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (releases.get(hash) !== holder) return;
+      releases.delete(hash);
+      holder();
+    },
+    { once: true },
+  );
 }
 
 function cacheReleases(cache: QueryCache): Map<string, () => void> {
