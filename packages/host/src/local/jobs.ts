@@ -16,7 +16,6 @@ import {
 import type { EndSpan, ExecutionEnv, Job } from "@nyte-ai/core";
 import { findExecutable, killTree, run, spawnCommand } from "./command.ts";
 import { prepareShellIntegration } from "./shell-integration/index.ts";
-import type { ShellState } from "./shell-integration/stream.ts";
 
 type PtyModule = {
   spawn(file: string, args: string[] | string, options: IPtyForkOptions): IPty;
@@ -269,6 +268,7 @@ function terminalEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return { ...rest, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "Nyte" };
 }
 
+/** The shell's reports only tighten the process check, since `exec` or removed hooks silence them while it reports a command running. */
 async function terminal(
   command: string | readonly string[],
   options: {
@@ -358,8 +358,41 @@ async function terminal(
     },
     async idle() {
       if (!loginShell) return false;
+      const reported = integration.state();
+      const running = reported.kind === "running";
+      const children = running || (reported.kind === "prompt" && reported.jobs > 0);
 
-      return inspectTerminalProcesses(term.pid, shell, options.cwd, integration.state());
+      const result = await run(
+        windows ? "powershell.exe" : "ps",
+        windows
+          ? [
+              "-NoProfile",
+              "-NonInteractive",
+              "-Command",
+              `Get-CimInstance Win32_Process -Filter "ParentProcessId = ${term.pid} AND Name != 'conhost.exe' AND Name != 'OpenConsole.exe'" | Select-Object -ExpandProperty ProcessId`,
+            ]
+          : ["-A", "-o", "pid=,ppid=,pgid=,stat=,comm="],
+        { cwd: options.cwd, timeoutMs: 1_500 },
+      );
+
+      if (result.code !== 0) throw new SdkError("unavailable", "Cannot inspect terminal processes");
+      const processes = result.stdout.toString("utf8").trim();
+
+      if (windows) return processes === "";
+
+      return !processes.split("\n").some((line) => {
+        const [id, parent, group, state, ...name] = line.trim().split(/\s+/);
+
+        if (state?.startsWith("Z")) return false;
+
+        if (Number(parent) === term.pid) return children || Number(group) !== term.pid;
+
+        return (
+          Number(id) === term.pid &&
+          ((running && state?.startsWith("R") === true) ||
+            basename(name.join(" ")).replace(/^-/, "") !== basename(shell))
+        );
+      });
     },
     kill(signal) {
       try {
@@ -367,50 +400,6 @@ async function terminal(
       } catch {}
     },
   };
-}
-
-/** The shell's reports only tighten the process check, since `exec` or removed hooks silence them while it reports a command running. */
-async function inspectTerminalProcesses(
-  pid: number,
-  shell: string,
-  cwd: string,
-  reported: ShellState,
-): Promise<boolean> {
-  const running = reported.kind === "running";
-  const children = running || (reported.kind === "prompt" && reported.jobs > 0);
-  const windows = process.platform === "win32";
-
-  const result = await run(
-    windows ? "powershell.exe" : "ps",
-    windows
-      ? [
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          `Get-CimInstance Win32_Process -Filter "ParentProcessId = ${pid} AND Name != 'conhost.exe' AND Name != 'OpenConsole.exe'" | Select-Object -ExpandProperty ProcessId`,
-        ]
-      : ["-A", "-o", "pid=,ppid=,pgid=,stat=,comm="],
-    { cwd, timeoutMs: 1_500 },
-  );
-
-  if (result.code !== 0) throw new SdkError("unavailable", "Cannot inspect terminal processes");
-  const processes = result.stdout.toString("utf8").trim();
-
-  if (windows) return processes === "";
-
-  return !processes.split("\n").some((line) => {
-    const [id, parent, group, state, ...name] = line.trim().split(/\s+/);
-
-    if (state?.startsWith("Z")) return false;
-
-    if (Number(parent) === pid) return children || Number(group) !== pid;
-
-    return (
-      Number(id) === pid &&
-      ((running && state?.startsWith("R") === true) ||
-        basename(name.join(" ")).replace(/^-/, "") !== basename(shell))
-    );
-  });
 }
 
 function loadPty(): PtyModule | null {

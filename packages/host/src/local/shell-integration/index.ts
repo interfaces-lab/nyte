@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { createNonceFilter, createShellStream } from "./stream.ts";
+import { createShellStream } from "./stream.ts";
 import type { ShellStream } from "./stream.ts";
 import { bashScript } from "./bash.ts";
 import { zshFiles } from "./zsh.ts";
@@ -57,27 +57,24 @@ export async function prepareShellIntegration(input: {
           env: {},
         };
 
+  const remove = (): void => rmSync(folder, { recursive: true, force: true });
+
   const written = await Promise.allSettled(
-    Object.entries(launch.files).map(([name, text]) =>
+    Object.entries({ ...launch.files, nonce: `${nonce}\n` }).map(([name, text]) =>
       writeFile(join(folder, name), text, { mode: 0o600 }),
     ),
   );
 
   if (written.some((result) => result.status === "rejected")) {
-    rmSync(folder, { recursive: true, force: true });
+    remove();
 
     return plain;
   }
 
-  const stream = createShellStream(nonce);
-  const hidden = createNonceFilter(nonce);
-
   return {
-    read: (text) => hidden.read(stream.read(text)),
-    end: () => hidden.read(stream.end()) + hidden.end(),
-    state: () => stream.state(),
+    ...createShellStream(nonce),
     args: launch.args,
-    env: { ...input.env, ...launch.env, NYTE_SHELL_NONCE: nonce },
-    dispose: () => rmSync(folder, { recursive: true, force: true }),
+    env: { ...input.env, ...launch.env },
+    dispose: remove,
   };
 }

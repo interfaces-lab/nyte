@@ -338,7 +338,7 @@ for (const shell of shells)
             const terminal = await openTerminal(path, prompt);
 
             try {
-              await terminal.submit("echo started-${__nyte_nonce-without}.");
+              await terminal.submit("echo started-${__nyte_dir-without}.");
               await terminal.shows("started-without.");
             } finally {
               await terminal.close();
@@ -352,19 +352,20 @@ for (const shell of shells)
       );
 
       it(
-        "keeps the nonce out of `set`, `typeset` and `declare -p`",
+        "keeps the nonce out of `set`, `typeset`, `declare -p`, `declare -f` and the shell's initial environment",
         async () => {
           const terminal = await openTerminal(path, prompt);
 
           try {
-            await terminal.submit('echo "$__nyte_nonce" > $HOME/nonce');
-            await terminal.submit("set; typeset; declare -p; echo dumped-$((40+2))");
+            await terminal.submit("cp $__nyte_dir/nonce $HOME/nonce");
+            await terminal.submit(
+              "set; typeset; declare -p; declare -f; ps eww -p $$; echo dumped-$((40+2))",
+            );
             await terminal.shows("dumped-42");
             const secret = (await readFile(join(terminal.home, "nonce"), "utf8")).trim();
 
             expect(secret).toMatch(/^[0-9a-f]{64}$/);
-            expect(terminal.text()).toContain("__nyte_nonce=");
-            expect(terminal.text()).not.toContain(secret.slice(15));
+            expect(terminal.text()).not.toContain(secret.slice(32));
           } finally {
             await terminal.close();
           }
@@ -393,7 +394,7 @@ for (const shell of shells)
           const runtime = await openTerminal(path, prompt);
 
           try {
-            await before.submit("echo started-${__nyte_nonce-without}.");
+            await before.submit("echo started-${__nyte_dir-without}.");
             await before.shows("started-without.");
             await runtime.submit("NYTE_SHELL_INTEGRATION=0");
 
@@ -488,7 +489,7 @@ describe.skipIf(!ptyLoads || zsh === undefined)("an integrated zsh terminal's st
       const terminal = await openTerminal(shell, { ".zshrc": `PS1='${PROMPT}'\n` });
 
       try {
-        await terminal.submit("print -r -- startup=$__nyte_zdotdir.");
+        await terminal.submit("print -r -- startup=$__nyte_dir.");
         const folder = /startup=(\S+)\./.exec(terminal.text().split("\n").at(-2) ?? "")?.[1] ?? "";
 
         expect(existsSync(join(folder, "nyte.zsh"))).toBe(true);

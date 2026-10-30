@@ -23,18 +23,22 @@ const SUB = "\x1a";
 /** A 633 payload longer than this is discarded through its terminator. */
 const MARKER_LIMIT = 16 * 1024;
 
-/** A shorter partial nonce at a chunk's end is shown rather than held, so typed text never waits and at most 60 of 256 bits show. */
-const HOLD_FROM = 16;
-
 const MARKER = /^Nyte;1;([0-9a-f]{64});(?:A;(0|[1-9][0-9]{0,5})|(C)|X)$/;
+
+/** BEL, CAN, SUB and ESC each end or interrupt a terminal string. */
+const STOP = new RegExp(`[${BEL}${CAN}${SUB}${ESC}]`, "g");
 
 type Mode =
   | { readonly kind: "text" }
   | { readonly kind: "escape" }
   | { readonly kind: "number"; readonly digits: string }
-  | { readonly kind: "marker"; readonly payload: string; readonly escaped: boolean }
-  | { readonly kind: "overflow"; readonly escaped: boolean }
-  | { readonly kind: "string"; readonly bell: boolean; readonly escaped: boolean };
+  /** `payload` is undefined for a string that is shown, and null for a marker past `MARKER_LIMIT`. */
+  | {
+      readonly kind: "string";
+      readonly bell: boolean;
+      readonly escaped: boolean;
+      readonly payload: string | null | undefined;
+    };
 
 const TEXT: Mode = { kind: "text" };
 
@@ -75,108 +79,68 @@ export function createShellStream(nonce: string | null): ShellStream {
           index += 1;
 
           if (char === "]") mode = { kind: "number", digits: "" };
-          else if (char === "P" || char === "X" || char === "^" || char === "_") {
-            shown += ESC + char;
-            mode = { kind: "string", bell: false, escaped: false };
-          } else if (char === ESC) shown += ESC;
+          else if (char === ESC) shown += ESC;
           else {
             shown += ESC + char;
-            mode = TEXT;
+            mode = "PX^_".includes(char)
+              ? { kind: "string", bell: false, escaped: false, payload: undefined }
+              : TEXT;
           }
 
           continue;
         case "number":
-          if (mode.digits.length < 3 && char === "633".charAt(mode.digits.length)) {
+          if ("633".startsWith(mode.digits + char)) {
             mode = { kind: "number", digits: mode.digits + char };
             index += 1;
-
-            continue;
-          }
-
-          if (mode.digits === "633" && (char === ";" || char === BEL || char === ESC)) {
-            index += 1;
-
-            if (char === BEL) {
-              report("");
-              mode = TEXT;
-            } else mode = { kind: "marker", payload: "", escaped: char === ESC };
-
-            continue;
-          }
-
-          if (mode.digits === "633" && (char === CAN || char === SUB)) {
-            mode = TEXT;
-
-            continue;
-          }
-
-          shown += `${ESC}]${mode.digits}`;
-          mode = { kind: "string", bell: true, escaped: false };
-
-          continue;
-        case "marker":
-        case "overflow": {
-          if (mode.escaped) {
-            if (char === "\\") {
-              index += 1;
-
-              if (mode.kind === "marker") report(mode.payload);
-              mode = TEXT;
-            } else mode = { kind: "escape" };
-
-            continue;
-          }
-
-          const end = findStop(text, index);
-
-          const payload = mode.kind === "marker" ? mode.payload + text.slice(index, end) : "";
-
-          mode =
-            mode.kind === "overflow" || payload.length > MARKER_LIMIT
-              ? { kind: "overflow", escaped: false }
-              : { kind: "marker", payload, escaped: false };
-          index = end;
-
-          if (end === text.length) continue;
-          const terminator = text.charAt(end);
-          index += 1;
-
-          if (terminator === ESC) mode = { ...mode, escaped: true };
-          else {
-            if (terminator === BEL && mode.kind === "marker") report(mode.payload);
-
-            if (terminator === CAN || terminator === SUB) shown += terminator;
-            mode = TEXT;
+          } else if (mode.digits === "633" && `;${BEL}${CAN}${SUB}${ESC}`.includes(char)) {
+            if (char === ";") index += 1;
+            mode = { kind: "string", bell: true, escaped: false, payload: "" };
+          } else {
+            shown += `${ESC}]${mode.digits}`;
+            mode = { kind: "string", bell: true, escaped: false, payload: undefined };
           }
 
           continue;
-        }
-
         case "string": {
           if (mode.escaped) {
             if (char === "\\") {
-              shown += `${ESC}\\`;
               index += 1;
+
+              if (mode.payload === undefined) shown += `${ESC}\\`;
+              else if (mode.payload !== null) report(mode.payload);
               mode = TEXT;
             } else mode = { kind: "escape" };
 
             continue;
           }
 
-          const end = findStop(text, index);
-          shown += text.slice(index, end);
+          STOP.lastIndex = index;
+          const end = STOP.exec(text)?.index ?? text.length;
+          const part = text.slice(index, end);
+
+          const payload =
+            mode.payload === undefined || mode.payload === null
+              ? mode.payload
+              : mode.payload + part;
+
+          if (payload === undefined) shown += part;
+          mode = { ...mode, payload: (payload?.length ?? 0) > MARKER_LIMIT ? null : payload };
           index = end;
 
           if (end === text.length) continue;
           const terminator = text.charAt(end);
           index += 1;
 
-          if (terminator === ESC) mode = { ...mode, escaped: true };
-          else {
-            shown += terminator;
+          if (terminator === ESC) {
+            mode = { ...mode, escaped: true };
 
-            if (terminator !== BEL || mode.bell) mode = TEXT;
+            continue;
           }
+
+          if (mode.payload === undefined || terminator !== BEL) shown += terminator;
+          else if (mode.payload !== null) report(mode.payload);
+
+          if (terminator !== BEL || mode.bell) mode = TEXT;
         }
       }
     }
@@ -188,7 +152,8 @@ export function createShellStream(nonce: string | null): ShellStream {
     read,
     end() {
       const held =
-        mode.kind === "escape" || (mode.kind === "string" && mode.escaped)
+        mode.kind === "escape" ||
+        (mode.kind === "string" && mode.escaped && mode.payload === undefined)
           ? ESC
           : mode.kind === "number"
             ? `${ESC}]${mode.digits}`
@@ -200,65 +165,4 @@ export function createShellStream(nonce: string | null): ShellStream {
     },
     state: () => state,
   };
-}
-
-/** `set`, `typeset` and `declare -f` print the nonce, and output that knows it can forge markers. */
-export function createNonceFilter(nonce: string) {
-  let shown = 0;
-  let held = "";
-
-  const read = (text: string): string => {
-    const matched = shown + held.length;
-    const rest = nonce.slice(matched);
-
-    if (matched > 0 && text.startsWith(rest)) {
-      shown = 0;
-      held = "";
-
-      return read(text.slice(rest.length));
-    }
-
-    if (matched > 0 && rest.startsWith(text)) {
-      if (matched + text.length >= HOLD_FROM) {
-        held += text;
-
-        return "";
-      }
-
-      shown += text.length;
-
-      return text;
-    }
-
-    const kept = (held + text).replaceAll(nonce, "");
-    let tail = Math.min(kept.length, nonce.length - 1);
-
-    while (tail > 0 && !nonce.startsWith(kept.slice(-tail))) tail -= 1;
-    shown = tail < HOLD_FROM ? tail : 0;
-    held = tail < HOLD_FROM ? "" : kept.slice(-tail);
-
-    return kept.slice(0, kept.length - held.length);
-  };
-
-  return {
-    read,
-    end() {
-      const rest = held;
-      shown = 0;
-      held = "";
-
-      return rest;
-    },
-  };
-}
-
-/** BEL, CAN, SUB and ESC each end or interrupt a terminal string. */
-function findStop(text: string, from: number): number {
-  for (let index = from; index < text.length; index += 1) {
-    const char = text.charAt(index);
-
-    if (char === BEL || char === CAN || char === SUB || char === ESC) return index;
-  }
-
-  return text.length;
 }
