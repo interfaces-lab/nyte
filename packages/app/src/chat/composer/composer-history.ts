@@ -1,4 +1,4 @@
-import type { Head, Message, MessageId, SessionView } from "@nyte-ai/sdk";
+import type { Head, MessageId, SessionView } from "@nyte-ai/sdk";
 import { contentDraftText } from "../../references/message-references.ts";
 
 const RECALLED_PROMPTS = 10;
@@ -13,20 +13,16 @@ export interface PromptHistory {
   readonly before: MessageId | null;
 }
 
-export function loadedPrompts(
-  view: Pick<SessionView, "messages" | "leadingPrompt"> | undefined,
-): PromptHistory {
+type PromptPage = Pick<SessionView, "messages" | "leadingPrompt" | "turns">;
+
+export function loadedPrompts(view: PromptPage | undefined): PromptHistory {
   return morePrompts(
     { prompts: [], before: null },
-    view?.leadingPrompt ?? null,
-    view?.messages ?? [],
+    view ?? { messages: [], leadingPrompt: null, turns: [] },
   );
 }
 
-/**
- * Reads on before the prompt leading each page, so a long turn costs one read and the messages
- * it skips there, steered ones among them, never count.
- */
+/** Reads on before the prompt leading each page, so a long turn costs one read. */
 export async function readPrompts(
   head: Pick<Head, "history">,
   history: PromptHistory,
@@ -35,7 +31,7 @@ export async function readPrompts(
   if (history.before === null || history.prompts.length >= count) return history;
   const page = await head.history({ before: history.before, limit: PROMPT_PAGE });
 
-  return readPrompts(head, morePrompts(history, page.leadingPrompt, page.messages), count);
+  return readPrompts(head, morePrompts(history, page), count);
 }
 
 /** `undefined` is the unsent draft. */
@@ -52,20 +48,23 @@ export function recallStep(
   return position === undefined ? 0 : Math.min(position + 1, count - 1);
 }
 
-function morePrompts(
-  history: PromptHistory,
-  leading: Message | null,
-  messages: readonly Message[],
-): PromptHistory {
-  const earlier = (leading === null ? messages : [leading, ...messages]).flatMap((message) => {
-    if (message.kind !== "user" || message.source.kind !== "user") return [];
-    const prompt = contentDraftText(message.content);
+/** Only turn prompts count, since a read skips the steers inside a turn it jumps over. */
+function morePrompts(history: PromptHistory, page: PromptPage): PromptHistory {
+  const leading = page.leadingPrompt;
+  const turnPrompts = new Set(page.turns.map((turn) => turn.prompt));
 
-    return prompt === "" ? [] : [prompt];
-  });
+  const earlier = (leading === null ? page.messages : [leading, ...page.messages]).flatMap(
+    (message) => {
+      if (message.kind !== "user" || message.source.kind !== "user" || !turnPrompts.has(message.id))
+        return [];
+      const prompt = contentDraftText(message.content);
+
+      return prompt === "" ? [] : [prompt];
+    },
+  );
 
   const prompts = [...history.prompts, ...earlier.toReversed()].slice(0, RECALLED_PROMPTS);
-  const first = leading ?? messages[0];
+  const first = leading ?? page.messages[0];
 
   return {
     prompts,
