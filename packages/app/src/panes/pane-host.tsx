@@ -56,7 +56,7 @@ function TypeToCompose({
         event.preventDefault();
         input.current
           ?.readElement()
-          ?.closest("[data-composer-region]")
+          ?.closest("[data-composer-frame]")
           ?.querySelector<HTMLElement>(
             `[aria-keyshortcuts="${clientActionAriaShortcut(clientActions.selectModel, mac)}"]`,
           )

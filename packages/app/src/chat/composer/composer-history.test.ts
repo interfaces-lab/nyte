@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { Message } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { recallStep, recentPrompts } from "./composer-history.ts";
+import { loadedPrompts, recallStep } from "./composer-history.ts";
 
 function userMessage(
   id: string,
@@ -24,11 +24,14 @@ test("the history holds the chat's last ten prompts the user wrote, newest first
   const prompts = Array.from({ length: 12 }, (_, index) => userMessage(`prompt ${String(index)}`));
 
   expect(
-    recentPrompts([
-      ...prompts,
-      userMessage("a command", { kind: "action", label: "Compact" }),
-      userMessage("a shell line", { kind: "shell" }),
-    ]),
+    loadedPrompts({
+      leadingPrompt: null,
+      messages: [
+        ...prompts,
+        userMessage("a command", { kind: "action", label: "Compact" }),
+        userMessage("a shell line", { kind: "shell" }),
+      ],
+    }).prompts,
   ).toEqual(Array.from({ length: 10 }, (_, index) => `prompt ${String(11 - index)}`));
 });
 

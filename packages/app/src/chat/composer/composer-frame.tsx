@@ -8,6 +8,7 @@ import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-a
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { nyte } from "../../contract/nyte.ts";
+import { clientActionAriaShortcut, clientActions } from "../../contract/client-actions.ts";
 import type { RunningMessagePreference } from "../../preferences/index.ts";
 import { ImagePreview } from "../markdown/image-preview.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -30,6 +31,7 @@ import type { SubmitAction } from "./composer-keys.ts";
 import type { RecallDirection } from "./composer-history.ts";
 import type { MessageReference } from "../../references/message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
+import { ComposerPicker } from "./model-picker.tsx";
 
 const DROP_PLACEHOLDER = "Drop here to attach…";
 
@@ -125,6 +127,11 @@ export function ComposerFrame({
   const [focused, setFocused] = useState(false);
   const [references, setReferences] = useState<readonly MessageReference[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  const [picker] = useState(() => ({
+    keyShortcuts: clientActionAriaShortcut(clientActions.selectModel, nyte.platform === "darwin"),
+    editor: () => areaRef.current?.readElement(),
+  }));
 
   const commandsEnabled =
     !answering && surface === "follow-up" && editing === undefined && attachments.length === 0;
@@ -574,7 +581,9 @@ export function ComposerFrame({
             </MenuContent>
           </Menu>
           <span {...props(composerStyles.modelSlot, compact && composerStyles.modelSlotCompact)}>
-            {model}
+            <ComposerPicker value={editing?.kind === "message" ? undefined : picker}>
+              {model}
+            </ComposerPicker>
           </span>
           <span {...props(composerStyles.spacer, compact && composerStyles.spacerCompact)} />
           <span {...props(composerStyles.sendActions, compact && composerStyles.sendCompact)}>

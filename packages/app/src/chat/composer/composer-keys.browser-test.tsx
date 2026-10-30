@@ -5,6 +5,7 @@ import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-rout
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Configuration, Message, ModelCatalogView, SessionView } from "@nyte-ai/sdk";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../../contract/nyte.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
@@ -21,7 +22,11 @@ import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../../test/view-fixt
 
 const SESSION = asId<"session">("composer-keys");
 
-const PROMPTS = ["Where does the session store live?", "Rename it to journal."] as const;
+const PROMPTS = [
+  "Where does the session store live?",
+  "Rename it to journal.",
+  "Update the docs to match.",
+] as const;
 
 const DRAFT = "Half a thought";
 
@@ -34,49 +39,53 @@ const configuration: Configuration = {
   settingsVersion: "1",
 };
 
-const turns = PROMPTS.map((prompt, index) => {
+const turns = PROMPTS.map((text, index) => {
   const turn = asId<"turn">(`turn-${String(index)}`);
   const id = asId<"message">(`prompt-${String(index)}`);
 
-  const messages: readonly Message[] = [
-    {
-      id,
-      turn,
-      at: index,
-      kind: "user",
-      content: prompt,
-      source: { kind: "user" },
-      delivery: "queue",
-      status: { kind: "landed", commit: asId<"commit">(id), run: null, replaced: null },
-      siblings: { index: 0, count: 1, ids: [] },
-    },
-    {
-      id: asId<"message">(`reply-${String(index)}`),
-      turn,
-      at: index,
-      kind: "part",
-      part: asId<"part">(`reply-${String(index)}`),
-      partKind: "text",
-      role: "answer",
-      state: { markdown: "Done.", signature: null },
-      version: 1,
-      status: { kind: "settled", commit: asId<"commit">(`reply-${String(index)}`), endedAt: index },
-    },
-  ];
+  const prompt: UserMessage = {
+    id,
+    turn,
+    at: index,
+    kind: "user",
+    content: text,
+    source: { kind: "user" },
+    delivery: "queue",
+    status: { kind: "landed", commit: asId<"commit">(id), run: null, replaced: null },
+    siblings: { index: 0, count: 1, ids: [] },
+  };
 
-  return { messages, info: endedTurn([], { id: turn, prompt: id, steps: 1 }).info };
+  const reply: Message = {
+    id: asId<"message">(`reply-${String(index)}`),
+    turn,
+    at: index,
+    kind: "part",
+    part: asId<"part">(`reply-${String(index)}`),
+    partKind: "text",
+    role: "answer",
+    state: { markdown: "Done.", signature: null },
+    version: 1,
+    status: { kind: "settled", commit: asId<"commit">(`reply-${String(index)}`), endedAt: index },
+  };
+
+  return { prompt, reply, info: endedTurn([], { id: turn, prompt: id, steps: 1 }).info };
 });
+
+/** Opened cold in the middle of the second turn: its prompt only leads the loaded messages, and the first turn is only in the host's history. */
+const leading = turns[1]?.prompt ?? null;
 
 const view: SessionView = {
   revision: asId<"revision">("r1"),
   seenThrough: null,
   seq: asSeq(1),
   activation: { kind: "active" },
-  messages: turns.flatMap((turn) => turn.messages),
+  messages: turns
+    .slice(1)
+    .flatMap((turn) => (turn.prompt === leading ? [turn.reply] : [turn.prompt, turn.reply])),
   queue: [],
-  leadingPrompt: null,
+  leadingPrompt: leading,
   parts: [],
-  turns: turns.map((turn) => turn.info),
+  turns: turns.slice(1).map((turn) => turn.info),
   usage: USAGE,
   execution: COMPLETED,
   reportsHeld: false,
@@ -88,10 +97,24 @@ const view: SessionView = {
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 };
 
+const historyReads: string[] = [];
+
 installConnection(
   scriptedConnection({
     sessions: [sessionRow(SESSION)],
     views: new Map([[SESSION, viewStream(view)]]),
+    session: () => ({
+      history: async (input) => {
+        historyReads.push(input.before);
+        const page = input.before === leading?.id ? turns.slice(0, 1) : [];
+
+        return {
+          messages: page.flatMap((turn) => [turn.prompt, turn.reply]),
+          leadingPrompt: null,
+          turns: page.map((turn) => turn.info),
+        };
+      },
+    }),
   }).connection,
 );
 
@@ -118,7 +141,11 @@ function blur(): void {
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 }
 
-/** Ctrl+Alt+Up walks back through the chat's prompts and stops at the oldest; Down returns to the draft. */
+/**
+ * Ctrl+Alt+Up walks back through the chat's prompts, past the loaded ones, and stops at the oldest;
+ * Down returns to the draft. Recall reads the history before prompts only once it walks past them,
+ * while the transcript pages in before its first message, a reply.
+ */
 async function recallPrompts(editor: HTMLElement): Promise<void> {
   const reads = (text: string) =>
     until(() => (editor.innerText === text ? true : null), `the composer to read "${text}"`);
@@ -129,21 +156,29 @@ async function recallPrompts(editor: HTMLElement): Promise<void> {
 
   await until(() => sessionWatch(SESSION).value, "the chat's view");
 
-  for (const shown of [PROMPTS[1], PROMPTS[0], PROMPTS[0]]) {
+  for (const shown of [PROMPTS[2], PROMPTS[1], PROMPTS[0], PROMPTS[0]]) {
     press(editor, "ArrowUp", { ctrlKey: true, altKey: true });
     await reads(shown);
   }
 
-  for (const shown of [PROMPTS[1], DRAFT]) {
+  for (const shown of [PROMPTS[1], PROMPTS[2], DRAFT]) {
     press(editor, "ArrowDown", { ctrlKey: true, altKey: true });
     await reads(shown);
   }
+
+  const recallReads = historyReads.filter((id) => id.startsWith("prompt-")).join();
+
+  if (recallReads !== "prompt-1,prompt-0")
+    throw new Error(`recall read the history before ${recallReads || "nothing"}`);
 }
 
-/** Ctrl+/ opens the model picker from the composer or from no field, and closing it returns to the composer. */
-async function openModelPicker(region: HTMLElement, editor: HTMLElement): Promise<void> {
+/** Ctrl+/ opens the model picker from the composer or from no field, and closing it returns to the composer, in a chat and on the new-chat screen alike. */
+async function openModelPicker(editor: HTMLElement): Promise<void> {
   const menu = () => document.querySelector("[role='menu']");
-  const trigger = region.querySelector("button[aria-keyshortcuts]");
+
+  const trigger = editor
+    .closest("[data-composer-frame]")
+    ?.querySelector("button[aria-keyshortcuts]");
 
   if (trigger?.getAttribute("aria-keyshortcuts") !== "Control+/")
     throw new Error("the model button does not advertise Ctrl+/");
@@ -231,8 +266,16 @@ export async function run(): Promise<string> {
 
     await until(() => stage.querySelector("[aria-label='Messages'] [data-row-key]"), "the chat");
     await recallPrompts(editor);
-    await openModelPicker(region, editor);
+    await openModelPicker(editor);
     await pasteFromNowhere(editor);
+
+    flushSync(() => panes.newChat());
+    await openModelPicker(
+      await until(
+        () => stage.querySelector<HTMLElement>("[data-placeholder^='Ask Nyte']"),
+        "the new chat's editor",
+      ),
+    );
 
     return "passed";
   } finally {
