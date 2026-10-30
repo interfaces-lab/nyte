@@ -488,7 +488,7 @@ SOFTWARE.
 ## Visual Studio Code (`microsoft/vscode`)
 
 - Repository: https://github.com/microsoft/vscode
-- What: the zsh startup scripts in `packages/host/src/local/shell-integration`
+- What: the zsh and bash startup scripts in `packages/host/src/local/shell-integration`
   adapt portions of VS Code's shell integration scripts at tag `1.105.1`; the
   folder's `UPSTREAM.md` lists them.
 

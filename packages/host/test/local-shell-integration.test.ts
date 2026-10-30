@@ -27,6 +27,8 @@ const ptyLoads =
 
 const zsh = ["/bin/zsh", "/usr/bin/zsh"].find((path) => existsSync(path));
 
+const bash = ["/bin/bash", "/usr/bin/bash"].find((path) => existsSync(path));
+
 type Terminal = {
   readonly job: Job;
   readonly home: string;
@@ -127,10 +129,19 @@ const fakeMarkers = [
   "spoof-end",
 ].join("");
 
-describe.skipIf(!ptyLoads || zsh === undefined)("an integrated zsh terminal", () => {
-  const shell = zsh ?? "";
-
-  const hooks = `PS1='${PROMPT}'
+const shells: readonly {
+  readonly name: string;
+  readonly path: string | undefined;
+  /** The user's startup file that sets the prompt. */
+  readonly rc: string;
+  /** User prompt hooks that log the status they see and, while `$HOME/hold` exists, block in a command substitution, a child in the shell's process group; and a user preexec hook that sets `__user_preexec`. */
+  readonly hooks: string;
+}[] = [
+  {
+    name: "zsh",
+    path: zsh,
+    rc: ".zshrc",
+    hooks: `PS1='${PROMPT}'
 precmd() { print -r -- "precmd $?" >> $HOME/hooks.log }
 __slow_hook() {
   print -r -- "hook $?" >> $HOME/hooks.log
@@ -139,8 +150,179 @@ __slow_hook() {
   fi
 }
 precmd_functions+=(__slow_hook)
-preexec() { print -r -- preexec >> $HOME/hooks.log }
-`;
+preexec() { __user_preexec=yes }
+`,
+  },
+  {
+    name: "bash",
+    path: bash,
+    rc: ".bash_profile",
+    hooks: `PS1='${PROMPT}'
+__precmd() {
+  local status=$?
+  echo "precmd $status" >> $HOME/hooks.log
+  return $status
+}
+__slow_hook() {
+  local status=$?
+  echo "hook $status" >> $HOME/hooks.log
+  if [[ -e $HOME/hold ]]; then
+    : $(touch $HOME/entered; while [[ -e $HOME/hold ]]; do sleep 0.05; done)
+  fi
+  return $status
+}
+PROMPT_COMMAND='__precmd; __slow_hook'
+__mark_preexec() { __user_preexec=yes; }
+trap '__mark_preexec "$_"' DEBUG
+`,
+  },
+];
+
+for (const shell of shells)
+  describe.skipIf(!ptyLoads || shell.path === undefined)(
+    `an integrated ${shell.name} terminal`,
+    () => {
+      const path = shell.path ?? "";
+
+      const prompt = { [shell.rc]: `PS1='${PROMPT}'\n` };
+
+      it(
+        "is idle at the prompt and while prompt hooks run, which still see the command's status, $_ and their preexec hook, and busy while a command line runs, even without job control",
+        async () => {
+          const terminal = await openTerminal(path, { [shell.rc]: shell.hooks });
+          const hold = join(terminal.home, "hold");
+
+          try {
+            await terminal.submit("false");
+            await terminal.submit("(exit 7)");
+            await terminal.submit("true underscore; echo under-$_ preexec-$__user_preexec");
+
+            await terminal.shows("under-underscore preexec-yes");
+            expect(await readFile(join(terminal.home, "hooks.log"), "utf8")).toContain(
+              "precmd 1\nhook 1\nprecmd 7\nhook 7\n",
+            );
+
+            await writeFile(hold, "");
+            const prompts = terminal.prompts();
+            await terminal.type("sleep 0.1");
+            await terminal.until(
+              () => existsSync(join(terminal.home, "entered")),
+              "the prompt hook",
+            );
+
+            await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
+            await rm(hold);
+            await terminal.until(() => terminal.prompts() > prompts, "the prompt after the hook");
+
+            await terminal.type("set +m; echo busy-$((40+2)); sleep 30");
+            await terminal.shows("busy-42");
+
+            expect(await terminal.job.idle()).toBe(false);
+            await interrupt(terminal);
+            await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
+
+            await terminal.type("echo loop-$((40+2)); while :; do :; done");
+            await terminal.shows("loop-42");
+
+            expect(await terminal.job.idle()).toBe(false);
+            await interrupt(terminal);
+            await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
+          } finally {
+            await terminal.close();
+          }
+        },
+        TEST_MS,
+      );
+
+      it(
+        "stays busy while a background job runs at the prompt, with or without job control, and goes idle once it ends",
+        async () => {
+          const terminal = await openTerminal(path, prompt);
+          const hold = join(terminal.home, "hold");
+
+          try {
+            await terminal.submit("sleep 30 &");
+
+            expect(await terminal.job.idle()).toBe(false);
+            await terminal.submit("kill %1");
+            await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
+
+            await writeFile(hold, "");
+            await terminal.submit("set +m");
+            await terminal.submit("(while [[ -e $HOME/hold ]]; do sleep 0.05; done) &");
+
+            expect(await terminal.job.idle()).toBe(false);
+            await rm(hold);
+            await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
+          } finally {
+            await terminal.close();
+          }
+        },
+        TEST_MS,
+      );
+
+      it(
+        "ignores markers a command prints and keeps every OSC 633 out of the output",
+        async () => {
+          const terminal = await openTerminal(path, { ...prompt, fake: fakeMarkers });
+
+          try {
+            await terminal.type("set +m; cat $HOME/fake; sleep 30");
+            await terminal.shows("spoof-end");
+
+            expect(await terminal.job.idle()).toBe(false);
+            expect(terminal.text()).toContain("spoof-start\x1b]133;A\x07spoof-end");
+            expect(terminal.text()).not.toContain("633;");
+            await interrupt(terminal);
+            await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
+          } finally {
+            await terminal.close();
+          }
+        },
+        TEST_MS,
+      );
+
+      it(
+        "falls back to the process table, which cannot tell a `set +m` command from a prompt hook, when opted out before it starts, in the user's startup files, or at the prompt",
+        async () => {
+          const busy = async (terminal: Terminal): Promise<boolean> => {
+            await terminal.type("set +m; echo busy-$((40+2)); sleep 30");
+            await terminal.shows("busy-42");
+            const idle = await terminal.job.idle();
+            await interrupt(terminal);
+
+            return !idle;
+          };
+
+          const before = await openTerminal(path, prompt, { NYTE_SHELL_INTEGRATION: "0" });
+
+          const startup = await openTerminal(path, {
+            [shell.rc]: `PS1='${PROMPT}'\nNYTE_SHELL_INTEGRATION=0\n`,
+          });
+
+          const runtime = await openTerminal(path, prompt);
+
+          try {
+            await before.submit("echo started-${__nyte_nonce-without}.");
+            await before.shows("started-without.");
+            await runtime.submit("NYTE_SHELL_INTEGRATION=0");
+
+            expect(await Promise.all([before, startup, runtime].map(busy))).toEqual([
+              false,
+              false,
+              false,
+            ]);
+          } finally {
+            await Promise.all([before, startup, runtime].map((terminal) => terminal.close()));
+          }
+        },
+        TEST_MS,
+      );
+    },
+  );
+
+describe.skipIf(!ptyLoads || zsh === undefined)("an integrated zsh terminal's startup", () => {
+  const shell = zsh ?? "";
 
   it(
     "runs the user's startup files once each, in order, with their ZDOTDIR, history and exports, and keeps the nonce out of the environment and output",
@@ -183,141 +365,6 @@ preexec() { print -r -- preexec >> $HOME/hooks.log }
   );
 
   it(
-    "is idle at the prompt and while prompt hooks run, which still see the command's status, and busy while a command line runs, even without job control",
-    async () => {
-      const terminal = await openTerminal(shell, { ".zshrc": hooks });
-      const hold = join(terminal.home, "hold");
-
-      try {
-        await terminal.submit("false");
-        await terminal.submit("(exit 7)");
-
-        expect(await readFile(join(terminal.home, "hooks.log"), "utf8")).toContain(
-          "preexec\nprecmd 1\nhook 1\npreexec\nprecmd 7\nhook 7\n",
-        );
-
-        await writeFile(hold, "");
-        const prompts = terminal.prompts();
-        await terminal.type("sleep 0.1");
-        await terminal.until(() => existsSync(join(terminal.home, "entered")), "the prompt hook");
-
-        await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
-        await rm(hold);
-        await terminal.until(() => terminal.prompts() > prompts, "the prompt after the hook");
-
-        await terminal.type("set +m; echo busy-$((40+2)); sleep 30");
-        await terminal.shows("busy-42");
-
-        expect(await terminal.job.idle()).toBe(false);
-        await interrupt(terminal);
-        await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
-
-        await terminal.type("echo loop-$((40+2)); while :; do :; done");
-        await terminal.shows("loop-42");
-
-        expect(await terminal.job.idle()).toBe(false);
-        await interrupt(terminal);
-        await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
-      } finally {
-        await terminal.close();
-      }
-    },
-    TEST_MS,
-  );
-
-  it(
-    "stays busy while a background job runs at the prompt, with or without job control, and goes idle once it ends",
-    async () => {
-      const terminal = await openTerminal(shell, { ".zshrc": `PS1='${PROMPT}'\n` });
-      const hold = join(terminal.home, "hold");
-
-      try {
-        await terminal.submit("sleep 30 &");
-
-        expect(await terminal.job.idle()).toBe(false);
-        await terminal.submit("kill %1");
-        await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
-
-        await writeFile(hold, "");
-        await terminal.submit("set +m");
-        await terminal.submit("(while [[ -e $HOME/hold ]]; do sleep 0.05; done) &");
-
-        expect(await terminal.job.idle()).toBe(false);
-        await rm(hold);
-        await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
-      } finally {
-        await terminal.close();
-      }
-    },
-    TEST_MS,
-  );
-
-  it(
-    "ignores markers a command prints and keeps every OSC 633 out of the output",
-    async () => {
-      const terminal = await openTerminal(shell, {
-        ".zshrc": `PS1='${PROMPT}'\n`,
-        fake: fakeMarkers,
-      });
-
-      try {
-        await terminal.type("set +m; cat $HOME/fake; sleep 30");
-        await terminal.shows("spoof-end");
-
-        expect(await terminal.job.idle()).toBe(false);
-        expect(terminal.text()).toContain("spoof-start\x1b]133;A\x07spoof-end");
-        expect(terminal.text()).not.toContain("633;");
-        await interrupt(terminal);
-        await expect.poll(() => terminal.job.idle(), { timeout: WAIT_MS }).toBe(true);
-      } finally {
-        await terminal.close();
-      }
-    },
-    TEST_MS,
-  );
-
-  it(
-    "falls back to the process table, which cannot tell a `set +m` command from a prompt hook, when opted out before it starts, in the user's startup files, or at the prompt",
-    async () => {
-      const busy = async (terminal: Terminal): Promise<boolean> => {
-        await terminal.type("set +m; echo busy-$((40+2)); sleep 30");
-        await terminal.shows("busy-42");
-        const idle = await terminal.job.idle();
-        await interrupt(terminal);
-
-        return !idle;
-      };
-
-      const before = await openTerminal(
-        shell,
-        { ".zshrc": `PS1='${PROMPT}'\n` },
-        { NYTE_SHELL_INTEGRATION: "0" },
-      );
-
-      const startup = await openTerminal(shell, {
-        ".zshrc": `PS1='${PROMPT}'\nNYTE_SHELL_INTEGRATION=0\n`,
-      });
-
-      const prompt = await openTerminal(shell, { ".zshrc": `PS1='${PROMPT}'\n` });
-
-      try {
-        await before.submit("print -r -- startup-${__nyte_zdotdir-none}.");
-        await before.shows("startup-none.");
-        await prompt.submit("NYTE_SHELL_INTEGRATION=0");
-
-        expect(await Promise.all([before, startup, prompt].map(busy))).toEqual([
-          false,
-          false,
-          false,
-        ]);
-      } finally {
-        await Promise.all([before, startup, prompt].map((terminal) => terminal.close()));
-      }
-    },
-    TEST_MS,
-  );
-
-  it(
     "keeps its startup folder while readers detach and removes it when the shell exits",
     async () => {
       const terminal = await openTerminal(shell, { ".zshrc": `PS1='${PROMPT}'\n` });
@@ -334,6 +381,39 @@ preexec() { print -r -- preexec >> $HOME/hooks.log }
         await terminal.job.settled();
 
         expect(existsSync(folder)).toBe(false);
+      } finally {
+        await terminal.close();
+      }
+    },
+    TEST_MS,
+  );
+});
+
+describe.skipIf(!ptyLoads || bash === undefined)("an integrated bash terminal's startup", () => {
+  const shell = bash ?? "";
+
+  it(
+    "runs /etc/profile and only the first login profile, never .bashrc on its own, and keeps the nonce out of the environment and output even with allexport and xtrace",
+    async () => {
+      const log = (name: string): string => `echo ${name} >> $HOME/startup.log\n`;
+
+      const terminal = await openTerminal(shell, {
+        ".bash_profile": `${log("bash_profile")}set -a\nSTARTUP_VAR=from-profile\nPS1='${PROMPT}'\n`,
+        ".bash_login": log("bash_login"),
+        ".profile": log("profile"),
+        ".bashrc": log("bashrc"),
+      });
+
+      try {
+        await terminal.submit("set -x; true; set +x");
+        await terminal.submit(
+          "echo nonce-$(env | grep -c -E '[0-9a-f]{64}')-${NYTE_SHELL_NONCE-unset} var=$STARTUP_VAR path-${PATH:+set}.",
+        );
+
+        await terminal.shows(`nonce-${inheritedHex()}-unset var=from-profile path-set.`);
+        expect(terminal.text()).not.toMatch(NONCE);
+        expect(terminal.text()).not.toContain("633;");
+        expect(await readFile(join(terminal.home, "startup.log"), "utf8")).toBe("bash_profile\n");
       } finally {
         await terminal.close();
       }
