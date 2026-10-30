@@ -99,6 +99,8 @@ const view: SessionView = {
 
 const historyReads: string[] = [];
 
+let historyGate = Promise.resolve();
+
 installConnection(
   scriptedConnection({
     sessions: [sessionRow(SESSION)],
@@ -106,6 +108,7 @@ installConnection(
     session: () => ({
       history: async (input) => {
         historyReads.push(input.before);
+        await historyGate;
         const page = input.before === leading?.id ? turns.slice(0, 1) : [];
 
         return {
@@ -169,6 +172,36 @@ async function recallPrompts(editor: HTMLElement): Promise<void> {
 
   if (recallReads !== "prompt-1,prompt-0")
     throw new Error(`recall read the history before ${recallReads || "nothing"}`);
+}
+
+/** Text typed while an earlier-prompts read is in flight outlives the read. */
+async function typeWhileRecalling(editor: HTMLElement): Promise<void> {
+  const gate = Promise.withResolvers<void>();
+  historyGate = gate.promise;
+  const reads = historyReads.length;
+
+  for (const shown of [PROMPTS[2], PROMPTS[1]]) {
+    press(editor, "ArrowUp", { ctrlKey: true, altKey: true });
+    await until(
+      () => (editor.innerText === shown ? true : null),
+      `the composer to read "${shown}"`,
+    );
+  }
+
+  press(editor, "ArrowUp", { ctrlKey: true, altKey: true });
+  await until(() => (historyReads.length > reads ? true : null), "the earlier prompts read");
+  document.execCommand("insertText", false, " Typed.");
+  const typed = `${PROMPTS[1]} Typed.`;
+  await until(() => (editor.innerText === typed ? true : null), "the typed text");
+  gate.resolve();
+  historyGate = Promise.resolve();
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+
+  if (editor.innerText !== typed)
+    throw new Error(`a late recall replaced the typed text with "${editor.innerText}"`);
+  document.execCommand("selectAll");
+  document.execCommand("insertText", false, DRAFT);
+  await until(() => (editor.innerText === DRAFT ? true : null), "the draft to come back");
 }
 
 async function openModelPicker(editor: HTMLElement): Promise<void> {
@@ -263,6 +296,7 @@ export async function run(): Promise<string> {
 
     await until(() => stage.querySelector("[aria-label='Messages'] [data-row-key]"), "the chat");
     await recallPrompts(editor);
+    await typeWhileRecalling(editor);
     await openModelPicker(editor);
     await pasteFromNowhere(editor);
 

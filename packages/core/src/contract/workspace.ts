@@ -24,6 +24,7 @@ import type {
   ForgetOutcome,
   FormatOutcome,
   WorktreeCleanup,
+  GitCommitId,
   GitCommitView,
   GitFileSides,
   GitOutcome,
@@ -90,7 +91,12 @@ export interface GitApi {
   ): AsyncIterable<PatchSet>;
   contents(path: string, scope: GitScope): Promise<GitFileSides>;
 
-  log(input?: { readonly cursor?: Cursor; readonly limit?: number }): Promise<Paged<GitCommitView>>;
+  /** Lists history from `head`, or from HEAD when omitted; pass the same `head` with every cursor. */
+  log(input?: {
+    readonly head?: GitCommitId;
+    readonly cursor?: Cursor;
+    readonly limit?: number;
+  }): Promise<Paged<GitCommitView>>;
   refs(): Promise<GitRefsView>;
   blame(path: string): Promise<BlameView>;
 

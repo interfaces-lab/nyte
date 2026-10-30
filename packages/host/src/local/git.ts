@@ -529,6 +529,9 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       const repo = await required();
       const skip = input?.cursor === undefined ? 0 : Number(input.cursor) || 0;
       const limit = Math.max(1, input?.limit ?? LOG_DEFAULT);
+      const head = await resolves(repo.root, input?.head ?? "HEAD");
+
+      if (head === null) return { items: [], next: null };
 
       const ran = await git(repo.root, [
         "log",
@@ -536,6 +539,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
         `--skip=${skip}`,
         `-n${limit + 1}`,
         "--format=%H%x1f%P%x1f%an%x1f%ct%x1f%s",
+        head,
       ]);
 
       if (ran.code !== 0) return { items: [], next: null };

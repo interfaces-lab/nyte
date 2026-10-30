@@ -655,7 +655,7 @@ export const operations = {
   ),
   "git.log input": operation(
     OPERATIONS["git.log"].input,
-    { workspace, cursor, limit: 20 },
+    { workspace, head: gitCommit, cursor, limit: 20 },
     { workspace, limit: "20" },
   ),
   "git.log output": operation(

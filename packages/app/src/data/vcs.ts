@@ -63,7 +63,7 @@ export function useVcsChanges(
   });
 }
 
-/** Keyed by HEAD so a checkout, commit or reset anywhere reads it anew. */
+/** Keyed by HEAD and pinned to it, so a checkout, commit or reset anywhere reads it anew. */
 export function useVcsLog(
   input: { readonly limit: number; readonly cursor?: Cursor | undefined },
   enabled: boolean,
@@ -81,8 +81,9 @@ export function useVcsLog(
     queryKey: keys.gitLog(workspace, head, input.limit, input.cursor),
     queryFn: async () =>
       (await workspaceGit()).log({
+        head: head ?? undefined,
+        cursor: input.cursor,
         limit: input.limit,
-        ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
       }),
     enabled: enabled && workspace !== undefined && head !== undefined,
   });

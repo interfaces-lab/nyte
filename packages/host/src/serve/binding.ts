@@ -472,7 +472,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "git.patches": async ({ workspace: id, scope, paths, options }) =>
       mapped((await git(id)).patches(scope, paths, options), patchesWire),
     "git.contents": async ({ workspace: id, path, scope }) => (await git(id)).contents(path, scope),
-    "git.log": async ({ workspace: id, cursor, limit }) => (await git(id)).log({ cursor, limit }),
+    "git.log": async ({ workspace: id, head, cursor, limit }) =>
+      (await git(id)).log({ head, cursor, limit }),
     "git.refs": async ({ workspace: id }) => (await git(id)).refs(),
     "git.blame": async ({ workspace: id, path }) => (await git(id)).blame(path),
     "git.stage": async ({ workspace: id, paths, options }) => (await git(id)).stage(paths, options),
