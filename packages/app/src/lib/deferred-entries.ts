@@ -3,6 +3,7 @@ import type { codeRuntime } from "../chat/markdown/code.deferred.tsx";
 import type { highlightRuntime } from "../chat/markdown/highlight.deferred.ts";
 import type { mermaidRuntime } from "../chat/markdown/mermaid.deferred.ts";
 import type { ghosttyRuntime } from "../workbench/terminal/ghostty.deferred.ts";
+import type { pdfRuntime } from "../workbench/files/pdf/pdf.deferred.ts";
 import type { workbenchRuntime } from "../workbench/panels.deferred.tsx";
 
 export const deferredEntries = {
@@ -26,6 +27,10 @@ export const deferredEntries = {
     module: new URL("../workbench/terminal/ghostty.deferred.ts", import.meta.url).href,
     packages: ["ghostty-web/"],
   },
+  pdf: {
+    module: new URL("../workbench/files/pdf/pdf.deferred.ts", import.meta.url).href,
+    packages: ["pdfjs-dist/"],
+  },
   charts: {
     module: new URL("../settings/usage-charts.deferred.ts", import.meta.url).href,
     packages: ["@nivo/", "d3-shape/", "@react-spring/"],
@@ -38,5 +43,6 @@ export interface DeferredRuntimes {
   mermaid: typeof mermaidRuntime;
   workbench: typeof workbenchRuntime;
   ghostty: typeof ghosttyRuntime;
+  pdf: typeof pdfRuntime;
   charts: typeof chartsRuntime;
 }
