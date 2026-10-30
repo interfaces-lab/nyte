@@ -219,4 +219,62 @@ describe("child background items", () => {
       await views.return?.();
     }
   });
+
+  it("keeps a child's run that starts here while a refresh reads its older stored state", async () => {
+    const memory = await memoryStore().open();
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let held: string | null = null;
+
+    const gated: StoreConnection = {
+      ...memory,
+      refs: {
+        ...memory.refs,
+        async list(prefix) {
+          const listed = await memory.refs.list(prefix);
+
+          if (prefix !== held) return listed;
+          held = null;
+          reached.resolve();
+          await release.promise;
+
+          return listed;
+        },
+      },
+    };
+
+    const { kernel, host, script: turns } = await setup({ store: gated });
+    const { session: parent } = await host.sessions.start({ content: "Delegate." });
+    const { session: child } = await host.sessions.start({ parent: parent.id, content: "Go." });
+    const first = host.execution.advance({ session: child.id, head: main });
+    (await turns.started(1)).finish();
+    await first;
+    const views = parent.watch()[Symbol.asyncIterator]();
+
+    try {
+      await views.next();
+      await kernel.folds.refresh();
+      await child.send("Again.");
+      held = `sessions/${child.id}/runs/`;
+      const refreshing = kernel.folds.refresh();
+      await reached.promise;
+      const second = host.execution.advance({ session: child.id, head: main });
+      const turn = await turns.started(2);
+
+      await until(() =>
+        kernel.children.background(parent.id)[0]?.item.state === "working" ? true : undefined,
+      );
+      release.resolve();
+      await refreshing;
+
+      expect(kernel.children.background(parent.id)).toMatchObject([
+        { item: { id: child.id, state: "working" } },
+      ]);
+      turn.finish();
+      await second;
+    } finally {
+      release.resolve();
+      await views.return?.();
+    }
+  });
 });

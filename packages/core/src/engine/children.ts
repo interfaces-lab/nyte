@@ -21,6 +21,8 @@ interface Child {
   title: string;
   /** Null until the main head's run changes in this process or is read from the store. */
   own: BackgroundItem["state"] | null;
+  /** The table's count of heard run events when this child's last one arrived. */
+  heard: number;
   item: BackgroundItem | null;
 }
 
@@ -32,6 +34,7 @@ export function createChildTable(
   kernel: Pick<Kernel, "bus" | "jobs" | "pages" | "children">,
 ): ChildTable {
   const children = new Map<SessionId, Child>();
+  let heard = 0;
 
   const refresh = (session: SessionId, child: Child): void => {
     if (child.own === null) return;
@@ -65,8 +68,11 @@ export function createChildTable(
 
     if (event.kind === "run" && event.head !== MAIN) return;
 
-    if (event.kind === "run") child.own = runState(event);
-    else if (event.kind === "session") child.title = event.info.name ?? CHILD_TITLE;
+    if (event.kind === "run") {
+      heard += 1;
+      child.heard = heard;
+      child.own = runState(event);
+    } else if (event.kind === "session") child.title = event.info.name ?? CHILD_TITLE;
     else if (event.kind !== "background") return;
     refresh(session, child);
   });
@@ -80,6 +86,7 @@ export function createChildTable(
       startedBy: record.origin?.call ?? null,
       title: record.name ?? CHILD_TITLE,
       own: null,
+      heard: 0,
       item: null,
     };
 
@@ -96,13 +103,19 @@ export function createChildTable(
       child.own = own;
       refresh(record.id, child);
     },
-    reconcile(record, own) {
+    reconcile(record, own, since) {
       const child = follow(record);
 
-      if (child === null || own === null) return;
-      child.own = own;
-      refresh(record.id, child);
+      if (child !== null && child.heard > since) return false;
+
+      if (child !== null && own !== null) {
+        child.own = own;
+        refresh(record.id, child);
+      }
+
+      return true;
     },
+    heard: () => heard,
     forget(session) {
       const child = children.get(session);
 
@@ -143,6 +156,7 @@ export async function linkStoredChildren(
   seen: Map<SessionId, StoredChild>,
   link: "link" | "reconcile" = "link",
 ): Promise<void> {
+  const since = kernel.children.heard();
   let after: { readonly at: number; readonly id: SessionId } | undefined;
 
   for (;;) {
@@ -161,10 +175,14 @@ export async function linkStoredChildren(
         const found = await load(kernel.store, ref, decodeSessionRecord);
 
         if (found === null) return null;
-        kernel.children[link](found.record, await readChildState(kernel.store, found.record));
-        seen.set(id, { version, at: found.record.lastActivityAt });
+        const own = await readChildState(kernel.store, found.record);
+        const at = found.record.lastActivityAt;
 
-        return { id, at: found.record.lastActivityAt };
+        if (link === "link") kernel.children.link(found.record, own);
+        else if (!kernel.children.reconcile(found.record, own, since)) return { id, at };
+        seen.set(id, { version, at });
+
+        return { id, at };
       }),
     );
 
