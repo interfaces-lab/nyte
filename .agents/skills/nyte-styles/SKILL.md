@@ -90,7 +90,8 @@ rules always beat base.css; an app style passed through `xstyle` always beats th
 
 1. Put the value in the right `defineVars` group; expose a handle in `vars` or `schema`.
 2. `pnpm --dir packages/ui lock:tokens`, then review the lock diff.
-3. Colour changes: `pnpm --dir packages/ui sync:tokens` regenerates `platform-colors.ts`.
+3. `pnpm --dir packages/ui sync:tokens` regenerates `platform-colors.ts` from the colour roles and
+   the design-scale lint's space and box tables from the `space` and box-sizing handles.
 
 ## Verify
 
