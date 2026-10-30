@@ -23,7 +23,7 @@ import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
 import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
 import { ControlGlyphs, Icon, type GlyphSize, type IconName } from "./icon.tsx";
-import { Spinner } from "./spinner.tsx";
+import { Loader } from "./loader.tsx";
 
 const controlStyles = create({
   base: {
@@ -399,7 +399,7 @@ function ButtonContent({
       </span>
       {loading && (
         <span aria-hidden="true" {...props(contentStyles.spinner)}>
-          <Spinner />
+          <Loader />
         </span>
       )}
     </ControlGlyphs>

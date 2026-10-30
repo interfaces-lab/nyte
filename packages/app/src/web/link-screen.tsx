@@ -7,7 +7,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { Spinner } from "@nyte-ai/ui/spinner";
+import { Loader } from "@nyte-ai/ui/loader";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
@@ -242,7 +242,7 @@ function LinkBoundary({ config }: { readonly config: AccountConfig }): ReactElem
       <WebPage>
         <p role="status" {...props(styles.status)}>
           <ClerkLoading>
-            <Spinner />
+            <Loader />
             <span {...props(srOnly)}>Loading sign-in</span>
           </ClerkLoading>
         </p>

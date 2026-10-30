@@ -27,6 +27,7 @@ import { ToolbarDemo } from "./demos/toolbar";
 import { TooltipDemo } from "./demos/tooltip";
 import { IconDemo, PanelToggleIconDemo } from "./demos/icon";
 import { KbdDemo } from "./demos/kbd";
+import { LoaderDemo } from "./demos/loader";
 import { SpinnerDemo } from "./demos/spinner";
 import { ToastDemo } from "./demos/toast";
 
@@ -71,6 +72,7 @@ export const componentsMdxComponents = {
   IconDemo,
   PanelToggleIconDemo,
   KbdDemo,
+  LoaderDemo,
   SpinnerDemo,
   ToastDemo,
 };

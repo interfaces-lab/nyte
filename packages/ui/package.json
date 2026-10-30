@@ -49,6 +49,11 @@
       "types": "./dist/marker.d.ts",
       "default": "./dist/marker.js"
     },
+    "./loader": {
+      "nyte-source": "./src/loader.tsx",
+      "types": "./dist/loader.d.ts",
+      "default": "./dist/loader.js"
+    },
     "./meter": {
       "nyte-source": "./src/meter.tsx",
       "types": "./dist/meter.d.ts",

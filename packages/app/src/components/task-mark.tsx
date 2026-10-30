@@ -2,6 +2,7 @@ import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { Loader } from "@nyte-ai/ui/loader";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
@@ -89,14 +90,16 @@ function statusMarkStyle(state: TaskState) {
 /**
  * The one mark for where a task stands, in every list, tab, tray and transcript row: a chat, a
  * subagent or a job. A done task draws nothing unless its reply is unread; screen readers hear
- * the task's word.
+ * the task's word. A job is a process, not AI work, so it runs with a `Loader`, not a `Spinner`.
  */
 export function TaskMark({
   state,
   unread = false,
+  job = false,
 }: {
   readonly state: TaskState;
   readonly unread?: boolean;
+  readonly job?: boolean;
 }): ReactElement | null {
   if (state === "done" && !unread) return null;
 
@@ -117,7 +120,7 @@ export function TaskMark({
           <path d={MOON} />
         </svg>
       )}
-      {(state === "working" || state === "retrying") && <Spinner />}
+      {(state === "working" || state === "retrying") && (job ? <Loader /> : <Spinner />)}
       {state === "waiting" && <Icon name="bubble-question" size="sm" variant="filled" />}
       {state === "background" && <Icon name="layers" size="sm" />}
       {state === "failed" && <Icon name="warning" size="sm" variant="filled" />}

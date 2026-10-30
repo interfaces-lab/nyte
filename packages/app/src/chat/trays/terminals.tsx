@@ -169,7 +169,7 @@ export function BackgroundWork({
                 }}
               >
                 <Row.Leading aria-hidden="true">
-                  <TaskMark state={terminal.state} />
+                  <TaskMark state={terminal.state} job />
                 </Row.Leading>
                 <Row.Label>{terminal.job.command}</Row.Label>
               </Row.Primary>
@@ -235,7 +235,7 @@ export function BackgroundWork({
           }}
         >
           <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
-            <TaskMark state={pillState(terminals)} />
+            <TaskMark state={pillState(terminals)} job />
           </span>
           <span aria-hidden="true" {...props(trayParts.pillCount)}>
             {count}

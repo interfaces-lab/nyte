@@ -1,6 +1,6 @@
 import { Button } from "@nyte-ai/ui/button";
 import { Popover } from "@nyte-ai/ui/popover";
-import { Spinner } from "@nyte-ai/ui/spinner";
+import { Loader } from "@nyte-ai/ui/loader";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { SwitchField } from "@nyte-ai/ui/switch";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -120,7 +120,7 @@ function LinkSteps({
       <Step title="Nyte account" body={errorMessage(state.error)} actions={close} />
     ) : (
       <div {...props(styles.step)}>
-        <Spinner />
+        <Loader />
       </div>
     );
   }
@@ -166,7 +166,7 @@ function LinkSteps({
         }
       >
         <span role="status" {...props(styles.progress)}>
-          <Spinner />
+          <Loader />
           {linking.kind === "linking" ? "Linking this Mac…" : "Finish signing in."}
         </span>
       </Step>

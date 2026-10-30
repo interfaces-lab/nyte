@@ -17,6 +17,7 @@ import {
   ContextMenuTrigger,
 } from "@nyte-ai/ui/context-menu";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
+import { Loader } from "@nyte-ai/ui/loader";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { chatTitle, useChat } from "../chats/index.ts";
@@ -401,7 +402,7 @@ export function WorkbenchTabStrip({
                         )}
                         {running && (
                           <span aria-label="Running" {...props(styles.running)}>
-                            <Spinner />
+                            <Loader />
                           </span>
                         )}
                       </span>
