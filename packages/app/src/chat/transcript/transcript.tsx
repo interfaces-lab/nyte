@@ -33,10 +33,8 @@ import type { ReaderInput, TranscriptMode } from "./transcript-mode.ts";
 import type { RowLayout } from "./transcript-rows.ts";
 import {
   distanceFromEnd,
-  NEAR_END,
   navigates,
   navigatesUp,
-  NOWHERE,
   scrollsWithin,
   syncScrollButton,
   syncSticky,
@@ -44,7 +42,6 @@ import {
   TRANSCRIPT_PADDING_END,
   TRANSCRIPT_PADDING_START,
 } from "./transcript-scroll.ts";
-import type { TranscriptPlace } from "./transcript-scroll.ts";
 
 const OVERSCAN = 2;
 
@@ -114,7 +111,6 @@ interface TranscriptControls {
   readonly hold: (element: Element) => void;
   readonly keep: (element: Element) => () => void;
   readonly page: (direction: 1 | -1) => void;
-  readonly reveal: (key: string) => void;
 }
 
 interface TranscriptOptions {
@@ -141,7 +137,6 @@ const NO_CONTROLS: TranscriptControls = {
   hold: () => undefined,
   keep: () => ignore,
   page: () => undefined,
-  reveal: () => undefined,
 };
 
 const TranscriptContext = createContext<TranscriptState | null>(null);
@@ -190,7 +185,6 @@ export function TranscriptProvider({
     hold: (element) => controlsRef.current?.hold(element),
     keep: (element) => controlsRef.current?.keep(element) ?? ignore,
     page: (direction) => controlsRef.current?.page(direction),
-    reveal: (key) => controlsRef.current?.reveal(key),
   }));
 
   const transcript = {
@@ -215,18 +209,11 @@ export function TranscriptContent({
   ready,
   estimateSize,
   renderRow,
-  marker,
-  onPlace,
-  overlay,
 }: {
   readonly rows: readonly RowLayout[];
   readonly ready: boolean;
   readonly estimateSize: (index: number) => number;
   readonly renderRow: (index: number) => ReactNode;
-  /** The key of a row whose place against the view `onPlace` reports. */
-  readonly marker?: string;
-  readonly onPlace?: (place: TranscriptPlace) => void;
-  readonly overlay?: ReactNode;
 }): ReactElement {
   const {
     paneId,
@@ -245,7 +232,6 @@ export function TranscriptContent({
   const mode = useRef<TranscriptMode>(initialMode(initialPosition));
   const input = useRef<ReaderInput>(NO_INPUT);
   const scrolled = useRef({ offset: 0, height: 0 });
-  const placed = useRef(NOWHERE);
   const content = useRef<HTMLDivElement>(null);
   const scrollport = useRef<HTMLDivElement | null>(null);
 
@@ -344,30 +330,6 @@ export function TranscriptContent({
       });
   };
 
-  const report = (instance: TranscriptVirtualizer): void => {
-    const scroll = instance.scrollElement;
-
-    if (scroll === null || onPlace === undefined) return;
-    const current = mode.current;
-    const index = marker === undefined ? undefined : indexes.get(marker);
-    const item = index === undefined ? undefined : instance.measurementsCache[index];
-
-    const where =
-      item === undefined || (current.kind === "following" && current.opening)
-        ? null
-        : item.end <= scroll.scrollTop
-          ? "above"
-          : item.start >= scroll.scrollTop + scroll.clientHeight
-            ? "below"
-            : "inside";
-
-    const away = current.kind === "reading" && distanceFromEnd(scroll) > NEAR_END;
-
-    if (where === placed.current.marker && away === placed.current.away) return;
-    placed.current = { away, marker: where };
-    onPlace(placed.current);
-  };
-
   const present = (instance: TranscriptVirtualizer): void => {
     const scroll = instance.scrollElement;
 
@@ -377,7 +339,6 @@ export function TranscriptContent({
 
     syncSticky(scroll, content.current);
     queueMicrotask(() => syncScrollButton(scroll, dock));
-    report(instance);
     loadHistory(instance);
   };
 
@@ -452,7 +413,6 @@ export function TranscriptContent({
 
   const virtualRows = virtualizer.getVirtualItems();
   const settleRows = useEffectEvent((): void => settle(virtualizer));
-  const reportPlace = useEffectEvent((): void => report(virtualizer));
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- measures virtual rows and syncs sticky headers before paint
   useLayoutEffect(() => {
@@ -463,7 +423,6 @@ export function TranscriptContent({
       settleRows();
       syncSticky(scroll, content.current);
       queueMicrotask(() => syncScrollButton(scroll, dock));
-      reportPlace();
     }
   }, [dock, dockHeight, ready, sticky, virtualRows, virtualizer]);
 
@@ -530,21 +489,6 @@ export function TranscriptContent({
   const press = useCallback((pressed: boolean): void => {
     input.current = { ...input.current, pressed };
   }, []);
-
-  const reveal = useEffectEvent((key: string): void => {
-    const index = indexes.get(key);
-    const item = index === undefined ? undefined : virtualizer.measurementsCache[index];
-    const scroll = virtualizer.scrollElement;
-
-    if (item === undefined || scroll === null) return;
-    const top = scroll.clientHeight / 3;
-    virtualizer.cancelScroll();
-    mode.current = nextMode(mode.current, {
-      kind: "held",
-      anchor: { key, element: undefined, top },
-    });
-    virtualizer.scrollToOffset(item.start - top);
-  });
 
   const restoreAnchor = useEffectEvent((): void => {
     const anchor = mode.current.kind === "reading" ? mode.current.anchor : null;
@@ -620,7 +564,6 @@ export function TranscriptContent({
         touch(direction < 0);
         virtualizer.scrollBy(direction * viewport.clientHeight * 0.9);
       },
-      reveal,
     };
 
     return () => {
@@ -714,7 +657,6 @@ export function TranscriptContent({
           })}
         </div>
       </div>
-      {overlay}
     </div>
   );
 }

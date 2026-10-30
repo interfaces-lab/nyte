@@ -68,34 +68,6 @@ function divider(page: Page): Locator {
   return messages(page).getByText("New messages below", { exact: true });
 }
 
-/** The up pill places the divider's row a third of the way down the transcript. */
-async function dividerOffset(page: Page): Promise<number> {
-  const row = messages(page).locator("[data-row-key^='unread-divider:']");
-
-  const [box, region, height] = await Promise.all([
-    row.boundingBox(),
-    messages(page).boundingBox(),
-    messages(page).evaluate((element) => element.clientHeight),
-  ]);
-
-  return (box?.y ?? 0) - (region?.y ?? 0) - height / 3;
-}
-
-async function replyBelow(page: Page): Promise<void> {
-  const log = messages(page);
-  const field = composer(page);
-  await send(page, "/hold");
-  await expect(log.getByRole("paragraph").last()).toContainText("Holding");
-  await field.fill("/hold");
-  await field.press("ControlOrMeta+Enter");
-  await expect(page.getByRole("region", { name: "Queued messages" })).toBeVisible();
-  await log.hover();
-  await page.mouse.wheel(0, -400);
-  await expect(page.getByRole("button", { name: "Scroll to bottom" })).toBeVisible();
-  await chatPane(page).getByRole("button", { name: "Stop response" }).click();
-  await expect(page.getByRole("region", { name: "Queued messages" })).toHaveCount(0);
-}
-
 async function scrollUpTo(page: Page, target: Locator): Promise<void> {
   const log = messages(page);
   await expect(async () => {
@@ -109,19 +81,11 @@ test("the unread journey", async ({ desktop }) => {
   const { page, application } = desktop;
   const log = messages(page);
   const stop = chatPane(page).getByRole("button", { name: "Stop response" });
-  const pills = page.getByRole("button", { name: /New Messages?$/u });
 
-  await test.step("a chat with unread replies opens at the end and points up to them", async () => {
+  await test.step("a chat with unread replies opens at the end with the divider above them", async () => {
     await openChat(page, FIXTURES.unread);
     await expect(log.getByText(LATEST_UNREAD, { exact: true })).toBeInViewport();
-    await expect(pills).toHaveText(["3 New Messages"]);
-  });
-
-  await test.step("the up pill puts the divider a third of the way down and goes", async () => {
-    await pills.click();
-    await expect(pills).toHaveCount(0);
-    await expect(divider(page)).toBeInViewport();
-    await expect.poll(() => dividerOffset(page).then(Math.abs)).toBeLessThanOrEqual(2);
+    await scrollUpTo(page, divider(page));
     const prompt = await log.getByText(FIRST_UNREAD, { exact: true }).boundingBox();
     const line = await divider(page).boundingBox();
     expect(prompt?.y ?? Infinity).toBeLessThan(line?.y ?? 0);
@@ -133,38 +97,11 @@ test("the unread journey", async ({ desktop }) => {
     await expect(log.getByText(LATEST_UNREAD, { exact: true })).toBeInViewport();
   });
 
-  await test.step("a reply arriving below the reader counts once, and its pill returns to the end", async () => {
-    await replyBelow(page);
-    await expect(pills).toHaveText(["1 New Message"]);
-    await expect(log.getByRole("paragraph").last()).toContainText("Holding");
-    await expect(pills).toHaveText(["1 New Message"]);
-    await pills.click();
-    await expect(pills).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Scroll to bottom" })).toBeHidden();
-    await stop.click();
-    await scrollUpTo(page, divider(page));
-  });
-
-  await test.step("dismissing the down pill leaves the view where it is", async () => {
-    await page.getByRole("button", { name: "Scroll to bottom" }).click();
-    await replyBelow(page);
-    await expect(pills).toHaveText(["1 New Message"]);
-    const offset = await log.evaluate((element) => element.scrollTop);
-    await page.getByRole("button", { name: "Dismiss new messages" }).click();
-    await expect(pills).toHaveCount(0);
-    expect(
-      Math.abs((await log.evaluate((element) => element.scrollTop)) - offset),
-    ).toBeLessThanOrEqual(1);
-    await expect(page.getByRole("button", { name: "Scroll to bottom" })).toBeVisible();
-    await stop.click();
-  });
-
   await test.step("leaving the chat and coming back clears the divider", async () => {
     await openChat(page, FIXTURES.alpha);
     await openChat(page, FIXTURES.unread);
     await scrollUpTo(page, log.getByText(FIRST_UNREAD, { exact: true }));
     await expect(divider(page)).toHaveCount(0);
-    await expect(pills).toHaveCount(0);
   });
 
   await test.step("replies that arrive while the window is away get a divider", async () => {

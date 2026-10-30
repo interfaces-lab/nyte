@@ -245,38 +245,21 @@ export async function run(): Promise<string> {
     const distance = (): number =>
       viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
 
-    const pill = (direction: "up" | "down"): HTMLElement | null =>
-      container.querySelector<HTMLElement>(`[data-new-messages='${direction}']`);
-
     const scrollBy = async (delta: number): Promise<void> => {
-      viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: delta, bubbles: true }));
-      viewport.scrollTop += delta;
-      viewport.dispatchEvent(new Event("scroll"));
+      const current = element(container, "[aria-label='Messages']");
+      current.dispatchEvent(new WheelEvent("wheel", { deltaY: delta, bubbles: true }));
+      current.scrollTop += delta;
+      current.dispatchEvent(new Event("scroll"));
       await frames(3);
     };
 
+    const scrollUpTo = async (selector: string): Promise<void> => {
+      for (let step = 0; step < 20 && container.querySelector(selector) === null; step += 1)
+        await scrollBy(-200);
+    };
+
     check(distance() <= 4, "the chat opens at the end");
-    check(
-      pill("up")?.textContent === "3 New Messages" && pill("down") === null,
-      `the up pill counts the three unread replies: ${String(pill("up")?.textContent)}`,
-    );
-
-    element(container, "[data-new-messages='up'] button").click();
-    await frames(5);
-
-    const revealed = container.querySelector<HTMLElement>(
-      "[data-row-key='unread-divider:answer-38']",
-    );
-
-    const offset =
-      (revealed?.getBoundingClientRect().top ?? 0) - viewport.getBoundingClientRect().top;
-
-    check(
-      Math.abs(offset - viewport.clientHeight / 3) <= 2,
-      `the up pill puts the divider a third of the way down, not at ${String(offset)}px of ${String(viewport.clientHeight)}`,
-    );
-    check(pill("up") === null, "the up pill goes once clicked");
-    check(revealed?.querySelector("[data-unread-divider]") !== null, "the divider stays");
+    await scrollUpTo("[data-unread-divider]");
 
     const dividers = container.querySelectorAll<HTMLElement>("[data-unread-divider]");
     const divider = dividers[0];
@@ -303,48 +286,6 @@ export async function run(): Promise<string> {
       document.activeElement?.closest("[data-composer-frame]") !== null,
       "scroll to bottom focuses the composer",
     );
-
-    await scrollBy(-400);
-    stream.push(view(41, "Answer 41 starts."));
-    await frames(5);
-    check(
-      pill("down")?.textContent === "1 New Message" && pill("up") === null,
-      `a reply below an away reader shows the down pill: ${String(pill("down")?.textContent)}`,
-    );
-    stream.push(view(41, "Answer 41 starts and keeps streaming more text."));
-    await frames(5);
-    check(pill("down")?.textContent === "1 New Message", "a streaming reply counts once");
-
-    const reading = viewport.scrollTop;
-    element(
-      container,
-      "[data-new-messages='down'] button[aria-label='Dismiss new messages']",
-    ).click();
-    await frames(5);
-    check(Math.abs(viewport.scrollTop - reading) <= 1, "dismissing the down pill doesn't scroll");
-    check(pill("down") === null, "dismissing the down pill hides it");
-    stream.push(view(42));
-    await frames(5);
-    check(pill("down")?.textContent === "1 New Message", "the next reply counts from one");
-
-    element(container, "[data-new-messages='down'] button").click();
-    await frames(5);
-    check(distance() <= 4 && pill("down") === null, "the down pill returns to the end");
-    const end = viewport.scrollTop;
-
-    for (
-      let step = 0;
-      step < 20 && container.querySelector("[data-unread-divider]") === null;
-      step += 1
-    )
-      await scrollBy(-200);
-    check(
-      container.querySelector("[data-unread-divider]") !== null,
-      "returning to the end keeps the divider",
-    );
-    element(container, "[data-slot='scroll-to-bottom'] button").click();
-    await frames(5);
-    check(Math.abs(viewport.scrollTop - end) <= 4, "scroll to bottom returns to the end");
 
     await scrollBy(120);
     stream.push(view(42, `Answer 42.\n\n${"A longer answer grows the end. ".repeat(40)}`));
@@ -373,12 +314,7 @@ export async function run(): Promise<string> {
     coldOpened.resolve();
     await until(() => coldSeen, "the cold chat to be marked read");
     await frames(10);
-    check(
-      pill("up")?.textContent === "3 New Messages",
-      `a cold open keeps its up pill once marked read: ${String(pill("up")?.textContent)}`,
-    );
-    pill("up")?.querySelector("button")?.click();
-    await frames(5);
+    await scrollUpTo("[data-row-key='unread-divider:answer-38'] [data-unread-divider]");
     check(
       container.querySelector("[data-row-key='unread-divider:answer-38'] [data-unread-divider]") !==
         null,

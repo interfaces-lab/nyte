@@ -62,13 +62,6 @@ export const messageScrollerStyles = create({
     },
     transitionTimingFunction: "ease-in-out",
   },
-  pill: {
-    position: "absolute",
-    zIndex: 1,
-    insetBlockStart: space.s3,
-    insetInlineStart: "50%",
-    translate: "-50% 0",
-  },
 });
 
 export const dividerStyles = create({

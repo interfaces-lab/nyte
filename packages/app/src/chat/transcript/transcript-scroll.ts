@@ -7,14 +7,6 @@ export const TRANSCRIPT_PADDING_END = 114;
 /** How far from the end the view may sit before it offers a way back. */
 export const NEAR_END = 60;
 
-/** `marker` is null while the transcript opens or without a marked row. */
-export interface TranscriptPlace {
-  readonly away: boolean;
-  readonly marker: "above" | "inside" | "below" | null;
-}
-
-export const NOWHERE: TranscriptPlace = { away: false, marker: null };
-
 function setDataState(element: HTMLElement, name: string, active: boolean): void {
   const value = active ? "true" : "false";
 
