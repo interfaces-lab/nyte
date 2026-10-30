@@ -56,6 +56,9 @@ export function ButtonStatesDemo() {
       <Button variant="outline" disabled disabledReason="No changes to save">
         Save Changes
       </Button>
+      <Button variant="solid" icon="arrow-up" disabled>
+        Send
+      </Button>
     </>
   );
 }

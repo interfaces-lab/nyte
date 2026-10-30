@@ -15,6 +15,7 @@ const styles = create({
   secondary: { color: role.contentSecondary },
   primary: { color: role.contentPrimary },
   solid: { color: role.contentOnInteractiveStrong },
+  disabled: { color: role.contentDisabled },
 });
 
 function check(condition: boolean, message: string): void {
@@ -241,10 +242,11 @@ export async function run(): Promise<string> {
           const disabled = name.endsWith(":true");
           const forced = document.documentElement.dataset.iconForced !== undefined;
 
-          const expectedStyle =
-            variant === "solid"
+          const expectedStyle = disabled
+            ? styles.disabled
+            : variant === "solid"
               ? styles.solid
-              : forced && !disabled
+              : forced
                 ? styles.primary
                 : styles.secondary;
 
@@ -255,8 +257,8 @@ export async function run(): Promise<string> {
           probe.remove();
           check(actual.color === expected, `${mode} ${name} must use its control-state role`);
           check(
-            (getComputedStyle(control).opacity === "0.5") === disabled,
-            `${mode} ${name} must dim only when disabled`,
+            getComputedStyle(control).opacity === "1",
+            `${mode} ${name} must not dim with opacity`,
           );
         }
 
@@ -278,7 +280,11 @@ export async function run(): Promise<string> {
         colors.get("false:false") !== colors.get("false:true"),
         "Selection must change the control color",
       );
-      check(opacities.get("true:false") === "0.5", "Disabled must dim the control");
+      check(opacities.get("true:false") === "1", "Disabled must not dim the control");
+      check(
+        colors.get("true:false") !== colors.get("false:false"),
+        "Disabled must change the control color",
+      );
       check(
         colors.get("true:false") === colors.get("true:true"),
         "Disabled must win over selection",
