@@ -70,8 +70,6 @@ interface ComposerFrameProps {
   /** Puts an earlier prompt in the composer; false when there is none to step to. */
   onRecall?: (direction: RecallDirection) => boolean;
   model?: ReactNode;
-  /** Shown beside Send: how full the chat's context window is. */
-  contextUsage?: ReactNode;
   inputRef?: (element: ComposerEditorHandle | null) => void;
   onFocusChange?: (focused: boolean) => void;
   suggestionCatalog: ComposerSuggestionCatalog;
@@ -103,7 +101,6 @@ export function ComposerFrame({
   onEmptySubmit,
   onRecall,
   model,
-  contextUsage,
   inputRef,
   onFocusChange,
   suggestionCatalog,
@@ -581,7 +578,6 @@ export function ComposerFrame({
           </span>
           <span {...props(composerStyles.spacer, compact && composerStyles.spacerCompact)} />
           <span {...props(composerStyles.sendActions, compact && composerStyles.sendCompact)}>
-            {contextUsage}
             {busy && onAbort !== undefined && (
               <Button
                 iconOnly

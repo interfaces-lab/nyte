@@ -19,6 +19,7 @@ import {
   usePaneControllerSnapshot,
   usePaneViewStateStore,
 } from "../panes/pane-context.tsx";
+import { activePane } from "../panes/pane-layout.ts";
 import type { PaneId } from "../panes/pane-layout.ts";
 import { useCatalog } from "../data/catalog.ts";
 import { useRenameSession, useSessionChoice } from "../data/sessions.ts";
@@ -425,6 +426,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
             {presentation === "full" && (
               <Composer
                 sessionId={sessionId}
+                active={activePane(layout).id === paneId}
                 floatingMount={conversation.floatingMount}
                 backgroundWork={{
                   content: (
