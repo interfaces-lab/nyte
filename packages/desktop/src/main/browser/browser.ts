@@ -20,7 +20,16 @@ import { GuestSessions } from "./browser-guest-session.ts";
 import { pickElement } from "./browser-picker.ts";
 import { nextZoomFactor, webUrl } from "./browser-policy.ts";
 import { createSurfaceRuntime } from "./browser-runtime.ts";
-import { DEFAULT_BOUNDS, hasViewHolder, placeSurface, surfaceState } from "./browser-surface.ts";
+import {
+  DEFAULT_BOUNDS,
+  dropHolder,
+  hasViewHolder,
+  leaveWindow,
+  placeSurface,
+  reportVisibility,
+  surfaceState,
+  viewHolder,
+} from "./browser-surface.ts";
 import type { BrowserSurfacesDependencies, Surface, SurfaceRegistry } from "./browser-surface.ts";
 import { wireSurface } from "./browser-surface-events.ts";
 import { ExpectedHostError } from "../../shared/errors.ts";
@@ -96,16 +105,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   release(id: string, holder: BrowserHolder): void {
     const surface = this.#surfaces.get(id);
 
-    if (surface === undefined || !surface.holders.delete(holder)) return;
-
-    if (surface.holders.size === 0) {
-      this.#destroy(surface);
-
-      return;
-    }
-
-    this.place(surface);
-    this.reclaimIdle();
+    if (surface !== undefined) this.#released(surface, dropHolder(surface, holder));
   }
 
   place(surface: Surface, focus = false): void {
@@ -191,7 +191,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
         message: "Only web addresses open in the browser panel.",
       });
 
-    const surface = this.retain(input.surface, `view:${window}`, input.owner ?? { kind: "home" });
+    const surface = this.retain(input.surface, viewHolder(window), input.owner ?? { kind: "home" });
 
     surface.home = window;
 
@@ -321,7 +321,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   }
 
   close(input: { readonly surface: string }, window: HostWindow): void {
-    this.release(input.surface, `view:${window}`);
+    this.release(input.surface, viewHolder(window));
   }
 
   async captureFrame(input: { readonly surface: string }): Promise<string | undefined> {
@@ -411,10 +411,10 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   setBounds(message: BrowserBoundsMessage, window: HostWindow): void {
     const surface = this.#surfaces.get(message.surface);
 
-    if (surface === undefined || (!message.visible && surface.home !== window)) return;
-    const moved = message.visible && surface.home !== window;
+    if (surface === undefined) return;
+    const shown = reportVisibility(surface, window, message.visible);
 
-    if (moved) surface.home = window;
+    if (shown === "ignored") return;
 
     const bounds = {
       x: Math.round(message.bounds.x),
@@ -424,13 +424,12 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     };
 
     surface.bounds = bounds;
-    surface.visible = message.visible;
 
     if (bounds.width > 0 && bounds.height > 0) surface.lastBounds = bounds;
 
     this.place(surface, message.focus);
 
-    if (moved) this.publish(surface);
+    if (shown === "moved") this.publish(surface);
   }
 
   setFocus(message: BrowserFocusMessage, window: HostWindow): void {
@@ -472,14 +471,22 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     this.#chromeFocus.delete(window);
 
     for (const surface of this.#surfaces.values()) {
-      if (surface.home === window) {
-        surface.home = undefined;
-        surface.attachedTo = undefined;
-        surface.visible = false;
-      }
-
-      this.release(surface.id, `view:${window}`);
+      if (surface.home === window) surface.attachedTo = undefined;
+      this.#released(surface, leaveWindow(surface, window));
     }
+  }
+
+  #released(surface: Surface, held: ReturnType<typeof dropHolder>): void {
+    if (held === "absent") return;
+
+    if (held === "unheld") {
+      this.#destroy(surface);
+
+      return;
+    }
+
+    this.place(surface);
+    this.reclaimIdle();
   }
 
   #create(id: string, owner: BrowserOwner): Surface {
