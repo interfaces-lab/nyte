@@ -30,10 +30,7 @@ export interface LoaderProps {
   readonly xstyle?: Restyle<"Loader">;
 }
 
-/**
- * Something that isn't AI work is loading: a page, an account, a download, a process. A
- * running chat, turn, subagent or tool call shows `Spinner` instead.
- */
+/** Loading that isn't AI work, such as a page or a download. AI work shows `Spinner`. */
 export function Loader({ className, style, xstyle }: LoaderProps = {}): ReactElement {
   return (
     <svg

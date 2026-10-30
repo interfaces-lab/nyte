@@ -74,10 +74,6 @@ export const motion = defineVars({
   "--nyte-easing-in-out-strong": "cubic-bezier(0.77, 0, 0.175, 1)",
 });
 
-/**
- * The one control-height scale. Buttons, inputs, and toggles take a step; rows and menu items
- * take one and never fall below the touch target.
- */
 export const controls = defineVars({
   "--nyte-control-height-2xs": { default: "16px", "@media (pointer: coarse)": "28px" },
   "--nyte-control-height-xs": { default: "20px", "@media (pointer: coarse)": "32px" },

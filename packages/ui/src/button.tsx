@@ -25,7 +25,7 @@ import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts"
 import { ControlGlyphs, Icon, type GlyphSize, type IconName } from "./icon.tsx";
 import { Loader } from "./loader.tsx";
 
-/** A loading button is disabled too, but keeps its look behind the loader. */
+/** A loading button is disabled but keeps its look behind the loader. */
 const disabled = "[data-disabled]:not([aria-busy='true'])";
 
 const controlStyles = create({
@@ -208,7 +208,6 @@ const buttonVariants = create({
       '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
     },
   },
-  /** `plain` in tertiary ink with tight padding: a segment in a quiet row, such as the composer footer. */
   quiet: {
     paddingInline: button.paddingInlineTight,
     fontWeight: type.weightRegular,

@@ -1,9 +1,4 @@
-/**
- * Writes the design-scale lint's tables from the tokens, so the lint can never
- * suggest a step the tokens don't declare: every `space` handle, and every
- * handle that sizes a box, as px at the default size and a fine pointer.
- * `--check` fails when the written tables are stale.
- */
+/** Writes the design-scale lint's tables from the tokens, so the lint never suggests a step the tokens don't declare. */
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +10,6 @@ const outputPath = join(packages, "app/lint/design-scale.tokens.json");
 
 const tokenFiles = ["ui/src/styles/theme.stylex.ts", "ui/src/styles/tokens.stylex.ts"];
 
-/** The handles that size a box: whole groups, or the named keys of one. */
 const boxHandles = {
   glyph: "all",
   control: "all",
@@ -77,7 +71,6 @@ if (process.argv.includes("--check")) {
   );
 }
 
-/** A length in px at the default size, or undefined for anything that isn't one. */
 function px(value) {
   const tokens = expand(String(value)).match(/\d*\.?\d+(?:px)?|[a-z-]+\(|\S/g) ?? [];
   let index = 0;
@@ -129,7 +122,6 @@ function px(value) {
   return index === tokens.length && Number.isFinite(result) ? result : undefined;
 }
 
-/** Replaces every `var(--nyte-…)` with its declared default, recursively. */
 function expand(value) {
   return value.replace(/var\((--nyte-[\w-]+)\)/g, (_, property) =>
     declared.has(property) ? `(${expand(declared.get(property))})` : "?",
