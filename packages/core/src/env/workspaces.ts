@@ -7,6 +7,7 @@ import type {
   EnvironmentIdentity,
   FileStatus,
   ForgetOutcome,
+  GitOutcome,
   PatchSet,
   RunId,
   SessionId,
@@ -19,6 +20,7 @@ import type { Kernel } from "../contract/kernel.ts";
 import { decodeRunRecord } from "../contract/records.ts";
 import type { WorkspaceRecord } from "../contract/records.ts";
 import type {
+  GitApi,
   HeldEntry,
   PageHolder,
   PatchCache,
@@ -347,7 +349,11 @@ export function workspaceHandle(
       return streamWorkspacePatches(kernel, { workspace: id, source, paths, options, snapshots });
     },
     files: async () => (await capabilities()).files,
-    git: async () => (await capabilities()).git,
+    async git() {
+      const git = (await capabilities()).git;
+
+      return git.kind === "available" ? { ...git, api: guardSwitches(kernel, id, git.api) } : git;
+    },
     github: async () => (await capabilities()).github,
     browser: async () => (await capabilities()).browser,
   };
@@ -367,8 +373,6 @@ async function workspaceInfo(
     sessionsOn(kernel.store, id),
   ]);
 
-  const runs = await Promise.all(sessions.map((session) => liveRuns(kernel.store, session)));
-
   return {
     id,
     target: record.target,
@@ -378,7 +382,7 @@ async function workspaceInfo(
     projectSources: record.projectSources,
     addedBy: record.addedBy,
     sessions: sessions.length,
-    writers: runs.flat().map((run) => run.record.view.id),
+    writers: await readWriters(kernel.store, sessions),
     isolation: record.isolation,
   };
 }
@@ -391,6 +395,49 @@ async function workspaceTrust(
   const trust = given ?? (await readFolderTrust(kernel));
 
   return { projectResources: trust.decided(record), trusted: trust.trusted(record) };
+}
+
+/**
+ * `git` answering `busy` with the workspace's writers to a branch switch while any run writes to
+ * the workspace, since the switch would change its files under that run. Every other member calls
+ * through to `git` itself, so a provider's inherited methods keep their receiver.
+ */
+function guardSwitches(kernel: Kernel, workspace: WorkspaceId, git: GitApi): GitApi {
+  const switching = async (run: () => Promise<GitOutcome>): Promise<GitOutcome> => {
+    const runs = await readWriters(kernel.store, await sessionsOn(kernel.store, workspace));
+
+    return runs.length > 0 ? { kind: "busy", runs } : run();
+  };
+
+  return {
+    status: () => git.status(),
+    watch: () => git.watch(),
+    changes: (scope, options) => git.changes(scope, options),
+    watchChanges: (scope, options) => git.watchChanges(scope, options),
+    patches: (scope, paths, options) => git.patches(scope, paths, options),
+    contents: (path, scope) => git.contents(path, scope),
+    log: (input) => git.log(input),
+    refs: () => git.refs(),
+    blame: (path) => git.blame(path),
+    stage: (paths, options) => git.stage(paths, options),
+    unstage: (paths, options) => git.unstage(paths, options),
+    discard: (paths, options) => git.discard(paths, options),
+    commit: (input, options) => git.commit(input, options),
+    branch: (input, options) =>
+      input.checkout ? switching(() => git.branch(input, options)) : git.branch(input, options),
+    checkout: (input, options) => switching(() => git.checkout(input, options)),
+    push: (input, options) => git.push(input, options),
+  };
+}
+
+/** The live runs of `sessions`, each of which may write to its session's workspace. */
+async function readWriters(
+  store: StoreConnection,
+  sessions: readonly SessionId[],
+): Promise<readonly RunId[]> {
+  const runs = await Promise.all(sessions.map((session) => liveRuns(store, session)));
+
+  return runs.flat().map((run) => run.record.view.id);
 }
 
 export async function sessionsOn(
