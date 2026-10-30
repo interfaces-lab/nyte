@@ -5,6 +5,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { HOST_EVENT_CHANNEL } from "../src/shared/ipc.ts";
 import { expect, test } from "./fixtures.ts";
 
 test.use({ chapter: "browser" });
@@ -18,6 +19,21 @@ async function guestPages(application: ElectronApplication) {
       loading: contents.isLoading(),
       title: contents.getTitle(),
     })),
+  );
+}
+
+async function pageShown(application: ElectronApplication, url: string): Promise<boolean> {
+  return application.evaluate(
+    ({ BrowserWindow, WebContentsView }, guestUrl) =>
+      BrowserWindow.getAllWindows().some((window) =>
+        window.contentView.children.some(
+          (view) =>
+            view instanceof WebContentsView &&
+            view.webContents.getURL() === guestUrl &&
+            view.getVisible(),
+        ),
+      ),
+    url,
   );
 }
 
@@ -220,13 +236,50 @@ test("the integrated browser journey", async ({ desktop }) => {
     expect(scriptRequests).toBe(0);
   });
 
-  await test.step("the shield menu names the host", async () => {
+  await test.step("the shield menu names the host and pauses the page over its still", async () => {
+    const still = panel.locator('img[src^="data:image/jpeg"]');
+    await expect(still).toHaveCount(1);
+    await expect.poll(() => pageShown(application, url)).toBe(true);
     await shield.click();
     await expect(
       page.getByRole("menuitemcheckbox", { name: "Block on 127.0.0.1", exact: true }),
     ).toBeChecked();
+    await expect.poll(() => pageShown(application, url)).toBe(false);
+    await expect(still).toHaveCount(1);
     await page.getByRole("menu").press("Escape");
     await expect(page.getByRole("menu")).toBeHidden();
+    await expect.poll(() => pageShown(application, url)).toBe(true);
+  });
+
+  await test.step("a toast above the composer leaves the page showing", async () => {
+    await application.evaluate(({ BrowserWindow }, channel) => {
+      for (const window of BrowserWindow.getAllWindows())
+        window.webContents.send(channel, { kind: "status", message: "Saved" });
+    }, HOST_EVENT_CHANNEL);
+    const notice = page.locator('[data-slot="toast"]').filter({ hasText: "Saved" });
+    await expect(notice).toBeVisible();
+    await page.evaluate(async () => {
+      for (let frame = 0; frame < 10; frame += 1)
+        await new Promise((done) => requestAnimationFrame(done));
+    });
+    expect(await pageShown(application, url)).toBe(true);
+    await notice.evaluate((element) =>
+      Promise.all(element.getAnimations().map((animation) => animation.finished)),
+    );
+    const toastBox = await notice.boundingBox();
+    const composerBox = await page.getByRole("form", { name: "Message" }).boundingBox();
+
+    if (toastBox === null || composerBox === null)
+      throw new Error("The toast or composer is hidden");
+    expect(
+      toastBox.x < composerBox.x + composerBox.width &&
+        composerBox.x < toastBox.x + toastBox.width &&
+        toastBox.y < composerBox.y + composerBox.height &&
+        composerBox.y < toastBox.y + toastBox.height,
+    ).toBe(false);
+    await notice.hover();
+    await notice.getByRole("button", { name: "Dismiss notification" }).click();
+    await expect(notice).toHaveCount(0);
   });
 
   await test.step.skip("pause and restore blocking for this host", async () => {

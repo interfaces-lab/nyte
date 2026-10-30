@@ -14,6 +14,7 @@ import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { composerSendPlan } from "./composer-send.ts";
+import { composerStyles } from "./composer.stylex.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
@@ -21,6 +22,7 @@ import {
   usePaneActions,
   usePaneControllerSnapshot,
   usePaneViewStateStore,
+  useToastAnchor,
 } from "../../panes/pane-context.tsx";
 import { activePane } from "../../panes/pane-layout.ts";
 import type { PaneId } from "../../panes/pane-layout.ts";
@@ -70,6 +72,7 @@ export function BlankConversation({
 }): ReactElement {
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
+  const toastAnchor = useToastAnchor(paneId, false);
   const workspace = host.data.workspace;
   const catalog = useCatalog();
   const workspaceFiles = useMentionFiles(workspace !== undefined);
@@ -165,7 +168,7 @@ export function BlankConversation({
           viewStore.cancelSend(viewState.id);
         }}
       >
-        <div {...props(sessionScreenStyles.blankColumn)}>
+        <div {...props(sessionScreenStyles.blankColumn, toastAnchor && composerStyles.toastAnchor)}>
           <WorkspaceContext active={activePane(layout).id === paneId} />
           <ComposerFrame
             surface="new-chat"

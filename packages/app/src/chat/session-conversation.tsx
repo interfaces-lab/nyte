@@ -17,6 +17,7 @@ import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import {
   hideFromPanes,
   usePaneControllerSnapshot,
+  useToastAnchor,
   usePaneViewStateStore,
 } from "../panes/pane-context.tsx";
 import type { PaneId } from "../panes/pane-layout.ts";
@@ -245,6 +246,12 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   const { paneId, presentation, sessionId } = conversation;
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
+
+  const toastAnchor = useToastAnchor(
+    paneId,
+    conversation.presentation === "full" && conversation.floatingMount !== null,
+  );
+
   const chat = useChat(sessionId);
   const catalog = useCatalog(sessionId);
   const renameSession = useRenameSession();
@@ -426,6 +433,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
               <Composer
                 sessionId={sessionId}
                 floatingMount={conversation.floatingMount}
+                toastAnchor={toastAnchor}
                 backgroundWork={{
                   content: (
                     <>

@@ -6,6 +6,7 @@ import { activePane, canSplitPane } from "./pane-layout.ts";
 import type { DropPlacement, PaneId, SplitDirection } from "./pane-layout.ts";
 import type { ComposerViewState, SessionViewStateStore } from "./session-view-state.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
+import { useChatWindow } from "../window/index.ts";
 
 const PaneControllerContext = createContext<PaneController | undefined>(undefined);
 
@@ -59,6 +60,17 @@ export function usePaneControllerSnapshot(): PaneControllerSnapshot {
   const controller = useController();
 
   return useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+}
+
+/**
+ * Whether this pane's composer is the one toasts stack above: the active pane's, unless the
+ * workbench covers the chat and the composer doesn't float over it.
+ */
+export function useToastAnchor(paneId: PaneId, floating: boolean): boolean {
+  const { layout } = usePaneControllerSnapshot();
+  const covered = useChatWindow((snapshot) => snapshot.covered);
+
+  return activePane(layout).id === paneId && (floating || !covered);
 }
 
 function windowWidth(): number {
