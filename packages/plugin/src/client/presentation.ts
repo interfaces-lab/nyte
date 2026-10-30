@@ -238,15 +238,15 @@ export function toolOutput(state: ToolPartState): string {
 }
 
 /**
- * Where a chat's own run with its background work, a subagent or a job stands, with one mark and
- * one word each ({@link taskLabel}). A run or job someone stopped is done, never failed.
+ * A chat's, subagent's or job's state, each with one mark and one word ({@link taskLabel}). A
+ * stopped run or job is done, never failed.
  *
  * @category presentation
  */
 export type TaskState = "waiting" | "retrying" | "working" | "background" | "failed" | "done";
 
 /**
- * The one word for each task state; screen readers hear the same word sighted users see.
+ * Screen readers hear the same word sighted users see.
  *
  * @category presentation
  */
@@ -264,7 +264,7 @@ const TASK_LABELS = {
 } as const satisfies Readonly<Record<TaskState, string>>;
 
 /**
- * A delegate call's own state as a task, for a child no one knows yet. A stopped call is done.
+ * A delegate call's state as a task, for a child no client knows yet.
  *
  * @category presentation
  */
@@ -280,20 +280,12 @@ const CALL_STATES = {
   stopped: "done",
 } as const satisfies Readonly<Record<ToolTone, TaskState>>;
 
-/**
- * Whether a task has ended, done or failed; the rest still go.
- *
- * @category presentation
- */
+/** @category presentation */
 export function taskEnded(state: TaskState): boolean {
   return state === "done" || state === "failed";
 }
 
-/**
- * The line over a group of agents: how many still go, else how many are done and failed.
- *
- * @category presentation
- */
+/** @category presentation */
 export function agentGroupSummary(states: readonly TaskState[]): {
   readonly title: string;
   readonly detail: string | undefined;
@@ -316,10 +308,8 @@ export function agentGroupSummary(states: readonly TaskState[]): {
 }
 
 /**
- * Where a chat's own run stands, for every surface that shows it. A run waiting on a part waits
- * for the user's approval or answer, a run waiting on a child, job or timer is working, and the
- * active kinds carry the run a Stop targets. Work the chat started in the background never
- * changes it.
+ * A chat's own run; background work never changes it. The active kinds carry the run a Stop
+ * targets.
  *
  * @category presentation
  */
@@ -332,20 +322,12 @@ export type RunStatus =
   | { readonly kind: "retrying"; readonly run: RunId }
   | { readonly kind: "waiting-for-approval"; readonly run: RunId };
 
-/**
- * A head's background items that are working, and those waiting on the user.
- *
- * @category presentation
- */
+/** @category presentation */
 export type BackgroundWork = HeadInfo["background"];
 
 const IDLE: RunStatus = { kind: "idle" };
 
-/**
- * The status of a head's execution; a session without one is idle.
- *
- * @category presentation
- */
+/** @category presentation */
 export function runStatus(execution: Execution | undefined): RunStatus {
   switch (execution?.kind) {
     case undefined:
@@ -368,11 +350,7 @@ export function runStatus(execution: Execution | undefined): RunStatus {
   }
 }
 
-/**
- * The status a run leaves behind when it ends. Stopping is never a failure.
- *
- * @category presentation
- */
+/** @category presentation */
 export function endedStatus(end: RunEnd): RunStatus {
   switch (end.kind) {
     case "completed":
@@ -389,11 +367,7 @@ export function endedStatus(end: RunEnd): RunStatus {
   }
 }
 
-/**
- * A chat's own run as a task: a run that ended is done unless it failed.
- *
- * @category presentation
- */
+/** @category presentation */
 export function runMark(status: RunStatus): TaskState {
   switch (status.kind) {
     case "idle":
@@ -416,12 +390,7 @@ export function runMark(status: RunStatus): TaskState {
   }
 }
 
-/**
- * The state a list row draws, first that applies: a run of the chat's own, background work waiting
- * on the user, the chat's own failure, background work still running, how its own run ended.
- *
- * @category presentation
- */
+/** @category presentation */
 export function rowMark(status: RunStatus, background: BackgroundWork): TaskState {
   if ("run" in status) return runMark(status);
 
@@ -432,11 +401,7 @@ export function rowMark(status: RunStatus, background: BackgroundWork): TaskStat
   return background.working > 0 ? "background" : runMark(status);
 }
 
-/**
- * The words for the work a chat started in the background; none while it has none running.
- *
- * @category presentation
- */
+/** @category presentation */
 export function backgroundLabel(background: BackgroundWork): string | undefined {
   if (background.waiting > 0) return `${taskLabel("waiting")} in the background`;
 
@@ -446,9 +411,8 @@ export function backgroundLabel(background: BackgroundWork): string | undefined 
 }
 
 /**
- * The live row's words while a run is live and nothing it streams or runs shows progress, after
- * `planningMs` of that: nothing at first, so a quick gap doesn't flash, then planning, then a note
- * that it is slow.
+ * The live row's words after `planningMs` without progress. None at first, so a quick gap doesn't
+ * flash.
  *
  * @category presentation
  */
@@ -459,24 +423,16 @@ export function planningLabel(planningMs: number): string | undefined {
 }
 
 /**
- * The live row's planning words, also what holds its place before {@link planningLabel} shows them.
+ * Also holds the live row's place before {@link planningLabel} shows it.
  *
  * @category presentation
  */
 export const PLANNING_LABEL = "Planning next moves";
 
-/**
- * How long a live run shows no progress before the live row says it is planning.
- *
- * @category presentation
- */
+/** @category presentation */
 export const PLANNING_DELAY_MS = 200;
 
-/**
- * How long a live run plans before the live row says it is taking longer than expected.
- *
- * @category presentation
- */
+/** @category presentation */
 export const SLOW_PLANNING_MS = 15_000;
 
 /**
@@ -498,7 +454,7 @@ export function mainHead(session: Pick<SessionInfo, "heads">): HeadInfo | undefi
 }
 
 /**
- * Where a session stands in every client: a list row, a tab, or another chat's child task.
+ * A session's state, the same in a list row, a tab and a parent's task list.
  *
  * @category presentation
  */
@@ -508,17 +464,13 @@ export function sessionMark(session: Pick<SessionInfo, "heads">): TaskState {
   return head === undefined ? "done" : rowMark(runStatus(head.execution), head.background);
 }
 
-/**
- * The title a session goes by: its name, else what it is.
- *
- * @category presentation
- */
+/** @category presentation */
 export function sessionTitle(session: Pick<SessionInfo, "name" | "parent">): string {
   return session.name ?? (session.parent === null ? "New chat" : SUBAGENT_TITLE);
 }
 
 /**
- * What a child session goes by while it has no name, and before a client knows it.
+ * A child session's title while it has no name or a client doesn't know it yet.
  *
  * @category presentation
  */
