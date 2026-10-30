@@ -68,7 +68,7 @@ function divider(page: Page): Locator {
   return messages(page).getByText("New messages below", { exact: true });
 }
 
-/** The top of the divider's row against the top of the transcript, which the up pill places at a third of its height. */
+/** The up pill places the divider's row a third of the way down the transcript. */
 async function dividerOffset(page: Page): Promise<number> {
   const row = messages(page).locator("[data-row-key^='unread-divider:']");
 
@@ -81,7 +81,6 @@ async function dividerOffset(page: Page): Promise<number> {
   return (box?.y ?? 0) - (region?.y ?? 0) - height / 3;
 }
 
-/** Sends `/hold`, queues another `/hold` behind it, leaves the end, and stops the first, so a new reply streams in below the reader. */
 async function replyBelow(page: Page): Promise<void> {
   const log = messages(page);
   const field = composer(page);
