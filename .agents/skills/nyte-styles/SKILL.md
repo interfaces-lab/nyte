@@ -24,8 +24,8 @@ All of it is in `packages/ui/src/styles/`, exported as `@nyte-ai/ui/styles/*`.
 | `roles.stylex.ts` | Colour roles as `light-dark()` pairs over the theme; `tinted` re-declares them per scope | `role.*` in `vars.stylex.ts` |
 | `tokens.stylex.ts` | Appearance inputs, shadows, type, spacing unit, motion, component measurements | `type`, `motion`, `shadow`, `appearance` in `vars.stylex.ts`; geometry in `schema.stylex.ts` |
 | `vars.stylex.ts` | Typed handles: `role`, `type`, `motion`, `shadow`, `appearance` | components |
-| `schema.stylex.ts` | Geometry handles: `space`, `glyph`, `target`, `button`, `input`, `row`, `menu`, `dialog`, `radius`, `layer` | components |
-| `text.stylex.ts` | Whole text styles: `text.xs`, `sm`, `base`, `baseCompact`, `lg`, `code` | compose first: `props(text.sm, styles.label)` |
+| `schema.stylex.ts` | Geometry handles: `space`, `glyph`, `target`, `control`, `button`, `input`, `row`, `menu`, `dialog`, `radius`, `layer` | components |
+| `text.stylex.ts` | Whole text styles: `text.xs`, `sm`, `base`, `baseCompact`, `lg`, `xl`, `2xl`, `3xl`, `code` | compose first: `props(text.sm, styles.label)` |
 | `a11y.stylex.ts`, `floating-surface.stylex.ts` | Focus rings, `srOnly`, the raised-surface frame | components |
 | `base.css` | The browser baseline in `@layer base` | hosts import it once |
 | `tailwind.css` | The Tailwind bridge for docs and the demo site | Tailwind hosts |
@@ -65,7 +65,8 @@ rules always beat base.css; an app style passed through `xstyle` always beats th
    only. Weights come from `type.weight*`.
 4. **Spacing reads the scale.** Padding, margin, gap, and inset use `space.*` (Tailwind steps on a
    4px unit, `space.px` for a hairline). A structural measurement gets a name in a schema file.
-   Controls and rows take their height from `button`, `input`, `row`, `menu`, or `target`.
+   Controls take their height from the `control` scale; rows and menu items from `row`, which
+   keeps the touch target. An `Icon` takes a glyph step for `size`.
 5. **CSS owns what CSS can resolve.** Hover, focus-within, sibling state, container size, entry
    animation, and fallbacks are StyleX features; check the capability block in
    `packages/ui/AGENTS.md` before reaching for React state, effects, observers, or
