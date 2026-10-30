@@ -7,6 +7,7 @@ import { derivedStore } from "../data/derived-store.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import {
   sessionRows,
+  subscribeChildRows,
   subscribeSessionRow,
   subscribeSessionRows,
   useSessionRow,
@@ -76,7 +77,7 @@ export function useChatTasks(session: SessionId | undefined): readonly Task[] {
     ) ?? NO_ITEMS;
 
   const jobs = useSessionJobs(session);
-  const chats = useChats((directory) => directory);
+  const chats = useChildChats(session, (directory) => directory);
 
   return background.flatMap(
     (item) =>
@@ -96,7 +97,7 @@ export function useTask(session: SessionId | undefined, key: TaskKey): Task | un
     sameItem,
   );
 
-  const chat = useChats((directory) =>
+  const chat = useChildChats(session, (directory) =>
     item?.kind === "child" ? directory.get(asId<"session">(item.id)) : undefined,
   );
 
@@ -105,9 +106,10 @@ export function useTask(session: SessionId | undefined, key: TaskKey): Task | un
   return item === undefined ? undefined : describeTask(item, chat, jobs);
 }
 
-/** A chat's children as tasks, from the directory, for a chat whose view isn't open. */
+/** A chat's children as tasks, from the host's list of its children, for a chat whose view isn't open. */
 export function useChildTasks(parent: SessionId): readonly ChildTask[] {
-  return useChats(
+  return useChildChats(
+    parent,
     (directory) =>
       [...directory.values()].flatMap((chat) =>
         chat.parent === parent ? [childTask(chat.id, chat, undefined)] : [],
@@ -118,9 +120,25 @@ export function useChildTasks(parent: SessionId): readonly ChildTask[] {
 
 /** Every chat below `session`, at any depth, whose own run waits on the user, with its view: what the approval and question trays ask. */
 export function useWaitingDescendants(session: SessionId): readonly WaitingChat[] {
-  const store = waitingBelow(session, { read: chatDirectory, subscribe: subscribeChats });
+  const store = waitingBelow(session);
 
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+}
+
+/** What `select` makes of every chat, with each child of `parent` among them however many chats the host's lists carry. */
+function useChildChats<S>(
+  parent: SessionId | undefined,
+  select: (chats: ChatDirectory) => S,
+  isEqual?: (previous: S, next: S) => boolean,
+): S {
+  return useSyncExternalStoreWithSelector(
+    (notice) =>
+      parent === undefined ? subscribeChats(notice) : subscribeChildChats(parent, notice),
+    chatDirectory,
+    chatDirectory,
+    select,
+    isEqual,
+  );
 }
 
 function useSessionJobs(session: SessionId | undefined): readonly JobView[] | undefined {
@@ -188,6 +206,14 @@ function readChat(id: SessionId): ChatResult {
 
 function subscribeChat(id: SessionId, notice: () => void): () => void {
   const leave = [subscribeChats(notice), subscribeSessionRow(id, notice)];
+
+  return () => {
+    for (const unsubscribe of leave) unsubscribe();
+  };
+}
+
+function subscribeChildChats(parent: SessionId, notice: () => void): () => void {
+  const leave = [subscribeChats(notice), subscribeChildRows(parent, notice)];
 
   return () => {
     for (const unsubscribe of leave) unsubscribe();

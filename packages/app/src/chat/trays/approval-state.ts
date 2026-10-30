@@ -26,7 +26,7 @@ export function useApprovalRequest(sessionId: SessionId): ApprovalRequest | unde
 
     return first === undefined
       ? []
-      : [{ sessionId: entry.chat.id, approval: first, origin: entry.chat.title }];
+      : [{ sessionId: entry.id, approval: first, origin: entry.title }];
   })[0];
 }
 

@@ -21,6 +21,8 @@ import { asId } from "@nyte-ai/schema";
 export interface ConnectionScript {
   readonly views?: ReadonlyMap<SessionId, readonly SessionView[] | ViewStream>;
   readonly sessions?: readonly SessionInfo[] | ViewStream<readonly SessionInfo[]>;
+  /** Each session's children, as a watch of its children lists them; a session left out has none. */
+  readonly children?: ReadonlyMap<SessionId, readonly SessionInfo[]>;
   readonly workspaces?: readonly WorkspaceInfo[];
   readonly session?: (id: SessionId) => Partial<Session>;
   readonly host?: ViewStream<HostView>;
@@ -106,7 +108,11 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     const scripted = script.views?.get(id) ?? [];
     const stream = "watch" in scripted ? scripted : undefined;
     const views = "watch" in scripted ? undefined : scripted;
-    const row = rows.find((candidate) => candidate.id === id);
+
+    const row = [...rows, ...[...(script.children?.values() ?? [])].flat()].find(
+      (candidate) => candidate.id === id,
+    );
+
     const base: Session = {
       id,
       sessionId: id,
@@ -236,7 +242,14 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     principal: asId<"principal">("tester"),
     credential: { kind: "token", token: "scripted-token-0000" },
     sessions: {
-      watch: () => ("watch" in listed ? listed.watch() : replay([rows])),
+      watch: (input) => {
+        const parents = input?.parents;
+
+        if (parents?.kind === "children")
+          return replay([script.children?.get(parents.session) ?? []]);
+
+        return "watch" in listed ? listed.watch() : replay([rows]);
+      },
       start: refuse,
       list: async () => ({ items: rows, next: null }),
     },

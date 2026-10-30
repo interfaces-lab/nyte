@@ -8,7 +8,7 @@ import { derivedStore } from "./derived-store.ts";
 import type { StoreSource } from "./derived-store.ts";
 import { keys, queryClient } from "./query-client.ts";
 import { appSessionActions } from "./session-actions.ts";
-import { openViews, sessionsWatch, subscribeOpenViews } from "./watches.ts";
+import { childrenWatch, openViews, sessionsWatch, subscribeOpenViews } from "./watches.ts";
 import type { OpenView } from "./watches.ts";
 
 /**
@@ -41,16 +41,25 @@ export function findSessionRow(id: SessionId): SessionInfo | undefined {
 
 /** Hears the rows, and reads `id` on its own while the host's lists don't carry it. */
 export function subscribeSessionRow(id: SessionId, notice: () => void): () => void {
+  return ask(asked, id, notice);
+}
+
+/** Hears the rows, with every child of `parent` among them however many sessions the host's lists carry. */
+export function subscribeChildRows(parent: SessionId, notice: () => void): () => void {
+  return ask(askedParents, parent, notice);
+}
+
+function ask(counts: Map<SessionId, number>, id: SessionId, notice: () => void): () => void {
   const leave = subscribeSessionRows(notice);
-  asked.set(id, (asked.get(id) ?? 0) + 1);
+  counts.set(id, (counts.get(id) ?? 0) + 1);
 
   for (const listener of askListeners) listener();
 
   return () => {
-    const count = (asked.get(id) ?? 1) - 1;
+    const count = (counts.get(id) ?? 1) - 1;
 
-    if (count === 0) asked.delete(id);
-    else asked.set(id, count);
+    if (count === 0) counts.delete(id);
+    else counts.set(id, count);
 
     for (const listener of askListeners) listener();
     leave();
@@ -103,6 +112,9 @@ export function missingAsNull(cause: unknown): null {
 
 /** How many readers ask for each session by id. */
 const asked = new Map<SessionId, number>();
+
+/** How many readers ask for each session's children. */
+const askedParents = new Map<SessionId, number>();
 
 const askListeners = new Set<() => void>();
 
@@ -194,6 +206,51 @@ const unlisted: StoreSource<Unlisted> = {
   },
 };
 
+const NO_CHILD_ROWS: readonly SessionInfo[] = [];
+
+let childRows = NO_CHILD_ROWS;
+
+/** The children of each asked-for parent, watched while the rows are heard. */
+const children: StoreSource<readonly SessionInfo[]> = {
+  read: () => childRows,
+  subscribe(notice) {
+    const watched = new Map<SessionId, () => void>();
+
+    const collect = (): void => {
+      const rows = [...watched.keys()].flatMap((parent) => childrenWatch(parent).value ?? []);
+
+      if (rows.length === childRows.length && rows.every((row, index) => row === childRows[index]))
+        return;
+      childRows = rows.length === 0 ? NO_CHILD_ROWS : rows;
+      notice();
+    };
+
+    const sync = (): void => {
+      for (const [parent, leave] of watched)
+        if (!askedParents.has(parent)) {
+          leave();
+          watched.delete(parent);
+        }
+
+      for (const parent of askedParents.keys())
+        if (!watched.has(parent))
+          watched.set(parent, childrenWatch(parent).subscribeByFrame(collect));
+
+      collect();
+    };
+
+    askListeners.add(sync);
+    sync();
+
+    return () => {
+      askListeners.delete(sync);
+
+      for (const leave of watched.values()) leave();
+      childRows = NO_CHILD_ROWS;
+    };
+  },
+};
+
 const sources = {
   all: {
     read: () => sessionsWatch("all").value,
@@ -211,6 +268,7 @@ const sources = {
         queryFn: skipToken,
       }).subscribe(notice),
   },
+  children,
   unlisted,
   views: { read: openViews, subscribe: subscribeOpenViews },
   pending: {
@@ -235,7 +293,7 @@ const store = derivedStore(
 
     const merged = mergeSessionRows(
       {
-        lists: [read.all.read(), roots, read.unlisted.read().rows],
+        lists: [read.all.read(), roots, read.children.read(), read.unlisted.read().rows],
         roots,
         views: read.views.read(),
         project: (session) => appSessionActions().projectSession(session, pending),

@@ -30,6 +30,12 @@ export const sessionsWatch = watchFamily(
     current.sessions.watch({ parents: { kind: parents } }),
 );
 
+/** One session's children as the host lists them: their rows without the capped list of every session. */
+export const childrenWatch = watchFamily(
+  (current, parent: SessionId): AsyncIterable<readonly SessionInfo[]> =>
+    current.sessions.watch({ parents: { kind: "children", session: parent } }),
+);
+
 const OPENING_TAIL = 40;
 
 const NO_TRANSCRIPTS: ReadonlySet<SessionId> = new Set();
