@@ -176,6 +176,7 @@ export const sidebarStyles = create({
   sessionLabel: {
     marginInlineEnd: `calc(var(--_row-actions-opacity, 0) * (2 * ${target.min} + ${target.gap} + ${sidebar.rowGap}))`,
   },
+  unreadLabel: { fontWeight: type.weightMedium },
   draftLabel: {
     marginInlineEnd: `calc(var(--_row-actions-opacity, 0) * (${target.min} + ${sidebar.rowGap}))`,
   },

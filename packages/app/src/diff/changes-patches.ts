@@ -13,7 +13,7 @@ export type PatchEntry =
       readonly added: number;
       readonly removed: number;
     }
-  | { readonly kind: "binary"; readonly text: string; readonly digest: string }
+  | { readonly kind: "binary"; readonly digest: string }
   | { readonly kind: "empty" }
   | { readonly kind: "too_large"; readonly limit: number }
   | { readonly kind: "failed" };
@@ -62,7 +62,7 @@ function entryFrom(diff: HostPatch, earlier: PatchEntry | undefined, lineage: st
     case "failed":
       return FAILED;
     case "binary":
-      return { kind: "binary", text: `Binary file ${diff.path}`, digest: diff.digest };
+      return { kind: "binary", digest: diff.digest };
     case "empty":
       return EMPTY;
     case "text": {
@@ -72,8 +72,8 @@ function entryFrom(diff: HostPatch, earlier: PatchEntry | undefined, lineage: st
         kind: "ready",
         patch: diff.patch,
         digest: diff.digest,
-        files: parsePatchFiles(diff.patch, `${lineage}\u0000${diff.digest}`).flatMap(
-          (parsed) => parsed.files,
+        files: parsePatchFiles(diff.patch, `${lineage}\u0000${diff.digest}`).flatMap((parsed) =>
+          parsed.files.map((file) => withStatus(file, diff.status)),
         ),
         added: diff.added,
         removed: diff.removed,
@@ -86,6 +86,16 @@ function entryFrom(diff: HostPatch, earlier: PatchEntry | undefined, lineage: st
       return _exhaustive;
     }
   }
+}
+
+/**
+ * The diff reads a file as new or deleted only from git's mode lines, which a patch the host
+ * writes for an untracked file leaves out; read as a change, a new file offers context it lacks.
+ */
+function withStatus(file: FileDiffMetadata, status: HostPatch["status"]): FileDiffMetadata {
+  if (status === "added" || status === "untracked") return { ...file, type: "new" };
+
+  return status === "deleted" ? { ...file, type: "deleted" } : file;
 }
 
 interface Waiter {

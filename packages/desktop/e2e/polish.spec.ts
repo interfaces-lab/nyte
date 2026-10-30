@@ -14,7 +14,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { launchPackaged, polishAnswers, polishHome, serveScriptedModel } from "./polish-fixture.ts";
 import type { PackagedDesktop, PolishHome, ScriptedEndpoint } from "./polish-fixture.ts";
-import { composer, messages } from "./ui.ts";
+import { composer, messages, setTheme } from "./ui.ts";
 
 const EXECUTABLE =
   process.env.NYTE_POLISH_EXE ??
@@ -248,20 +248,6 @@ async function sendFromKeyboard(page: Page, text: string): Promise<void> {
   await page.keyboard.press("Backspace");
   await page.keyboard.type(text);
   await page.keyboard.press("Enter");
-}
-
-async function setTheme(desktop: PackagedDesktop, theme: "light" | "dark"): Promise<void> {
-  await desktop.application.evaluate(({ nativeTheme }, source) => {
-    nativeTheme.themeSource = source;
-  }, theme);
-  await desktop.page.emulateMedia({ colorScheme: theme });
-  await desktop.page.waitForFunction(
-    (dark) => matchMedia("(prefers-color-scheme: dark)").matches === dark,
-    theme === "dark",
-  );
-  await desktop.page.evaluate(
-    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
-  );
 }
 
 async function newChat(run: Run, page: Page): Promise<void> {

@@ -6,7 +6,6 @@ import type { ReactElement, ReactNode } from "react";
 import { focus } from "./styles/a11y.stylex.ts";
 import {
   button,
-  control,
   glyph,
   layer,
   media,
@@ -18,6 +17,7 @@ import {
 import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
 import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
+import { Button } from "./button.tsx";
 import { Icon } from "./icon.tsx";
 
 const GAP = 8;
@@ -226,34 +226,6 @@ const styles = create({
     gridArea: "close",
     marginBlock: toastSchema.overhang,
     marginInlineStart: space.s1_5,
-    display: "grid",
-    placeItems: "center",
-    boxSizing: "border-box",
-    width: control.heightSm,
-    height: control.heightSm,
-    minWidth: target.min,
-    minHeight: target.min,
-    padding: 0,
-    appearance: "none",
-    borderStyle: "none",
-    borderRadius: button.radiusSm,
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
-    },
-    color: {
-      default: role.contentInteractiveSecondary,
-      ":hover": { [media.hover]: role.contentInteractivePrimary },
-    },
-    cursor: appearance.cursorInteractive,
-    scale: { default: 1, ":active": 0.96 },
-    transitionProperty: "background-color, color, scale",
-    transitionDuration: {
-      default: motion.durationFast,
-      ":active": "0s",
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motion.easeOut,
   },
 });
 
@@ -329,9 +301,17 @@ function ToastList(): ReactElement[] {
           )}
           <Toast.Title {...props(text.base, styles.title)} />
           {!below && buttons}
-          <Toast.Close aria-label="Dismiss notification" {...props(styles.close, focus.ring)}>
-            <Icon name="x" size="xs" />
-          </Toast.Close>
+          <Toast.Close
+            render={
+              <Button
+                size="sm"
+                iconOnly
+                icon="close"
+                aria-label="Dismiss notification"
+                xstyle={styles.close}
+              />
+            }
+          />
           <Toast.Description {...props(text.sm, styles.description)} />
           {below && <div {...props(styles.actions)}>{buttons}</div>}
         </Toast.Content>

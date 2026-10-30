@@ -4,7 +4,16 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
-import { chatPane, clearComposer, composer, messages, openChat, openNewChat, send } from "./ui.ts";
+import {
+  chatPane,
+  clearComposer,
+  composer,
+  messages,
+  openChat,
+  openNewChat,
+  send,
+  setTheme,
+} from "./ui.ts";
 
 const run = promisify(execFile);
 
@@ -264,10 +273,7 @@ test("the footer under the composer shows where the chat runs, and its branch me
     });
 
     for (const scheme of ["light", "dark"] as const) {
-      await application.evaluate(({ nativeTheme }, source) => {
-        nativeTheme.themeSource = source;
-      }, scheme);
-      await page.emulateMedia({ colorScheme: scheme });
+      await setTheme(desktop, scheme);
       await page.mouse.move(0, 0);
       await pane
         .locator("[data-composer-region]")

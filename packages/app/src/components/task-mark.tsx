@@ -1,36 +1,15 @@
-import { create, keyframes, props } from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Loader } from "@nyte-ai/ui/loader";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 
-const MOON = Array.from({ length: 25 }, (_, index) => ({ x: index % 5, y: Math.floor(index / 5) }))
-  .filter(({ x, y }) => (x - 2) ** 2 + (y - 2) ** 2 < 6.25)
-  .map(({ x, y }) => `M${x * 3 + 1} ${y * 3 + 1}h2v2h-2z`)
-  .join("");
-
-const pulse = keyframes({
-  "0%": { opacity: 1 },
-  "50%": { opacity: 0.35 },
-  "100%": { opacity: 1 },
-});
-
 const styles = create({
-  unreadMark: {
-    flexShrink: 0,
-    width: glyph.md,
-    height: glyph.md,
-    color: role.contentAccent,
-    animationName: { default: pulse, "@media (prefers-reduced-motion: reduce)": "none" },
-    animationDuration: "1600ms",
-    animationTimingFunction: "ease-in-out",
-    animationIterationCount: "infinite",
-  },
   statusDot: {
     display: "inline-flex",
     alignItems: "center",
@@ -61,8 +40,7 @@ const styles = create({
     backgroundColor: "transparent",
     color: role.contentSecondary,
   },
-  statusIdle: { backgroundColor: "transparent" },
-  statusUnread: { width: glyph.md, height: glyph.md, backgroundColor: "transparent" },
+  statusUnread: { backgroundColor: role.contentAccent },
 });
 
 function statusMarkStyle(state: TaskState) {
@@ -78,7 +56,7 @@ function statusMarkStyle(state: TaskState) {
     case "failed":
       return [intent.danger, styles.statusFailed];
     case "done":
-      return styles.statusIdle;
+      return [intent.primary, styles.statusUnread];
     default: {
       const _exhaustive: never = state;
 
@@ -107,19 +85,8 @@ export function TaskMark({
     <span
       role="img"
       aria-label={state === "done" ? "Unread" : taskLabel(state)}
-      {...props(styles.statusDot, state === "done" ? styles.statusUnread : statusMarkStyle(state))}
+      {...props(styles.statusDot, statusMarkStyle(state))}
     >
-      {state === "done" && (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          shapeRendering="crispEdges"
-          {...props(surfaceTheme.blue, styles.unreadMark)}
-        >
-          <path d={MOON} />
-        </svg>
-      )}
       {(state === "working" || state === "retrying") && (job ? <Loader /> : <Spinner />)}
       {state === "waiting" && <Icon name="bubble-question" size="sm" variant="filled" />}
       {state === "background" && <Icon name="layers" size="sm" />}

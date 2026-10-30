@@ -656,7 +656,10 @@ export function TranscriptContent({
         aria-label="Messages"
         tabIndex={-1}
         data-nyte-scrollport="balanced"
-        {...props(messageScrollerStyles.viewport)}
+        {...props(
+          messageScrollerStyles.viewport,
+          dockHeight > 0 && messageScrollerStyles.docked(dockHeight),
+        )}
       >
         {viewport !== null && (
           <ViewportInput

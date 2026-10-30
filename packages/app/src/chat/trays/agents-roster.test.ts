@@ -49,11 +49,17 @@ test("the agents tray lists every agent still going and each ended one until it 
   const agents = [working, approval, failed, stopped, completed];
   const chats = chatsFor(agents);
 
+  const states = new Map<SessionInfo, BackgroundItem["state"]>([
+    [working, "working"],
+    [approval, "waiting"],
+    [failed, "failed"],
+  ]);
+
   const item = (session: SessionInfo): BackgroundItem => ({
     kind: "child",
     id: session.id,
     title: "Subagent",
-    state: "done",
+    state: states.get(session) ?? "done",
     startedBy: null,
   });
 

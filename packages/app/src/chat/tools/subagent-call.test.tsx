@@ -131,6 +131,71 @@ test("a create call finds its child in the parent's background by the call that 
   expect(html).not.toContain("agents done");
 });
 
+test("a child whose chat still reads as running shows how the parent's background says it ended", async () => {
+  const lagging = sessionRow(
+    "lagging",
+    { name: "Map the core", parent, call: create.state.call },
+    {
+      kind: "live",
+      run: {
+        id: asId<"run">("run"),
+        head: asId<"head">("main"),
+        startedAt: 1,
+        attempt: 1,
+        origin: { kind: "input", message: asId<"message">("m") },
+      },
+      phase: "responding",
+      stopping: false,
+    },
+  );
+
+  installConnection(
+    scriptedConnection({
+      sessions: [lagging],
+      views: new Map([
+        [
+          parent,
+          [
+            sessionView({
+              background: [
+                {
+                  kind: "child",
+                  id: lagging.id,
+                  title: "Map the core",
+                  state: "done",
+                  startedBy: create.state.call,
+                },
+              ],
+            }),
+          ],
+        ],
+      ]),
+    }).connection,
+  );
+
+  const leave = [
+    sessionsWatch("all").subscribe(() => undefined),
+    sessionWatch(parent).subscribe(() => undefined),
+  ];
+
+  await sessionsWatch("all").first();
+  await sessionWatch(parent).first();
+
+  const html = renderToStaticMarkup(
+    <Parent>
+      <SubagentCallView
+        message={create}
+        toolClass={{ kind: "delegate", child: null, role: "create", title: "Map the core" }}
+        cwd={undefined}
+      />
+    </Parent>,
+  );
+
+  for (const unsubscribe of leave) unsubscribe();
+  expect(html.match(/>Done</g)?.length).toBe(1);
+  expect(html).not.toContain("Working");
+});
+
 test("a running create call whose child the parent's background doesn't list yet is starting up", () => {
   const html = renderToStaticMarkup(
     <Parent>

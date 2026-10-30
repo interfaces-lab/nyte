@@ -1,7 +1,7 @@
 import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import {
   ContextMenu,
@@ -152,7 +152,9 @@ function TabItem({
             }
           >
             <span {...props(stripStyles.glyph)}>{tab.glyph}</span>
-            <span {...props(stripStyles.label)}>{tab.title}</span>
+            <span {...props(stripStyles.label, tab.unread && stripStyles.labelUnread)}>
+              {tab.title}
+            </span>
             {tab.split !== undefined && (
               <span {...props(stripStyles.splitMark)}>
                 <Icon name={tab.split === "down" ? "split-down" : "split-right"} size="xs" />
@@ -223,6 +225,17 @@ function TabItem({
   );
 }
 
+/** Mounted again for each selected tab: brings it into view, since the strip scrolls rather than shrinking its tabs. */
+function RevealSelected({ list }: { readonly list: RefObject<HTMLDivElement | null> }): null {
+  useMountEffect(() => {
+    list.current
+      ?.querySelector('[role="tab"][aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
+
+  return null;
+}
+
 export function WindowTabStrip(strip: WindowTabStripProps): ReactElement {
   const { tabs, activeTabId, mac } = strip;
   const held = useHeldKeys();
@@ -263,6 +276,7 @@ export function WindowTabStrip(strip: WindowTabStripProps): ReactElement {
               </SortableItem>
             ))}
           </SortableList>
+          <RevealSelected key={activeTabId} list={listRef} />
         </div>
       </Tabs.List>
       <span {...props(stripStyles.control)}>

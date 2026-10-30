@@ -137,7 +137,7 @@ function RootChat(): ReactElement {
 
 const EXPECTED = [
   `asks: Leaf: ${ASKED}`,
-  "tasks: Middle working stoppable",
+  "tasks: Middle waiting stoppable",
   "nested: Leaf waiting stoppable",
 ].join("\n");
 

@@ -64,8 +64,8 @@ export function childTitle(chat: Chat | undefined, delegated: string | null = nu
 }
 
 /**
- * A background item as a task. A subagent reads from its chat, which has its own run, retries and
- * pending renames; a job reads from the workspace's job list. A held page is not a task.
+ * A background item as a task. A subagent adds what its chat knows; a job reads from the
+ * workspace's job list. A held page is not a task.
  */
 export function describeTask(
   item: BackgroundItem,
@@ -100,7 +100,11 @@ export function describeTask(
   }
 }
 
-/** A child chat as a task: its background item gives the call that started it, its chat the rest. */
+/**
+ * A child chat as a task. Its background item says how it stands and which call started it, so
+ * every row of the parent agrees even while the child's chat lags; the chat adds its title, a
+ * retry and work left in its own background, which the item doesn't carry.
+ */
 export function childTask(
   id: SessionId,
   chat: Chat | undefined,
@@ -110,10 +114,18 @@ export function childTask(
     kind: "child",
     id,
     title: childTitle(chat, item?.title ?? null),
-    state: chat?.mark ?? item?.state ?? "done",
+    state: item === undefined ? (chat?.mark ?? "done") : childState(item.state, chat?.mark),
     startedBy: item?.startedBy ?? null,
     live: chat !== undefined && "run" in chat.status,
   };
+}
+
+function childState(state: BackgroundItem["state"], mark: TaskState | undefined): TaskState {
+  if (state === "working" && mark === "retrying") return mark;
+
+  if (state === "done" && mark === "background") return mark;
+
+  return state;
 }
 
 /**
