@@ -1,14 +1,6 @@
 /**
- * Fails when an AGENTS.md names a source location. Files move; a path in agent guidance goes stale
- * and sends the next agent to a file that is gone. Name the symbol, the concept or the command.
- *
- * Allowed: other guidance (`AGENTS.md`, `README.md`, `packages/<name>/AGENTS.md`, and the path of any
- * tracked AGENTS.md, which moves only on purpose), repo-root
- * conventions (`RELEASING.md`, `mise.toml`), store ref keys with placeholders (`live/<run>`),
- * home-directory runtime files (`~/.nyte/...`), package specifiers (`@nyte-ai/app/e2e/errors`)
- * and URLs.
- *
- * Usage: node scripts/check-agents.mjs
+ * Fails when an AGENTS.md names a source location. Files move, and a path in agent guidance then
+ * sends the next agent to a file that is gone.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
