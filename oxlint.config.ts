@@ -30,8 +30,9 @@ const conceptFolderImports = ["chats", "window"].map((folder) => ({
 }));
 
 /**
- * Each desktop process folder may not reach into another's code: main and the
- * utility host meet only through `shared/`, which imports neither.
+ * Each desktop process folder may not reach into another's code: main, the
+ * utility host, the workers and the preload scripts meet only through `shared/`,
+ * which imports none of them.
  */
 const desktopProcessImports = (...folders: readonly string[]) =>
   folders.map((folder) => ({
@@ -40,10 +41,11 @@ const desktopProcessImports = (...folders: readonly string[]) =>
   }));
 
 const desktopProcessFolders = [
-  { folder: "main", forbidden: ["host", "workers"] },
-  { folder: "host", forbidden: ["main"] },
-  { folder: "workers", forbidden: ["main", "host"] },
-  { folder: "shared", forbidden: ["main", "host", "workers"] },
+  { folder: "main", forbidden: ["host", "workers", "preload"] },
+  { folder: "host", forbidden: ["main", "preload"] },
+  { folder: "workers", forbidden: ["main", "host", "preload"] },
+  { folder: "preload", forbidden: ["main", "host", "workers"] },
+  { folder: "shared", forbidden: ["main", "host", "workers", "preload"] },
 ];
 
 const buttonLibraryMessage =

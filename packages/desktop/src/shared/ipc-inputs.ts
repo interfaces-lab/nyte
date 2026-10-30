@@ -5,7 +5,6 @@ import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";
 import { ParseError } from "typebox/value";
 import { ExpectedHostError } from "./errors.ts";
-import { themeSource } from "./launch-state.ts";
 import { Uuid } from "@nyte-ai/connect";
 import type { CallInput, CallPath, CallRequest } from "./ipc.ts";
 import type {
@@ -38,6 +37,12 @@ function compile<T extends TSchema>(schema: T) {
 }
 
 const nonEmpty = Type.String({ minLength: 1 });
+
+export const themeSource = Type.Union([
+  Type.Literal("system"),
+  Type.Literal("light"),
+  Type.Literal("dark"),
+]);
 
 const noInput = Type.Optional(Type.Undefined());
 

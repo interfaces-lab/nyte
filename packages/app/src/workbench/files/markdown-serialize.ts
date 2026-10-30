@@ -269,8 +269,9 @@ function delimiterCell(align: string | undefined, width: number): string {
   return "-".repeat(width);
 }
 
+/** Pads a cell to its column's source width; a cell edited past that width goes unpadded. */
 function pad(text: string, width: number, align: string | undefined): string {
-  const space = width - text.length;
+  const space = Math.max(0, width - text.length);
 
   if (align === "right") return " ".repeat(space) + text;
 

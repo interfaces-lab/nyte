@@ -1,4 +1,7 @@
+import type { FileDocument } from "@nyte-ai/sdk";
+import type { QueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
+import { keys, queryClient } from "../../data/query-client.ts";
 import type { WorkbenchTabId, WorkbenchViewKey, WorkbenchViewState } from "../model.ts";
 import { workspaceFile } from "../paths.ts";
 import { workbench } from "../store.ts";
@@ -13,6 +16,8 @@ interface FileLocation {
   readonly length?: number;
 }
 
+type FileScope = Exclude<FileDocument, { readonly kind: "missing" }>["scope"];
+
 type FileDraft = Pick<FileDocumentSnapshot, "contents" | "savedContents" | "version">;
 
 interface FileRuntime extends Omit<FileLocation, "path"> {
@@ -26,7 +31,10 @@ interface FileRuntime extends Omit<FileLocation, "path"> {
 export interface FileTab extends FileRuntime {
   /** The path inside the view's workspace, or the absolute path of a file outside it. */
   readonly displayPath: string;
-  /** Outside the view's workspace: it opens read-only and has no place in the workspace tree. */
+  /**
+   * Outside the view's workspace: not under its folder, or, once its document loads, scoped outside
+   * by the host, as a symlink out of the workspace is. It has no place in the workspace tree.
+   */
   readonly external: boolean;
   readonly id: WorkbenchTabId;
   readonly path: string;
@@ -87,13 +95,21 @@ function visit(
   return { history, historyIndex: history.length - 1 };
 }
 
-export function createFileTabStore(store: WorkbenchStore = workbench) {
+export function createFileTabStore(
+  store: WorkbenchStore = workbench,
+  queries: QueryClient = queryClient,
+) {
   const documents = new Map<WorkbenchTabId, FileRuntime>();
   const views = new Map<WorkbenchViewKey, FileViewRuntime>();
 
   const snapshots = new Map<
     WorkbenchViewKey,
-    { readonly revision: number; readonly source: WorkbenchViewState; readonly view: FileTabs }
+    {
+      readonly revision: number;
+      readonly source: WorkbenchViewState;
+      readonly scopes: readonly (FileScope | undefined)[];
+      readonly view: FileTabs;
+    }
   >();
 
   const listeners = new Set<() => void>();
@@ -120,11 +136,19 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
     for (const listener of listeners) listener();
   };
 
+  const documentScope = (path: string): FileScope | undefined => {
+    const document = queries.getQueryData<FileDocument>(keys.workspaceFile(path));
+
+    return document === undefined || document.kind === "missing" ? undefined : document.scope;
+  };
+
   const fileTabs = (key: WorkbenchViewKey): readonly FileTab[] =>
     store.getView(key).tabs.flatMap((tab) => {
       if (tab.kind !== "file") return [];
       const current = runtime(tab.id);
-      const inside = workspaceFile(tab.path, [key]);
+
+      const inside =
+        documentScope(tab.path) === "external" ? undefined : workspaceFile(tab.path, [key]);
 
       return [
         {
@@ -143,7 +167,16 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
     const workbenchView = store.getView(key);
     const cached = snapshots.get(key);
 
-    if (cached?.revision === revision && cached.source === workbenchView) return cached.view;
+    const scopes = workbenchView.tabs.map((tab) =>
+      tab.kind === "file" ? documentScope(tab.path) : undefined,
+    );
+
+    if (
+      cached?.revision === revision &&
+      cached.source === workbenchView &&
+      cached.scopes.every((scope, index) => scope === scopes[index])
+    )
+      return cached.view;
     const current = getRuntimeView(key);
     const tabs = fileTabs(key);
 
@@ -157,7 +190,7 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       revealRevision: current.revealRevision,
     };
 
-    snapshots.set(key, { revision, source: workbenchView, view });
+    snapshots.set(key, { revision, source: workbenchView, scopes, view });
 
     return view;
   };
@@ -335,10 +368,17 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       listeners.add(listener);
 
       const unsubscribe = store.subscribe(listener);
+      const prefix = keys.workspaceFile("");
+
+      const unwatch = queries.getQueryCache().subscribe((event) => {
+        if (event.query.queryKey[0] === prefix[0] && event.query.queryKey[1] === prefix[1])
+          listener();
+      });
 
       return () => {
         listeners.delete(listener);
         unsubscribe();
+        unwatch();
       };
     },
     actions,

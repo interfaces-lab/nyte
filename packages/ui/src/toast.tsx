@@ -28,19 +28,28 @@ const EXIT = "translateY(150%)";
 
 const COPIED_MS = 1500;
 
+const ANCHORED = "@supports (position-anchor: --a)";
+
 const styles = create({
   /**
-   * Above the element named `toastSchema.anchor`, end-aligned with it and no wider. Without
-   * one, the anchor() fallbacks put the stack at the window's bottom-end inset.
+   * At the window's bottom-end inset. Where anchor positioning is supported, above the element
+   * named `toastSchema.anchor` instead, end-aligned with it and no wider; without one, the
+   * anchor() fallbacks keep the bottom-end inset.
    */
   viewport: {
     position: "fixed",
     positionAnchor: toastSchema.anchor,
-    insetInlineEnd: `anchor(end, ${space.s4})`,
-    insetBlockEnd: `calc(anchor(start, calc(${space.s4} - ${space.s2})) + ${space.s2})`,
+    insetInlineEnd: { default: space.s4, [ANCHORED]: `anchor(end, ${space.s4})` },
+    insetBlockEnd: {
+      default: space.s4,
+      [ANCHORED]: `calc(anchor(start, calc(${space.s4} - ${space.s2})) + ${space.s2})`,
+    },
     zIndex: layer.toast,
     boxSizing: "border-box",
-    width: "min(380px, calc(100vw - 32px), anchor-size(width, 100vw))",
+    width: {
+      default: "min(380px, calc(100vw - 32px))",
+      [ANCHORED]: "min(380px, calc(100vw - 32px), anchor-size(width, 100vw))",
+    },
     margin: 0,
     padding: 0,
     pointerEvents: "none",

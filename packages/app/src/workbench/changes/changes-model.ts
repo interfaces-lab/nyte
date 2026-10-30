@@ -421,10 +421,10 @@ export interface RevertTarget {
 export function revertConfirmation(target: RevertTarget) {
   if (target.untracked) {
     return {
-      title: "Move to Trash",
-      description: `${target.path} is untracked, so reverting it moves the file to the trash.`,
-      confirmLabel: "Move to Trash",
-      pendingLabel: "Moving…",
+      title: "Delete File",
+      description: `${target.path} is untracked, so reverting it deletes the file permanently. This can’t be undone.`,
+      confirmLabel: "Delete File",
+      pendingLabel: "Deleting…",
     };
   }
 

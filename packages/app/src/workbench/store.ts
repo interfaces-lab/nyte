@@ -57,9 +57,9 @@ export function createWorkbenchStore(
       const next = reduceView(current, action);
 
       if (next === current) return;
-      const views = new Map(read().views).set(key, freezeView(next));
-      snapshot = Object.freeze({ views });
-      persistence?.set(persistable(snapshot));
+      const written = Object.freeze({ views: new Map(read().views).set(key, freezeView(next)) });
+      persistence?.set(persistable(written));
+      snapshot = written;
 
       for (const listener of listeners) listener();
     },

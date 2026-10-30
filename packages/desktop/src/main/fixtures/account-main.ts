@@ -11,7 +11,7 @@ import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
 import { ACCOUNT_CHANNELS } from "../../shared/account/protocol.ts";
 import { ACCOUNT_HOST, ACCOUNT_SCHEMES } from "../../shared/account/scheme.ts";
 import { registerAccount } from "../account/account.ts";
-import { AccountCancelled } from "../../shared/account-session.ts";
+import { AccountCancelled } from "@nyte-ai/connect/host";
 import { AccountStore } from "../account/account-store.ts";
 import { registerRenderer } from "../renderer-protocol.ts";
 import { exitWithParent } from "./exit-with-parent.ts";

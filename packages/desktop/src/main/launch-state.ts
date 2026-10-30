@@ -4,12 +4,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import { Value } from "typebox/value";
-
-export const themeSource = Type.Union([
-  Type.Literal("system"),
-  Type.Literal("light"),
-  Type.Literal("dark"),
-]);
+import { themeSource } from "../shared/ipc-inputs.ts";
 
 const rect = Type.Object({
   x: Type.Integer(),

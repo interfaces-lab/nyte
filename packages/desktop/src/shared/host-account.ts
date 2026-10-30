@@ -1,5 +1,5 @@
-import { AccountCancelled } from "./account-session.ts";
-import type { AccountSession, AccountState } from "./account-session.ts";
+import { AccountCancelled } from "@nyte-ai/connect/host";
+import type { AccountSession, AccountState } from "@nyte-ai/connect/host";
 
 export type AccountCall =
   | { readonly method: "token" }

@@ -4,7 +4,7 @@ import type {
   CanvasPreviewRequest,
 } from "@nyte-ai/plugin/core/canvas-preview";
 import type { CallReply, CallRequest } from "./ipc.ts";
-import type { AccountState } from "./account-session.ts";
+import type { AccountState } from "@nyte-ai/connect/host";
 import type { DesktopSettings } from "./desktop-settings.ts";
 import type { AccountAnswer, AccountCall } from "./host-account.ts";
 import type { AgentAnswer, AgentCall } from "./host-browser-agent.ts";

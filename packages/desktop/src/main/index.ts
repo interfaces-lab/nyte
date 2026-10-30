@@ -52,7 +52,7 @@ import { callIpc, callTable } from "../shared/ipc-call.ts";
 import type { CallRoute } from "../shared/ipc-call.ts";
 import { localFonts } from "./native/fonts.ts";
 import { registerAccount } from "./account/account.ts";
-import type { AccountSession } from "../shared/account-session.ts";
+import type { AccountSession } from "@nyte-ai/connect/host";
 import { AccountStore } from "./account/account-store.ts";
 import { accountScheme } from "../shared/account/scheme.ts";
 import { offscreenCanvasPreviewer } from "./canvas-preview.ts";
@@ -67,7 +67,7 @@ import { answerAgent } from "../shared/host-browser-agent.ts";
 import { HostProcess } from "./host-supervisor.ts";
 import type { HostWindow } from "../shared/host-window.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "../shared/desktop-settings.ts";
-import { LaunchStateStore } from "../shared/launch-state.ts";
+import { LaunchStateStore } from "./launch-state.ts";
 import { registerUpdates } from "./updates/updates.ts";
 
 import { decodeBrowserBounds, decodeBrowserFocus, themePreference } from "../shared/ipc-inputs.ts";
