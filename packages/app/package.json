@@ -25,6 +25,7 @@
     "./sidebar/sidebar.stylex.ts": "./src/sidebar/sidebar.stylex.ts",
     "./tabs/window-tab-strip.tsx": "./src/tabs/window-tab-strip.tsx",
     "./theme/boot.ts": "./src/theme/boot.ts",
+    "./theme/faces.ts": "./src/theme/faces.ts",
     "./theme/focus-modality.ts": "./src/theme/focus-modality.ts",
     "./theme/global.css": "./src/theme/global.css",
     "./theme/schema.stylex.ts": "./src/theme/schema.stylex.ts",
