@@ -5,7 +5,7 @@ import { props } from "@stylexjs/stylex";
 import { createLink } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
+import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -34,37 +34,6 @@ import type { WindowState } from "../tabs/model.ts";
 import { useWindowTabItems, useWindowTabsState } from "../tabs/use-window-tabs.tsx";
 import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
-
-function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement | null {
-  const chat = useChat(sessionId);
-
-  if (chat.kind !== "ready" || chat.chat.location.kind !== "folder") return null;
-  const location = chat.chat.location;
-  const worktree = location.worktree;
-  const folder = worktree === null ? location : worktree.source;
-
-  return (
-    <>
-      {folder !== null && (
-        <>
-          <span title={folder.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
-            {folder.name}
-          </span>
-          <span {...props(text.sm, titlebarStyles.sessionCrumbDivider)}>/</span>
-        </>
-      )}
-      {worktree !== null && (
-        <>
-          <span title={location.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
-            <Icon name="git-branch" size={12} />
-            {worktree.branch}
-          </span>
-          <span {...props(text.sm, titlebarStyles.sessionCrumbDivider)}>/</span>
-        </>
-      )}
-    </>
-  );
-}
 
 const SessionLink = createLink(ButtonLink);
 
@@ -99,7 +68,6 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
           <ParentLink parent={parentSessionId} />
         </span>
       )}
-      <SessionLocation sessionId={sessionId} />
       <span title={title} {...props(text.sm, titlebarStyles.sessionTitle)}>
         {title}
       </span>

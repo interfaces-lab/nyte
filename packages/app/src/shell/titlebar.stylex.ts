@@ -97,18 +97,6 @@ export const titlebarStyles = create({
     flexShrink: 0,
     WebkitAppRegion: "no-drag",
   },
-  sessionCrumb: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: space.s1,
-    flexShrink: 0,
-    color: role.contentSecondary,
-    whiteSpace: "nowrap",
-  },
-  sessionCrumbDivider: {
-    flexShrink: 0,
-    color: role.contentDisabled,
-  },
   sessionTitle: {
     maxWidth: "min(420px, 50vw)",
     overflow: "hidden",
