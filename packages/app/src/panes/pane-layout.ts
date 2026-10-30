@@ -1,6 +1,6 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import { Type } from "typebox";
-import { Value } from "typebox/value";
+import type { Static } from "typebox";
 import { sessionId } from "../data/schemas.ts";
 
 export type PaneId = "primary" | "secondary";
@@ -420,50 +420,50 @@ function duplicatedSession(primary: PaneSelection, secondary: PaneSelection): bo
   );
 }
 
-export function parsePersistedPaneLayout(value: string | null): PaneLayout {
-  if (value === null) return createSinglePane();
+/** Both stored shapes: version 2, and version 1 from earlier builds. */
+export const storedPaneLayoutSchema = Type.Union([
+  persistedPaneLayoutSchema,
+  legacyPaneLayoutSchema,
+]);
 
-  try {
-    const persisted: unknown = JSON.parse(value);
+export function restorePaneLayout(
+  stored: Static<typeof storedPaneLayoutSchema> | undefined,
+): PaneLayout {
+  if (stored === undefined) return createSinglePane();
 
-    if (Value.Check(persistedPaneLayoutSchema, persisted)) {
-      if (persisted.kind === "single") {
-        return { kind: "single", paneId: persisted.paneId, selection: persisted.selection };
-      }
-
-      const { direction, ratio, leading, primary, secondary, activePaneId } = persisted;
-
-      if (duplicatedSession(primary, secondary)) return createSinglePane();
-
-      return { kind: "split", direction, ratio, leading, primary, secondary, activePaneId };
+  if (stored.version === 2) {
+    if (stored.kind === "single") {
+      return { kind: "single", paneId: stored.paneId, selection: stored.selection };
     }
 
-    if (Value.Check(legacyPaneLayoutSchema, persisted)) {
-      if (persisted.kind === "single") {
-        return { kind: "single", paneId: persisted.pane.id, selection: persisted.pane.selection };
-      }
+    const { direction, ratio, leading, primary, secondary, activePaneId } = stored;
 
-      const { direction, ratio, order, primary, secondary, activePaneId } = persisted;
+    if (duplicatedSession(primary, secondary)) return createSinglePane();
 
-      if (duplicatedSession(primary.selection, secondary.selection)) return createSinglePane();
-
-      return {
-        kind: "split",
-        direction,
-        ratio,
-        leading: order[0],
-        primary: primary.selection,
-        secondary: secondary.selection,
-        activePaneId,
-      };
-    }
-
-    return createSinglePane();
-  } catch {
-    return createSinglePane();
+    return { kind: "split", direction, ratio, leading, primary, secondary, activePaneId };
   }
+
+  if (stored.kind === "single") {
+    return { kind: "single", paneId: stored.pane.id, selection: stored.pane.selection };
+  }
+
+  const { direction, ratio, order, primary, secondary, activePaneId } = stored;
+
+  if (duplicatedSession(primary.selection, secondary.selection)) return createSinglePane();
+
+  return {
+    kind: "split",
+    direction,
+    ratio,
+    leading: order[0],
+    primary: primary.selection,
+    secondary: secondary.selection,
+    activePaneId,
+  };
 }
 
-export function serializePaneLayout(layout: PaneLayout): string {
-  return JSON.stringify({ version: 2, ...layout });
+export function persistablePaneLayout(
+  layout: PaneLayout,
+): Static<typeof persistedPaneLayoutSchema> {
+  return { version: 2, ...layout };
 }

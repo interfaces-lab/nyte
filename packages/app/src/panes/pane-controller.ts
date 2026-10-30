@@ -5,9 +5,10 @@ import {
   orderedPanes,
   paneForSession,
   paneSelection,
-  parsePersistedPaneLayout,
+  persistablePaneLayout,
   reducePaneLayout,
-  serializePaneLayout,
+  restorePaneLayout,
+  storedPaneLayoutSchema,
 } from "./pane-layout.ts";
 import type {
   DropPlacement,
@@ -19,12 +20,7 @@ import type {
 import { SessionViewStateStore } from "./session-view-state.ts";
 import { WindowDrafts } from "../chat/composer/drafts.ts";
 import type { ComposerViewState } from "./session-view-state.ts";
-
-interface LayoutStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-}
+import { readStored, type StorageArea, writeStored } from "../lib/storage.ts";
 
 export interface PaneControllerSnapshot {
   readonly layout: PaneLayout;
@@ -35,7 +31,7 @@ type LayoutRoute = (current: PaneLayout, next: PaneLayout) => PaneLayout;
 
 /** Standalone, a controller keeps its own layout and drafts; a window's tab routes both through its window. */
 type PaneControllerOptions =
-  | { readonly storage?: LayoutStorage; readonly storageKey: string }
+  | { readonly storage?: StorageArea; readonly storageKey: string }
   | {
       readonly initialLayout: PaneLayout;
       readonly route: LayoutRoute;
@@ -43,7 +39,7 @@ type PaneControllerOptions =
     };
 
 interface SavedLayout {
-  readonly storage: LayoutStorage;
+  readonly storage: StorageArea;
   readonly key: string;
 }
 
@@ -83,7 +79,11 @@ export class PaneController {
     }
 
     const layout =
-      "route" in options ? options.initialLayout : parsePersistedPaneLayout(this.#readLayout());
+      "route" in options
+        ? options.initialLayout
+        : restorePaneLayout(
+            readStored(this.#saved?.storage, options.storageKey, storedPaneLayoutSchema, undefined),
+          );
 
     this.#snapshot = {
       layout,
@@ -129,6 +129,8 @@ export class PaneController {
       if (layout === current) return current;
     }
 
+    if (this.#saved !== undefined)
+      writeStored(this.#saved.storage, this.#saved.key, persistablePaneLayout(layout));
     this.#rememberLayout(layout);
 
     const focusRequest =
@@ -140,10 +142,6 @@ export class PaneController {
         : this.#snapshot.focusRequest;
 
     this.#snapshot = { layout, focusRequest };
-
-    try {
-      this.#saved?.storage.setItem(this.#saved.key, serializePaneLayout(layout));
-    } catch {}
 
     for (const listener of this.#listeners) listener();
 
@@ -296,14 +294,6 @@ export class PaneController {
 
       return true;
     };
-  }
-
-  #readLayout(): string | null {
-    try {
-      return this.#saved?.storage.getItem(this.#saved.key) ?? null;
-    } catch {
-      return null;
-    }
   }
 
   #requestFocus(paneId: PaneId): void {

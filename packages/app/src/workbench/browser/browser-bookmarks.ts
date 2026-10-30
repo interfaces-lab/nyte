@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { Type, type Static } from "typebox";
-import { persisted } from "../persistence.ts";
+import { persisted } from "../../lib/storage.ts";
 
 const schema = Type.Object({
   visible: Type.Boolean(),

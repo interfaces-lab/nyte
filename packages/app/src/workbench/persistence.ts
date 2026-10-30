@@ -1,8 +1,8 @@
 import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import type { Static, TSchema } from "typebox";
-import { Value } from "typebox/value";
+import type { Static } from "typebox";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
+import { type Persisted, persisted } from "../lib/storage.ts";
 import {
   MAXIMIZED_WORKBENCH_LAYOUT,
   SPLIT_LAYOUT,
@@ -16,57 +16,6 @@ import { DEFAULT_WIDTH, type WorkbenchWidth, shareWidth } from "./width.ts";
 
 /** What every panel was stored with before panels stored a share: the old default, not a width anyone chose. */
 const LEGACY_DEFAULT_PIXELS = 400;
-
-/** A value the workbench keeps in local storage, checked against its schema when read. */
-interface Persisted<T> {
-  readonly get: () => T;
-  readonly set: (value: T) => void;
-  readonly remove: () => void;
-  readonly subscribe: (listener: () => void) => () => void;
-}
-
-/** Reads `key` once, on first use; a stored value that fails `schema` reads as `fallback`. */
-export function persisted<S extends TSchema, Fallback>(
-  key: string,
-  schema: S,
-  fallback: Fallback,
-): Persisted<Static<S> | Fallback> {
-  const storage = globalThis.window === undefined ? undefined : window.localStorage;
-  const listeners = new Set<() => void>();
-  let loaded: { readonly value: Static<S> | Fallback } | undefined;
-
-  const read = (): Static<S> | Fallback => {
-    const raw = storage?.getItem(key) ?? null;
-
-    if (raw === null) return fallback;
-    const parsed: unknown = JSON.parse(raw);
-
-    return Value.Check(schema, parsed) ? parsed : fallback;
-  };
-
-  const publish = (value: Static<S> | Fallback): void => {
-    loaded = { value };
-
-    for (const listener of listeners) listener();
-  };
-
-  return {
-    get: () => (loaded ??= { value: read() }).value,
-    set(value) {
-      storage?.setItem(key, JSON.stringify(value));
-      publish(value);
-    },
-    remove() {
-      storage?.removeItem(key);
-      publish(fallback);
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-
-      return () => listeners.delete(listener);
-    },
-  };
-}
 
 export type WorkbenchPersistence = Pick<
   Persisted<PersistedWorkbenchSnapshot | undefined>,

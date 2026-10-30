@@ -68,7 +68,12 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 <Button variant="outline" pill>Outline pill</Button>
 <Button variant="solid" pill>Solid pill</Button>
 <Button variant="outline" disabled disabledReason="No changes to save">Save Changes</Button>
+<Button variant="solid" icon="arrow-up" disabled>Send</Button>
 ```
+
+A disabled button takes muted ink in every variant, and `solid` and `outline` trade their fill for a
+quiet one. It looks the same in light and dark. A `loading` button keeps its enabled look under the
+`Loader`.
 
 ### Navigation and loading
 

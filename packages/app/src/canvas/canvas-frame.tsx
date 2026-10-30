@@ -3,7 +3,6 @@ import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Type } from "typebox";
-import { Value } from "typebox/value";
 import {
   use,
   useEffectEvent,
@@ -33,6 +32,7 @@ import { nyte } from "../contract/nyte.ts";
 import { useHostState } from "../data/host.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { patchDigest } from "../diff/changes-viewed.ts";
+import { localArea, readStored, writeStored } from "../lib/storage.ts";
 import { workbenchViewKey } from "../workbench/paths.ts";
 import { useVisibleCanvasTab, workbench } from "../workbench/store.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
@@ -170,17 +170,9 @@ const HEIGHTS_SAVE_DELAY_MS = 1_000;
 
 const storedHeights = Type.Array(Type.Tuple([Type.String(), Type.Number()]));
 
-const measuredHeights = new Map<string, number>(readStoredHeights());
-
-function readStoredHeights(): readonly (readonly [string, number])[] {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(HEIGHTS_KEY) ?? "[]");
-
-    return Value.Check(storedHeights, parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
+const measuredHeights = new Map<string, number>(
+  readStored(localArea(), HEIGHTS_KEY, storedHeights, []),
+);
 
 let heightsTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -200,12 +192,7 @@ function rememberHeight(key: string, height: number): void {
 
 function saveHeights(): void {
   heightsTimer = undefined;
-
-  try {
-    window.localStorage.setItem(HEIGHTS_KEY, JSON.stringify([...measuredHeights]));
-  } catch {
-    return;
-  }
+  writeStored(localArea(), HEIGHTS_KEY, [...measuredHeights]);
 }
 
 interface CanvasError {

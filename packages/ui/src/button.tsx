@@ -25,6 +25,9 @@ import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts"
 import { ControlGlyphs, Icon, type GlyphSize, type IconName } from "./icon.tsx";
 import { Loader } from "./loader.tsx";
 
+/** A loading button is disabled too, but keeps its look behind the loader. */
+const disabled = "[data-disabled]:not([aria-busy='true'])";
+
 const controlStyles = create({
   base: {
     "--_btn-hit-inset": `calc(max(0px, ${target.min} - var(--_btn-height)) / 2)`,
@@ -64,10 +67,11 @@ const controlStyles = create({
       ":active:not([data-disabled])": role.contentPrimary,
       "[data-pressed]:not([data-disabled])": role.contentPrimary,
       '[aria-expanded="true"]:not([data-disabled])': role.contentPrimary,
+      [disabled]: role.contentDisabled,
     },
     scale: { default: "1", ":active:not([data-disabled])": "0.97" },
     touchAction: "manipulation",
-    transitionProperty: "background-color, color, opacity, scale",
+    transitionProperty: "background-color, color, scale",
     transitionDuration: {
       default: motion.durationFast,
       ":active:not([data-disabled])": "0s",
@@ -107,7 +111,6 @@ const controlStyles = create({
   },
   joinedIcon: { width: `max(var(--_btn-height), ${target.min})` },
   pill: { borderRadius: radius.pill },
-  dimmed: { opacity: { default: null, "[data-disabled]:not([aria-busy='true'])": 0.5 } },
 });
 
 const group = create({
@@ -117,7 +120,6 @@ const group = create({
     gap: 0,
     minWidth: 0,
     flexWrap: "wrap",
-    opacity: { default: 1, ":has([data-disabled]:not([aria-busy='true']))": 0.5 },
   },
 });
 
@@ -180,17 +182,21 @@ const ghostFill = {
 const buttonVariants = create({
   ghost: { backgroundColor: ghostFill },
   outline: {
-    backgroundColor: role.bgElevated,
-    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
+    backgroundColor: { default: role.bgElevated, [disabled]: role.bgInteractiveSecondary },
+    boxShadow: {
+      default: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
+      [disabled]: `inset 0 0 0 1px ${role.borderPrimary}`,
+    },
   },
   solid: {
-    color: role.contentOnInteractiveStrong,
+    color: { default: role.contentOnInteractiveStrong, [disabled]: role.contentDisabled },
     backgroundColor: {
       default: role.buttonFill,
       ":hover:not([data-disabled])": {
         [media.hover]: role.buttonFillHover,
       },
       ":active:not([data-disabled])": role.buttonFillPressed,
+      [disabled]: role.bgInteractiveSecondary,
     },
     backgroundImage: "none",
   },
@@ -216,6 +222,7 @@ const buttonVariants = create({
       ":hover:not([data-disabled])": { [media.hover]: role.contentPrimary },
       ":active:not([data-disabled])": role.contentPrimary,
       '[aria-expanded="true"]:not([data-disabled])': role.contentPrimary,
+      [disabled]: role.contentDisabled,
     },
   },
   text: {
@@ -244,7 +251,7 @@ const buttonVariants = create({
     paddingInline: 0,
     verticalAlign: "baseline",
     backgroundImage: "none",
-    color: "inherit",
+    color: { default: "inherit", [disabled]: role.contentDisabled },
     fontSize: "inherit",
     fontWeight: "inherit",
     lineHeight: "inherit",
@@ -368,7 +375,6 @@ export function buttonStyle<State>(
       size === "2xs" ? focus.ringInset : focus.ring,
       xstyle,
       glyphPressed && contentStyles.glyphPressed,
-      !joined && controlStyles.dimmed,
     ),
     className,
     style,
