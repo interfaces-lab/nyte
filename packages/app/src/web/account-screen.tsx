@@ -7,7 +7,6 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
@@ -33,6 +32,7 @@ import {
 import type { AccountDevice } from "./account-device.ts";
 import { ConnectScreen } from "./connect-screen.tsx";
 import { forgetConnection } from "./connection.ts";
+import { DesktopFrame } from "./desktop-frame.tsx";
 import { webBridge } from "./install.ts";
 import { connectPinned } from "./pins.ts";
 import { WebPage } from "./web-page.tsx";
@@ -54,26 +54,6 @@ const styles = create({
     whiteSpace: "normal",
   },
   status: { margin: 0, color: role.contentSecondary, textAlign: "center" },
-  frame: { display: "flex", flexDirection: "column", height: "100%" },
-  bar: {
-    display: "flex",
-    alignItems: "center",
-    gap: space.s2,
-    paddingBlock: space.s1,
-    paddingInline: space.s3,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
-    backgroundColor: role.bgBase,
-    color: role.contentSecondary,
-  },
-  barName: {
-    flex: 1,
-    minWidth: 0,
-    color: role.contentPrimary,
-    overflowWrap: "anywhere",
-  },
-  shell: { flex: 1, minHeight: 0, position: "relative" },
 });
 
 function DesktopList({
@@ -136,7 +116,8 @@ function DesktopList({
 
 interface AccountScreenProps {
   readonly config: AccountConfig;
-  readonly onConnected: (connection: Connection, mount: (shell: ReactNode) => void) => void;
+  /** Mounts the app for `connection`, through `mount` or else in place of this screen. */
+  readonly onConnected: (connection: Connection, mount?: (shell: ReactNode) => void) => void;
 }
 
 function AccountFlow({
@@ -432,19 +413,21 @@ function AccountFlow({
 
   if (shell !== undefined) {
     return (
-      <div {...props(styles.frame)}>
-        <div {...props(text.sm, styles.bar)}>
-          <Icon name="laptop" size={14} />
-          <span {...props(styles.barName)}>{name}</span>
-          <Button size="xs" disabled={progress !== undefined} onClick={() => void leave(false)}>
-            Switch Desktop
-          </Button>
-          <Button size="xs" disabled={progress !== undefined} onClick={() => void leave(true)}>
-            Sign Out
-          </Button>
-        </div>
-        <div {...props(styles.shell)}>{shell}</div>
-      </div>
+      <DesktopFrame
+        name={name}
+        actions={
+          <>
+            <Button size="xs" disabled={progress !== undefined} onClick={() => void leave(false)}>
+              Switch Desktop
+            </Button>
+            <Button size="xs" disabled={progress !== undefined} onClick={() => void leave(true)}>
+              Sign Out
+            </Button>
+          </>
+        }
+      >
+        {shell}
+      </DesktopFrame>
     );
   }
 
@@ -546,17 +529,8 @@ function AccountFlow({
 function AccountBoundary({ config, onConnected }: AccountScreenProps): ReactElement {
   const { isLoaded, isSignedIn, userId } = useAuth();
   const [manual, setManual] = useState(false);
-  const [shell, setShell] = useState<ReactNode>();
 
-  if (shell !== undefined) return <>{shell}</>;
-
-  if (manual)
-    return (
-      <ConnectScreen
-        onBack={() => setManual(false)}
-        onConnected={(connection) => onConnected(connection, setShell)}
-      />
-    );
+  if (manual) return <ConnectScreen onBack={() => setManual(false)} onConnected={onConnected} />;
 
   if (!isLoaded) {
     return (

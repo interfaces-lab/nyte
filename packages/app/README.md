@@ -35,7 +35,7 @@ A desktop share keeps a folder cursor on the host, and the browser moves it with
 
 Switch Desktop weakly releases the bearer and reloads into the picker with fresh router and query state. Sign Out also asks the broker to revoke the device and ends the Clerk session. Both forget the credential even when the desktop is offline. A Clerk owner change also drops the connection and reloads, keeping the previous desktop's UI state out of the next account. Closing a tab forgets it client-side, but does not guarantee server revocation, and browser session restoration may restore it. There is no unload release: browsers cannot reliably distinguish a tab close from a reload, and releasing on both breaks resume.
 
-Use Address and Token opens the existing manual form. Manual and `/pair#host=<address>&token=<token>` connections keep their localStorage behavior. Pairing fragments are removed before browser-history routing mounts. From an HTTPS page, manual hosts must also use HTTPS. Self-hosted servers must allow the page origin in `browserOrigins`.
+Use Address and Token opens the existing manual form. Manual and `/pair#host=<address>&token=<token>` connections keep their localStorage behavior. The app opens under a bar naming the address, whose Disconnect forgets the address and token and reloads to the start screen. Pairing fragments are removed before browser-history routing mounts. From an HTTPS page, manual hosts must also use HTTPS. Self-hosted servers must allow the page origin in `browserOrigins`.
 
 ### Security headers
 
