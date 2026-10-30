@@ -64,6 +64,7 @@ export function useVcsChanges(
   });
 }
 
+/** The history behind HEAD, keyed by HEAD so a checkout, commit or reset anywhere reads it anew. */
 export function useVcsLog(
   input: { readonly limit: number; readonly cursor?: Cursor | undefined },
   enabled: boolean,
@@ -71,15 +72,20 @@ export function useVcsLog(
   const host = useHostState();
   const workspace = host.data.workspace?.id;
 
+  const status = useWatch(
+    enabled && workspace !== undefined ? gitStatusWatch(workspace) : undefined,
+  ).value;
+
+  const head = status?.kind === "repository" ? status.head : undefined;
+
   return useQuery({
-    queryKey: keys.gitLog(workspace, input.limit, input.cursor),
+    queryKey: keys.gitLog(workspace, head, input.limit, input.cursor),
     queryFn: async () =>
       (await workspaceGit()).log({
         limit: input.limit,
         ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
       }),
-    enabled: enabled && workspace !== undefined,
-    staleTime: 0,
+    enabled: enabled && workspace !== undefined && head !== undefined,
   });
 }
 

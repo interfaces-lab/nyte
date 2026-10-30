@@ -1,16 +1,20 @@
 import "../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import type { GitApi, GitStatus, WorkspaceInfo } from "@nyte-ai/sdk";
+import { SdkError } from "@nyte-ai/sdk";
+import type { FilesApi, GitApi, GitStatus, WorkspaceInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
+import { useMentionFiles } from "../data/files.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { installConnection } from "../data/connection.ts";
+import { useVcsLog } from "../data/vcs.ts";
 import { WorkspaceContext } from "./workspace-context.tsx";
 import "../theme/global.css";
 import "../theme/tokens.stylex.ts";
-import { scriptedConnection } from "../../test/scripted-connection.ts";
+import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 
 function folder(
@@ -185,13 +189,39 @@ const onMain: GitStatus = {
   conflicts: [],
 };
 
+const topicRevision = asId<"git-revision">("r2");
+
+const onTopic: GitStatus = {
+  ...onMain,
+  head: asId<"git-commit">("7b3e5d2a1f"),
+  branch: "topic",
+  revision: topicRevision,
+};
+
+const status = viewStream(onMain);
+
 const checkedOut: string[] = [];
 
+const checkedOutBranch = (): string => checkedOut.at(-1) ?? "main";
+
+const refuse = async (): Promise<never> => {
+  throw new SdkError("unavailable", "Not scripted.");
+};
+
 const git: Partial<GitApi> = {
-  watch: async function* () {
-    yield onMain;
-    await new Promise<never>(() => undefined);
-  },
+  watch: () => status.watch(),
+  log: async () => ({
+    items: [
+      {
+        id: asId<"git-commit">(checkedOutBranch()),
+        subject: `${checkedOutBranch()} tip`,
+        author: "tester",
+        committedAt: 0,
+        parents: [],
+      },
+    ],
+    next: null,
+  }),
   refs: async () => ({
     current: "main",
     branches: ["main", "topic", "release"].map((name) => ({
@@ -203,10 +233,59 @@ const git: Partial<GitApi> = {
   }),
   checkout: async ({ name }) => {
     checkedOut.push(name);
+    status.push(onTopic);
 
-    return { kind: "applied", revision };
+    return { kind: "applied", revision: topicRevision };
   },
 };
+
+const files: FilesApi = {
+  read: refuse,
+  bytes: refuse,
+  stat: refuse,
+  write: refuse,
+  remove: refuse,
+  batch: () => {
+    throw new SdkError("unavailable", "Not scripted.");
+  },
+  format: refuse,
+  scan: async function* () {
+    yield {
+      kind: "entries",
+      entries: [{ path: `${checkedOutBranch()}.ts`, kind: "file", size: 1, version: null }],
+    };
+    yield { kind: "complete" };
+  },
+  find: refuse,
+  search: async function* () {
+    yield { kind: "complete" };
+  },
+  watch: async function* () {
+    yield* [];
+    await new Promise<never>(() => undefined);
+  },
+  upload: refuse,
+};
+
+/** What the Commits menu lists while it is open. */
+function History(): ReactElement {
+  const history = useVcsLog({ limit: 50 }, true);
+
+  return (
+    <output data-history>{history.data?.items.map((commit) => commit.subject).join("|")}</output>
+  );
+}
+
+/** What a mounted file list, the explorer's or the composer's, holds. */
+function FileList(): ReactElement {
+  const listed = useMentionFiles(true);
+
+  return <output data-files>{listed.data?.map((file) => file.displayPath).join("|")}</output>;
+}
+
+function shown(selector: string): string {
+  return document.querySelector(selector)?.textContent ?? "";
+}
 
 function options(): readonly string[] {
   return Array.from(document.querySelectorAll("[role='option']"), (row) =>
@@ -225,23 +304,40 @@ async function checkBranches(): Promise<string> {
   queryClient.setQueryData(keys.host, {
     workspace: { id: asId<"workspace">("nyte"), path: "/u/dev/nyte", name: "nyte" },
   });
-  installConnection(scriptedConnection({ workspaces, sessions, git }).connection);
+  const { connection } = scriptedConnection({ workspaces, sessions, git });
+
+  installConnection({
+    ...connection,
+    workspace: (id) => ({
+      ...connection.workspace(id),
+      files: async () => ({ kind: "available", api: files }),
+    }),
+  });
   const container = document.createElement("div");
   container.style.cssText = "position:fixed;left:0;bottom:0;padding:16px";
   document.body.append(container);
   const root = createRoot(container);
 
-  flushSync(() =>
-    root.render(
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-          <WorkspaceContext active />
-        </TooltipProvider>
-      </QueryClientProvider>,
-    ),
-  );
+  const render = (commits: boolean): void =>
+    flushSync(() =>
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider delay={0} closeDelay={0} timeout={0}>
+            <WorkspaceContext active />
+            {commits && <History />}
+            <FileList />
+          </TooltipProvider>
+        </QueryClientProvider>,
+      ),
+    );
+
+  render(true);
 
   try {
+    await until(() => shown("[data-history]") === "main tip", "main's history");
+    await until(() => shown("[data-files]") === "main.ts", "main's files");
+    render(false);
+
     const trigger = await until(
       () =>
         Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
@@ -277,6 +373,10 @@ async function checkBranches(): Promise<string> {
     search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await until(() => checkedOut.length > 0, "a checkout");
     expectRule(checkedOut.join("|") === "topic", `checked out ${checkedOut.join("|")}`);
+
+    await until(() => shown("[data-files]") === "topic.ts", "the mounted file list to read topic");
+    render(true);
+    await until(() => shown("[data-history]") === "topic tip", "reopened history to read topic");
 
     return failures.length === 0 ? "passed" : failures.join("\n");
   } finally {
