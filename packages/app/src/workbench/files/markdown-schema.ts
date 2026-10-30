@@ -159,15 +159,25 @@ const ListItem = Node.create({
   content: "block+",
   defining: true,
   addAttributes: () => ({
-    checked: kept(null),
+    checked: {
+      default: null,
+      parseHTML: (element) => {
+        const checked = element.getAttribute("data-checked");
+
+        return checked === null ? null : checked === "true";
+      },
+      renderHTML: (attributes) =>
+        attributes["checked"] === null ? null : { "data-checked": String(attributes["checked"]) },
+    },
     spread: kept(false),
     gaps: kept([]),
     padding: kept(1),
   }),
   parseHTML: () => [{ tag: "li" }],
-  renderHTML: ({ node }) => [
+  renderHTML: ({ node, HTMLAttributes }) => [
     "li",
     {
+      ...HTMLAttributes,
       class: css(
         props(proseStyles.listItem, node.attrs["checked"] !== null && markdownStyles.taskItem),
       ),
@@ -223,7 +233,10 @@ const ListItem = Node.create({
   addKeyboardShortcuts() {
     return {
       Enter: () => {
-        const item = this.editor.state.selection.$from.node(-1);
+        const $from = this.editor.state.selection.$from;
+
+        if ($from.depth === 0) return false;
+        const item = $from.node(-1);
         const checked = item.type.name === this.name && item.attrs["checked"] !== null;
 
         return this.editor.commands.splitListItem(this.name, checked ? { checked: false } : {});
