@@ -1,5 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import type { PDFPageProxy } from "pdfjs-dist";
+import { errorMessage } from "../../../contract/errors.ts";
 import type { PageSize, PdfFile } from "./pdfjs.ts";
 
 /** A page within half a viewport of the visible area is drawn; one within one and a half keeps the canvas it has; any other gives its canvas up. */
@@ -47,6 +48,8 @@ export interface PageEvents {
   readonly onPage: (page: number) => void;
   /** A page's size, each time it loads to be drawn. */
   readonly onSize: (page: number, size: PageSize) => void;
+  /** A page could not be drawn; `message` is undefined once it is. */
+  readonly onFailure: (page: number, message: string | undefined) => void;
 }
 
 /** The scroll container's first child must be the page column, its children the pages in order. */
@@ -58,7 +61,9 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
   const schedule = (state: PageState): void => {
     if (state.queued) return;
     state.queued = true;
-    void file.enqueue(() => paint(state));
+    void file
+      .enqueue(() => paint(state))
+      .catch((cause: unknown) => events.onFailure(state.number, errorMessage(cause)));
   };
 
   const paint = async (state: PageState): Promise<void> => {
@@ -86,10 +91,15 @@ export function createPdfPages(file: PdfFile, events: PageEvents): Attach {
 
     canvas.className = props(styles.canvas).className ?? "";
 
-    if (state.canvas !== undefined) clear(state.canvas);
-    state.element.replaceChildren(canvas);
+    if (state.canvas === undefined) state.element.prepend(canvas);
+    else {
+      state.canvas.replaceWith(canvas);
+      clear(state.canvas);
+    }
+
     state.canvas = canvas;
     state.scale = scale;
+    events.onFailure(state.number, undefined);
   };
 
   const release = (state: PageState): void => {

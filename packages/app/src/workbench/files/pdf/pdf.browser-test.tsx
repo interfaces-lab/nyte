@@ -1,3 +1,7 @@
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
+import "../../../theme/tokens.stylex.ts";
+import { PdfViewer } from "./pdf-viewer.tsx";
 import { samplePdf } from "./pdf.fixture.ts";
 import { createPdfReader } from "./pdfjs.ts";
 
@@ -59,10 +63,51 @@ async function opensWithoutReadingLaterPages(): Promise<void> {
   );
 }
 
+const nextFrame = () =>
+  new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+/** Polls `read` each frame for up to five seconds until it returns something. */
+async function eventually<T>(read: () => T | undefined): Promise<T | undefined> {
+  const end = performance.now() + 5000;
+
+  while (performance.now() < end) {
+    const value = read();
+
+    if (value !== undefined) return value;
+    await nextFrame();
+  }
+
+  return undefined;
+}
+
+async function failedPageShowsAnError(): Promise<void> {
+  const reader = createPdfReader(new URL(window.pdfWorker));
+  const file = await reader.open(samplePdf([{}, { broken: true }, {}]), () => {});
+  const host = document.createElement("div");
+  host.style.cssText = "display: flex; width: 500px; height: 700px";
+  document.body.append(host);
+  const root = createRoot(host);
+  flushSync(() => root.render(<PdfViewer file={file} label="sample.pdf" />));
+
+  const failed = await eventually(() =>
+    host.querySelector('[aria-label^="Page 2:"]')?.textContent?.includes("could not be drawn")
+      ? true
+      : undefined,
+  );
+
+  const drawn = host.querySelector('[aria-label="Page 1"] canvas');
+  root.unmount();
+  host.remove();
+
+  check(failed === true, "A page that could not be drawn showed no error");
+  check(drawn !== null, "The page before a broken one was not drawn");
+}
+
 export async function run(): Promise<string> {
   await workerThatFailsToLoad();
   await failedOpenLeavesTheQueueMoving();
   await opensWithoutReadingLaterPages();
+  await failedPageShowsAnError();
 
   return "passed";
 }

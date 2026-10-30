@@ -33,6 +33,7 @@ const styles = create({
     marginInline: "auto",
   }),
   page: (width: string, aspectRatio: string) => ({
+    position: "relative",
     flexShrink: 0,
     width,
     aspectRatio,
@@ -52,6 +53,22 @@ const styles = create({
     fontVariantNumeric: "tabular-nums",
     backgroundColor: role.bgBase,
   },
+  failure: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: space.s1,
+    padding: space.s4,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingSm,
+    textAlign: "center",
+    overflowWrap: "anywhere",
+    backgroundColor: role.bgBase,
+  },
+  failureTitle: { color: role.contentPrimary, fontWeight: type.weightMedium },
   position: { flex: 1, minWidth: 0 },
   zoom: { minWidth: space.s8, textAlign: "center" },
 });
@@ -73,6 +90,7 @@ function shortcutZoom(event: KeyboardEvent, zoom: number): number | undefined {
 export function PdfViewer(input: { readonly file: PdfFile; readonly label: string }): ReactElement {
   const [current, setCurrent] = useState(1);
   const [sizes, setSizes] = useState<ReadonlyMap<number, PageSize>>(new Map());
+  const [failures, setFailures] = useState<ReadonlyMap<number, string>>(new Map());
 
   const [attach] = useState(() =>
     createPdfPages(input.file, {
@@ -84,6 +102,16 @@ export function PdfViewer(input: { readonly file: PdfFile; readonly label: strin
           return previous?.width === size.width && previous.height === size.height
             ? known
             : new Map(known).set(page, size);
+        }),
+      onFailure: (page, message) =>
+        setFailures((known) => {
+          if (known.get(page) === message) return known;
+          const next = new Map(known);
+
+          if (message === undefined) next.delete(page);
+          else next.set(page, message);
+
+          return next;
         }),
     }),
   );
@@ -117,16 +145,29 @@ export function PdfViewer(input: { readonly file: PdfFile; readonly label: strin
         {...props(styles.viewport, focus.ringInset)}
       >
         <div {...props(styles.column(`${zoom * 100}%`))}>
-          {pages.map((page, index) => (
-            <div
-              key={index}
-              role="img"
-              aria-label={`Page ${index + 1}`}
-              {...props(
-                styles.page(`${(page.width / widest) * 100}%`, `${page.width} / ${page.height}`),
-              )}
-            />
-          ))}
+          {pages.map((page, index) => {
+            const failure = failures.get(index + 1);
+
+            return (
+              <div
+                key={index}
+                role="img"
+                aria-label={
+                  failure === undefined ? `Page ${index + 1}` : `Page ${index + 1}: ${failure}`
+                }
+                {...props(
+                  styles.page(`${(page.width / widest) * 100}%`, `${page.width} / ${page.height}`),
+                )}
+              >
+                {failure !== undefined && (
+                  <div {...props(styles.failure)}>
+                    <span {...props(styles.failureTitle)}>This page could not be drawn.</span>
+                    <span>{failure}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
       <div {...props(styles.status)}>
