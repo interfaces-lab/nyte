@@ -29,6 +29,9 @@ allowBuilds:
   core-js-pure: false
   react-native-enriched-markdown: true
 minimumReleaseAge: 0
+# pdf.js draws with it only under Node; the renderer uses the DOM canvas.
+ignoredOptionalDependencies:
+  - "@napi-rs/canvas"
 patchedDependencies:
   "@pierre/diffs@1.6.0": patches/@pierre__diffs@1.6.0.patch
   ghostty-web@0.3.0: patches/ghostty-web@0.3.0.patch
