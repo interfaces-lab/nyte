@@ -3,13 +3,12 @@ import { extname } from "node:path";
 
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
-/** What a file is, as `read` answers it, and its MIME type. */
 export interface FileClass {
   readonly kind: "text" | "image" | "pdf" | "binary";
   readonly mime: string;
 }
 
-/** Classifies a file from its first bytes: image and PDF signatures first, `.svg` by name, then text or binary. A bitmap needs the four reserved zero bytes after its size, which a text file starting with "BM" lacks. */
+/** A bitmap needs the four reserved zero bytes after its size, which a text file starting with "BM" lacks. */
 export function classifyFile(path: string, head: Buffer): FileClass {
   const signature = head.toString("latin1", 0, 12);
 
@@ -40,7 +39,7 @@ export function classifyFile(path: string, head: Buffer): FileClass {
     : { kind: "binary", mime: "application/octet-stream" };
 }
 
-/** Whether the head is UTF-8 without NUL. The head can end inside a character, so the check stops before the last one that starts in its final four bytes. */
+/** The head can end inside a character, so the check stops before the last one that starts in its final four bytes. */
 function looksLikeText(head: Buffer): boolean {
   const last = head.findLastIndex(
     (byte, index) => index >= head.length - 4 && (byte & 0xc0) !== 0x80,
