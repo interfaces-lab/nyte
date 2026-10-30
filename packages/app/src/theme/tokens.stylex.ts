@@ -39,12 +39,6 @@ export const layout = defineVars({
   "--nyte-settings-row-padding": "16px 20px",
   "--nyte-settings-row-padding-inline": "20px",
   "--nyte-settings-control-max-width": "160px",
-  "--nyte-settings-page-title-size": "calc(var(--nyte-font-size-base) * 24 / 13)",
-  "--nyte-settings-page-title-line-height":
-    "round(up, calc(var(--nyte-font-size-base) * 32 / 13), 1px)",
-  "--nyte-settings-section-title-size": "var(--nyte-font-size-lg)",
-  "--nyte-settings-section-title-line-height":
-    "round(up, calc(var(--nyte-font-size-base) * 23 / 13), 1px)",
   "--nyte-suggestion-item-height": "var(--nyte-row-height-md)",
   "--nyte-suggestion-item-gap": "8px",
   "--nyte-conversation-measure": "840px",

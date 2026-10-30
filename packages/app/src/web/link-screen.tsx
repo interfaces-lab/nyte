@@ -37,7 +37,12 @@ const styles = create({
   row: { display: "flex", flexDirection: "column", gap: space.s0_5 },
   key: { color: role.contentSecondary },
   value: { overflowWrap: "anywhere" },
-  mono: { fontFamily: type.fontMono, fontSize: type.fontCode, userSelect: "text" },
+  mono: {
+    fontFamily: type.fontMono,
+    fontSize: type.fontCode,
+    lineHeight: type.leadingCode,
+    userSelect: "text",
+  },
   actions: { display: "flex", gap: space.s2, justifyContent: "flex-end" },
   status: { margin: 0, color: role.contentSecondary, textAlign: "center" },
 });

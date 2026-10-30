@@ -69,6 +69,7 @@ export const sessionScreenStyles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     fontWeight: type.weightSemibold,
     color: role.contentPrimary,
   },
@@ -94,8 +95,14 @@ export const sessionScreenStyles = create({
     paddingInlineStart: space.s1,
     color: role.contentSecondary,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
-  error: { paddingInlineStart: space.s1, color: role.contentSecondary, fontSize: type.fontBase },
+  error: {
+    paddingInlineStart: space.s1,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+  },
   startRow: {
     display: "flex",
     alignItems: "center",

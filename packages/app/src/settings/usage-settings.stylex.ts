@@ -49,9 +49,9 @@ export const usageStyles = create({
   amount: {
     ...figure,
     color: role.contentPrimary,
-    fontSize: `calc(${type.fontBase} * 28 / 13)`,
+    fontSize: type.font3xl,
     fontWeight: type.weightSemibold,
-    lineHeight: `calc(${type.fontBase} * 34 / 13)`,
+    lineHeight: type.leading3xl,
     letterSpacing: "-0.02em",
   },
   fact: {

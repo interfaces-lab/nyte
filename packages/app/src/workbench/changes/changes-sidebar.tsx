@@ -101,6 +101,7 @@ const styles = create({
     padding: space.s5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textAlign: "center",
     textWrap: "pretty",
   },

@@ -27,6 +27,7 @@ const styles = create({
     minWidth: 64,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     fontVariantNumeric: "tabular-nums",
     whiteSpace: "nowrap",
   },

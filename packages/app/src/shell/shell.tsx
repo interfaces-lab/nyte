@@ -73,6 +73,7 @@ const styles = create({
     paddingBlock: space.s2,
     color: role.contentPrimary,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
 });
 

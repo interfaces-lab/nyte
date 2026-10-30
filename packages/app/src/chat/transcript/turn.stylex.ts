@@ -182,6 +182,7 @@ export const turnStyles = create({
     overflow: "hidden",
     color: role.contentSecondary,
     fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },

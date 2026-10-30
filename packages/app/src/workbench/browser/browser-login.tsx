@@ -16,10 +16,11 @@ const styles = create({
     overflowWrap: "anywhere",
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     fontFamily: type.fontMono,
   },
   field: { display: "flex", flexDirection: "column", gap: space.s1 },
-  label: { color: role.contentSecondary, fontSize: type.fontSm },
+  label: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
 });
 
 interface LoginDialogProps {

@@ -160,7 +160,8 @@ const styles = create({
   },
   title: {
     margin: 0,
-    fontSize: type.font2xl,
+    fontSize: type.fontXl,
+    lineHeight: type.leadingXl,
     fontWeight: type.weightSemibold,
     letterSpacing: type.letterLg,
   },

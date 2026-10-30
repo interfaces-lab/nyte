@@ -115,6 +115,7 @@ const styles = create({
     overflow: "hidden",
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },

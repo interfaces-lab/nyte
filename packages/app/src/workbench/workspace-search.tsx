@@ -172,6 +172,7 @@ const styles = create({
     paddingInline: space.s2,
     color: role.contentSecondary,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     fontWeight: type.weightRegular,
   },
   path: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
@@ -186,7 +187,12 @@ const styles = create({
     fontVariantNumeric: "tabular-nums",
     color: role.contentSecondary,
   },
-  draft: { flexShrink: 0, color: role.contentSecondary, fontSize: type.fontSm },
+  draft: {
+    flexShrink: 0,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
   result: {
     display: "flex",
     alignItems: "baseline",

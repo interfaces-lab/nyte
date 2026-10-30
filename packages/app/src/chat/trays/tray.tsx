@@ -39,6 +39,7 @@ export const trayParts = create({
     paddingInline: tray.paddingInline,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   error: { color: role.contentSecondary },
 });

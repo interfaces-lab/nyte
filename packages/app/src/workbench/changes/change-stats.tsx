@@ -12,6 +12,7 @@ const styles = create({
     flexShrink: 0,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     fontWeight: type.weightSemibold,
     fontVariantNumeric: "tabular-nums",
   },

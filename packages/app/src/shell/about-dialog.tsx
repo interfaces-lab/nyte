@@ -45,9 +45,9 @@ const styles = create({
   },
   title: {
     margin: 0,
-    fontSize: 28,
+    fontSize: type.font3xl,
     fontWeight: type.weightSemibold,
-    lineHeight: "34px",
+    lineHeight: type.leading3xl,
     letterSpacing: "-0.8px",
     textWrap: "balance",
   },
@@ -60,7 +60,12 @@ const styles = create({
     margin: `${space.s5} 0 ${space.s6}`,
     color: role.contentSecondary,
   },
-  error: { margin: `${space.s3} 0 0`, color: role.contentSecondary, fontSize: type.fontBase },
+  error: {
+    margin: `${space.s3} 0 0`,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+  },
 });
 
 export function AboutDialog({

@@ -199,6 +199,7 @@ export const composerStyles = create({
     boxShadow: CODE_RING,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   queuedText: {
     flex: 1,
@@ -217,6 +218,7 @@ export const composerStyles = create({
   queueHint: {
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   /** On whatever is stacked on the composer, so toasts clear its trays too. */
   toastAnchor: { anchorName: toast.anchor },

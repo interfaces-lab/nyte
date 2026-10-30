@@ -237,6 +237,7 @@ const styles = create({
     paddingBlockEnd: space.s1,
     color: role.contentTertiary,
     fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
     fontWeight: type.weightMedium,
   },
   directory: { marginInlineStart: space.s2, color: role.contentTertiary },

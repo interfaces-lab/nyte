@@ -83,6 +83,7 @@ const styles = create({
     paddingInline: space.s3,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
   empty: {
@@ -94,6 +95,7 @@ const styles = create({
     padding: space.s5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textAlign: "center",
     textWrap: "pretty",
   },

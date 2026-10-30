@@ -29,6 +29,7 @@ const styles = create({
     paddingInline: space.s2_5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   glyph: { display: "inline-flex", flexShrink: 0, width: glyph.sm, justifyContent: "center" },
   name: {

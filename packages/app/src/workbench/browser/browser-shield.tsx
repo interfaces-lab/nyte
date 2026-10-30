@@ -22,6 +22,7 @@ const styles = create({
     alignItems: "center",
     gap: space.s1,
     fontSize: type.fontCode,
+    lineHeight: type.leadingCode,
     fontFamily: type.fontMono,
     fontVariantNumeric: "tabular-nums",
   },

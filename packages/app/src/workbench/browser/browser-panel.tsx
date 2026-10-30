@@ -125,7 +125,7 @@ const styles = create({
     paddingBlock: space.s1_5,
     color: { default: role.contentSecondary, "[data-selected]": role.contentPrimary },
   },
-  historyAddress: { fontSize: type.fontXs },
+  historyAddress: { fontSize: type.fontXs, lineHeight: type.leadingXs },
   message: {
     display: "flex",
     maxWidth: 360,
@@ -136,6 +136,7 @@ const styles = create({
   messageTitle: {
     color: role.contentPrimary,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     fontWeight: type.weightSemibold,
   },
   messageDetail: {
@@ -154,6 +155,7 @@ const styles = create({
     backgroundColor: role.bgBase,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   noticeText: {
     flex: 1,
@@ -170,6 +172,7 @@ const styles = create({
     paddingInline: space.s1_5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   frozenFrame: {
     position: "absolute",
