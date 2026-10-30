@@ -24,6 +24,9 @@ import { readStored, removeStored, type StorageArea, writeStored } from "../../l
 
 const FLUSH_DEBOUNCE_MS = 200;
 
+/** One pasted screenshot can fill the storage quota, so a larger image is kept in memory only. */
+const STORED_IMAGE_LIMIT = 256 * 1024;
+
 interface PaneDraftState {
   active: ChatDraft;
   readonly parked: Map<string, ChatDraft>;
@@ -215,10 +218,11 @@ export class WindowDrafts {
       this.#pending.set(key, composerHasContent(next) ? record : undefined);
 
       if (previous.attachments !== next.attachments) {
-        this.#pending.set(
-          `${key}:images`,
-          next.attachments.length > 0 ? next.attachments : undefined,
+        const stored = next.attachments.filter(
+          (image) => image.content.data.length <= STORED_IMAGE_LIMIT,
         );
+
+        this.#pending.set(`${key}:images`, stored.length > 0 ? stored : undefined);
       }
     }
 
@@ -293,7 +297,6 @@ export class WindowDrafts {
     }
   }
 
-  /** An entry leaves the queue before its write, so a value the storage refuses throws once instead of blocking every later draft. */
   #flush(): void {
     const persistence = this.#persistence;
 

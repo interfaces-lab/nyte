@@ -146,10 +146,10 @@ class ChangesViewedStore {
 
     const viewed = Object.keys(bounded).length === 0 ? this.#withoutRepository(next, root) : next;
 
-    writeStored(this.#storage, STORAGE_KEY, viewed);
     this.#viewed = viewed;
 
     for (const listener of this.#listeners) listener();
+    writeStored(this.#storage, STORAGE_KEY, viewed);
   }
 
   #withoutRepository(viewed: ChangesViewed, root: string): ChangesViewed {

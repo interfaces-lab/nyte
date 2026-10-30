@@ -1,6 +1,7 @@
+import { toast } from "@nyte-ai/ui/toast";
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { storedPaneLayoutSchema } from "../panes/pane-layout.ts";
 import { persisted, readStored, type StorageArea } from "./storage.ts";
 
@@ -27,7 +28,6 @@ interface Row {
   readonly schema: TSchema;
   readonly fallback: unknown;
   readonly text?: boolean;
-  readonly write?: unknown;
   readonly expected: unknown;
 }
 
@@ -59,14 +59,6 @@ const rows: readonly Row[] = [
     schema: width,
     fallback: DEFAULT_WIDTH,
     expected: DEFAULT_WIDTH,
-  },
-  {
-    name: "a write the storage refuses",
-    stored: '{"width":320}',
-    schema: width,
-    fallback: DEFAULT_WIDTH,
-    write: { width: 400 },
-    expected: { width: 320 },
   },
   {
     name: "a bare string an earlier build stored for a preference",
@@ -107,19 +99,34 @@ function memoryArea(stored: string | null, refuse: boolean): StorageArea {
   };
 }
 
-test.each(rows)("$name", ({ stored, schema, fallback, text, write, expected }) => {
-  const area = memoryArea(stored, write !== undefined);
-  const value = persisted(KEY, schema, fallback, area);
+test.each(rows)("$name", ({ stored, schema, fallback, text, expected }) => {
+  const area = memoryArea(stored, false);
+
+  expect(readStored(area, KEY, schema, fallback, { text })).toEqual(expected);
+
+  if (text !== true) expect(persisted(KEY, schema, fallback, area).get()).toEqual(expected);
+});
+
+test("a write the storage refuses still changes the value and is reported under one id", async () => {
+  const area = memoryArea('{"width":320}', true);
+  const value = persisted(KEY, width, DEFAULT_WIDTH, area);
   let heard = 0;
   value.subscribe(() => {
     heard += 1;
   });
+  const reported: unknown[] = [];
 
-  if (write !== undefined) expect(() => value.set(write)).toThrow("The quota has been exceeded.");
+  onTestFinished(
+    toast[" subscribe"]((event) => {
+      if (event.action === "add") reported.push(event.options.id);
+    }),
+  );
 
-  expect(readStored(area, KEY, schema, fallback, { text })).toEqual(expected);
+  value.set({ width: 400 });
+  value.set({ width: 480 });
 
-  if (text !== true) expect(value.get()).toEqual(expected);
-  expect(area.getItem(KEY)).toBe(stored);
-  expect(heard).toBe(0);
+  expect(value.get()).toEqual({ width: 480 });
+  expect(heard).toBe(2);
+  expect(area.getItem(KEY)).toBe('{"width":320}');
+  await vi.waitFor(() => expect(reported).toEqual(["storage-full", "storage-full"]));
 });

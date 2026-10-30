@@ -86,9 +86,9 @@ export function definePreference<S extends TSchema>(
     get: () => value,
     set: (next) => {
       if (sameValue(next, value) || !Value.Check(schema, next)) return;
-      write(slot, next);
       value = next;
       notify();
+      write(slot, next);
     },
     subscribe: (listener) => {
       listeners.add(listener);

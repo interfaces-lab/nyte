@@ -1,3 +1,4 @@
+import { toast } from "@nyte-ai/ui/toast";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 
@@ -28,18 +29,36 @@ export function readStored<S extends TSchema, Fallback>(
   return Value.Check(schema, value) ? value : fallback;
 }
 
-/** A write the storage refuses throws. */
 export function writeStored(area: StorageArea | undefined, key: string, value: unknown): void {
-  area?.setItem(key, JSON.stringify(value));
+  if (area === undefined) return;
+  const text = JSON.stringify(value);
+
+  guardWrite(() => area.setItem(key, text));
 }
 
 export function removeStored(area: StorageArea | undefined, key: string): void {
-  area?.removeItem(key);
+  if (area === undefined) return;
+
+  guardWrite(() => area.removeItem(key));
+}
+
+/** One of the two guarded calls at the storage boundary: a refused write keeps the stored value and is reported, not thrown. */
+function guardWrite(write: () => void): void {
+  try {
+    write();
+  } catch {
+    toast.add({
+      type: "error",
+      id: "storage-full",
+      title: "Storage is full",
+      description: "Some changes won't be kept after a reload.",
+    });
+  }
 }
 
 const UNREADABLE = Symbol("unreadable");
 
-/** The one guarded parse: anything may have written this text. */
+/** The other guarded call at the storage boundary: anything may have written this text. */
 function parseJson(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -55,7 +74,6 @@ export interface Persisted<T> {
   readonly subscribe: (listener: () => void) => () => void;
 }
 
-/** Writes before it publishes, so a write the storage refuses changes nothing and throws. */
 export function persisted<S extends TSchema, Fallback>(
   key: string,
   schema: S,
@@ -74,12 +92,12 @@ export function persisted<S extends TSchema, Fallback>(
   return {
     get: () => (loaded ??= { value: readStored(area, key, schema, fallback) }).value,
     set(value) {
-      writeStored(area, key, value);
       publish(value);
+      writeStored(area, key, value);
     },
     remove() {
-      removeStored(area, key);
       publish(fallback);
+      removeStored(area, key);
     },
     subscribe(listener) {
       listeners.add(listener);

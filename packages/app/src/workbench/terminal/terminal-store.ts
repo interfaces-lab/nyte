@@ -328,7 +328,6 @@ function writeFailed(id: WorkbenchTabId, cause: unknown): void {
   });
 }
 
-/** The recovery record is written once the shell runs and outside its startup, so a write the storage refuses loses the record, not the terminal. */
 function startShell(
   id: WorkbenchTabId,
   workspacePath: string | null,
@@ -354,7 +353,7 @@ function startShell(
       await feed.job.stop();
       await feed.job.close();
 
-      return false;
+      return;
     }
 
     feeds.set(id, feed);
@@ -374,19 +373,13 @@ function startShell(
           .catch((cause: unknown) => writeFailed(id, cause))
           .finally(() => flushing.delete(id)),
       );
-
-    return true;
+    save(id);
   })()
     .catch((cause: unknown) => {
       typedAhead.delete(id);
       const message = errorMessage(cause);
       updateShell(id, { kind: "failed", message });
       toast.add({ type: "error", title: "Couldn't start terminal", description: message });
-
-      return false;
-    })
-    .then((running) => {
-      if (running) save(id);
     })
     .finally(() => creating.delete(id));
 

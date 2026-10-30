@@ -213,9 +213,7 @@ describe("shell terminals", () => {
     const id = tabId();
     full = true;
 
-    await expect(terminalActions.create({ id, workspacePath: "/workspace" })).rejects.toThrow(
-      "The quota has been exceeded.",
-    );
+    await terminalActions.create({ id, workspacePath: "/workspace" });
     full = false;
     assert.equal(getTerminal(id)?.state.kind, "running");
     assert.equal(storage.has(`nyte.terminal.${id}`), false);
@@ -226,6 +224,20 @@ describe("shell terminals", () => {
     await vi.waitFor(() => assert.equal(output.contents, "$ "));
     assert.equal(job.stopped, 0);
     await terminalActions.close(id);
+  });
+
+  test("a starting shell whose recovery record can't be stored stops when it's closed", async () => {
+    next = fakeJob("closed-while-starting");
+    const job = next;
+    const id = tabId();
+    full = true;
+
+    const starting = terminalActions.create({ id, workspacePath: "/workspace" });
+    await terminalActions.close(id);
+    await starting;
+
+    assert.equal(job.stopped, 1);
+    assert.equal(getTerminal(id), undefined);
   });
 
   test("start a pty job in the open folder, stream its output, take input and sizes, and stop it on close", async () => {

@@ -90,24 +90,3 @@ test("a width stored in pixels stays until the next resize, and the old 400 px d
   resized.dispatch("/workspace", { kind: "set-share", share: 0.4 });
   expect(workbenchPanelWidth(resized.getView("/workspace").width, 2000)).toBe(800);
 });
-
-test("a write the storage refuses leaves the workbench as it was and reaches the caller", () => {
-  const store = createWorkbenchStore(() => ({ browser: true }), {
-    get: () => undefined,
-    set: () => {
-      throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
-    },
-  });
-
-  const before = store.getSnapshot();
-  let heard = 0;
-  store.subscribe(() => {
-    heard += 1;
-  });
-
-  expect(() => store.dispatch("/workspace", { kind: "set-share", share: 0.25 })).toThrow(
-    "The quota has been exceeded.",
-  );
-  expect(store.getSnapshot()).toBe(before);
-  expect(heard).toBe(0);
-});
