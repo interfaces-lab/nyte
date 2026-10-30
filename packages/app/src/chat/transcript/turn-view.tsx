@@ -689,14 +689,13 @@ function ResponseView({
 
   if (markdown === "" || first === undefined) return null;
 
-  if (!row.ended) return <Prose markdown={markdown} streaming={streaming} />;
-  const worked = row.workedMs === undefined ? undefined : workedFor(row.workedMs);
+  const worked = row.ended && row.workedMs !== undefined ? workedFor(row.workedMs) : undefined;
 
   return (
-    <div {...props(replyStyles.reply, row.latest && replyStyles.latest)}>
+    <div {...props(replyStyles.reply, row.ended && row.latest && replyStyles.latest)}>
       {worked !== undefined && <span {...props(stepGroupStyles.status)}>{worked}</span>}
       <Prose markdown={markdown} streaming={streaming} />
-      <ReplyActions markdown={markdown} at={first.at} worked={worked} />
+      {row.ended && <ReplyActions markdown={markdown} at={first.at} worked={worked} />}
     </div>
   );
 }

@@ -10,11 +10,17 @@ import { queryClient } from "../../data/query-client.ts";
 import { installConnection } from "../../data/connection.ts";
 import { scriptedConnection } from "../../../test/scripted-connection.ts";
 import { SubagentCitation } from "../tools/subagent-call.tsx";
-import { transcriptRows } from "./transcript-rows.ts";
+import { transcriptRows, type TurnItemRow } from "./transcript-rows.ts";
 import { TurnItemView } from "./turn-view.tsx";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import { COMPLETED, endedTurn, sessionRow, settledTool } from "../../../test/view-fixtures.ts";
+import {
+  COMPLETED,
+  USAGE,
+  endedTurn,
+  sessionRow,
+  settledTool,
+} from "../../../test/view-fixtures.ts";
 
 const HOUR = 3_600_000;
 
@@ -36,7 +42,7 @@ const LIVE: Execution = {
   stopping: false,
 };
 
-function reply(id: string, turn: string, at: number, markdown: string): Message {
+function reply(id: string, turn: string, at: number, markdown: string, live = false): Message {
   return {
     id: asId<"message">(id),
     turn: asId<"turn">(turn),
@@ -47,7 +53,9 @@ function reply(id: string, turn: string, at: number, markdown: string): Message 
     role: "answer",
     state: { markdown, signature: null },
     version: 1,
-    status: { kind: "settled", commit: asId<"commit">(id), endedAt: at },
+    status: live
+      ? { kind: "live", run: asId<"run">("child-run") }
+      : { kind: "settled", commit: asId<"commit">(id), endedAt: at },
   };
 }
 
@@ -86,11 +94,45 @@ const rows = transcriptRows({
   retrying: undefined,
 }).filter((row) => row.kind === "response");
 
+/** The one reply of a turn, while it streams or once the turn has ended. */
+function streamedReply(ended: boolean): TurnItemRow | undefined {
+  return transcriptRows({
+    loading: false,
+    failed: false,
+    turns: [
+      endedTurn([reply("a3", "t3", SENT, "Streamed answer", !ended)], {
+        id: asId<"turn">("t3"),
+        startedAt: SENT - 1_000,
+        state: ended
+          ? { kind: "ended", end: { kind: "completed", usage: USAGE } }
+          : { kind: "working", activity: null },
+      }),
+    ],
+    changes: [],
+    prompts: [],
+    running: !ended,
+    held: false,
+    retrying: undefined,
+  }).find((row) => row.kind === "response");
+}
+
 const working = sessionRow("working", { name: "Map the core", parent: asId("parent") }, LIVE);
 
 const finished = sessionRow("finished", { name: "Map the app", parent: asId("parent") }, COMPLETED);
 
 installConnection(scriptedConnection({ sessions: [working, finished] }).connection);
+
+function Completion({ row }: { row: TurnItemRow | undefined }): ReactElement | null {
+  if (row === undefined) return null;
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <TurnItemView row={row} running={false} density="compact" cwd={undefined} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
 
 function Stage(): ReactElement {
   return (
@@ -208,6 +250,31 @@ export async function run(): Promise<string> {
 
   flushSync(() => root.unmount());
   stage.remove();
+
+  const replyStage = document.createElement("div");
+  document.body.append(replyStage);
+  const replyRoot = createRoot(replyStage);
+  flushSync(() => replyRoot.render(<Completion row={streamedReply(false)} />));
+  await wait(50);
+  const streamed = find(replyStage, "p", HTMLParagraphElement);
+  const selection = window.getSelection();
+  selection?.selectAllChildren(streamed);
+  flushSync(() => replyRoot.render(<Completion row={streamedReply(true)} />));
+  await wait(50);
+  check(
+    replyStage.querySelector("[aria-label='Copy reply']") !== null,
+    "a reply gains its actions when its turn ends",
+  );
+  check(
+    replyStage.querySelector("p") === streamed && streamed.isConnected,
+    "a reply keeps its text in place when its turn ends",
+  );
+  check(
+    selection?.toString() === "Streamed answer",
+    `a selection in a streamed reply survives the turn ending, read ${selection?.toString() ?? ""}`,
+  );
+  flushSync(() => replyRoot.unmount());
+  replyStage.remove();
 
   return failures.length === 0 ? "passed" : failures.join("\n");
 }
