@@ -17,6 +17,9 @@ if [ -r ~/.bash_profile ]; then . ~/.bash_profile
 elif [ -r ~/.bash_login ]; then . ~/.bash_login
 elif [ -r ~/.profile ]; then . ~/.profile
 fi
+__nyte_newline=$'\\n'
+eval "__nyte_terms=( $(builtin trap -p EXIT) )"
+builtin trap -- "[ ! -r ~/.bash_logout ] || . ~/.bash_logout\${__nyte_terms[2]:+$__nyte_newline\${__nyte_terms[2]}}" EXIT
 
 __nyte_emit() {
   { local __nyte_xtrace=$-; set +x; } 2>/dev/null
@@ -72,7 +75,6 @@ if [[ -n $__nyte_nonce && \${NYTE_SHELL_INTEGRATION-} != 0 ]]; then
   else
     eval "__nyte_terms=( $(builtin trap -p DEBUG) )"
     __nyte_debug_trap=\${__nyte_terms[2]-}
-    __nyte_newline=$'\\n'
     builtin trap -- "__nyte_preexec \\"\\$_\\"\${__nyte_debug_trap:+$__nyte_newline$__nyte_debug_trap}" DEBUG
     if (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 501 )) &&
       [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == "declare -a"* ]]; then
@@ -80,7 +82,7 @@ if [[ -n $__nyte_nonce && \${NYTE_SHELL_INTEGRATION-} != 0 ]]; then
     else
       PROMPT_COMMAND=__nyte_prompt_begin$__nyte_newline\${PROMPT_COMMAND-}\${__nyte_newline}__nyte_prompt_end
     fi
-    unset __nyte_terms __nyte_newline
   fi
 fi
+unset __nyte_terms __nyte_newline
 `;

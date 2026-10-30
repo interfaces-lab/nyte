@@ -538,4 +538,24 @@ describe.skipIf(!ptyLoads || bash === undefined)("an integrated bash terminal's 
     },
     TEST_MS,
   );
+
+  it(
+    "runs ~/.bash_logout on exit as a login shell would, before the user's EXIT trap",
+    async () => {
+      const terminal = await openTerminal(shell, {
+        ".bash_profile": `PS1='${PROMPT}'\ntrap 'echo trap >> $HOME/exit.log' EXIT\n`,
+        ".bash_logout": "echo logout >> $HOME/exit.log\n",
+      });
+
+      try {
+        await terminal.type("exit");
+        await terminal.job.settled();
+
+        expect(await readFile(join(terminal.home, "exit.log"), "utf8")).toBe("logout\ntrap\n");
+      } finally {
+        await terminal.close();
+      }
+    },
+    TEST_MS,
+  );
 });
