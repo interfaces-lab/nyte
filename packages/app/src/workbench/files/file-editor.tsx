@@ -37,10 +37,13 @@ import type { FindWidgetHandle } from "../find-widget.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "../model.ts";
 import { createFileDocument } from "./file-document.ts";
 import { fileActions } from "./file-store.ts";
+import { MarkdownDocument } from "./markdown-document.tsx";
+import { opensAsMarkdown } from "./markdown-parse.ts";
 import type { FileTab } from "./file-store.ts";
 
 type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
@@ -139,9 +142,6 @@ const styles = create({
     flexShrink: 0,
     minHeight: button.heightMd,
     paddingInline: space.s2_5,
-    borderTopWidth: 1,
-    borderTopStyle: "solid",
-    borderTopColor: role.borderSecondaryTranslucent,
     color: role.contentSecondary,
     fontSize: type.fontXs,
     lineHeight: type.leadingSm,
@@ -366,6 +366,7 @@ function FileImage(input: {
   );
 }
 
+/** A text file's editor. Its status strip hides while empty, but the live regions in it stay mounted so the next save or error is announced. */
 export function TextFileEditor({
   ref,
   viewKey,
@@ -423,7 +424,8 @@ export function TextFileEditor({
   const codeFontSize = useSetting(preferences.codeFontSize);
   const lineNumbers = useSetting(preferences.fileLineNumbers);
   const wordWrap = useSetting(preferences.fileWordWrap);
-  const gitBlame = useSetting(preferences.fileGitBlame) && !readOnly;
+  const documentView = opensAsMarkdown(file.path) && !file.showSource;
+  const gitBlame = useSetting(preferences.fileGitBlame) && !readOnly && !documentView;
   const formatOnSave = useSetting(preferences.fileFormatOnSave);
   const saveFile = useSaveWorkspaceFile();
   const dirty = snapshot.contents !== snapshot.savedContents;
@@ -675,6 +677,18 @@ export function TextFileEditor({
           ? "No Git blame for this line."
           : `${blameLine.author} · ${new Date(blameLine.at).toLocaleDateString()} · ${blameLine.commit.slice(0, 7)}`;
 
+  const saveText =
+    snapshot.status.kind === "saving" ? "Saving…" : snapshot.status.kind === "saved" ? "Saved" : "";
+
+  const errorText =
+    snapshot.status.kind === "conflict"
+      ? "This file changed on disk. Your draft is preserved. Discard changes to reload the disk version."
+      : snapshot.status.kind === "error"
+        ? snapshot.status.message
+        : "";
+
+  const statusVisible = gitBlame || readOnly || saveText !== "" || errorText !== "";
+
   return (
     <div
       aria-hidden={!active}
@@ -682,33 +696,48 @@ export function TextFileEditor({
       onContextMenu={openContextMenu}
       {...props(styles.root, !active && styles.hidden)}
     >
-      <PierreWorkerProvider>
-        <EditProvider createEditor={createEditor}>
-          <CodeView
-            ref={viewer}
-            initialItems={initialItems}
-            editorOptions={{
-              historyMaxEntries: 200,
-              ownsVerticalViewport: true,
-              onAttach: attachEditor,
-              onSearchChange: setSearch,
-            }}
-            options={viewOptions}
-            className={props(diffStyles.patch, styles.code).className}
-            onItemEditChange={(event) => buffer.edit(event.file.contents)}
-          />
-        </EditProvider>
-      </PierreWorkerProvider>
-      {search !== undefined && (
-        <EditorFind
-          search={search}
-          onClose={() => {
-            search.close();
-            viewer.current?.getEditor(file.path)?.focus();
-          }}
+      {documentView ? (
+        <MarkdownDocument
+          buffer={buffer}
+          path={file.path}
+          label={file.displayPath}
+          readOnly={readOnly}
+          viewKey={viewKey}
         />
+      ) : (
+        <>
+          <PierreWorkerProvider>
+            <EditProvider createEditor={createEditor}>
+              <CodeView
+                ref={viewer}
+                initialItems={initialItems}
+                editorOptions={{
+                  historyMaxEntries: 200,
+                  ownsVerticalViewport: true,
+                  onAttach: attachEditor,
+                  onSearchChange: setSearch,
+                }}
+                options={viewOptions}
+                className={props(diffStyles.patch, styles.code).className}
+                onItemEditChange={(event) => buffer.edit(event.file.contents)}
+              />
+            </EditProvider>
+          </PierreWorkerProvider>
+          {search !== undefined && (
+            <EditorFind
+              search={search}
+              onClose={() => {
+                search.close();
+                viewer.current?.getEditor(file.path)?.focus();
+              }}
+            />
+          )}
+        </>
       )}
-      <div {...props(styles.status)} title={gitBlame ? blameText : undefined}>
+      <div
+        {...props(statusVisible ? styles.status : srOnly)}
+        title={gitBlame ? blameText : undefined}
+      >
         {gitBlame && (
           <>
             <span>Line {line}</span>
@@ -717,21 +746,13 @@ export function TextFileEditor({
         )}
         {readOnly && <span {...props(styles.statusText)}>Read-only: outside the workspace</span>}
         <span role="status" {...props(styles.statusText, styles.saveText)}>
-          {snapshot.status.kind === "saving"
-            ? "Saving…"
-            : snapshot.status.kind === "saved"
-              ? "Saved"
-              : ""}
+          {saveText}
         </span>
         <span
           role="alert"
           {...props(intent.danger, styles.error, styles.statusText, styles.saveText)}
         >
-          {snapshot.status.kind === "conflict"
-            ? "This file changed on disk. Your draft is preserved. Discard changes to reload the disk version."
-            : snapshot.status.kind === "error"
-              ? snapshot.status.message
-              : ""}
+          {errorText}
         </span>
         {snapshot.status.kind === "error" && (
           <Button onClick={() => void save()}>Retry Save</Button>

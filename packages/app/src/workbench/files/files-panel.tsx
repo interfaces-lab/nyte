@@ -36,6 +36,7 @@ import { opensReadOnly, WorkspaceFileEditor } from "./file-editor.tsx";
 import { FilesEmptyState } from "./files-empty-state.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
 import { fileActions, useFileTabs } from "./file-store.ts";
+import { opensAsMarkdown } from "./markdown-parse.ts";
 import { Popover } from "@nyte-ai/ui/popover";
 import { WorkspaceSearch } from "../workspace-search.tsx";
 import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
@@ -390,6 +391,21 @@ export function FilesPanel({
             }
           />
           <MenuContent align="end" xstyle={styles.menu}>
+            {activeFile !== undefined &&
+              activeDocument?.kind === "text" &&
+              opensAsMarkdown(activeFile.path) && (
+                <>
+                  <MenuItem
+                    layout="plain"
+                    onClick={() =>
+                      fileActions.setShowSource(viewKey, activeFile.path, !activeFile.showSource)
+                    }
+                  >
+                    {activeFile.showSource ? "View Document" : "View Source"}
+                  </MenuItem>
+                  <MenuSeparator inset />
+                </>
+              )}
             <MenuItem
               layout="plain"
               meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}

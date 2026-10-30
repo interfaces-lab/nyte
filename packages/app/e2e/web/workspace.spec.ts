@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { README_LINE } from "../server/address.ts";
 import { collectErrors } from "../utils/errors.ts";
 import { pair } from "../utils/pairing.ts";
@@ -10,6 +10,11 @@ async function openServerWorkspace(page: Page): Promise<void> {
   await pane.getByRole("button", { name: "Home", exact: true }).click();
   await page.getByRole("menuitemradio", { name: /^nyte-e2e-web-/u }).click();
   await expect(pane.getByRole("button", { name: /^nyte-e2e-web-/u })).toBeVisible();
+}
+
+async function viewSource(page: Page, files: Locator): Promise<void> {
+  await files.getByRole("button", { name: "File options" }).click();
+  await page.getByRole("menuitem", { name: "View Source" }).click();
 }
 
 test("a paired browser reads, edits, blames, searches, and mentions workspace files", async ({
@@ -39,6 +44,7 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
     await files.getByRole("button", { name: "Show Explorer", exact: true }).click();
     await readme.click();
     await expect(files.getByText(README_LINE, { exact: true })).toBeVisible();
+    await viewSource(page, files);
   });
 
   await test.step("a saved edit is on disk after a reload", async () => {
@@ -61,6 +67,7 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
   });
 
   await test.step("Git blame names the seeded commit author", async () => {
+    await viewSource(page, files);
     await files.getByText(README_LINE, { exact: true }).click();
     await files.getByRole("button", { name: "File options" }).click();
     await page.getByRole("menuitemcheckbox", { name: "Git Blame" }).click();

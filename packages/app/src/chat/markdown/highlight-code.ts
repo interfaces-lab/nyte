@@ -13,7 +13,17 @@ function escapeHtml(text: string): string {
   return text.replaceAll(/[&<>"]/gu, (character) => HTML_ESCAPES.get(character) ?? character);
 }
 
-export function highlightCode(code: string, language: string): string | undefined {
+/** A highlighted token: its text and the CSS custom properties that colour it in each theme. */
+export interface HighlightToken {
+  readonly content: string;
+  readonly style: string;
+}
+
+/** The code's tokens, line by line, or undefined when the language isn't supported. */
+export function highlightTokens(
+  code: string,
+  language: string,
+): readonly (readonly HighlightToken[])[] | undefined {
   if (!isSupportedLanguage(language)) return undefined;
 
   const { tokens } = codeToTokens(code, {
@@ -24,16 +34,23 @@ export function highlightCode(code: string, language: string): string | undefine
     tokenizeMaxLineLength: 1_000,
   });
 
-  return tokens
-    .map((line) =>
-      line
-        .map((token) => {
-          const style = Object.entries(token.htmlStyle ?? {})
-            .map(([property, value]) => `${property}:${value}`)
-            .join(";");
+  return tokens.map((line) =>
+    line.map((token) => ({
+      content: token.content,
+      style: Object.entries(token.htmlStyle ?? {})
+        .map(([property, value]) => `${property}:${value}`)
+        .join(";"),
+    })),
+  );
+}
 
-          return `<span style="${escapeHtml(style)}">${escapeHtml(token.content)}</span>`;
-        })
+export function highlightCode(code: string, language: string): string | undefined {
+  return highlightTokens(code, language)
+    ?.map((line) =>
+      line
+        .map(
+          (token) => `<span style="${escapeHtml(token.style)}">${escapeHtml(token.content)}</span>`,
+        )
         .join(""),
     )
     .join("\n");

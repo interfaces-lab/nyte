@@ -1,3 +1,5 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
 import { chatPane, openChat, primaryKey } from "./ui.ts";
@@ -29,8 +31,26 @@ async function openWorkbenchTab(page: Page, kind: string): Promise<void> {
     .click();
 }
 
+const NOTES = `---
+title: Field notes
+tags: [e2e, markdown]
+---
+
+# Field notes
+
+The quick brown fox jumps.
+
+- [x] Render the document
+- [ ] Edit in place
+
+See [the guide](guide.md).
+`;
+
 test("the workbench journey", async ({ desktop }) => {
   const { page } = desktop;
+  const notesPath = join(desktop.home, "notes.md");
+  await writeFile(notesPath, NOTES);
+  await writeFile(join(desktop.home, "guide.md"), "# Guide\n");
 
   await test.step("the rail opens into a panel with an empty tab strip", async () => {
     await openChat(page, FIXTURES.beta);
@@ -79,6 +99,49 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(
       start.getByRole("button", { name: `Search in Files ${primaryKey} F` }),
     ).toBeVisible();
+  });
+
+  await test.step("a markdown file opens as a document, edits in place and saves only the edit", async () => {
+    const files = workbench(page).getByRole("region", { name: "Files" });
+    await files.getByRole("button", { name: "Show Explorer" }).click();
+    await files.getByRole("treeitem", { name: /notes\.md/u }).click();
+    const editor = files.getByRole("textbox", { name: "notes.md" });
+    await expect(editor.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
+    await expect(files.getByRole("definition")).toHaveText(["Field notes", "[e2e, markdown]"]);
+    await expect(editor.getByRole("checkbox")).toHaveCount(2);
+
+    const paragraph = editor.getByRole("paragraph").filter({ hasText: "The quick brown fox" });
+    const box = await paragraph.boundingBox();
+    const caretPlaced = page.evaluate(
+      () =>
+        new Promise<void>((done) => {
+          document.addEventListener("selectionchange", () => done(), { once: true });
+        }),
+    );
+    await paragraph.click({ position: { x: (box?.width ?? 8) - 4, y: (box?.height ?? 8) / 2 } });
+    await caretPlaced;
+    for (let count = 0; count < "jumps.".length; count += 1) await page.keyboard.press("Backspace");
+    await page.keyboard.type("leaps.");
+    await page.keyboard.press("ControlOrMeta+s");
+    await expect(files.getByText("Saved", { exact: true })).toBeVisible();
+    await expect.poll(() => readFile(notesPath, "utf8")).toBe(NOTES.replace("jumps.", "leaps."));
+
+    await files.getByRole("button", { name: "File options" }).click();
+    await page.getByRole("menuitem", { name: "View Source" }).click();
+    await expect(files.getByText("title: Field notes")).toBeVisible();
+    await expect(editor.getByRole("heading")).toHaveCount(0);
+    await files.getByRole("button", { name: "File options" }).click();
+    await page.getByRole("menuitem", { name: "View Document" }).click();
+    await expect(editor.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
+
+    await editor.getByRole("link", { name: "the guide" }).click({ modifiers: ["ControlOrMeta"] });
+    await expect(
+      files.getByRole("textbox", { name: "guide.md" }).getByRole("heading", { name: "Guide" }),
+    ).toBeVisible();
+
+    const tabs = workbenchTabs(page);
+    await closeTab(tabs, tabs.getByRole("tab", { name: "guide.md" }));
+    await closeTab(tabs, tabs.getByRole("tab", { name: "notes.md" }));
   });
 
   await test.step("Changes reports that the home folder is not a repository", async () => {
