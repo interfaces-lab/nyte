@@ -60,7 +60,6 @@ function clampZoom(zoom: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 }
 
-/** Zoom for ⌘/Ctrl with =, + and -, and fit to width again with 0. */
 function shortcutZoom(event: KeyboardEvent, zoom: number): number | undefined {
   if (!(event.metaKey || event.ctrlKey) || event.altKey) return undefined;
 
@@ -71,7 +70,6 @@ function shortcutZoom(event: KeyboardEvent, zoom: number): number | undefined {
   return event.key === "0" ? 1 : undefined;
 }
 
-/** A PDF's pages in one column, fit to the view's width at 100%, with the current page and zoom below. */
 export function PdfViewer(input: { readonly file: PdfFile; readonly label: string }): ReactElement {
   const [current, setCurrent] = useState(1);
   const [attach] = useState(() => createPdfPages(input.file.document, setCurrent));

@@ -40,13 +40,11 @@ const UNKNOWN_STAT: LineStat = { kind: "unknown" };
 
 const EMPTY_ROWS: readonly VcsChangeRow[] = [];
 
-/** The comparison the panel shows, and where its rows come from. */
 interface ResolvedChangesScope {
-  /** The tab's scope, or Uncommitted when it names a turn or chat there is nothing to read for. */
+  /** Uncommitted when the tab names a turn or chat there is nothing to read for. */
   readonly scope: WorkbenchChangesScope;
   readonly value: string;
   readonly rows: ChangeRow["source"];
-  /** What a recorded scope reads: the chat's changes, or one turn's run. */
   readonly recorded: ChangeSource | undefined;
 }
 
@@ -88,7 +86,6 @@ export function resolveChangesScope(
   };
 }
 
-/** The working tree's files in a status scope, sorted by path. */
 export function workingRows(
   snapshot: GitStatus | undefined,
   scope: WorkbenchChangesScope,
@@ -144,10 +141,7 @@ function recordedVersion(rows: readonly ChangeRow[]): number {
   return nextRecordedVersion;
 }
 
-/**
- * The patch cache's key for what the panel shows, and its lineage: a new key with the same
- * lineage keeps showing the earlier patches as stale until the new ones land.
- */
+/** A new key with the same lineage keeps showing the earlier patches as stale until the new ones land. */
 export function patchIdentity(input: {
   readonly resolved: ResolvedChangesScope;
   readonly repository: ChangesRepository | undefined;
@@ -180,7 +174,6 @@ export function patchIdentity(input: {
   };
 }
 
-/** The patch for `path`: fresh from the current source, or stale from an earlier one of its lineage. */
 function findPatch(
   snapshot: PatchSnapshot,
   source: { readonly key: string; readonly lineage: string } | undefined,
@@ -235,7 +228,6 @@ export function viewedDigest(entry: PatchEntry): string | undefined {
   }
 }
 
-/** One stack section per row, its stat from the fresh patch, the manifest, or the recorded row. */
 export function stackSections(
   rows: readonly ChangeRow[],
   manifest: ChangeSet | undefined,
@@ -259,7 +251,6 @@ export function stackSections(
   });
 }
 
-/** Whether each row was viewed, and whether its diff changed since. */
 export function viewedStates(
   rows: readonly ChangeRow[],
   marks: Readonly<Record<string, { readonly digest: string }>> | undefined,
@@ -301,7 +292,7 @@ export function sidebarFiles(
   });
 }
 
-/** The scope's line totals; unknown while any file's stat is. */
+/** Undefined while any file's stat is unknown. */
 export function scopeStats(
   sections: readonly ChangesStackItem[],
 ): { readonly added: number; readonly removed: number } | undefined {
@@ -319,7 +310,6 @@ export function scopeStats(
   );
 }
 
-/** The paths to read first: outward from the active one, skipping collapsed sections. */
 export function preparationOrder(
   rows: readonly ChangeRow[],
   activePath: string | undefined,
@@ -379,11 +369,9 @@ function queryError(error: Error | null): string | undefined {
 
 interface ChangesEmptyState {
   readonly text: string;
-  /** The failure's own message, when the text reports one. */
   readonly detail?: string;
 }
 
-/** What the panel says with no rows: a failure first, then loading, then the scope's empty text. */
 export function changesEmptyState(input: {
   readonly resolved: ResolvedChangesScope;
   readonly snapshot: GitStatus | undefined;

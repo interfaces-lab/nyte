@@ -27,10 +27,7 @@ export function enqueue<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/**
- * Opens a PDF on the shared worker and measures its pages. `hold` receives the document's
- * close as soon as it is open, so a document whose pages can't be read still closes.
- */
+/** `hold` receives the document's close as soon as it is open, so a document whose pages can't be read still closes. */
 export async function openPdf(
   data: Uint8Array<ArrayBuffer>,
   hold: (close: () => void) => void,

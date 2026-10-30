@@ -7,18 +7,15 @@ export interface PageStill {
 }
 
 interface PageCoverInput {
-  /** Captures the page as it shows now. */
   readonly capture: () => Promise<PageStill | undefined>;
   /** Puts the still in the slot and commits it before returning. */
   readonly show: (still: PageStill) => void;
-  /** Takes the still out of the slot. */
   readonly drop: () => void;
   /** The page must hide: its still has painted, or the wait ran out. */
   readonly hide: () => void;
 }
 
 interface PageCover {
-  /** Whether the native view stays hidden for an overlay. */
   readonly hidden: () => boolean;
   readonly update: (covered: boolean) => void;
   readonly dispose: () => void;

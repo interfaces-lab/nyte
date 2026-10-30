@@ -16,10 +16,6 @@ import { workbenchScope, workspacePathForView } from "./paths.ts";
 import { workbench } from "./store.ts";
 import { getTerminal, terminalActions } from "./terminal/terminal-store.ts";
 
-/**
- * Opens a kind from a launcher: a singleton kind's open tab, or a new tab, following the kind's
- * launch policy. A new Terminal starts its shell.
- */
 export function launch(view: WorkbenchViewKey, kind: LaunchKind): void {
   const descriptor = WORKBENCH_KINDS[kind];
   const workspacePath = workspacePathForView(view);
@@ -46,7 +42,6 @@ export function openUrl(view: WorkbenchViewKey, url: string, activate = true): v
   });
 }
 
-/** Shows Changes at `scope`, revealing `path` when it names one. */
 export function openChanges(
   view: WorkbenchViewKey,
   scope: WorkbenchChangesScope,
@@ -55,7 +50,6 @@ export function openChanges(
   workbench.dispatch(view, { kind: "open-changes", id: crypto.randomUUID(), scope, path });
 }
 
-/** Opens an agent's job in a read-only terminal tab, or focuses the tab already showing it. */
 export function openJobTerminal(
   view: WorkbenchViewKey,
   workspace: WorkspaceId,
@@ -74,10 +68,8 @@ type CloseOutcome =
   | { readonly kind: "confirm"; readonly reason: "dirty" | "running" };
 
 /**
- * Closes a tab, or says what the user has to confirm first: a file's unsaved edits, or a shell
- * that is still running something. A confirmed shell closes with {@link endTerminal}; a dirty
- * file waits in the file store's pending close. A failed idle check rejects, and the caller
- * asks before ending the shell.
+ * A confirmed shell closes with {@link endTerminal}; a dirty file waits in the file store's pending
+ * close. A failed idle check rejects, and the caller asks before ending the shell.
  */
 export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Promise<CloseOutcome> {
   const tab = workbench.getView(view).tabs.find((candidate) => candidate.id === id);
@@ -107,13 +99,11 @@ export async function closeTab(view: WorkbenchViewKey, id: WorkbenchTabId): Prom
   return { kind: "closed" };
 }
 
-/** Ends a terminal's shell or detaches its job, then closes its tab. */
 export async function endTerminal(view: WorkbenchViewKey, id: WorkbenchTabId): Promise<void> {
   await terminalActions.close(id);
   workbench.dispatch(view, { kind: "close", id });
 }
 
-/** Turns a chat's references into workbench opens: files, URLs, canvases and Changes. */
 export function workbenchReferenceOpener(view: WorkbenchViewKey): ReferenceOpener {
   const workspacePath = workspacePathForView(view);
 

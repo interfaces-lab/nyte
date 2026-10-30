@@ -557,7 +557,6 @@ const History = Extension.create({
   }),
 });
 
-/** The top-level block a node was parsed as, by index. */
 const Origin = Extension.create({
   name: "markdownOrigin",
   addGlobalAttributes: () => [
@@ -578,7 +577,7 @@ const Origin = Extension.create({
   ],
 });
 
-/** The schema of a markdown document; node views that need React are added by the editor. */
+/** Node views that need React are added by the editor. */
 export const markdownExtensions: Extensions = [
   Doc,
   Text,

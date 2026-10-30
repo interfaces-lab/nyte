@@ -22,7 +22,7 @@ type FileDraft = Pick<FileDocumentSnapshot, "contents" | "savedContents" | "vers
 
 interface FileRuntime extends Omit<FileLocation, "path"> {
   readonly navigationRevision: number;
-  /** A markdown file shows its source instead of the rendered document. Opening at a line shows the source. */
+  /** Opening at a line shows the source. */
   readonly showSource: boolean;
   readonly saving: boolean;
   readonly draft: FileDraft | undefined;

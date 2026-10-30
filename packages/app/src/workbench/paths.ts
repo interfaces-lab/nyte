@@ -1,6 +1,5 @@
 import type { WorkbenchScope, WorkbenchViewKey } from "./model.ts";
 
-/** The view of the window with no workspace open; every other view is keyed by its workspace's path. */
 export const WORKBENCH_HOME_VIEW_KEY: WorkbenchViewKey = "home";
 
 export function workbenchViewKey(workspacePath: string | undefined): WorkbenchViewKey {
@@ -19,10 +18,7 @@ function normalized(path: string): string {
   return path.replaceAll("\\", "/").replace(/\/+$/u, "");
 }
 
-/**
- * The view whose workspace holds `path`, and the path inside it; the deepest workspace wins.
- * `undefined` for a file outside every workspace, which opens read-only.
- */
+/** The deepest workspace wins. `undefined` for a file outside every workspace, which opens read-only. */
 export function workspaceFile(
   path: string,
   views: Iterable<WorkbenchViewKey>,

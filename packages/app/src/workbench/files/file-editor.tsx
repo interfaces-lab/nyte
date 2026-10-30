@@ -216,7 +216,6 @@ function DiskSync({ path }: { readonly path: string }): null {
   return null;
 }
 
-/** Files outside the workspace open read-only. */
 export function opensReadOnly(document: FileDocument): boolean {
   return document.kind !== "missing" && document.scope === "external";
 }
@@ -364,7 +363,6 @@ function FileImage(input: {
   );
 }
 
-/** A PDF's pages, drawn by pdf.js from its deferred chunk. Without the chunk it falls back to the file's size and Reveal. */
 function FilePdf(input: { readonly active: boolean; readonly document: SizedFile }): ReactElement {
   const runtime = useQuery({ queryKey: ["deferred", "pdf"], queryFn: () => loadDeferred("pdf") });
 
@@ -435,7 +433,7 @@ function PdfDocument(input: {
   );
 }
 
-/** A text file's editor. Its status strip hides while empty, but the live regions in it stay mounted so the next save or error is announced. */
+/** The status strip hides while empty, but its live regions stay mounted so the next save or error is announced. */
 export function TextFileEditor({
   ref,
   viewKey,

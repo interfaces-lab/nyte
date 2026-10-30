@@ -15,7 +15,6 @@ export type WorkbenchChangesScope =
   | { readonly kind: "turn"; readonly turnId: TurnId }
   | { readonly kind: "commit"; readonly oid: string };
 
-/** A terminal's process: a shell the user started, or an agent's job, which names its chat. */
 export type TerminalOwner =
   | { readonly kind: "user" }
   | { readonly kind: "job"; readonly workspace: WorkspaceId; readonly job: JobId };
@@ -58,17 +57,13 @@ export type WorkbenchTab = { [Kind in WorkbenchTabKind]: KindTab<Kind> }[Workben
 
 export type WorkbenchScope = { readonly kind: "pathless" } | { readonly kind: "project" };
 
-/** The kinds a launcher opens; the rest open from what they show. */
 export type LaunchKind = "files" | "changes" | "browser" | "terminal";
 
 interface KindDescriptor<Kind extends WorkbenchTabKind> {
   readonly label: string;
   readonly icon: IconName;
   readonly available: (scope: WorkbenchScope, capabilities: ClientCapabilities) => boolean;
-  /**
-   * What a launcher opens: the one tab of a singleton kind, focused when it is open, or a new tab
-   * every time. Absent for kinds that open from what they show (a file, a canvas).
-   */
+  /** `singleton` focuses the kind's one tab when it is open; `new` opens a new tab every time. */
   readonly launch: Kind extends LaunchKind
     ? { readonly policy: "singleton" | "new"; readonly input: KindInput<Kind> }
     : undefined;
@@ -80,7 +75,6 @@ const projectOnly = (scope: WorkbenchScope): boolean => scope.kind === "project"
 
 const always = (): boolean => true;
 
-/** One descriptor per tab kind; the rail, launchers, "+" menu and tab strip all read it. */
 type WorkbenchKinds = { readonly [Kind in WorkbenchTabKind]: KindDescriptor<Kind> };
 
 export const WORKBENCH_KINDS: WorkbenchKinds = {
@@ -138,7 +132,6 @@ export const WORKBENCH_KINDS: WorkbenchKinds = {
   },
 };
 
-/** The order every launcher lists its kinds in. */
 const LAUNCH_ORDER = Object.freeze([
   "files",
   "changes",
@@ -165,7 +158,6 @@ function tabIdentity<Kind extends WorkbenchTabKind>(tab: KindInput<Kind>): strin
   return WORKBENCH_KINDS[tab.kind].identity(tab);
 }
 
-/** The open tab that `input` names, by its kind's identity. */
 export function matchingTab(
   tabs: readonly WorkbenchTab[],
   input: WorkbenchTabInput,
@@ -185,7 +177,6 @@ export function workbenchTabLabel(tab: WorkbenchTab): string {
   return WORKBENCH_KINDS[tab.kind].label;
 }
 
-/** The native page a Browser tab shows: the agent's it took over, else its own. */
 export function browserSurface(tab: KindTab<"browser">): string {
   return tab.surface ?? tab.id;
 }
@@ -263,7 +254,6 @@ export const DEFAULT_VIEW = Object.freeze({
   sidebars: Object.freeze([]),
 }) satisfies WorkbenchViewState;
 
-/** The panel slot a tab renders in. */
 export function tabSlot(tab: WorkbenchTab): string {
   return tab.kind === "file" || tab.kind === "files" ? FILES_SLOT : tab.id;
 }
