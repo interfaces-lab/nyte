@@ -37,6 +37,7 @@ import type { FindWidgetHandle } from "../find-widget.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "../model.ts";
 import { createFileDocument } from "./file-document.ts";
@@ -139,9 +140,6 @@ const styles = create({
     flexShrink: 0,
     minHeight: button.heightMd,
     paddingInline: space.s2_5,
-    borderTopWidth: 1,
-    borderTopStyle: "solid",
-    borderTopColor: role.borderSecondaryTranslucent,
     color: role.contentSecondary,
     fontSize: type.fontXs,
     lineHeight: type.leadingSm,
@@ -366,6 +364,7 @@ function FileImage(input: {
   );
 }
 
+/** A text file's editor. Its status strip hides while empty, but the live regions in it stay mounted so the next save or error is announced. */
 export function TextFileEditor({
   ref,
   viewKey,
@@ -675,6 +674,18 @@ export function TextFileEditor({
           ? "No Git blame for this line."
           : `${blameLine.author} · ${new Date(blameLine.at).toLocaleDateString()} · ${blameLine.commit.slice(0, 7)}`;
 
+  const saveText =
+    snapshot.status.kind === "saving" ? "Saving…" : snapshot.status.kind === "saved" ? "Saved" : "";
+
+  const errorText =
+    snapshot.status.kind === "conflict"
+      ? "This file changed on disk. Your draft is preserved. Discard changes to reload the disk version."
+      : snapshot.status.kind === "error"
+        ? snapshot.status.message
+        : "";
+
+  const statusVisible = gitBlame || readOnly || saveText !== "" || errorText !== "";
+
   return (
     <div
       aria-hidden={!active}
@@ -708,7 +719,10 @@ export function TextFileEditor({
           }}
         />
       )}
-      <div {...props(styles.status)} title={gitBlame ? blameText : undefined}>
+      <div
+        {...props(statusVisible ? styles.status : srOnly)}
+        title={gitBlame ? blameText : undefined}
+      >
         {gitBlame && (
           <>
             <span>Line {line}</span>
@@ -717,21 +731,13 @@ export function TextFileEditor({
         )}
         {readOnly && <span {...props(styles.statusText)}>Read-only: outside the workspace</span>}
         <span role="status" {...props(styles.statusText, styles.saveText)}>
-          {snapshot.status.kind === "saving"
-            ? "Saving…"
-            : snapshot.status.kind === "saved"
-              ? "Saved"
-              : ""}
+          {saveText}
         </span>
         <span
           role="alert"
           {...props(intent.danger, styles.error, styles.statusText, styles.saveText)}
         >
-          {snapshot.status.kind === "conflict"
-            ? "This file changed on disk. Your draft is preserved. Discard changes to reload the disk version."
-            : snapshot.status.kind === "error"
-              ? snapshot.status.message
-              : ""}
+          {errorText}
         </span>
         {snapshot.status.kind === "error" && (
           <Button onClick={() => void save()}>Retry Save</Button>
