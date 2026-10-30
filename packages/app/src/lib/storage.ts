@@ -29,33 +29,36 @@ export function readStored<S extends TSchema, Fallback>(
   return Value.Check(schema, value) ? value : fallback;
 }
 
-/** A write the storage refuses keeps the stored value and is reported, not thrown. */
 export function writeStored(area: StorageArea | undefined, key: string, value: unknown): void {
   if (area === undefined) return;
   const text = JSON.stringify(value);
 
-  void new Promise<void>((resolve) => {
-    area.setItem(key, text);
-    resolve();
-  }).catch(reportRefusedWrite);
-}
-
-function reportRefusedWrite(): void {
-  toast.add({
-    type: "error",
-    id: "storage-full",
-    title: "Storage is full",
-    description: "Some changes won't be kept after a reload.",
-  });
+  guardWrite(() => area.setItem(key, text));
 }
 
 export function removeStored(area: StorageArea | undefined, key: string): void {
-  area?.removeItem(key);
+  if (area === undefined) return;
+
+  guardWrite(() => area.removeItem(key));
+}
+
+/** One of the two guarded calls at the storage boundary: a refused write keeps the stored value and is reported, not thrown. */
+function guardWrite(write: () => void): void {
+  try {
+    write();
+  } catch {
+    toast.add({
+      type: "error",
+      id: "storage-full",
+      title: "Storage is full",
+      description: "Some changes won't be kept after a reload.",
+    });
+  }
 }
 
 const UNREADABLE = Symbol("unreadable");
 
-/** The one guarded parse: anything may have written this text. */
+/** The other guarded call at the storage boundary: anything may have written this text. */
 function parseJson(text: string): unknown {
   try {
     return JSON.parse(text);
