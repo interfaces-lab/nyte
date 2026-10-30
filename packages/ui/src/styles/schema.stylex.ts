@@ -17,10 +17,11 @@ export const space = defineConsts({
 });
 
 export const glyph = defineConsts({
+  "2xs": "var(--nyte-glyph-2xs)",
+  xs: "var(--nyte-glyph-xs)",
   sm: "var(--nyte-glyph-sm)",
   md: "var(--nyte-glyph-md)",
   lg: "var(--nyte-glyph-lg)",
-  box: "var(--nyte-glyph-box)",
 });
 
 export const media = defineConsts({
@@ -48,6 +49,8 @@ export const toast = defineConsts({
   paddingBlock: "var(--nyte-toast-padding-block)",
   inset: "var(--nyte-toast-inset)",
   overhang: "var(--nyte-toast-overhang)",
+  /** The anchor name an app gives the element toasts stack above. */
+  anchor: "--nyte-toast-anchor",
 });
 
 export const clipboardPreview = defineConsts({
@@ -55,54 +58,55 @@ export const clipboardPreview = defineConsts({
   maxHeight: "var(--nyte-clipboard-preview-max-height)",
 });
 
+/** The control-height scale. A row or menu item reads `row`, which keeps the touch target. */
+export const control = defineConsts({
+  height2xs: "var(--nyte-control-height-2xs)",
+  heightXs: "var(--nyte-control-height-xs)",
+  heightSm: "var(--nyte-control-height-sm)",
+  heightMd: "var(--nyte-control-height-md)",
+  heightLg: "var(--nyte-control-height-lg)",
+  heightXl: "var(--nyte-control-height-xl)",
+});
+
 export const button = defineConsts({
-  height2xs: "var(--nyte-btn-height-2xs)",
   paddingInline2xs: "var(--nyte-btn-padding-inline-2xs)",
   pillPaddingInline2xs: "var(--nyte-btn-pill-padding-inline-2xs)",
   radius2xs: "var(--nyte-btn-radius-2xs)",
   gap2xs: "var(--nyte-btn-gap-2xs)",
-  heightXs: "var(--nyte-btn-height-xs)",
   paddingInlineXs: "var(--nyte-btn-padding-inline-xs)",
   pillPaddingInlineXs: "var(--nyte-btn-pill-padding-inline-xs)",
   radiusXs: "var(--nyte-btn-radius-xs)",
   gapXs: "var(--nyte-btn-gap-xs)",
-  heightSm: "var(--nyte-btn-height-sm)",
   paddingInlineSm: "var(--nyte-btn-padding-inline-sm)",
   pillPaddingInlineSm: "var(--nyte-btn-pill-padding-inline-sm)",
   radiusSm: "var(--nyte-btn-radius-sm)",
   gapSm: "var(--nyte-btn-gap-sm)",
-  heightMd: "var(--nyte-btn-height-md)",
   paddingInlineMd: "var(--nyte-btn-padding-inline-md)",
   pillPaddingInlineMd: "var(--nyte-btn-pill-padding-inline-md)",
   radiusMd: "var(--nyte-btn-radius-md)",
   gapMd: "var(--nyte-btn-gap-md)",
-  heightLg: "var(--nyte-btn-height-lg)",
   paddingInlineLg: "var(--nyte-btn-padding-inline-lg)",
   pillPaddingInlineLg: "var(--nyte-btn-pill-padding-inline-lg)",
   radiusLg: "var(--nyte-btn-radius-lg)",
   gapLg: "var(--nyte-btn-gap-lg)",
-  heightXl: "var(--nyte-btn-height-xl)",
   paddingInlineXl: "var(--nyte-btn-padding-inline-xl)",
   pillPaddingInlineXl: "var(--nyte-btn-pill-padding-inline-xl)",
   radiusXl: "var(--nyte-btn-radius-xl)",
   gapXl: "var(--nyte-btn-gap-xl)",
-  iconPaddingInline: "var(--nyte-icon-btn-padding-inline)",
+  paddingInlineTight: "var(--nyte-btn-padding-inline-tight)",
 });
 
 export const input = defineConsts({
-  heightMd: "var(--nyte-input-height-md)",
   insetMd: "var(--nyte-input-inset-md)",
   paddingEndMd: "var(--nyte-input-padding-end-md)",
   textareaMinHeightMd: "var(--nyte-input-textarea-min-height-md)",
   textareaPaddingBlockMd: "var(--nyte-input-textarea-padding-block-md)",
   radiusMd: "var(--nyte-input-radius-md)",
-  heightLg: "var(--nyte-input-height-lg)",
   insetLg: "var(--nyte-input-inset-lg)",
   paddingEndLg: "var(--nyte-input-padding-end-lg)",
   textareaMinHeightLg: "var(--nyte-input-textarea-min-height-lg)",
   textareaPaddingBlockLg: "var(--nyte-input-textarea-padding-block-lg)",
   radiusLg: "var(--nyte-input-radius-lg)",
-  heightXl: "var(--nyte-input-height-xl)",
   insetXl: "var(--nyte-input-inset-xl)",
   paddingEndXl: "var(--nyte-input-padding-end-xl)",
   textareaMinHeightXl: "var(--nyte-input-textarea-min-height-xl)",
@@ -133,7 +137,6 @@ export const row = defineConsts({
 });
 
 export const menu = defineConsts({
-  itemHeight: "var(--nyte-menu-item-height)",
   metaMinWidth: "var(--nyte-menu-meta-min-width)",
   padding: "var(--nyte-menu-padding)",
   radius: "var(--nyte-menu-radius)",

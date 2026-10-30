@@ -1,6 +1,4 @@
-import "@fontsource-variable/inter/opsz.css";
-import "@fontsource-variable/inter/opsz-italic.css";
-import "@fontsource-variable/jetbrains-mono/wght.css";
+import "@nyte-ai/app/theme/faces.ts";
 import "./install-bridge.ts";
 import "@nyte-ai/app/theme/boot.ts";
 import "@nyte-ai/app/theme/focus-modality.ts";
@@ -22,7 +20,7 @@ import {
   windowTabRoute,
 } from "@nyte-ai/app";
 import appIcon from "../../../build/icon-macos.svg";
-import { AccountProvider } from "../../account/provider.tsx";
+import { AccountProvider } from "./account/provider.tsx";
 
 startWindowTabs(window.nyte.window);
 

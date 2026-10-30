@@ -115,16 +115,22 @@ export const BatchOutcomeType = Type.Union([
 
 export type BatchOutcome = Decoded<typeof BatchOutcomeType>;
 
+const FILE_SCOPE = Type.Enum(["workspace", "external"]);
+
 export const FileDocumentType = Type.Union([
   Type.Object({
     kind: Type.Literal("text"),
     path: Type.String(),
+    scope: FILE_SCOPE,
+    mime: Type.String(),
     contents: Type.String(),
     version: idSchema<"file-version">(),
   }),
   Type.Object({
-    kind: Type.Enum(["binary", "large"]),
+    kind: Type.Enum(["image", "pdf", "binary", "large"]),
     path: Type.String(),
+    scope: FILE_SCOPE,
+    mime: Type.String(),
     size: Type.Number(),
     version: idSchema<"file-version">(),
   }),

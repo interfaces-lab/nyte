@@ -62,6 +62,7 @@ async function showActivityPreview(kind: "working" | "attention") {
         tip: { kind: "start" },
         stack: null,
         unread: false,
+        background: { working: 0, waiting: 0 },
         execution:
           kind === "working"
             ? { kind: "live", run, phase: "responding", stopping: false }

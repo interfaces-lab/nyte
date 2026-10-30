@@ -53,6 +53,7 @@ export const GIT_OPERATIONS = {
     kind: "query",
     input: wireObject({
       ...WORKSPACE,
+      head: Type.Optional(idSchema<"git-commit">()),
       cursor: Type.Optional(idSchema<"cursor">()),
       limit: Type.Optional(Type.Number()),
     }),
@@ -82,6 +83,16 @@ export const GIT_OPERATIONS = {
     input: wireObject({
       ...WORKSPACE,
       input: Type.Object({ name: Type.String(), checkout: Type.Boolean() }),
+      options: Type.Optional(GitWriteType),
+    }),
+    output: GitOutcomeSchema,
+  },
+  "git.checkout": {
+    ...WRITE,
+    kind: "command",
+    input: wireObject({
+      ...WORKSPACE,
+      input: Type.Object({ name: Type.String() }),
       options: Type.Optional(GitWriteType),
     }),
     output: GitOutcomeSchema,

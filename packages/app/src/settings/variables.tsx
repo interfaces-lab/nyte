@@ -14,11 +14,11 @@ import { useState } from "react";
 import type { ClipboardEvent, FormEvent, ReactElement } from "react";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { errorMessage } from "../errors.ts";
+import { errorMessage } from "../contract/errors.ts";
 import { useSetting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
-import { useWorkspaces } from "../queries.ts";
-import { connected } from "../sdk.tsx";
+import { useWorkspaces } from "../data/workspaces.ts";
+import { connected } from "../data/connection.ts";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { parseEnv } from "./dotenv.ts";
@@ -182,7 +182,7 @@ function VariableRow({
       <span {...props(styles.name)}>
         {variable.secret && (
           <span {...props(styles.lock)}>
-            <Icon name="lock" size={12} />
+            <Icon name="lock" size="xs" />
           </span>
         )}
         <span {...props(styles.truncate)}>{variable.name}</span>

@@ -1,0 +1,196 @@
+import { create, props } from "@stylexjs/stylex";
+import type { StyleXStyles } from "@stylexjs/stylex";
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/react";
+import { useLayoutEffect, useRef, useState } from "react";
+import type { ReactElement, ReactNode, Ref, RefObject } from "react";
+import { Icon } from "@nyte-ai/ui/icon";
+import type { IconName } from "@nyte-ai/ui/icon";
+import { Button } from "@nyte-ai/ui/button";
+import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { tray } from "../../theme/schema.stylex.ts";
+import { trayStyles } from "../../theme/tray.stylex.ts";
+import { occludes } from "../../components/overlay-occlusion.ts";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+
+export const trayParts = create({
+  root: {
+    position: "relative",
+    minWidth: 0,
+    display: { default: "block", ":empty": "none" },
+  },
+  presence: { display: "contents" },
+  pills: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: space.s1_5 },
+  pillCount: { fontVariantNumeric: "tabular-nums" },
+  pillIndicator: {
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
+    width: glyph.md,
+    height: glyph.md,
+  },
+  listHeight: (height: number) => ({ maxHeight: Math.min(260, height) }),
+  row: {
+    minHeight: tray.rowHeight,
+    "--_row-padding-inline": `calc(${tray.paddingInline} - ${tray.rowInset})`,
+  },
+  notice: {
+    paddingBlock: space.s2,
+    paddingInline: tray.paddingInline,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
+  error: { color: role.contentSecondary },
+});
+
+export function useTrayRoot(viewport: HTMLElement | null) {
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [availableHeight, setAvailableHeight] = useState(260);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- measures the tray against the viewport before paint
+  useLayoutEffect(() => {
+    if (root === null || viewport === null) return undefined;
+
+    const measure = (): void => {
+      setAvailableHeight(
+        Math.max(
+          0,
+          root.getBoundingClientRect().bottom - viewport.getBoundingClientRect().top - 44,
+        ),
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    observer.observe(viewport);
+
+    return () => observer.disconnect();
+  }, [root, viewport]);
+
+  return { root, ref: setRoot, availableHeight };
+}
+
+export function TrayPill({
+  label,
+  controls,
+  ref,
+  onClick,
+  children,
+}: {
+  readonly label: string;
+  readonly controls?: string;
+  readonly ref?: Ref<HTMLButtonElement>;
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <div {...props(trayParts.pills)}>
+      <Button
+        ref={ref}
+        variant="outline"
+        pill
+        size="sm"
+        aria-description={label}
+        aria-controls={controls}
+        aria-expanded={false}
+        onClick={onClick}
+      >
+        {children}
+      </Button>
+    </div>
+  );
+}
+
+export function TrayIconAction({
+  icon,
+  label,
+  onClick,
+}: {
+  readonly icon: IconName;
+  readonly label: string;
+  readonly onClick: () => void;
+}): ReactElement {
+  return (
+    <Button iconOnly aria-label={label} onClick={onClick}>
+      <Icon name={icon} />
+    </Button>
+  );
+}
+
+function FocusSection({ within }: { readonly within: RefObject<HTMLDivElement | null> }): null {
+  useMountEffect(() => within.current?.closest("section")?.focus({ preventScroll: true }));
+
+  return null;
+}
+
+function TrayContent({
+  focusKey,
+  children,
+}: {
+  readonly focusKey: string | undefined;
+  readonly children: ReactNode;
+}): ReactElement {
+  const isPresent = useIsPresent();
+  const ref = useRef<HTMLDivElement>(null);
+
+  return (
+    <div ref={ref} inert={!isPresent} {...props(trayParts.presence)}>
+      {focusKey !== undefined && <FocusSection key={focusKey} within={ref} />}
+      {children}
+    </div>
+  );
+}
+
+export function Tray({
+  open,
+  id,
+  label,
+  focusKey,
+  onClose,
+  xstyle,
+  children,
+}: {
+  readonly open: boolean;
+  readonly id?: string;
+  readonly label: string;
+  readonly focusKey?: string;
+  readonly onClose?: () => void;
+  readonly xstyle?: StyleXStyles;
+  readonly children: ReactNode;
+}): ReactElement {
+  const reducedMotion = useReducedMotion();
+
+  return (
+    <AnimatePresence initial={false} mode="popLayout" anchorY="bottom">
+      {open && (
+        <motion.section
+          ref={occludes}
+          key="surface"
+          data-slot="tray"
+          id={id}
+          tabIndex={-1}
+          aria-description={label}
+          initial={reducedMotion ? false : { y: 4, scale: 0.99 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={
+            reducedMotion
+              ? { opacity: 1, pointerEvents: "none" }
+              : { opacity: 0, y: 4, scale: 0.99, pointerEvents: "none" }
+          }
+          transition={reducedMotion ? { duration: 0 } : { duration: 0.15, ease: "easeOut" }}
+          {...props(trayStyles.surface, xstyle)}
+          onKeyDown={(event) => {
+            if (onClose === undefined || event.key !== "Escape" || event.defaultPrevented) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onClose();
+          }}
+        >
+          <TrayContent focusKey={focusKey}>{children}</TrayContent>
+        </motion.section>
+      )}
+    </AnimatePresence>
+  );
+}

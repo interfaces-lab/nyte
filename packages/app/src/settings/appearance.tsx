@@ -3,7 +3,7 @@ import { Slider } from "@nyte-ai/ui/slider";
 import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore, type ReactElement } from "react";
-import { nyte } from "../nyte.ts";
+import { nyte } from "../contract/nyte.ts";
 import { CHAT_WIDTH, preferences, useSetting } from "../preferences/index.ts";
 import { subscribeSystemTransparency, systemReducesTransparency } from "../theme/appearance.ts";
 import {

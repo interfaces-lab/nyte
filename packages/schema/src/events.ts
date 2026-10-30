@@ -182,6 +182,12 @@ function durableEvent<Common extends TProperties>(common: Common) {
     Type.Object({ ...common, kind: Type.Literal("background"), item: BackgroundItemType }),
     Type.Object({
       ...common,
+      kind: Type.Literal("background"),
+      change: Type.Literal("removed"),
+      item: BackgroundItemType,
+    }),
+    Type.Object({
+      ...common,
       kind: Type.Literal("configured"),
       selected: nullable(ConfigurationType),
       effective: nullable(ConfigurationType),

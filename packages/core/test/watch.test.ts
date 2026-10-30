@@ -105,6 +105,7 @@ async function createSession(
                 stack: null,
                 execution: { kind: "idle", lastRun: null },
                 unread: false,
+                background: { working: 0, waiting: 0 },
               },
             ],
           },
@@ -256,6 +257,52 @@ describe("watch", () => {
 
     expect((await session.view()).heads[0]?.unread).toBe(false);
     expect((await session.info()).heads[0]?.unread).toBe(false);
+  });
+
+  it("sends the time of the commit the principal last saw, so a message after it reads as unseen", async () => {
+    const fake = fakeModels();
+    fake.reply(
+      { content: [{ type: "text", text: "First." }] },
+      { content: [{ type: "text", text: "Second." }] },
+    );
+    await using host = await open(fake);
+    const { session, receipt } = await host.sessions.start({ content: "Hi." });
+    await receipt.settled();
+    const opened = await session.view();
+    const tip = shownTip(opened);
+
+    expect(opened.seenThrough).toBeNull();
+    assert(tip !== null);
+    await session.see(tip);
+
+    const seen = (await session.view()).seenThrough;
+    assert(seen !== null);
+
+    expect(opened.messages.map((message) => message.at <= seen)).toEqual([true, true]);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await (await session.send("Again.")).settled();
+    const views = session.watch()[Symbol.asyncIterator]();
+    const current = await views.next();
+    assert(!current.done);
+    const again = current.value.messages.at(-2);
+    assert(again?.kind === "user" && again.status.kind === "landed");
+
+    expect(current.value.seenThrough).toBe(seen);
+    expect(current.value.messages.map((message) => message.at > seen)).toEqual([
+      false,
+      false,
+      true,
+      true,
+    ]);
+
+    await session.see(again.status.commit);
+    const moved = await views.next();
+    assert(!moved.done);
+
+    expect(moved.value.heads[0]?.unread).toBe(true);
+    expect(moved.value.seenThrough).toBeGreaterThanOrEqual(again.at);
+    expect(moved.value.seenThrough).toBeLessThanOrEqual(current.value.messages.at(-1)?.at ?? 0);
+    await views.return?.();
   });
 
   it("shares one fold between watchers of the same session and principal", async () => {

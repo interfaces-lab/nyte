@@ -3,7 +3,7 @@ import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-r
 import type { ReactElement, ReactNode } from "react";
 import inter from "@fontsource-variable/inter/opsz.css?url";
 import globalCss from "@nyte-ai/app/theme/global.css?url";
-import { queryClient } from "@nyte-ai/app/queries.ts";
+import { queryClient } from "@nyte-ai/app/data/query-client.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { LabNav } from "../shell/lab-nav";
 import reset from "../shell/reset.css?url";

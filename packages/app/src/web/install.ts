@@ -1,5 +1,5 @@
 import { dev } from "@nyte-ai/sdk";
-import { installBridge } from "../nyte.ts";
+import { installBridge } from "../contract/nyte.ts";
 import { createWebBridge } from "./bridge.ts";
 
 export const webBridge = createWebBridge();

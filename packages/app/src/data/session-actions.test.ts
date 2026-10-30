@@ -1,0 +1,357 @@
+import assert from "node:assert/strict";
+import { afterEach, beforeEach, test, vi } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
+import { toast } from "@nyte-ai/ui/toast";
+import type { SessionInfo } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
+import { ActionToasts } from "../lib/action-toasts.ts";
+import { SessionActions } from "./session-actions.ts";
+import { PaneController } from "../panes/pane-controller.ts";
+import { activeSelection } from "../panes/pane-layout.ts";
+import { keys } from "./query-client.ts";
+import { scriptedConnection } from "../../test/scripted-connection.ts";
+
+function chat(id: string): SessionInfo {
+  return {
+    id: asId<"session">(id),
+    name: id,
+    parent: null,
+    call: null,
+    workspace: asId<"workspace">("fixture"),
+    pinned: false,
+    archived: false,
+    activation: { kind: "active" },
+    heads: [],
+    createdAt: 1,
+    lastActivityAt: 1,
+  };
+}
+
+function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const saved = new Map(chats.map((session) => [session.id, session]));
+  const writes = Promise.withResolvers<void>();
+  const failures = new Set<string>();
+  const rows = { current: chats };
+
+  for (const session of chats) client.setQueryData(keys.session(session.id), session);
+
+  const toasts = new ActionToasts();
+  const { connection } = scriptedConnection({
+    session: (id) => ({
+      async update(patch) {
+        await writes.promise;
+        const session = saved.get(id);
+        assert.ok(session);
+
+        if (failures.has(id) || (patch.name !== undefined && failures.has(patch.name ?? "")))
+          throw new Error("Disk unavailable");
+        const next = {
+          ...session,
+          ...(patch.archived === undefined ? {} : { archived: patch.archived }),
+          ...(patch.pinned === undefined ? {} : { pinned: patch.pinned }),
+          ...(patch.name === undefined ? {} : { name: patch.name }),
+        };
+        saved.set(id, next);
+        rows.current = rows.current.map((row) =>
+          row.id === id ? { ...row, ...patch, name: next.name } : row,
+        );
+
+        return { kind: "updated" };
+      },
+      async remove() {
+        await writes.promise;
+
+        if (failures.has(id)) throw new Error("Disk unavailable");
+        saved.delete(id);
+        rows.current = rows.current.filter((row) => row.id !== id);
+
+        return { kind: "removed" };
+      },
+    }),
+  });
+
+  const actions = new SessionActions({ toasts, client, sessions: () => connection });
+  const directory = () => rows.current.flatMap((row) => actions.projectSession(row) ?? []);
+
+  return { client, saved, writes, failures, actions, directory, toasts, rows };
+}
+
+const notifications = new Map<string, Parameters<typeof toast.add>[0] & { id: string }>();
+
+function notification(title: string) {
+  const notice = notifications.values().find((item) => item.title === title);
+  assert.ok(notice !== undefined, `Missing notification: ${title}`);
+
+  return notice;
+}
+
+function undo(title: string, toasts: ActionToasts): void {
+  const notice = notification(title);
+  assert.ok(notice.actionProps);
+  toasts.undo(notice.id);
+}
+
+beforeEach(() => {
+  notifications.clear();
+  const add = toast.add.bind(toast);
+  vi.spyOn(toast, "add").mockImplementation((options) => {
+    const id = add(options);
+    notifications.set(id, { ...options, id });
+
+    return id;
+  });
+  vi.spyOn(toast, "close").mockImplementation((id) => {
+    const closing = [...notifications.values()].filter(
+      (notice) => id === undefined || notice.id === id,
+    );
+
+    for (const notice of closing) {
+      notifications.delete(notice.id);
+      notice.onClose?.();
+    }
+  });
+});
+
+afterEach(() => vi.restoreAllMocks());
+
+test("consecutive archives paint immediately and share one Undo notification", async () => {
+  const f = fixture();
+
+  for (const id of ["one", "two", "three"]) f.actions.archive([asId<"session">(id)], true);
+  assert.ok(f.directory().every((session) => session.archived));
+  assert.ok([...f.saved.values()].every((session) => !session.archived));
+  assert.equal(notifications.size, 1);
+  notification("3 chats archived");
+  undo("3 chats archived", f.toasts);
+  assert.ok(f.directory().every((session) => !session.archived));
+  f.writes.resolve();
+  await vi.waitFor(() => {
+    assert.ok([...f.saved.values()].every((session) => !session.archived));
+    assert.equal(f.actions.getSnapshot().length, 0);
+  });
+  f.client.clear();
+});
+
+test("a new directory row cannot erase an archive, and success updates the cached row", async () => {
+  const f = fixture();
+  const id = asId<"session">("one");
+  f.actions.archive([id], true);
+  f.rows.current = [{ ...chat("one"), lastActivityAt: 99 }, chat("two")];
+  assert.equal(f.directory()[0]?.archived, true);
+  assert.equal(f.directory()[0]?.lastActivityAt, 99);
+  f.writes.resolve();
+  await vi.waitFor(() =>
+    assert.equal(f.client.getQueryData<SessionInfo>(keys.session(id))?.archived, true),
+  );
+  assert.equal(f.directory()[0]?.lastActivityAt, 99);
+  undo("1 chat archived", f.toasts);
+  await vi.waitFor(() =>
+    assert.equal(f.client.getQueryData<SessionInfo>(keys.session(id))?.archived, false),
+  );
+  f.client.clear();
+});
+
+test("a partial bulk failure restores only the failed chat and updates the toast count", async () => {
+  const f = fixture();
+  f.failures.add("two");
+  f.actions.archive(
+    [asId<"session">("one"), asId<"session">("two"), asId<"session">("three")],
+    true,
+  );
+  f.writes.resolve();
+  await vi.waitFor(() => {
+    assert.deepEqual(
+      f.directory().map((session) => session.archived),
+      [true, false, true],
+    );
+    notification("2 chats archived");
+  });
+  notification("Couldn't archive this chat. Try again.");
+  undo("2 chats archived", f.toasts);
+  await vi.waitFor(() => assert.ok(f.directory().every((session) => !session.archived)));
+  f.client.clear();
+});
+
+test.each([false, true])(
+  "Undo preserves the pane when both writes fail, initially archived: %s",
+  async (archived) => {
+    const f = fixture([{ ...chat("one"), archived }]);
+    const id = asId<"session">("one");
+    const panes = new PaneController({ storageKey: "test" });
+    panes.selectSession(id);
+    f.failures.add("one");
+    f.actions.archive([id], !archived, (sessionId) => panes.removeSessionWithUndo(sessionId));
+    assert.equal(f.directory()[0]?.archived, !archived);
+    assert.deepEqual(
+      activeSelection(panes.getSnapshot().layout),
+      archived ? { kind: "session", sessionId: id } : { kind: "blank" },
+    );
+    undo(archived ? "1 chat restored" : "1 chat archived", f.toasts);
+    assert.equal(f.directory()[0]?.archived, archived);
+    const selection = archived ? { kind: "blank" } : { kind: "session", sessionId: id };
+    assert.deepEqual(activeSelection(panes.getSnapshot().layout), selection);
+    f.writes.resolve();
+    await vi.waitFor(() => assert.equal(f.actions.getSnapshot().length, 0));
+    assert.equal(f.saved.get(id)?.archived, archived);
+    assert.equal(f.directory()[0]?.archived, archived);
+    assert.deepEqual(activeSelection(panes.getSnapshot().layout), selection);
+    notification("Couldn't archive this chat. Try again.");
+    notification("Couldn't restore this chat. Try again.");
+    f.client.clear();
+  },
+);
+
+test.each([false, true])(
+  "failed Undo follows a successful write, initially archived: %s",
+  async (archived) => {
+    const f = fixture([{ ...chat("one"), archived }]);
+    const id = asId<"session">("one");
+    const panes = new PaneController({ storageKey: "test" });
+    panes.selectSession(id);
+    f.actions.archive([id], !archived, (sessionId) => panes.removeSessionWithUndo(sessionId));
+    f.writes.resolve();
+    await vi.waitFor(() => assert.equal(f.actions.getSnapshot().length, 0));
+    f.failures.add("one");
+    undo(archived ? "1 chat restored" : "1 chat archived", f.toasts);
+    await vi.waitFor(() => assert.equal(f.actions.getSnapshot().length, 0));
+    assert.equal(f.saved.get(id)?.archived, !archived);
+    assert.equal(f.directory()[0]?.archived, !archived);
+    assert.deepEqual(
+      activeSelection(panes.getSnapshot().layout),
+      archived ? { kind: "session", sessionId: id } : { kind: "blank" },
+    );
+    f.client.clear();
+  },
+);
+
+test.each(["selection", "draft"])("double-failure Undo preserves a newer %s", async (newer) => {
+  const f = fixture();
+  const id = asId<"session">("one");
+  const panes = new PaneController({ storageKey: "test" });
+  panes.selectSession(id);
+  f.failures.add("one");
+  f.actions.archive([id], true, (sessionId) => panes.removeSessionWithUndo(sessionId));
+
+  if (newer === "selection") panes.selectSession(asId<"session">("two"));
+  else
+    panes.viewState.writeBlank("primary", {
+      ...panes.viewState.readBlank("primary"),
+      composer: {
+        draft: "Keep my draft",
+        attachments: [],
+        selectionStart: 13,
+        selectionEnd: 13,
+        focused: true,
+      },
+    });
+  const selection = activeSelection(panes.getSnapshot().layout);
+  const draft = panes.viewState.readBlank("primary").composer;
+  undo("1 chat archived", f.toasts);
+  assert.deepEqual(activeSelection(panes.getSnapshot().layout), selection);
+  assert.deepEqual(panes.viewState.readBlank("primary").composer, draft);
+  f.writes.resolve();
+  await vi.waitFor(() => assert.equal(f.actions.getSnapshot().length, 0));
+  assert.equal(f.directory()[0]?.archived, false);
+  assert.deepEqual(activeSelection(panes.getSnapshot().layout), selection);
+  assert.deepEqual(panes.viewState.readBlank("primary").composer, draft);
+  f.client.clear();
+});
+
+test("a newer restore replaces the older archive's Undo action", async () => {
+  const f = fixture();
+  f.actions.archive([asId<"session">("one")], true);
+  const old = notification("1 chat archived");
+  f.actions.archive([asId<"session">("one")], false);
+  assert.equal(notifications.size, 1);
+  notification("1 chat restored");
+  old.onClose?.();
+  assert.equal(f.directory()[0]?.archived, false);
+  f.writes.resolve();
+  await vi.waitFor(() => assert.equal(f.actions.getSnapshot().length, 0));
+  undo("1 chat restored", f.toasts);
+  assert.equal(f.directory()[0]?.archived, true);
+  await vi.waitFor(() => assert.equal(f.saved.get(asId<"session">("one"))?.archived, true));
+  f.client.clear();
+});
+
+test("rename rollback preserves a later rename, pin, and refreshed activity", async () => {
+  const f = fixture();
+  const id = asId<"session">("one");
+  f.failures.add("rejected");
+  const failed = f.actions.rename({ sessionId: id, name: "rejected" });
+  const renamed = f.actions.rename({ sessionId: id, name: "kept" });
+  f.actions.pin({ sessionId: id, pinned: true });
+  f.rows.current = [{ ...chat("one"), lastActivityAt: 42 }];
+  assert.equal(f.directory()[0]?.name, "kept");
+  assert.equal(f.directory()[0]?.pinned, true);
+  f.writes.resolve();
+  assert.equal(await failed, false);
+  assert.equal(await renamed, true);
+  await vi.waitFor(() => assert.equal(f.saved.get(id)?.pinned, true));
+  assert.equal(f.directory()[0]?.name, "kept");
+  assert.equal(f.directory()[0]?.lastActivityAt, 42);
+  f.client.clear();
+});
+
+test("delete hides immediately but Undo cancels permanent deletion", async () => {
+  const f = fixture();
+  let open = true;
+  f.writes.resolve();
+  f.actions.delete(asId<"session">("one"), () => {
+    open = false;
+
+    return () => {
+      open = true;
+    };
+  });
+  assert.equal(open, false);
+  assert.equal(f.directory().length, 2);
+  assert.equal(f.saved.size, 3);
+  const notice = notification("1 chat deleted");
+  undo("1 chat deleted", f.toasts);
+  notice.onClose?.();
+  await Promise.resolve();
+  assert.equal(open, true);
+  assert.equal(f.directory().length, 3);
+  assert.equal(f.saved.size, 3);
+  f.client.clear();
+});
+
+test("delete commits when the notification closes", async () => {
+  const f = fixture();
+  f.writes.resolve();
+  f.actions.delete(asId<"session">("one"), () => () => {});
+  f.actions.delete(asId<"session">("two"), () => () => {});
+  assert.equal(f.saved.size, 3);
+  const notice = notification("2 chats deleted");
+  toast.close(notice.id);
+  notice.onClose?.();
+  await vi.waitFor(() => assert.equal(f.saved.size, 1));
+  assert.deepEqual(
+    f.directory().map((session) => session.id),
+    [asId<"session">("three")],
+  );
+  assert.equal(f.client.getQueryData(keys.session(asId<"session">("one"))), undefined);
+  f.client.clear();
+});
+
+test("failed permanent deletion restores the chat and its pane", async () => {
+  const f = fixture();
+  let open = true;
+  f.failures.add("one");
+  f.actions.delete(asId<"session">("one"), () => {
+    open = false;
+
+    return () => {
+      open = true;
+    };
+  });
+  const notice = notification("1 chat deleted");
+  notice.onClose?.();
+  f.writes.resolve();
+  await vi.waitFor(() => assert.equal(open, true));
+  assert.equal(f.directory().length, 3);
+  notification("Couldn't delete this chat. Try again.");
+  f.client.clear();
+});

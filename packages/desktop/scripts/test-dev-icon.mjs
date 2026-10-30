@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
-import { ACCOUNT_SCHEMES } from "../src/account/scheme.ts";
+import { ACCOUNT_SCHEMES } from "../src/shared/account/scheme.ts";
 
 await test(
   "macOS dev bundle icon and cache",
@@ -35,10 +35,10 @@ await test(
       mkdirSync(join(root, directory));
     }
 
-    mkdirSync(join(root, "src/account"), { recursive: true });
+    mkdirSync(join(root, "src/shared/account"), { recursive: true });
     copyFileSync(
-      new URL("../src/account/scheme.ts", import.meta.url),
-      join(root, "src/account/scheme.ts"),
+      new URL("../src/shared/account/scheme.ts", import.meta.url),
+      join(root, "src/shared/account/scheme.ts"),
     );
 
     const script = join(root, "scripts/dev.mjs");

@@ -109,7 +109,8 @@ export function createWaitRegistry(
         current === null ||
         current.result !== null ||
         current.waiting === null ||
-        current.waits.length !== occurrence
+        current.waits.length !== occurrence ||
+        (entry.name !== null && !waitIndex(session, current).includes(entry.name))
       ) {
         past = true;
 

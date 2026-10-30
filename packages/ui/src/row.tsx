@@ -134,7 +134,7 @@ const styles = create({
     display: "grid",
     placeItems: "center",
     flexShrink: 0,
-    width: glyph.box,
+    width: glyph.md,
     color: "inherit",
   },
   body: {

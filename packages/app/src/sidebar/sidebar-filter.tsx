@@ -1,0 +1,308 @@
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
+import { useId } from "react";
+import { props } from "@stylexjs/stylex";
+import { Icon } from "@nyte-ai/ui/icon";
+import type { ReactElement } from "react";
+import {
+  Menu,
+  MenuCheckboxItem,
+  MenuContent,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuSub,
+  MenuSubContent,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "@nyte-ai/ui/menu";
+import type { IconName } from "@nyte-ai/ui/icon";
+import { TaskMark } from "../components/task-mark.tsx";
+import { Button } from "@nyte-ai/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+import { Toggle } from "@nyte-ai/ui/toggle";
+import { sidebarFilterStyles as styles } from "./sidebar-filter.stylex.ts";
+import {
+  clearSessionFilters,
+  hasSessionFilters,
+  amongOptions,
+  toggleOption,
+} from "./sidebar-view.ts";
+import {
+  ENVIRONMENTS,
+  GROUPINGS,
+  SHOW_FIELDS,
+  SORTS,
+  STATUSES,
+  type SessionEnvironment,
+  type SessionShowField,
+  type SessionStatus,
+  type SessionViewSettings,
+} from "../preferences/session-view.ts";
+
+const SHOW_FIELD_ICONS = {
+  updated: "clock",
+} as const satisfies Readonly<Record<SessionShowField, IconName>>;
+
+const STATUS_LABELS = {
+  "needs-attention": "Needs Attention",
+  unread: "Unread",
+  working: "Working",
+  draft: "Draft",
+  done: "Done",
+} as const satisfies Readonly<Record<SessionStatus, string>>;
+
+const ENVIRONMENT_ICONS = {
+  cloud: "cloud",
+  local: "computer",
+} as const satisfies Readonly<Record<SessionEnvironment, IconName>>;
+
+function statusIcon(status: SessionStatus): IconName | undefined {
+  switch (status) {
+    case "needs-attention":
+      return "bell";
+    case "unread":
+      return "inbox-empty";
+    case "draft":
+      return "draft";
+    case "working":
+    case "done":
+      return undefined;
+    default: {
+      const _exhaustive: never = status;
+
+      return _exhaustive;
+    }
+  }
+}
+
+interface WorkspaceControlsProps {
+  readonly value: SessionViewSettings;
+  readonly filterDisabled: boolean;
+  readonly homeVisible: boolean;
+  readonly onHomeVisibleChange: (visible: boolean) => void;
+  readonly onChange: (value: SessionViewSettings) => void;
+  readonly onOpenFolder: (() => void) | undefined;
+  readonly onCollapseAll: () => void;
+}
+
+export function WorkspaceControls({
+  value,
+  filterDisabled,
+  homeVisible,
+  onHomeVisibleChange,
+  onChange,
+  onOpenFolder,
+  onCollapseAll,
+}: WorkspaceControlsProps): ReactElement {
+  const filtersActive = hasSessionFilters(value);
+  const loadingReasonId = useId();
+
+  return (
+    <span {...props(styles.controls)}>
+      <Menu
+        onOpenChange={(open, details) => {
+          if (open && filterDisabled) details.cancel();
+        }}
+      >
+        <MenuTrigger
+          render={
+            <Toggle
+              size="sm"
+              iconOnly
+              aria-disabled={filterDisabled || undefined}
+              aria-describedby={filterDisabled ? loadingReasonId : undefined}
+              aria-label="Customize sidebar"
+              pressed={filtersActive}
+              onPressedChange={() => undefined}
+            >
+              <Icon name="filters" size="sm" />
+            </Toggle>
+          }
+        />
+        <MenuContent side="bottom" align="start" xstyle={styles.popup}>
+          <MenuSub>
+            <MenuSubTrigger icon="folder">Grouping</MenuSubTrigger>
+            <MenuSubContent xstyle={styles.popup}>
+              <MenuRadioGroup
+                value={value.grouping}
+                onValueChange={(grouping) => {
+                  if (amongOptions(grouping, GROUPINGS)) onChange({ ...value, grouping });
+                }}
+              >
+                <MenuRadioItem value="none" icon="list" closeOnClick={false}>
+                  None
+                </MenuRadioItem>
+                <MenuRadioItem value="inbox" icon="inbox-empty" closeOnClick={false}>
+                  Inbox
+                </MenuRadioItem>
+                <MenuRadioItem value="repository" icon="github" closeOnClick={false}>
+                  Repository
+                </MenuRadioItem>
+                <MenuRadioItem value="updated" icon="clock" closeOnClick={false}>
+                  Updated
+                </MenuRadioItem>
+                <MenuRadioItem value="status" icon="status" closeOnClick={false}>
+                  Status
+                </MenuRadioItem>
+                <MenuRadioItem value="environment" icon="globe" closeOnClick={false}>
+                  Environment
+                </MenuRadioItem>
+              </MenuRadioGroup>
+            </MenuSubContent>
+          </MenuSub>
+          <MenuSub>
+            <MenuSubTrigger icon="chevron-up-down">Sort</MenuSubTrigger>
+            <MenuSubContent xstyle={styles.popup}>
+              <MenuRadioGroup
+                value={value.sort}
+                onValueChange={(sort) => {
+                  if (amongOptions(sort, SORTS)) onChange({ ...value, sort });
+                }}
+              >
+                <MenuRadioItem value="created" icon="new-chat" closeOnClick={false}>
+                  Created
+                </MenuRadioItem>
+                <MenuRadioItem value="updated" icon="clock" closeOnClick={false}>
+                  Updated
+                </MenuRadioItem>
+                <MenuRadioItem value="status" icon="status" closeOnClick={false}>
+                  Status
+                </MenuRadioItem>
+              </MenuRadioGroup>
+            </MenuSubContent>
+          </MenuSub>
+          <MenuSub>
+            <MenuSubTrigger icon="eye">Show</MenuSubTrigger>
+            <MenuSubContent xstyle={styles.popup}>
+              <MenuCheckboxItem checked={homeVisible} onCheckedChange={onHomeVisibleChange}>
+                Home
+              </MenuCheckboxItem>
+              <MenuSeparator />
+              {SHOW_FIELDS.map((field) => (
+                <MenuCheckboxItem
+                  key={field}
+                  icon={SHOW_FIELD_ICONS[field]}
+                  checked={value.show.includes(field)}
+                  onCheckedChange={(checked) =>
+                    onChange({
+                      ...value,
+                      show: toggleOption(SHOW_FIELDS, value.show, field, checked),
+                    })
+                  }
+                >
+                  {field[0]?.toLocaleUpperCase() + field.slice(1)}
+                </MenuCheckboxItem>
+              ))}
+            </MenuSubContent>
+          </MenuSub>
+          <MenuSeparator />
+          <MenuGroup>
+            <div {...props(styles.groupHeading)}>
+              <MenuGroupLabel xstyle={styles.groupLabel}>Filters</MenuGroupLabel>
+              {filtersActive && (
+                <MenuItem
+                  layout="action"
+                  closeOnClick={false}
+                  onClick={() => onChange(clearSessionFilters(value))}
+                >
+                  Reset
+                </MenuItem>
+              )}
+            </div>
+            <MenuSub>
+              <MenuSubTrigger icon="status">Status</MenuSubTrigger>
+              <MenuSubContent xstyle={styles.popup}>
+                {STATUSES.map((status) => (
+                  <MenuCheckboxItem
+                    key={status}
+                    icon={statusIcon(status)}
+                    checked={value.statuses.includes(status)}
+                    leading={
+                      status === "needs-attention" ? (
+                        <TaskMark state="waiting" />
+                      ) : status === "working" ? (
+                        <TaskMark state="working" />
+                      ) : undefined
+                    }
+                    onCheckedChange={(checked) =>
+                      onChange({
+                        ...value,
+                        statuses: toggleOption(STATUSES, value.statuses, status, checked),
+                      })
+                    }
+                  >
+                    {STATUS_LABELS[status]}
+                  </MenuCheckboxItem>
+                ))}
+              </MenuSubContent>
+            </MenuSub>
+            <MenuSub>
+              <MenuSubTrigger icon="globe">Environment</MenuSubTrigger>
+              <MenuSubContent xstyle={styles.popup}>
+                {ENVIRONMENTS.map((environment) => (
+                  <MenuCheckboxItem
+                    key={environment}
+                    icon={ENVIRONMENT_ICONS[environment]}
+                    checked={value.environments.includes(environment)}
+                    onCheckedChange={(checked) =>
+                      onChange({
+                        ...value,
+                        environments: toggleOption(
+                          ENVIRONMENTS,
+                          value.environments,
+                          environment,
+                          checked,
+                        ),
+                      })
+                    }
+                  >
+                    {environment === "cloud" ? "Cloud" : "Local"}
+                  </MenuCheckboxItem>
+                ))}
+              </MenuSubContent>
+            </MenuSub>
+            <MenuCheckboxItem
+              checked={value.archived}
+              icon="archive"
+              onCheckedChange={(archived) => onChange({ ...value, archived })}
+            >
+              Archived
+            </MenuCheckboxItem>
+          </MenuGroup>
+          <MenuSeparator />
+          <MenuItem icon="folder" onClick={onCollapseAll}>
+            Collapse All Workspaces
+          </MenuItem>
+        </MenuContent>
+      </Menu>
+      {filterDisabled && (
+        <span id={loadingReasonId} {...props(srOnly)}>
+          Chats are loading
+        </span>
+      )}
+      {onOpenFolder !== undefined && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="sm"
+                iconOnly
+                aria-label="Open folder"
+                onClick={onOpenFolder}
+                title={undefined}
+              >
+                <Icon name="folder-add" size="sm" />
+              </Button>
+            }
+          />
+          <TooltipContent side="bottom" align="end">
+            Open Workspace
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </span>
+  );
+}

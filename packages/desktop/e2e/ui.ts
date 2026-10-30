@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import type { Locator, Page } from "@playwright/test";
+import type { ElectronApplication, Locator, Page } from "@playwright/test";
 
 export const mac = process.platform === "darwin";
 
@@ -28,7 +28,38 @@ export function messages(page: Page): Locator {
 }
 
 export function chatTab(page: Page, name: string): Locator {
-  return page.getByRole("tablist", { name: "Tabs" }).getByRole("tab", { name, exact: true });
+  return page
+    .getByRole("tablist", { name: "Tabs" })
+    .getByRole("tab", { name: new RegExp(`^${name}(, preview)?$`, "u") });
+}
+
+/**
+ * Goes through the stored preference as Settings does. Setting only the native theme and the media
+ * query lets the app hand the window "system" again, leaving a light page on a dark window.
+ */
+export async function setTheme(
+  desktop: { readonly application: ElectronApplication; readonly page: Page },
+  theme: "light" | "dark",
+): Promise<void> {
+  const page = desktop.page;
+  await page.emulateMedia({ colorScheme: theme });
+
+  await page.evaluate((value) => {
+    const key = "nyte:appearance:v1";
+    const stored: unknown = JSON.parse(localStorage.getItem(key) ?? "{}");
+    localStorage.setItem(key, JSON.stringify(Object.assign({}, stored, { theme: value })));
+    window.dispatchEvent(new StorageEvent("storage", { key, storageArea: localStorage }));
+  }, theme);
+
+  await expect(page.locator("html")).toHaveAttribute("data-display-mode", theme);
+
+  await expect
+    .poll(() => desktop.application.evaluate(({ nativeTheme }) => nativeTheme.themeSource))
+    .toBe(theme);
+
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
 }
 
 export function chatRow(page: Page, name: string): Locator {

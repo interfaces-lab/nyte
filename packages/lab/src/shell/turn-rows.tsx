@@ -1,11 +1,11 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { transcriptRows } from "@nyte-ai/app/conversation/transcript-rows.ts";
-import type { TurnItemRow } from "@nyte-ai/app/conversation/transcript-rows.ts";
-import { TurnItemView } from "@nyte-ai/app/conversation/turn-view.tsx";
+import { transcriptRows } from "@nyte-ai/app/chat/transcript/transcript-rows.ts";
+import type { TurnItemRow } from "@nyte-ai/app/chat/transcript/transcript-rows.ts";
+import { TurnItemView } from "@nyte-ai/app/chat/transcript/turn-view.tsx";
 import type { ToolCallDensity } from "@nyte-ai/app/preferences/index.ts";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
-import type { TurnMessages } from "@nyte-ai/app/view-helpers.ts";
+import type { TurnMessages } from "@nyte-ai/app/chat/transcript/turns.ts";
 
 export function TurnRows({
   turn,

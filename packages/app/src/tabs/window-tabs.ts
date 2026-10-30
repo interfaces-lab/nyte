@@ -1,13 +1,23 @@
+import type { SessionId } from "@nyte-ai/sdk";
 import type { Static } from "typebox";
 import { Type } from "typebox";
-import { Value } from "typebox/value";
-import { PaneController } from "../layout/pane-controller.ts";
-import { paneLayoutSchema, paneSelection } from "../layout/pane-layout.ts";
-import type { PaneLayout } from "../layout/pane-layout.ts";
-import { SessionViewStateStore, WindowDrafts } from "../layout/session-view-state.ts";
-import { sessionId } from "../schemas.ts";
-import { activeTab, findChatTab, initialWindow, reduce, tabLayout } from "./model.ts";
-import type { Tab, View, WindowAction, WindowState } from "./model.ts";
+import { PaneController } from "../panes/pane-controller.ts";
+import { paneLayoutSchema, paneSelection } from "../panes/pane-layout.ts";
+import type { PaneLayout } from "../panes/pane-layout.ts";
+import { SessionViewStateStore } from "../panes/session-view-state.ts";
+import { WindowDrafts } from "../chat/composer/drafts.ts";
+import { sessionId } from "../data/schemas.ts";
+import {
+  activeTab,
+  findChatTab,
+  initialWindow,
+  reduce,
+  tabLayout,
+  withoutPreviews,
+} from "./model.ts";
+import type { LastingTab, OpenIntent, WindowAction, WindowState } from "./model.ts";
+import type { DesktopWindow } from "../contract/desktop-window.ts";
+import { localArea, readStored, removeStored, writeStored } from "../lib/storage.ts";
 
 /** Each window keeps its tabs and drafts under its own id. */
 const WINDOW_KEY_PREFIX = "nyte.window.v1:";
@@ -18,12 +28,6 @@ const EARLIER_STRIP_KEY = "nyte.desktop.tabs.v1";
 const EARLIER_TAB_KEY_PREFIX = "nyte.desktop.tab.v1:";
 
 const SAVE_DELAY_MS = 250;
-
-/** How the desktop opened a window: its lasting id and, when no other window was open, every id worth keeping. */
-export interface DesktopWindow {
-  readonly id: string;
-  readonly launch: { readonly windowIds: readonly string[] } | undefined;
-}
 
 const strict = { additionalProperties: false };
 
@@ -63,7 +67,7 @@ const stripSchema = Type.Object(
 
 type StoredTab = Static<typeof tabSchema>;
 
-function storedView(view: StoredTab["view"]): View {
+function storedView(view: StoredTab["view"]): LastingTab["view"] {
   if (view.kind === "panes") return view;
 
   return {
@@ -75,74 +79,42 @@ function storedView(view: StoredTab["view"]): View {
   };
 }
 
-function storedTab(tab: StoredTab): Tab {
+function storedTab(tab: StoredTab): LastingTab {
   return { id: tab.id, view: storedView(tab.view) };
 }
 
-function parseStrip(raw: string | null): WindowState | undefined {
-  if (raw === null) return undefined;
+function restoreStrip(stored: Static<typeof stripSchema> | undefined): WindowState | undefined {
+  if (stored === undefined) return undefined;
+  const tabs = stored.tabs.map(storedTab);
+  const open = new Set(tabs.map((tab) => tab.id));
+  const activeTabId = open.has(stored.activeTabId) ? stored.activeTabId : tabs[0]?.id;
 
-  try {
-    const stored: unknown = JSON.parse(raw);
+  if (activeTabId === undefined) return undefined;
 
-    if (!Value.Check(stripSchema, stored)) return undefined;
-    const tabs = stored.tabs.map(storedTab);
-    const open = new Set(tabs.map((tab) => tab.id));
-    const activeTabId = open.has(stored.activeTabId) ? stored.activeTabId : tabs[0]?.id;
-
-    if (activeTabId === undefined) return undefined;
-
-    return {
-      tabs,
-      activeTabId,
-      recent: stored.recent.filter((id) => id !== activeTabId && open.has(id)),
-      closed: stored.closed.map(({ tab, index }) => ({ tab: storedTab(tab), index })),
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function localStore(): Storage | undefined {
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
-function read(key: string): string | null {
-  try {
-    return localStore()?.getItem(key) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function write(key: string, value: string): void {
-  try {
-    localStore()?.setItem(key, value);
-  } catch {}
+  return {
+    tabs,
+    activeTabId,
+    recent: stored.recent.filter((id) => id !== activeTabId && open.has(id)),
+    closed: stored.closed.map(({ tab, index }) => ({ tab: storedTab(tab), index })),
+  };
 }
 
 /** Removes what no open window owns: closed windows' tabs and drafts, and what earlier builds saved. */
 function forgetWindows(windowIds: readonly string[]): void {
-  const local = localStore();
+  const local = localArea();
 
   if (local === undefined) return;
   const owned = windowIds.map((id) => `${WINDOW_KEY_PREFIX}${id}:`);
 
-  try {
-    const stale = Array.from({ length: local.length }, (_, index) => local.key(index)).filter(
-      (key): key is string =>
-        key !== null &&
-        (key === EARLIER_STRIP_KEY ||
-          key.startsWith(EARLIER_TAB_KEY_PREFIX) ||
-          (key.startsWith(WINDOW_KEY_PREFIX) && !owned.some((prefix) => key.startsWith(prefix)))),
-    );
+  const stale = Array.from({ length: local.length }, (_, index) => local.key(index)).filter(
+    (key): key is string =>
+      key !== null &&
+      (key === EARLIER_STRIP_KEY ||
+        key.startsWith(EARLIER_TAB_KEY_PREFIX) ||
+        (key.startsWith(WINDOW_KEY_PREFIX) && !owned.some((prefix) => key.startsWith(prefix)))),
+  );
 
-    for (const key of stale) local.removeItem(key);
-  } catch {}
+  for (const key of stale) removeStored(local, key);
 }
 
 class WindowTabs {
@@ -169,7 +141,11 @@ class WindowTabs {
     this.#windowKey = `${WINDOW_KEY_PREFIX}${desktopWindow.id}`;
 
     if (desktopWindow.launch !== undefined) forgetWindows(desktopWindow.launch.windowIds);
-    const saved = parseStrip(read(`${this.#windowKey}:tabs`));
+
+    const saved = restoreStrip(
+      readStored(localArea(), `${this.#windowKey}:tabs`, stripSchema, undefined),
+    );
+
     this.#state = saved ?? initialWindow(crypto.randomUUID());
     this.#startupDestination = desktopWindow.launch !== undefined && saved === undefined;
     window.addEventListener("pagehide", this.#flush);
@@ -189,6 +165,14 @@ class WindowTabs {
       action.kind === "open" && !this.#strip ? { ...action, target: "here" as const } : action;
 
     this.#apply(reduce(this.#state, next, () => crypto.randomUUID()));
+  }
+
+  /**
+   * A pane's own opens (`openSessionInPane`, a drop on a pane edge) place chats through the pane
+   * controller instead.
+   */
+  openChat(sessionId: SessionId, intent: OpenIntent): void {
+    this.dispatch({ kind: "open", place: { kind: "session", sessionId }, target: intent });
   }
 
   /** A new chat gets its own tab, or the new-chat tab already waiting; one tab replaces its view. */
@@ -239,7 +223,7 @@ class WindowTabs {
   }
 
   #windowDrafts(): WindowDrafts {
-    const local = localStore();
+    const local = localArea();
 
     this.#drafts ??= new WindowDrafts(
       local === undefined ? undefined : { storage: local, storageKey: `${this.#windowKey}:drafts` },
@@ -291,7 +275,9 @@ class WindowTabs {
   readonly #flush = (): void => {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
-    write(`${this.#windowKey}:tabs`, JSON.stringify({ version: 2, ...this.#state }));
+    const lasting = withoutPreviews(this.#state, () => crypto.randomUUID());
+
+    writeStored(localArea(), `${this.#windowKey}:tabs`, { version: 2, ...lasting });
   };
 }
 

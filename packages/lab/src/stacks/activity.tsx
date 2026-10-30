@@ -3,7 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { Icon } from "@nyte-ai/ui/icon";
-import { avatar, button, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { avatar, control, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -64,7 +64,7 @@ const styles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: space.s1_5,
-    height: button.heightSm,
+    height: control.heightSm,
     paddingInline: space.s2,
     borderRadius: radius.control,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
@@ -198,7 +198,7 @@ export function Activity({
       {last === -1 && (
         <li {...props(styles.event, styles.tail)}>
           <span {...props(styles.marker, styles.tailMarker)}>
-            <Icon name="bubble-question" size={14} />
+            <Icon name="bubble-question" size="sm" />
           </span>
           <div {...props(styles.body)}>{tail}</div>
         </li>
@@ -288,7 +288,7 @@ export function Checks({ checks }: { readonly checks: readonly Check[] }): React
                     ? "checkmark"
                     : "clock"
               }
-              size={12}
+              size="xs"
             />
           </span>
           {check.name}
@@ -308,7 +308,7 @@ function Diff({
   return (
     <div {...props(styles.diff)}>
       <div {...props(text.sm, styles.diffHead)}>
-        <Icon name="file" size={12} />
+        <Icon name="file" size="xs" />
         {file}
       </div>
       <pre {...props(text.code, styles.diffBody)}>

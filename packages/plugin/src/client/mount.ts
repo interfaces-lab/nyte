@@ -40,7 +40,8 @@ type Handlers = { [N in HookName]: Handler<N>[] };
 
 /**
  * What a client hands the plugins it mounts: its connection, the frameworks
- * it draws, the session on screen, and where notices and plugin errors go.
+ * it draws, the session input goes to, the sessions someone is looking at,
+ * and where notices and plugin errors go.
  *
  * @category plugins
  */
@@ -49,6 +50,7 @@ export interface MountOptions {
   readonly plugins: readonly Plugin[];
   readonly client: PluginApi["client"];
   readonly session: () => Session | null;
+  readonly looking: () => ReadonlySet<SessionId>;
   readonly notify: (input: Notification) => void;
   readonly report: (plugin: string, message: string) => void;
 }
@@ -312,6 +314,9 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
       client: options.client,
       get session() {
         return options.session();
+      },
+      get looking() {
+        return options.looking();
       },
       ui: { notify: options.notify },
     };

@@ -201,6 +201,7 @@ describe("sandboxProvider", () => {
       discard: refuse,
       commit: refuse,
       branch: refuse,
+      checkout: refuse,
       push: refuse,
     };
 

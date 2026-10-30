@@ -2,9 +2,17 @@ import { asId } from "@nyte-ai/schema";
 import type { Execution, PartStatus, ToolClass, ToolOutcome, ToolPartState } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
 import {
+  backgroundLabel,
+  callTaskState,
   completionTrigger,
   executionMark,
   failureNotice,
+  jobTaskState,
+  rowMark,
+  runMark,
+  runStatus,
+  sessionTitle,
+  taskLabel,
   toolOutput,
   toolStatus,
   toolTitle,
@@ -128,7 +136,119 @@ it("marks a session failed only when its last run failed", () => {
   };
 
   expect(executionMark(failed)).toBe("failed");
-  expect(executionMark(undefined)).toBe("idle");
+  expect(executionMark(undefined)).toBe("done");
+});
+
+function ended(end: Extract<Execution, { kind: "idle" }>["lastRun"]): Execution {
+  return { kind: "idle", lastRun: end };
+}
+
+it("keeps a run's outcome and an approval wait apart, and draws background work only after the run", () => {
+  const run = { id: asId<"run">("run"), head: asId<"head">("main"), startedAt: 0, attempt: 1 };
+  const started = { ...run, origin: { kind: "input", message: asId<"message">("m") } } as const;
+
+  const usage = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    reasoning: null,
+    total: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+
+  const failure = { class: "network", message: "Offline." } as const;
+
+  const completed = ended({ id: run.id, end: { kind: "completed", usage }, endedAt: 1 });
+  const stopped = ended({ id: run.id, end: { kind: "stopped" }, endedAt: 1 });
+  const failed = ended({ id: run.id, end: { kind: "failed", failure }, endedAt: 1 });
+
+  const responding: Execution = {
+    kind: "live",
+    run: started,
+    phase: "responding",
+    stopping: true,
+  };
+
+  const part = { kind: "part", part: asId<"part">("p") } as const;
+  const approval: Execution = { kind: "waiting", run: started, on: part };
+  const child = { kind: "run", session: asId<"session">("c"), run: run.id } as const;
+  const delegating: Execution = { kind: "waiting", run: started, on: child };
+  const retrying: Execution = { kind: "retrying", run: started, until: 2, reason: "Busy" };
+
+  const cases: readonly [Execution | undefined, string, string][] = [
+    [undefined, "idle", "done"],
+    [ended(null), "idle", "done"],
+    [completed, "completed", "done"],
+    [stopped, "stopped", "done"],
+    [failed, "failed", "failed"],
+    [responding, "working", "working"],
+    [delegating, "working", "working"],
+    [approval, "waiting-for-approval", "waiting"],
+    [retrying, "retrying", "retrying"],
+  ];
+
+  for (const [execution, kind, mark] of cases) {
+    const status = runStatus(execution);
+
+    expect([status.kind, runMark(status)]).toEqual([kind, mark]);
+    expect(executionMark(execution)).toBe(mark);
+  }
+
+  const none = { working: 0, waiting: 0 };
+  const working = { working: 2, waiting: 0 };
+  const asking = { working: 1, waiting: 1 };
+
+  const rows: readonly [Execution, typeof none, string][] = [
+    [completed, none, "done"],
+    [completed, working, "background"],
+    [failed, working, "failed"],
+    [failed, asking, "waiting"],
+    [stopped, asking, "waiting"],
+    [responding, asking, "working"],
+    [approval, working, "waiting"],
+    [retrying, working, "retrying"],
+  ];
+
+  expect(rows.map(([execution, background]) => rowMark(runStatus(execution), background))).toEqual(
+    rows.map(([, , mark]) => mark),
+  );
+  expect([none, working, asking].map(backgroundLabel)).toEqual([
+    undefined,
+    "2 working in the background",
+    "Needs attention in the background",
+  ]);
+
+  expect(runStatus(responding)).toEqual({ kind: "working", run: run.id, stopping: true });
+  expect(runStatus(approval)).toEqual({ kind: "waiting-for-approval", run: run.id });
+  expect(runStatus(failed)).toEqual({ kind: "failed", failure });
+
+  expect(
+    rows.map(([execution, background]) => taskLabel(rowMark(runStatus(execution), background))),
+  ).toEqual([
+    "Done",
+    "Working in the background",
+    "Failed",
+    "Needs attention",
+    "Needs attention",
+    "Working",
+    "Needs attention",
+    "Retrying",
+  ]);
+});
+
+it("reads a stopped call or job as done, never failed", () => {
+  expect(callTaskState({ tense: "none", tone: "stopped", word: "Stopped" })).toBe("done");
+  expect(callTaskState({ tense: "none", tone: "failure", word: "Failed" })).toBe("failed");
+  expect(jobTaskState({ kind: "exited", code: null, reason: "terminated" })).toBe("done");
+  expect(jobTaskState({ kind: "exited", code: 1, reason: "exited" })).toBe("failed");
+  expect(jobTaskState({ kind: "lost" })).toBe("failed");
+});
+
+it("titles an unnamed root a new chat and an unnamed child a subagent", () => {
+  expect(sessionTitle({ name: "Release", parent: null })).toBe("Release");
+  expect(sessionTitle({ name: null, parent: null })).toBe("New chat");
+  expect(sessionTitle({ name: null, parent: asId("root") })).toBe("Subagent");
 });
 
 it("finds the mention or command around the caret", () => {

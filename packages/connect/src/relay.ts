@@ -236,6 +236,7 @@ export const RELAY_OPERATIONS = [
   "git.discard",
   "git.commit",
   "git.branch",
+  "git.checkout",
   "git.push",
   "github.account",
   "github.signIn",

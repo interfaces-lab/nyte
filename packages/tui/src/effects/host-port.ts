@@ -461,6 +461,7 @@ export async function pluginsPort(
     plugins: tuiPlugins(),
     client: { name: "tui", frameworks: ["tui"] },
     session: () => current,
+    looking: () => new Set(current === null ? [] : [current.id]),
     notify: (input) => options.notify(input.title ?? "Nyte", input.message, input.sound === true),
     report: options.report,
   });

@@ -169,7 +169,12 @@ function apply(draft: Draft, event: SessionEvent): void {
     case "background":
       return eachHead(draft, event.head, (head) => ({
         ...head,
-        background: upsert(head.background, event.item),
+        background:
+          "change" in event
+            ? head.background.filter(
+                (item) => item.kind !== event.item.kind || item.id !== event.item.id,
+              )
+            : upsert(head.background, event.item),
       }));
     case "configured":
       return eachHead(draft, event.head, (head) => ({

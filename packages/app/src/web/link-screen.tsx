@@ -7,7 +7,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { Spinner } from "@nyte-ai/ui/spinner";
+import { Loader } from "@nyte-ai/ui/loader";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
@@ -37,7 +37,12 @@ const styles = create({
   row: { display: "flex", flexDirection: "column", gap: space.s0_5 },
   key: { color: role.contentSecondary },
   value: { overflowWrap: "anywhere" },
-  mono: { fontFamily: type.fontMono, fontSize: type.fontCode, userSelect: "text" },
+  mono: {
+    fontFamily: type.fontMono,
+    fontSize: type.fontCode,
+    lineHeight: type.leadingCode,
+    userSelect: "text",
+  },
   actions: { display: "flex", gap: space.s2, justifyContent: "flex-end" },
   status: { margin: 0, color: role.contentSecondary, textAlign: "center" },
 });
@@ -237,7 +242,7 @@ function LinkBoundary({ config }: { readonly config: AccountConfig }): ReactElem
       <WebPage>
         <p role="status" {...props(styles.status)}>
           <ClerkLoading>
-            <Spinner />
+            <Loader />
             <span {...props(srOnly)}>Loading sign-in</span>
           </ClerkLoading>
         </p>

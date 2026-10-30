@@ -15,7 +15,7 @@ const styles = create({
   secondary: { color: role.contentSecondary },
   primary: { color: role.contentPrimary },
   solid: { color: role.contentOnInteractiveStrong },
-  text: { color: role.contentInteractivePrimary },
+  disabled: { color: role.contentDisabled },
 });
 
 function check(condition: boolean, message: string): void {
@@ -117,7 +117,7 @@ export function mount(): void {
         {iconReferences.flatMap((reference) => [
           <div key={`${reference.name}:outlined`} data-icon-pair={`${reference.name}:outlined`}>
             <span data-sample>
-              <Icon name={reference.name} size={16} />
+              <Icon name={reference.name} size="md" />
             </span>
             <span data-reference>
               <reference.outlined size={16} mode="raw" ariaHidden />
@@ -127,7 +127,7 @@ export function mount(): void {
             ? [
                 <div key={`${reference.name}:filled`} data-icon-pair={`${reference.name}:filled`}>
                   <span data-sample>
-                    <Icon name={reference.name} variant="filled" size={16} />
+                    <Icon name={reference.name} variant="filled" size="md" />
                   </span>
                   <span data-reference>
                     <reference.filled size={16} mode="raw" ariaHidden />
@@ -139,7 +139,7 @@ export function mount(): void {
         {(["left", "right"] as const).flatMap((side) =>
           [false, true].map((visible) => (
             <div key={`${side}:${visible}`} data-panel={`${side}:${visible}`}>
-              <PanelToggleIcon side={side} visible={visible} size={16} />
+              <PanelToggleIcon side={side} visible={visible} size="md" />
             </div>
           )),
         )}
@@ -147,7 +147,7 @@ export function mount(): void {
           [false, true].map((pressed) => (
             <div key={`${disabled}:${pressed}`} data-control={`${disabled}:${pressed}`}>
               <Toggle iconOnly aria-label="Toggle panel" disabled={disabled} pressed={pressed}>
-                <PanelToggleIcon side="left" visible={pressed} size={16} />
+                <PanelToggleIcon side="left" visible={pressed} size="md" />
               </Toggle>
             </div>
           )),
@@ -159,7 +159,7 @@ export function mount(): void {
                 <Icon
                   name="warning"
                   variant="filled"
-                  size={16}
+                  size="md"
                   style={{ color: "red", opacity: 0.2 }}
                 />
               </Button>
@@ -168,13 +168,13 @@ export function mount(): void {
         )}
         <div data-control="local">
           <Button iconOnly aria-label="Back">
-            <Icon name="arrow-left" size={16} style={{ color: "red", opacity: 0.2 }} />
+            <Icon name="arrow-left" size="md" style={{ color: "red", opacity: 0.2 }} />
           </Button>
         </div>
         <div data-control="toolbar">
           <Toolbar.Root>
             <Toolbar.Button render={<Button iconOnly aria-label="Back" />}>
-              <Icon name="arrow-left" size={16} style={{ color: "red", opacity: 0.2 }} />
+              <Icon name="arrow-left" size="md" style={{ color: "red", opacity: 0.2 }} />
             </Toolbar.Button>
           </Toolbar.Root>
         </div>
@@ -242,14 +242,13 @@ export async function run(): Promise<string> {
           const disabled = name.endsWith(":true");
           const forced = document.documentElement.dataset.iconForced !== undefined;
 
-          const expectedStyle =
-            variant === "solid"
+          const expectedStyle = disabled
+            ? styles.disabled
+            : variant === "solid"
               ? styles.solid
-              : forced && !disabled
+              : forced
                 ? styles.primary
-                : variant === "text"
-                  ? styles.text
-                  : styles.secondary;
+                : styles.secondary;
 
           const probe = document.createElement("span");
           probe.className = props(expectedStyle).className ?? "";
@@ -258,8 +257,8 @@ export async function run(): Promise<string> {
           probe.remove();
           check(actual.color === expected, `${mode} ${name} must use its control-state role`);
           check(
-            (getComputedStyle(control).opacity === "0.5") === disabled,
-            `${mode} ${name} must dim only when disabled`,
+            getComputedStyle(control).opacity === "1",
+            `${mode} ${name} must not dim with opacity`,
           );
         }
 
@@ -281,7 +280,11 @@ export async function run(): Promise<string> {
         colors.get("false:false") !== colors.get("false:true"),
         "Selection must change the control color",
       );
-      check(opacities.get("true:false") === "0.5", "Disabled must dim the control");
+      check(opacities.get("true:false") === "1", "Disabled must not dim the control");
+      check(
+        colors.get("true:false") !== colors.get("false:false"),
+        "Disabled must change the control color",
+      );
       check(
         colors.get("true:false") === colors.get("true:true"),
         "Disabled must win over selection",

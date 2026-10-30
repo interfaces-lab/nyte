@@ -12,7 +12,7 @@ export const WOKEN = `${WAITS}woken/`;
 /** Digits a time key is padded to, so the index lists times in order. */
 export const TIME_DIGITS = 16;
 
-/** One entry of the store-side wait index: the index ref (null for a wait found from the call record itself), the parked call it points at, which wait of the call (its count of earlier waits), and which of the wait's targets, null for a deadline or input stop, which ends the whole wait. */
+/** One entry of the store-side wait index: the index ref (null for a wait found from the call record itself; a wake counts it only while the call's wait still writes that name, since a ref an older Nyte wrote unescaped can decode to another call's id), the parked call it points at, which wait of the call (its count of earlier waits), and which of the wait's targets, null for a deadline or input stop, which ends the whole wait. */
 export interface Indexed {
   readonly name: string | null;
   readonly session: SessionId;

@@ -8,6 +8,12 @@ export const shell = defineConsts({
   cardRadius: "var(--nyte-shell-card-radius)",
 });
 
+export const tab = defineConsts({
+  minWidth: "var(--nyte-tab-min-width)",
+  maxWidth: "var(--nyte-tab-max-width)",
+  stripEdgeFade: "var(--nyte-tab-strip-edge-fade)",
+});
+
 export const conversation = defineConsts({
   measure: "var(--nyte-conversation-measure)",
   paragraphGap: "var(--nyte-prose-paragraph-gap)",
@@ -20,6 +26,7 @@ export const conversation = defineConsts({
   composerInset: "var(--nyte-composer-inset)",
   composerNewChatRadius: "var(--nyte-composer-new-chat-radius)",
   composerExpandedRadius: "var(--nyte-composer-expanded-radius)",
+  composerFooterSegmentMaxWidth: "var(--nyte-composer-footer-segment-max-width)",
 });
 
 export const tray = defineConsts({
@@ -60,10 +67,6 @@ export const settings = defineConsts({
   rowPadding: "var(--nyte-settings-row-padding)",
   rowPaddingInline: "var(--nyte-settings-row-padding-inline)",
   controlMaxWidth: "var(--nyte-settings-control-max-width)",
-  pageTitleSize: "var(--nyte-settings-page-title-size)",
-  pageTitleLineHeight: "var(--nyte-settings-page-title-line-height)",
-  sectionTitleSize: "var(--nyte-settings-section-title-size)",
-  sectionTitleLineHeight: "var(--nyte-settings-section-title-line-height)",
 });
 
 export const workbench = defineConsts({

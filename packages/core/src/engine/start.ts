@@ -125,6 +125,7 @@ export async function discardSession(
   kernel.plugins.state.assigned.delete(session);
   await kernel.plugins.close(session);
   kernel.sessions.forget(session);
+  kernel.children.forget(session);
   releaseParts(kernel.partTable, session);
 
   await Promise.allSettled([

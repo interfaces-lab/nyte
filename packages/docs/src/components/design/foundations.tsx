@@ -360,7 +360,31 @@ const textStyles = [
     size: "--nyte-font-size-lg",
     leading: "--nyte-line-height-lg",
     tracking: "--nyte-letter-spacing-lg",
-    use: "Dialog titles, the transcript",
+    use: "Dialog titles, the transcript, settings section titles",
+  },
+  {
+    name: "xl",
+    style: text.xl,
+    size: "--nyte-font-size-xl",
+    leading: "--nyte-line-height-xl",
+    tracking: "--nyte-letter-spacing-lg",
+    use: "Canvas headings and stats",
+  },
+  {
+    name: '["2xl"]',
+    style: text["2xl"],
+    size: "--nyte-font-size-2xl",
+    leading: "--nyte-line-height-2xl",
+    tracking: "--nyte-letter-spacing-lg",
+    use: "Settings page titles",
+  },
+  {
+    name: '["3xl"]',
+    style: text["3xl"],
+    size: "--nyte-font-size-3xl",
+    leading: "--nyte-line-height-3xl",
+    tracking: "--nyte-letter-spacing-lg",
+    use: "The About title, usage figures",
   },
   {
     name: "code",
@@ -609,7 +633,7 @@ const styles = create({
     height: space.s2,
     flexShrink: 0,
     borderRadius: radius.pill,
-    backgroundColor: role.contentInteractiveTertiary,
+    backgroundColor: role.contentAccent,
   },
   scopeName: {
     flexGrow: 1,
@@ -679,7 +703,7 @@ const styles = create({
     width: value,
     height: space.s3,
     borderRadius: 1,
-    backgroundColor: role.contentInteractiveTertiary,
+    backgroundColor: role.contentAccent,
   }),
   typeList: {
     display: "flex",
@@ -724,7 +748,7 @@ const styles = create({
     insetInlineStart: 0,
     width: space.s4,
     borderRadius: radius.pill,
-    backgroundColor: role.contentInteractiveTertiary,
+    backgroundColor: role.contentAccent,
     transform: {
       default: null,
       [when.ancestor(":hover", motionRow)]: {

@@ -7,8 +7,8 @@ export function IconDemo() {
     <>
       <Icon name="folder" />
       <Icon name="warning" variant="filled" />
-      <Icon name="warning" size={14} label="Warning" />
-      <Icon name="sparkle" size={12} />
+      <Icon name="warning" size="sm" label="Warning" />
+      <Icon name="sparkle" size="xs" />
     </>
   );
 }

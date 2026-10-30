@@ -440,7 +440,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "job.settled": ({ workspace: id, job }, { signal }) =>
       workspace(id).job(job).settled({ signal }),
 
-    "files.read": async ({ workspace: id, path }) => (await files(id)).read(path),
+    "files.read": async ({ workspace: id, path, options }) => (await files(id)).read(path, options),
     "files.bytes": async ({ workspace: id, path }) => {
       const reader = await (await files(id)).bytes(path);
 
@@ -477,7 +477,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "git.patches": async ({ workspace: id, scope, paths, options }) =>
       mapped((await git(id)).patches(scope, paths, options), patchesWire),
     "git.contents": async ({ workspace: id, path, scope }) => (await git(id)).contents(path, scope),
-    "git.log": async ({ workspace: id, cursor, limit }) => (await git(id)).log({ cursor, limit }),
+    "git.log": async ({ workspace: id, head, cursor, limit }) =>
+      (await git(id)).log({ head, cursor, limit }),
     "git.refs": async ({ workspace: id }) => (await git(id)).refs(),
     "git.blame": async ({ workspace: id, path }) => (await git(id)).blame(path),
     "git.stage": async ({ workspace: id, paths, options }) => (await git(id)).stage(paths, options),
@@ -489,6 +490,8 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await git(id)).commit(input, options),
     "git.branch": async ({ workspace: id, input, options }) =>
       (await git(id)).branch(input, options),
+    "git.checkout": async ({ workspace: id, input, options }) =>
+      (await git(id)).checkout(input, options),
     "git.push": async ({ workspace: id, input, options }) => (await git(id)).push(input, options),
 
     "github.account": () => connection.github.account(),

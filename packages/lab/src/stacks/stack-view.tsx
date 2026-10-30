@@ -176,7 +176,7 @@ export function StackView({
           {carrying !== null && chats[carrying] !== stack.id && (
             <DropZone stack={stack.id} label="page">
               <div {...props(text.base, styles.drop)}>
-                <Icon name="layers" size={16} />
+                <Icon name="layers" size="md" />
                 Drop to hand it to {stack.name}
               </div>
             </DropZone>
@@ -276,7 +276,7 @@ function Who({
       <TooltipTrigger
         render={<span tabIndex={0} {...props(styles.person, lead && styles.personLead)} />}
       >
-        <Icon name={icon} size={12} />
+        <Icon name={icon} size="xs" />
         {name}
       </TooltipTrigger>
       <TooltipContent>{detail}</TooltipContent>

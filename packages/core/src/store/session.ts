@@ -10,6 +10,7 @@ import type {
   MessageId,
   MoveOutcome,
   ObjectId,
+  ParentFilter,
   Position,
   Ref,
   Revision,
@@ -47,6 +48,8 @@ export const EMPTY_REVISION: Revision = asId<"revision">("");
 
 export const START: Position = { kind: "start" };
 
+export const NO_BACKGROUND: HeadInfo["background"] = { working: 0, waiting: 0 };
+
 export const STALE: unique symbol = Symbol("stale");
 
 const WRITE_TRIES = 8;
@@ -70,7 +73,7 @@ export interface Inbox extends InboxRecord {
 
 export type MoveFailure = Exclude<MoveOutcome, { readonly kind: "moved" }>;
 
-const SESSION_PAGE = 100;
+export const SESSION_PAGE = 100;
 
 export async function load<T>(
   store: StoreConnection,
@@ -336,16 +339,17 @@ export async function covers(
   return false;
 }
 
-/** Every session record, most recently active first. Paged, not a snapshot: a session that becomes active mid-scan sorts ahead of the cursor and can be missed. */
+/** Every session record `parents` selects, most recently active first. Paged, not a snapshot: a session that becomes active mid-scan sorts ahead of the cursor and can be missed. */
 export async function listSessionRecords(
   store: StoreConnection,
+  parents: ParentFilter = { kind: "all" },
 ): Promise<readonly SessionRecord[]> {
   const records: SessionRecord[] = [];
   let after: { readonly at: number; readonly id: SessionId } | undefined;
 
   for (;;) {
     const refs = await store.sessions.list({
-      parents: { kind: "all" },
+      parents,
       after,
       limit: SESSION_PAGE,
     });
@@ -415,6 +419,7 @@ export async function sessionEvent(
     stack: head.stack,
     execution: { kind: "idle", lastRun: head.lastRun },
     unread: false,
+    background: NO_BACKGROUND,
     ...rows?.get(head.name),
   }));
 

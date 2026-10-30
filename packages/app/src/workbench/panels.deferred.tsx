@@ -1,13 +1,13 @@
-import { publishDeferred } from "../deferred.tsx";
-import { ChangesPanel } from "./changes-panel.tsx";
-import { FilesPanel } from "./files-panel.tsx";
-import { TerminalPanel } from "./terminal-panel.tsx";
+import { publishDeferred } from "../lib/deferred.tsx";
+import { ChangesPanel } from "./changes/changes-panel.tsx";
+import { FilesPanel } from "./files/files-panel.tsx";
+import { TerminalPanel } from "./terminal/terminal-panel.tsx";
 import {
   addTerminalToChat,
   clearTerminal,
   copyTerminal,
   focusTerminal,
-} from "./terminal-runtime.ts";
+} from "./terminal/terminal-runtime.ts";
 
 export const workbenchRuntime = {
   FilesPanel,

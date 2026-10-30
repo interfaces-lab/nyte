@@ -436,7 +436,7 @@ function wrapFiles(kernel: Kernel, scope: FileScope, files: FilesApi): FilesApi 
   });
 
   return {
-    read: (path) => files.read(path),
+    read: (path, options) => files.read(path, options),
     bytes: (path) => files.bytes(path),
     stat: (path) => files.stat(path),
     write: (path, contents, options) => files.write(path, contents, options),

@@ -1,6 +1,7 @@
 import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
-import type { ReactElement, ReactNode } from "react";
+import { flushSync } from "react-dom";
+import type { ReactElement, ReactNode, RefObject } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import {
   ContextMenu,
@@ -12,7 +13,10 @@ import {
 import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Tabs } from "@nyte-ai/ui/tabs";
+import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+import type { SessionId } from "@nyte-ai/sdk";
+import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
 import { SortableItem, SortableList } from "../components/sortable-strip.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { stripStyles } from "./window-tab-strip.stylex.ts";
@@ -23,8 +27,12 @@ export interface WindowTabItem {
   readonly id: string;
   readonly title: string;
   readonly tooltip: string;
+  /** The chats in the tab's panes, the focused pane's first. */
+  readonly sessions: readonly SessionId[];
+  readonly parent?: SessionId;
   readonly glyph: ReactNode;
   readonly unread: boolean;
+  readonly preview: boolean;
   readonly split: WindowTabSplit | undefined;
 }
 
@@ -34,8 +42,10 @@ export interface WindowTabStripProps {
   readonly mac: boolean;
   readonly onActivate: (tabId: string) => void;
   readonly onClose: (tabId: string) => void;
+  readonly onKeep: (tabId: string) => void;
+  readonly onOpenParent: (parent: SessionId) => void;
   readonly onNewTab: () => void;
-  readonly onReorder: (tabIds: readonly string[]) => void;
+  readonly onReorder: (tabIds: readonly string[], tabId: string) => void;
   readonly onCloseOthers: (tabId: string) => void;
   readonly onCloseToRight: (tabId: string) => void;
 }
@@ -85,6 +95,7 @@ function TabItem({
   rightClosable,
   held,
   strip,
+  closeAndFocusSelected,
 }: {
   readonly tab: WindowTabItem;
   readonly position: number;
@@ -94,10 +105,12 @@ function TabItem({
   readonly rightClosable: boolean;
   readonly held: HeldKeys;
   readonly strip: WindowTabStripProps;
+  readonly closeAndFocusSelected: (tabId: string) => void;
 }): ReactElement {
   const digit = position < 9 ? String(position + 1) : undefined;
   const shortcut = (key: string): string => (strip.mac ? `⌘${key}` : `Ctrl+${key}`);
   const modifierHeld = strip.mac ? held.meta : held.ctrl;
+  const parent = tab.parent;
 
   return (
     <ContextMenu>
@@ -109,9 +122,16 @@ function TabItem({
               stripStyles.tab,
               closable && stripStyles.tabClosable,
               active && stripStyles.tabActive,
+              tab.preview && stripStyles.tabPreview,
             )}
             onMouseDown={(event) => {
               if (event.button === 1) event.preventDefault();
+            }}
+            onDoubleClick={() => strip.onKeep(tab.id)}
+            onKeyDown={(event) => {
+              if (event.key !== "Delete" || !closable) return;
+              event.preventDefault();
+              closeAndFocusSelected(tab.id);
             }}
             onAuxClick={(event) => {
               if (event.button === 1) strip.onClose(tab.id);
@@ -119,38 +139,41 @@ function TabItem({
           />
         }
       >
-        <Tooltip>
-          <TooltipTrigger
+        <PreviewCard>
+          <ChatCardTrigger
             render={
               <Tabs.Tab
                 variant="bare"
                 value={tab.id}
-                aria-label={tab.unread ? `${tab.tooltip}, unread` : tab.tooltip}
+                aria-label={`${tab.tooltip}${tab.unread ? ", unread" : ""}${tab.preview ? ", preview" : ""}`}
                 xstyle={[stripStyles.tabButton, !closable && stripStyles.tabButtonUnclosable]}
               />
             }
           >
             <span {...props(stripStyles.glyph)}>{tab.glyph}</span>
-            <span {...props(stripStyles.label)}>{tab.title}</span>
+            <span {...props(stripStyles.label, tab.unread && stripStyles.labelUnread)}>
+              {tab.title}
+            </span>
             {tab.split !== undefined && (
               <span {...props(stripStyles.splitMark)}>
-                <Icon name={tab.split === "down" ? "split-down" : "split-right"} size={12} />
+                <Icon name={tab.split === "down" ? "split-down" : "split-right"} size="xs" />
               </span>
             )}
-            {tab.unread && <span aria-hidden="true" {...props(stripStyles.unread)} />}
-          </TooltipTrigger>
-          <TooltipContent>
-            <span {...props(stripStyles.shortcut)}>
-              {tab.tooltip}
-              {digit !== undefined && (
+          </ChatCardTrigger>
+          <ChatCardContent
+            placement="tab"
+            label={tab.tooltip}
+            sessions={tab.sessions}
+            footer={
+              digit === undefined ? undefined : (
                 <span {...props(stripStyles.keys)}>
                   <Kbd keys={[strip.mac ? "⌘" : "Ctrl"]} held={modifierHeld} />
                   <Kbd keys={[digit]} held={held.digit === digit} />
                 </span>
-              )}
-            </span>
-          </TooltipContent>
-        </Tooltip>
+              )
+            }
+          />
+        </PreviewCard>
         {closable && (
           <span {...props(stripStyles.close, active && stripStyles.closeVisible)}>
             <Button
@@ -165,6 +188,16 @@ function TabItem({
         )}
       </ContextMenuTrigger>
       <ContextMenuContent aria-label={`${tab.title} tab actions`}>
+        {tab.preview && (
+          <ContextMenuItem icon="pin" onClick={() => strip.onKeep(tab.id)}>
+            Keep Open
+          </ContextMenuItem>
+        )}
+        {parent !== undefined && (
+          <ContextMenuItem icon="arrow-left" onClick={() => strip.onOpenParent(parent)}>
+            Open Parent Chat
+          </ContextMenuItem>
+        )}
         <ContextMenuItem icon="plus" meta={shortcut("T")} onClick={strip.onNewTab}>
           New Tab
         </ContextMenuItem>
@@ -191,10 +224,26 @@ function TabItem({
   );
 }
 
+/** Mounted again for each selected tab, since the strip scrolls rather than shrinking its tabs. */
+function RevealSelected({ list }: { readonly list: RefObject<HTMLDivElement | null> }): null {
+  useMountEffect(() => {
+    list.current
+      ?.querySelector('[role="tab"][aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
+
+  return null;
+}
+
 export function WindowTabStrip(strip: WindowTabStripProps): ReactElement {
   const { tabs, activeTabId, mac } = strip;
   const held = useHeldKeys();
   const listRef = useRef<HTMLDivElement>(null);
+
+  const closeAndFocusSelected = (tabId: string): void => {
+    flushSync(() => strip.onClose(tabId));
+    listRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+  };
 
   return (
     <Tabs.Root
@@ -202,28 +251,32 @@ export function WindowTabStrip(strip: WindowTabStripProps): ReactElement {
       xstyle={stripStyles.strip}
       onValueChange={(tabId) => strip.onActivate(tabId)}
     >
-      <Tabs.List ref={listRef} aria-label="Tabs" xstyle={stripStyles.list}>
-        <SortableList
-          ids={tabs.map((tab) => tab.id)}
-          listRef={listRef}
-          onPick={strip.onActivate}
-          onReorder={strip.onReorder}
-        >
-          {tabs.map((tab, position) => (
-            <SortableItem key={tab.id} id={tab.id} xstyle={stripStyles.slot}>
-              <TabItem
-                tab={tab}
-                position={position}
-                active={tab.id === activeTabId}
-                closable={tabs.length > 1}
-                othersClosable={tabs.length > 1}
-                rightClosable={position < tabs.length - 1}
-                held={held}
-                strip={strip}
-              />
-            </SortableItem>
-          ))}
-        </SortableList>
+      <Tabs.List aria-label="Tabs" xstyle={stripStyles.list}>
+        <div ref={listRef} role="presentation" {...props(stripStyles.scroller)}>
+          <SortableList
+            ids={tabs.map((tab) => tab.id)}
+            listRef={listRef}
+            onPick={strip.onActivate}
+            onReorder={strip.onReorder}
+          >
+            {tabs.map((tab, position) => (
+              <SortableItem key={tab.id} id={tab.id} xstyle={stripStyles.slot}>
+                <TabItem
+                  tab={tab}
+                  position={position}
+                  active={tab.id === activeTabId}
+                  closable={tabs.length > 1}
+                  othersClosable={tabs.length > 1}
+                  rightClosable={position < tabs.length - 1}
+                  held={held}
+                  strip={strip}
+                  closeAndFocusSelected={closeAndFocusSelected}
+                />
+              </SortableItem>
+            ))}
+          </SortableList>
+          <RevealSelected key={activeTabId} list={listRef} />
+        </div>
       </Tabs.List>
       <span {...props(stripStyles.control)}>
         <Tooltip>

@@ -8,12 +8,13 @@ import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
-import { useHostState, useWorkspaceSearch } from "../queries.ts";
+import { useHostState } from "../data/host.ts";
+import { useWorkspaceSearch } from "../data/search.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
-import { useDebouncedValue } from "../use-debounced-value.ts";
+import { useDebouncedValue } from "../lib/use-debounced-value.ts";
 
 interface SearchMatch {
   readonly line: number;
@@ -171,6 +172,7 @@ const styles = create({
     paddingInline: space.s2,
     color: role.contentSecondary,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     fontWeight: type.weightRegular,
   },
   path: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
@@ -185,7 +187,12 @@ const styles = create({
     fontVariantNumeric: "tabular-nums",
     color: role.contentSecondary,
   },
-  draft: { flexShrink: 0, color: role.contentSecondary, fontSize: type.fontSm },
+  draft: {
+    flexShrink: 0,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
   result: {
     display: "flex",
     alignItems: "baseline",
@@ -281,7 +288,7 @@ export function WorkspaceSearch({
         <div {...props(styles.toolbar)}>
           <InputGroup xstyle={[styles.field, styles.searchField, query !== "" && styles.populated]}>
             <span {...props(styles.searchIcon)}>
-              <Icon name="search" size={12} />
+              <Icon name="search" size="xs" />
             </span>
             <Input
               type="text"
@@ -403,7 +410,7 @@ export function WorkspaceSearchResults({
       {result.files.map((file) => (
         <section key={file.path} aria-label={file.displayPath}>
           <h3 {...props(styles.fileHeading)}>
-            <Icon name="file" size={16} />
+            <Icon name="file" size="md" />
             <span title={file.displayPath} {...props(styles.path)}>
               {file.displayPath}
             </span>

@@ -279,6 +279,7 @@ it("refreshes a retained leading prompt from the host's newer record of the same
           stack: null,
           execution: { kind: "idle", lastRun: null },
           unread: false,
+          background: { working: 0, waiting: 0 },
         })),
         createdAt: 0,
         lastActivityAt: 0,

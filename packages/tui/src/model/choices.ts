@@ -1,5 +1,6 @@
 import type { SessionInfo } from "@nyte-ai/sdk";
-import { CHAT_KEYBINDS } from "../lib/constants.ts";
+import { sessionMark, taskLabel } from "@nyte-ai/plugin/client/presentation";
+import { CHAT_KEYBINDS, GLYPHS } from "../lib/constants.ts";
 import type { ChatCommand } from "../lib/constants.ts";
 import { shortId } from "../lib/format.ts";
 import {
@@ -7,7 +8,7 @@ import {
   taskActivity,
   taskAgent,
   taskConfiguration,
-  taskLabel,
+  taskTitle,
   taskStatus,
   taskTiming,
   unfinishedTask,
@@ -81,7 +82,7 @@ function taskChoices(state: State, section: "active" | "finished"): readonly Cho
       .map((task) => {
         return choice(
           task.id,
-          `${taskAgent(task)} · ${taskLabel(task)}`,
+          `${taskAgent(task)} · ${taskTitle(task)}`,
           task.kind === "agent" ? taskConfiguration(task) : "",
           {
             timing: taskTiming(task),
@@ -274,8 +275,36 @@ export function resumeChoices(state: State, sessions: readonly SessionInfo[]): r
         session.id,
         `${session.name ?? shortId(session.id)}${session.id === current ? " (current)" : ""}`,
         `${new Date(session.lastActivityAt).toLocaleString()} · ${shortId(session.id)}`,
+        sessionStanding(session),
       ),
     );
+}
+
+function sessionStanding(session: SessionInfo): Partial<Pick<Choice, "status" | "mark">> {
+  const mark = sessionMark(session);
+  const text = taskLabel(mark);
+
+  switch (mark) {
+    case "done":
+      return {};
+    case "working":
+      return { mark: { glyph: GLYPHS.bullet, tone: "running" }, status: { text, tone: "muted" } };
+    case "background":
+      return {
+        mark: { glyph: GLYPHS.background, tone: "running" },
+        status: { text, tone: "muted" },
+      };
+    case "retrying":
+    case "waiting":
+      return { mark: { glyph: GLYPHS.bullet, tone: "warning" }, status: { text, tone: "warning" } };
+    case "failed":
+      return { mark: { glyph: GLYPHS.cross, tone: "error" }, status: { text, tone: "error" } };
+    default: {
+      const _exhaustive: never = mark;
+
+      return _exhaustive;
+    }
+  }
 }
 
 function liveList(state: State, dialog: ListDialog): ListDialog {

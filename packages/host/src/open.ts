@@ -100,7 +100,7 @@ async function composeOpen(
   const usesLocalProvider = !given.some((plugin) => plugin.environment?.kind === "local");
 
   const claudeCode = claudeCodeSdk();
-  const acp = acpAgents({ agentsFile: join(home, ".nyte", "acp-agents.json") });
+  const acp = acpAgents();
 
   const [models, settings] = await Promise.all([
     options.models ??

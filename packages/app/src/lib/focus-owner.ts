@@ -1,0 +1,22 @@
+// A toast is a dialog that declares itself non-modal; like Cursor's prompt, typing on one goes to the composer.
+const KEY_OWNERS =
+  'input, textarea, select, [contenteditable], [role="textbox"], [role="menu"], [role="listbox"], [role="dialog"]:not([aria-modal="false"]), [role="alertdialog"]:not([aria-modal="false"])';
+
+function focusPath(): readonly Element[] {
+  let active = document.activeElement;
+
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+  const path: Element[] = [];
+
+  for (let node = active; node !== null;) {
+    path.push(node);
+    const root = node.getRootNode();
+    node = node.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+  }
+
+  return path;
+}
+
+export function keyOwner(): Element | undefined {
+  return focusPath().find((element) => element.matches(KEY_OWNERS));
+}

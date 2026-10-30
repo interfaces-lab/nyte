@@ -1,5 +1,5 @@
-import { clientCapabilities } from "../client-actions.ts";
-import { nyte } from "../nyte.ts";
+import { clientCapabilities } from "../contract/client-actions.ts";
+import { nyte } from "../contract/nyte.ts";
 
 export interface SettingsContext {
   readonly hostSettings: boolean;

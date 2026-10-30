@@ -1,8 +1,8 @@
 import type { ComponentType } from "react";
 import type { IconName } from "@nyte-ai/ui/icon";
-import { ProvidersSettings } from "../chrome/models-settings.tsx";
+import { ProvidersSettings } from "./models-settings.tsx";
 import { ProfileSettingsPage } from "./profile.tsx";
-import { prefetchUsage, UsageRangePicker, UsageSettings } from "../chrome/usage-settings.tsx";
+import { prefetchUsage, UsageRangePicker, UsageSettings } from "./usage-settings.tsx";
 import { AdvancedSettings } from "./advanced.tsx";
 import { AgentSettings } from "./agent.tsx";
 import { AppearanceSettings } from "./appearance.tsx";

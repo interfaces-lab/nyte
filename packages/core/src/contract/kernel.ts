@@ -1,5 +1,6 @@
 import type {
   Activation,
+  BackgroundItem,
   CallId,
   CommitId,
   Configuration,
@@ -64,7 +65,7 @@ import type {
   SettingsRegistry,
 } from "./plugin.ts";
 import type { Presence } from "../engine/presence.ts";
-import type { CallRecord } from "./records.ts";
+import type { CallRecord, SessionRecord } from "./records.ts";
 import type { Session } from "./session.ts";
 import type { StoreConnection } from "./store.ts";
 import type { ToolDefinition } from "./tools.ts";
@@ -140,6 +141,8 @@ export interface Kernel {
 
   readonly pages: PageTable;
 
+  readonly children: ChildTable;
+
   readonly connections: ConnectionRegistry;
 
   request<T>(session: SessionId, input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
@@ -208,6 +211,17 @@ interface Handles {
   session(context: ConnectionContext, session: SessionId): Session;
 
   activationSession(context: ConnectionContext, session: SessionId): Session;
+}
+
+export interface ChildTable {
+  /** Follows `record` when it has a parent and takes `own`, read from the store after the {@link ChildTable.heard} count `since`, unless a run event for the child arrived on the bus after `since`: then it returns false and takes nothing. A `since` of 0 takes `own` only while this process has heard no run event for the child. */
+  link(record: SessionRecord, own: BackgroundItem["state"] | null, since: number): boolean;
+  /** How many run events of children this process has heard on the bus. */
+  heard(): number;
+  forget(session: SessionId): void;
+  background(
+    session: SessionId,
+  ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];
 }
 
 export interface RunTable {

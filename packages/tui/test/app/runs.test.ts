@@ -293,7 +293,7 @@ test("a background subagent's report wakes the finished parent and shows as a re
   await tui.frame(
     (frame) =>
       frame.includes("The helper reported back.") &&
-      frame.split("\n").some((line) => line.trim() === "↳ Finished Helper"),
+      frame.split("\n").some((line) => line.trim() === "↳ Done Helper"),
   );
   await idle(tui);
 

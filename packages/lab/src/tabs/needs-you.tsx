@@ -128,7 +128,7 @@ export function chatWithNeeds(
 
   if (working.has(chat.id)) return { ...chat, mark: "working", unread: false };
 
-  return { ...chat, mark: "idle", unread: own.some((need) => need.kind === "finished") };
+  return { ...chat, mark: "done", unread: own.some((need) => need.kind === "finished") };
 }
 
 const BLOCKED = new Set<Need["kind"]>(["approval", "question"]);
@@ -359,7 +359,7 @@ function Item({
       {...props(styles.item, selected && styles.itemSelected)}
     >
       <span {...props(styles.kind, kindTone(need.kind))}>
-        <Icon name={kind.icon} size={14} />
+        <Icon name={kind.icon} size="sm" />
       </span>
       <div {...props(styles.main)}>
         <header {...props(styles.itemHeader)}>
@@ -454,7 +454,7 @@ export function NeedsYouPage({
 
       {ordered.length === 0 ? (
         <div {...props(styles.empty)}>
-          <Icon name="inbox-checked" size={20} />
+          <Icon name="inbox-checked" size="lg" />
           <p {...props(styles.emptyTitle)}>Nothing needs you</p>
           <p {...props(styles.emptyText)}>
             Approvals, questions, failed runs and finished chats land here.

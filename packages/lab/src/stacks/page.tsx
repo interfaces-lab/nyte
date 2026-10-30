@@ -405,11 +405,13 @@ export function StacksPage(): ReactElement {
               id: "stack",
               title,
               tooltip: title,
+              sessions: [],
+              preview: false,
               glyph:
                 item === undefined ? (
                   <Icon
                     name={screen.kind === "new" ? "plus" : (stack?.icon ?? "layers")}
-                    size={14}
+                    size="sm"
                   />
                 ) : (
                   <StatusGlyph status={item.status} />
@@ -529,7 +531,7 @@ export function StacksPage(): ReactElement {
         <DragOverlay dropAnimation={null}>
           {carried === undefined ? null : (
             <div {...props(text.base, local.carried)}>
-              <Icon name="new-chat" size={14} />
+              <Icon name="new-chat" size="sm" />
               <span {...props(local.carriedLabel)}>{carried.title}</span>
             </div>
           )}

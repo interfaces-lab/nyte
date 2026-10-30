@@ -100,7 +100,14 @@ export const workspaceCases = {
   ),
   FileDocumentSchema: sample(
     FileDocumentSchema,
-    { kind: "large", path: "big.bin", size: 9, version: fileVersion },
+    {
+      kind: "large",
+      path: "big.txt",
+      scope: "workspace",
+      mime: "text/plain",
+      size: 9,
+      version: fileVersion,
+    },
     { kind: "huge", path: "x" },
   ),
   GitStatusSchema: sample(

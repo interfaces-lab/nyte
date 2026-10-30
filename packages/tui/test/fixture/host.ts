@@ -111,6 +111,8 @@ export function testEnvironment(exec: ExecutionEnv["exec"]): Plugin<"core"> {
             read: async (path) => ({
               kind: "text",
               path,
+              scope: "workspace",
+              mime: "text/plain",
               contents: await readFile(path, "utf8"),
               version: asId("v1"),
             }),

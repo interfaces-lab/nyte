@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { ModelInfo, Thinking } from "@nyte-ai/sdk";
-import { toDesktopCatalog, type DesktopModelOption } from "@nyte-ai/app/catalog.ts";
+import { toDesktopCatalog, type DesktopModelOption } from "@nyte-ai/app/data/catalog.ts";
 
 function model(
   provider: string,

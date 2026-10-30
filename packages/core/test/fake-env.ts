@@ -394,13 +394,29 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
 
   return {
     async read(path) {
-      const file = disk.files.get(resolve(path));
+      const resolved = resolve(path);
+      const file = disk.files.get(resolved);
 
       if (file === undefined) return { kind: "missing", path };
+      const scope = resolved.startsWith(`${root}/`) ? "workspace" : "external";
 
       return typeof file.contents === "string"
-        ? { kind: "text", path, contents: file.contents, version: file.version }
-        : { kind: "binary", path, size: file.contents.byteLength, version: file.version };
+        ? {
+            kind: "text",
+            path,
+            scope,
+            mime: "text/plain",
+            contents: file.contents,
+            version: file.version,
+          }
+        : {
+            kind: "binary",
+            path,
+            scope,
+            mime: "application/octet-stream",
+            size: file.contents.byteLength,
+            version: file.version,
+          };
     },
     async bytes(path) {
       const contents = disk.files.get(resolve(path))?.contents;
@@ -746,6 +762,7 @@ function fakeGit(): GitApi {
     discard: async () => ({ kind: "applied", revision }),
     commit: async () => ({ kind: "applied", revision }),
     branch: async () => ({ kind: "applied", revision }),
+    checkout: async () => ({ kind: "applied", revision }),
     push: async () => ({ kind: "applied", revision }),
   };
 }

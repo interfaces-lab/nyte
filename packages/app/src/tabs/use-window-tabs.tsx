@@ -1,21 +1,15 @@
-import { hashKey } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
-import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
-import { activateWorkspace } from "../chrome/use-show-session.ts";
-import { StatusDot } from "../components/ui.tsx";
-import { nyte } from "../nyte.ts";
-import {
-  findSessionFolder,
-  keys,
-  queryClient,
-  useWorkingSessionIds,
-  useWorkspaceSessions,
-} from "../queries.ts";
-import { sessionsWatch } from "../sdk.tsx";
-import { sessionActivityMark } from "../session-activity.ts";
-import { sessionHasUnreadCompletion } from "../session-read-state.ts";
+import type { SessionId } from "@nyte-ai/sdk";
+import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
+import type { ChatDirectory } from "../chats/index.ts";
+import { activateWorkspace } from "../sidebar/use-show-session.ts";
+import { TaskMark } from "../components/task-mark.tsx";
+import { nyte } from "../contract/nyte.ts";
+import { keys, queryClient } from "../data/query-client.ts";
+import { sessionRows, subscribeSessionRow } from "../data/session-rows.ts";
+import { useChatWindow } from "../window/index.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { activeTab, showsPage, tabPlace, tabPlaces } from "./model.ts";
@@ -23,8 +17,6 @@ import type { Place, WindowState } from "./model.ts";
 import { locationPlace, navigateTo, pageSection, samePlaceAt } from "./places.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
 import { windowTabs } from "./window-tabs.ts";
-
-const WORKSPACES_HASH = hashKey(keys.workspaces);
 
 export function useWindowTabsState(): WindowState {
   return useSyncExternalStore(windowTabs.subscribe, windowTabs.getSnapshot, windowTabs.getSnapshot);
@@ -64,14 +56,13 @@ export function useWindowTabsSync(): void {
         return;
       }
 
-      const folder = findSessionFolder(place.sessionId);
+      const folder = chatFolderPath(place.sessionId);
 
-      if (folder.kind === "pending") return;
-      const path = folder.kind === "folder" ? folder.path : null;
+      if (folder === undefined) return;
       followed = focus;
-      wanted = path;
+      wanted = folder;
       switching = switching
-        .then(() => (wanted === path ? activateWorkspace(path) : undefined))
+        .then(() => (wanted === folder ? activateWorkspace(folder) : undefined))
         .then(
           () => undefined,
           () => undefined,
@@ -92,40 +83,83 @@ export function useWindowTabsSync(): void {
       }
 
       if (!samePlaceAt(tabPlace(activeTab(windowTabs.getSnapshot())), location))
-        windowTabs.dispatch({ kind: "open", place: location, target: "foreground" });
+        windowTabs.dispatch({ kind: "open", place: location, target: "permanent" });
     };
 
     adopt();
     follow();
     const unsubscribeRouter = router.subscribe("onResolved", adopt);
     const unsubscribeTabs = windowTabs.subscribe(follow);
-    const unsubscribeSessions = sessionsWatch("roots").subscribe(follow);
-
-    const unsubscribeWorkspaces = queryClient.getQueryCache().subscribe((event) => {
-      if (event.type === "updated" && event.query.queryHash === WORKSPACES_HASH) follow();
-    });
+    const unsubscribeChats = subscribeChats(follow);
+    const unsubscribeClosed = forgetGoneChats();
 
     return () => {
       unsubscribeRouter();
       unsubscribeTabs();
-      unsubscribeSessions();
-      unsubscribeWorkspaces();
+      unsubscribeChats();
+      unsubscribeClosed();
     };
   });
 }
 
-function sessionTitle(session: SessionInfo | undefined): string {
-  if (session === undefined) return "Chat";
+/**
+ * A chat the host's lists lack may only be outside its most active, so each closed tab's chat is
+ * read on its own. Each read hears the rows with a notice of its own: the rows keep one per
+ * listener, so a shared one would stop with the first read that ends.
+ */
+function forgetGoneChats(): () => void {
+  const reads = new Map<SessionId, () => void>();
 
-  return session.name ?? "New chat";
+  const forget = (): void => {
+    const { hosted, missing } = sessionRows();
+
+    const archived = [...hosted.values()].flatMap((session) =>
+      session.archived ? [session.id] : [],
+    );
+
+    windowTabs.dispatch({ kind: "forget-closed", gone: new Set([...missing, ...archived]) });
+  };
+
+  const read = (): void => {
+    const closed = new Set(
+      windowTabs
+        .getSnapshot()
+        .closed.flatMap(({ tab }) =>
+          tabPlaces(tab).flatMap((place) => (place.kind === "session" ? [place.sessionId] : [])),
+        ),
+    );
+
+    for (const [id, leave] of reads)
+      if (!closed.has(id)) {
+        leave();
+        reads.delete(id);
+      }
+
+    for (const id of closed)
+      if (!reads.has(id))
+        reads.set(
+          id,
+          subscribeSessionRow(id, () => forget()),
+        );
+  };
+
+  read();
+  forget();
+  const unsubscribe = windowTabs.subscribe(read);
+
+  return () => {
+    unsubscribe();
+
+    for (const leave of reads.values()) leave();
+  };
 }
 
-function placeTitle(place: Place, sessions: ReadonlyMap<SessionId, SessionInfo>): string {
+function placeTitle(place: Place, chats: ChatDirectory): string {
   switch (place.kind) {
     case "blank":
       return "New chat";
     case "session":
-      return sessionTitle(sessions.get(place.sessionId));
+      return chatTitle(chats.get(place.sessionId));
     case "customize":
       return "Customize";
     case "environments":
@@ -139,29 +173,23 @@ function placeTitle(place: Place, sessions: ReadonlyMap<SessionId, SessionInfo>)
 }
 
 export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] {
-  const workspaceSessions = useWorkspaceSessions();
-  const working = useWorkingSessionIds();
-
-  const sessions = new Map(
-    (workspaceSessions.data ?? []).flatMap((entry) =>
-      entry.sessions.map((session) => [session.id, session] as const),
-    ),
-  );
+  const chats = useChats((directory) => directory);
+  const unread = useChatWindow((snapshot) => snapshot.unread);
 
   return state.tabs.map((tab) => {
     const places = tabPlaces(tab);
     const place = tabPlace(tab);
     const view = tab.view;
-    const session = place.kind === "session" ? sessions.get(place.sessionId) : undefined;
+    const chat = place.kind === "session" ? chats.get(place.sessionId) : undefined;
+    const sessions = places.flatMap((candidate) =>
+      candidate.kind === "session" ? [candidate.sessionId] : [],
+    );
 
-    const mark =
-      session === undefined ? "idle" : sessionActivityMark(session, working.has(session.id));
+    const tabUnread = sessions.some((sessionId) => unread.has(sessionId));
 
     const glyph =
       place.kind === "session" ? (
-        mark === "idle" ? undefined : (
-          <StatusDot mark={mark} />
-        )
+        <TaskMark state={chat?.mark ?? "done"} unread={tabUnread} />
       ) : (
         <Icon
           name={
@@ -171,23 +199,19 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
                 ? "customize"
                 : "server"
           }
-          size={13}
+          size="sm"
         />
       );
 
     return {
       id: tab.id,
-      title: placeTitle(place, sessions),
-      tooltip: places.map((candidate) => placeTitle(candidate, sessions)).join(" | "),
+      title: placeTitle(place, chats),
+      tooltip: places.map((candidate) => placeTitle(candidate, chats)).join(" | "),
+      sessions,
+      parent: chat?.parent ?? undefined,
       glyph,
-      unread:
-        tab.id !== state.activeTabId &&
-        places.some((candidate) => {
-          if (candidate.kind !== "session") return false;
-          const listed = sessions.get(candidate.sessionId);
-
-          return listed !== undefined && sessionHasUnreadCompletion(listed);
-        }),
+      unread: tabUnread,
+      preview: view.kind === "preview",
       split:
         view.kind === "panes" && view.layout.kind === "split" ? view.layout.direction : undefined,
     };

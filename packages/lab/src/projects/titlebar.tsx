@@ -1,6 +1,6 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { titlebarStyles } from "@nyte-ai/app/chrome/titlebar.stylex.ts";
+import { titlebarStyles } from "@nyte-ai/app/shell/titlebar.stylex.ts";
 import { WindowTabStrip } from "@nyte-ai/app/tabs/window-tab-strip.tsx";
 import type { WindowTabItem } from "@nyte-ai/app/tabs/window-tab-strip.tsx";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
@@ -57,6 +57,8 @@ export function Titlebar({
             onActivate={onActivate}
             onClose={(id) => onClose([id])}
             onNewTab={onNewTab}
+            onKeep={() => undefined}
+            onOpenParent={() => undefined}
             onReorder={onReorder}
             onCloseOthers={(id) => onClose(ids.filter((candidate) => candidate !== id))}
             onCloseToRight={(id) => onClose(ids.slice(ids.indexOf(id) + 1))}

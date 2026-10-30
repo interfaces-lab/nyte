@@ -17,6 +17,7 @@ import {
 import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
 import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
+import { Button } from "./button.tsx";
 import { Icon } from "./icon.tsx";
 
 const GAP = 8;
@@ -27,14 +28,27 @@ const EXIT = "translateY(150%)";
 
 const COPIED_MS = 1500;
 
+const ANCHORED = "@supports (position-anchor: --a)";
+
 const styles = create({
+  /**
+   * Above the element named `toastSchema.anchor` where anchor positioning is supported. Without
+   * support or without that element, the anchor() fallbacks keep the bottom-end inset.
+   */
   viewport: {
     position: "fixed",
-    insetInlineEnd: space.s4,
-    insetBlockEnd: space.s4,
+    positionAnchor: toastSchema.anchor,
+    insetInlineEnd: { default: space.s4, [ANCHORED]: `anchor(end, ${space.s4})` },
+    insetBlockEnd: {
+      default: space.s4,
+      [ANCHORED]: `calc(anchor(start, calc(${space.s4} - ${space.s2})) + ${space.s2})`,
+    },
     zIndex: layer.toast,
     boxSizing: "border-box",
-    width: "min(380px, calc(100vw - 32px))",
+    width: {
+      default: "min(380px, calc(100vw - 32px))",
+      [ANCHORED]: "min(380px, calc(100vw - 32px), anchor-size(width, 100vw))",
+    },
     margin: 0,
     padding: 0,
     pointerEvents: "none",
@@ -211,34 +225,6 @@ const styles = create({
     gridArea: "close",
     marginBlock: toastSchema.overhang,
     marginInlineStart: space.s1_5,
-    display: "grid",
-    placeItems: "center",
-    boxSizing: "border-box",
-    width: button.heightSm,
-    height: button.heightSm,
-    minWidth: target.min,
-    minHeight: target.min,
-    padding: 0,
-    appearance: "none",
-    borderStyle: "none",
-    borderRadius: button.radiusSm,
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
-    },
-    color: {
-      default: role.contentInteractiveSecondary,
-      ":hover": { [media.hover]: role.contentInteractivePrimary },
-    },
-    cursor: appearance.cursorInteractive,
-    scale: { default: 1, ":active": 0.96 },
-    transitionProperty: "background-color, color, scale",
-    transitionDuration: {
-      default: motion.durationFast,
-      ":active": "0s",
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motion.easeOut,
   },
 });
 
@@ -281,7 +267,7 @@ function CopyButton({
     >
       <span {...props(styles.copyLabel, copied && styles.hidden)}>Copy error</span>
       <span {...props(styles.copyLabel, styles.copied, !copied && styles.hidden)}>
-        <Icon name="checkmark" size={12} />
+        <Icon name="checkmark" size="xs" />
         Copied
       </span>
     </button>
@@ -309,14 +295,22 @@ function ToastList(): ReactElement[] {
         <Toast.Content {...props(text.base, styles.content, below && styles.withActionsBelow)}>
           {status !== undefined && (
             <span {...props(status.intent, styles.icon)}>
-              <Icon name={status.name} size={16} />
+              <Icon name={status.name} size="md" />
             </span>
           )}
           <Toast.Title {...props(text.base, styles.title)} />
           {!below && buttons}
-          <Toast.Close aria-label="Dismiss notification" {...props(styles.close, focus.ring)}>
-            <Icon name="x" size={12} />
-          </Toast.Close>
+          <Toast.Close
+            render={
+              <Button
+                size="sm"
+                iconOnly
+                icon="close"
+                aria-label="Dismiss notification"
+                xstyle={styles.close}
+              />
+            }
+          />
           <Toast.Description {...props(text.sm, styles.description)} />
           {below && <div {...props(styles.actions)}>{buttons}</div>}
         </Toast.Content>

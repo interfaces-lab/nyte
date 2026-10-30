@@ -6,7 +6,7 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { ENGINE_VERSION, FiltersEngine } from "@ghostery/adblocker";
-import { parseFilterLists } from "../src/main/adblock.ts";
+import { parseFilterLists } from "../src/main/browser/adblock.ts";
 
 const LISTS = [
   "https://easylist.to/easylist/easylist.txt",

@@ -24,6 +24,7 @@ import type {
   ForgetOutcome,
   FormatOutcome,
   WorktreeCleanup,
+  GitCommitId,
   GitCommitView,
   GitFileSides,
   GitOutcome,
@@ -90,7 +91,12 @@ export interface GitApi {
   ): AsyncIterable<PatchSet>;
   contents(path: string, scope: GitScope): Promise<GitFileSides>;
 
-  log(input?: { readonly cursor?: Cursor; readonly limit?: number }): Promise<Paged<GitCommitView>>;
+  /** Lists history from `head`, or from HEAD when omitted; pass the same `head` with every cursor. */
+  log(input?: {
+    readonly head?: GitCommitId;
+    readonly cursor?: Cursor;
+    readonly limit?: number;
+  }): Promise<Paged<GitCommitView>>;
   refs(): Promise<GitRefsView>;
   blame(path: string): Promise<BlameView>;
 
@@ -101,10 +107,13 @@ export interface GitApi {
     input: { readonly message: string; readonly files: "staged" | "all" | readonly string[] },
     options?: GitWrite,
   ): Promise<GitOutcome>;
+  /** With `checkout`, answers `busy` while any run in the workspace is live. */
   branch(
     input: { readonly name: string; readonly checkout: boolean },
     options?: GitWrite,
   ): Promise<GitOutcome>;
+  /** Answers `busy` while any run in the workspace is live, and `rejected` when git refuses, such as over local changes it would overwrite. */
+  checkout(input: { readonly name: string }, options?: GitWrite): Promise<GitOutcome>;
   push(input?: { readonly setUpstream?: boolean }, options?: GitWrite): Promise<GitOutcome>;
 }
 
@@ -351,7 +360,7 @@ export interface EnvironmentRegistry {
 }
 
 export interface FilesApi {
-  read(path: string): Promise<FileDocument>;
+  read(path: string, options?: { readonly as: "text" | "document" }): Promise<FileDocument>;
   bytes(path: string): Promise<ByteReader>;
   stat(path: string): Promise<{
     readonly kind: "file" | "directory" | "symlink";

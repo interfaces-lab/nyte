@@ -1,8 +1,8 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { clientActionKeys, clientActions } from "@nyte-ai/app/client-actions.ts";
-import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
-import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
+import { clientActionKeys, clientActions } from "@nyte-ai/app/contract/client-actions.ts";
+import { sidebarStyles } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
+import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
@@ -23,7 +23,7 @@ function NavRow({
   return (
     <Row variant="nav" xstyle={sidebarStyles.navRow}>
       <Row.Leading xstyle={sidebarStyles.navLeading}>
-        <Icon name={icon} size={14} />
+        <Icon name={icon} size="sm" />
       </Row.Leading>
       <Row.Label>{label}</Row.Label>
       {keys !== undefined && (
@@ -138,7 +138,7 @@ export function StacksSidebar({
             {stacks.map((stack) => (
               <DropZone key={stack.id} stack={stack.id} label="sidebar">
                 <ListRow
-                  glyph={<Icon name={stack.icon} size={14} />}
+                  glyph={<Icon name={stack.icon} size="sm" />}
                   label={stack.name}
                   meta={stack.waiting === 0 ? undefined : `${String(stack.waiting)} for you`}
                   selected={stack.id === selected}
@@ -155,9 +155,9 @@ export function StacksSidebar({
                 <ListRow
                   glyph={
                     home === undefined ? (
-                      chat.working && <StatusDot mark="working" />
+                      chat.working && <TaskMark state="working" />
                     ) : (
-                      <Icon name={home.icon} size={14} label={`In ${home.name}`} />
+                      <Icon name={home.icon} size="sm" label={`In ${home.name}`} />
                     )
                   }
                   label={chat.title}

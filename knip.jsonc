@@ -10,7 +10,7 @@
       "ignoreBinaries": ["wrangler"],
     },
     "packages/app": {
-      "entry": ["lint/*.js", "lint/fixtures/*.{ts,tsx}", "src/router-register.ts"],
+      "entry": ["lint/*.js", "lint/fixtures/*.{ts,tsx}", "src/shell/router-register.ts"],
       "ignoreBinaries": ["electron-vite"],
     },
     "packages/bench": {
@@ -49,10 +49,11 @@
     },
     "packages/desktop": {
       "entry": [
-        "src/main/{host-entry,usage-worker,codemode-worker,codemode-runtime}.ts",
+        "src/host/host-entry.ts",
+        "src/workers/{usage-worker,codemode-worker,codemode-runtime}.ts",
         "src/preload/{browser-page,canvas-preview}.ts",
         "src/renderer/src/devtools.tsx",
-        "src/main/fixtures/*.{ts,tsx}",
+        "src/{main,host,shared}/fixtures/*.{ts,tsx}",
         "electron-builder.config.ts",
         "scripts/check-startup-bundle.mjs",
       ],

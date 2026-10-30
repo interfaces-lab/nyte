@@ -8,10 +8,10 @@ import type {
   CanvasPreviewRequest,
   CanvasPreviewer,
 } from "@nyte-ai/plugin/core/canvas-preview";
-import { resolveRendererFile, shellContentSecurityPolicy } from "../account/policy.ts";
-import type { accountScheme } from "../account/scheme.ts";
+import { resolveRendererFile, shellContentSecurityPolicy } from "../shared/account/policy.ts";
+import type { accountScheme } from "../shared/account/scheme.ts";
 import { CANVAS_PREVIEW_CHANNELS } from "../shared/canvas-preview.ts";
-import { canvasShellUrl } from "./renderer.ts";
+import { canvasShellUrl } from "./renderer-protocol.ts";
 
 const PARTITION = "canvas-preview";
 

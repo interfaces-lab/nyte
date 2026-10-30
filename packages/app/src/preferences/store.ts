@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
+import { localArea, readStored, writeStored } from "../lib/storage.ts";
 
 interface PreferenceSlot {
   readonly key: string;
@@ -34,57 +35,24 @@ const reloadable: Reloadable[] = [];
 
 const StoredRecord = Type.Record(Type.String(), Type.Unknown());
 
-function storage(): Storage | undefined {
-  try {
-    return typeof window === "undefined" ? undefined : window.localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
-function storedValue(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
-}
-
-function recordAt(raw: string | null): Readonly<Record<string, unknown>> {
-  if (raw === null) return {};
-  const parsed = storedValue(raw);
-
-  return Value.Check(StoredRecord, parsed) ? parsed : {};
-}
+const EMPTY_RECORD: Static<typeof StoredRecord> = {};
 
 function read<S extends TSchema>(slot: PreferenceSlot, schema: S, fallback: Static<S>): Static<S> {
-  const raw = storage()?.getItem(slot.key) ?? null;
-
-  if (raw === null) return fallback;
-  const stored = slot.field === undefined ? storedValue(raw) : recordAt(raw)[slot.field];
+  if (slot.field === undefined)
+    return readStored(localArea(), slot.key, schema, fallback, { text: true });
+  const stored = readStored(localArea(), slot.key, StoredRecord, EMPTY_RECORD)[slot.field];
 
   return Value.Check(schema, stored) ? stored : fallback;
 }
 
 function write(slot: PreferenceSlot, value: unknown): void {
-  const store = storage();
-
-  if (store === undefined) return;
-
-  try {
-    if (slot.field === undefined) {
-      store.setItem(slot.key, JSON.stringify(value));
-
-      return;
-    }
-
-    store.setItem(
-      slot.key,
-      JSON.stringify({ ...recordAt(store.getItem(slot.key)), [slot.field]: value }),
-    );
-  } catch {
-    return;
-  }
+  writeStored(
+    localArea(),
+    slot.key,
+    slot.field === undefined
+      ? value
+      : { ...readStored(localArea(), slot.key, StoredRecord, EMPTY_RECORD), [slot.field]: value },
+  );
 }
 
 function sameValue(left: unknown, right: unknown): boolean {
@@ -119,8 +87,8 @@ export function definePreference<S extends TSchema>(
     set: (next) => {
       if (sameValue(next, value) || !Value.Check(schema, next)) return;
       value = next;
-      write(slot, next);
       notify();
+      write(slot, next);
     },
     subscribe: (listener) => {
       listeners.add(listener);
@@ -133,7 +101,7 @@ export function definePreference<S extends TSchema>(
 
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
-    if (event.storageArea !== storage()) return;
+    if (event.storageArea !== localArea()) return;
 
     const cleared = event.key === null;
 

@@ -57,6 +57,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "git.discard": () => git.api.discard([]),
     "git.commit": () => git.api.commit({ message: "no", files: "staged" }),
     "git.branch": () => git.api.branch({ name: "no", checkout: false }),
+    "git.checkout": () => git.api.checkout({ name: "no" }),
     "git.push": () => git.api.push(),
     "github.signIn": () => sdk.github.signIn(),
     "github.signOut": () => sdk.github.signOut(),

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { installBridge } from "../nyte.ts";
+import { installBridge } from "../contract/nyte.ts";
 import { createWebBridge } from "../web/bridge.ts";
 import { showsSettingsSection } from "./pages.ts";
 

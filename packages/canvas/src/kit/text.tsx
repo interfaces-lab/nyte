@@ -10,7 +10,7 @@ const heading = create({
     fontWeight: type.weightSemibold,
     textWrap: "balance",
   },
-  1: { fontSize: type.font2xl, lineHeight: type.leadingLg, letterSpacing: type.letterLg },
+  1: { fontSize: type.fontXl, lineHeight: type.leadingXl, letterSpacing: type.letterLg },
   2: { fontSize: type.fontLg, lineHeight: type.leadingLg, letterSpacing: type.letterLg },
   3: { fontSize: type.fontBase, lineHeight: type.leadingBase, letterSpacing: type.letterBase },
 });
@@ -108,6 +108,7 @@ const code = create({
     color: role.contentPrimary,
     fontFamily: type.fontMono,
     fontSize: type.fontCode,
+    lineHeight: type.leadingCode,
     fontVariantLigatures: "none",
   },
   block: {

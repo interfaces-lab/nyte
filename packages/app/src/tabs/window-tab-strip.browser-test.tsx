@@ -39,8 +39,17 @@ async function drag(from: Element, distance: number): Promise<void> {
   await nextFrame();
 }
 
-function tab(id: string, title: string): WindowTabItem {
-  return { id, title, tooltip: title, glyph: undefined, unread: false, split: undefined };
+function tab(id: string, title: string, preview = false): WindowTabItem {
+  return {
+    id,
+    title,
+    tooltip: title,
+    sessions: [],
+    glyph: undefined,
+    unread: false,
+    preview,
+    split: undefined,
+  };
 }
 
 export async function run(): Promise<string> {
@@ -58,9 +67,14 @@ export async function run(): Promise<string> {
       activeTabId: tabs[0]?.id ?? "",
       mac: true,
       onActivate: (id) => calls.push(`activate ${id}`),
-      onClose: (id) => calls.push(`close ${id}`),
+      onClose: (id) => {
+        calls.push(`close ${id}`);
+        root.render(<WindowTabStrip {...strip} tabs={tabs.filter((item) => item.id !== id)} />);
+      },
+      onKeep: (id) => calls.push(`keep ${id}`),
+      onOpenParent: (id) => calls.push(`parent ${id}`),
       onNewTab: () => calls.push("new"),
-      onReorder: (ids) => calls.push(`reorder ${ids.join(",")}`),
+      onReorder: (ids, id) => calls.push(`reorder ${ids.join(",")} moving ${id}`),
       onCloseOthers: (id) => calls.push(`close-others ${id}`),
       onCloseToRight: (id) => calls.push(`close-right ${id}`),
     };
@@ -94,10 +108,83 @@ export async function run(): Promise<string> {
 
     await drag(beta, -600);
     check(calls.includes("activate b"), "Picking a tab up did not select it");
-    check(calls.includes("reorder b,first,a"), `A tab did not move: ${calls.join("; ")}`);
+    check(calls.includes("reorder b,first,a moving b"), `A tab did not move: ${calls.join("; ")}`);
 
     alpha.parentElement?.dispatchEvent(new MouseEvent("auxclick", { bubbles: true, button: 1 }));
     check(calls.includes("close a"), "Middle-click did not close the tab");
+
+    render([tab("first", "First"), tab("a", "Alpha"), tab("b", "Beta")]);
+    const focused = container.querySelectorAll<HTMLElement>('[role="tab"]')[1];
+    focused?.focus();
+    focused?.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Delete" }));
+    check(calls.at(-1) === "close a", `Delete did not close the focused tab: ${calls.join("; ")}`);
+    check(
+      document.activeElement?.getAttribute("aria-selected") === "true",
+      "Focus did not return to the selected tab",
+    );
+
+    render([tab("first", "First"), tab("p", "Previewed", true)]);
+    const [lasting, preview] = container.querySelectorAll('[role="tab"]');
+
+    const titleStyle = (item: Element | undefined): string | undefined => {
+      const title = item?.querySelector("span:not(:empty)");
+
+      return title === null || title === undefined ? undefined : getComputedStyle(title).fontStyle;
+    };
+
+    if (preview === undefined) throw new Error("Missing preview tab");
+    check(
+      preview.getAttribute("aria-label") === "Previewed, preview",
+      "A preview does not say so in its name",
+    );
+    check(titleStyle(preview) === "italic", "A preview title is upright");
+    check(titleStyle(lasting) === "normal", "A lasting tab's title is italic");
+    preview.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    check(calls.at(-1) === "keep p", "Double-click did not keep the preview");
+
+    render([tab("short", "A"), tab("long", "A long title ".repeat(10))]);
+
+    const [short, long] = [...container.querySelectorAll('[role="tab"]')].map(
+      (item) => item.parentElement?.parentElement?.getBoundingClientRect().width ?? 0,
+    );
+
+    if (short === undefined || long === undefined) throw new Error("Missing sized tabs");
+    check(short >= 72 && short < 120, `A short title's tab is ${String(short)} px wide`);
+    check(long === 280, `A long title's tab is ${String(long)} px wide`);
+
+    const scroller = container.querySelector('[role="tablist"] > [role="presentation"]');
+
+    if (scroller === null) throw new Error("Missing strip scroller");
+    check(getComputedStyle(scroller).maskImage === "none", "A strip that fits fades its edges");
+
+    render(
+      Array.from({ length: 16 }, (_, index) => tab(String(index), "A long title ".repeat(10))),
+    );
+
+    const fades = async (scrollLeft: number): Promise<string> => {
+      scroller.scrollLeft = scrollLeft;
+      await nextFrame();
+      await nextFrame();
+
+      return getComputedStyle(scroller).maskImage;
+    };
+
+    const opaque = (start: string, end: string): string =>
+      `rgb(0, 0, 0) ${start}, rgb(0, 0, 0) ${end}`;
+
+    const end = scroller.scrollWidth - scroller.clientWidth;
+    check(
+      (await fades(0)).includes(opaque("0px", "calc(100% - 8px)")),
+      "Before a scroll, the end alone should fade",
+    );
+    check(
+      (await fades(end / 2)).includes(opaque("8px", "calc(100% - 8px)")),
+      "Midway, both edges should fade",
+    );
+    check(
+      (await fades(end)).includes(opaque("8px", "100%")),
+      "At the end, the start alone should fade",
+    );
 
     return "passed";
   } finally {
