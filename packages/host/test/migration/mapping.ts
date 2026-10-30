@@ -250,6 +250,14 @@ export const MAPPING = [
     change: "each head row without `background` gains `{ working: 0, waiting: 0 }`",
     covers: ["from 24", "field log session /info/heads/*/background"],
   },
+  {
+    version: 26,
+    step: "2026-10-30-escaped-wait-index",
+    target: "refs",
+    change:
+      "adds the `waits/` index refs, with the call id escaped (`%` as `%25`, `/` as `%2F`), of each unsettled call record at `sessions/<s>/calls/<call>` whose id holds `/` or `%`, at that record, unless they exist",
+    covers: ["from 25"],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {
@@ -601,7 +609,7 @@ function waitNames(session: string, call: CallRecord): readonly string[] {
   if (waiting === null) return [];
 
   const slot = (name: number | "deadline" | "input") =>
-    `${session}/${call.id}/${call.waits.length}/${name}`;
+    `${session}/${call.id.replaceAll("%", "%25").replaceAll("/", "%2F")}/${call.waits.length}/${name}`;
 
   const time = (at: number) => String(Math.max(0, Math.floor(at))).padStart(16, "0");
   const targets = "targets" in waiting ? waiting.targets : [waiting];
@@ -652,7 +660,9 @@ export function derivedRefs(from: number, name: string, record: Json): readonly 
       : []),
     ...(call !== null && call.result === null && name === `sessions/${session}/calls/${call.id}`
       ? [
-          ...(runs(from, 10) ? waitNames(session, call) : []),
+          ...(runs(from, 10) || (runs(from, 26) && /[%/]/.test(call.id))
+            ? waitNames(session, call)
+            : []),
           ...(runs(from, 13) && call.waiting === null && call.waits.length > 0
             ? [`waits/woken/${session}/${call.id}`]
             : []),

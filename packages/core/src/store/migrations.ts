@@ -408,21 +408,31 @@ const liveRefs: RewriteStep = {
 const parkedWaitIndex: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-16-wait-index",
-  adds(name, record) {
-    const session = parseSessionRef(name);
-    const call = decodeCallRecord(record);
-
-    if (
-      session === null ||
-      call === null ||
-      call.result !== null ||
-      name !== callRef(session, call.id)
-    )
-      return [];
-
-    return waitIndex(session, call);
-  },
+  adds: indexParkedCall,
 };
+
+/** The index of each parked call whose id the index now escapes (`/` or `%`): an older Nyte wrote its refs unescaped, which no wake reads back. */
+const escapedWaitIndex: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-30-escaped-wait-index",
+  adds: (name, record) =>
+    /[%/]/.test(decodeCallRecord(record)?.id ?? "") ? indexParkedCall(name, record) : [],
+};
+
+function indexParkedCall(name: string, record: Json): readonly string[] {
+  const session = parseSessionRef(name);
+  const call = decodeCallRecord(record);
+
+  if (
+    session === null ||
+    call === null ||
+    call.result !== null ||
+    name !== callRef(session, call.id)
+  )
+    return [];
+
+  return waitIndex(session, call);
+}
 
 /**
  * A `tool` call's intent repeated the name and args of its part, written in
@@ -810,6 +820,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   modelsPerRequest,
   refTargetIndex,
   headBackground,
+  escapedWaitIndex,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
