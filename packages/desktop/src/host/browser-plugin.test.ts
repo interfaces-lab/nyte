@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
+import { PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { isPart, tool } from "@nyte-ai/plugin/core";
 import type { SessionView } from "@nyte-ai/sdk";
 import type {
@@ -86,6 +87,7 @@ test("the browser tools drive the session's page through the desktop agent", asy
   const made = await testDesktop({ agent });
   opened.push(made);
   const host = await made.host.host();
+  await host.settings.apply(PERMISSIONS, "full");
 
   made.fake.reply(
     {
