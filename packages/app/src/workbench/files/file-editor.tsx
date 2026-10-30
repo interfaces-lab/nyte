@@ -396,7 +396,7 @@ function PdfDocument(input: {
       for await (const chunk of reader.chunks()) chunks.push(new Uint8Array(chunk));
 
       return runtime.openPdf(await new Blob(chunks).bytes(), (close) =>
-        releaseWithQuery(context.client.getQueryCache(), context.queryKey, close),
+        releaseWithQuery(context, close),
       );
     },
   });
