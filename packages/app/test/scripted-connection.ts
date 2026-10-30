@@ -21,16 +21,16 @@ import { asId } from "@nyte-ai/schema";
 export interface ConnectionScript {
   readonly views?: ReadonlyMap<SessionId, readonly SessionView[] | ViewStream>;
   readonly sessions?: readonly SessionInfo[] | ViewStream<readonly SessionInfo[]>;
-  /** Each session's children, as a watch of its children lists them; a session left out has none. */
+  /** A session left out has no children. */
   readonly children?: ReadonlyMap<SessionId, readonly SessionInfo[]>;
   readonly workspaces?: readonly WorkspaceInfo[];
   readonly session?: (id: SessionId) => Partial<Session>;
   readonly host?: ViewStream<HostView>;
   readonly models?: Partial<ModelsApi>;
   readonly github?: Partial<GitHubAccountApi>;
-  /** Every workspace's git, with what is left out refused. */
+  /** Shared by every workspace; members left out are refused. */
   readonly git?: Partial<GitApi>;
-  /** Every workspace's GitHub, with what is left out refused. */
+  /** Shared by every workspace; members left out are refused. */
   readonly workspaceGitHub?: Partial<GitHubApi>;
 }
 
@@ -95,7 +95,7 @@ async function* replay<T>(values: readonly T[]): AsyncIterable<T> {
   await new Promise<never>(() => undefined);
 }
 
-/** A connection that answers from `script`. A session's handle stands for its heads too, so what the script changes on it, `head()` returns. */
+/** A session's handle also stands for its heads, so `head()` returns what the script changes on it. */
 export function scriptedConnection(script: ConnectionScript = {}): {
   readonly connection: Connection;
   readonly sent: readonly ScriptedSend[];

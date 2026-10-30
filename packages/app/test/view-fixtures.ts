@@ -79,7 +79,6 @@ export function workspaceRow(
   };
 }
 
-/** The chats these sessions' rows describe, with no open views and no pending actions unless given. */
 export function chatsFor(
   sessions: readonly SessionInfo[],
   sources: Partial<RowSources> & { readonly workspaces?: readonly WorkspaceInfo[] } = {},
@@ -99,7 +98,6 @@ export function chatsFor(
   return describeChats(rows.values(), "workspaces" in sources ? sources.workspaces : [], previous);
 }
 
-/** A finished chat's view with nothing in it, with `change` laid over it. */
 export function sessionView(change: Partial<SessionView> = {}): SessionView {
   return {
     revision: asId<"revision">("r1"),

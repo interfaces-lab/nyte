@@ -2,7 +2,6 @@ import { Toaster } from "@nyte-ai/ui/toast";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 
-/** The viewport's offsets from the window's bottom-end corner, and its width. */
 function place(viewport: Element) {
   const box = viewport.getBoundingClientRect();
 
@@ -13,7 +12,7 @@ function place(viewport: Element) {
   };
 }
 
-/** Drops what a browser without anchor positioning ignores: anchor declarations and `@supports` blocks for them. */
+/** Stands in for a browser without anchor positioning. */
 function dropAnchorPositioning(container: CSSStyleSheet | CSSGroupingRule): void {
   const rules = [...container.cssRules];
 
