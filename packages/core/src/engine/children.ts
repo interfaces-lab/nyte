@@ -64,22 +64,35 @@ export function createChildTable(
     refresh(session, child);
   });
 
+  const follow = (record: SessionRecord): Child | null => {
+    if (record.parent === null) return null;
+
+    const child = children.get(record.id) ?? {
+      parent: record.parent,
+      head: record.origin?.head ?? MAIN,
+      startedBy: record.origin?.call ?? null,
+      title: record.name ?? CHILD_TITLE,
+      own: null,
+      item: null,
+    };
+
+    children.set(record.id, child);
+
+    return child;
+  };
+
   return {
     link(record, own) {
-      if (record.parent === null) return;
+      const child = follow(record);
 
-      const child = children.get(record.id) ?? {
-        parent: record.parent,
-        head: record.origin?.head ?? MAIN,
-        startedBy: record.origin?.call ?? null,
-        title: record.name ?? CHILD_TITLE,
-        own: null,
-        item: null,
-      };
+      if (child === null || child.own !== null || own === null) return;
+      child.own = own;
+      refresh(record.id, child);
+    },
+    reconcile(record, own) {
+      const child = follow(record);
 
-      children.set(record.id, child);
-
-      if (child.own !== null || own === null) return;
+      if (child === null || own === null) return;
       child.own = own;
       refresh(record.id, child);
     },
@@ -110,15 +123,16 @@ export function createChildTable(
 
 const CHILD_TITLE = "Subagent";
 
-/** Links every stored child of `parent`, so its background also lists children whose runs ended before this process started. */
+/** Links every stored child of `parent`, so its background also lists children whose runs ended before this process started; `reconcile` also takes the stored state over what this process knew. */
 export async function linkStoredChildren(
   kernel: Pick<Kernel, "store" | "children">,
   parent: SessionId,
+  link: "link" | "reconcile" = "link",
 ): Promise<void> {
   const records = await listSessionRecords(kernel.store, { kind: "children", session: parent });
 
   for (const record of records)
-    kernel.children.link(record, await readChildState(kernel.store, record));
+    kernel.children[link](record, await readChildState(kernel.store, record));
 }
 
 /** How a child's own run stands in the store: its main head's live run, else how its last run ended; null for a child that never ran. */
