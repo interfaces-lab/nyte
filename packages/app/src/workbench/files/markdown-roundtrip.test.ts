@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getSchema } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/core";
 import { describe, expect, it } from "vitest";
@@ -8,14 +9,21 @@ import { parseMarkdown } from "./markdown-parse.ts";
 import { markdownExtensions } from "./markdown-schema.ts";
 import { markdownOrigin, serializeMarkdown } from "./markdown-serialize.ts";
 
-const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+/**
+ * The corpus: copies of the repository's markdown that together use every construct it does. The
+ * `test:markdown-sweep` script sets NYTE_MARKDOWN_CORPUS=repository to sweep the checkout instead.
+ */
+const sweep = process.env.NYTE_MARKDOWN_CORPUS === "repository";
 
-const files = execFileSync("git", ["ls-files", "-z", "*.md", "*.markdown"], {
-  cwd: root,
-  encoding: "utf8",
-})
-  .split("\0")
-  .filter((path) => path !== "");
+const root = sweep
+  ? execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim()
+  : fileURLToPath(new URL("markdown-corpus", import.meta.url));
+
+const files = sweep
+  ? execFileSync("git", ["ls-files", "-z", "*.md", "*.markdown"], { cwd: root, encoding: "utf8" })
+      .split("\0")
+      .filter((path) => path !== "")
+  : readdirSync(root);
 
 const schema = getSchema(markdownExtensions);
 
@@ -38,10 +46,6 @@ function detached(content: JSONContent): JSONContent {
 }
 
 describe("markdown round trip", () => {
-  it("covers the repository's markdown", () => {
-    expect(files.length).toBeGreaterThan(100);
-  });
-
   it.each(files)("%s comes back byte for byte", (path) => {
     const text = readFileSync(join(root, path), "utf8");
 
