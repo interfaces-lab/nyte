@@ -358,7 +358,6 @@ function MoveToBackground({
   );
 }
 
-/** Opens the job a shell call started in a terminal, in the foreground or the background, running or ended. */
 function OpenJobOutput({
   sessionId,
   job,

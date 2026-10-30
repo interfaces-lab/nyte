@@ -142,9 +142,8 @@ function blur(): void {
 }
 
 /**
- * Ctrl+Alt+Up walks back through the chat's prompts, past the loaded ones, and stops at the oldest;
- * Down returns to the draft. Recall reads the history before prompts only once it walks past them,
- * while the transcript pages in before its first message, a reply.
+ * Recall reads the history before prompts only once it walks past them, while the transcript
+ * pages in before its first message, a reply.
  */
 async function recallPrompts(editor: HTMLElement): Promise<void> {
   const reads = (text: string) =>
@@ -172,7 +171,6 @@ async function recallPrompts(editor: HTMLElement): Promise<void> {
     throw new Error(`recall read the history before ${recallReads || "nothing"}`);
 }
 
-/** Ctrl+/ opens the model picker from the composer or from no field, and closing it returns to the composer, in a chat and on the new-chat screen alike. */
 async function openModelPicker(editor: HTMLElement): Promise<void> {
   const menu = () => document.querySelector("[role='menu']");
 
@@ -199,7 +197,6 @@ async function openModelPicker(editor: HTMLElement): Promise<void> {
   }
 }
 
-/** Ctrl+V with no field focused moves focus into the composer, where the paste lands. */
 async function pasteFromNowhere(editor: HTMLElement): Promise<void> {
   blur();
   press(document.body, "v", { ctrlKey: true });

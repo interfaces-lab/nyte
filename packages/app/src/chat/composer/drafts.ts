@@ -115,10 +115,7 @@ function readOwner<Schema extends TSchema>(
   };
 }
 
-/**
- * A window's composer drafts and chat view state, kept by draft and session id so closing or
- * replacing a tab never strands a draft. Each tab's panes only point at the drafts they show.
- */
+/** Drafts are kept by draft and session id, not by tab, so closing or replacing a tab never strands one. */
 export class WindowDrafts {
   readonly sessions = new Map<SessionId, SessionViewState>();
   readonly #panes = new Map<string, Map<PaneId, PaneDraftState>>();
@@ -147,7 +144,6 @@ export class WindowDrafts {
     return this.#listed;
   };
 
-  /** Every draft with content in the window, newest first. */
   drafts(): readonly ChatDraft[] {
     return [...this.#panes.values()]
       .flatMap((panes) => [...panes.values()])

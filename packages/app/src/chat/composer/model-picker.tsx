@@ -88,7 +88,6 @@ const styles = create({
   optionLabel: { display: "inline-flex", alignItems: "center", gap: space.s2, minWidth: 0 },
 });
 
-/** What a pane's composer gives the picker in its frame: the shortcut that opens it, and the editor focus returns to when it closes. */
 export const ComposerPicker = createContext<
   | { readonly keyShortcuts: string; readonly editor: () => HTMLElement | null | undefined }
   | undefined

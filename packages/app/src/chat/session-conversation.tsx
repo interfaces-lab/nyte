@@ -156,7 +156,6 @@ const ANNOUNCEMENTS = {
   failed: "Response failed",
 } as const satisfies Readonly<Record<RunStatus["kind"], string>>;
 
-/** Says when the chat's run starts, needs an answer or ends, and how it ended. */
 function RunAnnouncer({ status }: { readonly status: RunStatus }): ReactElement {
   const announcement = ANNOUNCEMENTS[status.kind];
   const [shown, setShown] = useState(announcement);
@@ -226,7 +225,7 @@ function ActivationNotice({ activation }: { readonly activation: Activation }): 
   return null;
 }
 
-/** Marks the chat read through each new tip while the user is looking at it. Mounted only once the view's first frame landed, so the transcript keeps the read mark the visit opened at. */
+/** Mounted only once the view's first frame lands, so the transcript keeps the read mark the visit opened at. */
 function MarkSeen({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
   const tip = useChats((chats) => chats.get(sessionId)?.unreadTip?.commit);
   const looking = useChatWindow((snapshot) => snapshot.looking.has(sessionId));

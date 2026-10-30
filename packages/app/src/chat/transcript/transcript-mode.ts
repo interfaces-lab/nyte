@@ -6,7 +6,6 @@ export const FOLLOW_TOLERANCE = 4;
 /** How long the reader's input explains the scrolling that follows it. */
 const INPUT_WINDOW = 250;
 
-/** The reader's latest wheel, touch or key, whether it moved the view up, and whether the scrollbar is held. */
 export interface ReaderInput {
   readonly at: number;
   readonly upward: boolean;
@@ -15,12 +14,10 @@ export interface ReaderInput {
 
 export const NO_INPUT: ReaderInput = { at: -Infinity, upward: false, pressed: false };
 
-/** Whether the reader is at the view now: holding the scrollbar, or with input in the last 250 ms. */
 export function touching(input: ReaderInput, now: number): boolean {
   return input.pressed || now - input.at <= INPUT_WINDOW;
 }
 
-/** Whether the reader is moving the view up now: an upward scroll is theirs, and following waits for them. */
 export function steeringUp(input: ReaderInput, now: number): boolean {
   return input.pressed || (touching(input, now) && input.upward);
 }
@@ -36,10 +33,8 @@ export type TranscriptMode =
   | { readonly kind: "reading"; readonly anchor: Anchor | null };
 
 /**
- * `scrolled` is a movement of the view: `upward` when it moved up on its own rather than because
- * the content shrank under it, `reader` when the reader's input explains it. `quiet` asks whether a
- * view near the end with no recent input should follow again. `touched` is the reader's input,
- * which takes over from a held anchor.
+ * In `scrolled`, `upward` means the view moved up on its own rather than because the content
+ * shrank under it, and `reader` means the reader's input explains it.
  */
 export type TranscriptEvent =
   | {

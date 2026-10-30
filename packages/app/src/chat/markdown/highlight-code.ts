@@ -13,13 +13,12 @@ function escapeHtml(text: string): string {
   return text.replaceAll(/[&<>"]/gu, (character) => HTML_ESCAPES.get(character) ?? character);
 }
 
-/** A highlighted token: its text and the CSS custom properties that colour it in each theme. */
+/** `style` sets the CSS custom properties that colour the token in each theme. */
 export interface HighlightToken {
   readonly content: string;
   readonly style: string;
 }
 
-/** The code's tokens, line by line, or undefined when the language isn't supported. */
 export function highlightTokens(
   code: string,
   language: string,

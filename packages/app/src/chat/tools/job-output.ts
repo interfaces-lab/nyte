@@ -6,11 +6,6 @@ import { readDeferred } from "../../lib/deferred.tsx";
 import { openJobTerminal } from "../../workbench/commands.ts";
 import { workbenchViewKey } from "../../workbench/paths.ts";
 
-/**
- * Opens a job's output in a workbench terminal and focuses it: a running job's live output, or
- * what an ended one wrote. `session` is the chat that started the job; its row names the
- * workspace the job runs in.
- */
 export function openJobOutput(session: SessionId, job: JobView): void {
   const workspace = findSessionRow(session)?.workspace;
 

@@ -26,7 +26,6 @@ const styles = create({
   },
 });
 
-/** How full the chat's context window is, once the host knows the window. */
 export function ContextRing({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
   const store = sessionWatch(sessionId);
   const tokens = useWatchSelect(store, (state) => state.value?.context.tokens ?? 0);

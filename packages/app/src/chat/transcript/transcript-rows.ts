@@ -42,7 +42,6 @@ export type TurnItemRow =
   | (RowLayout & ResponseRow)
   | (RowLayout & { readonly kind: "failure"; readonly failure: Failure });
 
-/** A finished turn's final reply ends in its actions, and names how long the turn worked before it. */
 type ResponseRow = { readonly kind: "response"; readonly messages: readonly TextMessage[] } & (
   | { readonly ended: false }
   | {
@@ -76,7 +75,7 @@ export type TranscriptRow =
       readonly files: SessionView["changes"];
     });
 
-/** The "New" line before the first unread reply. It belongs to the reader's visit, not to the view, so the transcript inserts it into the projected rows. */
+/** Belongs to the reader's visit, not the view, so the transcript inserts it into the projected rows. */
 export type DividerRow = RowLayout & { readonly kind: "divider" };
 
 const NO_USERS: readonly never[] = [];
@@ -247,7 +246,6 @@ function turnRows(
   return rows;
 }
 
-/** A part still streaming, running or waiting; the step group holding one is live. */
 function inFlight(message: StepMessage): boolean {
   return message.status.kind === "live" || message.status.kind === "waiting";
 }
@@ -258,7 +256,7 @@ function displayMessages(item: TranscriptDisplayPart): readonly Message[] {
   return item.message.kind === "user" ? [] : [item.message];
 }
 
-/** Wall-clock time from the turn's start to the later of its final reply's start and its last work settling. A clipped turn's earlier work isn't loaded but did happen. */
+/** A clipped turn's earlier work isn't loaded but did happen, so this counts from the turn's start. */
 function workedMs(
   turn: TurnMessages,
   work: readonly Message[],
@@ -493,7 +491,6 @@ export function dividerKey(reply: Reply): string {
   return `unread-divider:${reply.id}`;
 }
 
-/** `rows` with the "New" divider before the row that shows `reply`. */
 export function withDivider(
   rows: readonly RowLayout[],
   reply: Reply | undefined,
@@ -541,7 +538,7 @@ function withMessage(row: TranscriptRow, slot: TranscriptSlot): TranscriptRow | 
   }
 }
 
-/** Swaps streamed messages into their rows. A status change reprojects, since a step row's `running` reads it. */
+/** A status change reprojects, since a step row's `running` reads it. */
 function streamed(previous: Projection, state: SessionState): Projection | undefined {
   const before = previous.state.value;
   const after = state.value;

@@ -121,12 +121,10 @@ export function userDisplayText(source: string): string {
     .join("");
 }
 
-/** A finished turn's wall-clock work, rounded up to the second: "Worked for 2m 47s". */
 export function workedFor(ms: number): string {
   return `Worked for ${formatWholeDuration(Math.ceil(ms / 1000) * 1000)}`;
 }
 
-/** How long ago a reply was sent: "Just now" under a minute, then "4m ago" through "1y ago". */
 export function replyAge(at: number, now: number): string {
   const minutes = Math.floor(Math.max(0, now - at) / 60_000);
   const hours = Math.floor(minutes / 60);

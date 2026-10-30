@@ -29,7 +29,6 @@ const styles = create({
   detailBody: { display: "flex", flex: 1, minHeight: 0, overflow: "clip" },
 });
 
-/** The agents a chat's tray lists, by the one tray rule. */
 export function listAgents(
   tasks: readonly Task[],
   cleared: ReadonlySet<string>,
@@ -40,7 +39,6 @@ export function listAgents(
   );
 }
 
-/** The one mark a pill draws for what it lists: work still going, then work waiting on the user, then a failure. */
 export function pillState(tasks: readonly Task[]): TaskState {
   const states = tasks.map((task) => task.state);
 
@@ -52,7 +50,6 @@ export function pillState(tasks: readonly Task[]): TaskState {
   return states.includes("failed") ? "failed" : "done";
 }
 
-/** How a pill counts what it lists: those still going, then those ended, by how they ended. */
 export function pillCounts(tasks: readonly Task[]): string {
   const going = tasks.filter((task) => !taskEnded(task.state)).length;
   const failed = tasks.filter((task) => task.state === "failed").length;
@@ -65,10 +62,6 @@ export function pillCounts(tasks: readonly Task[]): string {
   ].join(", ");
 }
 
-/**
- * The chat's agents over its composer: a pill, the list, and one agent's chat as a preview. Every
- * agent still going is listed, and each ended one until the user clears it.
- */
 export function SubagentTray({
   parentSessionId,
   agents,
@@ -79,7 +72,6 @@ export function SubagentTray({
   detail,
 }: {
   readonly parentSessionId: SessionId;
-  /** The agents the tray lists. */
   readonly agents: readonly ChildTask[];
   readonly view: SubagentTrayView;
   readonly onViewChange: (view: SubagentTrayView) => void;

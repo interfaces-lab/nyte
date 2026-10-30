@@ -114,7 +114,6 @@ interface TranscriptControls {
   readonly hold: (element: Element) => void;
   readonly keep: (element: Element) => () => void;
   readonly page: (direction: 1 | -1) => void;
-  /** Places the row a third of the way down the view and reads from it. */
   readonly reveal: (key: string) => void;
 }
 
@@ -226,9 +225,7 @@ export function TranscriptContent({
   readonly renderRow: (index: number) => ReactNode;
   /** The key of a row whose place against the view `onPlace` reports. */
   readonly marker?: string;
-  /** Called when the reader's place changes. */
   readonly onPlace?: (place: TranscriptPlace) => void;
-  /** Floats over the top of the view. */
   readonly overlay?: ReactNode;
 }): ReactElement {
   const {
@@ -736,7 +733,6 @@ function ViewportInput({
   readonly content: RefObject<HTMLDivElement | null>;
   readonly onPresent: () => void;
   readonly onHold: (element: Element) => void;
-  /** The reader's wheel, touch, key or scrollbar press, and whether it moves the view up. */
   readonly onInput: (upward: boolean) => void;
   readonly onPress: (pressed: boolean) => void;
   readonly onSelectionChange: () => void;

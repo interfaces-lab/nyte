@@ -7,7 +7,6 @@ import { pillLabel } from "./transcript-unread.ts";
 import type { NewMessagesPill } from "./transcript-unread.ts";
 import { dividerStyles, messageScrollerStyles } from "./transcript.stylex.ts";
 
-/** The "New" line before the first unread reply. */
 export function UnreadDivider(): ReactElement {
   return (
     <div data-unread-divider {...props(text.sm, dividerStyles.root)}>
@@ -20,7 +19,6 @@ export function UnreadDivider(): ReactElement {
   );
 }
 
-/** The new-messages pill over the top of the transcript, in a polite live region so its arrival is announced. */
 export function NewMessages({
   pill,
   onOpen,
