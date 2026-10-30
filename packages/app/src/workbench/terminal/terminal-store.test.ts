@@ -168,10 +168,15 @@ function tabId(): string {
 
 const storage = new Map<string, string>();
 
+let full = false;
+
 vi.stubGlobal("window", {
   localStorage: {
     getItem: (key: string) => storage.get(key) ?? null,
-    setItem: (key: string, value: string) => storage.set(key, value),
+    setItem: (key: string, value: string) => {
+      if (full) throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+      storage.set(key, value);
+    },
     removeItem: (key: string) => storage.delete(key),
   },
 });
@@ -180,6 +185,7 @@ beforeEach(() => {
   started.length = 0;
   running = new Map();
   storage.clear();
+  full = false;
 });
 
 describe("shell terminals", () => {
@@ -198,6 +204,27 @@ describe("shell terminals", () => {
     await terminalActions.write(id, "pwd\r");
 
     assert.equal(getTerminal(id)?.state.kind, "running");
+    await terminalActions.close(id);
+  });
+
+  test("a started shell keeps running and streaming when its recovery record can't be stored", async () => {
+    next = fakeJob("unsaved");
+    const job = next;
+    const id = tabId();
+    full = true;
+
+    await expect(terminalActions.create({ id, workspacePath: "/workspace" })).rejects.toThrow(
+      "The quota has been exceeded.",
+    );
+    full = false;
+    assert.equal(getTerminal(id)?.state.kind, "running");
+    assert.equal(storage.has(`nyte.terminal.${id}`), false);
+
+    job.print("$ ");
+    const output = sink();
+    attachTerminalOutput(id, output);
+    await vi.waitFor(() => assert.equal(output.contents, "$ "));
+    assert.equal(job.stopped, 0);
     await terminalActions.close(id);
   });
 
