@@ -111,6 +111,16 @@ export class WatchStore<T> {
     if (this.active) this.stop = this.start();
   };
 
+  /** Starts over on the current connection, keeping its listeners: drops the value and reopens while anyone listens. */
+  reset(): void {
+    this.stop?.();
+    this.stop = undefined;
+    this.failures = 0;
+    this.publish(UNSTARTED);
+
+    if (this.active) this.stop = this.start();
+  }
+
   /** Hears every value as it arrives. */
   subscribe = (listener: () => void): (() => void) => this.listen(this.listeners, listener);
 
@@ -248,10 +258,7 @@ export function watchFamily<K extends string, T>(
 
   registries.add({
     clear() {
-      const previous = [...stores.values()];
-      stores.clear();
-
-      for (const store of previous) store.dispose();
+      for (const store of stores.values()) store.reset();
     },
   });
 
