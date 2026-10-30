@@ -1,3 +1,4 @@
+import { toast } from "@nyte-ai/ui/toast";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 
@@ -28,9 +29,24 @@ export function readStored<S extends TSchema, Fallback>(
   return Value.Check(schema, value) ? value : fallback;
 }
 
-/** A write the storage refuses throws. */
+/** A write the storage refuses keeps the stored value and is reported, not thrown. */
 export function writeStored(area: StorageArea | undefined, key: string, value: unknown): void {
-  area?.setItem(key, JSON.stringify(value));
+  if (area === undefined) return;
+  const text = JSON.stringify(value);
+
+  void new Promise<void>((resolve) => {
+    area.setItem(key, text);
+    resolve();
+  }).catch(reportRefusedWrite);
+}
+
+function reportRefusedWrite(): void {
+  toast.add({
+    type: "error",
+    id: "storage-full",
+    title: "Storage is full",
+    description: "Some changes won't be kept after a reload.",
+  });
 }
 
 export function removeStored(area: StorageArea | undefined, key: string): void {
@@ -55,7 +71,6 @@ export interface Persisted<T> {
   readonly subscribe: (listener: () => void) => () => void;
 }
 
-/** Writes before it publishes, so a write the storage refuses changes nothing and throws. */
 export function persisted<S extends TSchema, Fallback>(
   key: string,
   schema: S,
@@ -74,12 +89,12 @@ export function persisted<S extends TSchema, Fallback>(
   return {
     get: () => (loaded ??= { value: readStored(area, key, schema, fallback) }).value,
     set(value) {
-      writeStored(area, key, value);
       publish(value);
+      writeStored(area, key, value);
     },
     remove() {
-      removeStored(area, key);
       publish(fallback);
+      removeStored(area, key);
     },
     subscribe(listener) {
       listeners.add(listener);

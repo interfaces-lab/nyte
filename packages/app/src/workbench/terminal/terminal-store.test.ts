@@ -213,9 +213,7 @@ describe("shell terminals", () => {
     const id = tabId();
     full = true;
 
-    await expect(terminalActions.create({ id, workspacePath: "/workspace" })).rejects.toThrow(
-      "The quota has been exceeded.",
-    );
+    await terminalActions.create({ id, workspacePath: "/workspace" });
     full = false;
     assert.equal(getTerminal(id)?.state.kind, "running");
     assert.equal(storage.has(`nyte.terminal.${id}`), false);
