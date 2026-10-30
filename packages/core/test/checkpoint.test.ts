@@ -4,6 +4,7 @@ import { assert, expect, it } from "vitest";
 import { until } from "../src/harness.ts";
 import { memoryStore } from "../src/store.ts";
 import type { Plugin, StoreConnection } from "../src/index.ts";
+import { addWorkspace, createDisk, fakeProvider } from "./fake-env.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import { echo } from "./turn-support.ts";
 
@@ -105,4 +106,38 @@ it("folds the log from its start past a checkpoint it cannot read", async () => 
   expect(replayed).toContain(asSeq(0));
   expect(view.seq).toBe(tail);
   expect(view.messages).toHaveLength(2);
+});
+
+it("counts no background work on a head restored from a checkpoint taken while a job ran", async () => {
+  const store = memoryStore();
+  const connection = await store.open();
+  const disk = createDisk();
+  disk.directories.add("/work/project");
+
+  const environment: Plugin<"core"> = {
+    id: "fake-environment",
+    environment: fakeProvider(disk),
+  };
+
+  const fake = fakeModels();
+  fake.reply(
+    { content: [{ type: "text", text: "Hello." }] },
+    { content: [{ type: "text", text: "Read it." }] },
+  );
+  const writer = await open(fake, { store, plugins: [environment] });
+  const workspace = await addWorkspace(writer);
+  const { session, receipt } = await writer.sessions.start({ workspace, content: "Hi." });
+  await receipt.settled();
+  await writer.workspace(workspace).jobs.start({ command: "pnpm dev", session: session.id });
+  await (await session.head(main).send("x".repeat(1_100_000))).settled();
+
+  expect((await session.view()).heads[0]?.background).toEqual({ working: 1, waiting: 0 });
+  await until(async () => (await connection.checkpoints?.read(session.id)) ?? undefined);
+  await writer.close();
+
+  await using reader = await open(fakeModels(), { store, plugins: [environment] });
+  const view = await reader.session(session.id).head(main).view();
+
+  expect(view.background).toEqual([]);
+  expect(view.heads[0]?.background).toEqual({ working: 0, waiting: 0 });
 });
