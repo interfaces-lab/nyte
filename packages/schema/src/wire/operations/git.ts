@@ -53,6 +53,7 @@ export const GIT_OPERATIONS = {
     kind: "query",
     input: wireObject({
       ...WORKSPACE,
+      head: Type.Optional(idSchema<"git-commit">()),
       cursor: Type.Optional(idSchema<"cursor">()),
       limit: Type.Optional(Type.Number()),
     }),

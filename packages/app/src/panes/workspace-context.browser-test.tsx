@@ -384,13 +384,83 @@ async function checkBranches(): Promise<string> {
   }
 }
 
+/** The host's HEAD already reads topic while the status watch still reports main. */
+async function checkPinnedHistory(): Promise<string> {
+  queryClient.clear();
+  queryClient.setQueryData(keys.host, {
+    workspace: { id: asId<"workspace">("nyte"), path: "/u/dev/nyte", name: "nyte" },
+  });
+  const watched = viewStream(onMain);
+
+  const branches = new Map([
+    ["4f2a9c1d0e", "main"],
+    ["7b3e5d2a1f", "topic"],
+  ]);
+
+  installConnection(
+    scriptedConnection({
+      workspaces,
+      sessions,
+      git: {
+        watch: () => watched.watch(),
+        log: async (input) => {
+          const branch = input?.head === undefined ? "topic" : branches.get(input.head);
+
+          return {
+            items: [
+              {
+                id: asId<"git-commit">(branch ?? "unknown"),
+                subject: `${branch ?? "unknown"} tip`,
+                author: "tester",
+                committedAt: 0,
+                parents: [],
+              },
+            ],
+            next: null,
+          };
+        },
+      },
+    }).connection,
+  );
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+
+  flushSync(() =>
+    root.render(
+      <QueryClientProvider client={queryClient}>
+        <History />
+      </QueryClientProvider>,
+    ),
+  );
+
+  try {
+    const first = await until(
+      () => shown("[data-history]") !== "" && shown("[data-history]"),
+      "the first history read",
+    );
+
+    expectRule(first === "main tip", `history keyed by main reads main, not ${first}`);
+    watched.push(onTopic);
+    await until(() => shown("[data-history]") === "topic tip", "history to follow the checkout");
+
+    return failures.length === 0 ? "passed" : failures.join("\n");
+  } finally {
+    flushSync(() => root.unmount());
+    container.remove();
+    queryClient.clear();
+  }
+}
+
 export function run(): Promise<string> {
   const watchdog = new Promise<string>((resolve) =>
     window.setTimeout(() => resolve(`timed out\n${failures.join("\n")}`), 30_000),
   );
 
   return Promise.race([
-    checkMenu().then((menu) => (menu === "passed" ? checkBranches() : menu)),
+    checkMenu()
+      .then((menu) => (menu === "passed" ? checkBranches() : menu))
+      .then((branches) => (branches === "passed" ? checkPinnedHistory() : branches)),
     watchdog,
   ]);
 }

@@ -378,6 +378,29 @@ describe.skipIf(!hasGit)("localGit", () => {
     expect(blame.lines[0]?.at).toBeGreaterThan(0);
   });
 
+  it("pages history from the commit it was asked for after a checkout moves HEAD", async () => {
+    const { root, git } = await repository();
+
+    for (const name of ["two", "three"]) {
+      await writeFile(join(root, `${name}.txt`), name);
+      sh(root, "add", "-A");
+      sh(root, "commit", "-q", "-m", `add ${name}`);
+    }
+
+    const main = (await repo(git)).head;
+    assert(main !== null);
+    sh(root, "checkout", "-q", "-b", "side", "HEAD~2");
+    await writeFile(join(root, "side.txt"), "side");
+    sh(root, "add", "-A");
+    sh(root, "commit", "-q", "-m", "on side");
+
+    const page = await git.log({ head: main, limit: 2 });
+    expect(page.items.map((commit) => commit.subject)).toEqual(["add three", "add two"]);
+    assert(page.next !== null);
+    const rest = await git.log({ head: main, cursor: page.next, limit: 2 });
+    expect(rest.items.map((commit) => commit.subject)).toEqual(["first"]);
+  });
+
   it("stages, unstages, discards and commits under expect, answering stale, unchanged and rejected", async () => {
     const { root, git } = await repository();
     await writeFile(join(root, "a.txt"), "edited\n");
