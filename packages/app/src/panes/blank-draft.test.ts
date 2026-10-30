@@ -297,3 +297,31 @@ test("a reload keeps a draft's text and small images but not an image too large 
     ["icon"],
   );
 });
+
+test("a draft the storage refuses doesn't stop the other drafts or the index from being written", () => {
+  vi.useFakeTimers();
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
+  const values = memoryStorage();
+  let refused = "";
+
+  const storage = {
+    ...values,
+    setItem: (key: string, value: string) => {
+      if (refused !== "" && key.includes(refused))
+        throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+      values.setItem(key, value);
+    },
+  };
+
+  const first = new PaneController({ storage, storageKey: "panes-refused" });
+  writeDraft(first, "Refused");
+  refused = first.viewState.readBlank("primary").id;
+  first.newChat();
+  writeDraft(first, "Kept");
+  vi.advanceTimersByTime(200);
+
+  const reloaded = new PaneController({ storage: values, storageKey: "panes-refused" });
+  assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "Kept");
+});

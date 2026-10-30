@@ -297,7 +297,6 @@ export class WindowDrafts {
     }
   }
 
-  /** An entry leaves the queue before its write, so a value the storage refuses throws once instead of blocking every later draft. */
   #flush(): void {
     const persistence = this.#persistence;
 
