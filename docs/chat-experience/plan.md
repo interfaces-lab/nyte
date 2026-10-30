@@ -65,7 +65,7 @@ Status: `todo`, `doing`, `done`, `deferred`.
 | --- | --- | --- | --- |
 | B1 | While a run is working, the placeholder names what Enter does ("Steer without stopping" or "Queue for next turn") | composer states test | done |
 | B2 | One name for steering everywhere in the queue UI: "Steer", tooltip "Sends without stopping the agent" | composer queue test | done |
-| B3 | Prompt history: Ctrl+Alt+Up/Down walks this chat's last 10 prompts, then returns to the draft | composer test | done |
+| B3 | Prompt history: Ctrl+Alt+Up/Down walks this chat's last 10 prompts, then returns to the draft | composer test | done, including a cold-opened long turn: the prompt leading the loaded messages counts, and walking past the loaded prompts reads older ones from history, up to 10 |
 | B4 | Cmd/Ctrl+/ opens the model picker; closing it returns focus to the composer | composer test | done (follow-up chats; new-chat screen needs a one-line wiring) |
 | B5 | Cmd/Ctrl+V with no field focused pastes into the composer | composer test | done |
 | B6 | The terminal chip stays visible and pressed while its list is open, and closes it | tray test | done |

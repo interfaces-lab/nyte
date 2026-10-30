@@ -34,8 +34,8 @@ import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerImageAttachment } from "../../panes/session-view-state.ts";
 import { ComposerFooter } from "./composer-footer.tsx";
-import { recallStep, recentPrompts } from "./composer-history.ts";
-import type { RecallDirection } from "./composer-history.ts";
+import { loadedPrompts, readPrompts, recallStep } from "./composer-history.ts";
+import type { PromptHistory, RecallDirection } from "./composer-history.ts";
 import { deliveryChoices, nextToSteer } from "./composer-keys.ts";
 import { deliverEdit, deliverSubmission } from "./composer-send.ts";
 import { contentDraftText } from "../../references/message-references.ts";
@@ -223,17 +223,23 @@ export function Composer({
   };
 
   const recalled = useRef<
-    { readonly position: number; readonly draft: ComposerViewState } | undefined
+    | {
+        readonly position: number;
+        readonly draft: ComposerViewState;
+        readonly history: PromptHistory;
+      }
+    | undefined
   >(undefined);
 
-  const recall = (direction: RecallDirection): boolean => {
-    const prompts = recentPrompts(sessionWatch(sessionId).value?.messages ?? []);
-    const position = recallStep(prompts.length, recalled.current?.position, direction);
+  const reading = useRef(false);
+
+  const step = (history: PromptHistory, direction: RecallDirection): boolean => {
+    const position = recallStep(history.prompts.length, recalled.current?.position, direction);
 
     if (position === recalled.current?.position) return false;
     const draft = recalled.current?.draft ?? latestViewState.current;
-    const prompt = position === undefined ? undefined : prompts[position];
-    recalled.current = position === undefined ? undefined : { position, draft };
+    const prompt = position === undefined ? undefined : history.prompts[position];
+    recalled.current = position === undefined ? undefined : { position, draft, history };
     updateViewState((current) =>
       prompt === undefined
         ? {
@@ -244,6 +250,34 @@ export function Composer({
           }
         : { ...current, draft: prompt, selectionStart: prompt.length, selectionEnd: prompt.length },
     );
+
+    return true;
+  };
+
+  const recall = (direction: RecallDirection): boolean => {
+    const walk = recalled.current;
+    const history = walk?.history ?? loadedPrompts(sessionWatch(sessionId).value);
+    const older = walk === undefined ? 0 : walk.position + 1;
+
+    if (direction === "newer" || older < history.prompts.length || history.before === null)
+      return step(history, direction);
+
+    if (reading.current) return true;
+    reading.current = true;
+    void readPrompts(connection().session(sessionId), history, older + 1)
+      .then(
+        (more) => {
+          if (recalled.current === walk) step(more, direction);
+        },
+        (cause: unknown) =>
+          setFeedback({
+            kind: "error",
+            message: `Couldn't read earlier prompts: ${errorMessage(cause)}`,
+          }),
+      )
+      .finally(() => {
+        reading.current = false;
+      });
 
     return true;
   };
