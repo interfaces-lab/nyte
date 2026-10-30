@@ -11,7 +11,7 @@ interface Child {
   readonly head: HeadName;
   readonly startedBy: CallId | null;
   title: string;
-  /** How the child's own run stands, unknown until one of its runs changes in this process. */
+  /** How the run on the child's main head stands, unknown until it changes in this process or is read from the store. */
   own: BackgroundItem["state"] | null;
   item: BackgroundItem | null;
 }
@@ -56,6 +56,8 @@ export function createChildTable(
 
     if (child === undefined) return;
 
+    if (event.kind === "run" && event.head !== MAIN) return;
+
     if (event.kind === "run") child.own = runState(event);
     else if (event.kind === "session") child.title = event.info.name ?? CHILD_TITLE;
     else if (event.kind !== "background") return;
@@ -80,6 +82,22 @@ export function createChildTable(
       if (child.own !== null || own === null) return;
       child.own = own;
       refresh(record.id, child);
+    },
+    forget(session) {
+      const child = children.get(session);
+
+      if (child === undefined) return;
+      children.delete(session);
+
+      if (child.item === null) return;
+      kernel.bus.publish(child.parent, {
+        seq: asSeq(0),
+        at: Date.now(),
+        head: child.head,
+        kind: "background",
+        change: "removed",
+        item: child.item,
+      });
     },
     background: (session) =>
       [...children.values()].flatMap((child) =>

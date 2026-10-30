@@ -213,6 +213,8 @@ interface Handles {
 export interface ChildTable {
   /** Follows the child `record` describes, from `own` when the caller read how its run stands, else from its next run change; a session without a parent is not a child. */
   link(record: SessionRecord, own: BackgroundItem["state"] | null): void;
+  /** Stops following a deleted child, removing its item from its parent's background. */
+  forget(session: SessionId): void;
   background(
     session: SessionId,
   ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];

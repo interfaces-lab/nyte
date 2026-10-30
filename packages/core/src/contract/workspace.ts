@@ -101,11 +101,12 @@ export interface GitApi {
     input: { readonly message: string; readonly files: "staged" | "all" | readonly string[] },
     options?: GitWrite,
   ): Promise<GitOutcome>;
+  /** Creates a branch; with `checkout`, switches to it, which answers `busy` with the runs while any run in the workspace is live. */
   branch(
     input: { readonly name: string; readonly checkout: boolean },
     options?: GitWrite,
   ): Promise<GitOutcome>;
-  /** Switches to an existing branch; git's refusal, such as local changes it would overwrite, comes back as `rejected`. */
+  /** Switches to an existing branch; `busy` with the runs while any run in the workspace is live, and git's refusal, such as local changes it would overwrite, comes back as `rejected`. */
   checkout(input: { readonly name: string }, options?: GitWrite): Promise<GitOutcome>;
   push(input?: { readonly setUpstream?: boolean }, options?: GitWrite): Promise<GitOutcome>;
 }

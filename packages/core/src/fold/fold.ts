@@ -37,7 +37,6 @@ import type {
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import { readPositionCommit, START } from "../store/session.ts";
 import { applyCall, describeLiveActivity } from "./calls.ts";
-import { countBackground } from "./background.ts";
 import { mergeChanges } from "./changes.ts";
 import {
   committed,
@@ -168,20 +167,15 @@ function apply(draft: Draft, event: SessionEvent): void {
     case "call":
       return applyCall(draft, event);
     case "background":
-      return eachHead(draft, event.head, (head) => {
-        const background = upsert(head.background, event.item);
-        const counts = countBackground(background);
-        const known = head.info.background;
-
-        return {
-          ...head,
-          info:
-            known.working === counts.working && known.waiting === counts.waiting
-              ? head.info
-              : { ...head.info, background: counts },
-          background,
-        };
-      });
+      return eachHead(draft, event.head, (head) => ({
+        ...head,
+        background:
+          "change" in event
+            ? head.background.filter(
+                (item) => item.kind !== event.item.kind || item.id !== event.item.id,
+              )
+            : upsert(head.background, event.item),
+      }));
     case "configured":
       return eachHead(draft, event.head, (head) => ({
         ...head,

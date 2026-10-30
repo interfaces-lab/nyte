@@ -20,16 +20,16 @@ import type { FoldHead, FoldState, HeadPair, Path } from "../contract/fold.ts";
 import { text, thinking } from "../contract/parts.ts";
 import { readPositionCommit, START } from "../store/session.ts";
 import { addUsage, ZERO_USAGE } from "../util/usage.ts";
+import { countBackground } from "./background.ts";
 import { emptyHead, reuse, snapshots } from "./draft.ts";
 
 const DEFAULT_TAIL = 200;
 
 const projections = new WeakMap<FoldHead, Map<PrincipalId, Map<number, SessionView>>>();
 
-const unreads = new WeakMap<
-  readonly HeadInfo[],
-  WeakMap<ReadonlyMap<HeadName, CommitId | null>, readonly HeadInfo[]>
->();
+const shownHeads = new WeakMap<readonly HeadInfo[], readonly HeadInfo[]>();
+
+const shownHead = new WeakMap<HeadInfo, HeadInfo>();
 
 const NOTHING_SEEN: ReadonlyMap<HeadName, CommitId | null> = new Map();
 
@@ -111,26 +111,40 @@ function readSeenThrough(state: FoldState, head: HeadName): number | null {
   return mark === null ? null : (state.commits.get(mark)?.at ?? null);
 }
 
+/** The heads as views send them: each head's info with its unread mark and the counts of its background items. */
 function headsFor(state: FoldState): readonly HeadInfo[] {
   const seen = state.seen.get(state.principal) ?? NOTHING_SEEN;
-  const known = unreads.get(state.headInfos) ?? new WeakMap();
-  const cached = known.get(seen);
-
-  if (cached !== undefined) return cached;
 
   const heads = reuse(
-    state.headInfos,
-    state.headInfos.map((info) => {
-      const unread = readPositionCommit(info.tip) !== (seen.get(info.name) ?? null);
-
-      return info.unread === unread ? info : { ...info, unread };
-    }),
+    shownHeads.get(state.headInfos) ?? state.headInfos,
+    state.headInfos.map((info) =>
+      showHead(
+        info,
+        readPositionCommit(info.tip) !== (seen.get(info.name) ?? null),
+        countBackground(state.heads.get(info.name)?.background ?? []),
+      ),
+    ),
   );
 
-  known.set(seen, heads);
-  unreads.set(state.headInfos, known);
+  shownHeads.set(state.headInfos, heads);
 
   return heads;
+}
+
+/** `info` with `unread` and `background`, the same object for the same values. */
+function showHead(info: HeadInfo, unread: boolean, background: HeadInfo["background"]): HeadInfo {
+  const known = shownHead.get(info) ?? info;
+
+  if (
+    known.unread === unread &&
+    known.background.working === background.working &&
+    known.background.waiting === background.waiting
+  )
+    return known;
+  const shown = { ...info, unread, background };
+  shownHead.set(info, shown);
+
+  return shown;
 }
 
 export function withPair(state: FoldState, head: HeadName, pair: HeadPair): FoldState {

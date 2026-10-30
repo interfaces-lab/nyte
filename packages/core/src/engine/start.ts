@@ -127,6 +127,7 @@ export async function discardSession(
   dropScans(kernel, (key) => key === session);
   await kernel.plugins.close(session);
   kernel.sessions.forget(session);
+  kernel.children.forget(session);
   releaseParts(kernel.partTable, session);
 
   await Promise.allSettled([

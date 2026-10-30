@@ -283,7 +283,12 @@ function refusalReason(outcome: Exclude<GitOutcome, { readonly kind: "applied" }
     case "rejected":
       return outcome.reason;
     case "busy":
-      return "A run is still writing to this workspace.";
+      if (outcome.runs.length === 0)
+        return "Another git command is using this repository. Try again when it finishes.";
+
+      return outcome.runs.length === 1
+        ? "An agent is working in this workspace. Stop it or let it finish, then try again."
+        : "Agents are working in this workspace. Stop them or let them finish, then try again.";
     case "stale":
       return "The repository changed. Try again.";
     case "unchanged":
