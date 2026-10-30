@@ -236,19 +236,26 @@ test("the integrated browser journey", async ({ desktop }) => {
     expect(scriptRequests).toBe(0);
   });
 
+  const still = panel.locator('img[src^="data:image/jpeg"]');
+
   await test.step("the shield menu names the host and pauses the page over its still", async () => {
-    const still = panel.locator('img[src^="data:image/jpeg"]');
-    await expect(still).toHaveCount(1);
     await expect.poll(() => pageShown(application, url)).toBe(true);
+    await expect(still).toHaveCount(0);
     await shield.click();
     await expect(
       page.getByRole("menuitemcheckbox", { name: "Block on 127.0.0.1", exact: true }),
     ).toBeChecked();
     await expect.poll(() => pageShown(application, url)).toBe(false);
     await expect(still).toHaveCount(1);
+    expect(
+      await still.evaluate(
+        (image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+      ),
+    ).toBe(true);
     await page.getByRole("menu").press("Escape");
     await expect(page.getByRole("menu")).toBeHidden();
     await expect.poll(() => pageShown(application, url)).toBe(true);
+    await expect(still).toHaveCount(0);
   });
 
   await test.step("a toast above the composer leaves the page showing", async () => {
@@ -263,6 +270,7 @@ test("the integrated browser journey", async ({ desktop }) => {
         await new Promise((done) => requestAnimationFrame(done));
     });
     expect(await pageShown(application, url)).toBe(true);
+    await expect(still).toHaveCount(0);
     await notice.evaluate((element) =>
       Promise.all(element.getAnimations().map((animation) => animation.finished)),
     );

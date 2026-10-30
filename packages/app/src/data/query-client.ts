@@ -43,7 +43,6 @@ export const keys = {
   workspaceFile: (path: string) => ["files", "document", path] as const,
   workspaceSearch: (workspace: string, input: { readonly query: string } | undefined) =>
     ["files", "search", workspace, input] as const,
-  browserFrame: (surface: string, url: string) => ["browser", "frame", surface, url] as const,
   browserHistory: (owner: string | null) => ["browser", "history", owner] as const,
   mermaid: (source: string) => ["mermaid", source] as const,
   highlight: (language: string, code: string) => ["highlight", language, code] as const,

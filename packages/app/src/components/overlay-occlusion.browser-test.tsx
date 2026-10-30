@@ -11,13 +11,19 @@ import "../theme/tokens.stylex.ts";
 
 const URL_UNDER_TEST = "https://example.com/";
 
+interface RecordedBounds extends BrowserBoundsMessage {
+  /** Whether the still had loaded in the slot when the panel sent these bounds. */
+  readonly still: boolean;
+}
+
 declare global {
   interface Window {
-    readonly __nyteBounds: readonly BrowserBoundsMessage[];
+    readonly __nyteBounds: readonly RecordedBounds[];
+    readonly __nyteCapture: { readonly calls: number; hold: boolean };
   }
 }
 
-function last(): BrowserBoundsMessage {
+function last(): RecordedBounds {
   const message = window.__nyteBounds.at(-1);
 
   if (message === undefined) throw new Error("The panel never reported bounds");
@@ -31,6 +37,17 @@ function check(condition: boolean, message: string): void {
 
 function still(): Element | null {
   return document.querySelector('section[aria-label="Browser"] img[src^="data:image/"]');
+}
+
+function frames(count: number): Promise<void> {
+  return new Promise((resolve) => {
+    const step = (left: number): void => {
+      if (left === 0) resolve();
+      else requestAnimationFrame(() => step(left - 1));
+    };
+
+    step(count);
+  });
 }
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
@@ -91,11 +108,17 @@ export async function run(): Promise<string> {
   await until(() => window.__nyteBounds.length > 0 && last().visible, "the page to be shown");
   const shown = last();
   check(shown.bounds.width > 0 && shown.bounds.height > 0, "The page was placed at zero size");
-  await until(() => still() !== null, "the still to sit under the shown page");
+  await frames(10);
+  check(
+    still() === null && window.__nyteCapture.calls === 0,
+    "The page was captured while nothing covered it",
+  );
 
   render(true);
   await until(() => !last().visible, "the page to hide under the menu");
   const hidden = last();
+  check(window.__nyteCapture.calls === 1, "Covering the page did not capture it exactly once");
+  check(hidden.still, "The page hid before its still had loaded under it");
   check(
     hidden.bounds.x === shown.bounds.x &&
       hidden.bounds.y === shown.bounds.y &&
@@ -103,10 +126,24 @@ export async function run(): Promise<string> {
       hidden.bounds.height === shown.bounds.height,
     "Hiding the page moved or resized it instead of leaving its bounds alone",
   );
-  check(still() !== null, "The still left when the page hid");
 
   render(false);
   await until(() => last().visible, "the page to come back when the menu closes");
+  check(still() !== null, "The still left before the page came back over it");
+  await until(() => still() === null, "the still to leave once the page shows");
+
+  window.__nyteCapture.hold = true;
+  render(true);
+  const covered = performance.now();
+  await frames(5);
+  check(last().visible, "The page hid before its capture arrived or the wait ran out");
+  await until(() => !last().visible, "the page to hide when its capture never arrives");
+  const waited = performance.now() - covered;
+  check(waited >= 400 && waited < 1_000, `The page waited ${String(waited)} ms for its capture`);
+  check(still() === null, "A still showed although no capture arrived");
+
+  render(false);
+  await until(() => last().visible, "the page to come back after a capture that never arrived");
 
   return "passed";
 }

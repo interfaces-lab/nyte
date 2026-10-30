@@ -1,7 +1,7 @@
 import { control, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { MouseEvent, ReactElement, ReactNode, RefObject } from "react";
 import type {
   BrowserBoundsMessage,
@@ -21,11 +21,12 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../../contract/nyte.ts";
 import { openExternal } from "../../lib/open-external.ts";
-import { keys } from "../../data/query-client.ts";
 import { displayAddress, parseWebUrl } from "./browser-address.ts";
 import { AddressField } from "./browser-address-field.tsx";
 import type { AddressFieldHandle } from "./browser-address-field.tsx";
 import { useBrowserHistory } from "./browser-history.ts";
+import { createPageCover } from "./browser-cover.ts";
+import type { PageStill } from "./browser-cover.ts";
 import { keyOwner } from "../../lib/focus-owner.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { overlayCovers, subscribeOverlayRects } from "../../components/overlay-occlusion.ts";
@@ -174,7 +175,7 @@ const styles = create({
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
-  frozenFrame: {
+  still: {
     position: "absolute",
     inset: 0,
     width: "100%",
@@ -207,24 +208,34 @@ function releaseSurface(surface: string): void {
 }
 
 interface SurfacePlacement {
-  readonly covered: boolean;
+  readonly still: string | undefined;
   readonly focus: () => void;
   readonly cancelFocus: () => void;
 }
 
 /**
- * Keeps the native view on the slot. Overlays are measured in an animation frame and the
- * page hides on the next one, so the overlay has painted over the still first.
+ * Keeps the native view on the slot. When an overlay covers the slot, `createPageCover`
+ * puts a still of the page under the view before hiding it, so the overlay paints over the
+ * still rather than a blank slot. A still for another page or surface is never drawn.
  */
 function useSurfacePlacement(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,
+  url: string,
   visible: boolean,
 ): SurfacePlacement {
-  const [covered, setCovered] = useState(false);
+  const [still, setStill] = useState<PageStill | undefined>(undefined);
   const lastRef = useRef<BrowserBoundsMessage | undefined>(undefined);
   const pageFocus = useRef(false);
   const placeRef = useRef<() => void>(() => undefined);
+
+  const capture = useEffectEvent(async (): Promise<PageStill | undefined> => {
+    const at = url;
+    const src = await browserBridge().captureFrame({ surface });
+
+    return src === undefined ? undefined : { url: at, src };
+  });
+
   // oxlint-disable-next-line nyte-code/no-direct-effect -- keeps the native view's bounds on the slot, measured before paint
   useLayoutEffect(() => {
     const element = slot.current;
@@ -233,18 +244,16 @@ function useSurfacePlacement(
     let frame: number | undefined;
 
     const measure = (): void => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
       frame = undefined;
       const rect = element.getBoundingClientRect();
+      const placed = visible && rect.width > 0 && rect.height > 0;
 
-      const overlapped = overlayCovers({
-        left: rect.left,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-      });
-
-      setCovered(overlapped);
-      const shown = visible && !overlapped && rect.width > 0 && rect.height > 0;
+      cover.update(
+        placed &&
+          overlayCovers({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }),
+      );
+      const shown = placed && !cover.hidden();
       const focus = shown && pageFocus.current && keyOwner() === undefined;
 
       if (shown) pageFocus.current = false;
@@ -271,6 +280,13 @@ function useSurfacePlacement(
       browserBridge().setBounds(message);
     };
 
+    const cover = createPageCover({
+      capture,
+      show: (next) => flushSync(() => setStill(next)),
+      drop: () => setStill(undefined),
+      hide: measure,
+    });
+
     const schedule = (): void => {
       if (frame === undefined) frame = requestAnimationFrame(measure);
     };
@@ -295,6 +311,7 @@ function useSurfacePlacement(
       placeRef.current = () => undefined;
       observer.disconnect();
       unsubscribe();
+      cover.dispose();
       window.removeEventListener("resize", schedule);
       document.removeEventListener("scroll", scrolled, { capture: true });
 
@@ -309,7 +326,7 @@ function useSurfacePlacement(
   }, [slot, surface, visible]);
 
   return {
-    covered,
+    still: still?.url === url ? still.src : undefined,
     focus: () => {
       pageFocus.current = true;
       placeRef.current();
@@ -318,29 +335,6 @@ function useSurfacePlacement(
       pageFocus.current = false;
     },
   };
-}
-
-/**
- * A still of the page, kept under the native view so hiding it never shows a blank slot.
- * It refreshes every second while the page shows; a capture for another page or surface
- * lands under its own key and is never drawn.
- */
-function usePageFrame(
-  surface: string,
-  url: string,
-  shown: boolean,
-  covered: boolean,
-): string | undefined {
-  const frame = useQuery({
-    queryKey: keys.browserFrame(surface, url),
-    queryFn: () => browserBridge().captureFrame({ surface }),
-    enabled: shown,
-    refetchInterval: covered ? false : 1000,
-    staleTime: 0,
-    gcTime: 0,
-  });
-
-  return shown ? frame.data : undefined;
 }
 
 const PERMISSION_NAMES = new Map([
@@ -433,8 +427,7 @@ export function BrowserPanel({
   const hasPage = state !== undefined && state.url !== "";
   const showSurface = visible && hasPage && state.error === undefined;
 
-  const page = useSurfacePlacement(slotRef, surface, showSurface);
-  const pageFrame = usePageFrame(surface, hasPage ? state.url : "", showSurface, page.covered);
+  const page = useSurfacePlacement(slotRef, surface, hasPage ? state.url : "", showSurface);
 
   const holdRef = useRef<SurfaceHold | undefined>(undefined);
 
@@ -821,8 +814,8 @@ export function BrowserPanel({
       )}
       <div {...props(styles.body)}>
         <div ref={slotRef} {...props(styles.slot)}>
-          {pageFrame !== undefined && (
-            <img src={pageFrame} alt="" aria-hidden="true" {...props(styles.frozenFrame)} />
+          {page.still !== undefined && (
+            <img src={page.still} alt="" aria-hidden="true" {...props(styles.still)} />
           )}
           {!hasPage && failure === undefined && (
             <div {...props(styles.message)}>
