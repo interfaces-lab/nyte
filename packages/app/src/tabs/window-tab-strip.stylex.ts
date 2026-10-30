@@ -112,6 +112,7 @@ export const stripStyles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+  labelUnread: { fontWeight: type.weightMedium, color: role.contentPrimary },
   splitMark: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
   close: { display: "inline-flex", flexShrink: 0, opacity: "var(--_close-opacity)" },
   closeVisible: { opacity: 1 },

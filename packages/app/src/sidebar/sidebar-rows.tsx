@@ -248,7 +248,7 @@ export function SessionRow({
 
   const titleLine = (
     <>
-      <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
+      <Row.Label xstyle={[styles.sessionLabel, unread && styles.unreadLabel]}>{title}</Row.Label>
       {showUpdated && (
         <Row.Meta xstyle={styles.rowMeta}>
           <TimeAgo timestamp={session.lastActivityAt} />

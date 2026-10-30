@@ -152,7 +152,9 @@ function TabItem({
             }
           >
             <span {...props(stripStyles.glyph)}>{tab.glyph}</span>
-            <span {...props(stripStyles.label)}>{tab.title}</span>
+            <span {...props(stripStyles.label, tab.unread && stripStyles.labelUnread)}>
+              {tab.title}
+            </span>
             {tab.split !== undefined && (
               <span {...props(stripStyles.splitMark)}>
                 <Icon name={tab.split === "down" ? "split-down" : "split-right"} size="xs" />
