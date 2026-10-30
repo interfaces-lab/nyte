@@ -15,7 +15,6 @@ const styles = create({
   secondary: { color: role.contentSecondary },
   primary: { color: role.contentPrimary },
   solid: { color: role.contentOnInteractiveStrong },
-  text: { color: role.contentInteractivePrimary },
 });
 
 function check(condition: boolean, message: string): void {
@@ -247,9 +246,7 @@ export async function run(): Promise<string> {
               ? styles.solid
               : forced && !disabled
                 ? styles.primary
-                : variant === "text"
-                  ? styles.text
-                  : styles.secondary;
+                : styles.secondary;
 
           const probe = document.createElement("span");
           probe.className = props(expectedStyle).className ?? "";
