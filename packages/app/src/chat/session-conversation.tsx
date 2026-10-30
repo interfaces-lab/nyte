@@ -236,7 +236,7 @@ function MarkSeen({ sessionId }: { readonly sessionId: SessionId }): ReactElemen
 
 function SeeTip({ sessionId }: { readonly sessionId: SessionId }): null {
   useMountEffect(() => {
-    void chatWindow.markRead([sessionId]);
+    chatWindow.markRead([sessionId]);
   });
 
   return null;
