@@ -541,6 +541,7 @@ function withMessage(row: TranscriptRow, slot: TranscriptSlot): TranscriptRow | 
   }
 }
 
+/** Swaps streamed messages into their rows. A status change reprojects, since a step row's `running` reads it. */
 function streamed(previous: Projection, state: SessionState): Projection | undefined {
   const before = previous.state.value;
   const after = state.value;
@@ -575,7 +576,8 @@ function streamed(previous: Projection, state: SessionState): Projection | undef
       known?.kind !== "part" ||
       message.kind !== "part" ||
       message.id !== known.id ||
-      message.turn !== known.turn
+      message.turn !== known.turn ||
+      message.status.kind !== known.status.kind
     )
       return undefined;
     const slot = transcriptSlot(message);
