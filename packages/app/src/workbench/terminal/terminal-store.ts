@@ -16,7 +16,7 @@ import { connected } from "../../data/connection.ts";
 import { hostWatch } from "../../data/watches.ts";
 import { workspacePath as pathOfWorkspace } from "../../data/workspaces.ts";
 import type { WorkbenchTabId } from "../model.ts";
-import { persisted } from "../persistence.ts";
+import { persisted } from "../../lib/storage.ts";
 
 type ShellTerminalState =
   | { readonly kind: "starting" }

@@ -9,7 +9,6 @@ import type { Decoded } from "@nyte-ai/schema";
 import { hashKey } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import { Type } from "typebox";
-import { Value } from "typebox/value";
 import type { HostState } from "../contract/bridge.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { newestModelCatalog } from "../data/catalog.ts";
@@ -18,6 +17,7 @@ import { sessionId } from "../data/schemas.ts";
 import { startupConnection } from "../data/startup.ts";
 import { activeTab, tabPlace } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
+import { localArea, readStored, removeStored, writeStored } from "../lib/storage.ts";
 
 const FIRST_FRAME_KEY = "nyte.first-frame.v1";
 
@@ -64,38 +64,16 @@ let seededHostId: string | undefined;
 
 let recording: { readonly host: string; readonly hostId: HostId } | undefined;
 
-function readStored(): string | null {
-  try {
-    return localStorage.getItem(FIRST_FRAME_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function parseFrame(stored: string | null, host: string): FirstFrame | undefined {
-  if (stored === null) return undefined;
-
-  try {
-    const parsed: unknown = JSON.parse(stored);
-
-    return Value.Check(FirstFrameType, parsed) && parsed.host === host ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export function forgetFirstFrame(): void {
-  try {
-    localStorage.removeItem(FIRST_FRAME_KEY);
-  } catch {}
+  removeStored(localArea(), FIRST_FRAME_KEY);
 }
 
 export function seedFirstFrame(host: string): boolean {
-  const stored = readStored();
-  const frame = parseFrame(stored, host);
+  const stored = readStored(localArea(), FIRST_FRAME_KEY, FirstFrameType, null);
+  const frame = stored?.host === host ? stored : undefined;
 
   if (frame === undefined) {
-    if (stored !== null) forgetFirstFrame();
+    forgetFirstFrame();
 
     return false;
   }
@@ -148,18 +126,13 @@ function write(): void {
 
   if (workspaces === undefined || directory === undefined) return;
 
-  try {
-    localStorage.setItem(
-      FIRST_FRAME_KEY,
-      JSON.stringify({
-        ...recording,
-        catalog,
-        workspaces,
-        sessions: recentRoots(directory),
-        folder: windowFolder(),
-      } satisfies FirstFrame),
-    );
-  } catch {}
+  writeStored(localArea(), FIRST_FRAME_KEY, {
+    ...recording,
+    catalog,
+    workspaces,
+    sessions: recentRoots(directory),
+    folder: windowFolder(),
+  } satisfies FirstFrame);
 }
 
 export function recordFirstFrame(host: string, hostId: HostId): void {

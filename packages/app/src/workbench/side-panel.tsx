@@ -4,7 +4,7 @@ import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react
 import { sidebar, workbench } from "../theme/schema.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { Type } from "typebox";
-import { persisted } from "./persistence.ts";
+import { persisted } from "../lib/storage.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const WIDTH_DEFAULT = 200;

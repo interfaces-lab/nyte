@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import { localArea, readStored, type StorageArea, writeStored } from "../lib/storage.ts";
 
 const STORAGE_KEY = "nyte.desktop.changes-viewed.v1";
 
@@ -33,28 +33,14 @@ interface ViewedFile {
   readonly digest: string;
 }
 
-type ViewedStorage = Pick<Storage, "getItem" | "setItem">;
-
 interface ChangesViewedOptions {
-  readonly storage?: ViewedStorage;
+  readonly storage?: StorageArea;
   readonly now?: () => number;
   readonly maxFilesPerRepository?: number;
   readonly repositoryRetentionMs?: number;
 }
 
 const EMPTY_CHANGES_VIEWED: ChangesViewed = {};
-
-function decodeChangesViewed(serialized: string | null): ChangesViewed {
-  if (serialized === null) return EMPTY_CHANGES_VIEWED;
-
-  try {
-    const parsed: unknown = JSON.parse(serialized);
-
-    return Value.Check(changesViewedSchema, parsed) ? parsed : EMPTY_CHANGES_VIEWED;
-  } catch {
-    return EMPTY_CHANGES_VIEWED;
-  }
-}
 
 export function patchDigest(patch: string): string {
   let low = 0x811c9dc5;
@@ -78,7 +64,7 @@ function markState(mark: ViewedMark | undefined, digest: string): ViewedState {
 }
 
 class ChangesViewedStore {
-  readonly #storage: ViewedStorage | undefined;
+  readonly #storage: StorageArea | undefined;
   readonly #now: () => number;
   readonly #maxFiles: number;
   readonly #retentionMs: number;
@@ -91,9 +77,9 @@ class ChangesViewedStore {
     this.#maxFiles = options.maxFilesPerRepository ?? MAX_FILES_PER_REPOSITORY;
     this.#retentionMs = options.repositoryRetentionMs ?? REPOSITORY_RETENTION_MS;
 
-    try {
-      this.#viewed = this.#prune(decodeChangesViewed(this.#storage?.getItem(STORAGE_KEY) ?? null));
-    } catch {}
+    this.#viewed = this.#prune(
+      readStored(this.#storage, STORAGE_KEY, changesViewedSchema, EMPTY_CHANGES_VIEWED),
+    );
   }
 
   getSnapshot = (): ChangesViewed => this.#viewed;
@@ -158,11 +144,10 @@ class ChangesViewedStore {
       [root]: { touchedAt: this.#now(), files: bounded },
     });
 
-    this.#viewed = Object.keys(bounded).length === 0 ? this.#withoutRepository(next, root) : next;
+    const viewed = Object.keys(bounded).length === 0 ? this.#withoutRepository(next, root) : next;
 
-    try {
-      this.#storage?.setItem(STORAGE_KEY, JSON.stringify(this.#viewed));
-    } catch {}
+    writeStored(this.#storage, STORAGE_KEY, viewed);
+    this.#viewed = viewed;
 
     for (const listener of this.#listeners) listener();
   }
@@ -198,12 +183,4 @@ class ChangesViewedStore {
   }
 }
 
-function browserStorage(): ViewedStorage | undefined {
-  try {
-    return typeof window === "undefined" ? undefined : window.localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
-export const changesViewed = new ChangesViewedStore({ storage: browserStorage() });
+export const changesViewed = new ChangesViewedStore({ storage: localArea() });

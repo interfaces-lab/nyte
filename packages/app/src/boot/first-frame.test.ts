@@ -7,13 +7,16 @@ import { sessionRow } from "../../test/view-fixtures.ts";
 
 const stored = new Map<string, string>();
 
-vi.stubGlobal("localStorage", {
-  getItem: (key: string) => stored.get(key) ?? null,
-  setItem: (key: string, value: string) => stored.set(key, value),
-  removeItem: (key: string) => stored.delete(key),
-});
-
-vi.stubGlobal("window", new EventTarget());
+vi.stubGlobal(
+  "window",
+  Object.assign(new EventTarget(), {
+    localStorage: {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+      removeItem: (key: string) => stored.delete(key),
+    },
+  }),
+);
 
 vi.stubGlobal("document", Object.assign(new EventTarget(), { visibilityState: "visible" }));
 

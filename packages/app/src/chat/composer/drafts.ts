@@ -1,6 +1,5 @@
 import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
-import { Value } from "typebox/value";
 import type { PaneId } from "../../panes/pane-layout.ts";
 import {
   type ChatDraft,
@@ -21,6 +20,7 @@ import {
 } from "../../panes/session-view-state.ts";
 import type { SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
+import { readStored, removeStored, type StorageArea, writeStored } from "../../lib/storage.ts";
 
 const FLUSH_DEBOUNCE_MS = 200;
 
@@ -46,7 +46,7 @@ export type LocatedDraft =
 const PANE_IDS = ["primary", "secondary"] as const;
 
 interface Persistence {
-  readonly storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+  readonly storage: StorageArea;
   readonly storageKey: string;
 }
 
@@ -99,49 +99,19 @@ function composerView(
   };
 }
 
-function parseStored<Schema extends TSchema>(
-  schema: Schema,
-  value: string | null,
-): Static<Schema> | undefined {
-  if (value === null) return undefined;
-
-  try {
-    const parsed: unknown = JSON.parse(value);
-
-    return Value.Check(schema, parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function readStored(persistence: Persistence, key: string): string | null {
-  try {
-    return persistence.storage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeStored(persistence: Persistence, key: string, value: string | undefined): void {
-  try {
-    if (value === undefined) persistence.storage.removeItem(key);
-    else persistence.storage.setItem(key, value);
-  } catch {}
-}
-
 function readOwner<Schema extends TSchema>(
   persistence: Persistence,
   owner: string,
   schema: Schema,
 ): { readonly record: Static<Schema>; readonly attachments: PersistedAttachments } | undefined {
   const key = `${persistence.storageKey}:${owner}`;
-  const record = parseStored(schema, readStored(persistence, key));
+  const record = readStored(persistence.storage, key, schema, undefined);
 
   if (record === undefined) return undefined;
 
   return {
     record,
-    attachments: parseStored(attachmentsSchema, readStored(persistence, `${key}:images`)) ?? [],
+    attachments: readStored(persistence.storage, `${key}:images`, attachmentsSchema, []),
   };
 }
 
@@ -277,7 +247,7 @@ export class WindowDrafts {
     const persistence = this.#persistence;
 
     if (persistence === undefined) return;
-    const index = parseStored(indexSchema, readStored(persistence, persistence.storageKey));
+    const index = readStored(persistence.storage, persistence.storageKey, indexSchema, undefined);
 
     if (index === undefined) return;
 
@@ -327,16 +297,19 @@ export class WindowDrafts {
     }
   }
 
+  /** An entry leaves the queue before its write, so a value the storage refuses throws once instead of blocking every later draft. */
   #flush(): void {
     const persistence = this.#persistence;
 
     if (persistence === undefined) return;
 
     for (const [key, value] of this.#pending) {
-      writeStored(persistence, key, value === undefined ? undefined : JSON.stringify(value));
+      this.#pending.delete(key);
+
+      if (value === undefined) removeStored(persistence.storage, key);
+      else writeStored(persistence.storage, key, value);
     }
 
-    this.#pending.clear();
     const tabs: StoredIndex["tabs"] = {};
 
     for (const [tabId, panes] of this.#panes) {
@@ -355,11 +328,12 @@ export class WindowDrafts {
       .map(([id]) => id)
       .toSorted();
 
-    const index = JSON.stringify({ tabs, sessions } satisfies StoredIndex);
+    const index = { tabs, sessions } satisfies StoredIndex;
+    const serialized = JSON.stringify(index);
 
-    if (index === this.#savedIndex) return;
-    this.#savedIndex = index;
-    writeStored(persistence, persistence.storageKey, index);
+    if (serialized === this.#savedIndex) return;
+    writeStored(persistence.storage, persistence.storageKey, index);
+    this.#savedIndex = serialized;
   }
 
   readonly #store = (): void => {
