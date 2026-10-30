@@ -6,6 +6,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { WorkspaceId } from "@nyte-ai/sdk";
+import { jobTaskState, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import { ADD_TO_CHAT_LABEL } from "../../references/add-to-chat.ts";
 import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -99,45 +100,26 @@ function TerminalStatus({
       );
     }
 
-    switch (tab.state.kind) {
-      case "running":
-        return (
-          <div {...props(text.sm, terminalStyles.state)}>
-            <span>Agent command · read-only</span>
-            <Button variant="outline" loading={stopping} onClick={stop}>
-              Stop Command
-            </Button>
-          </div>
-        );
-      case "exited":
-        return tab.state.reason === "terminated" ? (
-          <div role="status" {...props(text.sm, terminalStyles.state)}>
-            Command cancelled
-          </div>
-        ) : tab.state.code === 0 ? (
-          <div role="status" {...props(text.sm, terminalStyles.state)}>
-            Command completed
-          </div>
-        ) : (
-          <div
-            role="status"
-            {...props(text.sm, intent.danger, terminalStyles.state, terminalStyles.failure)}
-          >
-            Command failed
-          </div>
-        );
-      case "lost":
-        return (
-          <div role="status" {...props(text.sm, terminalStyles.state)}>
-            Command interrupted
-          </div>
-        );
-      default: {
-        const _exhaustive: never = tab.state;
+    const state = jobTaskState(tab.state);
 
-        return _exhaustive;
-      }
-    }
+    return (
+      <div
+        role="status"
+        {...props(
+          text.sm,
+          state === "failed" && intent.danger,
+          terminalStyles.state,
+          state === "failed" && terminalStyles.failure,
+        )}
+      >
+        <span>{taskLabel(state)}</span>
+        {tab.state.kind === "running" && (
+          <Button variant="outline" loading={stopping} onClick={stop}>
+            Stop Command
+          </Button>
+        )}
+      </div>
+    );
   }
 
   switch (tab.state.kind) {
@@ -246,13 +228,9 @@ export function TerminalPanel({
           </div>
         </div>
       )}
-      {cancellation.isSuccess && (
+      {cancellation.isSuccess && cancellation.data.kind === "missing" && (
         <div role="status" {...props(text.sm, terminalStyles.state)}>
-          {cancellation.data.kind === "requested"
-            ? "Cancellation requested."
-            : cancellation.data.kind === "settled"
-              ? "This command has already finished."
-              : "This command is no longer available."}
+          The host no longer has this job.
         </div>
       )}
       {cancellation.isError && (
