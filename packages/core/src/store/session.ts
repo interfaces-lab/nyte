@@ -73,7 +73,7 @@ export interface Inbox extends InboxRecord {
 
 export type MoveFailure = Exclude<MoveOutcome, { readonly kind: "moved" }>;
 
-const SESSION_PAGE = 100;
+export const SESSION_PAGE = 100;
 
 export async function load<T>(
   store: StoreConnection,
