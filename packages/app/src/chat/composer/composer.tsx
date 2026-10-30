@@ -205,8 +205,12 @@ export function Composer({
   const latestViewState = useRef(currentViewState);
   const latestTarget = useRef(target);
 
+  const pendingRecall = useRef<symbol | undefined>(undefined);
+
   const updateViewState = (update: (current: ComposerViewState) => ComposerViewState): void => {
     const next = update(latestViewState.current);
+
+    if (next.draft !== latestViewState.current.draft) pendingRecall.current = undefined;
     latestViewState.current = next;
     setCurrentViewState(next);
     const editing = latestTarget.current;
@@ -231,9 +235,8 @@ export function Composer({
     | undefined
   >(undefined);
 
-  const reading = useRef(false);
-
   const step = (history: PromptHistory, direction: RecallDirection): boolean => {
+    pendingRecall.current = undefined;
     const position = recallStep(history.prompts.length, recalled.current?.position, direction);
 
     if (position === recalled.current?.position) return false;
@@ -262,22 +265,21 @@ export function Composer({
     if (direction === "newer" || older < history.prompts.length || history.before === null)
       return step(history, direction);
 
-    if (reading.current) return true;
-    reading.current = true;
-    void readPrompts(connection().session(sessionId), history, older + 1)
-      .then(
-        (more) => {
-          if (recalled.current === walk) step(more, direction);
-        },
-        (cause: unknown) =>
-          setFeedback({
-            kind: "error",
-            message: `Couldn't read earlier prompts: ${errorMessage(cause)}`,
-          }),
-      )
-      .finally(() => {
-        reading.current = false;
-      });
+    if (pendingRecall.current !== undefined) return true;
+    const read = Symbol("recall");
+    pendingRecall.current = read;
+    void readPrompts(connection().session(sessionId), history, older + 1).then(
+      (more) => {
+        if (pendingRecall.current === read) step(more, direction);
+      },
+      (cause: unknown) => {
+        if (pendingRecall.current === read) pendingRecall.current = undefined;
+        setFeedback({
+          kind: "error",
+          message: `Couldn't read earlier prompts: ${errorMessage(cause)}`,
+        });
+      },
+    );
 
     return true;
   };
@@ -364,6 +366,7 @@ export function Composer({
 
     return () => {
       shown.current = false;
+      pendingRecall.current = undefined;
       releaseHold();
     };
   });
@@ -430,6 +433,7 @@ export function Composer({
     document: ComposerDocumentState,
   ): Promise<void> => {
     if (attachmentReads !== 0) return;
+    pendingRecall.current = undefined;
     const sentAttachments = attachments;
     const submittingTab = windowTabs.paneTabId();
 
