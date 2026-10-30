@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import type { FileDocument } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
+import { QueryClient } from "@tanstack/react-query";
 import { describe, test } from "vitest";
+import { keys } from "../../data/query-client.ts";
 import { workbenchViewKey } from "../paths.ts";
 import { createWorkbenchStore } from "../store.ts";
 import { createFileTabStore } from "./file-store.ts";
@@ -133,5 +136,34 @@ describe("file runtime store", () => {
       [second.path, 5],
       [first.path, undefined],
     ]);
+  });
+
+  test("a workspace path the host reads outside the workspace displays as outside once loaded", () => {
+    const workbench = createWorkbenchStore(() => ({ browser: true }));
+    const documents = new QueryClient();
+    const store = createFileTabStore(workbench, documents);
+    const link = "/workspace/link/notes.md";
+    store.actions.open(key, { path: link });
+    assert.equal(store.getView(key).active?.displayPath, "link/notes.md");
+    const seen: [string | undefined, boolean | undefined][] = [];
+
+    const unsubscribe = store.subscribe(() => {
+      const active = store.getView(key).active;
+      seen.push([active?.displayPath, active?.external]);
+    });
+
+    const document: FileDocument = {
+      kind: "text",
+      path: link,
+      scope: "external",
+      mime: "text/markdown",
+      contents: "",
+      version: asId<"file-version">("v1"),
+    };
+
+    documents.setQueryData(keys.workspaceFile(link), document);
+    unsubscribe();
+
+    assert.deepEqual(seen.at(-1), [link, true]);
   });
 });
