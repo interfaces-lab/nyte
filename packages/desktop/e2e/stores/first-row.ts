@@ -57,7 +57,7 @@ let restored = Number.NaN;
     .filter(
       (name) =>
         name.includes("\n") &&
-        !/^(New Chat|New chat|Search|Settings|Customize|Environments|Show|Back)/u.test(name),
+        !/^(New Chat|New chat|Search|Settings|Customize|Show|Back)/u.test(name),
     )
     .map((name) => name.split("\n")[0] ?? "")
     .slice(0, 12);

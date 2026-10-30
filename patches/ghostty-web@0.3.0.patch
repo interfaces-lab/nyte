@@ -1,8 +1,55 @@
 diff --git a/dist/ghostty-web.js b/dist/ghostty-web.js
-index e5efac501b9ad1f2740c8b10a233c23d41c533ba..f37285099c932e7f2a9e4f36f8a2927a0614640f 100644
+index e5efac501b9ad1f2740c8b10a233c23d41c533ba..7c82cc6b7cf97e8ba65b23689a39a330429a1e56 100644
 --- a/dist/ghostty-web.js
 +++ b/dist/ghostty-web.js
-@@ -3247,7 +3247,7 @@ class wA {
+@@ -1702,7 +1702,7 @@ class gA {
+     const I = A.getContext("2d", { alpha: !0 });
+     if (!I)
+       throw new Error("Failed to get 2D rendering context");
+-    this.ctx = I, this.fontSize = g.fontSize ?? 15, this.fontFamily = g.fontFamily ?? "monospace", this.cursorStyle = g.cursorStyle ?? "block", this.cursorBlink = g.cursorBlink ?? !1, this.theme = { ...p, ...g.theme }, this.devicePixelRatio = g.devicePixelRatio, this.ghostty = g.ghostty, this.palette = [
++    this.ctx = I, this.fontSize = g.fontSize ?? 15, this.fontFamily = g.fontFamily ?? "monospace", this.cursorStyle = g.cursorStyle ?? "block", this.cursorBlink = g.cursorBlink ?? !1, this.cursorWithoutFocus = g.cursorWithoutFocus ?? !1, this.theme = { ...p, ...g.theme }, this.devicePixelRatio = g.devicePixelRatio, this.ghostty = g.ghostty, this.palette = [
+       this.theme.black,
+       this.theme.red,
+       this.theme.green,
+@@ -1978,7 +1978,7 @@ class gA {
+     return Math.max(1, Math.ceil(this.deviceMetrics.ascent * 0.75 * 0.75 * 0.15));
+   }
+   isCursorVisible(A, g) {
+-    const I = this.canvas.parentElement, C = !I || document.hasFocus() && I.contains(document.activeElement);
++    const I = this.canvas.parentElement, C = this.cursorWithoutFocus || !I || document.hasFocus() && I.contains(document.activeElement);
+     return g === 0 && A.visible && C && (!this.cursorBlink || this.cursorVisible);
+   }
+   /**
+@@ -2743,6 +2743,7 @@ class wA {
+       rows: A.rows ?? 24,
+       cursorBlink: A.cursorBlink ?? !1,
+       cursorStyle: A.cursorStyle ?? "block",
++      cursorWithoutFocus: A.cursorWithoutFocus ?? !1,
+       theme: A.theme ?? {},
+       scrollback: A.scrollback ?? 1e4,
+       fontSize: A.fontSize ?? 15,
+@@ -2776,7 +2777,7 @@ class wA {
+           break;
+         case "cursorBlink":
+         case "cursorStyle":
+-          this.renderer && (this.renderer.setCursorStyle(this.options.cursorStyle), this.renderer.setCursorBlink(this.isFocused && this.options.cursorBlink));
++          this.renderer && (this.renderer.setCursorStyle(this.options.cursorStyle), this.renderer.setCursorBlink((this.isFocused || this.options.cursorWithoutFocus) && this.options.cursorBlink), this.wasmTerm && this.renderer.render(this.wasmTerm, !0, this.viewportY, this));
+           break;
+         case "theme":
+           if (this.renderer) {
+@@ -2907,9 +2908,10 @@ class wA {
+         fontFamily: this.options.fontFamily,
+         cursorStyle: this.options.cursorStyle,
+         cursorBlink: !1,
++        cursorWithoutFocus: this.options.cursorWithoutFocus,
+         theme: this.options.theme,
+         ghostty: this.ghostty
+-      }), this.renderer.setCursorBlink(this.isFocused && this.options.cursorBlink), this.renderer.resize(this.cols, this.rows), this.scheduleFontRemeasure();
++      }), this.renderer.setCursorBlink((this.isFocused || this.options.cursorWithoutFocus) && this.options.cursorBlink), this.renderer.resize(this.cols, this.rows), this.scheduleFontRemeasure();
+       const C = this.canvas, Q = this.renderer, E = this.wasmTerm, D = {
+         hasMouseTracking: () => (E == null ? void 0 : E.hasMouseTracking()) ?? !1,
+         hasSgrMouseMode: () => (E == null ? void 0 : E.getMode(1006, !1)) ?? !0,
+@@ -3247,7 +3249,7 @@ class wA {
     * Start the render loop
     */
    startRenderLoop() {
@@ -11,7 +58,7 @@ index e5efac501b9ad1f2740c8b10a233c23d41c533ba..f37285099c932e7f2a9e4f36f8a2927a
        return;
      const A = () => {
        if (!this.isDisposed && this.isOpen) {
-@@ -3258,6 +3258,24 @@ class wA {
+@@ -3258,6 +3260,24 @@ class wA {
      };
      A();
    }
@@ -36,11 +83,42 @@ index e5efac501b9ad1f2740c8b10a233c23d41c533ba..f37285099c932e7f2a9e4f36f8a2927a
    /**
     * Get a line from native WASM scrollback buffer
     * Implements IScrollbackProvider
+@@ -3280,7 +3300,7 @@ class wA {
+   }
+   setFocused(A) {
+     var g;
+-    this.isFocused !== A && (this.isFocused = A, (g = this.renderer) == null || g.setCursorBlink(A && this.options.cursorBlink));
++    this.isFocused !== A && (this.isFocused = A, (g = this.renderer) == null || g.setCursorBlink((A || this.options.cursorWithoutFocus) && this.options.cursorBlink));
+   }
+   /**
+    * Assert terminal is open (throw if not)
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index ba99f04dc989344654c14c433d5ebf7454691691..b237b09bb98bda5640b79cad08f6cec45e838ff6 100644
+index ba99f04dc989344654c14c433d5ebf7454691691..cb3157da1762ee3a4047eab8fbaef968a39c49a0 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -1783,6 +1783,14 @@ export declare class Terminal implements ITerminalCore {
+@@ -1042,6 +1042,10 @@ export declare interface ITerminalOptions {
+     rows?: number;
+     cursorBlink?: boolean;
+     cursorStyle?: 'block' | 'underline' | 'bar';
++    /**
++     * Draw and blink the cursor while the terminal doesn't have focus, for display-only terminals
++     */
++    cursorWithoutFocus?: boolean;
+     theme?: ITheme;
+     scrollback?: number;
+     fontSize?: number;
+@@ -1448,6 +1452,10 @@ export declare interface RendererOptions {
+     fontFamily?: string;
+     cursorStyle?: 'block' | 'underline' | 'bar';
+     cursorBlink?: boolean;
++    /**
++     * Draw and blink the cursor while the terminal doesn't have focus, for display-only terminals
++     */
++    cursorWithoutFocus?: boolean;
+     theme?: ITheme;
+     devicePixelRatio?: number;
+     ghostty?: Ghostty;
+@@ -1783,6 +1791,14 @@ export declare class Terminal implements ITerminalCore {
       * Resize terminal
       */
      resize(cols: number, rows: number): void;

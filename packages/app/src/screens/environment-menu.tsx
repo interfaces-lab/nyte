@@ -1,10 +1,12 @@
+import { useNavigate } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator } from "@nyte-ai/ui/menu";
-import { shellActions } from "../chrome/shell-state.ts";
 import { clientActions } from "../client-actions.ts";
 import { ContextSelector } from "./context-selector.tsx";
 
 export function EnvironmentMenu({ active }: { readonly active: boolean }): ReactElement {
+  const navigate = useNavigate();
+
   return (
     <ContextSelector
       action={clientActions.selectEnvironment}
@@ -18,8 +20,11 @@ export function EnvironmentMenu({ active }: { readonly active: boolean }): React
         </MenuRadioItem>
       </MenuRadioGroup>
       <MenuSeparator />
-      <MenuItem icon="server" onClick={() => shellActions.openEnvironments()}>
-        Environments…
+      <MenuItem
+        icon="server"
+        onClick={() => void navigate({ to: "/settings/$section", params: { section: "server" } })}
+      >
+        Server Settings…
       </MenuItem>
     </ContextSelector>
   );

@@ -1,11 +1,12 @@
 import { typed } from "@nyte-ai/schema/model";
+import { TOAST_POSITIONS } from "@nyte-ai/ui/toast";
 import { Type } from "typebox";
 import type { ThemePreference } from "../bridge.ts";
 import { CodeFontSchema, UiFontSchema } from "../theme/fonts.ts";
 import { definePreference } from "./store.ts";
 import type { Preference } from "./store.ts";
 
-export { changeHostSettings, hostSetting } from "./host.ts";
+export { hostSetting } from "./host.ts";
 
 export { useSetting } from "./store.ts";
 
@@ -47,6 +48,11 @@ export const preferences = {
     { key: "nyte:confirm-external-links:v1" },
     Type.Boolean(),
     true,
+  ),
+  toastPosition: definePreference(
+    { key: "nyte:toast-position:v1" },
+    Type.Enum(TOAST_POSITIONS),
+    "bottom-right",
   ),
   trustedLinkHosts: definePreference(
     { key: "nyte:trusted-link-hosts:v1" },
@@ -99,6 +105,11 @@ export const preferences = {
     integer(1_000, 100_000),
     10_000,
   ),
+  terminalCursorStyle: definePreference(
+    { key: TERMINAL, field: "cursorStyle" },
+    Type.Enum(["block", "bar", "underline"]),
+    "bar",
+  ),
   terminalCursorBlink: definePreference(
     { key: TERMINAL, field: "cursorBlink" },
     Type.Boolean(),
@@ -127,6 +138,7 @@ export const preferences = {
     220,
   ),
   homeVisible: definePreference({ key: SIDEBAR, field: "homeVisible" }, Type.Boolean(), true),
+  developerMode: definePreference({ key: "nyte:developer-mode:v1" }, Type.Boolean(), false),
 } as const;
 
 type ValueOf<P> = P extends Preference<infer T> ? T : never;

@@ -1,6 +1,7 @@
 import type { chartsRuntime } from "./chrome/usage-charts.deferred.ts";
 import type { codeRuntime } from "./conversation/code.deferred.tsx";
 import type { highlightRuntime } from "./conversation/highlight.deferred.ts";
+import type { previewsRuntime } from "./settings/previews/previews.deferred.tsx";
 import type { ghosttyRuntime } from "./workbench/ghostty.deferred.ts";
 import type { workbenchRuntime } from "./workbench/panels.deferred.tsx";
 
@@ -25,6 +26,10 @@ export const deferredEntries = {
     module: new URL("./chrome/usage-charts.deferred.ts", import.meta.url).href,
     packages: ["@nivo/", "d3-shape/", "@react-spring/"],
   },
+  previews: {
+    module: new URL("./settings/previews/previews.deferred.tsx", import.meta.url).href,
+    packages: [],
+  },
 } as const;
 
 export interface DeferredRuntimes {
@@ -33,4 +38,5 @@ export interface DeferredRuntimes {
   workbench: typeof workbenchRuntime;
   ghostty: typeof ghosttyRuntime;
   charts: typeof chartsRuntime;
+  previews: typeof previewsRuntime;
 }

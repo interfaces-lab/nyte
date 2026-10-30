@@ -52,24 +52,17 @@ async function press(label: string, scope: () => ParentNode | undefined): Promis
   button(label, scope())?.click();
 }
 
-const statusMenu = () =>
-  [...document.querySelectorAll("button")].find((candidate) =>
-    candidate.textContent?.startsWith("Nyte account:"),
-  );
+function switchNamed(name: string, scope: ParentNode): HTMLElement | undefined {
+  return [...scope.querySelectorAll<HTMLElement>('[role="switch"]')].find((candidate) => {
+    const label = candidate.getAttribute("aria-labelledby");
 
-async function menuItem(label: string): Promise<void> {
-  statusMenu()?.click();
-  await until(
-    () =>
-      [...document.querySelectorAll('[role="menuitem"]')].some(
-        (item) => item.textContent?.trim() === label,
-      ),
-    `the ${label} menu item`,
-  );
-  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
-    .find((item) => item.textContent?.trim() === label)
-    ?.click();
+    return label !== null && document.getElementById(label)?.textContent === name;
+  });
 }
+
+const remoteAccess = () => switchNamed("Remote access", document.body);
+
+const remoteAccessRow = () => remoteAccess()?.closest("label")?.textContent ?? "";
 
 const toggle = () => tray()?.querySelector<HTMLElement>('[role="switch"]') ?? undefined;
 
@@ -156,7 +149,7 @@ export async function run() {
       ),
     );
 
-    await until(() => container.textContent?.includes("Manual setup") === true, "the page");
+    await until(() => switchNamed("Serve over Tailscale", container) !== undefined, "the page");
     await wait(100);
     check(!container.textContent.includes("Nyte account"), "An unconfigured build showed the row");
 
@@ -216,7 +209,7 @@ export async function run() {
     toggle()?.click();
     await until(() => calls.includes("setEnabled:true"), "setEnabled({ enabled: true })");
     await press("Done", tray);
-    await until(() => statusMenu() !== undefined, "the linked row");
+    await until(() => remoteAccess() !== undefined, "the linked row");
 
     const phone = { id: "phone-1", name: "iPhone", createdAt: 0, authorized: false };
     await remoteAccessChanged(
@@ -227,7 +220,7 @@ export async function run() {
         devices: [phone],
       }),
     );
-    await until(() => statusMenu()?.textContent?.includes("Verifying…") === true, "pending");
+    await until(() => remoteAccessRow().includes("Verifying…"), "pending");
     check(!container.textContent.includes("Reachable"), "A pending lease read as reachable");
 
     await remoteAccessChanged(
@@ -253,8 +246,8 @@ export async function run() {
       () => container.textContent.includes("Turn remote access off, then on again."),
       "replaced",
     );
-    check(statusMenu()?.textContent?.includes("Not reachable") === true, "Replaced read as live");
-    check(!/tunnel|cloudflare|\/r\//i.test(statusMenu()?.textContent ?? ""), "The relay leaked");
+    check(remoteAccessRow().includes("Not reachable"), "Replaced read as live");
+    check(!/tunnel|cloudflare|\/r\//i.test(remoteAccessRow()), "The relay leaked");
 
     await remoteAccessChanged(
       linked({
@@ -264,7 +257,7 @@ export async function run() {
         devices: [{ ...phone, authorized: true }],
       }),
     );
-    await until(() => statusMenu()?.textContent?.includes("Reachable") === true, "a current lease");
+    await until(() => remoteAccessRow().includes("Reachable"), "a current lease");
     check(!container.textContent.includes("someone-else@example.test"), "The session leaked");
 
     const listed = () =>
@@ -280,10 +273,14 @@ export async function run() {
     await press("Revoke Device", confirmation);
     await until(() => confirmation() === undefined && !listed(), "the device to be revoked");
 
-    await menuItem("Turn Off Remote Access");
+    check(
+      container.textContent.includes("Shared over your Nyte account"),
+      "This Mac hid the share",
+    );
+    remoteAccess()?.click();
     await until(() => calls.includes("setEnabled:false"), "setEnabled({ enabled: false })");
 
-    await menuItem("Unlink This Mac…");
+    await press("Unlink This Mac…", () => container);
     await until(() => confirmation() !== undefined, "the unlink confirmation");
     check(
       confirmation()?.textContent?.includes("lose access to this Mac right away") === true,
@@ -293,7 +290,7 @@ export async function run() {
     await until(() => confirmation() === undefined, "the confirmation to close");
     check(!calls.includes("unlink"), "Cancel unlinked this Mac");
 
-    await menuItem("Unlink This Mac…");
+    await press("Unlink This Mac…", () => container);
     await until(() => confirmation() !== undefined, "the unlink confirmation again");
     await press("Unlink This Mac", confirmation);
     await until(() => calls.includes("unlink"), "unlink() to be called");

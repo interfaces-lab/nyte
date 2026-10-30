@@ -14,7 +14,9 @@ import {
 } from "@nyte-ai/ui/menu";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { changeHostSettings, hostSetting, useSetting } from "../preferences/index.ts";
+import { DESKTOP_SETTING_SCHEMAS } from "../desktop-settings.ts";
+import { useSetting } from "../preferences/index.ts";
+import { applyPluginSetting, pluginSetting } from "../preferences/plugin.ts";
 
 const styles = create({
   badge: {
@@ -28,6 +30,13 @@ const styles = create({
   off: { color: role.contentDisabled },
   menu: { minWidth: 260 },
 });
+
+const blockAdsSetting = pluginSetting("desktop.blockAds", DESKTOP_SETTING_SCHEMAS.blockAds);
+
+const allowedHostsSetting = pluginSetting(
+  "desktop.adblockAllowedHosts",
+  DESKTOP_SETTING_SCHEMAS.adblockAllowedHosts,
+);
 
 function readHost(url: string): string {
   try {
@@ -43,14 +52,14 @@ interface ShieldMenuProps {
 }
 
 export function ShieldMenu({ state, onChanged }: ShieldMenuProps): ReactElement {
-  const blockAds = useSetting(hostSetting("blockAds")) ?? true;
-  const allowedHosts = useSetting(hostSetting("adblockAllowedHosts")) ?? [];
+  const blockAds = useSetting(blockAdsSetting) ?? true;
+  const allowedHosts = useSetting(allowedHostsSetting) ?? [];
   const host = readHost(state.url);
   const unavailable = blockAds && state.blocking === "off";
   const active = state.blocking === "on";
 
-  const change = (patch: Parameters<typeof changeHostSettings>[0]): void => {
-    void changeHostSettings(patch).then(onChanged);
+  const change = (applied: Promise<void>): void => {
+    void applied.then(onChanged);
   };
 
   const summary = unavailable
@@ -80,13 +89,16 @@ export function ShieldMenu({ state, onChanged }: ShieldMenuProps): ReactElement 
             checked={active}
             disabled={!blockAds || unavailable || host === ""}
             onCheckedChange={(block) =>
-              change({
-                adblockAllowedHosts: block
-                  ? allowedHosts.filter(
-                      (allowed) => host !== allowed && !host.endsWith(`.${allowed}`),
-                    )
-                  : [...allowedHosts, host],
-              })
+              change(
+                applyPluginSetting(
+                  "desktop.adblockAllowedHosts",
+                  block
+                    ? allowedHosts.filter(
+                        (allowed) => host !== allowed && !host.endsWith(`.${allowed}`),
+                      )
+                    : [...allowedHosts, host],
+                ),
+              )
             }
           >
             Block on {host || "This Page"}
@@ -96,7 +108,7 @@ export function ShieldMenu({ state, onChanged }: ShieldMenuProps): ReactElement 
         <MenuSwitchItem
           checked={blockAds}
           disabled={unavailable}
-          onCheckedChange={(block) => change({ blockAds: block })}
+          onCheckedChange={(block) => change(applyPluginSetting("desktop.blockAds", block))}
         >
           Block Ads and Trackers
         </MenuSwitchItem>

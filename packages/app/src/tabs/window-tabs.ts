@@ -33,13 +33,10 @@ const viewSchema = Type.Union([
   Type.Object(
     {
       kind: Type.Literal("page"),
-      page: Type.Union([
-        Type.Object(
-          { kind: Type.Literal("customize"), section, sessionId: Type.Optional(sessionId) },
-          strict,
-        ),
-        Type.Object({ kind: Type.Literal("environments"), section }, strict),
-      ]),
+      page: Type.Object(
+        { kind: Type.Literal("customize"), section, sessionId: Type.Optional(sessionId) },
+        strict,
+      ),
     },
     strict,
   ),
@@ -68,10 +65,7 @@ function storedView(view: StoredTab["view"]): View {
 
   return {
     kind: "page",
-    page:
-      view.page.kind === "customize"
-        ? { kind: "customize", section: view.page.section, sessionId: view.page.sessionId }
-        : { kind: "environments", section: view.page.section },
+    page: { kind: "customize", section: view.page.section, sessionId: view.page.sessionId },
   };
 }
 

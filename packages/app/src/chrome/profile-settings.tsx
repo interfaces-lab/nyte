@@ -513,18 +513,18 @@ function GitHubGroup(): ReactElement | null {
 
 function MacGroup({
   connect,
-  onOpenEnvironments,
+  onOpenServer,
 }: {
   readonly connect: ConnectBridge;
-  readonly onOpenEnvironments: () => void;
+  readonly onOpenServer: () => void;
 }): ReactElement {
   const view = useConnectView(connect).data;
   const [trayOpen, setTrayOpen] = useState(false);
   const name = nyte.machineName ?? "This Mac";
 
-  const environments = (
-    <Button variant="ghost" onClick={onOpenEnvironments}>
-      Environments
+  const server = (
+    <Button variant="ghost" onClick={onOpenServer}>
+      Server
       <Icon name="chevron-right" size={12} />
     </Button>
   );
@@ -534,7 +534,7 @@ function MacGroup({
   if (view === undefined || view.kind === "unavailable") {
     return (
       <Group label="This Mac">
-        <ConnectionRow glyph={macGlyph} title={name} control={environments} />
+        <ConnectionRow glyph={macGlyph} title={name} control={server} />
       </Group>
     );
   }
@@ -553,7 +553,7 @@ function MacGroup({
               {` · ${view.owner.label}`}
             </>
           }
-          control={environments}
+          control={server}
         />
       </Group>
     );
@@ -580,9 +580,9 @@ function MacGroup({
 }
 
 export function ProfileSettings({
-  onOpenEnvironments,
+  onOpenServer,
 }: {
-  readonly onOpenEnvironments: () => void;
+  readonly onOpenServer: () => void;
 }): ReactElement {
   const desktop = nyte.clientSurface === "desktop";
 
@@ -590,7 +590,7 @@ export function ProfileSettings({
     <div {...props(styles.page)}>
       {desktop && <AccountGroup connect={nyte.host.connect} />}
       <GitHubGroup />
-      {desktop && <MacGroup connect={nyte.host.connect} onOpenEnvironments={onOpenEnvironments} />}
+      {desktop && <MacGroup connect={nyte.host.connect} onOpenServer={onOpenServer} />}
     </div>
   );
 }

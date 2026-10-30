@@ -104,7 +104,7 @@ function render(state: GitHubAccountState, connect: ConnectView | undefined): st
 
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <ProfileSettings onOpenEnvironments={() => undefined} />
+      <ProfileSettings onOpenServer={() => undefined} />
     </QueryClientProvider>,
   );
 }

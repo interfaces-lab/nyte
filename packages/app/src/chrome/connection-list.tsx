@@ -2,7 +2,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { avatar, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
-import { Icon } from "@nyte-ai/ui/icon";
+import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuTrigger } from "@nyte-ai/ui/menu";
 import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode, Ref } from "react";
@@ -65,7 +65,38 @@ const styles = create({
     "@container (max-width: 600px)": { gridColumn: "2 / -1" },
   },
   expansion: { gridColumn: "1 / -1", paddingTop: space.s1 },
+  fact: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.s3,
+    minWidth: 0,
+    flex: "1 1 0",
+  },
+  factGlyph: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: "none",
+    width: avatar.md,
+    height: avatar.md,
+    borderRadius: radius.pill,
+    backgroundColor: role.bgMutedTranslucent,
+    color: role.contentSecondary,
+  },
+  factGlyphOn: {
+    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    color: role.contentInteractivePrimary,
+  },
+  factActions: {
+    display: "inline-flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: space.s2,
+    flex: "none",
+  },
 });
+
+const ROW_MARK = { "data-settings-row": "" } as const;
 
 type ConnectionTone = "on" | "off" | "warn" | "err";
 
@@ -132,8 +163,42 @@ export function ConnectionMenu({
   );
 }
 
-export function ConnectionList({ children }: { children: ReactNode }): ReactElement {
-  return <div {...props(settingsPatterns.group)}>{children}</div>;
+/** A settings row for one fact: a round glyph, a title over its detail, and actions at the end. */
+export function FactRow({
+  icon,
+  tone = "neutral",
+  title,
+  detail,
+  children,
+}: {
+  readonly icon: IconName;
+  readonly tone?: "neutral" | "on";
+  readonly title: ReactNode;
+  readonly detail?: ReactNode;
+  readonly children?: ReactNode;
+}): ReactElement {
+  return (
+    <div {...ROW_MARK} {...props(settingsPatterns.rowRule, settingsPatterns.row)}>
+      <span {...props(styles.fact)}>
+        <span
+          {...props(
+            tone === "on" && intent.primary,
+            styles.factGlyph,
+            tone === "on" && styles.factGlyphOn,
+          )}
+        >
+          <Icon name={icon} size={16} />
+        </span>
+        <span {...props(settingsPatterns.rowCopy)}>
+          <span {...props(settingsPatterns.rowTitle)}>{title}</span>
+          {detail !== undefined && (
+            <span {...props(settingsPatterns.rowDescription)}>{detail}</span>
+          )}
+        </span>
+      </span>
+      {children !== undefined && <span {...props(styles.factActions)}>{children}</span>}
+    </div>
+  );
 }
 
 export function ConnectionRow({

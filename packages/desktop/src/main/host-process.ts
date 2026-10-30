@@ -3,7 +3,8 @@ import type { MessagePortMain, UtilityProcess } from "electron";
 import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import type { CallReply, CallRequest } from "../shared/ipc.ts";
 import type { AccountState } from "./account-session.ts";
-import type { DesktopSettings } from "./desktop-settings.ts";
+import type { AttentionDelivery } from "./attention.ts";
+import type { DesktopSettings } from "@nyte-ai/app/desktop-settings.ts";
 import type {
   HostAnswer,
   HostAsk,
@@ -22,6 +23,8 @@ interface HostProcessHandlers {
   event(event: HostEvent, window: HostWindow | undefined): void;
   awake(awake: boolean): void;
   settings(settings: DesktopSettings): void;
+  alert(delivery: AttentionDelivery): void;
+  badge(count: number): void;
   answer(ask: HostAsk, signal: AbortSignal): Promise<MainAnswer>;
 }
 
@@ -185,6 +188,7 @@ export class HostProcess {
 
     this.#run = undefined;
     this.#handlers.awake(false);
+    this.#handlers.badge(0);
 
     if (this.#closing) return;
 
@@ -261,6 +265,14 @@ export class HostProcess {
         return;
       case "settings":
         this.#handlers.settings(message.settings);
+
+        return;
+      case "alert":
+        this.#handlers.alert(message.delivery);
+
+        return;
+      case "badge":
+        this.#handlers.badge(message.count);
 
         return;
       case "mark":

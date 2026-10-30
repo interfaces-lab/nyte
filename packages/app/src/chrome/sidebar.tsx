@@ -448,22 +448,6 @@ export function Sidebar(): ReactElement {
             <Row.Label>Customize</Row.Label>
           </Row>
 
-          {nyte.clientSurface === "desktop" && (
-            <Row
-              variant="nav"
-              selected={page?.kind === "environments"}
-              aria-haspopup="dialog"
-              aria-current={page?.kind === "environments" ? "page" : undefined}
-              xstyle={styles.navRow}
-              onClick={() => shellActions.openEnvironments()}
-            >
-              <Row.Leading xstyle={styles.navLeading}>
-                <Icon name="server" size={14} />
-              </Row.Leading>
-              <Row.Label>Environments</Row.Label>
-            </Row>
-          )}
-
           <Row
             variant="nav"
             data-sidebar-return

@@ -6,7 +6,7 @@ type ActionChord =
   | "control-shift"
   | "none";
 
-type ClientStage = "workspace" | "customize" | "environments" | "settings";
+type ClientStage = "workspace" | "customize" | "settings";
 
 export interface ClientCapabilities {
   readonly browser: boolean;

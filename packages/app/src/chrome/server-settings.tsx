@@ -1,107 +1,59 @@
-import { props } from "@stylexjs/stylex";
 import { focusManager, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
+import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
+import { Button } from "@nyte-ai/ui/button";
+import { Toggle } from "@nyte-ai/ui/toggle";
 import { toast } from "@nyte-ai/ui/toast";
 import { errorMessage } from "../errors.ts";
-import type {
-  RemoteAccessState,
-  RemoteReach,
-  ServedTarget,
-  TailnetAvailability,
-} from "../bridge.ts";
-import { Icon } from "@nyte-ai/ui/icon";
-import { Button, ButtonLink } from "@nyte-ai/ui/button";
-import { Tabs } from "@nyte-ai/ui/tabs";
-import { Toggle } from "@nyte-ai/ui/toggle";
-import { MenuItem } from "@nyte-ai/ui/menu";
+import type { RemoteAccessState, RemoteReach } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
-import { openExternal } from "../open-external.ts";
 import { keys, useRemoteAccessState } from "../queries.ts";
-import { ConnectionList, ConnectionMenu, ConnectionRow } from "./connection-list.tsx";
-import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { SettingsDialog, SettingsDialogCard } from "../settings/dialog.tsx";
+import { SettingsRow, SettingsSection, SettingsSwitchRow } from "../settings/rows.tsx";
+import { props } from "@stylexjs/stylex";
+import { useConnectView } from "./connect-view.ts";
+import { FactRow } from "./connection-list.tsx";
 import { NyteConnection } from "./nyte-connection.tsx";
 import { PairingCode, pairingPayload } from "./pairing-code.tsx";
-import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { CopyButton, shareStyles } from "./remote-share.tsx";
-import { TunnelRow, TunnelServingPanel, tunnelStatus } from "./remote-tunnel.tsx";
+import { CopyButton, ValueRow, shareStyles } from "./remote-share.tsx";
+import { CloudflareSection, TunnelPairButton } from "./remote-tunnel.tsx";
 
-type TokenServing = Extract<RemoteAccessState, { kind: "serving"; reach: "tailnet" }>;
+type Serving = Extract<RemoteAccessState, { kind: "serving" }>;
 
-function servedTargetLabel(target: ServedTarget): string {
-  return target.kind === "home" ? "Home" : target.workspace.name;
-}
+type TokenServing = Extract<Serving, { reach: "tailnet" }>;
 
-function ServingPanel({ state }: { state: TokenServing }) {
+const HIDDEN = "••••••••••••••••";
+
+function TokenPairButton({ state }: { readonly state: TokenServing }): ReactElement {
+  const [open, setOpen] = useState(false);
   const [revealed, setRevealed] = useState(false);
-  const [step, setStep] = useState<"scan" | "details">("scan");
-  const payload = pairingPayload({ address: state.address, token: state.token });
-
-  const hidden = "••••••••••••••••";
 
   return (
-    <Tabs.Root
-      variant="segmented"
-      value={step}
-      onValueChange={(value) => {
-        if (value === "scan" || value === "details") setStep(value);
-      }}
-      {...props(shareStyles.panel)}
-    >
-      <div {...props(shareStyles.fields)}>
-        <span {...props(text.sm, shareStyles.label)}>Link</span>
-        <code aria-label="Pairing link" {...props(text.sm, shareStyles.value)}>
-          {revealed ? state.pairingUrl : state.pairingUrl.replace(state.token, hidden)}
-        </code>
-        <span {...props(shareStyles.fieldActions)}>
-          <CopyButton label="Pairing link" value={state.pairingUrl} />
-          <ButtonLink
-            href={state.pairingUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(event) => {
-              event.preventDefault();
-              openExternal(state.pairingUrl, "Couldn't open the pairing link. Copy it instead.");
-            }}
-          >
-            Open Pairing Link
-          </ButtonLink>
-        </span>
-      </div>
-      <Tabs.List aria-label="Pairing method" xstyle={shareStyles.switcher}>
-        <Tabs.Tab value="scan">Scan</Tabs.Tab>
-        <Tabs.Tab value="details">Address and Token</Tabs.Tab>
-      </Tabs.List>
-      <Tabs.Panel value="scan" xstyle={shareStyles.step}>
-        <div {...props(shareStyles.scan)}>
-          <PairingCode value={payload} size={132} />
-          <span {...props(shareStyles.scanText)}>
-            <span {...props(text.sm, shareStyles.label)}>
-              In the iOS app, tap Scan QR code on the connect screen.
-            </span>
-            <span {...props(text.sm, styles.deviceCodeNote)}>
-              The code carries the token, so treat it like the token itself. It stops working when
-              you stop.
-            </span>
-          </span>
+    <>
+      <Button variant="solid" tone="primary" onClick={() => setOpen(true)}>
+        Pair…
+      </Button>
+      <SettingsDialog
+        open={open}
+        title="Pair a Device"
+        description="In the Nyte iOS app, tap Connect with Tailscale, then Scan QR code. The code carries the token, so treat it like a password."
+        onOpenChange={(next) => {
+          setOpen(next);
+          setRevealed(false);
+        }}
+      >
+        <div {...props(shareStyles.pair)}>
+          <PairingCode
+            value={pairingPayload({ address: state.address, token: state.token })}
+            size={160}
+          />
         </div>
-      </Tabs.Panel>
-      <Tabs.Panel value="details" xstyle={shareStyles.step}>
-        <div {...props(shareStyles.fields)}>
-          <span {...props(text.sm, shareStyles.label)}>Address</span>
-          <code aria-label="Address" {...props(text.sm, shareStyles.value)}>
-            {state.address}
-          </code>
-          <span {...props(shareStyles.fieldActions)}>
+        <SettingsDialogCard>
+          <ValueRow title="Address" value={state.address}>
             <CopyButton label="Address" value={state.address} />
-          </span>
-          <span {...props(text.sm, shareStyles.label)}>Token</span>
-          <code aria-label="Token" {...props(text.sm, shareStyles.value)}>
-            {revealed ? state.token : hidden}
-          </code>
-          <span {...props(shareStyles.fieldActions)}>
-            <CopyButton label="Token" value={state.token} />
+          </ValueRow>
+          <ValueRow title="Token" value={revealed ? state.token : HIDDEN}>
             <Toggle
               iconOnly
               icon="eye"
@@ -109,35 +61,126 @@ function ServingPanel({ state }: { state: TokenServing }) {
               pressed={revealed}
               onPressedChange={setRevealed}
             />
-          </span>
-        </div>
-        <span {...props(text.sm, styles.deviceCodeNote)}>
-          Reachable from your signed-in Tailscale devices on any network, and from nothing else. The
-          token is new each time and never written to disk.
-        </span>
-      </Tabs.Panel>
-    </Tabs.Root>
+            <CopyButton label="Token" value={state.token} />
+          </ValueRow>
+          <ValueRow
+            title="Pairing link"
+            value={revealed ? state.pairingUrl : state.pairingUrl.replace(state.token, HIDDEN)}
+          >
+            <CopyButton label="Pairing link" value={state.pairingUrl} />
+          </ValueRow>
+        </SettingsDialogCard>
+      </SettingsDialog>
+    </>
   );
 }
 
-function tailnetDetail(tailnet: TailnetAvailability): string {
-  if (tailnet.kind === "missing") return "Tailscale isn't installed on this Mac.";
-
-  if (tailnet.kind === "unavailable") return "Tailscale isn't running. Start it, then try again.";
-
-  return `Reachable at ${tailnet.name ?? tailnet.ip} from your signed-in devices, on any network.`;
+function AddressSection({ state }: { readonly state: Serving }): ReactElement {
+  return (
+    <SettingsSection>
+      <SettingsRow title="Remote address" description={state.address} controlWidth="wide">
+        <span {...props(shareStyles.actions)}>
+          <CopyButton label="Address" value={state.address} />
+          {state.reach === "tailnet" ? (
+            <TokenPairButton state={state} />
+          ) : state.cloudflare.kind === "configured" ? (
+            <TunnelPairButton tunnel={state.cloudflare} />
+          ) : null}
+        </span>
+      </SettingsRow>
+    </SettingsSection>
+  );
 }
 
+function tailscaleDetail(state: RemoteAccessState): string | undefined {
+  if (state.kind === "serving")
+    return state.reach === "tailnet" ? "Running on this Mac" : undefined;
+
+  switch (state.tailnet.kind) {
+    case "missing":
+      return "Not installed on this Mac";
+    case "unavailable":
+      return "Not running. Start Tailscale, then turn this on.";
+    case "ready":
+      return `Running on this Mac as ${state.tailnet.name ?? state.tailnet.ip}`;
+    default: {
+      const _exhaustive: never = state.tailnet;
+
+      return _exhaustive;
+    }
+  }
+}
+
+function TailscaleSection({
+  state,
+  serving,
+  pending,
+  onServe,
+}: {
+  readonly state: RemoteAccessState;
+  readonly serving: boolean;
+  readonly pending: boolean;
+  readonly onServe: (on: boolean) => void;
+}): ReactElement {
+  const detail = tailscaleDetail(state);
+  const blocked = state.kind === "serving" && state.reach !== "tailnet";
+
+  return (
+    <SettingsSection
+      title="Tailscale"
+      note="Each time you turn it on, Nyte makes a new token. The pairing code carries it, so treat it like a password."
+    >
+      {detail !== undefined && (
+        <FactRow
+          icon="devices"
+          tone={serving ? "on" : "neutral"}
+          title="Tailscale app"
+          detail={detail}
+        />
+      )}
+      <SettingsSwitchRow
+        title="Serve over Tailscale"
+        description={
+          blocked
+            ? "Turn off Serve over Cloudflare Tunnel first. This Mac serves over one of them at a time."
+            : "Uses Tailscale Serve on this Mac's own address"
+        }
+        checked={serving}
+        disabled={pending || blocked || (state.kind === "off" && state.tailnet.kind !== "ready")}
+        onCheckedChange={onServe}
+      />
+    </SettingsSection>
+  );
+}
+
+function reachLabel(reach: RemoteReach): string {
+  return reach === "tailnet" ? "Tailscale" : "Cloudflare Tunnel";
+}
+
+function sharedDetail(reaches: readonly string[], state: RemoteAccessState | undefined): string {
+  const over = `Shared over ${reaches.join(" and ")}`;
+
+  return state?.kind === "serving" && state.target.kind === "project"
+    ? `${over} · Starts in ${state.target.workspace.name}`
+    : over;
+}
+
+/**
+ * How other devices reach this Mac: its status, the address to pair with, Tailscale, Cloudflare
+ * Tunnel and the Nyte account. Tailscale and Cloudflare Tunnel serve one at a time.
+ */
 export function RemoteAccess({ active }: { readonly active: boolean }): ReactElement {
   const client = useQueryClient();
   const remote = useRemoteAccessState(active);
+  const account = useConnectView(nyte.host.connect).data;
+  const [confirming, setConfirming] = useState(false);
 
   const start = useMutation({
     mutationFn: (reach: RemoteReach) => nyte.host.remote.start({ reach }),
-    onError: (cause) =>
+    onError: (cause, reach) =>
       toast.add({
         type: "error",
-        title: `Couldn't start remote access: ${errorMessage(cause)}`,
+        title: `Couldn't serve over ${reachLabel(reach)}: ${errorMessage(cause)}`,
         id: "remote-access",
       }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
@@ -148,92 +191,110 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
     onError: (cause) =>
       toast.add({
         type: "error",
-        title: `Couldn't stop remote access: ${errorMessage(cause)}`,
+        title: `Couldn't stop serving: ${errorMessage(cause)}`,
         id: "remote-access",
       }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
   });
 
   const state = remote.data;
-  const pending = start.isPending || stop.isPending;
+  const serving = state?.kind === "serving" ? state : undefined;
+  const accountShared = account?.kind === "linked" && account.enabled;
 
-  const stopItem = <MenuItem onClick={() => stop.mutate()}>Stop Remote Access</MenuItem>;
+  const stopSharing = useMutation({
+    mutationFn: async () => {
+      await Promise.all([
+        serving === undefined ? undefined : nyte.host.remote.stop(),
+        accountShared ? nyte.host.connect.setEnabled({ enabled: false }) : undefined,
+      ]);
+    },
+    onSuccess: () => setConfirming(false),
+    onSettled: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.remoteAccess }),
+        client.invalidateQueries({ queryKey: keys.connect }),
+      ]),
+  });
+
+  const pending = start.isPending || stop.isPending || stopSharing.isPending;
+
+  const reaches = [
+    serving === undefined ? undefined : reachLabel(serving.reach),
+    accountShared ? "your Nyte account" : undefined,
+  ].filter((reach) => reach !== undefined);
+
+  const serve = (reach: RemoteReach) => (on: boolean) => {
+    if (on) start.mutate(reach);
+    else stop.mutate();
+  };
+
+  const servingOver = (reach: RemoteReach): boolean => {
+    if (start.isPending && start.variables === reach) return true;
+
+    return !stop.isPending && serving?.reach === reach;
+  };
 
   return (
     <>
+      <SettingsSection>
+        <FactRow
+          icon="laptop"
+          tone={reaches.length > 0 ? "on" : "neutral"}
+          title="This Mac"
+          detail={
+            state === undefined
+              ? remote.isError
+                ? errorMessage(remote.error)
+                : "Checking…"
+              : reaches.length > 0
+                ? sharedDetail(reaches, state)
+                : "Not shared"
+          }
+        >
+          {reaches.length > 0 && (
+            <Button variant="outline" tone="danger" onClick={() => setConfirming(true)}>
+              Stop Sharing…
+            </Button>
+          )}
+        </FactRow>
+      </SettingsSection>
+      {serving !== undefined && <AddressSection state={serving} />}
+      {state !== undefined && (
+        <>
+          <TailscaleSection
+            state={state}
+            serving={servingOver("tailnet")}
+            pending={pending}
+            onServe={serve("tailnet")}
+          />
+          <CloudflareSection
+            tunnel={state.cloudflare}
+            serving={servingOver("cloudflare")}
+            blocked={serving !== undefined && serving.reach !== "cloudflare"}
+            pending={pending}
+            onServe={serve("cloudflare")}
+          />
+        </>
+      )}
       <NyteConnection connect={nyte.host.connect} />
-      <div {...props(settingsPatterns.sectionHeader)}>
-        <h2 {...props(settingsPatterns.sectionTitle)}>Manual setup</h2>
-      </div>
-      <ConnectionList>
-        {state === undefined ? null : state.kind === "off" ? (
-          <>
-            <ConnectionRow
-              glyph={<Icon name="devices" size={16} />}
-              title="Over Tailscale"
-              detail={tailnetDetail(state.tailnet)}
-              control={
-                <Button
-                  variant="outline"
-
-                  loading={start.isPending && start.variables === "tailnet"}
-                  disabled={
-                    state.tailnet.kind !== "ready" || (pending && start.variables !== "tailnet")
-                  }
-                  onClick={() => start.mutate("tailnet")}
-                >
-                  Start
-                </Button>
-              }
-            />
-            <TunnelRow
-              tunnel={state.cloudflare}
-              starting={start.isPending && start.variables === "cloudflare"}
-              disabled={pending && start.variables !== "cloudflare"}
-              onStart={() => start.mutate("cloudflare")}
-            />
-          </>
-        ) : state.reach === "cloudflare" ? (
-          <ConnectionRow
-            glyph={<Icon name="cloudflare" size={16} />}
-            title={`Serving ${servedTargetLabel(state.target)}`}
-            detail={state.address}
-            control={
-              <ConnectionMenu
-                label="Remote access"
-                {...tunnelStatus(state.cloudflare)}
-                loading={stop.isPending}
-                disabled={start.isPending}
-              >
-                {stopItem}
-              </ConnectionMenu>
-            }
-            expansion={
-              state.cloudflare.kind === "configured" ? (
-                <TunnelServingPanel tunnel={state.cloudflare} />
-              ) : undefined
-            }
-          />
-        ) : (
-          <ConnectionRow
-            glyph={<Icon name="devices" size={16} />}
-            title={`Serving ${servedTargetLabel(state.target)}`}
-            detail={state.target.kind === "home" ? undefined : state.target.workspace.path}
-            control={
-              <ConnectionMenu
-                label="Remote access"
-                tone="on"
-                status="Over Tailscale"
-                loading={stop.isPending}
-                disabled={start.isPending}
-              >
-                {stopItem}
-              </ConnectionMenu>
-            }
-            expansion={<ServingPanel state={state} />}
-          />
-        )}
-      </ConnectionList>
+      <ConfirmDialog
+        open={confirming && reaches.length > 0}
+        pending={stopSharing.isPending}
+        error={
+          stopSharing.error === null
+            ? undefined
+            : `Couldn't stop sharing this Mac: ${errorMessage(stopSharing.error)}`
+        }
+        title="Stop sharing this Mac?"
+        description={`Devices connected over ${reaches.join(" and ")} are disconnected. Chats already running keep going.`}
+        confirmLabel="Stop Sharing"
+        pendingLabel="Stopping…"
+        onOpenChange={(open) => {
+          setConfirming(open);
+          stopSharing.reset();
+        }}
+        onConfirm={() => stopSharing.mutate()}
+      />
     </>
   );
 }

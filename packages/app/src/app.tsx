@@ -3,12 +3,15 @@ import { RouterContextProvider } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Toaster, toast } from "@nyte-ai/ui/toast";
+import { AppIcon } from "./app-icon.ts";
 import { commitHostWorkspace, keys, queryClient } from "./queries.ts";
 import { Shell } from "./router.tsx";
 import type { AppRouter } from "./router.tsx";
 import { nyte } from "./nyte.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { windowTabs } from "./tabs/window-tabs.ts";
+import { activeTab, tabPlace } from "./tabs/model.ts";
+import { preferences, useSetting } from "./preferences/index.ts";
 import { activeSelection } from "./layout/pane-layout.ts";
 import {
   applyBrowserEvent,
@@ -61,6 +64,14 @@ function useHostEvents(): void {
           void queryClient.invalidateQueries({ queryKey: keys.server });
 
           return;
+        case "open_session":
+          windowTabs.dispatch({
+            kind: "open",
+            place: { kind: "session", sessionId: event.session },
+            target: "foreground",
+          });
+
+          return;
         case "remote_access_changed":
           void queryClient.invalidateQueries({ queryKey: keys.remoteAccess });
 
@@ -104,6 +115,29 @@ function useClientPlugins(): void {
   useMountEffect(() => watchClientPlugins(focusedSession, windowTabs.subscribe));
 }
 
+/** Tells the desktop which chat this window shows, so it can stay quiet about that one. */
+function useViewedChat(): void {
+  useMountEffect(() => {
+    const attention = nyte.host.attention;
+
+    if (attention === undefined) return undefined;
+    let reported: SessionId | null | undefined;
+
+    const report = (): void => {
+      const place = tabPlace(activeTab(windowTabs.getSnapshot()));
+      const viewed = place.kind === "session" ? place.sessionId : null;
+
+      if (viewed === reported) return;
+      reported = viewed;
+      attention.viewing(viewed);
+    };
+
+    report();
+
+    return windowTabs.subscribe(report);
+  });
+}
+
 function useSavedShells(): void {
   useMountEffect(() => {
     reattachShells(
@@ -121,7 +155,9 @@ function useSavedShells(): void {
 export function App({ appIcon, router }: { appIcon: string; router: AppRouter }): ReactElement {
   useHostEvents();
   useClientPlugins();
+  useViewedChat();
   useSavedShells();
+  const toastPosition = useSetting(preferences.toastPosition);
   useMountEffect(() => {
     const frame = requestAnimationFrame(() => {
       performance.mark("nyte:shell-ready");
@@ -134,8 +170,10 @@ export function App({ appIcon, router }: { appIcon: string; router: AppRouter })
   return (
     <QueryClientProvider client={queryClient}>
       <RouterContextProvider router={router}>
-        <Shell appIcon={appIcon} />
-        <Toaster />
+        <AppIcon value={appIcon}>
+          <Shell appIcon={appIcon} />
+        </AppIcon>
+        <Toaster position={toastPosition} />
       </RouterContextProvider>
     </QueryClientProvider>
   );

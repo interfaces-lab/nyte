@@ -17,20 +17,29 @@ export default {
       const info = await api.sdk.session(event.session).info();
 
       if (info.parent !== null) return;
-      const title = info.name ?? undefined;
-      const { end } = event;
+      const message = describeRunEnd(event.end);
 
-      if (end.kind === "completed")
-        api.ui.notify({ title, message: "Run finished", level: "info" });
-      else if (end.kind === "failed")
-        api.ui.notify({ title, message: `Run failed: ${line(end)}`, level: "error" });
+      if (message !== undefined)
+        api.ui.notify({
+          title: info.name ?? undefined,
+          message,
+          level: event.end.kind === "failed" ? "error" : "info",
+        });
     },
   },
 } satisfies Plugin;
 
-/** Returns a failure's message as one line of at most 120 characters. */
-function line(end: Extract<RunEnd, { readonly kind: "failed" }>): string {
+/**
+ * What to tell the user about a run's end: that it finished, or that it failed and why, on one
+ * line of at most 120 characters. A stopped run says nothing, because someone asked for it.
+ *
+ * @category plugins
+ */
+export function describeRunEnd(end: RunEnd): string | undefined {
+  if (end.kind === "completed") return "Run finished";
+
+  if (end.kind === "stopped") return undefined;
   const text = end.failure.message.replace(/\s+/g, " ").trim();
 
-  return text.length > 120 ? `${text.slice(0, 119)}…` : text;
+  return `Run failed: ${text.length > 120 ? `${text.slice(0, 119)}…` : text}`;
 }

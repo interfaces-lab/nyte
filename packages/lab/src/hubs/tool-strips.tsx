@@ -504,7 +504,7 @@ const TIME_TICKS = Array.from({ length: 26 }, (_, index) => {
   return `M${x} ${TRACE.ruler}V${TRACE.ruler - (index % 5 === 0 ? 6 : 3)}`;
 }).join("");
 
-export function AdvancedStrip(): ReactElement {
+export function DeveloperStrip(): ReactElement {
   return (
     <Strip
       prism={spectrum(15)}

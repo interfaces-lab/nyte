@@ -9,16 +9,7 @@ export interface HostSettings {
   readonly autoCompaction: boolean;
   readonly compactionKeepRecentTokens: number;
   readonly compactionReserveTokens: number;
-  readonly traceEndpoint: string | null;
   readonly workspaceTrust: "ask" | "always" | "never";
-  readonly notifications: boolean;
-  readonly unreadBadge: boolean;
-  readonly keepAwake: boolean;
-  readonly pauseOnSleep: boolean;
-  readonly terminalShell: string | null;
-  readonly blockAds: boolean;
-  readonly adblockAllowedHosts: readonly string[];
-  readonly upgradeToHttps: boolean;
   readonly browserAccess: "ask" | "full" | "read" | "off";
 }
 
@@ -419,6 +410,17 @@ export type UpdateState =
   | { readonly kind: "installing"; readonly version: string }
   | { readonly kind: "failed"; readonly version: string; readonly message: string };
 
+/** The nyte CLI the desktop app ships in its resources: ready to run, or what's wrong with it. */
+export type BundledCli =
+  | {
+      readonly kind: "ready";
+      readonly version: string;
+      readonly path: string;
+      readonly architecture: string;
+      readonly signature: string;
+    }
+  | { readonly kind: "unavailable"; readonly problem: string };
+
 export type HostEvent =
   | { kind: "update_changed"; state: UpdateState }
   | { kind: "update_channel_changed"; channel: UpdateChannel }
@@ -427,6 +429,7 @@ export type HostEvent =
   | { kind: "workspace_trust_required"; path: string }
   | { kind: "workspace_closed" }
   | { kind: "server_changed" }
+  | { kind: "open_session"; session: SessionId }
   | { kind: "remote_access_changed" }
   | { kind: "status"; message: string }
   | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }
@@ -486,6 +489,20 @@ export interface BrowserBridge {
   setFocus(message: BrowserFocusMessage): void;
 }
 
+/** The longest terminal notification title and body the desktop posts. */
+export const TERMINAL_NOTICE_LIMITS = { title: 256, body: 1024 } as const;
+
+export interface TerminalNotice {
+  readonly title: string;
+  readonly body: string;
+}
+
+/** What the desktop needs to alert you well: the chat a window shows, and notifications to post. */
+export interface AttentionBridge {
+  viewing(session: SessionId | null): void;
+  notify(notice: TerminalNotice): void;
+}
+
 export interface HostSettingsBridge {
   get(): Promise<HostSettings>;
   set(patch: HostSettingsPatch): Promise<HostSettings>;
@@ -515,6 +532,7 @@ export interface HostBridge {
     channel(): Promise<UpdateChannel>;
     setChannel(input: { readonly channel: UpdateChannel }): Promise<UpdateChannel>;
   };
+  readonly bundledCli?: () => Promise<BundledCli>;
   server: {
     state(): Promise<ServerState>;
     connect(input: { baseUrl: string; token: string }): Promise<ServerConnectOutcome>;
@@ -541,6 +559,7 @@ export interface HostBridge {
     y: number;
   }) => Promise<number | undefined>;
   readonly browser?: BrowserBridge;
+  readonly attention?: AttentionBridge;
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }
 

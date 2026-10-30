@@ -64,18 +64,6 @@ test("the navigation journey", async ({ desktop }) => {
     await expect(menu).toBeHidden();
   });
 
-  await test.step("Environments opens in its own tab", async () => {
-    await sidebar(page).getByRole("button", { name: "Environments" }).click();
-    await expect(chatTab(page, "Environments")).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("heading", { level: 2 })).toHaveText([
-      "Remote access",
-      "Manual setup",
-      "Server",
-    ]);
-    await expect(page.getByRole("button", { name: "Connect Server" })).toBeDisabled();
-    await expect(page.getByRole("textbox", { name: "Server URL" })).toBeEmpty();
-  });
-
   await test.step("Customize lists the plugins", async () => {
     await sidebar(page).getByRole("button", { name: "Customize", exact: true }).click();
     await expect(chatTab(page, "Customize")).toHaveAttribute("aria-selected", "true");

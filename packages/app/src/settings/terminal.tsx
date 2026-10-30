@@ -1,15 +1,34 @@
 import type { ReactElement } from "react";
-import { hostSetting, preferences } from "../preferences/index.ts";
-import { NumberRow, SettingsSection, SwitchRow, TextRow } from "./rows.tsx";
+import { Deferred } from "../deferred.tsx";
+import { DESKTOP_SETTING_SCHEMAS } from "../desktop-settings.ts";
+import { preferences } from "../preferences/index.ts";
+import { pluginSetting } from "../preferences/plugin.ts";
+import { NumberRow, SelectRow, SettingsSection, SwitchRow, TextRow } from "./rows.tsx";
+
+/** The shell new terminals start, a desktop setting the host reads when it spawns one. */
+export const terminalShell = pluginSetting(
+  "desktop.terminalShell",
+  DESKTOP_SETTING_SCHEMAS.terminalShell,
+);
+
+const CURSOR_STYLES = [
+  { value: "block", label: "Block" },
+  { value: "bar", label: "Bar" },
+  { value: "underline", label: "Underline" },
+] as const;
 
 export function TerminalSettings(): ReactElement {
   return (
-    <SettingsSection>
+    <SettingsSection
+      preview={<Deferred entry="previews">{(previews) => <previews.TerminalPreview />}</Deferred>}
+      note="Shell and scrollback apply to new terminals. The cursor changes in open ones too."
+    >
       <TextRow
-        setting={hostSetting("terminalShell")}
+        setting={terminalShell}
         title="Shell"
         description="New terminals start it as a login shell. Leave empty to use your account's shell"
         placeholder="Login shell"
+        needs={["desktop"]}
       />
       <NumberRow
         setting={preferences.terminalScrollback}
@@ -18,6 +37,11 @@ export function TerminalSettings(): ReactElement {
         min={1_000}
         max={100_000}
         step={1_000}
+      />
+      <SelectRow
+        setting={preferences.terminalCursorStyle}
+        title="Cursor style"
+        options={CURSOR_STYLES}
       />
       <SwitchRow
         setting={preferences.terminalCursorBlink}

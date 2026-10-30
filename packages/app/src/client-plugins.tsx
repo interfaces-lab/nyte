@@ -11,6 +11,7 @@ import { toast } from "@nyte-ai/ui/toast";
 import { canvasRenderers } from "./conversation/canvas-frame.tsx";
 import { PartOrigin } from "./conversation/part-origin.ts";
 import { RawPartView } from "./conversation/raw-part.tsx";
+import { nyte } from "./nyte.ts";
 import { connected, connection, sessionsWatch } from "./sdk.tsx";
 
 let mounting: Promise<ClientPlugins> | undefined;
@@ -24,7 +25,12 @@ export function watchClientPlugins(
   mounting ??= connected().then(async (current) => {
     mounted = await mountClientPlugins({
       connection: current,
-      plugins: [notifications, renderers, questions, canvasRenderers],
+      plugins: [
+        ...(nyte.host.attention === undefined ? [notifications] : []),
+        renderers,
+        questions,
+        canvasRenderers,
+      ],
       client: { name: "desktop", frameworks: ["react"] },
       session: () => {
         const id = session();

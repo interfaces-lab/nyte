@@ -178,9 +178,4 @@ test("chrome stages survive a refresh", async () => {
   await expect(customize).toBeVisible();
   await page.reload();
   await expect(customize).toBeVisible();
-  await sidebar.getByRole("button", { name: "Environments", exact: true }).click();
-  const remoteAccess = page.getByRole("heading", { name: "Remote access", exact: true });
-  await expect(remoteAccess).toBeVisible();
-  await page.reload();
-  await expect(remoteAccess).toBeVisible();
 }, 60_000);

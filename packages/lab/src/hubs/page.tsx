@@ -60,7 +60,7 @@ const GROUPS: readonly (readonly Page[])[] = [
     still("editor", "Editor", "file-text"),
     still("terminal", "Terminal", "console"),
     still("browser", "Browser", "globe"),
-    still("advanced", "Advanced", "code-brackets"),
+    still("developer", "Developer", "code-brackets"),
   ],
   [hub("providers"), hub("remote")],
 ].map((group) => group.filter((page) => page !== undefined));

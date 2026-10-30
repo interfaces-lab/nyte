@@ -7,7 +7,7 @@ import { showsPage } from "./model.ts";
 import type { Page, Place } from "./model.ts";
 
 export function pageSection(page: Page): string {
-  return page.section ?? (page.kind === "customize" ? "plugins" : "connections");
+  return page.section ?? "plugins";
 }
 
 export function placeHref(place: Place): string {
@@ -18,8 +18,6 @@ export function placeHref(place: Place): string {
       return `/session/${encodeURIComponent(place.sessionId)}`;
     case "customize":
       return `/?customize=${encodeURIComponent(pageSection(place))}`;
-    case "environments":
-      return `/?environment=${encodeURIComponent(pageSection(place))}`;
     default: {
       const _exhaustive: never = place;
 
@@ -32,7 +30,6 @@ type AppRouter = ReturnType<typeof useRouter>;
 
 const pageSearch = Type.Object({
   customize: Type.Optional(Type.String()),
-  environment: Type.Optional(Type.String()),
 });
 
 export function locationPlace(router: AppRouter): Place | undefined {
@@ -40,12 +37,11 @@ export function locationPlace(router: AppRouter): Place | undefined {
 
   if (pathname.startsWith("/settings/")) return undefined;
   const params: unknown = router.options.parseSearch(search);
-  const { customize, environment } = Value.Check(pageSearch, params) ? params : {};
+  const { customize } = Value.Check(pageSearch, params) ? params : {};
 
   if (customize !== undefined)
     return { kind: "customize", section: customize, sessionId: undefined };
 
-  if (environment !== undefined) return { kind: "environments", section: environment };
   const segment = /^\/session\/([^/]+)$/.exec(pathname)?.[1];
 
   if (segment === undefined) return pathname === "/" ? { kind: "blank" } : undefined;
@@ -85,10 +81,6 @@ export function navigateTo(router: AppRouter, place: Place): void {
       return;
     case "customize":
       void router.navigate({ to: "/", search: { customize: pageSection(place) } });
-
-      return;
-    case "environments":
-      void router.navigate({ to: "/", search: { environment: pageSection(place) } });
 
       return;
     default: {

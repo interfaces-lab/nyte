@@ -1,16 +1,12 @@
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button } from "@nyte-ai/ui/button";
-import { Icon } from "@nyte-ai/ui/icon";
-import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import { space } from "@nyte-ai/ui/styles/schema.stylex";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { create, props } from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { ConnectBridge } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
+import { SettingsSection, SettingsSwitchRow } from "../settings/rows.tsx";
 import {
   linkedStanding,
   noticeNote,
@@ -20,17 +16,16 @@ import {
 } from "./connect-view.ts";
 import type { LinkedView } from "./connect-view.ts";
 import { ConnectDevices } from "./connect-devices.tsx";
-import { ConnectionList, ConnectionMenu, ConnectionRow } from "./connection-list.tsx";
+import { FactRow } from "./connection-list.tsx";
 import { LinkTray } from "./link-tray.tsx";
-
-const styles = create({
-  expansion: { display: "flex", flexDirection: "column", gap: space.s1_5 },
-  note: { color: role.contentSecondary },
-});
 
 const TITLE = "Nyte account";
 
-const glyph = <Icon name="laptop" size={16} />;
+function deviceCount(count: number): string {
+  if (count === 0) return "No devices";
+
+  return count === 1 ? "1 device" : `${String(count)} devices`;
+}
 
 function LinkedConnection({
   view,
@@ -40,7 +35,7 @@ function LinkedConnection({
   readonly connect: ConnectBridge;
 }): ReactElement {
   const [confirming, setConfirming] = useState(false);
-  const menuRef = useRef<HTMLButtonElement>(null);
+  const unlinkRef = useRef<HTMLButtonElement>(null);
 
   const setEnabled = useConnectAction(
     (enabled: boolean) => connect.setEnabled({ enabled }),
@@ -53,60 +48,58 @@ function LinkedConnection({
   const { owner, devices } = view;
 
   return (
-    <>
-      <ConnectionRow
-        glyph={glyph}
-        title={TITLE}
-        detail={`${owner.label} · ${view.environment.name}`}
-        control={
-          <ConnectionMenu
-            ref={menuRef}
-            label={TITLE}
-            tone={standing.tone}
-            status={standing.status}
-            loading={setEnabled.isPending || unlink.isPending}
-          >
-            <MenuItem onClick={() => setEnabled.mutate(!view.enabled)}>
-              {view.enabled ? "Turn Off Remote Access" : "Turn On Remote Access"}
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem variant="danger" onClick={() => setConfirming(true)}>
-              Unlink This Mac…
-            </MenuItem>
-          </ConnectionMenu>
+    <SettingsSection
+      title={TITLE}
+      note={
+        standing.note === undefined ? (
+          devices.length === 0 ? (
+            `No devices yet. Sign in to the Nyte iOS app as ${owner.label} to add one.`
+          ) : undefined
+        ) : (
+          <span role="alert" {...props(intent.danger)}>
+            {standing.note}
+          </span>
+        )
+      }
+    >
+      <FactRow
+        icon="user"
+        tone={view.enabled ? "on" : "neutral"}
+        title={`Linked to ${owner.label}`}
+        detail={`${view.environment.name} · ${deviceCount(devices.length)}`}
+      >
+        <Button ref={unlinkRef} variant="outline" onClick={() => setConfirming(true)}>
+          Unlink This Mac…
+        </Button>
+      </FactRow>
+      <SettingsSwitchRow
+        title="Remote access"
+        description={
+          view.enabled
+            ? standing.status
+            : "Devices signed in to this account can connect from any network"
         }
-        expansion={
-          standing.note === undefined && devices.length > 0 ? undefined : (
-            <div {...props(styles.expansion)}>
-              {standing.note !== undefined && (
-                <span role="alert" {...props(text.sm, intent.danger, styles.note)}>
-                  {standing.note}
-                </span>
-              )}
-              {devices.length === 0 && (
-                <span {...props(text.sm, styles.note)}>
-                  {`No devices yet. Sign in to the Nyte iOS app as ${owner.label} to add one.`}
-                </span>
-              )}
-            </div>
-          )
-        }
+        checked={view.enabled}
+        disabled={setEnabled.isPending || unlink.isPending}
+        onCheckedChange={(enabled) => setEnabled.mutate(enabled)}
       />
+      <ConnectDevices view={view} connect={connect} />
       <ConfirmDialog
         open={confirming}
         pending={unlink.isPending}
-        finalFocus={menuRef}
-        title="Unlink This Mac"
+        finalFocus={unlinkRef}
+        title="Unlink this Mac?"
         description={`Devices signed in as ${owner.label} lose access to this Mac right away, and it leaves that account.`}
         confirmLabel="Unlink This Mac"
         pendingLabel="Unlinking…"
         onOpenChange={setConfirming}
         onConfirm={() => unlink.mutate(undefined, { onSuccess: () => setConfirming(false) })}
       />
-    </>
+    </SettingsSection>
   );
 }
 
+/** The Nyte account group: link this Mac, turn remote access on, and manage its devices. */
 export function NyteConnection({
   connect,
 }: {
@@ -118,55 +111,46 @@ export function NyteConnection({
 
   if (view === undefined) {
     return (
-      <ConnectionList>
-        <ConnectionRow
-          glyph={glyph}
+      <SettingsSection title={TITLE}>
+        <FactRow
+          icon="user"
           title={TITLE}
           detail={state.isError ? errorMessage(state.error) : "Checking…"}
         />
-      </ConnectionList>
+      </SettingsSection>
     );
   }
 
   if (view.kind === "unavailable") {
     return view.reason === "not_configured" ? null : (
-      <ConnectionList>
-        <ConnectionRow glyph={glyph} title={TITLE} detail={unavailableDetail(view.reason)} />
-      </ConnectionList>
+      <SettingsSection title={TITLE}>
+        <FactRow icon="user" title="Unavailable" detail={unavailableDetail(view.reason)} />
+      </SettingsSection>
     );
   }
 
-  if (view.kind === "linked" && !trayOpen) {
-    return (
-      <>
-        <ConnectionList>
-          <LinkedConnection view={view} connect={connect} />
-        </ConnectionList>
-        <ConnectDevices view={view} connect={connect} />
-      </>
-    );
-  }
+  if (view.kind === "linked" && !trayOpen)
+    return <LinkedConnection view={view} connect={connect} />;
 
   return (
-    <ConnectionList>
-      <ConnectionRow
-        glyph={glyph}
-        title={TITLE}
+    <SettingsSection title={TITLE}>
+      <FactRow
+        icon="user"
+        title="Not linked"
         detail={
           view.kind === "unlinked"
             ? (noticeNote(view.notice) ?? "Reach this Mac from your iPhone on any network.")
             : undefined
         }
-        control={
-          <LinkTray
-            connect={connect}
-            open={trayOpen}
-            onOpenChange={setTrayOpen}
-            side="bottom"
-            trigger={<Button variant="outline">Link This Mac…</Button>}
-          />
-        }
-      />
-    </ConnectionList>
+      >
+        <LinkTray
+          connect={connect}
+          open={trayOpen}
+          onOpenChange={setTrayOpen}
+          side="bottom"
+          trigger={<Button variant="outline">Link This Mac…</Button>}
+        />
+      </FactRow>
+    </SettingsSection>
   );
 }

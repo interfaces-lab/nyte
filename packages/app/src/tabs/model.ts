@@ -9,13 +9,11 @@ import {
 } from "../layout/pane-layout.ts";
 import type { PaneLayout, PaneSelection } from "../layout/pane-layout.ts";
 
-export type Page =
-  | {
-      readonly kind: "customize";
-      readonly section: string | undefined;
-      readonly sessionId: SessionId | undefined;
-    }
-  | { readonly kind: "environments"; readonly section: string | undefined };
+export type Page = {
+  readonly kind: "customize";
+  readonly section: string | undefined;
+  readonly sessionId: SessionId | undefined;
+};
 
 export type Place = PaneSelection | Page;
 
@@ -75,7 +73,7 @@ const CLOSED_LIMIT = 25;
 const RECENT_LIMIT = 50;
 
 export function showsPage(place: Place): place is Page {
-  return place.kind === "customize" || place.kind === "environments";
+  return place.kind === "customize";
 }
 
 export function activeTab(state: WindowState): Tab {

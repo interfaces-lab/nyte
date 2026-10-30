@@ -1,0 +1,100 @@
+import { Button } from "@nyte-ai/ui/button";
+import { Icon } from "@nyte-ai/ui/icon";
+import { Row } from "@nyte-ai/ui/row";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { create, props } from "@stylexjs/stylex";
+import type { ReactElement } from "react";
+import { WorkspaceRow } from "../../chrome/sidebar-lists.tsx";
+import { SessionRow } from "../../chrome/sidebar-rows.tsx";
+import { sidebarStyles } from "../../chrome/sidebar.stylex.ts";
+import { UserMessageView } from "../../conversation/turn-view.tsx";
+import { conversation, shell, sidebar } from "../../theme/schema.stylex.ts";
+import { PREVIEW_PATH, PREVIEW_PLACE, previewChat, previewRail } from "./fixtures.ts";
+
+const ACTIVE = previewChat("active", "Settings density", 2 * 60_000);
+
+const OTHER = previewChat("other", "Release notes", 3 * 3_600_000);
+
+const RAIL = previewRail(ACTIVE.id);
+
+/**
+ * A slice of the window as the shell composes it: the sidebar's rows on the window material, beside
+ * the content card holding a message and a primary button. The tint and transparency on `<html>`
+ * reach it the same way.
+ */
+export function WindowPreview(): ReactElement {
+  return (
+    <div {...props(styles.window)}>
+      <div {...props(styles.sidebar)}>
+        <Row variant="nav" xstyle={sidebarStyles.navRow}>
+          <Row.Leading xstyle={sidebarStyles.navLeading}>
+            <Icon name="new-chat" size={14} />
+          </Row.Leading>
+          <Row.Label>New Chat</Row.Label>
+        </Row>
+        <Row variant="nav" xstyle={sidebarStyles.navRow}>
+          <Row.Leading xstyle={sidebarStyles.navLeading}>
+            <Icon name="search" size={14} />
+          </Row.Leading>
+          <Row.Label>Search</Row.Label>
+        </Row>
+        <WorkspaceRow
+          name="nyte"
+          path={PREVIEW_PATH}
+          available
+          active
+          expanded
+          onExpandedChange={() => undefined}
+          onNewChat={undefined}
+          onArchiveAll={undefined}
+          onRemove={() => undefined}
+        >
+          <div {...props(sidebarStyles.section)}>
+            <SessionRow session={ACTIVE} place={PREVIEW_PLACE} rail={RAIL} />
+            <SessionRow session={OTHER} place={PREVIEW_PLACE} rail={RAIL} />
+          </div>
+        </WorkspaceRow>
+      </div>
+      <div {...props(styles.card)}>
+        <UserMessageView content="Make the settings rows a little tighter." />
+        <span {...props(styles.actions)}>
+          <Button variant="solid" tone="primary">
+            Create Pull Request
+          </Button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const styles = create({
+  window: {
+    display: "flex",
+    backgroundColor: role.windowWash,
+    backgroundImage: `linear-gradient(${role.sidebarMaterial}, ${role.sidebarMaterial})`,
+  },
+  sidebar: {
+    display: "flex",
+    flexDirection: "column",
+    gap: sidebar.listGap,
+    width: 208,
+    flexShrink: 0,
+    padding: sidebar.gutter,
+  },
+  card: {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    gap: conversation.rowGap,
+    flex: 1,
+    minWidth: 0,
+    marginBlock: shell.cardInset,
+    marginInlineEnd: shell.cardInset,
+    padding: space.s4,
+    borderRadius: shell.cardRadius,
+    backgroundColor: role.surfaceMaterial,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+  },
+  actions: { display: "flex", justifyContent: "flex-end" },
+});

@@ -8,6 +8,7 @@ import { ExpectedHostError } from "./errors.ts";
 import { themeSource } from "./launch-state.ts";
 import { Uuid } from "@nyte-ai/connect";
 import type { CallInput, CallPath, CallRequest } from "../shared/ipc.ts";
+import { TERMINAL_NOTICE_LIMITS } from "@nyte-ai/app/bridge.ts";
 import type { BrowserBoundsMessage, BrowserFocusMessage, BrowserKey } from "@nyte-ai/app/bridge.ts";
 
 type Parser<T> = Pick<Validator<TProperties, TSchema, T>, "Parse">;
@@ -79,6 +80,7 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.updates.check": compile(noInput),
   "host.updates.channel": compile(noInput),
   "host.updates.setChannel": compile(strict({ channel: Type.Enum(["stable", "nightly"]) })),
+  "host.bundledCli": compile(noInput),
   "host.server.state": compile(noInput),
   "host.server.connect": compile(strict({ baseUrl: nonEmpty, token: nonEmpty })),
   "host.server.disconnect": compile(noInput),
@@ -283,3 +285,16 @@ export function decodeBrowserKey(input: BrowserKey): BrowserKey {
 }
 
 export const themePreference = Compile(themeSource);
+
+/** The chat a window reports it shows, or null. */
+export const viewedChat = Compile(
+  Type.Union([Type.String({ minLength: 1, maxLength: 256 }), Type.Null()]),
+);
+
+/** A notification a program in a window's terminal asked for. */
+export const terminalNotice = Compile(
+  strict({
+    title: Type.String({ maxLength: TERMINAL_NOTICE_LIMITS.title }),
+    body: Type.String({ maxLength: TERMINAL_NOTICE_LIMITS.body }),
+  }),
+);

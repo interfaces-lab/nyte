@@ -128,8 +128,6 @@ function placeTitle(place: Place, sessions: ReadonlyMap<SessionId, SessionInfo>)
       return sessionTitle(sessions.get(place.sessionId));
     case "customize":
       return "Customize";
-    case "environments":
-      return "Environments";
     default: {
       const _exhaustive: never = place;
 

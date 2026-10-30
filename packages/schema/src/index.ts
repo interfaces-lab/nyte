@@ -3,6 +3,7 @@ export * from "./browser.ts";
 export * from "./configuration.ts";
 
 export * from "./connection.ts";
+export * from "./origin.ts";
 
 export * from "./declaration.ts";
 

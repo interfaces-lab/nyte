@@ -1,5 +1,5 @@
 import { FitAddon, Terminal } from "ghostty-web";
-import type { ITheme } from "ghostty-web";
+import type { Ghostty, ITerminalOptions, ITheme } from "ghostty-web";
 import { serial } from "@nyte-ai/schema/serial";
 import { toast } from "@nyte-ai/ui/toast";
 import { preferences } from "../preferences/index.ts";
@@ -115,6 +115,85 @@ function terminalAppearance() {
   }
 }
 
+type ThemedTerminalOptions = Omit<
+  ITerminalOptions,
+  "ghostty" | "theme" | "colorScheme" | "fontFamily" | "fontSize" | "cursorStyle" | "cursorBlink"
+>;
+
+export interface ThemedTerminal {
+  readonly terminal: Terminal;
+  readonly fit: FitAddon;
+  /** Stops following the appearance and cursor preferences and disposes the terminal. */
+  dispose(): void;
+}
+
+/**
+ * Opens a ghostty terminal in `element` in the app's theme, code font and cursor preferences, and
+ * keeps them current. `onRestyle` runs after the theme or font changes.
+ */
+export function openThemedTerminal(
+  engine: Ghostty,
+  element: HTMLElement,
+  options: ThemedTerminalOptions,
+  onRestyle: () => void,
+): ThemedTerminal {
+  const root = document.documentElement;
+  const appearance = terminalAppearance();
+
+  const terminal = new Terminal({
+    ...options,
+    ghostty: engine,
+    cursorStyle: preferences.terminalCursorStyle.get(),
+    cursorBlink: preferences.terminalCursorBlink.get(),
+    theme: appearance.theme,
+    colorScheme: root.dataset["displayMode"] === "dark" ? "dark" : "light",
+    fontFamily: appearance.fontFamily,
+    fontSize: appearance.fontSize,
+  });
+
+  const fit = new FitAddon();
+  terminal.loadAddon(fit);
+  terminal.open(element);
+  let lastAppearance = "";
+
+  const restyle = new MutationObserver(() => {
+    const next = terminalAppearance();
+    const signature = JSON.stringify([root.dataset["displayMode"], next]);
+
+    if (signature === lastAppearance) return;
+    lastAppearance = signature;
+    terminal.options.theme = next.theme;
+    terminal.options.colorScheme = root.dataset["displayMode"] === "dark" ? "dark" : "light";
+    terminal.options.fontFamily = next.fontFamily;
+    terminal.options.fontSize = next.fontSize;
+    onRestyle();
+  });
+
+  restyle.observe(root, {
+    attributes: true,
+    attributeFilter: ["style", "class", "data-display-mode"],
+  });
+
+  const stopCursorStyle = preferences.terminalCursorStyle.subscribe(() => {
+    terminal.options.cursorStyle = preferences.terminalCursorStyle.get();
+  });
+
+  const stopBlink = preferences.terminalCursorBlink.subscribe(() => {
+    terminal.options.cursorBlink = preferences.terminalCursorBlink.get();
+  });
+
+  return {
+    terminal,
+    fit,
+    dispose() {
+      restyle.disconnect();
+      stopCursorStyle();
+      stopBlink();
+      terminal.dispose();
+    },
+  };
+}
+
 function takesInput(tab: TerminalTab): boolean {
   return tab.kind === "shell" && (tab.state.kind === "running" || tab.state.kind === "starting");
 }
@@ -128,8 +207,6 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
   if (initialTab === undefined) return undefined;
   const commandOutput = initialTab.kind !== "shell";
-  const root = document.documentElement;
-  const initialAppearance = terminalAppearance();
   const element = document.createElement("div");
   element.style.width = "100%";
   element.style.height = "100%";
@@ -137,23 +214,20 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   element.style.position = "relative";
   element.style.caretColor = "transparent";
 
-  const terminal = new Terminal({
-    ghostty: engine,
-    cursorStyle: "bar",
-    cursorBlink: preferences.terminalCursorBlink.get(),
-    theme: initialAppearance.theme,
-    colorScheme: root.dataset["displayMode"] === "dark" ? "dark" : "light",
-    fontFamily: initialAppearance.fontFamily,
-    fontSize: initialAppearance.fontSize,
-    scrollback: preferences.terminalScrollback.get(),
-    smoothScrollDuration: 0,
-    convertEol: commandOutput,
-    disableStdin: commandOutput || !takesInput(initialTab),
-  });
+  const themed = openThemedTerminal(
+    engine,
+    element,
+    {
+      scrollback: preferences.terminalScrollback.get(),
+      smoothScrollDuration: 0,
+      convertEol: commandOutput,
+      disableStdin: commandOutput || !takesInput(initialTab),
+    },
+    () => scheduleFit(),
+  );
 
-  const fit = new FitAddon();
-  terminal.loadAddon(fit);
-  terminal.open(element);
+  const terminal = themed.terminal;
+  const fit = themed.fit;
   terminal.pauseRendering();
 
   if (commandOutput) terminal.write("\u001b[?25l");
@@ -238,29 +312,6 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
   const resize = new ResizeObserver(scheduleFit);
   resize.observe(element);
-  let lastAppearance = "";
-
-  const appearance = new MutationObserver(() => {
-    const next = terminalAppearance();
-    const signature = JSON.stringify([root.dataset["displayMode"], next]);
-
-    if (signature === lastAppearance) return;
-    lastAppearance = signature;
-    terminal.options.theme = next.theme;
-    terminal.options.colorScheme = root.dataset["displayMode"] === "dark" ? "dark" : "light";
-    terminal.options.fontFamily = next.fontFamily;
-    terminal.options.fontSize = next.fontSize;
-    scheduleFit();
-  });
-
-  appearance.observe(root, {
-    attributes: true,
-    attributeFilter: ["style", "class", "data-display-mode"],
-  });
-
-  const stopBlink = preferences.terminalCursorBlink.subscribe(() => {
-    terminal.options.cursorBlink = preferences.terminalCursorBlink.get();
-  });
 
   const stopScrollback = preferences.terminalScrollback.subscribe(() => {
     terminal.options.scrollback = preferences.terminalScrollback.get();
@@ -338,12 +389,11 @@ async function createView(id: string): Promise<TerminalView | undefined> {
       if (commandOutput) mirrorOutput();
     },
     update,
+    visible: () => element.checkVisibility(),
     dispose() {
       cancelAnimationFrame(resizeFrame);
       cancelAnimationFrame(mirrorFrame);
       resize.disconnect();
-      appearance.disconnect();
-      stopBlink();
       stopScrollback();
       document.fonts.removeEventListener("loadingdone", scheduleFit);
       data.dispose();
@@ -355,7 +405,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
       element.removeEventListener("copy", copy, true);
       element.removeEventListener("paste", paste, true);
       element.removeEventListener("focus", focusInput);
-      terminal.dispose();
+      themed.dispose();
       element.remove();
       views.delete(id);
     },

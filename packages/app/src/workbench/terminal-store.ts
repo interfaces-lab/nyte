@@ -12,10 +12,14 @@ import { toast } from "@nyte-ai/ui/toast";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { useSyncExternalStore } from "react";
+import { TERMINAL_NOTICE_LIMITS } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
+import { nyte } from "../nyte.ts";
 import { connected, hostWatch } from "../sdk.tsx";
 import { workspacePath as pathOfWorkspace } from "../view-helpers.ts";
 import type { WorkbenchController, WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
+import { createNoticeReader } from "./terminal-notifications.ts";
+import type { OscNotice } from "./terminal-notifications.ts";
 
 type ShellTerminalState =
   | { readonly kind: "starting" }
@@ -60,6 +64,8 @@ export interface TerminalOutput {
   reset(): void;
   write(data: string): void;
   update(tab: TerminalTab): void;
+  /** Whether the terminal is on screen, so its own notifications would only repeat it. */
+  visible(): boolean;
   dispose(): void;
 }
 
@@ -196,9 +202,11 @@ function shellTab(id: WorkbenchTabId): ShellTerminalTab | undefined {
   return tab !== undefined && tab.kind === "shell" ? tab : undefined;
 }
 
-async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
+/** Follows a feed's output into its terminal; a shell's also posts its notifications, past the `history` its replay repeats. */
+async function follow(id: WorkbenchTabId, feed: Feed, history?: string): Promise<void> {
   const decoder = new TextDecoder();
   let replay = getTerminal(id)?.kind === "job";
+  const notices = history === undefined ? undefined : createNoticeReader(history);
 
   try {
     for await (const frame of feed.job.output()) {
@@ -212,8 +220,12 @@ async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
         output.get(id)?.reset();
       }
 
-      if (frame.kind === "bytes") print(id, decoder.decode(frame.data, { stream: true }));
-      else if (frame.kind === "gap") print(id, "\r\n\u001b[2m[output skipped]\u001b[0m\r\n");
+      if (frame.kind === "bytes") {
+        const text = decoder.decode(frame.data, { stream: true });
+        print(id, text);
+
+        if (notices !== undefined) postNotices(id, notices(text));
+      } else if (frame.kind === "gap") print(id, "\r\n\u001b[2m[output skipped]\u001b[0m\r\n");
       else if (shellTab(id) !== undefined)
         updateShell(id, { kind: "exited", exitCode: frame.code });
     }
@@ -224,6 +236,22 @@ async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
     if (shellTab(id) === undefined) updateStream(id, { kind: "failed", message });
     else updateShell(id, { kind: "failed", message });
   }
+}
+
+function postNotices(id: WorkbenchTabId, notices: readonly OscNotice[]): void {
+  if (notices.length === 0) return;
+  const attention = nyte.host.attention;
+
+  if (attention === undefined) return;
+
+  if (document.hasFocus() && output.get(id)?.visible() === true) return;
+  const title = getTerminal(id)?.title ?? "Terminal";
+
+  for (const notice of notices)
+    attention.notify({
+      title: (notice.title ?? title).slice(0, TERMINAL_NOTICE_LIMITS.title),
+      body: notice.body.slice(0, TERMINAL_NOTICE_LIMITS.body),
+    });
 }
 
 function savedKey(id: WorkbenchTabId): string {
@@ -383,7 +411,7 @@ function startShell(
       print(id, `${printed}\r\n\u001b[2m[restored, new shell]\u001b[0m\r\n`);
     save(id);
     updateShell(id, { kind: "running" });
-    void follow(id, feed);
+    void follow(id, feed, reattached === null ? "" : printed);
     const ahead = typedAhead.get(id) ?? [];
     typedAhead.delete(id);
 
@@ -439,7 +467,7 @@ export function reattachShells(
         }),
       );
       feeds.set(id, feed);
-      void follow(id, feed);
+      void follow(id, feed, saved.printed);
     })()
       .catch(() => undefined)
       .finally(() => creating.delete(id));

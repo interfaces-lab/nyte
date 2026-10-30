@@ -47,7 +47,6 @@ import type { DesktopWindow } from "./tabs/window-tabs.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { CustomizeSurface } from "./chrome/customize.tsx";
-import { EnvironmentsSurface } from "./chrome/environments.tsx";
 import {
   closeSettings,
   showsSettingsSection,
@@ -249,17 +248,7 @@ function WorkspaceRouteStage(): ReactElement {
 
   if (page === undefined) return <SessionScreen />;
 
-  switch (page.kind) {
-    case "customize":
-      return <CustomizeSurface sessionId={page.sessionId} />;
-    case "environments":
-      return <EnvironmentsSurface />;
-    default: {
-      const _exhaustive: never = page;
-
-      return _exhaustive;
-    }
-  }
+  return <CustomizeSurface sessionId={page.sessionId} />;
 }
 
 const searchText = Type.String();
@@ -274,7 +263,6 @@ const rootRoute = createRootRouteWithContext<{ startup: StartupContext }>()({
   notFoundComponent: RouteNotFound,
   validateSearch: (search): ShellSearch => ({
     customize: Value.Check(searchText, search.customize) ? search.customize : undefined,
-    environment: Value.Check(searchText, search.environment) ? search.environment : undefined,
     usage: Value.Check(searchText, search.usage) ? search.usage : undefined,
     usageRange: Value.Check(searchText, search.usageRange) ? search.usageRange : undefined,
   }),
@@ -295,7 +283,7 @@ const indexRoute = createRoute({
 
     if (!windowTabs.startupDestination) return;
 
-    if (search.customize !== undefined || search.environment !== undefined) return;
+    if (search.customize !== undefined) return;
 
     if (preferences.startupDestination.get() === "new-chat") return;
 

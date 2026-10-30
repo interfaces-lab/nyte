@@ -1,42 +1,40 @@
-import { create, props } from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { toast } from "@nyte-ai/ui/toast";
-import { errorMessage } from "../errors.ts";
-import type { CloudflareTunnelView, RemotePairing, TunnelConnection } from "../bridge.ts";
-import { Icon } from "@nyte-ai/ui/icon";
+import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { errorMessage } from "../errors.ts";
+import type {
+  CloudflareTunnelSettings,
+  CloudflareTunnelView,
+  RemotePairing,
+  TunnelConnection,
+} from "../bridge.ts";
 import { nyte } from "../nyte.ts";
 import { keys } from "../queries.ts";
-import { ConnectionMenu, ConnectionRow, type ConnectionStanding } from "./connection-list.tsx";
-import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { AddDevice, PairingPanel, useRevokeDevice } from "./remote-devices.tsx";
+import { SettingsField, SettingsFormDialog } from "../settings/dialog.tsx";
+import { SettingsSection, SettingsSwitchRow } from "../settings/rows.tsx";
+import { ConnectionStatus, FactRow, type ConnectionStanding } from "./connection-list.tsx";
 import { DeviceRows } from "./device-rows.tsx";
-import { shareStyles } from "./remote-share.tsx";
-
-const tunnelStyles = create({
-  port: { flexGrow: 0, flexShrink: 0, width: 96 },
-});
+import { NameDeviceDialog, PairingDialog, useRevokeDevice } from "./remote-devices.tsx";
 
 const DEFAULT_TUNNEL_PORT = 5182;
 
+const TITLE = "Cloudflare Tunnel";
+
 type ConfiguredTunnel = Extract<CloudflareTunnelView, { kind: "configured" }>;
 
-export function tunnelStatus(tunnel: CloudflareTunnelView): ConnectionStanding {
-  if (tunnel.kind !== "configured") return { tone: "on", status: "Serving" };
-  const { connection } = tunnel;
-
+export function tunnelStatus(connection: TunnelConnection): ConnectionStanding {
   switch (connection.kind) {
     case "stopped":
       return { tone: "off", status: "Stopped" };
     case "connecting":
       return { tone: "warn", status: "Connecting…" };
     case "connected":
-      return { tone: "on", status: "Over Cloudflare" };
+      return { tone: "on", status: "Connected" };
     case "retrying":
       return { tone: "warn", status: "Reconnecting…" };
     case "failed":
@@ -54,11 +52,11 @@ function tunnelFailure(connection: TunnelConnection, port: number): string | und
 
   switch (connection.reason) {
     case "ingress_mismatch":
-      return `The tunnel routes more than this hostname to http://127.0.0.1:${String(port)}. Leave it one public hostname with that service, then start again.`;
+      return `The tunnel routes more than this hostname to http://127.0.0.1:${String(port)}. Leave it one public hostname with that service, then turn serving on again.`;
     case "ingress_unverified":
-      return "Cloudflare didn't send the tunnel's routes. Check that it has a public hostname, then start again.";
+      return "Cloudflare didn't send the tunnel's routes. Check that it has a public hostname, then turn serving on again.";
     case "exited":
-      return "cloudflared stopped and didn't come back. Stop remote access, then start it again.";
+      return "cloudflared stopped and didn't come back. Turn serving off, then on again.";
     default: {
       const _exhaustive: never = connection.reason;
 
@@ -67,63 +65,70 @@ function tunnelFailure(connection: TunnelConnection, port: number): string | und
   }
 }
 
-function TunnelForm({
+function portProblem(port: string): string | undefined {
+  const value = Number(port);
+
+  if (port.trim() !== "" && Number.isInteger(value) && value >= 1 && value <= 65_535)
+    return undefined;
+
+  return "Ports are whole numbers from 1 to 65535.";
+}
+
+function TunnelDialog({
   initial,
-  onDone,
+  onOpenChange,
 }: {
-  initial: { readonly hostname: string; readonly port: number } | undefined;
-  onDone: () => void;
+  readonly initial: { readonly hostname: string; readonly port: number } | undefined;
+  readonly onOpenChange: (open: boolean) => void;
 }): ReactElement {
   const client = useQueryClient();
   const [hostname, setHostname] = useState(initial?.hostname ?? "");
   const [port, setPort] = useState(String(initial?.port ?? DEFAULT_TUNNEL_PORT));
   const [tunnelToken, setTunnelToken] = useState("");
+  const [failure, setFailure] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState(false);
-  const portNumber = Number(port);
-  const ready = hostname.trim() !== "" && Number.isInteger(portNumber) && tunnelToken.trim() !== "";
+  const badPort = portProblem(port);
 
-  const save = async (): Promise<void> => {
+  const save = async (settings: CloudflareTunnelSettings): Promise<void> => {
     setPending(true);
+    setFailure(undefined);
 
-    const outcome = await nyte.host.remote
-      .configure({
-        plugin: "cloudflare",
-        hostname: hostname.trim(),
-        port: portNumber,
-        tunnelToken: tunnelToken.trim(),
-      })
-      .then(
-        () => ({ kind: "saved" as const }),
-        (cause: unknown) => ({ kind: "failed" as const, cause }),
-      );
+    const outcome = await nyte.host.remote.configure({ plugin: "cloudflare", ...settings }).then(
+      () => undefined,
+      (cause: unknown) => `Couldn't save the tunnel: ${errorMessage(cause)}`,
+    );
 
     setPending(false);
     void client.invalidateQueries({ queryKey: keys.remoteAccess });
 
-    if (outcome.kind === "failed") {
-      toast.add({
-        type: "error",
-        title: `Couldn't save the tunnel: ${errorMessage(outcome.cause)}`,
-        id: "cloudflare-tunnel",
-      });
+    if (outcome !== undefined) {
+      setFailure(outcome);
 
       return;
     }
 
-    setTunnelToken("");
-    onDone();
+    onOpenChange(false);
   };
 
   return (
-    <form
-      {...props(styles.keyForm)}
-      onSubmit={(event) => {
-        event.preventDefault();
-
-        if (!pending && ready) void save();
-      }}
+    <SettingsFormDialog
+      open
+      title={initial === undefined ? "Set Up Cloudflare Tunnel" : "Change Cloudflare Tunnel"}
+      description={`In Cloudflare, give the tunnel one public hostname with the service http://127.0.0.1:${badPort === undefined ? port.trim() : "<port>"}, and no private network routes.`}
+      submitLabel="Save Tunnel"
+      canSubmit={hostname.trim() !== "" && badPort === undefined && tunnelToken.trim() !== ""}
+      pending={pending}
+      error={failure}
+      onOpenChange={onOpenChange}
+      onSubmit={() =>
+        void save({
+          hostname: hostname.trim(),
+          port: Number(port),
+          tunnelToken: tunnelToken.trim(),
+        })
+      }
     >
-      <div {...props(styles.keyRow)}>
+      <SettingsField label="Public hostname">
         <Input
           variant="code"
           aria-label="Public hostname"
@@ -131,23 +136,22 @@ function TunnelForm({
           spellCheck={false}
           placeholder="nyte.example.com"
           value={hostname}
-          disabled={pending}
-          xstyle={styles.keyInput}
           onValueChange={setHostname}
         />
+      </SettingsField>
+      <SettingsField label="Local port" error={badPort}>
         <Input
           variant="code"
           aria-label="Local port"
+          aria-invalid={badPort !== undefined}
           inputMode="numeric"
           autoComplete="off"
           spellCheck={false}
           value={port}
-          disabled={pending}
-          xstyle={[styles.keyInput, tunnelStyles.port]}
           onValueChange={setPort}
         />
-      </div>
-      <div {...props(styles.keyRow)}>
+      </SettingsField>
+      <SettingsField label="Tunnel token" hint="Stored on this Mac in ~/.nyte.">
         <Input
           variant="code"
           type="password"
@@ -156,43 +160,10 @@ function TunnelForm({
           spellCheck={false}
           placeholder="Paste the tunnel's token from Cloudflare"
           value={tunnelToken}
-          disabled={pending}
-          xstyle={styles.keyInput}
           onValueChange={setTunnelToken}
         />
-        <Button type="submit" variant="solid" tone="primary" loading={pending} disabled={!ready}>
-          Save Tunnel
-        </Button>
-        <Button variant="outline" disabled={pending} onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
-      <span {...props(text.sm, styles.keyHint)}>
-        {`In Cloudflare, give the tunnel one public hostname with the service http://127.0.0.1:${Number.isInteger(portNumber) ? String(portNumber) : "<port>"}, and no private network routes. The token is stored on this Mac in ~/.nyte.`}
-      </span>
-    </form>
-  );
-}
-
-function TunnelDevices({
-  tunnel,
-  revoke,
-}: {
-  readonly tunnel: ConfiguredTunnel;
-  readonly revoke: ReturnType<typeof useRevokeDevice>;
-}): ReactElement | null {
-  return (
-    <DeviceRows
-      label="Paired devices"
-      devices={tunnel.devices.map((device) => ({
-        id: device.id,
-        name: device.name,
-        detail: device.state.kind === "pending" ? "Waiting to connect" : "Paired",
-      }))}
-      action="Remove"
-      pending={revoke.isPending ? revoke.variables : undefined}
-      onAction={(deviceId) => revoke.mutate(deviceId)}
-    />
+      </SettingsField>
+    </SettingsFormDialog>
   );
 }
 
@@ -202,11 +173,11 @@ interface ShownPairing {
   readonly listed: boolean;
 }
 
-export function TunnelServingPanel({ tunnel }: { tunnel: ConfiguredTunnel }): ReactElement {
+/** Pairs one more device over the tunnel, and shows its code until the device claims it. */
+export function TunnelPairButton({ tunnel }: { readonly tunnel: ConfiguredTunnel }): ReactElement {
   const client = useQueryClient();
-  const revoke = useRevokeDevice();
+  const [naming, setNaming] = useState(false);
   const [shown, setShown] = useState<ShownPairing | undefined>(undefined);
-  const failure = tunnelFailure(tunnel.connection, tunnel.port);
 
   const device =
     shown === undefined
@@ -222,10 +193,26 @@ export function TunnelServingPanel({ tunnel }: { tunnel: ConfiguredTunnel }): Re
   }
 
   return (
-    <div {...props(shareStyles.panel)}>
-      {failure !== undefined && <span {...props(text.sm, styles.alert)}>{failure}</span>}
-      {shown !== undefined ? (
-        <PairingPanel
+    <>
+      <Button
+        variant="solid"
+        tone="primary"
+        disabled={tunnel.connection.kind !== "connected"}
+        onClick={() => setNaming(true)}
+      >
+        Pair…
+      </Button>
+      {naming && (
+        <NameDeviceDialog
+          onOpenChange={setNaming}
+          onPaired={(pairing, name) => {
+            setNaming(false);
+            setShown({ pairing, name, listed: false });
+          }}
+        />
+      )}
+      {shown !== undefined && (
+        <PairingDialog
           key={shown.pairing.deviceId}
           pairing={shown.pairing}
           name={shown.name}
@@ -235,124 +222,68 @@ export function TunnelServingPanel({ tunnel }: { tunnel: ConfiguredTunnel }): Re
             void client.invalidateQueries({ queryKey: keys.remoteAccess });
           }}
         />
-      ) : tunnel.connection.kind === "connected" ? (
-        <AddDevice onPaired={(pairing, name) => setShown({ pairing, name, listed: false })} />
-      ) : tunnel.connection.kind === "failed" ? null : (
-        <span {...props(text.sm, styles.deviceCodeNote)}>
-          Devices can be added once the tunnel connects.
-        </span>
       )}
-      {tunnel.devices.length === 0 ? (
-        <span {...props(text.sm, styles.deviceCodeNote)}>No devices yet.</span>
-      ) : (
-        <TunnelDevices tunnel={tunnel} revoke={revoke} />
-      )}
-    </div>
+    </>
   );
 }
 
-export function TunnelRow({
+/** Cloudflare Tunnel: set it up, serve over it, and manage the devices paired through it. */
+export function CloudflareSection({
   tunnel,
-  starting,
-  disabled,
-  onStart,
+  serving,
+  blocked,
+  pending,
+  onServe,
 }: {
-  tunnel: CloudflareTunnelView;
-  starting: boolean;
-  disabled: boolean;
-  onStart: () => void;
+  readonly tunnel: CloudflareTunnelView;
+  readonly serving: boolean;
+  /** Tailscale serves now; this Mac serves over one of them at a time. */
+  readonly blocked: boolean;
+  readonly pending: boolean;
+  readonly onServe: (on: boolean) => void;
 }): ReactElement | null {
-  const client = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const revoke = useRevokeDevice();
-
-  const clear = useMutation({
-    mutationFn: () => nyte.host.remote.clear({ plugin: "cloudflare" }),
-    onError: (cause) =>
-      toast.add({
-        type: "error",
-        title: `Couldn't remove the tunnel: ${errorMessage(cause)}`,
-        id: "cloudflare-tunnel",
-      }),
-    onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
-  });
-
-  const glyph = <Icon name="cloudflare" size={16} />;
-  const title = "Over Cloudflare Tunnel";
 
   switch (tunnel.kind) {
     case "unregistered":
       return null;
     case "unavailable":
       return (
-        <ConnectionRow
-          glyph={glyph}
-          title={title}
-          detail="Nyte can't read or write ~/.nyte/cloudflare-tunnel.json. Fix or remove it, then restart Nyte."
-        />
+        <SettingsSection title={TITLE}>
+          <FactRow
+            icon="cloudflare"
+            title="Settings unavailable"
+            detail="Nyte can't read or write ~/.nyte/cloudflare-tunnel.json. Fix or remove it, then restart Nyte."
+          />
+        </SettingsSection>
       );
     case "unconfigured":
       return (
-        <ConnectionRow
-          glyph={glyph}
-          title={title}
-          detail={
-            tunnel.cloudflaredInstalled
-              ? "Your own named tunnel and domain."
-              : "Needs cloudflared on this Mac, and your own named tunnel and domain."
-          }
-          control={
-            editing ? undefined : (
-              <Button variant="outline" disabled={disabled} onClick={() => setEditing(true)}>
-                Set Up Tunnel
-              </Button>
-            )
-          }
-          expansion={
-            editing ? (
-              <TunnelForm initial={undefined} onDone={() => setEditing(false)} />
-            ) : undefined
-          }
-        />
+        <SettingsSection title={TITLE}>
+          <FactRow
+            icon="cloudflare"
+            title="Not set up"
+            detail={
+              tunnel.cloudflaredInstalled
+                ? "Uses your own named tunnel and domain."
+                : "Needs cloudflared on this Mac, and your own named tunnel and domain."
+            }
+          >
+            <Button variant="outline" onClick={() => setEditing(true)}>
+              Set Up Tunnel…
+            </Button>
+          </FactRow>
+          {editing && <TunnelDialog initial={undefined} onOpenChange={setEditing} />}
+        </SettingsSection>
       );
     case "configured":
       return (
-        <ConnectionRow
-          glyph={glyph}
-          title={title}
-          detail={
-            tunnel.cloudflaredInstalled
-              ? `https://${tunnel.hostname}`
-              : "cloudflared isn't installed on this Mac. Install it, then try again."
-          }
-          control={
-            <ConnectionMenu
-              label="Cloudflare tunnel"
-              tone={tunnel.cloudflaredInstalled ? "off" : "err"}
-              status={tunnel.cloudflaredInstalled ? "Ready" : "Needs cloudflared"}
-              loading={starting || clear.isPending}
-              disabled={disabled}
-            >
-              <MenuItem disabled={!tunnel.cloudflaredInstalled} onClick={onStart}>
-                Start Remote Access
-              </MenuItem>
-              <MenuItem onClick={() => setEditing(true)}>Change Tunnel…</MenuItem>
-              <MenuSeparator />
-              <MenuItem variant="danger" onClick={() => clear.mutate()}>
-                Remove Tunnel and Devices
-              </MenuItem>
-            </ConnectionMenu>
-          }
-          expansion={
-            editing ? (
-              <TunnelForm
-                initial={{ hostname: tunnel.hostname, port: tunnel.port }}
-                onDone={() => setEditing(false)}
-              />
-            ) : tunnel.devices.length > 0 ? (
-              <TunnelDevices tunnel={tunnel} revoke={revoke} />
-            ) : undefined
-          }
+        <ConfiguredSection
+          tunnel={tunnel}
+          serving={serving}
+          blocked={blocked}
+          pending={pending}
+          onServe={onServe}
         />
       );
     default: {
@@ -361,4 +292,117 @@ export function TunnelRow({
       return _exhaustive;
     }
   }
+}
+
+function ConfiguredSection({
+  tunnel,
+  serving,
+  blocked,
+  pending,
+  onServe,
+}: {
+  readonly tunnel: ConfiguredTunnel;
+  readonly serving: boolean;
+  readonly blocked: boolean;
+  readonly pending: boolean;
+  readonly onServe: (on: boolean) => void;
+}): ReactElement {
+  const client = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const revoke = useRevokeDevice();
+
+  const clear = useMutation({
+    mutationFn: () => nyte.host.remote.clear({ plugin: "cloudflare" }),
+    onSuccess: () => setRemoving(false),
+    onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
+  });
+
+  const failure = serving ? tunnelFailure(tunnel.connection, tunnel.port) : undefined;
+  const standing = tunnelStatus(tunnel.connection);
+  const waiting = serving && failure === undefined && tunnel.connection.kind !== "connected";
+  const devices = tunnel.devices.length;
+
+  return (
+    <SettingsSection
+      title={TITLE}
+      note={waiting ? "You can pair devices once the tunnel connects." : undefined}
+    >
+      <FactRow
+        icon="cloudflare"
+        tone={serving ? "on" : "neutral"}
+        title={`https://${tunnel.hostname}`}
+        detail={
+          !tunnel.cloudflaredInstalled ? (
+            "cloudflared isn't installed on this Mac. Install it, then try again."
+          ) : failure !== undefined ? (
+            <span role="alert" {...props(intent.danger)}>
+              {failure}
+            </span>
+          ) : serving ? (
+            <ConnectionStatus tone={standing.tone}>{standing.status}</ConnectionStatus>
+          ) : (
+            "Not serving"
+          )
+        }
+      >
+        <Button variant="outline" onClick={() => setEditing(true)}>
+          Change Tunnel…
+        </Button>
+        <Button variant="outline" onClick={() => setRemoving(true)}>
+          Remove Tunnel…
+        </Button>
+      </FactRow>
+      <SettingsSwitchRow
+        title="Serve over Cloudflare Tunnel"
+        description={
+          blocked
+            ? "Turn off Serve over Tailscale first. This Mac serves over one of them at a time."
+            : "Reach this Mac at its public hostname, from any network"
+        }
+        checked={serving}
+        disabled={pending || blocked || !tunnel.cloudflaredInstalled}
+        onCheckedChange={onServe}
+      />
+      <DeviceRows
+        label="Paired devices"
+        devices={tunnel.devices.map((device) => ({
+          id: device.id,
+          name: device.name,
+          detail: device.state.kind === "pending" ? "Waiting to connect" : "Paired",
+        }))}
+        action="Remove"
+        pending={revoke.isPending ? revoke.variables : undefined}
+        onAction={(deviceId) => revoke.mutate(deviceId)}
+      />
+      {editing && (
+        <TunnelDialog
+          initial={{ hostname: tunnel.hostname, port: tunnel.port }}
+          onOpenChange={setEditing}
+        />
+      )}
+      <ConfirmDialog
+        open={removing}
+        pending={clear.isPending}
+        error={
+          clear.error === null
+            ? undefined
+            : `Couldn't remove the tunnel: ${errorMessage(clear.error)}`
+        }
+        title="Remove this tunnel?"
+        description={
+          devices === 0
+            ? `Nyte forgets https://${tunnel.hostname} and its token.`
+            : `Nyte forgets https://${tunnel.hostname} and its token, and ${devices === 1 ? "its paired device loses" : `its ${String(devices)} paired devices lose`} access.`
+        }
+        confirmLabel="Remove Tunnel"
+        pendingLabel="Removing…"
+        onOpenChange={(open) => {
+          setRemoving(open);
+          clear.reset();
+        }}
+        onConfirm={() => clear.mutate()}
+      />
+    </SettingsSection>
+  );
 }

@@ -20,6 +20,10 @@ export const WINDOW_PAINTED_CHANNEL = "nyte:window-painted";
 
 export const HOST_PORT_CHANNEL = "nyte:host-port";
 
+export const VIEWING_CHANNEL = "nyte:viewing";
+
+export const TERMINAL_NOTIFICATION_CHANNEL = "nyte:terminal-notification";
+
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
 export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
@@ -36,6 +40,7 @@ export const MAIN_OPERATION_PATHS = [
   "host.updates.check",
   "host.updates.channel",
   "host.updates.setChannel",
+  "host.bundledCli",
   "host.openExternal",
   "host.confirmExternal",
   "host.revealPath",
@@ -127,10 +132,12 @@ export type DesktopBridge = {
         | "pickWorkspace"
         | "trustWorkspace"
         | "updates"
+        | "bundledCli"
         | "revealPath"
         | "openPluginsFolder"
         | "contextMenu"
         | "browser"
+        | "attention"
       >
     >;
 };
