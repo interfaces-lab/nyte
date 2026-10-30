@@ -26,6 +26,9 @@ import {
   PierreWorkerProvider,
 } from "../../lib/pierre-worker-provider.tsx";
 import { keys } from "../../data/query-client.ts";
+import { loadDeferred } from "../../lib/deferred.tsx";
+import type { DeferredRuntimes } from "../../lib/deferred-entries.ts";
+import { releaseWithQuery } from "../../lib/query-release.ts";
 import { useSaveWorkspaceFile, useWorkspaceFile, workspaceFiles } from "../../data/files.ts";
 import { formatBytes } from "../../lib/format.ts";
 import { useBlobUrl } from "../../lib/use-blob-url.ts";
@@ -261,12 +264,7 @@ function FileView(
     case "image":
       return <FileImage active={input.active} document={document} />;
     case "pdf":
-      return (
-        <FileMessage active={input.active} title="PDFs can't be previewed here.">
-          <span>PDF · {formatBytes(document.size)}</span>
-          {reveal}
-        </FileMessage>
-      );
+      return <FilePdf key={document.version} active={input.active} document={document} />;
     case "binary":
       return (
         <FileMessage active={input.active} title="This file can't be shown here.">
@@ -362,6 +360,77 @@ function FileImage(input: {
           {input.document.mime} · {formatBytes(input.document.size)}
         </span>
       </div>
+    </div>
+  );
+}
+
+/** A PDF's pages, drawn by pdf.js from its deferred chunk. Without the chunk it falls back to the file's size and Reveal. */
+function FilePdf(input: { readonly active: boolean; readonly document: SizedFile }): ReactElement {
+  const runtime = useQuery({ queryKey: ["deferred", "pdf"], queryFn: () => loadDeferred("pdf") });
+
+  if (runtime.data === undefined)
+    return runtime.isError ? (
+      <FileMessage active={input.active} title="PDFs can't be previewed here.">
+        <span>PDF · {formatBytes(input.document.size)}</span>
+        <RevealButton path={input.document.path} />
+      </FileMessage>
+    ) : (
+      <FileMessage active={input.active} title="Opening file…" />
+    );
+
+  return <PdfDocument {...input} runtime={runtime.data} />;
+}
+
+function PdfDocument(input: {
+  readonly active: boolean;
+  readonly document: SizedFile;
+  readonly runtime: DeferredRuntimes["pdf"];
+}): ReactElement {
+  const path = input.document.path;
+  const runtime = input.runtime;
+
+  const pdf = useQuery({
+    queryKey: ["files", "pdf", path, input.document.version],
+    queryFn: async (context) => {
+      await using reader = await (await workspaceFiles()).bytes(path);
+      const chunks: Uint8Array<ArrayBuffer>[] = [];
+
+      for await (const chunk of reader.chunks()) chunks.push(new Uint8Array(chunk));
+
+      return runtime.openPdf(await new Blob(chunks).bytes(), (close) =>
+        releaseWithQuery(context.client.getQueryCache(), context.queryKey, close),
+      );
+    },
+  });
+
+  if (pdf.data === undefined) {
+    if (!pdf.isError) return <FileMessage active={input.active} title="Opening file…" />;
+
+    return (
+      <FileMessage
+        active={input.active}
+        alert
+        title={
+          pdf.error.name === "PasswordException"
+            ? "This PDF is password-protected."
+            : "This PDF could not be opened."
+        }
+      >
+        {pdf.error.name !== "PasswordException" && (
+          <span {...props(styles.messageDetail)}>{pdf.error.message}</span>
+        )}
+        <RevealButton path={path} />
+      </FileMessage>
+    );
+  }
+
+  return (
+    <div
+      aria-hidden={!input.active}
+      inert={!input.active}
+      {...props(styles.root, !input.active && styles.hidden)}
+    >
+      <runtime.PdfViewer file={pdf.data} label={path.split("/").at(-1) ?? path} />
     </div>
   );
 }
