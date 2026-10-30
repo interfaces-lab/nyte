@@ -51,7 +51,7 @@ interface FoldFeed {
   readonly ready: Promise<void>;
   /** Reads what the log holds past the fold into it. */
   sync(): Promise<void>;
-  /** Reads what the log holds past the fold and publishes it on the bus, for every subscriber of the session. */
+  /** Reads what the log holds past the fold and publishes it on the bus, for every subscriber of the session, then reconciles the session's children with the store. */
   refresh(): Promise<void>;
   dispose(): void;
 }
@@ -585,11 +585,13 @@ function openFoldFeed(
         if (last === undefined || events.length < LOG_PAGE) {
           mark = reached;
 
-          return;
+          break;
         }
 
         cursor = last.seq;
       }
+
+      if (open) await linkStoredChildren(kernel, session, "reconcile");
     },
     dispose() {
       open = false;

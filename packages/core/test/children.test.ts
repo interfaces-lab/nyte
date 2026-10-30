@@ -3,6 +3,7 @@ import type { BackgroundItem, HeadName, Json, RunId, SessionId } from "@nyte-ai/
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { runStep } from "../src/engine/durable.ts";
+import { pollStore } from "../src/fold/watch.ts";
 import { main, setup, until } from "../src/harness.ts";
 import { definePart } from "../src/index.ts";
 import { memoryStore } from "../src/store.ts";
@@ -136,5 +137,37 @@ describe("child background items", () => {
 
     expect(view.background).toMatchObject([{ kind: "child", id: child.id, state: "waiting" }]);
     expect(view.heads[0]?.background).toEqual({ working: 0, waiting: 1 });
+  });
+
+  it("shows a done child's question from another host to its watched parent", async () => {
+    const connection = await memoryStore().open();
+    const here = await setup({ store: connection, poll: 5 });
+    const there = await setup({ store: connection });
+    const unpoll = pollStore(here.kernel);
+    const { session: started } = await there.host.sessions.start({ content: "Delegate." });
+    const { session: child } = await there.host.sessions.start({
+      parent: started.id,
+      content: "Go.",
+    });
+    const step = there.host.execution.advance({ session: child.id, head: main });
+    (await there.script.started(1)).finish();
+    await step;
+    const parent = here.host.session(started.id);
+    const views = parent.watch()[Symbol.asyncIterator]();
+
+    try {
+      await views.next();
+
+      expect(await childState(parent, child.id, "done")).toBe("done");
+      await child.send("Ask me.");
+
+      expect(await askUser(there.kernel, there.host, there.script, child, 2)).toEqual({
+        kind: "parked",
+      });
+      expect(await childState(parent, child.id, "waiting")).toBe("waiting");
+    } finally {
+      unpoll();
+      await views.return?.();
+    }
   });
 });
