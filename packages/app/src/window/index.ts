@@ -33,6 +33,8 @@ export interface WindowSnapshot {
 
 export { showTray, type TrayView } from "./tray.ts";
 
+export { unreadOnHost } from "./exposure.ts";
+
 /** What this window holds itself; the rest of its view it reads from the stores it listens to. */
 interface Own {
   readonly trays: Trays;

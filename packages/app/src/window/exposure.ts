@@ -32,16 +32,18 @@ const NONE: ReadonlySet<SessionId> = new Set();
 
 export function expose(view: WindowView): Exposure {
   const placed = place(view);
-
-  const unread = new Set(
-    [...view.chats.values()].flatMap((chat) =>
-      chat.unreadTip !== null && chat.status.kind === "completed" && !placed.looking.has(chat.id)
-        ? [chat.id]
-        : [],
-    ),
-  );
+  const unread = new Set([...unreadOnHost(view.chats)].filter((id) => !placed.looking.has(id)));
 
   return { ...placed, unread };
+}
+
+/** Chats whose completed run left a reply past the host's read mark, whoever is looking at them; until a visit moves the mark, this still holds the chat just opened. */
+export function unreadOnHost(chats: ChatDirectory): ReadonlySet<SessionId> {
+  return new Set(
+    [...chats.values()].flatMap((chat) =>
+      chat.unreadTip !== null && chat.status.kind === "completed" ? [chat.id] : [],
+    ),
+  );
 }
 
 function place(view: WindowView): Omit<Exposure, "unread"> {

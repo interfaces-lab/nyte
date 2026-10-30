@@ -9,10 +9,11 @@ import { asId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
-import { PaneController } from "../panes/pane-controller.ts";
 import { activePane } from "../panes/pane-layout.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { queryClient } from "../data/query-client.ts";
+import { preferences } from "../preferences/index.ts";
+import { windowTabs } from "../tabs/window-tabs.ts";
 import { createAppRouter } from "../shell/routes.tsx";
 import { installConnection } from "../data/connection.ts";
 import "../theme/tokens.stylex.ts";
@@ -203,7 +204,8 @@ function stored() {
   return Value.Parse(StoredSidebar, parsed);
 }
 
-const panes = new PaneController({ storageKey: "sidebar-test" });
+// The window's own panes, so the window sees what the sidebar opens, as in the app.
+const panes = windowTabs.controller();
 
 function label(name: string): HTMLElement | undefined {
   return find('[data-slot="row-label"]', name);
@@ -390,6 +392,27 @@ async function showTogglesChangeTheRow(): Promise<void> {
   check(stored().view.show.length === 0, "Show is stored");
 }
 
+async function openingAnUnreadInboxChatKeepsItThereUntilLeft(): Promise<void> {
+  sessions.push(directory(true));
+  preferences.sidebarView.set({ ...preferences.sidebarView.get(), grouping: "inbox" });
+  await until(() => find("button", "Done11") !== undefined, "the Inbox and its folded Done shelf");
+  check(label("Unread answer") !== undefined, "an unread chat is in the Inbox");
+  panes.selectSession(asId<"session">("Unread answer"));
+  await painted();
+  check(label("Unread answer") !== undefined, "opening an unread chat keeps it in the Inbox");
+  sessions.push(directory(false));
+  await until(
+    () => primary("Unread answer").querySelector('[aria-label="Unread"]') === null,
+    "the read mark to land",
+  );
+  check(
+    label("Unread answer") !== undefined,
+    "reading it keeps it in the Inbox while it stays open",
+  );
+  panes.selectSession(asId<"session">("Quiet chat"));
+  await until(() => label("Unread answer") === undefined, "leaving it to move it to Done");
+}
+
 const STEPS = {
   storedViewAndFoldsAreShown,
   openChatStaysUnderItsFoldedWorkspace,
@@ -402,6 +425,7 @@ const STEPS = {
   doubleClickRenames,
   archivingAWorkingChatAsksFirst,
   showTogglesChangeTheRow,
+  openingAnUnreadInboxChatKeepsItThereUntilLeft,
 };
 
 export async function run(): Promise<string> {
@@ -418,7 +442,7 @@ export async function run(): Promise<string> {
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
           <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-            <PaneControllerProvider controller={panes}>
+            <PaneControllerProvider>
               <SessionDndProvider>
                 <Sidebar />
               </SessionDndProvider>
