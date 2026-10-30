@@ -1,6 +1,7 @@
 import type { RegisteredRouter } from "@tanstack/react-router";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { SessionId } from "@nyte-ai/sdk";
+import { toast } from "@nyte-ai/ui/toast";
 import { chatDirectory, subscribeChats } from "../chats/index.ts";
 import type { HostState } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
@@ -134,17 +135,23 @@ function act(action: TrayAction): void {
   setOwn({ ...own, trays: reduceTrays(own.trays, action) });
 }
 
-/** Moves each chat's read mark to the tip it is unread through; a chat with nothing unread is left alone. */
-async function markRead(ids: readonly SessionId[]): Promise<void> {
+/** Moves each chat's read mark to the tip it is unread through; a chat with nothing unread is left alone. A failure says so. */
+function markRead(ids: readonly SessionId[]): void {
   const chats = chatDirectory();
 
-  await Promise.all(
+  void Promise.all(
     ids.flatMap((id) => {
       const tip = chats.get(id)?.unreadTip;
 
       return tip === undefined || tip === null
         ? []
         : [connection().session(id).head(tip.head).see(tip.commit)];
+    }),
+  ).catch(() =>
+    toast.add({
+      type: "error",
+      title: "Couldn't mark this chat as read. Try again.",
+      id: "session-mark-read-error",
     }),
   );
 }

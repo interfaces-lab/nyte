@@ -82,8 +82,8 @@ export type WindowAction =
   | { readonly kind: "cycle-tab"; readonly step: 1 | -1 }
   /** The user dragged `tabId`; moving a preview keeps it. */
   | { readonly kind: "reorder"; readonly tabIds: readonly string[]; readonly tabId: string }
-  /** Closed tabs showing a chat outside `live` were deleted or archived, and don't reopen. */
-  | { readonly kind: "forget-closed"; readonly live: ReadonlySet<SessionId> };
+  /** Closed tabs showing a chat in `gone`, known deleted or archived, don't reopen. */
+  | { readonly kind: "forget-closed"; readonly gone: ReadonlySet<SessionId> };
 
 const BLANK: PaneSelection = { kind: "blank" };
 
@@ -291,7 +291,7 @@ function open(
 
   const parentKept = target === "next-to-parent" ? keepTab(state, state.activeTabId) : state;
 
-  return openPreview(parentKept, place, createId);
+  return openPreview(parentKept, place, target, createId);
 }
 
 function openTab(
@@ -306,15 +306,19 @@ function openTab(
   return shown ? activate(opened, tab.id) : opened;
 }
 
-/** The preview takes a waiting new chat, else the preview's tab, else a new tab after the active one. */
+/**
+ * The preview takes a waiting new chat, else the preview's tab, else a new tab after the active one.
+ * A child opened from its parent always goes after the parent, and the old preview closes.
+ */
 function openPreview(
   state: WindowState,
   place: PaneSelection,
+  target: "preview" | "next-to-parent",
   createId: () => string,
 ): WindowState {
   const active = activeTab(state);
   const replaced = state.tabs.find((tab) => tab.view.kind === "preview");
-  const slot = showsNewChat(active) ? active : replaced;
+  const slot = showsNewChat(active) ? active : target === "preview" ? replaced : undefined;
 
   const tab: Tab = {
     id: slot?.id ?? createId(),
@@ -409,9 +413,9 @@ function reduceLayout(state: WindowState, tabId: string, layout: PaneLayout): Wi
   return withTab(state, { ...tab, view: { kind: "panes", layout } });
 }
 
-function forgetClosed(state: WindowState, live: ReadonlySet<SessionId>): WindowState {
+function forgetClosed(state: WindowState, gone: ReadonlySet<SessionId>): WindowState {
   const closed = state.closed.filter(({ tab }) =>
-    tabPlaces(tab).every((place) => place.kind !== "session" || live.has(place.sessionId)),
+    tabPlaces(tab).every((place) => place.kind !== "session" || !gone.has(place.sessionId)),
   );
 
   return closed.length === state.closed.length ? state : { ...state, closed };
@@ -505,7 +509,7 @@ export function reduce(
     }
 
     case "forget-closed":
-      return forgetClosed(state, action.live);
+      return forgetClosed(state, action.gone);
 
     default: {
       const _exhaustive: never = action;

@@ -1,13 +1,19 @@
+import { runStatus } from "@nyte-ai/plugin/client/presentation";
+import { asId } from "@nyte-ai/schema";
 import type { SessionId, SessionView } from "@nyte-ai/sdk";
 import type { DerivedStore } from "../data/derived-store.ts";
 import { sessionWatch } from "../data/watches.ts";
-import type { Chat, ChatDirectory } from "./directory.ts";
 
 /** A chat below another whose own run waits on the user, with its view, which holds what it asks. */
 export interface WaitingChat {
-  readonly chat: Chat;
-  /** Undefined while its view loads. */
-  readonly view: SessionView | undefined;
+  readonly id: SessionId;
+  readonly title: string;
+  readonly view: SessionView;
+}
+
+interface WaitingChild {
+  readonly id: SessionId;
+  readonly title: string;
 }
 
 const NONE: readonly WaitingChat[] = [];
@@ -15,41 +21,39 @@ const NONE: readonly WaitingChat[] = [];
 const stores = new Map<SessionId, DerivedStore<readonly WaitingChat[]>>();
 
 /**
- * Every chat below `root`, at any depth, whose own run waits on the user's approval or answer,
- * each with its view, which this store holds open while anyone listens.
+ * Every chat below `root`, at any depth, whose own run waits on the user's approval or answer.
+ * The host marks a child item waiting while it or anything below it waits, so this walks down
+ * those items from `root`'s view through each waiting child's own, and holds the views it walks
+ * open while anyone listens.
  */
-export function waitingBelow(
-  root: SessionId,
-  directory: {
-    readonly read: () => ChatDirectory;
-    readonly subscribe: (notice: () => void) => () => void;
-  },
-): DerivedStore<readonly WaitingChat[]> {
+export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat[]> {
   const known = stores.get(root);
 
   if (known !== undefined) return known;
   const listeners = new Set<() => void>();
   const watched = new Map<SessionId, () => void>();
   let value = NONE;
-  let leave: (() => void) | undefined;
 
   const notify = (): void => {
     for (const notice of listeners) notice();
   };
 
   const read = (): readonly WaitingChat[] => {
-    const chats = directory.read();
+    const next = waitingChildren(root).flatMap((child) => {
+      const view = sessionWatch(child.id).value;
 
-    const next = [...chats.values()].flatMap((chat) =>
-      chat.status.kind === "waiting-for-approval" && below(chats, chat, root)
-        ? [{ chat, view: sessionWatch(chat.id).value }]
-        : [],
-    );
+      return view !== undefined && runStatus(view.execution).kind === "waiting-for-approval"
+        ? [{ ...child, view }]
+        : [];
+    });
 
     const same =
       next.length === value.length &&
       next.every(
-        (entry, index) => entry.chat === value[index]?.chat && entry.view === value[index].view,
+        (entry, index) =>
+          entry.id === value[index]?.id &&
+          entry.title === value[index].title &&
+          entry.view === value[index].view,
       );
 
     if (!same) value = next.length === 0 ? NONE : next;
@@ -58,16 +62,16 @@ export function waitingBelow(
   };
 
   const follow = (): void => {
-    const waiting = new Set(read().map((entry) => entry.chat.id));
+    const walked = new Set([root, ...waitingChildren(root).map((child) => child.id)]);
 
     for (const [id, unsubscribe] of watched)
-      if (!waiting.has(id)) {
+      if (!walked.has(id)) {
         unsubscribe();
         watched.delete(id);
       }
 
-    for (const id of waiting)
-      if (!watched.has(id)) watched.set(id, sessionWatch(id).subscribe(notify));
+    for (const id of walked)
+      if (!watched.has(id)) watched.set(id, sessionWatch(id).subscribe(follow));
     notify();
   };
 
@@ -76,17 +80,12 @@ export function waitingBelow(
     subscribe(notice) {
       listeners.add(notice);
 
-      if (leave === undefined) {
-        leave = directory.subscribe(follow);
-        follow();
-      }
+      if (watched.size === 0) follow();
 
       return () => {
         listeners.delete(notice);
 
         if (listeners.size > 0) return;
-        leave?.();
-        leave = undefined;
 
         for (const unsubscribe of watched.values()) unsubscribe();
         watched.clear();
@@ -99,13 +98,12 @@ export function waitingBelow(
   return store;
 }
 
-function below(chats: ChatDirectory, chat: Chat, root: SessionId): boolean {
-  let parent = chat.parent;
+/** The child items below `session` the host marks waiting, depth first, as each one's open view lists them. */
+function waitingChildren(session: SessionId): readonly WaitingChild[] {
+  return (sessionWatch(session).value?.background ?? []).flatMap((item) => {
+    if (item.kind !== "child" || item.state !== "waiting") return [];
+    const id = asId<"session">(item.id);
 
-  while (parent !== null) {
-    if (parent === root) return true;
-    parent = chats.get(parent)?.parent ?? null;
-  }
-
-  return false;
+    return [{ id, title: item.title }, ...waitingChildren(id)];
+  });
 }

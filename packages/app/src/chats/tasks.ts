@@ -1,4 +1,4 @@
-import { rowMark, SUBAGENT_TITLE, taskEnded } from "@nyte-ai/plugin/client/presentation";
+import { SUBAGENT_TITLE, taskEnded } from "@nyte-ai/plugin/client/presentation";
 import { asId } from "@nyte-ai/schema";
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { BackgroundItem, CallId, JobId, JobView, SessionId, ToolClass } from "@nyte-ai/sdk";
@@ -110,7 +110,7 @@ export function childTask(
     kind: "child",
     id,
     title: childTitle(chat, item?.title ?? null),
-    state: chat === undefined ? (item?.state ?? "done") : rowMark(chat.status, chat.background),
+    state: chat?.mark ?? item?.state ?? "done",
     startedBy: item?.startedBy ?? null,
     live: chat !== undefined && "run" in chat.status,
   };

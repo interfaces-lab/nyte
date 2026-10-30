@@ -1,7 +1,6 @@
 import {
   backgroundLabel,
   failureNotice,
-  rowMark,
   sessionTitle,
   taskLabel,
 } from "@nyte-ai/plugin/client/presentation";
@@ -161,7 +160,7 @@ export function SessionRow({
   const onPin = (): void => rail.pin(session);
   const onArchive = (): void => rail.archive(session);
   const onDelete = (): void => rail.remove(session.id);
-  const mark = shown === undefined ? "done" : rowMark(shown.status, shown.background);
+  const mark = shown?.mark ?? "done";
   const title = sessionTitle(session);
 
   const ask = shown === undefined ? undefined : askLine(shown, mark);

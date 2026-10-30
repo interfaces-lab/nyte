@@ -1,4 +1,3 @@
-import { rowMark } from "@nyte-ai/plugin/client/presentation";
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import type { ChatDirectory } from "../chats/index.ts";
@@ -39,9 +38,7 @@ const SESSION_PAGE_SIZE = 8;
 
 /** The state a listed chat draws; a chat the directory doesn't have yet is done. */
 export function chatMark(session: SessionInfo, chats: ChatDirectory): TaskState {
-  const chat = chats.get(session.id);
-
-  return chat === undefined ? "done" : rowMark(chat.status, chat.background);
+  return chats.get(session.id)?.mark ?? "done";
 }
 
 /** A chat's status in the sidebar; `unread` is the window's answer, which leaves out chats the user is looking at. */

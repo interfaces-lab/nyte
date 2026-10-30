@@ -226,7 +226,7 @@ function ActivationNotice({ activation }: { readonly activation: Activation }): 
   return null;
 }
 
-/** Marks the chat read through each new tip while the user is looking at it. */
+/** Marks the chat read through each new tip while the user is looking at it. Mounted only once the view's first frame landed, so the transcript keeps the read mark the visit opened at. */
 function MarkSeen({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
   const tip = useChats((chats) => chats.get(sessionId)?.unreadTip?.commit);
   const looking = useChatWindow((snapshot) => snapshot.looking.has(sessionId));
@@ -236,7 +236,7 @@ function MarkSeen({ sessionId }: { readonly sessionId: SessionId }): ReactElemen
 
 function SeeTip({ sessionId }: { readonly sessionId: SessionId }): null {
   useMountEffect(() => {
-    void chatWindow.markRead([sessionId]);
+    chatWindow.markRead([sessionId]);
   });
 
   return null;
@@ -412,7 +412,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
           focusComposer={() => composerRef.current?.focus({ preventScroll: true })}
         >
           <TranscriptColumn paging={presentation === "full"} onColumn={setColumn}>
-            <MarkSeen sessionId={sessionId} />
+            {ready && <MarkSeen sessionId={sessionId} />}
             {((ready && chat.kind !== "loading") || failed) && <StartupReadsRelease />}
             {presentation === "full" && activation !== undefined && (
               <ActivationNotice key={JSON.stringify(activation)} activation={activation} />

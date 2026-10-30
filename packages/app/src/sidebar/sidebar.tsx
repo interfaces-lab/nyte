@@ -7,7 +7,6 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Row } from "@nyte-ai/ui/row";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { toast } from "@nyte-ai/ui/toast";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { props } from "@stylexjs/stylex";
 import { Link, useRouter } from "@tanstack/react-router";
@@ -93,16 +92,6 @@ async function showSession(sessionId: SessionId, target: OpenIntent | "beside"):
   shellActions.showWorkspace();
   const controller = windowTabs.controller();
   controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
-}
-
-function markRead(sessions: readonly SessionId[]): void {
-  void chatWindow.markRead(sessions).catch(() =>
-    toast.add({
-      type: "error",
-      title: "Couldn't mark this chat as read. Try again.",
-      id: "session-mark-read-error",
-    }),
-  );
 }
 
 function listedNeighbours(
@@ -261,7 +250,7 @@ export function Sidebar(): ReactElement {
     open: (sessionId, target) => void showSession(sessionId, target),
     rename: (sessionId, name) => renameSession.mutate({ sessionId, name }),
     pin: (session) => sessionActions.pin({ sessionId: session.id, pinned: !session.pinned }),
-    markRead,
+    markRead: chatWindow.markRead,
     archive: (session) => {
       if (!session.archived && sessionIsRunning(session, chats)) {
         setConfirmation({ kind: "archive-working", sessionId: session.id });
@@ -382,7 +371,7 @@ export function Sidebar(): ReactElement {
         onNewChat={
           entry.kind === "home" || entry.available ? () => void newWorkspaceChat(place) : undefined
         }
-        onMarkAllRead={unreadHere.length === 0 ? undefined : () => markRead(unreadHere)}
+        onMarkAllRead={unreadHere.length === 0 ? undefined : () => chatWindow.markRead(unreadHere)}
         onArchiveAll={
           sessions === undefined
             ? undefined

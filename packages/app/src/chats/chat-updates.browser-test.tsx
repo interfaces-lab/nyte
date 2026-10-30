@@ -1,8 +1,8 @@
 import "../../test/window-bridge.ts";
 import type { ReactElement } from "react";
-import { useLayoutEffect } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { enableTracing } from "@nyte-ai/sdk";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
@@ -10,6 +10,7 @@ import { liveRun } from "../panes/session-screen-render.fixtures.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { installConnection } from "../data/connection.ts";
 import { sessionsWatch } from "../data/watches.ts";
+import { useCommitCount } from "../lib/work-counts.ts";
 import { chatTitle, useChat, useChats } from "./index.ts";
 
 /** A row whose main head counts `working` background items. */
@@ -45,13 +46,17 @@ installConnection(
   }).connection,
 );
 
-let commits = 0;
+enableTracing();
+
+const COMMITS = "commit:root-status";
+
+function commits(): number {
+  return window.nyteWorkCounts?.[COMMITS] ?? 0;
+}
 
 function RootStatus({ id }: { readonly id: SessionInfo["id"] }): string {
   const chat = useChat(id);
-  useLayoutEffect(() => {
-    commits += 1;
-  });
+  useCommitCount(COMMITS);
 
   return chat.kind === "ready"
     ? `${chat.chat.title}:${chat.chat.status.kind}:${String(chat.chat.background.working)}`
@@ -87,15 +92,15 @@ export async function run(): Promise<string> {
   const loading = container.textContent;
   await store.first();
   await painted();
-  const report = [{ phase: "initial", shown: container.textContent, commits }];
+  const report = [{ phase: "initial", shown: container.textContent, commits: commits() }];
 
   const publish = async (phase: string, rows: readonly SessionInfo[]): Promise<void> => {
-    commits = 0;
+    const before = commits();
     const received = store.next();
     source.push(rows);
     await received;
     await painted();
-    report.push({ phase, shown: container.textContent, commits });
+    report.push({ phase, shown: container.textContent, commits: commits() - before });
   };
 
   try {

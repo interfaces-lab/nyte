@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { testRenderer } from "../../../test/renderer.ts";
 
 test(
-  "the New divider, the new-messages pills, following and scroll to bottom behave through the real transcript",
+  "the New divider, the new-messages pills, following and scroll to bottom behave through the real transcript, and a cold open keeps the divider once it marks the chat read",
   { timeout: 120_000 },
   async () => {
     expect(

@@ -498,7 +498,7 @@ export function mainHead(session: Pick<SessionInfo, "heads">): HeadInfo | undefi
 }
 
 /**
- * The state a session list draws for a session's main head.
+ * Where a session stands in every client: a list row, a tab, or another chat's child task.
  *
  * @category presentation
  */

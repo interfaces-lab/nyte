@@ -146,9 +146,9 @@ export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined 
     ...own.map((request) => ({ sessionId, request, origin: undefined })),
     ...waiting.flatMap((entry) =>
       openQuestions(entry.view).map((request) => ({
-        sessionId: entry.chat.id,
+        sessionId: entry.id,
         request,
-        origin: entry.chat.title,
+        origin: entry.title,
       })),
     ),
   ];
