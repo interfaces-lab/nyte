@@ -99,6 +99,48 @@ export function hasViewHolder(surface: Surface): boolean {
   return false;
 }
 
+type HeldPage = Pick<Surface, "holders" | "home" | "visible">;
+
+/** A Browser tab holds its page once per window, so closing it in one window leaves the others. */
+export function viewHolder(window: HostWindow): BrowserHolder {
+  return `view:${window}`;
+}
+
+/** Applies a window's report that its tab shows or hides the page; only the window showing it can hide it. */
+export function reportVisibility(
+  page: HeldPage,
+  window: HostWindow,
+  visible: boolean,
+): "ignored" | "kept" | "moved" {
+  if (page.home === window) {
+    page.visible = visible;
+
+    return "kept";
+  }
+
+  if (!visible) return "ignored";
+  page.home = window;
+  page.visible = true;
+
+  return "moved";
+}
+
+export function dropHolder(page: HeldPage, holder: BrowserHolder): "absent" | "held" | "unheld" {
+  if (!page.holders.delete(holder)) return "absent";
+
+  return page.holders.size === 0 ? "unheld" : "held";
+}
+
+/** A closed window stops showing the page and drops its tab's hold on it. */
+export function leaveWindow(page: HeldPage, window: HostWindow): ReturnType<typeof dropHolder> {
+  if (page.home === window) {
+    page.home = undefined;
+    page.visible = false;
+  }
+
+  return dropHolder(page, viewHolder(window));
+}
+
 export function countSessionHolders(surface: Surface): number {
   let count = 0;
 

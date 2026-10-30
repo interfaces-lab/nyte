@@ -19,7 +19,10 @@ interface RecordedBounds extends BrowserBoundsMessage {
 declare global {
   interface Window {
     readonly __nyteBounds: readonly RecordedBounds[];
-    readonly __nyteCapture: { readonly calls: number; hold: boolean };
+    readonly __nyteCapture: {
+      readonly calls: number;
+      mode: "still" | "hold" | "reject" | "broken";
+    };
   }
 }
 
@@ -132,7 +135,7 @@ export async function run(): Promise<string> {
   check(still() !== null, "The still left before the page came back over it");
   await until(() => still() === null, "the still to leave once the page shows");
 
-  window.__nyteCapture.hold = true;
+  window.__nyteCapture.mode = "hold";
   render(true);
   const covered = performance.now();
   await frames(5);
@@ -144,6 +147,18 @@ export async function run(): Promise<string> {
 
   render(false);
   await until(() => last().visible, "the page to come back after a capture that never arrived");
+
+  for (const mode of ["reject", "broken"] as const) {
+    window.__nyteCapture.mode = mode;
+    const calls = window.__nyteCapture.calls;
+    render(true);
+    await until(() => window.__nyteCapture.calls > calls, `the ${mode} capture to start`);
+    await frames(2);
+    check(!last().visible, `The page waited for the cap after a ${mode} capture`);
+    check(still() === null, `A still showed after a ${mode} capture`);
+    render(false);
+    await until(() => last().visible, `the page to come back after a ${mode} capture`);
+  }
 
   return "passed";
 }

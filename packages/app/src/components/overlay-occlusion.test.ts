@@ -4,7 +4,7 @@ import { testRenderer } from "../../test/renderer.ts";
 const setup = `
 const recorded = [];
 window.__nyteBounds = recorded;
-const capture = { calls: 0, hold: false };
+const capture = { calls: 0, mode: "still" };
 window.__nyteCapture = capture;
 const state = {
   url: "https://example.com/",
@@ -37,7 +37,9 @@ window.nyte = new Proxy(
         close: resolved,
         captureFrame: () => {
           capture.calls += 1;
-          return capture.hold ? new Promise(() => {}) : Promise.resolve(still);
+          if (capture.mode === "hold") return new Promise(() => {});
+          if (capture.mode === "reject") return Promise.reject(new Error("The page is gone"));
+          return Promise.resolve(capture.mode === "broken" ? "data:image/jpeg;base64,AAAA" : still);
         },
         find: () => Promise.resolve({ active: 0, total: 0 }),
         cancelDownload: resolved,

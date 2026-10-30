@@ -24,9 +24,10 @@ interface PageCover {
 /**
  * Orders an overlay's arrival over the native view. The page keeps showing while its still
  * is captured, decoded and painted under it, and only then hides, or after `STILL_WAIT_MS`
- * without one so a menu is never stuck behind the page. When the overlay leaves, the page
- * shows again and the still goes once the page has had a frame to paint over it. Every cover
- * starts a new cycle, and work from an earlier cycle is dropped.
+ * without one so a menu is never stuck behind the page. A capture or decode that fails hides
+ * the page at once without a still. When the overlay leaves, the page shows again and the
+ * still goes once the page has had a frame to paint over it. Every cover starts a new cycle,
+ * and work from an earlier cycle is dropped.
  */
 export function createPageCover(input: PageCoverInput): PageCover {
   let phase: "live" | "capturing" | "hidden" = "live";
@@ -45,21 +46,23 @@ export function createPageCover(input: PageCoverInput): PageCover {
     const current = cycle;
     phase = "capturing";
     deadline = window.setTimeout(() => settle(current), STILL_WAIT_MS);
-    void input.capture().then(async (still) => {
-      if (still === undefined) {
-        settle(current);
+    input
+      .capture()
+      .then(decode)
+      .then(
+        (still) => {
+          if (still === undefined) {
+            settle(current);
 
-        return;
-      }
+            return;
+          }
 
-      const image = new Image();
-      image.src = still.src;
-      await image.decode();
-
-      if (current !== cycle) return;
-      input.show(still);
-      afterPaint(() => settle(current));
-    });
+          if (current !== cycle) return;
+          input.show(still);
+          afterPaint(() => settle(current));
+        },
+        () => settle(current),
+      );
   };
 
   const end = (): number => {
@@ -91,6 +94,16 @@ export function createPageCover(input: PageCoverInput): PageCover {
       input.drop();
     },
   };
+}
+
+/** Waits until the still can paint without a blank frame. */
+async function decode(still: PageStill | undefined): Promise<PageStill | undefined> {
+  if (still === undefined) return undefined;
+  const image = new Image();
+  image.src = still.src;
+  await image.decode();
+
+  return still;
 }
 
 /** Runs after the next frame has painted. */
