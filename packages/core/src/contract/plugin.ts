@@ -213,7 +213,7 @@ export interface ClientApi {
 
   readonly session: Session | null;
 
-  /** Sessions someone is looking at right now: on screen in every pane that shows one, uncovered, in a focused window. */
+  /** Sessions on screen, uncovered, in a focused window. */
   readonly looking: ReadonlySet<SessionId>;
   readonly ui: {
     notify(input: {

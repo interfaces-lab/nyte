@@ -398,9 +398,9 @@ async function workspaceTrust(
 }
 
 /**
- * `git` answering `busy` with the workspace's writers to a branch switch while any run writes to
- * the workspace, since the switch would change its files under that run. Every other member calls
- * through to `git` itself, so a provider's inherited methods keep their receiver.
+ * A branch switch answers `busy` while any run writes to the workspace, since it would change files
+ * under that run. Every other member calls through to `git` so a provider's inherited methods keep
+ * their receiver.
  */
 function guardSwitches(kernel: Kernel, workspace: WorkspaceId, git: GitApi): GitApi {
   const switching = async (run: () => Promise<GitOutcome>): Promise<GitOutcome> => {
@@ -430,7 +430,6 @@ function guardSwitches(kernel: Kernel, workspace: WorkspaceId, git: GitApi): Git
   };
 }
 
-/** The live runs of `sessions`, each of which may write to its session's workspace. */
 async function readWriters(
   store: StoreConnection,
   sessions: readonly SessionId[],

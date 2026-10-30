@@ -11,15 +11,14 @@ interface Child {
   readonly head: HeadName;
   readonly startedBy: CallId | null;
   title: string;
-  /** How the run on the child's main head stands, unknown until it changes in this process or is read from the store. */
+  /** Null until the main head's run changes in this process or is read from the store. */
   own: BackgroundItem["state"] | null;
   item: BackgroundItem | null;
 }
 
 /**
- * The child sessions this process drives, as background items of the parent head that started
- * them. A child waits when its own run waits on the user or one of its own background items
- * waits, so a question deep in a tree reaches every ancestor; being busy reaches only the parent.
+ * A child also waits when one of its background items waits, so a question deep in a tree reaches
+ * every ancestor. Being busy reaches only the parent.
  */
 export function createChildTable(
   kernel: Pick<Kernel, "bus" | "jobs" | "pages" | "children">,
@@ -123,7 +122,7 @@ export function createChildTable(
 
 const CHILD_TITLE = "Subagent";
 
-/** Links every stored child of `parent`, so its background also lists children whose runs ended before this process started; `reconcile` also takes the stored state over what this process knew. */
+/** Links every stored child of `parent`, so its background also lists children whose runs ended before this process started. */
 export async function linkStoredChildren(
   kernel: Pick<Kernel, "store" | "children">,
   parent: SessionId,
@@ -135,7 +134,6 @@ export async function linkStoredChildren(
     kernel.children[link](record, await readChildState(kernel.store, record));
 }
 
-/** How a child's own run stands in the store: its main head's live run, else how its last run ended; null for a child that never ran. */
 export async function readChildState(
   store: StoreConnection,
   record: SessionRecord,

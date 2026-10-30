@@ -646,7 +646,6 @@ async function listChildSessionIds(
   return children;
 }
 
-/** What a session row's background counts depend on: each counted item's head and state. */
 function backgroundKey(kernel: Kernel, session: SessionId): string {
   return backgroundItems(kernel, session)
     .flatMap(({ head, item }) =>
