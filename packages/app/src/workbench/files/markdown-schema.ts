@@ -376,7 +376,12 @@ export const MarkdownImage = Node.create({
   inline: true,
   atom: true,
   addAttributes: () => ({
-    src: { default: "", rendered: false, parseHTML: (element) => element.getAttribute("src") },
+    src: {
+      default: "",
+      rendered: false,
+      parseHTML: (element) =>
+        element.getAttribute("data-markdown-src") ?? element.getAttribute("src"),
+    },
     alt: { default: "", rendered: false, parseHTML: (element) => element.getAttribute("alt") },
     title: {
       default: null,
@@ -385,10 +390,10 @@ export const MarkdownImage = Node.create({
     },
     raw: kept(null),
   }),
-  parseHTML: () => [{ tag: "img[src]" }],
+  parseHTML: () => [{ tag: "img[data-markdown-src]" }, { tag: "img[src]" }],
   renderHTML: ({ node }) => [
     "img",
-    { src: String(node.attrs["src"]), alt: String(node.attrs["alt"]) },
+    { "data-markdown-src": String(node.attrs["src"]), alt: String(node.attrs["alt"]) },
   ],
 });
 

@@ -453,7 +453,7 @@ function frontmatterEntries(frontmatter: string): [string, string][] {
 
   return body
     .join("\n")
-    .split(/\n(?=[^\s#][^:\n]*:(?:[ \t]|$))/u)
+    .split(/\n(?=[^\s#][^:\n]*:(?:[ \t]|\n|$))/u)
     .flatMap((chunk): [string, string][] => {
       const entry = /^([^\s#][^:\n]*):[ \t]*(.*)$/mu.exec(chunk);
 
