@@ -234,7 +234,7 @@ const ListItem = Node.create({
   },
 });
 
-const CodeBlock = Node.create({
+export const MarkdownCodeBlock = Node.create({
   name: "codeBlock",
   group: "block",
   content: "text*",
@@ -370,7 +370,7 @@ const TableRoles = Extension.create({
   extendNodeSchema: (extension) => ({ tableRole: TABLE_ROLES.get(extension.name) }),
 });
 
-const Image = Node.create({
+export const MarkdownImage = Node.create({
   name: "image",
   group: "inline",
   inline: true,
@@ -446,7 +446,7 @@ const RawInline = Node.create({
   renderText: ({ node }) => String(node.attrs["source"]),
 });
 
-const Link = Mark.create({
+export const MarkdownLink = Mark.create({
   name: "link",
   priority: 1100,
   inclusive: false,
@@ -570,19 +570,19 @@ export const markdownExtensions: Extensions = [
   BulletList,
   OrderedList,
   ListItem,
-  CodeBlock,
+  MarkdownCodeBlock,
   HorizontalRule,
   Table,
   TableRow,
   TableHeader,
   TableCell,
   TableRoles,
-  Image,
+  MarkdownImage,
   HardBreak,
   SoftBreak,
   RawBlock,
   RawInline,
-  Link,
+  MarkdownLink,
   Bold,
   Italic,
   Strike,

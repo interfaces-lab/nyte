@@ -25,14 +25,9 @@ export interface MarkdownLayout {
   readonly eol: "\n" | "\r\n";
 }
 
-export interface Frontmatter {
-  readonly entries: readonly (readonly [key: string, value: string])[];
-}
-
 export interface ParsedMarkdown {
   readonly content: JSONContent;
   readonly layout: MarkdownLayout;
-  readonly frontmatter: Frontmatter | undefined;
 }
 
 interface Context {
@@ -96,8 +91,14 @@ export function parseMarkdown(text: string): ParsedMarkdown {
       inlines: context.inlines,
       eol,
     },
-    frontmatter: frontmatter === "" ? undefined : { entries: frontmatterEntries(frontmatter) },
   };
+}
+
+/** The frontmatter's top-level properties, or undefined when the file has none. */
+export function readFrontmatter(text: string): [key: string, value: string][] | undefined {
+  const frontmatter = FRONTMATTER.exec(text.replaceAll("\r\n", "\n"))?.[0];
+
+  return frontmatter === undefined ? undefined : frontmatterEntries(frontmatter);
 }
 
 function collectDefinitions(nodes: readonly RootContent[]): [string, string][] {

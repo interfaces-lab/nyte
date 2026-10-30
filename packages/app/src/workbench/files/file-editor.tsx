@@ -42,6 +42,8 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "../model.ts";
 import { createFileDocument } from "./file-document.ts";
 import { fileActions } from "./file-store.ts";
+import { MarkdownDocument } from "./markdown-document.tsx";
+import { opensAsMarkdown } from "./markdown-parse.ts";
 import type { FileTab } from "./file-store.ts";
 
 type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
@@ -422,7 +424,8 @@ export function TextFileEditor({
   const codeFontSize = useSetting(preferences.codeFontSize);
   const lineNumbers = useSetting(preferences.fileLineNumbers);
   const wordWrap = useSetting(preferences.fileWordWrap);
-  const gitBlame = useSetting(preferences.fileGitBlame) && !readOnly;
+  const documentView = opensAsMarkdown(file.path) && !file.showSource;
+  const gitBlame = useSetting(preferences.fileGitBlame) && !readOnly && !documentView;
   const formatOnSave = useSetting(preferences.fileFormatOnSave);
   const saveFile = useSaveWorkspaceFile();
   const dirty = snapshot.contents !== snapshot.savedContents;
@@ -693,31 +696,43 @@ export function TextFileEditor({
       onContextMenu={openContextMenu}
       {...props(styles.root, !active && styles.hidden)}
     >
-      <PierreWorkerProvider>
-        <EditProvider createEditor={createEditor}>
-          <CodeView
-            ref={viewer}
-            initialItems={initialItems}
-            editorOptions={{
-              historyMaxEntries: 200,
-              ownsVerticalViewport: true,
-              onAttach: attachEditor,
-              onSearchChange: setSearch,
-            }}
-            options={viewOptions}
-            className={props(diffStyles.patch, styles.code).className}
-            onItemEditChange={(event) => buffer.edit(event.file.contents)}
-          />
-        </EditProvider>
-      </PierreWorkerProvider>
-      {search !== undefined && (
-        <EditorFind
-          search={search}
-          onClose={() => {
-            search.close();
-            viewer.current?.getEditor(file.path)?.focus();
-          }}
+      {documentView ? (
+        <MarkdownDocument
+          buffer={buffer}
+          path={file.path}
+          label={file.displayPath}
+          readOnly={readOnly}
+          viewKey={viewKey}
         />
+      ) : (
+        <>
+          <PierreWorkerProvider>
+            <EditProvider createEditor={createEditor}>
+              <CodeView
+                ref={viewer}
+                initialItems={initialItems}
+                editorOptions={{
+                  historyMaxEntries: 200,
+                  ownsVerticalViewport: true,
+                  onAttach: attachEditor,
+                  onSearchChange: setSearch,
+                }}
+                options={viewOptions}
+                className={props(diffStyles.patch, styles.code).className}
+                onItemEditChange={(event) => buffer.edit(event.file.contents)}
+              />
+            </EditProvider>
+          </PierreWorkerProvider>
+          {search !== undefined && (
+            <EditorFind
+              search={search}
+              onClose={() => {
+                search.close();
+                viewer.current?.getEditor(file.path)?.focus();
+              }}
+            />
+          )}
+        </>
       )}
       <div
         {...props(statusVisible ? styles.status : srOnly)}

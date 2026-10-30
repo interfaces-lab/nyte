@@ -17,6 +17,8 @@ type FileDraft = Pick<FileDocumentSnapshot, "contents" | "savedContents" | "vers
 
 interface FileRuntime extends Omit<FileLocation, "path"> {
   readonly navigationRevision: number;
+  /** A markdown file shows its source instead of the rendered document. Opening at a line shows the source. */
+  readonly showSource: boolean;
   readonly saving: boolean;
   readonly draft: FileDraft | undefined;
 }
@@ -102,6 +104,7 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
   const runtime = (id: WorkbenchTabId): FileRuntime =>
     documents.get(id) ?? {
       navigationRevision: 0,
+      showSource: false,
       saving: false,
       draft: undefined,
     };
@@ -215,6 +218,7 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       column: location.column,
       length: location.length,
       navigationRevision: previous.navigationRevision + 1,
+      showSource: location.line === undefined ? previous.showSource : true,
     });
     views.set(key, next(getRuntimeView(key)));
     commit(key, {
@@ -277,6 +281,13 @@ export function createFileTabStore(store: WorkbenchStore = workbench) {
       if (pendingCloseId !== null && documents.get(pendingCloseId)?.saving !== true) {
         remove(key, pendingCloseId);
       }
+    },
+    setShowSource(key: WorkbenchViewKey, path: string, showSource: boolean): void {
+      const tab = find(key, path);
+
+      if (tab === undefined || tab.showSource === showSource) return;
+      documents.set(tab.id, { ...runtime(tab.id), showSource });
+      commit(key);
     },
     setSaving(key: WorkbenchViewKey, path: string, saving: boolean): void {
       const tab = find(key, path);
