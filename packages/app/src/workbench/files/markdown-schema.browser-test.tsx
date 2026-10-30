@@ -30,8 +30,30 @@ function selectAllThenEnter(): void {
   markdown.editor.destroy();
 }
 
+/** Copying writes the schema's HTML, and pasting parses it back. */
+function cutAndPasteTasks(): void {
+  const markdown = markdownEditor("Before.\n\n- [ ] one\n- [x] two\n\nAfter.\n");
+  const editor = markdown.editor;
+  const ends: number[] = [];
+  editor.state.doc.descendants((node, position) => {
+    if (node.isTextblock) ends.push(position + node.nodeSize - 1);
+  });
+  editor.commands.setTextSelection({ from: ends[0] ?? 0, to: ends[2] ?? 0 });
+  const html = editor.view.serializeForClipboard(editor.state.selection.content()).dom.innerHTML;
+  editor.commands.deleteSelection();
+  editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+  editor.view.pasteHTML(html);
+  const saved = markdown.save();
+  check(
+    saved === "Before.\n\nAfter.\n\n- [ ] one\n- [x] two\n",
+    `Moving the task list saved ${JSON.stringify(saved)}`,
+  );
+  editor.destroy();
+}
+
 export async function run(): Promise<string> {
   selectAllThenEnter();
+  cutAndPasteTasks();
 
   return "passed";
 }

@@ -159,15 +159,25 @@ const ListItem = Node.create({
   content: "block+",
   defining: true,
   addAttributes: () => ({
-    checked: kept(null),
+    checked: {
+      default: null,
+      parseHTML: (element) => {
+        const checked = element.getAttribute("data-checked");
+
+        return checked === null ? null : checked === "true";
+      },
+      renderHTML: (attributes) =>
+        attributes["checked"] === null ? null : { "data-checked": String(attributes["checked"]) },
+    },
     spread: kept(false),
     gaps: kept([]),
     padding: kept(1),
   }),
   parseHTML: () => [{ tag: "li" }],
-  renderHTML: ({ node }) => [
+  renderHTML: ({ node, HTMLAttributes }) => [
     "li",
     {
+      ...HTMLAttributes,
       class: css(
         props(proseStyles.listItem, node.attrs["checked"] !== null && markdownStyles.taskItem),
       ),
