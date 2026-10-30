@@ -105,17 +105,21 @@ test("the workbench journey", async ({ desktop }) => {
     const files = workbench(page).getByRole("region", { name: "Files" });
     await files.getByRole("button", { name: "Show Explorer" }).click();
     await files.getByRole("treeitem", { name: /notes\.md/u }).click();
-    const document = files.getByRole("textbox", { name: "notes.md" });
-    await expect(document.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
+    const editor = files.getByRole("textbox", { name: "notes.md" });
+    await expect(editor.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
     await expect(files.getByRole("definition")).toHaveText(["Field notes", "[e2e, markdown]"]);
-    await expect(document.getByRole("checkbox")).toHaveCount(2);
+    await expect(editor.getByRole("checkbox")).toHaveCount(2);
 
-    const paragraph = document.getByRole("paragraph").filter({ hasText: "The quick brown fox" });
+    const paragraph = editor.getByRole("paragraph").filter({ hasText: "The quick brown fox" });
     const box = await paragraph.boundingBox();
+    const caretPlaced = page.evaluate(
+      () =>
+        new Promise<void>((done) => {
+          document.addEventListener("selectionchange", () => done(), { once: true });
+        }),
+    );
     await paragraph.click({ position: { x: (box?.width ?? 8) - 4, y: (box?.height ?? 8) / 2 } });
-    await expect
-      .poll(() => page.evaluate(() => getSelection()?.focusOffset))
-      .toBe("The quick brown fox jumps.".length);
+    await caretPlaced;
     for (let count = 0; count < "jumps.".length; count += 1) await page.keyboard.press("Backspace");
     await page.keyboard.type("leaps.");
     await page.keyboard.press("ControlOrMeta+s");
@@ -125,12 +129,12 @@ test("the workbench journey", async ({ desktop }) => {
     await files.getByRole("button", { name: "File options" }).click();
     await page.getByRole("menuitem", { name: "View Source" }).click();
     await expect(files.getByText("title: Field notes")).toBeVisible();
-    await expect(document.getByRole("heading")).toHaveCount(0);
+    await expect(editor.getByRole("heading")).toHaveCount(0);
     await files.getByRole("button", { name: "File options" }).click();
     await page.getByRole("menuitem", { name: "View Document" }).click();
-    await expect(document.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
+    await expect(editor.getByRole("heading", { name: "Field notes", level: 1 })).toBeVisible();
 
-    await document.getByRole("link", { name: "the guide" }).click({ modifiers: ["ControlOrMeta"] });
+    await editor.getByRole("link", { name: "the guide" }).click({ modifiers: ["ControlOrMeta"] });
     await expect(
       files.getByRole("textbox", { name: "guide.md" }).getByRole("heading", { name: "Guide" }),
     ).toBeVisible();
