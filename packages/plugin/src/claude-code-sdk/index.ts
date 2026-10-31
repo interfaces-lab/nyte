@@ -24,32 +24,12 @@ import type {
   TranscriptContext,
 } from "@nyte-ai/ai";
 import { processEnvironment } from "@nyte-ai/core";
-import type { SettingDefinition, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
-import { standard } from "@nyte-ai/schema";
-import type { PartId, ToolClass } from "@nyte-ai/schema";
-import type { Static } from "typebox";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
 import type { Plugin } from "../core.ts";
 import { findOnPath } from "../find-on-path.ts";
-import { question } from "../question/question.ts";
-import { answerInput } from "../question/schema.ts";
-import { ClaudeCodeSession } from "./session.ts";
-import type { Approve, StartQuery } from "./session.ts";
-import {
-  flatPrompt,
-  messageKey,
-  mirrorArguments,
-  sessionEntries,
-  userBlocks,
-} from "./transcript.ts";
-import {
-  BACKGROUND_TOOL,
-  CLAUDE_CODE_PROVIDER,
-  emptyMessage,
-  MIRROR_TOOL,
-  Translator,
-} from "./translate.ts";
+import { ClaudeCodeSession, isolatedOptions } from "./session.ts";
+import type { StartQuery } from "./session.ts";
+import { flatPrompt, messageKey, sessionEntries, userBlocks } from "./transcript.ts";
+import { CLAUDE_CODE_PROVIDER, emptyMessage, Translator } from "./translate.ts";
 
 const API = "claude-agent-sdk";
 
@@ -57,33 +37,8 @@ const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const satisfies rea
 
 const NOT_RUNNING = "Claude Code is no longer running this turn. Send a message to continue.";
 
-/** Nyte tools Claude Code has its own built-in for, which the Nyte MCP server leaves out. */
-const CLAUDE_CODE_HAS_ITS_OWN = new Set([
-  "read",
-  "write",
-  "edit",
-  "list",
-  "web_search",
-  "web_fetch",
-  "question",
-]);
-
-export const ultracodeSetting: SettingDefinition<boolean> = {
-  id: "claude_code.ultracode",
-  label: "Claude Code ultracode",
-  schema: standard(Type.Boolean()),
-  choices: [
-    { value: false, label: "Off" },
-    { value: true, label: "On", badge: "ultracode" },
-  ],
-  default: false,
-  scope: "session",
-};
-
 interface Binding {
   readonly cwd: string;
-  ultracode(): Promise<boolean>;
-  readonly approve: Approve;
 }
 
 function effortFor(
@@ -134,23 +89,18 @@ function answerOnce(
   void (async () => {
     try {
       stream.push({ type: "start", partial: output });
-      const claude = await findClaudeCode();
 
       for await (const message of start({
         prompt: flatPrompt(context.messages),
         options: {
+          ...isolatedOptions(await findClaudeCode(), options?.env),
           model: model.id,
           abortController: controller,
           systemPrompt: getCurrentSystemPrompt(context.messages),
-          tools: [],
-          settingSources: [],
-          strictMcpConfig: true,
           maxTurns: 1,
           persistSession: false,
           includePartialMessages: true,
           thinking: { type: "disabled" },
-          env: { ...process.env, ...options?.env },
-          pathToClaudeCodeExecutable: claude,
         },
       })) {
         if (message.type === "stream_event" && message.parent_tool_use_id === null)
@@ -178,152 +128,6 @@ function answerOnce(
   return stream;
 }
 
-const nonEmpty = Type.String({ minLength: 1 });
-
-function field(input: Static<typeof mirrorArguments>["input"], key: string): string | undefined {
-  const value = input[key];
-
-  return Value.Check(nonEmpty, value) ? value : undefined;
-}
-
-const claudeQuestions = Type.Array(
-  Type.Object({
-    question: Type.String(),
-    header: Type.String(),
-    options: Type.Array(Type.Object({ label: Type.String(), description: Type.String() })),
-    multiSelect: Type.Optional(Type.Boolean()),
-  }),
-);
-
-async function askUser(
-  session: ClaudeCodeSession,
-  id: string,
-  input: Static<typeof mirrorArguments>["input"],
-  invocation: ToolInvocation,
-): Promise<{ readonly answers: Record<string, string> | null; readonly part: PartId | null }> {
-  if (!Value.Check(claudeQuestions, input.questions)) return { answers: null, part: null };
-
-  const questions = input.questions.map((item) => ({
-    question: item.question,
-    header: item.header.slice(0, 30),
-    options: item.options.map(({ label, description }) => ({ label, description })),
-    multiple: item.multiSelect === true,
-  }));
-
-  const part = await invocation.session.parts.create(question, {
-    state: { questions, answers: null },
-    placement: { kind: "modal" },
-  });
-
-  const outcome = await invocation.wait({ kind: "part", part: part.id });
-
-  const checked =
-    outcome.kind === "part" && outcome.answer?.action === "answer"
-      ? await answerInput["~standard"].validate(outcome.answer.input)
-      : undefined;
-
-  if (checked === undefined || checked.issues !== undefined)
-    return { answers: null, part: part.id };
-
-  const answers = questions.flatMap((item, index) => {
-    const chosen = checked.value.answers[index]?.join(", ") ?? "";
-
-    return chosen === "" ? [] : [[item.question, chosen] as const];
-  });
-
-  return { answers: answers.length === 0 ? null : Object.fromEntries(answers), part: part.id };
-}
-
-function classifyClaudeTool(
-  name: string,
-  input: Static<typeof mirrorArguments>["input"],
-): ToolClass {
-  const path = field(input, "file_path") ?? field(input, "notebook_path");
-  const command = field(input, "command");
-  const description = field(input, "description");
-
-  switch (name) {
-    case "Read":
-      return path === undefined ? { kind: "custom", label: name } : { kind: "read", path };
-    case "Edit":
-    case "MultiEdit":
-    case "Write":
-    case "NotebookEdit":
-      return path === undefined ? { kind: "custom", label: name } : { kind: "edit", path };
-    case "Bash":
-      if (command === undefined) return { kind: "custom", label: name };
-
-      return description === undefined
-        ? { kind: "shell", command }
-        : { kind: "shell", command, description };
-    case "Agent":
-    case "Task":
-      return {
-        kind: "delegate",
-        child: null,
-        role: "task",
-        title: description ?? null,
-      };
-    case "Skill":
-      return { kind: "custom", label: `Skill ${field(input, "skill") ?? ""}`.trim() };
-    case "Workflow":
-      return {
-        kind: "custom",
-        label: `Workflow ${field(input, "title") ?? field(input, "name") ?? ""}`.trim(),
-      };
-    case "AskUserQuestion": {
-      const headers = Value.Check(claudeQuestions, input.questions)
-        ? input.questions.map((item) => item.header).join(", ")
-        : "";
-
-      return { kind: "custom", label: `Asking ${headers}`.trim() };
-    }
-    case BACKGROUND_TOOL:
-      return { kind: "custom", label: "Waiting for background work" };
-    default: {
-      const subject = field(input, "pattern") ?? field(input, "url") ?? field(input, "query");
-
-      return { kind: "custom", label: subject === undefined ? name : `${name} ${subject}` };
-    }
-  }
-}
-
-function mirrorTool(
-  sessions: ReadonlyMap<string, ClaudeCodeSession>,
-): ToolDefinition<Static<typeof mirrorArguments>> {
-  return {
-    name: MIRROR_TOOL,
-    description: "A tool Claude Code ran. Claude Code reports the result; Nyte records it.",
-    parameters: standard(mirrorArguments),
-    exposure: "hidden",
-    approval: "runtime",
-    replay: "safe",
-    class: ({ name, input }) => classifyClaudeTool(name, input),
-    async execute({ id, name, input }, invocation) {
-      const session = sessions.get(invocation.session.id);
-
-      if (session === undefined || session.closed) throw new Error(NOT_RUNNING);
-
-      if (name === BACKGROUND_TOOL)
-        return { content: [{ kind: "text", text: await session.background(invocation.signal) }] };
-      session.recording(id);
-      let parts: PartId[] = [];
-
-      if (name === "AskUserQuestion") {
-        const asked = await askUser(session, id, input, invocation);
-        session.answer(id, asked.answers);
-        parts = asked.part === null ? [] : [asked.part];
-      }
-
-      const output = await session.result(id, invocation.signal);
-
-      if (output.isError) throw new Error(output.text);
-
-      return { content: [{ kind: "text", text: output.text }], parts };
-    },
-  };
-}
-
 export function claudeCodeSdk(start: StartQuery = query) {
   const catalog = anthropicProvider();
   const sessions = new Map<string, ClaudeCodeSession>();
@@ -348,41 +152,27 @@ export function claudeCodeSdk(start: StartQuery = query) {
     if (id === undefined || binding === undefined)
       throw new Error("Claude Code answers inside a Nyte session with the claude-code-sdk plugin.");
     const effort = effortFor(model, options?.reasoning);
-    const ultracode = await binding.ultracode();
-    const key = JSON.stringify([model.id, binding.cwd, options?.reasoning !== undefined]);
+    const system = getCurrentSystemPrompt(context.messages);
+    const key = JSON.stringify([model.id, binding.cwd, options?.reasoning !== undefined, system]);
     const messages = context.messages.filter((message) => message.role !== "system");
     const keys = messages.map(messageKey);
-
-    const tools = getCurrentTools(context.messages).filter(
-      (tool) => !CLAUDE_CODE_HAS_ITS_OWN.has(tool.name),
-    );
-
+    const tools = getCurrentTools(context.messages);
+    const prompt = messages.slice(messages.findLastIndex((message) => message.role !== "user") + 1);
     let session = sessions.get(id);
 
-    const continues =
-      session !== undefined &&
-      !session.closed &&
-      !session.asking &&
-      session.key === key &&
-      session.known.length < keys.length &&
-      session.known.every((known, index) => keys[index] === known);
-
-    const prompt = messages.slice(messages.findLastIndex((message) => message.role !== "user") + 1);
-
-    if (!continues) {
+    if (session === undefined || !session.follows(key, keys)) {
       session?.close();
 
       if (prompt.length === 0) throw new Error(NOT_RUNNING);
-      const claude = await findClaudeCode();
       const claudeSession = randomUUID();
 
       session = new ClaudeCodeSession({
         key,
         model: model.id,
         cwd: binding.cwd,
+        system,
         thinking: options?.reasoning !== undefined,
         effort,
-        ultracode,
         env: options?.env,
         session: claudeSession,
         history: sessionEntries(messages.slice(0, -prompt.length), {
@@ -392,32 +182,21 @@ export function claudeCodeSdk(start: StartQuery = query) {
         }),
         tools,
         query: start,
-        claude,
-        approve: binding.approve,
+        claude: await findClaudeCode(),
       });
       sessions.set(id, session);
     }
 
-    if (session === undefined) throw new Error(NOT_RUNNING);
     session.expose(tools);
     session.deliver(messages);
-    await session.configure(effort, ultracode);
+    await session.configure(effort);
 
     if (prompt.length > 0)
       session.send(
         prompt.flatMap((message) => (message.role === "user" ? userBlocks(message) : [])),
       );
-    const live = session;
-    const stream = live.respond(model, options?.signal);
 
-    void stream.result().then((message) => {
-      live.known =
-        message.stopReason === "error" || message.stopReason === "aborted"
-          ? []
-          : [...keys, messageKey(message)];
-    });
-
-    return stream;
+    return session.respond(model, keys, options?.signal);
   }
 
   const stream = (
@@ -467,25 +246,9 @@ export function claudeCodeSdk(start: StartQuery = query) {
 
   const plugin = {
     id: "claude-code-sdk",
-    contribute: { tools: [mirrorTool(sessions)], settings: [ultracodeSetting] },
     activate(api) {
       const id = api.session.id;
-
-      const binding: Binding = {
-        cwd: api.env.cwd,
-        ultracode: async () => (await api.contribute.settings.value(ultracodeSetting.id)) === true,
-        approve: async (name, input, signal) => {
-          const verdict = await api.approve(
-            { name, class: classifyClaudeTool(name, input) },
-            signal,
-          );
-
-          return verdict.kind === "allow"
-            ? { behavior: "allow" }
-            : { behavior: "deny", message: verdict.reason };
-        },
-      };
-
+      const binding: Binding = { cwd: api.env.cwd };
       const release = acquireSessionResources(id);
       bindings.set(id, binding);
 
