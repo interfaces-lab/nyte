@@ -68,6 +68,13 @@ function divider(page: Page): Locator {
   return messages(page).getByText("New messages below", { exact: true });
 }
 
+/** The prompt's bubble pins to the top edge over its own turn, divider included, so place its row. */
+function promptRow(page: Page, text: string): Locator {
+  return messages(page)
+    .locator("[data-row-key^='prompt:']")
+    .filter({ has: page.getByText(text, { exact: true }) });
+}
+
 async function scrollUpTo(page: Page, target: Locator): Promise<void> {
   const log = messages(page);
   await expect(async () => {
@@ -86,7 +93,7 @@ test("the unread journey", async ({ desktop }) => {
     await openChat(page, FIXTURES.unread);
     await expect(log.getByText(LATEST_UNREAD, { exact: true })).toBeInViewport();
     await scrollUpTo(page, divider(page));
-    const prompt = await log.getByText(FIRST_UNREAD, { exact: true }).boundingBox();
+    const prompt = await promptRow(page, FIRST_UNREAD).boundingBox();
     const line = await divider(page).boundingBox();
     expect(prompt?.y ?? Infinity).toBeLessThan(line?.y ?? 0);
   });
