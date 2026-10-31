@@ -1,4 +1,3 @@
-import { CloudFeatures } from "./features";
 import { Preview } from "./preview";
 import {
   ButtonGroupDemo,
@@ -31,7 +30,6 @@ import { SpinnerDemo } from "./demos/spinner";
 import { ToastDemo } from "./demos/toast";
 
 export const componentsMdxComponents = {
-  CloudFeatures,
   Preview,
   ButtonVariantsDemo,
   ButtonSizesDemo,

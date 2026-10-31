@@ -1,5 +1,5 @@
 import { Link, useRouter } from "@tanstack/react-router";
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { create } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
@@ -79,23 +79,37 @@ function Highlighted({ content }: { content: string }) {
   );
 }
 
-/**
- * ⌘K over Algolia, or the shared /api/search index without its keys, drawn with the shared Dialog and
- * Input. Results outside the current section are kept: an agent searching
- * "subagent" should find the core docs too. A result on the other host (docs
- * from design.nyte.sh, or back) navigates with a full document load.
- */
+/** The site nav's triggers for the search dialog. */
 export function SiteSearch() {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [response, setResponse] = useState<{ query: string; results: Result[] } | null>(null);
-  const [active, setActive] = useState(0);
-  const router = useRouter();
-  const listId = useId();
-  const trimmed = query.trim();
-  const results = trimmed === "" ? [] : (response?.results ?? []);
-  const pending = useRef<AbortController | null>(null);
 
+  useSearchShortcut(setOpen);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="inline-flex h-(--site-nav-control) cursor-pointer items-center justify-center rounded-full bg-fill-selected px-3.5 text-[15px] font-medium text-foreground max-lg:hidden hero:bg-white/12 hero:text-white hero:hover:bg-white/20"
+        onClick={() => setOpen(true)}
+        aria-label="Search"
+      >
+        <span>Search</span>
+      </button>
+      <button
+        type="button"
+        className="hidden size-(--site-nav-control) cursor-pointer items-center justify-center rounded-full bg-fill-selected text-foreground hover:bg-foreground/10 max-lg:inline-flex hero:text-white"
+        onClick={() => setOpen(true)}
+        aria-label="Search"
+      >
+        <IconMagnifyingGlass size={16} />
+      </button>
+      <SearchDialog open={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+
+/** ⌘K or Ctrl+K anywhere on the page opens the dialog, and closes it again. */
+export function useSearchShortcut(setOpen: Dispatch<SetStateAction<boolean>>) {
   useMountEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -106,6 +120,29 @@ export function SiteSearch() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+}
+
+/**
+ * Algolia, or the shared /api/search index without its keys, drawn with the shared Dialog and
+ * Input. Results outside the current section are kept: an agent searching
+ * "subagent" should find the core docs too. A result on the other host (docs
+ * from design.nyte.sh, or back) navigates with a full document load.
+ */
+export function SearchDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [response, setResponse] = useState<{ query: string; results: Result[] } | null>(null);
+  const [active, setActive] = useState(0);
+  const router = useRouter();
+  const listId = useId();
+  const trimmed = query.trim();
+  const results = trimmed === "" ? [] : (response?.results ?? []);
+  const pending = useRef<AbortController | null>(null);
 
   const search = (value: string) => {
     setQuery(value);
@@ -137,7 +174,7 @@ export function SiteSearch() {
       const target = results[active];
       if (!target) return;
       event.preventDefault();
-      setOpen(false);
+      onOpenChange(false);
       const next = splitHref(target.url);
       const onOtherHost = router.buildLocation(next).external;
       void router.navigate({ ...next, reloadDocument: onOtherHost });
@@ -145,79 +182,61 @@ export function SiteSearch() {
   };
 
   return (
-    <>
-      <button
-        type="button"
-        className="inline-flex h-(--site-nav-control) cursor-pointer items-center justify-center rounded-full bg-fill-selected px-3.5 text-[15px] font-medium text-foreground max-lg:hidden hero:bg-white/12 hero:text-white hero:hover:bg-white/20"
-        onClick={() => setOpen(true)}
-        aria-label="Search"
-      >
-        <span>Search</span>
-      </button>
-      <button
-        type="button"
-        className="hidden size-(--site-nav-control) cursor-pointer items-center justify-center rounded-full bg-fill-selected text-foreground hover:bg-foreground/10 max-lg:inline-flex hero:text-white"
-        onClick={() => setOpen(true)}
-        aria-label="Search"
-      >
-        <IconMagnifyingGlass size={16} />
-      </button>
-      <Dialog.Root open={open} onOpenChange={setOpen}>
-        <Dialog.Popup aria-label="Search" xstyle={styles.popup}>
-          <Input
-            autoFocus
-            variant="bare"
-            className="min-h-12 px-4 text-[15px]"
-            placeholder="Search docs"
-            aria-label="Search"
-            aria-controls={listId}
-            value={query}
-            onKeyDown={onKeyDown}
-            onValueChange={search}
-          />
-          {results.length > 0 ? (
-            <ul
-              id={listId}
-              className="max-h-90 overflow-y-auto border-t border-border-subtle p-2"
-              role="listbox"
-            >
-              {results.map((result, index) => (
-                <li key={result.id} role="option" aria-selected={index === active}>
-                  <Link
-                    {...splitHref(result.url)}
-                    data-type={result.type}
-                    className="flex flex-col gap-0.5 rounded-lg px-3 py-2 text-sm/5 not-data-[type=page]:pl-6 not-data-[type=page]:text-muted-foreground hover:bg-fill-hover data-active:bg-fill-selected data-[type=page]:font-medium"
-                    data-active={index === active || undefined}
-                    onClick={() => setOpen(false)}
-                    onMouseEnter={() => setActive(index)}
-                  >
-                    <span>
-                      <Highlighted content={result.content} />
-                    </span>
-                    {result.type === "page" && (
-                      <small className="text-xs/5 text-muted-foreground">{result.url}</small>
-                    )}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : response?.query === trimmed && trimmed !== "" ? (
-            <div className="border-t border-border-subtle px-4 py-6 text-center text-sm text-muted-foreground">
-              No results. Try a function or ref name.
-            </div>
-          ) : null}
-          {algolia ? (
-            <a
-              href="https://www.algolia.com/?utm_medium=referral&utm_source=nyte-docs"
-              target="_blank"
-              rel="noreferrer"
-              className="border-t border-border-subtle px-4 py-2 text-right text-xs/5 text-muted-foreground hover:text-foreground"
-            >
-              Search by Algolia
-            </a>
-          ) : null}
-        </Dialog.Popup>
-      </Dialog.Root>
-    </>
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Popup aria-label="Search" xstyle={styles.popup}>
+        <Input
+          autoFocus
+          variant="bare"
+          className="min-h-12 px-4 text-[15px]"
+          placeholder="Search docs"
+          aria-label="Search"
+          aria-controls={listId}
+          value={query}
+          onKeyDown={onKeyDown}
+          onValueChange={search}
+        />
+        {results.length > 0 ? (
+          <ul
+            id={listId}
+            className="max-h-90 overflow-y-auto border-t border-border-subtle p-2"
+            role="listbox"
+          >
+            {results.map((result, index) => (
+              <li key={result.id} role="option" aria-selected={index === active}>
+                <Link
+                  {...splitHref(result.url)}
+                  data-type={result.type}
+                  className="flex flex-col gap-0.5 rounded-lg px-3 py-2 text-sm/5 not-data-[type=page]:pl-6 not-data-[type=page]:text-muted-foreground hover:bg-fill-hover data-active:bg-fill-selected data-[type=page]:font-medium"
+                  data-active={index === active || undefined}
+                  onClick={() => onOpenChange(false)}
+                  onMouseEnter={() => setActive(index)}
+                >
+                  <span>
+                    <Highlighted content={result.content} />
+                  </span>
+                  {result.type === "page" && (
+                    <small className="text-xs/5 text-muted-foreground">{result.url}</small>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : response?.query === trimmed && trimmed !== "" ? (
+          <div className="border-t border-border-subtle px-4 py-6 text-center text-sm text-muted-foreground">
+            No results. Try a function or ref name.
+          </div>
+        ) : null}
+        {algolia ? (
+          <a
+            href="https://www.algolia.com/?utm_medium=referral&utm_source=nyte-docs"
+            target="_blank"
+            rel="noreferrer"
+            className="border-t border-border-subtle px-4 py-2 text-right text-xs/5 text-muted-foreground hover:text-foreground"
+          >
+            Search by Algolia
+          </a>
+        ) : null}
+      </Dialog.Popup>
+    </Dialog.Root>
   );
 }

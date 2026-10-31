@@ -1,11 +1,11 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { NyteWordmark } from "~/components/brand/mark";
 import { SiteMobileNav } from "~/components/site-nav/mobile-menu";
 import { SiteSearch } from "~/components/site-nav/search";
 import { SiteNavSections } from "~/components/site-nav/sections";
 import { ThemeToggle } from "~/components/site-nav/theme-toggle";
-import { designNav, docsNav, type NavSection } from "~/lib/docs";
-import { designRoute, docsRoute, githubUrl } from "~/lib/shared";
+import { docsNav, type NavSection } from "~/lib/docs";
+import { designRoute, githubUrl } from "~/lib/shared";
 import { products } from "~/lib/products";
 
 const [firstProduct, ...moreProducts] = products;
@@ -17,22 +17,17 @@ const productSection: NavSection = {
   ],
 };
 
+const designSite: NavSection = { items: [{ title: "Design", href: designRoute }] };
+
 /**
  * One bar, one position: sticky, dropped from the top so its pills sit
  * concentric with the plate's corner on pages that open with a plate. The
  * bar is a frosted pill. Over a plate the pill is transparent and the text
  * is white; once the plate scrolls away (NavSentinel) the pill returns.
  * Stays under the dialog layer (70) so a dialog scrim covers the bar too.
+ * The design site draws its own frame, so this bar only ever shows the docs.
  */
 export function SiteNav() {
-  const onDesign = useLocation({
-    select: (location) => location.pathname.startsWith(designRoute),
-  });
-  const sections = onDesign ? designNav : docsNav;
-  const otherSite: NavSection = {
-    items: [onDesign ? { title: "Docs", href: docsRoute } : { title: "Design", href: designRoute }],
-  };
-
   return (
     <header className="sticky top-0 z-30 w-full min-w-0 shrink-0 pt-(--site-nav-top)">
       <div className="mx-auto w-[min(100%,var(--site-inner))] px-[calc(var(--site-pad)-var(--site-nav-pad))]">
@@ -51,8 +46,8 @@ export function SiteNav() {
             <ThemeToggle />
             <SiteSearch />
             <SiteMobileNav
-              docs={sections}
-              site={[productSection, otherSite]}
+              docs={docsNav}
+              site={[productSection, designSite]}
               githubHref={githubUrl}
             />
           </div>

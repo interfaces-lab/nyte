@@ -2,8 +2,10 @@ import { appName, siteUrl } from "./shared";
 
 interface PageMeta {
   title?: string;
+  /** The site the page belongs to, set after its title: `Button · Nyte Design`. */
+  site?: string;
   description?: string;
-  /** A site path such as `/og/docs/image.png`; made absolute against the main host. */
+  /** A site path such as `/og/docs/image.png`, made absolute against the main host, or a full URL. */
   image?: string;
   type?: "website" | "article";
   noindex?: boolean;
@@ -14,7 +16,8 @@ interface PageMeta {
 
 /** Head tags for one page. Titles read `Page · Nyte`; the root route supplies the defaults. */
 export function pageHead(page: PageMeta) {
-  const title = page.title ? `${page.title} · ${appName}` : undefined;
+  const site = page.site ?? appName;
+  const title = page.title && page.title !== site ? `${page.title} · ${site}` : page.title;
   const image = page.image ? new URL(page.image, siteUrl).href : undefined;
   const robots = [page.noindex && "noindex", page.nofollow && "nofollow"].filter(Boolean);
 

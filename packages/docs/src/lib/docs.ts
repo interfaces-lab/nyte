@@ -56,6 +56,8 @@ export interface DocPage {
   Body: MDXContent;
   toc: TocEntry[];
   section: string | undefined;
+  /** A folder's `index.mdx`: the page that introduces its section rather than an entry in it. */
+  overview: boolean;
   previous: NavItem | undefined;
   next: NavItem | undefined;
   imageUrl: string;
@@ -123,6 +125,7 @@ function build(source: Source): Site {
     Body: page.data.body,
     toc: page.data.toc,
     section: section.label,
+    overview: /(?:^|\/)index\.mdx$/.test(page.path),
     previous: placed[index - 1]?.item,
     next: placed[index + 1]?.item,
     imageUrl: `/og${page.url}/image.png`,
