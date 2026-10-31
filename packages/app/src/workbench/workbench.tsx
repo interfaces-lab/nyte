@@ -141,11 +141,9 @@ function PanelContent({
               fileTreeVisible={sidebarVisible}
               onScopeChange={(scope) => change({ scope, selectedPath: null, scrollTop: 0 })}
               onToggleFileTree={toggleSidebar}
-              onSelectPath={(path) => change({ selectedPath: path ?? null })}
-              onRevealPath={(path) =>
-                change({ selectedPath: path, pathRevealRevision: tab.pathRevealRevision + 1 })
+              onScrollTop={(scrollTop, selectedPath) =>
+                change({ scrollTop: Math.max(0, scrollTop), selectedPath: selectedPath ?? null })
               }
-              onScrollTop={(scrollTop) => change({ scrollTop: Math.max(0, scrollTop) })}
               onOpenLink={
                 nyte.host.browser === undefined ? undefined : (url) => openUrl(viewKey, url)
               }
@@ -274,7 +272,7 @@ function WorkbenchViewHost({
 
     if (panel !== null) {
       panel.style.width = `${String(resize.nextWidth)}px`;
-      setActiveWidth(panel.getBoundingClientRect().width);
+      setActiveWidth(resize.nextWidth);
     }
   };
 

@@ -8,7 +8,6 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
 import { Link, useRouter } from "@tanstack/react-router";
-import { motion } from "motion/react";
 import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import {
@@ -39,7 +38,7 @@ import { useGitHub, useGitHubState } from "../account/github-account.ts";
 import { folderPicker } from "../panes/open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
-import { recordArchive, SidebarContent } from "./sidebar-content.tsx";
+import { SidebarContent } from "./sidebar-content.tsx";
 import { WorkspaceControls } from "./sidebar-filter.tsx";
 import {
   ChatsList,
@@ -397,10 +396,8 @@ export function Sidebar(): ReactElement {
 
   const closeConfirmation = (): void => setConfirmation({ kind: "closed" });
 
-  const archive = (sessionId: SessionId, archived: boolean): void => {
-    recordArchive(1);
+  const archive = (sessionId: SessionId, archived: boolean): void =>
     sessionActions.archive([sessionId], archived, hideFromPanes);
-  };
 
   return (
     <aside {...props(styles.rail)}>
@@ -476,12 +473,7 @@ export function Sidebar(): ReactElement {
           </Row>
         </div>
 
-        <motion.div
-          layoutScroll
-          data-nyte-scrollport
-          onKeyDown={moveSidebarFocus}
-          {...props(styles.scroll)}
-        >
+        <div data-nyte-scrollport onKeyDown={moveSidebarFocus} {...props(styles.scroll)}>
           {pinned.length > 0 && <PinnedSection rows={pinned} rail={rail} />}
           <section aria-label={flat ? "Chats" : "Workspaces"} {...props(styles.section)}>
             <Collapsible.Root
@@ -555,7 +547,7 @@ export function Sidebar(): ReactElement {
               </Collapsible.Panel>
             </Collapsible.Root>
           </section>
-        </motion.div>
+        </div>
       </SidebarContent>
 
       <SidebarFooter onOpenSettings={openSettings} />
@@ -606,7 +598,6 @@ export function Sidebar(): ReactElement {
           }}
           onConfirm={() => {
             closeConfirmation();
-            recordArchive(confirmation.sessionIds.length);
             sessionActions.archive(confirmation.sessionIds, true, hideFromPanes);
           }}
         />

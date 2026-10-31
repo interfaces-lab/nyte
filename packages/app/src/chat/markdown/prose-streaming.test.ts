@@ -150,12 +150,7 @@ test("reduced motion keeps the pacing and turns the fade off", { timeout: 120_00
   expect(report.drain.steps).toEqual(DRAIN_STEPS);
   expect(report.catchUp.fadingMax).toBe(0);
   expect(report.drain.fadingMax).toBe(0);
-  expect(report.catchUp.fresh).toEqual({
-    animated: false,
-    duration: "0.15s",
-    timing: "linear",
-    fill: "both",
-  });
+  expect(report.catchUp.fresh).toBeUndefined();
   expect(report.catchUp.spansAfterEnd).toBe(0);
   expect(report.drain.spansAfterEnd).toBe(0);
 });

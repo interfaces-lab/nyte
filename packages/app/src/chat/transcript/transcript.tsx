@@ -334,9 +334,8 @@ export function TranscriptContent({
     const scroll = instance.scrollElement;
 
     if (scroll === null || content.current === null) return;
-    settle(instance);
     stretchSpans(instance, sticky.ends);
-
+    settle(instance);
     syncSticky(scroll, content.current);
     queueMicrotask(() => syncScrollButton(scroll, dock));
     loadHistory(instance);

@@ -42,7 +42,7 @@ const styles = create({
   switch: { paddingInline: space.s3, paddingBlock: space.s2_5 },
 });
 
-const EASE = [0.32, 0.72, 0, 1] as const;
+const EASE_OUT_QUINT = [0.16, 1, 0.3, 1] as const;
 
 function Morph({ children }: { readonly children: ReactNode }): ReactElement {
   const inner = useRef<HTMLDivElement>(null);
@@ -63,7 +63,9 @@ function Morph({ children }: { readonly children: ReactNode }): ReactElement {
     <motion.div
       initial={false}
       animate={{ height: height ?? "auto" }}
-      transition={reducedMotion === true ? { duration: 0 } : { duration: 0.32, ease: EASE }}
+      transition={
+        reducedMotion === true ? { duration: 0 } : { duration: 0.2, ease: EASE_OUT_QUINT }
+      }
       {...props(styles.morph)}
     >
       <div ref={inner}>{children}</div>

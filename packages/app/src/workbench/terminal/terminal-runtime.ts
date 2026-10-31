@@ -30,6 +30,9 @@ interface TerminalView {
   readonly terminal: Terminal;
   readonly commands: CommandMark[];
   fit(): void;
+  show(): void;
+  hide(): void;
+  wake(): void;
 }
 
 const views = new Map<string, TerminalView>();
@@ -245,16 +248,42 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
   if (commandOutput) terminal.textarea?.setAttribute("readonly", "");
 
-  let mirrorFrame = 0;
+  let mirrorTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const mirrorOutput = (): void => {
-    cancelAnimationFrame(mirrorFrame);
-    mirrorFrame = requestAnimationFrame(() => {
-      if (terminal.textarea !== undefined) terminal.textarea.value = terminalPrinted(id);
-    });
+  const mirrorNow = (): void => {
+    clearTimeout(mirrorTimer);
+    mirrorTimer = undefined;
+
+    if (!element.isConnected || terminal.textarea === undefined) return;
+    terminal.textarea.value = terminalPrinted(id);
   };
 
-  if (commandOutput) mirrorOutput();
+  const mirrorOutput = (): void => {
+    if (mirrorTimer !== undefined || !element.isConnected) return;
+    mirrorTimer = setTimeout(mirrorNow, 250);
+  };
+
+  let shown = false;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const rest = (): void => {
+    if (document.hasFocus() && element.contains(document.activeElement)) return;
+    terminal.pauseRendering();
+  };
+
+  const wake = (): void => {
+    if (!shown) return;
+    terminal.resumeRendering();
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(rest, 1000);
+  };
+
+  const wakeEvents = ["focusin", "focusout", "wheel", "pointerdown", "pointermove", "keydown"];
+
+  for (const name of wakeEvents)
+    element.addEventListener(name, wake, { capture: true, passive: true });
+  window.addEventListener("focus", wake);
+  window.addEventListener("blur", wake);
 
   terminal.textarea?.setAttribute("spellcheck", "false");
   let resizeFrame = 0;
@@ -292,6 +321,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
   const fitVisible = (): void => {
     if (!element.isConnected || element.clientWidth === 0 || element.clientHeight === 0) return;
+    wake();
     fit.fit();
     syncSize();
   };
@@ -328,7 +358,10 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
   const title = terminal.onTitleChange((value) => terminalActions.title(id, value));
 
-  const selected = terminal.onSelectionChange(() => notifySelection(id));
+  const selected = terminal.onSelectionChange(() => {
+    wake();
+    notifySelection(id);
+  });
 
   const reportSettledSelection = (): void => {
     setTimeout(() => notifySelection(id));
@@ -375,16 +408,37 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
     return false;
   });
-  const view = { element, terminal, commands, fit: fitVisible };
+
+  const view = {
+    element,
+    terminal,
+    commands,
+    fit: fitVisible,
+    show() {
+      shown = true;
+      wake();
+
+      if (commandOutput) mirrorNow();
+    },
+    hide() {
+      shown = false;
+      clearTimeout(idleTimer);
+      terminal.pauseRendering();
+    },
+    wake,
+  };
+
   views.set(id, view);
   attachTerminalOutput(id, {
     reset() {
       terminal.clearSelection();
       terminal.write("\u001bc\u001b[?25l");
+      wake();
       mirrorOutput();
     },
     write(value) {
       terminal.write(commandOutput ? value + "\u001b[?25l" : value);
+      wake();
 
       if (commandOutput) mirrorOutput();
     },
@@ -392,7 +446,12 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     visible: () => element.checkVisibility(),
     dispose() {
       cancelAnimationFrame(resizeFrame);
-      cancelAnimationFrame(mirrorFrame);
+      clearTimeout(mirrorTimer);
+      clearTimeout(idleTimer);
+
+      for (const name of wakeEvents) element.removeEventListener(name, wake, true);
+      window.removeEventListener("focus", wake);
+      window.removeEventListener("blur", wake);
       resize.disconnect();
       stopScrollback();
       document.fonts.removeEventListener("loadingdone", scheduleFit);
@@ -423,7 +482,7 @@ export function mountTerminal(id: string, container: HTMLDivElement, visible: bo
       if (detached || view === undefined || !visible) return;
       mounted = view;
       container.append(view.element);
-      view.terminal.resumeRendering();
+      view.show();
       view.fit();
 
       if (container.checkVisibility()) view.terminal.textarea?.focus({ preventScroll: true });
@@ -435,7 +494,7 @@ export function mountTerminal(id: string, container: HTMLDivElement, visible: bo
 
     if (mounted === undefined) return;
     mounted.element.remove();
-    mounted.terminal.pauseRendering();
+    mounted.hide();
   };
 }
 
@@ -446,7 +505,9 @@ export function focusTerminal(id: string): void {
 }
 
 export function clearTerminal(id: string): void {
-  views.get(id)?.terminal.clear();
+  const view = views.get(id);
+  view?.terminal.clear();
+  view?.wake();
 }
 
 export function copyTerminal(id: string): void {

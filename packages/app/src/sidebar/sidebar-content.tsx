@@ -1,8 +1,8 @@
 import { props } from "@stylexjs/stylex";
 import { useMatch } from "@tanstack/react-router";
-import { LayoutGroup, motion, MotionConfig } from "motion/react";
+import { motion } from "motion/react";
 import type { Transition } from "motion/react";
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { SettingsNavigation, type SettingsSection } from "../settings/index.ts";
@@ -12,25 +12,9 @@ const INSTANT: Transition = { duration: 0 };
 
 const LAYER_SHIFT = 12;
 
-const ARCHIVE_BURST_MS = 100;
-
-let archiveSettle: "single" | "burst" | undefined;
-
-let lastArchiveAt = -ARCHIVE_BURST_MS;
-
-/** The archive re-renders the list synchronously from the same event, so the flag is spent by the next frame. */
-export function recordArchive(count: number): void {
-  const at = performance.now();
-  archiveSettle = count === 1 && at - lastArchiveAt > ARCHIVE_BURST_MS ? "single" : "burst";
-  lastArchiveAt = at;
-  requestAnimationFrame(() => {
-    archiveSettle = undefined;
-  });
-}
-
-function sidebarLayoutTransition(node: HTMLElement, durationVariable: string): Transition {
+function sidebarLayerTransition(node: HTMLElement): Transition {
   const css = getComputedStyle(node);
-  const durationToken = css.getPropertyValue(durationVariable).trim();
+  const durationToken = css.getPropertyValue("--_sidebar-motion-duration").trim();
   const duration = Number.parseFloat(durationToken) / (durationToken.endsWith("ms") ? 1000 : 1);
   const curve = css.getPropertyValue("--_sidebar-motion-easing").trim();
 
@@ -54,8 +38,7 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
 
   const settingsOpen = openSection !== undefined;
   const contentRef = useRef<HTMLElement>(null);
-  const layoutId = useId();
-  const [transitions, setTransitions] = useState({ list: INSTANT, archive: INSTANT });
+  const [transition, setTransition] = useState(INSTANT);
   const [section, setSection] = useState<SettingsSection>("general");
 
   if (openSection !== undefined && openSection !== section) setSection(openSection);
@@ -68,14 +51,7 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     const update = (): void =>
-      setTransitions(
-        reducedMotion.matches
-          ? { list: INSTANT, archive: INSTANT }
-          : {
-              list: sidebarLayoutTransition(node, "--_sidebar-motion-duration"),
-              archive: sidebarLayoutTransition(node, "--_sidebar-archive-duration"),
-            },
-      );
+      setTransition(reducedMotion.matches ? INSTANT : sidebarLayerTransition(node));
 
     update();
     reducedMotion.addEventListener("change", update);
@@ -83,14 +59,7 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
     return () => reducedMotion.removeEventListener("change", update);
   }, []);
 
-  const transition =
-    archiveSettle === undefined
-      ? transitions.list
-      : archiveSettle === "single"
-        ? transitions.archive
-        : INSTANT;
-
-  const shift = transitions.list === INSTANT ? 0 : LAYER_SHIFT;
+  const shift = transition === INSTANT ? 0 : LAYER_SHIFT;
 
   return (
     <nav
@@ -104,21 +73,17 @@ export function SidebarContent({ children }: { readonly children: ReactNode }): 
         inert={settingsOpen}
         initial={false}
         animate={{ opacity: settingsOpen ? 0 : 1, x: settingsOpen ? -shift : 0 }}
-        transition={transitions.list}
+        transition={transition}
         {...props(styles.contentLayer)}
       >
-        <MotionConfig transition={{ layout: transition }}>
-          <LayoutGroup id={layoutId} inherit={false}>
-            {children}
-          </LayoutGroup>
-        </MotionConfig>
+        {children}
       </motion.div>
       <motion.div
         data-sidebar-layer="settings"
         inert={!settingsOpen}
         initial={false}
         animate={{ opacity: settingsOpen ? 1 : 0, x: settingsOpen ? 0 : shift }}
-        transition={transitions.list}
+        transition={transition}
         {...props(styles.contentLayer)}
       >
         <SettingsNavigation section={section} />

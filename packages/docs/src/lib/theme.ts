@@ -75,6 +75,20 @@ export function setTheme(choice: ThemeChoice) {
   notify();
 }
 
+/** `setTheme` behind a cross-fade, where the browser has view transitions and motion is welcome. */
+export function switchTheme(choice: ThemeChoice) {
+  if (
+    !("startViewTransition" in document) ||
+    matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    setTheme(choice);
+
+    return;
+  }
+
+  document.startViewTransition(() => setTheme(choice));
+}
+
 /** The stored choice and what it resolves to; both null until hydration reads storage. */
 export function useTheme(): { theme: ThemeChoice | null; resolvedTheme: "light" | "dark" | null } {
   const theme = useSyncExternalStore(subscribe, readChoice, () => null);

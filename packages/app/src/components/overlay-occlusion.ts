@@ -57,6 +57,8 @@ function painted(element: Element): boolean {
 
   if (element.hasAttribute("data-ending-style") || element.hasAttribute("data-closed"))
     return false;
+
+  if (element.hasAttribute("data-starting-style")) return true;
   const style = getComputedStyle(element);
 
   return style.visibility !== "hidden" && style.opacity !== "0";
@@ -131,7 +133,7 @@ export function subscribeOverlayRects(listener: () => void): () => void {
   if (listeners.size === 1) {
     observer = new MutationObserver(changed);
     observe();
-    schedule();
+    measure();
   }
 
   return () => {

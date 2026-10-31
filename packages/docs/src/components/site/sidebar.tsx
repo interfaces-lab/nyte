@@ -74,8 +74,11 @@ export function DocNav({
   );
 }
 
-/** Remounts per toc, so a new page's headings are picked as soon as it renders. */
-function HeadingSpy(props: { toc: readonly TocEntry[]; onPass: (url: string) => void }) {
+/**
+ * Reports the heading most recently scrolled past the top third of the viewport.
+ * Key it by the toc, so a new page's headings are picked as soon as it renders.
+ */
+export function HeadingSpy(props: { toc: readonly TocEntry[]; onPass: (url: string) => void }) {
   useMountEffect(() => {
     const pick = () => {
       const headings = props.toc.flatMap((entry) => {

@@ -92,8 +92,6 @@ export function BackgroundWork({
     if (held) pillRef.current?.focus();
   };
 
-  if (terminals.length === 0) return null;
-
   return (
     <div ref={ref} {...props(trayParts.root)}>
       <Tray open={trayOpen} id={trayId} label="Terminals" focusKey="terminals" onClose={close}>
@@ -200,40 +198,42 @@ export function BackgroundWork({
           </div>
         )}
       </Tray>
-      <div {...props(trayParts.pills)}>
-        <Button
-          ref={pillRef}
-          variant="outline"
-          pill
-          size="sm"
-          aria-description={`Open terminals (${pillCounts(terminals)})`}
-          aria-controls={trayId}
-          aria-expanded={trayOpen}
-          onClick={() => {
-            if (trayOpen) {
-              onViewChange({ kind: "closed" });
+      {terminals.length > 0 && (
+        <div {...props(trayParts.pills)}>
+          <Button
+            ref={pillRef}
+            variant="outline"
+            pill
+            size="sm"
+            aria-description={`Open terminals (${pillCounts(terminals)})`}
+            aria-controls={trayId}
+            aria-expanded={trayOpen}
+            onClick={() => {
+              if (trayOpen) {
+                onViewChange({ kind: "closed" });
 
-              return;
-            }
+                return;
+              }
 
-            setStopCandidates(undefined);
-            cancel.reset();
-            stopAll.reset();
-            onViewChange({
-              kind: "terminals",
-              openedOver: terminals.map((terminal) => terminal.id),
-            });
-          }}
-        >
-          <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
-            <TaskMark state={pillState(terminals)} job />
-          </span>
-          <span aria-hidden="true" {...props(trayParts.pillCount)}>
-            {count}
-          </span>
-          <span>{noun}</span>
-        </Button>
-      </div>
+              setStopCandidates(undefined);
+              cancel.reset();
+              stopAll.reset();
+              onViewChange({
+                kind: "terminals",
+                openedOver: terminals.map((terminal) => terminal.id),
+              });
+            }}
+          >
+            <span aria-hidden="true" {...props(trayParts.pillIndicator)}>
+              <TaskMark state={pillState(terminals)} job />
+            </span>
+            <span aria-hidden="true" {...props(trayParts.pillCount)}>
+              {count}
+            </span>
+            <span>{noun}</span>
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

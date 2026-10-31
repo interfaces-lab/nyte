@@ -127,7 +127,10 @@ export default defineConfig({
       files: ["packages/docs/**"],
       jsPlugins: ["@shadcn/lint"],
       rules: {
-        "shadcn/no-unknown-classes": ["warn", { allow: ["doc", "doc-*", "docs-*", "cloud-*"] }],
+        "shadcn/no-unknown-classes": [
+          "warn",
+          { allow: ["doc", "doc-*", "docs-*", "cloud-*", "design", "design-*"] },
+        ],
         "shadcn/no-arbitrary-values": "warn",
         "shadcn/no-raw-colors": "warn",
         "shadcn/no-inline-styles": "warn",

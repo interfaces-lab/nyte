@@ -1,4 +1,4 @@
-import type { ContentBlock, ToolCallContent, Usage } from "@agentclientprotocol/sdk/unstable";
+import type { ContentBlock, ToolCallContent } from "@agentclientprotocol/sdk/unstable";
 import { calculateCost } from "@nyte-ai/ai";
 import type {
   Api,
@@ -29,6 +29,17 @@ export const mirrorArguments = Type.Object({
 });
 
 export type MirrorArguments = Static<typeof mirrorArguments>;
+
+const count = Type.Optional(Type.Union([Type.Number(), Type.Null()]));
+
+/** A turn's usage as ACP defines it. An agent's report missing a required count (fx sends no `totalTokens`) is not usage. */
+export const agentUsage = Type.Object({
+  inputTokens: Type.Number(),
+  outputTokens: Type.Number(),
+  totalTokens: Type.Number(),
+  cachedReadTokens: count,
+  cachedWriteTokens: count,
+});
 
 const command = Type.Union([
   Type.String({ minLength: 1 }),
@@ -167,7 +178,7 @@ export class Translator {
     });
   }
 
-  usage(usage: Usage): void {
+  usage(usage: Static<typeof agentUsage>): void {
     const target = this.#output.usage;
     target.input = usage.inputTokens;
     target.output = usage.outputTokens;

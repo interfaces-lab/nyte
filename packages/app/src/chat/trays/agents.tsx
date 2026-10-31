@@ -2,7 +2,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { useEffectEvent, useId, useLayoutEffect, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { taskEnded, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
@@ -37,6 +37,26 @@ export function listAgents(
     tasks.filter((task): task is ChildTask => task.kind === "child"),
     cleared,
   );
+}
+
+function ReleaseOnEmpty({
+  root,
+  onRelease,
+}: {
+  readonly root: HTMLDivElement | null;
+  readonly onRelease: () => void;
+}): null {
+  const release = useEffectEvent(onRelease);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- unmounts before the emptied tray's pill is removed or its content turns inert
+  useLayoutEffect(
+    () => () => {
+      if (root?.contains(document.activeElement) === true) release();
+    },
+    [root],
+  );
+
+  return null;
 }
 
 export function pillState(tasks: readonly Task[]): TaskState {
@@ -121,11 +141,12 @@ export function SubagentTray({
     if (held) onRelease();
   };
 
-  if (view.kind !== "detail" && agents.length === 0) return null;
+  const empty = view.kind !== "detail" && agents.length === 0;
 
   return (
     <div ref={attachRoot} {...props(trayParts.root)}>
-      {view.kind === "closed" && (
+      {!empty && <ReleaseOnEmpty root={root} onRelease={onRelease} />}
+      {view.kind === "closed" && !empty && (
         <TrayPill
           label={`Agents, ${pillCounts(agents)}`}
           controls={trayId}

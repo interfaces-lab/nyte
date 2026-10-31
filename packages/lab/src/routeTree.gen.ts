@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChangesRouteImport } from './routes/changes'
+import { Route as DesignModeRouteImport } from './routes/design-mode'
 import { Route as HubsRouteImport } from './routes/hubs'
 import { Route as PeekRouteImport } from './routes/peek'
 import { Route as StacksRouteImport } from './routes/stacks'
@@ -27,6 +28,11 @@ const IndexRoute = IndexRouteImport.update({
 const ChangesRoute = ChangesRouteImport.update({
   id: '/changes',
   path: '/changes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DesignModeRoute = DesignModeRouteImport.update({
+  id: '/design-mode',
+  path: '/design-mode',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HubsRoute = HubsRouteImport.update({
@@ -68,6 +74,7 @@ const VideoSplatRoute = VideoSplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
+  '/design-mode': typeof DesignModeRoute
   '/hubs': typeof HubsRoute
   '/peek': typeof PeekRoute
   '/stacks': typeof StacksRoute
@@ -79,6 +86,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
+  '/design-mode': typeof DesignModeRoute
   '/hubs': typeof HubsRoute
   '/peek': typeof PeekRoute
   '/stacks': typeof StacksRoute
@@ -91,6 +99,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
+  '/design-mode': typeof DesignModeRoute
   '/hubs': typeof HubsRoute
   '/peek': typeof PeekRoute
   '/stacks': typeof StacksRoute
@@ -104,6 +113,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/changes'
+    | '/design-mode'
     | '/hubs'
     | '/peek'
     | '/stacks'
@@ -115,6 +125,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/changes'
+    | '/design-mode'
     | '/hubs'
     | '/peek'
     | '/stacks'
@@ -126,6 +137,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/changes'
+    | '/design-mode'
     | '/hubs'
     | '/peek'
     | '/stacks'
@@ -138,6 +150,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChangesRoute: typeof ChangesRoute
+  DesignModeRoute: typeof DesignModeRoute
   HubsRoute: typeof HubsRoute
   PeekRoute: typeof PeekRoute
   StacksRoute: typeof StacksRoute
@@ -161,6 +174,13 @@ declare module '@tanstack/react-router' {
       path: '/changes'
       fullPath: '/changes'
       preLoaderRoute: typeof ChangesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/design-mode': {
+      id: '/design-mode'
+      path: '/design-mode'
+      fullPath: '/design-mode'
+      preLoaderRoute: typeof DesignModeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/hubs': {
@@ -218,6 +238,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChangesRoute: ChangesRoute,
+  DesignModeRoute: DesignModeRoute,
   HubsRoute: HubsRoute,
   PeekRoute: PeekRoute,
   StacksRoute: StacksRoute,

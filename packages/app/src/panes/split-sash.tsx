@@ -21,16 +21,12 @@ export function fitSplitRatio(layout: PaneLayout, width: number): PaneLayout {
 export function SplitSash({
   direction,
   ratio,
-  dragRatio,
-  onDragRatio,
   availableWidth,
   onAvailableWidth,
   containerRef,
 }: {
   direction: SplitDirection;
   ratio: number;
-  dragRatio: number | undefined;
-  onDragRatio: (ratio: number | undefined) => void;
   availableWidth: number;
   onAvailableWidth: (width: number) => void;
   containerRef: RefObject<HTMLDivElement | null>;
@@ -78,6 +74,16 @@ export function SplitSash({
     return clampRatio((pixels - laneSize / 2) / size, availableWidth);
   };
 
+  const showDragRatio = (sash: HTMLDivElement, dragRatio: number): void => {
+    containerRef.current?.style.setProperty("--_drag-ratio", String(dragRatio));
+    sash.setAttribute("aria-valuenow", String(Math.round(dragRatio * 100)));
+  };
+
+  const clearDragRatio = (sash: HTMLDivElement): void => {
+    containerRef.current?.style.removeProperty("--_drag-ratio");
+    sash.setAttribute("aria-valuenow", String(Math.round(ratio * 100)));
+  };
+
   return (
     <div
       ref={sashRef}
@@ -87,7 +93,7 @@ export function SplitSash({
       aria-orientation={direction === "right" ? "vertical" : "horizontal"}
       aria-valuemin={Math.round(clampRatio(0, availableWidth) * 100)}
       aria-valuemax={Math.round(clampRatio(1, availableWidth) * 100)}
-      aria-valuenow={Math.round((dragRatio ?? ratio) * 100)}
+      aria-valuenow={Math.round(ratio * 100)}
       {...props(
         sessionScreenStyles.sash,
         direction === "right" ? sessionScreenStyles.sashRight : sessionScreenStyles.sashDown,
@@ -99,28 +105,28 @@ export function SplitSash({
         if (nextRatio === undefined) return;
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
-        onDragRatio(nextRatio);
+        showDragRatio(event.currentTarget, nextRatio);
       }}
       onPointerMove={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
         const nextRatio = ratioFromPointer(event);
 
-        if (nextRatio !== undefined) onDragRatio(nextRatio);
+        if (nextRatio !== undefined) showDragRatio(event.currentTarget, nextRatio);
       }}
       onPointerUp={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
         const nextRatio = ratioFromPointer(event);
         event.currentTarget.releasePointerCapture(event.pointerId);
-        onDragRatio(undefined);
+        clearDragRatio(event.currentTarget);
 
         if (nextRatio !== undefined) actions.resize(nextRatio);
       }}
-      onLostPointerCapture={() => onDragRatio(undefined)}
-      onDoubleClick={() => {
-        onDragRatio(undefined);
+      onLostPointerCapture={(event) => clearDragRatio(event.currentTarget)}
+      onDoubleClick={(event) => {
+        clearDragRatio(event.currentTarget);
         actions.resize(0.5);
       }}
-      onPointerCancel={() => onDragRatio(undefined)}
+      onPointerCancel={(event) => clearDragRatio(event.currentTarget)}
       onKeyDown={(event) => {
         const previous = direction === "right" ? "ArrowLeft" : "ArrowUp";
         const next = direction === "right" ? "ArrowRight" : "ArrowDown";

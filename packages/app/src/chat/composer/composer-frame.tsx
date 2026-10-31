@@ -3,6 +3,7 @@ import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import type { DragEvent, ReactElement, ReactNode } from "react";
+import { flushSync } from "react-dom";
 import type { CommandCompletion, Delivery } from "@nyte-ai/sdk";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
@@ -195,12 +196,12 @@ export function ComposerFrame({
     nyte.platform === "darwin",
   );
 
-  const resize = (text?: string): void => {
+  const measureExpansion = (): void => {
     const area = areaRef.current?.readElement();
 
     if (surface === "new-chat" || area === null || area === undefined) return;
 
-    if ((text ?? area.textContent).length === 0) {
+    if (area.textContent.length === 0) {
       setEditorNeedsExpansion(false);
 
       return;
@@ -220,7 +221,7 @@ export function ComposerFrame({
     }
   };
 
-  const resizeEditor = useEffectEvent((): void => resize());
+  const resizeEditor = useEffectEvent((): void => measureExpansion());
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- observes frame and textarea sizes before paint
   useLayoutEffect(() => {
@@ -235,7 +236,7 @@ export function ComposerFrame({
     };
 
     measure();
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(() => flushSync(measure));
     observer.observe(area);
     observer.observe(frame);
 
@@ -474,7 +475,9 @@ export function ComposerFrame({
             onReferencesChange={setReferences}
             onDocumentChange={(next, completion) => {
               onDocumentChange(next);
-              resize(next.text);
+
+              if (next.text.length === 0) setEditorNeedsExpansion(false);
+
               suggestionMenu.onCompletionChange(answering ? undefined : completion, next);
             }}
             onFilesSelected={onFilesSelected}

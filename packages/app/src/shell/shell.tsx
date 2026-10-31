@@ -60,10 +60,9 @@ const styles = create({
     borderRadius: shell.cardRadius,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
     transitionProperty: "margin-inline-start",
-    transitionDuration: sidebar.slideDuration,
-    transitionTimingFunction: sidebar.slideEasing,
+    transitionDuration: "0s",
   },
-  cardSidebarHidden: { marginInlineStart: shell.cardInset },
+  cardSidebarHidden: { marginInlineStart: shell.cardInset, transitionDelay: sidebar.slideDuration },
   connectionFailure: {
     display: "flex",
     alignItems: "center",

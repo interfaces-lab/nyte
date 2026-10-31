@@ -1,20 +1,40 @@
 import { create, props } from "@stylexjs/stylex";
+import { useEffectEvent, useState } from "react";
 import type { ReactElement } from "react";
-import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
+import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import type { Item } from "./model.ts";
-import { CheckDots, GroupLabel, Meta, StatusGlyph, Tile, ago, checkSummary } from "./parts.tsx";
-import { pane } from "./stack-view.tsx";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { editable } from "./composer.tsx";
+import type { Item, Stack, Status } from "./model.ts";
+import { GroupLabel, StepLabel, StepTile, StepTrack, ago, itemNumber } from "./parts.tsx";
+import { finished, progress } from "./progress.ts";
 
 const NARROW = "@container stacks (max-width: 639px)";
 
 const styles = create({
   groups: { display: "flex", flexDirection: "column", gap: space.s6 },
-  group: { display: "flex", flexDirection: "column", gap: space.s2 },
+  group: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.s2,
+    scrollMarginBlockStart: space.s4,
+  },
+  heading: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: space.s1,
+    alignSelf: "flex-start",
+    paddingInline: space.s1,
+    marginInlineStart: `calc(-1 * ${space.s1})`,
+    borderRadius: radius.indicator,
+    color: { default: role.contentSecondary, ":hover": role.contentPrimary },
+  },
+  chevron: { color: role.contentTertiary },
   list: {
     display: "flex",
     flexDirection: "column",
@@ -36,10 +56,10 @@ const styles = create({
     display: "grid",
     gridTemplateColumns: "24px minmax(0, 1fr) auto",
     columnGap: space.s3,
-    rowGap: space.s1,
-    alignItems: "center",
+    rowGap: space.s0_5,
+    alignItems: "start",
     width: "100%",
-    paddingBlock: space.s3,
+    paddingBlock: space.s2_5,
     paddingInline: space.s3,
     borderWidth: 0,
     backgroundColor: { default: role.bgBase, ":hover": role.bgHover },
@@ -50,30 +70,51 @@ const styles = create({
     transitionProperty: "background-color",
     transitionDuration: motion.durationFast,
   },
+  rowTile: { gridRow: "1 / 3", paddingBlockStart: space.s0_5 },
   rowFresh: { backgroundColor: { default: role.bgMuted, ":hover": role.bgHover } },
+  rowLinked: { backgroundColor: role.bgHover },
   rowCursor: { boxShadow: `inset 2px 0 0 ${role.contentPrimary}` },
-  rowDone: { color: role.contentSecondary },
-  rowTitle: { display: "flex", alignItems: "baseline", gap: space.s2, minWidth: 0 },
   rowName: {
     minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: { default: "nowrap", [NARROW]: "normal" },
     textWrap: "pretty",
-    fontWeight: type.weightMedium,
   },
+  rowNameDone: { color: role.contentSecondary },
   rowMeta: {
     gridColumn: "2 / 4",
     display: "flex",
-    flexWrap: "wrap",
+    flexWrap: { default: "nowrap", [NARROW]: "wrap" },
     alignItems: "center",
-    columnGap: { default: space.s4, [NARROW]: space.s3 },
+    columnGap: space.s2,
     rowGap: space.s1,
     minWidth: 0,
+    color: role.contentTertiary,
   },
-  rowNow: { color: role.contentSecondary },
+  rowStack: { display: "inline-flex", alignItems: "center", gap: space.s1, whiteSpace: "nowrap" },
+  sep: { color: role.contentDisabled },
+  rowDetail: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    display: { default: "block", [NARROW]: "none" },
+  },
   rowAsk: { color: role.contentPrimary, fontWeight: type.weightMedium },
-  rowEnd: { display: "flex", alignItems: "center", gap: space.s2, color: role.contentTertiary },
+  rowEnd: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.s1_5,
+    color: role.contentTertiary,
+    fontVariantNumeric: "tabular-nums",
+  },
+  unread: {
+    width: 6,
+    height: 6,
+    borderRadius: radius.pill,
+    backgroundColor: role.contentInteractivePrimary,
+  },
 });
 
 export interface ListGroup {
@@ -82,18 +123,33 @@ export interface ListGroup {
   readonly items: readonly Item[];
 }
 
-/** Groups of rows. A row says what it waits on; answering happens on the item, in one place. */
+/** What a row needs from outside itself: the other items, the stacks and what you've seen. */
+export interface Context {
+  readonly all: readonly Item[];
+  /** Name the stack on each row; null where the page is one stack already. */
+  readonly stacks: readonly Stack[] | null;
+  readonly seen: Readonly<Record<string, Status>>;
+  readonly clock: number;
+}
+
+/**
+ * Lanes of rows that fold. A row says where the item is and what it waits on; answering happens
+ * on the item, in one place.
+ */
 export function ItemList({
   groups,
-  clock,
+  context,
   cursor,
   fresh,
+  linked,
   onOpen,
 }: {
   readonly groups: readonly ListGroup[];
-  readonly clock: number;
+  readonly context: Context;
   readonly cursor: string | null;
   readonly fresh: string | null;
+  /** The row the briefing points at while you hover its link. */
+  readonly linked: string | null;
   readonly onOpen: (item: string) => void;
 }): ReactElement {
   return (
@@ -101,22 +157,33 @@ export function ItemList({
       {groups
         .filter((group) => group.items.length > 0)
         .map((group) => (
-          <section key={group.id} aria-label={group.label} {...props(styles.group)}>
-            <GroupLabel label={group.label} count={group.items.length} />
-            <ul {...props(styles.list)}>
-              {group.items.map((item) => (
-                <li key={item.id} {...props(styles.rowItem)}>
-                  <ItemRow
-                    item={item}
-                    clock={clock}
-                    fresh={item.id === fresh}
-                    cursor={item.id === cursor}
-                    onOpen={() => onOpen(item.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
+          <Collapsible.Root
+            key={group.id}
+            defaultOpen
+            render={<section id={`lane-${group.id}`} aria-label={group.label} />}
+            xstyle={styles.group}
+          >
+            <Collapsible.Trigger variant="plain" xstyle={[styles.heading, focus.ring]}>
+              <GroupLabel label={group.label} count={group.items.length} />
+              <Collapsible.Chevron xstyle={styles.chevron} />
+            </Collapsible.Trigger>
+            <Collapsible.Panel>
+              <ul {...props(styles.list)}>
+                {group.items.map((item) => (
+                  <li key={item.id} {...props(styles.rowItem)}>
+                    <ItemRow
+                      item={item}
+                      context={context}
+                      fresh={item.id === fresh}
+                      cursor={item.id === cursor}
+                      linked={item.id === linked}
+                      onOpen={() => onOpen(item.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </Collapsible.Panel>
+          </Collapsible.Root>
         ))}
     </div>
   );
@@ -124,24 +191,41 @@ export function ItemList({
 
 function ItemRow({
   item,
-  clock,
+  context,
   fresh,
   cursor,
+  linked,
   onOpen,
 }: {
   readonly item: Item;
-  readonly clock: number;
+  readonly context: Context;
   readonly fresh: boolean;
   readonly cursor: boolean;
+  readonly linked: boolean;
   readonly onOpen: () => void;
 }): ReactElement {
-  const working = item.sessions.filter((session) => !session.lead);
+  const step = progress(item);
+  const ended = finished(item);
+  const number = itemNumber(item);
+  const stack = context.stacks?.find((entry) => entry.id === item.stack);
+  const blocker = context.all.find((entry) => entry.id === item.after);
+  const seen = context.seen[item.id];
+  const unread = seen !== undefined && seen !== item.status;
+  const asking = item.status === "needs-you" && step.label !== item.now;
+  const last = item.activity.at(-1)?.text.replace(/\.$/, "");
 
-  const crew = (working.length === 0 ? item.sessions : working)
-    .map((session) => session.name)
-    .join(" → ");
+  const detail =
+    blocker !== undefined
+      ? `After ${itemNumber(blocker) ?? `\u201c${blocker.title}\u201d`}`
+      : asking
+        ? item.now
+        : last;
 
-  const finished = item.status === "merged" || item.status === "done";
+  const separator = (
+    <span aria-hidden="true" {...props(styles.sep)}>
+      ·
+    </span>
+  );
 
   return (
     <button
@@ -152,32 +236,78 @@ function ItemRow({
         styles.row,
         focus.ringInset,
         fresh && styles.rowFresh,
+        linked && styles.rowLinked,
         cursor && styles.rowCursor,
-        finished && styles.rowDone,
       )}
     >
-      <Tile surface={item.surface} size="sm" />
-      <span {...props(styles.rowTitle)}>
-        {item.number !== null && <span {...props(pane.number)}>#{item.number}</span>}
-        <span {...props(styles.rowName)}>{item.title}</span>
+      <span {...props(styles.rowTile)}>
+        <StepTile progress={step} />
       </span>
+      <span {...props(styles.rowName, ended && styles.rowNameDone)}>{item.title}</span>
       <span {...props(text.sm, styles.rowEnd)}>
-        <Avatar size="xs" tone={item.author.tone}>
-          <AvatarFallback>{item.author.initials}</AvatarFallback>
-        </Avatar>
-        {ago(item.updated, clock, true)}
-      </span>
-      <span {...props(styles.rowMeta)}>
-        <Meta icon={<StatusGlyph status={item.status} />}>
-          <span {...props(item.status === "needs-you" ? styles.rowAsk : styles.rowNow)}>
-            {item.now}
-          </span>
-        </Meta>
-        {item.checks.length > 0 && !finished && (
-          <Meta icon={<CheckDots checks={item.checks} />}>{checkSummary(item.checks)}</Meta>
+        {unread && (
+          <span aria-label="Changed since you looked" {...props(intent.primary, styles.unread)} />
         )}
-        {crew !== "" && !finished && <Meta icon={<Icon name="agent" size="xs" />}>{crew}</Meta>}
+        {ago(item.updated, context.clock, true)}
+      </span>
+      <span {...props(text.sm, styles.rowMeta)}>
+        {stack !== undefined && (
+          <>
+            <span {...props(styles.rowStack)}>
+              <Icon name={stack.icon} size="xs" />
+              {stack.name}
+            </span>
+            {separator}
+          </>
+        )}
+        {number !== null && (
+          <>
+            <span>{number}</span>
+            {separator}
+          </>
+        )}
+        <StepLabel progress={step} />
+        {!ended && <StepTrack progress={step} />}
+        {detail !== undefined && (
+          <span {...props(styles.rowDetail, asking && styles.rowAsk)}>{detail}</span>
+        )}
       </span>
     </button>
   );
+}
+
+/** j and k walk `order`, Enter opens; typing in a field is left alone. */
+export function useCursor(order: readonly Item[], onOpen: (item: string) => void): string | null {
+  const [cursor, setCursor] = useState<string | null>(null);
+
+  const onKey = useEffectEvent((event: KeyboardEvent) => {
+    if (event.metaKey || event.ctrlKey || event.altKey || editable(event.target)) return;
+    const at = order.findIndex((item) => item.id === cursor);
+
+    if (event.key === "j" || event.key === "k") {
+      event.preventDefault();
+
+      const next =
+        order[Math.max(0, Math.min(order.length - 1, at + (event.key === "j" ? 1 : -1)))];
+
+      if (next !== undefined) setCursor(next.id);
+
+      return;
+    }
+
+    if (event.key === "Enter" && cursor !== null) {
+      event.preventDefault();
+      onOpen(cursor);
+    }
+  });
+
+  useMountEffect(() => {
+    const listener = (event: KeyboardEvent): void => onKey(event);
+
+    window.addEventListener("keydown", listener);
+
+    return () => window.removeEventListener("keydown", listener);
+  });
+
+  return cursor;
 }

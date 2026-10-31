@@ -43,7 +43,7 @@ export const sessionScreenStyles = create({
   paneLeading: (ratio: number) => ({
     flexGrow: 0,
     flexShrink: 0,
-    flexBasis: `calc((100% - ${pane.sashSize}) * ${String(ratio)})`,
+    flexBasis: `calc((100% - ${pane.sashSize}) * var(--_drag-ratio, ${String(ratio)}))`,
   }),
   paneTrailing: { flex: 1 },
   screen: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },

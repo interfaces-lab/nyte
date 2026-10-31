@@ -1,5 +1,5 @@
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "@tanstack/react-router";
 import { IconBarsTwo, IconCrossSmall } from "central-icons";
@@ -12,13 +12,7 @@ const subscribeToNothing = () => () => undefined;
 const siteLinkClass =
   "block rounded-full px-2.5 py-1.5 text-muted-foreground hover:bg-foreground/5 hover:text-foreground";
 
-/**
- * The phone menu fills the screen beneath the sticky nav, which stays on top
- * with its close control, the way a native sheet keeps its toolbar. While it
- * is open, `html[data-menu-open]` locks the page and drops the nav's
- * over-the-plate colours. It remembers the page it was opened on, so
- * navigating anywhere else closes it.
- */
+/** The site nav's phone menu: the docs tree, then the site's own links. */
 export function SiteMobileNav({
   docs,
   site,
@@ -27,6 +21,74 @@ export function SiteMobileNav({
   docs: readonly NavSection[];
   site: readonly NavSection[];
   githubHref: string;
+}) {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const toc = findPage(pathname)?.toc.filter((entry) => entry.depth === 2) ?? [];
+
+  return (
+    <MobileMenu buttonClassName="group hidden size-(--site-nav-control) cursor-pointer items-center justify-center rounded-full bg-fill-selected text-foreground hover:bg-foreground/10 max-lg:inline-flex hero:text-white">
+      {(close) => (
+        <div className="mx-auto flex w-full max-w-xl flex-col gap-8">
+          <DocNav
+            className="flex flex-col gap-6 text-lg/7"
+            sections={docs}
+            toc={toc}
+            onNavigate={close}
+          />
+          <nav
+            className="flex flex-col gap-6 border-t border-border-subtle pt-6 text-lg/7"
+            aria-label="Site"
+          >
+            {site.map((section) => (
+              <div key={section.label ?? section.items[0].href}>
+                {section.label ? (
+                  <h2 className="px-2.5 pb-1 font-normal text-tertiary-foreground">
+                    {section.label}
+                  </h2>
+                ) : null}
+                {section.items.map((item) => (
+                  <HrefLink
+                    key={item.href}
+                    href={item.href}
+                    className={siteLinkClass}
+                    onClick={close}
+                  >
+                    {item.title}
+                  </HrefLink>
+                ))}
+              </div>
+            ))}
+            <a
+              href={githubHref}
+              target="_blank"
+              rel="noreferrer"
+              className={siteLinkClass}
+              onClick={close}
+            >
+              GitHub
+            </a>
+          </nav>
+        </div>
+      )}
+    </MobileMenu>
+  );
+}
+
+/**
+ * A phone menu that fills the screen beneath a sticky bar, which stays on top
+ * with its close control, the way a native sheet keeps its toolbar. While it
+ * is open, `html[data-menu-open]` locks the page and drops the nav's
+ * over-the-plate colours. It remembers the page it was opened on, so
+ * navigating anywhere else closes it.
+ */
+export function MobileMenu({
+  buttonClassName,
+  panelClassName,
+  children,
+}: {
+  buttonClassName: string;
+  panelClassName?: string;
+  children: (close: () => void) => ReactNode;
 }) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const [openedOn, setOpenedOn] = useState<string | null>(null);
@@ -40,7 +102,6 @@ export function SiteMobileNav({
 
   const toggle = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const toc = findPage(pathname)?.toc.filter((entry) => entry.depth === 2) ?? [];
   const close = () => setOpenedOn(null);
 
   return (
@@ -52,7 +113,7 @@ export function SiteMobileNav({
         aria-expanded={open}
         aria-controls="site-menu"
         data-open={open || undefined}
-        className="group hidden size-(--site-nav-control) cursor-pointer items-center justify-center rounded-full bg-fill-selected text-foreground hover:bg-foreground/10 max-lg:inline-flex hero:text-white"
+        className={buttonClassName}
         onClick={() => setOpenedOn(open ? null : pathname)}
       >
         {open ? <IconCrossSmall size={16} /> : <IconBarsTwo size={16} />}
@@ -67,49 +128,9 @@ export function SiteMobileNav({
               tabIndex={-1}
               inert={!open}
               data-open={open || undefined}
-              className="site-menu lg:hidden"
+              className={`site-menu lg:hidden ${panelClassName ?? ""}`}
             >
-              <div className="mx-auto flex w-full max-w-xl flex-col gap-8">
-                <DocNav
-                  className="flex flex-col gap-6 text-lg/7"
-                  sections={docs}
-                  toc={toc}
-                  onNavigate={close}
-                />
-                <nav
-                  className="flex flex-col gap-6 border-t border-border-subtle pt-6 text-lg/7"
-                  aria-label="Site"
-                >
-                  {site.map((section) => (
-                    <div key={section.label ?? section.items[0].href}>
-                      {section.label ? (
-                        <h2 className="px-2.5 pb-1 font-normal text-tertiary-foreground">
-                          {section.label}
-                        </h2>
-                      ) : null}
-                      {section.items.map((item) => (
-                        <HrefLink
-                          key={item.href}
-                          href={item.href}
-                          className={siteLinkClass}
-                          onClick={close}
-                        >
-                          {item.title}
-                        </HrefLink>
-                      ))}
-                    </div>
-                  ))}
-                  <a
-                    href={githubHref}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={siteLinkClass}
-                    onClick={close}
-                  >
-                    GitHub
-                  </a>
-                </nav>
-              </div>
+              {children(close)}
             </div>,
             document.body,
           )

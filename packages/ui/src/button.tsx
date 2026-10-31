@@ -255,7 +255,11 @@ const buttonVariants = create({
     fontWeight: "inherit",
     lineHeight: "inherit",
     letterSpacing: "inherit",
-    transitionDuration: motion.durationNormal,
+    transitionDuration: {
+      default: motion.durationNormal,
+      ":active:not([data-disabled])": "0s",
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
     "::before": {
       zIndex: -1,
       insetBlock: `calc(${space.px} * -1)`,

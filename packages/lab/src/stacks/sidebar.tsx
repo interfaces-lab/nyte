@@ -105,16 +105,21 @@ export function StacksSidebar({
   selected,
   chats,
   handed,
+  onHome,
   onOpenStack,
   onNewStack,
 }: {
   readonly stacks: readonly SidebarStack[];
+  /** `home`, a stack's id, or null when neither is open. */
   readonly selected: string | null;
+  readonly onHome: () => void;
   readonly chats: readonly Chat[];
   readonly handed: Readonly<Record<string, string>>;
   readonly onOpenStack: (stack: string) => void;
   readonly onNewStack: () => void;
 }): ReactElement {
+  const waiting = stacks.reduce((sum, stack) => sum + stack.waiting, 0);
+
   return (
     <aside {...props(sidebarStyles.rail)}>
       <div {...props(sidebarStyles.content)}>
@@ -129,6 +134,13 @@ export function StacksSidebar({
           <NavRow icon="settings" label="Settings" />
         </div>
         <div {...props(sidebarStyles.scroll)}>
+          <ListRow
+            glyph={<Icon name="inbox-empty" size="sm" />}
+            label="Home"
+            meta={waiting === 0 ? undefined : `${String(waiting)} for you`}
+            selected={selected === "home"}
+            onOpen={onHome}
+          />
           <Section
             label="Stacks"
             action={

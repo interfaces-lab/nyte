@@ -205,6 +205,7 @@ export function LaneTab({
   next,
   empty,
   prompts,
+  triggers,
   onOpen,
 }: {
   readonly lane: Lane;
@@ -215,6 +216,7 @@ export function LaneTab({
   readonly next: Next | null;
   readonly empty: string;
   readonly prompts: readonly Prompt[];
+  readonly triggers: ReactNode;
   readonly onOpen: (chat: string) => void;
 }): ReactElement {
   return (
@@ -240,6 +242,7 @@ export function LaneTab({
         </ul>
       )}
       <NextLine next={next} />
+      {triggers}
       <Rules lane={lane} />
       <Sent prompts={prompts} />
     </Pane>

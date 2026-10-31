@@ -320,6 +320,31 @@
       }
     },
     {
+      "id": "fx",
+      "name": "fx",
+      "mode": "ask",
+      "distribution": {
+        "binary": {
+          "darwin-aarch64": {
+            "cmd": "./fx",
+            "args": ["acp"]
+          },
+          "darwin-x86_64": {
+            "cmd": "./fx",
+            "args": ["acp"]
+          },
+          "linux-aarch64": {
+            "cmd": "./fx",
+            "args": ["acp"]
+          },
+          "linux-x86_64": {
+            "cmd": "./fx",
+            "args": ["acp"]
+          }
+        }
+      }
+    },
+    {
       "id": "gemini",
       "name": "Gemini CLI",
       "distribution": {

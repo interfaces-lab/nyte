@@ -1,6 +1,6 @@
 import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { IconImac, IconMoon, IconSun } from "central-icons";
-import { setTheme, useTheme } from "~/lib/theme";
+import { switchTheme, useTheme } from "~/lib/theme";
 
 const THEMES = [
   { value: "light", label: "Light", Icon: IconSun },
@@ -18,15 +18,7 @@ export function ThemeToggle() {
 
   const choose = (next: unknown) => {
     const choice = THEMES.find((item) => item.value === next);
-    if (!choice) return;
-    if (
-      !("startViewTransition" in document) ||
-      matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      setTheme(choice.value);
-      return;
-    }
-    document.startViewTransition(() => setTheme(choice.value));
+    if (choice) switchTheme(choice.value);
   };
 
   return (

@@ -1,5 +1,6 @@
 import { MessageScroller } from "@shadcn/react/message-scroller";
 import { props } from "@stylexjs/stylex";
+import { useReducedMotion } from "motion/react";
 import type { ComponentProps } from "react";
 import { srOnly } from "./styles/a11y.stylex.ts";
 import { ChatButton } from "./chat-button.tsx";
@@ -51,6 +52,7 @@ function ScrollerItem({ scrollAnchor = false, ...properties }: MessageScrollerIt
 }
 
 function ScrollerButton({
+  behavior,
   direction = "end",
   children,
   render,
@@ -58,12 +60,15 @@ function ScrollerButton({
   size = "icon-sm",
   ...properties
 }: MessageScrollerButtonProps) {
+  const reducedMotion = useReducedMotion();
+
   return (
     <MessageScroller.Button
       data-slot="message-scroller-button"
       data-direction={direction}
       data-variant={variant}
       data-size={size}
+      behavior={behavior ?? (reducedMotion ? "auto" : "smooth")}
       direction={direction}
       render={render ?? <ChatButton variant={variant} size={size} />}
       {...properties}

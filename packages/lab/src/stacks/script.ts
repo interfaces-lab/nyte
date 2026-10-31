@@ -1,5 +1,17 @@
 import { GREEN, PENDING, checks } from "./model.ts";
-import type { Agent, Ask, Finding, Item, PullRequest, Session, Stack, Step } from "./model.ts";
+import type {
+  Agent,
+  Ask,
+  DiffLine,
+  FileChange,
+  Finding,
+  Guide,
+  Item,
+  PullRequest,
+  Session,
+  Stack,
+  Step,
+} from "./model.ts";
 import { WATCHER, leadAgent, sessionFor } from "./staffing.ts";
 
 /** One tick is a simulated minute. */
@@ -25,6 +37,7 @@ export function land(item: Item, step: Step, clock: number): Item {
     checks: step.checks ?? item.checks,
     ask: step.ask === undefined ? item.ask : step.ask,
     shot: step.shot ?? item.shot,
+    surface: step.surface ?? item.surface,
     files: step.files ?? item.files,
     sessions: step.sessions ?? item.sessions,
     findings: step.findings ?? item.findings,
@@ -60,12 +73,56 @@ function sentence(text: string): string {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
+/** What a fix turns out to be: the writer's diagnosis, its diff and the guide the lead opens with. */
+export interface Change {
+  readonly cause: string;
+  readonly files: readonly FileChange[];
+  readonly diff: { readonly file: string; readonly lines: readonly DiffLine[] };
+  readonly guide: Guide;
+}
+
+export const TOKEN_CHANGE: Change = {
+  cause: "A hard-coded value where a token belongs.",
+  files: [
+    { path: "packages/app/src/chrome/sidebar.stylex.ts", added: 3, removed: 2 },
+    { path: "packages/ui/src/styles/schema.stylex.ts", added: 1, removed: 0 },
+  ],
+  diff: {
+    file: "sidebar.stylex.ts",
+    lines: [
+      { sign: " ", text: "label: {" },
+      { sign: "-", text: "  gap: 6," },
+      { sign: "+", text: "  gap: space.s1_5," },
+      { sign: " ", text: "}," },
+    ],
+  },
+  guide: {
+    summary: "Swaps a hard-coded 6px gap for the space token the rest of the sidebar reads.",
+    files: [
+      {
+        path: "packages/app/src/chrome/sidebar.stylex.ts",
+        added: 3,
+        removed: 2,
+        note: "The fix. Start here.",
+      },
+      {
+        path: "packages/ui/src/styles/schema.stylex.ts",
+        added: 1,
+        removed: 0,
+        note: "Adds s1_5, which the scale was missing.",
+      },
+    ],
+    unchecked: null,
+  },
+};
+
 /** The writer works, each other agent checks, the lead reviews and opens it, Nyte watches CI. */
 export function fixSteps(
   stack: Stack,
   number: number,
   staff: readonly Agent[],
   rounds = 2,
+  change: Change = TOKEN_CHANGE,
 ): readonly Step[] {
   const lead = leadAgent(stack);
   const writer = staff[0] ?? lead;
@@ -115,33 +172,20 @@ export function fixSteps(
       event: {
         who: writer.name,
         what: "found the cause",
-        text: "A hard-coded value where a token belongs.",
+        text: change.cause,
       },
     },
     {
       wait: 2,
       now:
         checkers[0] === undefined ? `${lead.name} is reviewing` : `${checkers[0].name} is checking`,
-      files: [
-        { path: "packages/app/src/chrome/sidebar.stylex.ts", added: 3, removed: 2 },
-        { path: "packages/ui/src/styles/schema.stylex.ts", added: 1, removed: 0 },
-      ],
+      files: change.files,
       sessions: team(stack, staff, "Waiting", ["Done", "Checking"]),
       event: {
         who: writer.name,
         what: "wrote the fix",
-        text: "2 files, 6 lines. Ran the tests next to them.",
-        attachment: {
-          diff: {
-            file: "sidebar.stylex.ts",
-            lines: [
-              { sign: " ", text: "label: {" },
-              { sign: "-", text: "  gap: 6," },
-              { sign: "+", text: "  gap: space.s1_5," },
-              { sign: " ", text: "}," },
-            ],
-          },
-        },
+        text: `${String(change.files.length)} files, ${String(change.files.reduce((sum, file) => sum + file.added + file.removed, 0))} lines. Ran the tests next to them.`,
+        attachment: { diff: change.diff },
       },
     },
     ...checks_,
@@ -155,7 +199,8 @@ export function fixSteps(
       event: {
         who: lead.name,
         what: `reviewed it and opened #${String(number)}`,
-        text: "Reads the right tokens, and nothing else depends on the old value.",
+        text: "Here's how I'd read it.",
+        attachment: { guide: change.guide },
       },
     },
     { wait: 1, now: "CI 3 of 6", checks: checks(3) },

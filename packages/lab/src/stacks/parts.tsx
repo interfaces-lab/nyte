@@ -1,4 +1,4 @@
-import { create, props } from "@stylexjs/stylex";
+import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
@@ -8,10 +8,170 @@ import { avatar, control, glyph, radius, row, space } from "@nyte-ai/ui/styles/s
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import type { Tint } from "@nyte-ai/ui/surface-theme";
+import type { IconName } from "@nyte-ai/ui/icon";
 import { MODEL_IDS, MODELS } from "./model.ts";
-import type { Check, ModelId, Moment, Person, Status, Surface } from "./model.ts";
+import type { Check, Item, ModelId, Moment, Person, Status, Surface } from "./model.ts";
+import type { Progress, Tone } from "./progress.ts";
 
 const NARROW = "@container stacks (max-width: 639px)";
+
+const pulse = keyframes({
+  "0%": {
+    boxShadow: `0 0 0 0 color-mix(in oklab, ${role.contentInteractivePrimary} 45%, transparent)`,
+  },
+  "70%": {
+    boxShadow: `0 0 0 4px color-mix(in oklab, ${role.contentInteractivePrimary} 0%, transparent)`,
+  },
+  "100%": {
+    boxShadow: `0 0 0 0 color-mix(in oklab, ${role.contentInteractivePrimary} 0%, transparent)`,
+  },
+});
+
+const TONES: Readonly<Record<Tone, { readonly tint: Tint; readonly icon: IconName }>> = {
+  running: { tint: "blue", icon: "agent" },
+  you: { tint: "yellow", icon: "bubble-question" },
+  failed: { tint: "red", icon: "warning" },
+  others: { tint: "teal", icon: "eye" },
+  queued: { tint: "gray", icon: "clock" },
+  merged: { tint: "purple", icon: "merged" },
+  done: { tint: "green", icon: "checkmark" },
+  stopped: { tint: "gray", icon: "square" },
+};
+
+const track = create({
+  track: { display: "inline-flex", alignItems: "center", flexShrink: 0 },
+  dot: {
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: radius.pill,
+    boxShadow: `inset 0 0 0 1px ${role.contentDisabled}`,
+  },
+  dotFilled: { backgroundColor: role.contentInteractivePrimary, boxShadow: "none" },
+  dotLive: {
+    animationName: { default: pulse, "@media (prefers-reduced-motion: reduce)": "none" },
+    animationDuration: "1.6s",
+    animationIterationCount: "infinite",
+  },
+  dotStopped: { backgroundColor: role.contentTertiary, boxShadow: "none" },
+  link: { width: 6, height: 1, flexShrink: 0, backgroundColor: role.contentDisabled },
+  linkDone: { backgroundColor: role.contentInteractivePrimary },
+  label: { color: role.contentInteractivePrimary, whiteSpace: "nowrap" },
+  labelQuiet: { color: role.contentSecondary, whiteSpace: "nowrap" },
+  stepTile: { position: "relative" },
+  live: {
+    position: "absolute",
+    insetBlockStart: -2,
+    insetInlineEnd: -2,
+    width: 7,
+    height: 7,
+    borderRadius: radius.pill,
+    backgroundColor: role.contentInteractivePrimary,
+    boxShadow: `0 0 0 2px ${role.bgBase}`,
+  },
+});
+
+function toneScope(tone: Tone): (typeof intent)[keyof typeof intent] {
+  if (tone === "you") return intent.warning;
+
+  if (tone === "failed") return intent.danger;
+
+  if (tone === "merged") return surfaceTheme.purple;
+
+  if (tone === "others") return surfaceTheme.teal;
+
+  return intent.primary;
+}
+
+/**
+ * Every step of the item's kind as a dot: green behind it, the one it's on in its tone, hollow
+ * ahead. A finished item is green all the way; a stopped one keeps what it got through, grey.
+ */
+export function StepTrack({ progress }: { readonly progress: Progress }): ReactElement {
+  const ended = progress.at >= progress.steps.length;
+
+  const where = ended
+    ? progress.label
+    : `Step ${String(progress.at + 1)} of ${String(progress.steps.length)}, ${progress.steps[progress.at] ?? ""}`;
+
+  return (
+    <span role="img" aria-label={where} title={progress.steps.join(" → ")} {...props(track.track)}>
+      {progress.steps.map((step, index) => {
+        const behind = index < progress.at;
+        const here = index === progress.at && progress.tone !== "queued";
+
+        return (
+          <span key={step} {...props(track.track)}>
+            {index > 0 && (
+              <span
+                {...props(
+                  behind && progress.tone !== "stopped" && intent.success,
+                  track.link,
+                  index <= progress.at && progress.tone !== "stopped" && track.linkDone,
+                )}
+              />
+            )}
+            <span
+              {...props(
+                behind ? intent.success : here && toneScope(progress.tone),
+                track.dot,
+                (behind || here) && track.dotFilled,
+                behind && progress.tone === "stopped" && track.dotStopped,
+                here && progress.tone === "running" && track.dotLive,
+              )}
+            />
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/** The step's name in its tone, the way the row and the item page both say it. */
+export function StepLabel({ progress }: { readonly progress: Progress }): ReactElement {
+  const quiet =
+    progress.tone === "queued" || progress.tone === "stopped" || progress.tone === "done";
+
+  return (
+    <span {...props(!quiet && toneScope(progress.tone), quiet ? track.labelQuiet : track.label)}>
+      {progress.label}
+    </span>
+  );
+}
+
+/** A tile that says where the item is, with a dot while an agent runs on it. */
+export function StepTile({
+  progress,
+  size = "sm",
+}: {
+  readonly progress: Progress;
+  readonly size?: "xs" | "sm";
+}): ReactElement {
+  const tone = TONES[progress.tone];
+
+  return (
+    <span
+      aria-hidden="true"
+      {...props(
+        surfaceTheme[tone.tint],
+        styles.tile,
+        size === "sm" ? styles.tileSm : styles.tileXs,
+        track.stepTile,
+      )}
+    >
+      <Icon name={tone.icon} size={size === "sm" ? "sm" : "xs"} />
+      {progress.tone === "running" && size === "sm" && (
+        <span {...props(intent.primary, track.live, track.dotLive)} />
+      )}
+    </span>
+  );
+}
+
+/** `#486`, or nothing before there's a pull request. */
+export function itemNumber(item: Item): string | null {
+  return item.number === null ? null : `#${String(item.number)}`;
+}
 
 export const styles = create({
   tile: {
@@ -22,6 +182,13 @@ export const styles = create({
     backgroundColor: `color-mix(in oklab, ${role.contentInteractivePrimary} 13%, transparent)`,
   },
   tileSm: { width: avatar.sm, height: avatar.sm, borderRadius: 6 },
+  tileXs: {
+    display: "inline-grid",
+    width: glyph.md,
+    height: glyph.md,
+    borderRadius: radius.indicator,
+    verticalAlign: "-3px",
+  },
   tileLg: { width: 44, height: 44, borderRadius: radius.card },
   glyph: {
     display: "grid",
@@ -51,15 +218,6 @@ export const styles = create({
     textAlign: "center",
     fontVariantNumeric: "tabular-nums",
   },
-  meta: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: space.s1_5,
-    minWidth: 0,
-    color: role.contentSecondary,
-    whiteSpace: "nowrap",
-  },
-  metaIcon: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
   properties: {
     display: "grid",
     gridTemplateColumns: "96px minmax(0, 1fr)",
@@ -211,21 +369,6 @@ export function GroupLabel({
     <span {...props(styles.group)}>
       {label}
       <span {...props(styles.count)}>{count}</span>
-    </span>
-  );
-}
-
-export function Meta({
-  icon,
-  children,
-}: {
-  readonly icon: ReactNode;
-  readonly children: ReactNode;
-}): ReactElement {
-  return (
-    <span {...props(text.sm, styles.meta)}>
-      <span {...props(styles.metaIcon)}>{icon}</span>
-      {children}
     </span>
   );
 }

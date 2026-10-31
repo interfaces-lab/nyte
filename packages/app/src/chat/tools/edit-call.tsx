@@ -33,7 +33,7 @@ const TRANSITION = {
     default: motion.durationFast,
     "@media (prefers-reduced-motion: reduce)": "0s",
   },
-  transitionTimingFunction: "ease-in-out",
+  transitionTimingFunction: motion.easeOut,
 } as const;
 
 const styles = create({
@@ -96,7 +96,7 @@ const styles = create({
     height: glyph.md,
     color: role.contentTertiary,
     opacity: "var(--_chevron)",
-    transitionProperty: "color, opacity",
+    transitionProperty: "color, opacity, transform",
     ...TRANSITION,
   },
   card: {

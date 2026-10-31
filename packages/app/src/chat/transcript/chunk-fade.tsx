@@ -83,7 +83,7 @@ export function FadingBlock(block: BlockProps): ReactElement {
 
   return (
     <FadeEnd value={settle}>
-      {tail || retained ? (
+      {!reducedMotion && (tail || retained) ? (
         <Block
           {...block}
           animatePlugin={fade}
@@ -133,15 +133,17 @@ function createFadeInChunks(): FadeInChunks {
 
   const splitText = (value: string, at: number): HastChild[] => {
     const cuts = new Set(
-      commits.flatMap((commit) => {
-        const cut = commit.offset - at;
+      commits
+        .slice(firstAfter(commits, at), firstAfter(commits, at + value.length - 1))
+        .flatMap((commit) => {
+          const cut = commit.offset - at;
 
-        if (cut <= 0 || cut >= value.length) return [];
+          if (cut <= 0 || cut >= value.length) return [];
 
-        const end = toSpace(value, cut);
+          const end = toSpace(value, cut);
 
-        return end < value.length ? [end] : [];
-      }),
+          return end < value.length ? [end] : [];
+        }),
     );
 
     const bounds = [0, ...cuts, value.length];
@@ -220,6 +222,20 @@ function createFadeInChunks(): FadeInChunks {
     },
     endsFade: (node) => node !== undefined && newest.has(node),
   };
+}
+
+function firstAfter(commits: readonly Commit[], offset: number): number {
+  let low = 0;
+  let high = commits.length;
+
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+
+    if ((commits[middle]?.offset ?? Number.POSITIVE_INFINITY) > offset) high = middle;
+    else low = middle + 1;
+  }
+
+  return low;
 }
 
 function toSpace(text: string, cut: number): number {

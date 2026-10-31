@@ -1,14 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { SDKUserMessage, SessionStoreEntry } from "@anthropic-ai/claude-agent-sdk";
-import type { ImageContent, Message, TextContent, ToolCall, UserMessage } from "@nyte-ai/ai";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
-import {
-  BACKGROUND_TOOL,
-  CLAUDE_CODE_PROVIDER,
-  MIRROR_TOOL,
-  NYTE_TOOL_PREFIX,
-} from "./translate.ts";
+import type { ImageContent, Message, TextContent, UserMessage } from "@nyte-ai/ai";
+import { CLAUDE_CODE_PROVIDER, NYTE_TOOL_PREFIX } from "./translate.ts";
 
 type MessageParam = Exclude<SDKUserMessage["message"], { role: "system" }>;
 
@@ -16,16 +9,9 @@ export type ContentBlock = Exclude<MessageParam["content"], string>[number];
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 
-export const mirrorArguments = Type.Object({
-  id: Type.String(),
-  name: Type.String(),
-  input: Type.Record(Type.String(), Type.Unknown()),
-});
-
-function readMirrorCall(call: ToolCall) {
-  if (call.name !== MIRROR_TOOL || !Value.Check(mirrorArguments, call.arguments)) return undefined;
-
-  return call.arguments;
+/** Anthropic takes tool use ids of letters, digits, `_` and `-`, and other providers' ids can hold more. */
+function toolUseId(id: string): string {
+  return id.replaceAll(/[^a-zA-Z0-9_-]/g, "_");
 }
 
 function mediaBlock(
@@ -63,9 +49,7 @@ export function messageKey(message: Message): string {
 
 function toParams(messages: readonly Message[], model: string): MessageParam[] {
   const params: MessageParam[] = [];
-  const claude = new Map<string, string>();
-  const foreign = new Map<string, string>();
-  const skipped = new Set<string>();
+  const open = new Set<string>();
 
   const push = (role: MessageParam["role"], content: readonly ContentBlock[]) => {
     if (content.length === 0) return;
@@ -78,40 +62,33 @@ function toParams(messages: readonly Message[], model: string): MessageParam[] {
   const closeCalls = () => {
     push(
       "user",
-      [...claude.values()].map((id) => ({
+      [...open].map((id) => ({
         type: "tool_result",
-        tool_use_id: id,
+        tool_use_id: toolUseId(id),
         content: "No result provided",
         is_error: true,
       })),
     );
-    claude.clear();
+    open.clear();
   };
 
   for (const message of messages) {
     if (message.role === "system") continue;
 
     if (message.role === "toolResult") {
-      const id = claude.get(message.toolCallId);
-      const name = foreign.get(message.toolCallId);
-
-      if (skipped.has(message.toolCallId)) continue;
-
-      if (id !== undefined) {
-        claude.delete(message.toolCallId);
-        push("user", [
-          {
-            type: "tool_result",
-            tool_use_id: id,
-            content: message.content.map(mediaBlock),
-            is_error: message.isError,
-          },
-        ]);
-      } else {
-        push("user", [
-          { type: "text", text: `[${name ?? message.toolName} result]\n${text(message.content)}` },
-        ]);
-      }
+      push(
+        "user",
+        open.delete(message.toolCallId)
+          ? [
+              {
+                type: "tool_result",
+                tool_use_id: toolUseId(message.toolCallId),
+                content: message.content.map(mediaBlock),
+                is_error: message.isError,
+              },
+            ]
+          : [{ type: "text", text: `[${message.toolName} result]\n${text(message.content)}` }],
+      );
 
       continue;
     }
@@ -141,36 +118,16 @@ function toParams(messages: readonly Message[], model: string): MessageParam[] {
             : [{ type: "thinking", thinking: block.thinking, signature: block.thinkingSignature }];
         }
 
-        const call = readMirrorCall(block);
+        open.add(block.id);
 
-        if (call?.name === BACKGROUND_TOOL) {
-          skipped.add(block.id);
-
-          return [];
-        }
-
-        if (call !== undefined) {
-          claude.set(block.id, call.id);
-
-          return [{ type: "tool_use", id: call.id, name: call.name, input: call.input }];
-        }
-
-        if (message.provider === CLAUDE_CODE_PROVIDER) {
-          claude.set(block.id, block.id);
-
-          return [
-            {
-              type: "tool_use",
-              id: block.id,
-              name: `${NYTE_TOOL_PREFIX}${block.name}`,
-              input: block.arguments,
-            },
-          ];
-        }
-
-        foreign.set(block.id, block.name);
-
-        return [{ type: "text", text: `[${block.name}]\n${JSON.stringify(block.arguments)}` }];
+        return [
+          {
+            type: "tool_use",
+            id: toolUseId(block.id),
+            name: `${NYTE_TOOL_PREFIX}${block.name}`,
+            input: block.arguments,
+          },
+        ];
       }),
     );
   }

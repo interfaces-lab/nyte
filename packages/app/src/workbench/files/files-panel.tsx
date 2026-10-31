@@ -1,5 +1,5 @@
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { useFileTree } from "@pierre/trees/react";
+import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -21,7 +21,6 @@ import { PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { selectionWithin } from "@nyte-ai/ui/selection";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { WorkspaceFileTree } from "./file-tree.tsx";
 import { setTreeDrag } from "../../references/composer-file-drop.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { preferences, useSetting, type Preference } from "../../preferences/index.ts";
@@ -39,6 +38,7 @@ import { fileActions, useFileTabs } from "./file-store.ts";
 import { opensAsMarkdown } from "./markdown-parse.ts";
 import { WorkspaceSearch } from "../workspace-search.tsx";
 import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
+import { syncTreePaths } from "./tree-paths.ts";
 import { treeItemHeight, treeStatus, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "../workbench.stylex.ts";
 import { SidePanel } from "../side-panel.tsx";
@@ -311,8 +311,11 @@ export function FilesPanel({
   );
 
   const revealed = useRef(0);
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes paths into the imperative Pierre tree
-  useLayoutEffect(() => model.resetPaths(paths), [model, paths]);
+  const shownPaths = useRef<ReadonlySet<string>>(new Set());
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes path changes into the imperative Pierre tree
+  useLayoutEffect(() => {
+    shownPaths.current = syncTreePaths(model, shownPaths.current, paths);
+  }, [model, paths]);
   // oxlint-disable-next-line nyte-code/no-direct-effect -- reveals the requested path once the Pierre tree has it
   useLayoutEffect(() => {
     if (tabs.revealPath === undefined || revealed.current === tabs.revealRevision) return;
@@ -554,7 +557,7 @@ export function FilesPanel({
                     Could not load files. {files.error.message}
                   </div>
                 )}
-                <WorkspaceFileTree
+                <FileTree
                   model={model}
                   onDragEnd={() => setTreeDrag([])}
                   onClick={(event) => {

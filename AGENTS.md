@@ -3,12 +3,12 @@
 - Use pnpm. Runtime versions live in `mise.toml`.
 - Never start dev servers.
 - Make the smallest complete fix. Leave unrelated work alone. Stage only your files.
-- To test without your change, revert only your files (`git diff -- <files> | git apply -R`) or use `git worktree add`. Never `stash`, `reset`, `checkout .` or `clean`.
+- To test without your change, revert only your files (`git diff -- <files> | git apply -R`). Never `stash`, `reset`, `checkout .` or `clean`.
 - Add backward compatibility only when asked.
 - `node_modules` is the source of truth for library types.
 - Before changing a package, read `packages/<name>/AGENTS.md` if it exists. It isn't loaded for you.
 - AGENTS.md names symbols, concepts and commands, never file or folder paths: files move. `pnpm lint` rejects a path.
-- Base branches, worktrees and diffs on `origin/main`; PRs target `main`.
+- Work in the current checkout. Create a branch, worktree or PR only when asked; then base it on `origin/main` and target `main`.
 - No `.changeset` files or per-package changelogs. Releases follow `RELEASING.md`.
 - Runtime dependencies point one way: `schema` → `ai` → `core` → `plugin`, `protocol` → `host` → `sdk`. Client code (`@nyte-ai/sdk/client`, the TUI's client entry, the app) never imports `@nyte-ai/host`.
 - Before adding complexity for an unlikely race or security case, explain the failure, its likelihood and the cost, and get the user's buy-in.
@@ -45,7 +45,7 @@
 
 ## Live TUI testing
 
-- `pnpm dev:live [directory]` runs this worktree's TUI against the installed `nyte host` (`NYTE_BINARY` overrides the binary). The worktree only renders; host, store and core changes need `pnpm install:nyte` or `pnpm dev:tui`.
+- `pnpm dev:live [directory]` runs this checkout's TUI against the installed `nyte host` (`NYTE_BINARY` overrides the binary). The checkout only renders; host, store and core changes need `pnpm install:nyte` or `pnpm dev:tui`.
 - Agents run it only with an isolated `HOME` and `NYTE_HOME`, as the TUI's QA service does.
 
 ## Branches and commits

@@ -1,5 +1,7 @@
 export const appName = "Nyte";
 
+export const designName = "Nyte Design";
+
 export const modelId = "gpt-6-luna";
 export const model = `openai-codex/${modelId}`;
 export const docsRoute = "/docs";

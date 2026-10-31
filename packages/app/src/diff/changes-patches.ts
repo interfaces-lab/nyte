@@ -114,11 +114,17 @@ export function createPatchLoader() {
   const listeners = new Set<() => void>();
   let reading = false;
   let scheduled = false;
+  let unannounced = false;
 
   const publish = (next: PatchSnapshot): void => {
     snapshot = next;
+    unannounced = false;
 
     for (const listener of listeners) listener();
+  };
+
+  const announce = (): void => {
+    if (unannounced) publish(snapshot);
   };
 
   const supersede = (): void => {
@@ -193,7 +199,16 @@ export function createPatchLoader() {
       pinned.delete(path);
     }
 
-    publish({ ...snapshot, fresh, stale });
+    const next = { ...snapshot, fresh, stale };
+
+    if (batch.some((path) => mounted.has(path))) {
+      publish(next);
+
+      return;
+    }
+
+    snapshot = next;
+    unannounced = true;
   };
 
   const nextBatch = (): readonly string[] => {
@@ -221,7 +236,12 @@ export function createPatchLoader() {
     if (reading || current === undefined) return;
     const batch = nextBatch();
 
-    if (batch.length === 0) return;
+    if (batch.length === 0) {
+      announce();
+
+      return;
+    }
+
     reading = true;
 
     try {

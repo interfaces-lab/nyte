@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterContextProvider } from "@tanstack/react-router";
+import { MotionConfig } from "motion/react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Toaster } from "@nyte-ai/ui/toast";
@@ -93,13 +94,15 @@ export function App({ appIcon, router }: { appIcon: string; router: AppRouter })
   });
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterContextProvider router={router}>
-        <AppIcon value={appIcon}>
-          <Shell appIcon={appIcon} />
-        </AppIcon>
-        <Toaster position={toastPosition} />
-      </RouterContextProvider>
-    </QueryClientProvider>
+    <MotionConfig reducedMotion="user">
+      <QueryClientProvider client={queryClient}>
+        <RouterContextProvider router={router}>
+          <AppIcon value={appIcon}>
+            <Shell appIcon={appIcon} />
+          </AppIcon>
+          <Toaster position={toastPosition} />
+        </RouterContextProvider>
+      </QueryClientProvider>
+    </MotionConfig>
   );
 }

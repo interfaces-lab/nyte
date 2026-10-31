@@ -19,11 +19,13 @@ import {
   Header,
   PersonLabel,
   Properties,
-  StatusGlyph,
+  StepLabel,
+  StepTrack,
   Tile,
   ago,
   checkSummary,
 } from "./parts.tsx";
+import { progress } from "./progress.ts";
 import { pane } from "./stack-view.tsx";
 
 const COMPACT = "@container stacks (max-width: 959px)";
@@ -157,6 +159,7 @@ export function ItemView({
   const spent = item.sessions.reduce((sum, entry) => sum + entry.cost, 0);
   const number = item.number === null ? null : `#${String(item.number)}`;
   const finished = item.status === "merged" || item.status === "done";
+  const step = progress(item);
   const kept = item.findings.filter((finding) => finding.kept).length;
   const primary = item.ask?.answers.find((answer) => answer.primary);
   const added = item.files.reduce((sum, file) => sum + file.added, 0);
@@ -229,8 +232,9 @@ export function ItemView({
                   label: "Status",
                   value: (
                     <>
-                      <StatusGlyph status={item.status} />
-                      {item.now}
+                      <StepLabel progress={step} />
+                      {!finished && <StepTrack progress={step} />}
+                      {step.label !== item.now && <span {...props(styles.state)}>{item.now}</span>}
                     </>
                   ),
                 },

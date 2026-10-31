@@ -288,11 +288,13 @@ const unstarted = (): WatchState<never> => UNSTARTED;
 
 const noRetry = (): void => undefined;
 
+/** Reads `store` and re-renders as it moves. While `listening` is false it stops listening and keeps answering the store's last state, which a store holds for a while after its last listener leaves. */
 export function useWatch<T>(
   store: WatchStore<T> | undefined,
+  listening = true,
 ): WatchState<T> & { readonly retry: () => void } {
   const state = useSyncExternalStore(
-    store?.subscribeByFrame ?? nothing,
+    listening ? (store?.subscribeByFrame ?? nothing) : nothing,
     store?.getState ?? unstarted,
     store?.getState ?? unstarted,
   );

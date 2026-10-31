@@ -8,7 +8,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { YOU } from "./model.ts";
-import type { Attachment, Check, DiffLine, Event, Finding } from "./model.ts";
+import type { Attachment, Check, DiffLine, Event, Finding, Guide, Related } from "./model.ts";
 import { ago } from "./parts.tsx";
 import { Shot } from "./shots.tsx";
 
@@ -137,6 +137,91 @@ const styles = create({
     backgroundColor: `color-mix(in oklab, ${role.contentInteractivePrimary} 10%, transparent)`,
   },
   diffChangedSign: { color: role.contentInteractivePrimary },
+  questions: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.s1,
+    margin: 0,
+    paddingInlineStart: space.s5,
+    color: role.contentPrimary,
+    textWrap: "pretty",
+  },
+  related: {
+    display: "flex",
+    flexDirection: "column",
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  relatedRow: {
+    display: "grid",
+    gridTemplateColumns: "88px 14px auto minmax(0, 1fr)",
+    alignItems: "center",
+    columnGap: space.s2,
+    minHeight: row.heightMd,
+    color: role.contentSecondary,
+  },
+  relatedGlyph: { display: "inline-flex", color: role.contentTertiary },
+  relatedNumber: { fontFamily: type.fontMono, color: role.contentTertiary },
+  relatedTitle: {
+    overflow: "hidden",
+    color: role.contentPrimary,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  guide: {
+    display: "flex",
+    flexDirection: "column",
+    borderRadius: radius.card,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    overflow: "hidden",
+  },
+  guideSummary: { margin: 0, padding: space.s3, color: role.contentPrimary, textWrap: "pretty" },
+  guideFiles: {
+    display: "flex",
+    flexDirection: "column",
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
+  guideFile: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    columnGap: space.s3,
+    rowGap: space.s0_5,
+    paddingBlock: space.s2,
+    paddingInline: space.s3,
+    borderBlockStartWidth: 1,
+    borderBlockStartStyle: "solid",
+    borderBlockStartColor: role.borderSecondaryTranslucent,
+  },
+  guidePath: {
+    overflow: "hidden",
+    fontFamily: type.fontMono,
+    color: role.contentPrimary,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    direction: "rtl",
+    textAlign: "start",
+  },
+  guideCount: { fontFamily: type.fontMono, color: role.contentTertiary },
+  guideNote: { gridColumn: "1 / -1", color: role.contentSecondary },
+  unchecked: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: space.s2,
+    paddingBlock: space.s2,
+    paddingInline: space.s3,
+    borderBlockStartWidth: 1,
+    borderBlockStartStyle: "solid",
+    borderBlockStartColor: role.borderSecondaryTranslucent,
+    color: role.contentSecondary,
+  },
+  uncheckedGlyph: {
+    display: "inline-flex",
+    paddingBlockStart: 2,
+    color: role.contentInteractivePrimary,
+  },
 });
 
 /** The item's whole story in one column; `tail` is what's open now, like a question for you. */
@@ -242,6 +327,15 @@ function Findings({
 function Evidence({ attachment }: { readonly attachment: Attachment }): ReactElement {
   return (
     <>
+      {attachment.questions !== undefined && (
+        <ol {...props(text.base, styles.questions)}>
+          {attachment.questions.map((question) => (
+            <li key={question}>{question}</li>
+          ))}
+        </ol>
+      )}
+      {attachment.related !== undefined && <RelatedList related={attachment.related} />}
+      {attachment.guide !== undefined && <GuideCard guide={attachment.guide} />}
       {attachment.checks !== undefined && <Checks checks={attachment.checks} />}
       {attachment.diff !== undefined && (
         <Diff file={attachment.diff.file} lines={attachment.diff.lines} />
@@ -249,6 +343,66 @@ function Evidence({ attachment }: { readonly attachment: Attachment }): ReactEle
       {attachment.shot !== undefined && <Shot id={attachment.shot} />}
       {attachment.images !== undefined && <Images images={attachment.images} />}
     </>
+  );
+}
+
+function RelatedList({ related }: { readonly related: readonly Related[] }): ReactElement {
+  return (
+    <ul aria-label="Related" {...props(styles.related)}>
+      {related.map((entry) => (
+        <li key={entry.number} {...props(text.sm, styles.relatedRow)}>
+          {entry.relation === "duplicate" ? "Duplicate of" : "Related to"}
+          <span {...props(styles.relatedGlyph)}>
+            <Icon
+              name={
+                entry.state === "merged"
+                  ? "merged"
+                  : entry.state === "closed"
+                    ? "pull-request-closed"
+                    : "pull-request"
+              }
+              size="sm"
+            />
+          </span>
+          <span {...props(styles.relatedNumber)}>#{entry.number}</span>
+          <span {...props(styles.relatedTitle)}>{entry.title}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The lead's reading order for the pull request, and what nobody could check for you. */
+function GuideCard({ guide }: { readonly guide: Guide }): ReactElement {
+  return (
+    <section aria-label="Review guide" {...props(styles.guide)}>
+      <div {...props(text.sm, styles.diffHead)}>
+        <Icon name="book" size="xs" />
+        Review guide
+      </div>
+      <p {...props(text.base, styles.guideSummary)}>{guide.summary}</p>
+      <ol {...props(styles.guideFiles)}>
+        {guide.files.map((file) => (
+          <li key={file.path} {...props(text.sm, styles.guideFile)}>
+            <span {...props(styles.guidePath)}>
+              <bdi>{file.path}</bdi>
+            </span>
+            <span {...props(styles.guideCount)}>
+              +{file.added} −{file.removed}
+            </span>
+            <span {...props(styles.guideNote)}>{file.note}</span>
+          </li>
+        ))}
+      </ol>
+      {guide.unchecked !== null && (
+        <p {...props(text.sm, styles.unchecked)}>
+          <span {...props(intent.warning, styles.uncheckedGlyph)}>
+            <Icon name="warning" size="xs" />
+          </span>
+          {guide.unchecked}
+        </p>
+      )}
+    </section>
   );
 }
 

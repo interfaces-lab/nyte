@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { conversation } from "../../theme/schema.stylex.ts";
 
 export const messageScrollerStyles = create({
@@ -57,10 +57,10 @@ export const messageScrollerStyles = create({
     pointerEvents: { default: "none", "[data-scroll-shown='true']": "auto" },
     transitionProperty: "opacity, visibility",
     transitionDuration: {
-      default: "120ms",
+      default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: "ease-in-out",
+    transitionTimingFunction: motion.easeOut,
   },
 });
 

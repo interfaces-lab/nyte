@@ -4,16 +4,19 @@ import type { ReactElement } from "react";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
+import type { IconName } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
-import { radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
+import { control, radius, row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { describePlan, firstName, readRequest } from "./delegate.ts";
+import { describePlan, firstName, readRequest, routeStack } from "./delegate.ts";
 import type { Request } from "./delegate.ts";
 import { MODELS } from "./model.ts";
+import { arrange, finished } from "./progress.ts";
 import { propose } from "./staffing.ts";
-import type { PullRequest, Stack } from "./model.ts";
+import type { Item, PullRequest, Stack } from "./model.ts";
 
 const NARROW = "@container stacks (max-width: 639px)";
 
@@ -93,18 +96,44 @@ const styles = create({
   footer: {
     display: "flex",
     alignItems: "center",
-    gap: space.s3,
+    gap: space.s1,
     paddingBlock: space.s2,
     paddingInline: space.s2,
   },
+  spacer: { flex: 1 },
   plan: {
     display: "flex",
     alignItems: "center",
     gap: space.s1_5,
-    flex: 1,
     minWidth: 0,
+    paddingInline: space.s4,
     color: role.contentSecondary,
   },
+  chip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: space.s1_5,
+    minWidth: 0,
+    maxWidth: 220,
+    height: control.heightSm,
+    paddingInline: space.s2,
+    borderWidth: 0,
+    borderRadius: radius.control,
+    backgroundColor: {
+      default: "transparent",
+      ":hover": role.bgHover,
+      ":focus-visible": role.bgHover,
+      "[data-popup-open]": role.bgHover,
+    },
+    color: role.contentSecondary,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    transitionProperty: "background-color",
+    transitionDuration: motion.durationFast,
+  },
+  chipSet: { color: role.contentPrimary },
+  chipLabel: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  chipQuiet: { color: role.contentTertiary },
   planText: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   planGlyph: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
   keyHint: { display: { default: "inline-flex", [NARROW]: "none" } },
@@ -132,18 +161,26 @@ function tokenAt(
 }
 
 /**
- * The only way to start work on a stack: write it. `#` offers open pull requests and `@` the
- * stack's agents; the line under the text says who will do it before you send.
+ * The only way to start work: write it. With more than one stack, the lead picks the stack from
+ * what you wrote unless you pick it. `#` offers open pull requests and `@` the stack's agents;
+ * the line under the text says who will do it, and when, before you send.
  */
 export function Composer({
-  stack,
+  stacks,
+  preferred,
+  items,
   pulls,
   onSend,
 }: {
-  readonly stack: Stack;
+  readonly stacks: readonly Stack[];
+  /** The stack to send to unless the text says otherwise; null lets the lead route. */
+  readonly preferred: string | null;
+  readonly items: readonly Item[];
   readonly pulls: readonly PullRequest[];
-  readonly onSend: (request: Request) => void;
+  readonly onSend: (stack: string, request: Request) => void;
 }): ReactElement {
+  const [choice, setChoice] = useState<string>(preferred ?? "auto");
+  const [held, setHeld] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
@@ -153,7 +190,18 @@ export function Composer({
   const input = useRef<HTMLTextAreaElement | null>(null);
   const picker = useRef<HTMLInputElement | null>(null);
   const listId = useId();
+  const picked = stacks.find((entry) => entry.id === choice);
+  const stack = picked ?? routeStack(draft, stacks) ?? stacks[0];
+
+  if (stack === undefined) throw new Error("The composer needs a stack to send to.");
   const read = readRequest(draft, stack, pulls);
+
+  const open = arrange(items.filter((entry) => entry.stack === stack.id && !finished(entry))).slice(
+    0,
+    8,
+  );
+
+  const after = open.find((entry) => entry.id === held);
 
   const request: Request | null =
     read ??
@@ -206,10 +254,15 @@ export function Composer({
 
   const send = (): void => {
     if (request === null) return;
-    onSend({ ...request, images });
+    onSend(stack.id, {
+      ...request,
+      images,
+      after: after === undefined ? undefined : { id: after.id, title: after.title },
+    });
     setDraft("");
     setCaret(0);
     setImages([]);
+    setHeld(null);
   };
 
   const follow = (element: HTMLTextAreaElement): void => {
@@ -251,7 +304,9 @@ export function Composer({
         placeholder={
           dragging
             ? "Drop to attach"
-            : `Tell ${stack.name} what to do. # for a pull request, @ for an agent`
+            : stacks.length > 1 && picked === undefined
+              ? "Describe the work. The lead picks the stack and the kind of task. # for a pull request"
+              : `Tell ${stack.name} what to do. # for a pull request, @ for an agent`
         }
         value={draft}
         rows={2}
@@ -343,6 +398,18 @@ export function Composer({
           ))}
         </div>
       )}
+      {request !== null && (
+        <span {...props(text.sm, styles.plan)}>
+          <span {...props(styles.planGlyph)}>
+            <Icon name="arrow-right" size="xs" />
+          </span>
+          <span {...props(styles.planText)}>
+            {stacks.length > 1 && `${stack.name}: `}
+            {describePlan(request, stack)}
+            {after !== undefined && ` After \u201c${after.title}\u201d.`}
+          </span>
+        </span>
+      )}
       <div {...props(styles.footer)}>
         <input
           ref={picker}
@@ -362,16 +429,45 @@ export function Composer({
           aria-label="Attach a Screenshot"
           onClick={() => picker.current?.click()}
         />
-        <span {...props(text.sm, styles.plan)}>
-          {request !== null && (
-            <>
-              <span {...props(styles.planGlyph)}>
-                <Icon name="arrow-right" size="xs" />
-              </span>
-              <span {...props(styles.planText)}>{describePlan(request, stack)}</span>
-            </>
-          )}
-        </span>
+        {stacks.length > 1 && (
+          <Chip
+            icon={stack.icon}
+            label={stack.name}
+            hint={picked === undefined ? "Auto" : undefined}
+            set={picked !== undefined}
+            name="Stack"
+            value={choice}
+            options={[
+              { value: "auto", label: "Auto", meta: "From what you write" },
+              ...stacks.map((entry) => ({ value: entry.id, label: entry.name, icon: entry.icon })),
+            ]}
+            onChange={(value) => {
+              setChoice(value);
+              setHeld(null);
+            }}
+          />
+        )}
+        <Chip
+          icon="clock"
+          label={
+            after === undefined
+              ? "Start now"
+              : `After ${after.number === null ? after.title : `#${String(after.number)}`}`
+          }
+          set={after !== undefined}
+          name="Start"
+          value={after?.id ?? "now"}
+          options={[
+            { value: "now", label: "Start now", meta: "As soon as it's planned" },
+            ...open.map((entry) => ({
+              value: entry.id,
+              label: `After ${entry.title}`,
+              meta: entry.number === null ? undefined : `#${String(entry.number)}`,
+            })),
+          ]}
+          onChange={(value) => setHeld(value === "now" ? null : value)}
+        />
+        <span {...props(styles.spacer)} />
         <span {...props(styles.keyHint)}>
           <Kbd keys={[request === null ? "/" : "↵"]} />
         </span>
@@ -387,6 +483,64 @@ export function Composer({
         />
       </div>
     </form>
+  );
+}
+
+interface ChipOption {
+  readonly value: string;
+  readonly label: string;
+  readonly meta?: string;
+  readonly icon?: IconName;
+}
+
+/** One setting of the task, as a quiet button that opens its choices. */
+function Chip({
+  icon,
+  label,
+  hint,
+  set,
+  name,
+  value,
+  options,
+  onChange,
+}: {
+  readonly icon: IconName;
+  readonly label: string;
+  readonly hint?: string;
+  readonly set: boolean;
+  readonly name: string;
+  readonly value: string;
+  readonly options: readonly ChipOption[];
+  readonly onChange: (value: string) => void;
+}): ReactElement {
+  return (
+    <Menu>
+      <MenuTrigger
+        aria-label={`${name}: ${label}`}
+        {...props(text.sm, styles.chip, set && styles.chipSet)}
+      >
+        <Icon name={icon} size="xs" />
+        <span {...props(styles.chipLabel)}>{label}</span>
+        {hint !== undefined && <span {...props(styles.chipQuiet)}>{hint}</span>}
+        <span {...props(styles.chipQuiet)}>
+          <Icon name="chevron-down" size="2xs" />
+        </span>
+      </MenuTrigger>
+      <MenuContent align="start">
+        <MenuRadioGroup value={value} onValueChange={(next) => onChange(String(next))}>
+          {options.map((option) => (
+            <MenuRadioItem
+              key={option.value}
+              value={option.value}
+              icon={option.icon}
+              meta={option.meta}
+            >
+              {option.label}
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+      </MenuContent>
+    </Menu>
   );
 }
 

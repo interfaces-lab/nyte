@@ -158,12 +158,12 @@ export async function refreshVcs(): Promise<void> {
   ]);
 }
 
+/** The workspace's git status; while `enabled` is false it keeps the last status it heard. */
 export function useVcsSnapshot(enabled: boolean) {
   const host = useHostState();
   const workspace = host.data.workspace?.id;
 
   return {
-    data: useWatch(enabled && workspace !== undefined ? gitStatusWatch(workspace) : undefined)
-      .value,
+    data: useWatch(workspace === undefined ? undefined : gitStatusWatch(workspace), enabled).value,
   };
 }

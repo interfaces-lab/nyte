@@ -17,7 +17,12 @@ import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { SessionId } from "@nyte-ai/sdk";
 import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
-import { SortableItem, SortableList } from "../components/sortable-strip.tsx";
+import {
+  MOVE_SHORTCUTS,
+  readMoveStep,
+  SortableItem,
+  SortableList,
+} from "../components/sortable-strip.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { stripStyles } from "./window-tab-strip.stylex.ts";
 
@@ -146,6 +151,24 @@ function TabItem({
                 variant="bare"
                 value={tab.id}
                 aria-label={`${tab.tooltip}${tab.unread ? ", unread" : ""}${tab.preview ? ", preview" : ""}`}
+                aria-keyshortcuts={MOVE_SHORTCUTS}
+                onKeyDown={(event) => {
+                  const step = readMoveStep(event);
+                  const target = position + step;
+
+                  if (step === 0 || target < 0 || target >= strip.tabs.length) return;
+                  event.preventDefault();
+                  const element = event.currentTarget;
+
+                  strip.onReorder(
+                    strip.tabs
+                      .map((entry) => entry.id)
+                      .filter((id) => id !== tab.id)
+                      .toSpliced(target, 0, tab.id),
+                    tab.id,
+                  );
+                  requestAnimationFrame(() => element.focus());
+                }}
                 xstyle={[stripStyles.tabButton, !closable && stripStyles.tabButtonUnclosable]}
               />
             }

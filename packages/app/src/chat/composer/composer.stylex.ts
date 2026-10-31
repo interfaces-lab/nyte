@@ -152,10 +152,10 @@ export const composerStyles = create({
     lineHeight: type.leadingBase,
     transitionProperty: "background-color",
     transitionDuration: {
-      default: "100ms",
+      default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: "ease-in-out",
+    transitionTimingFunction: motion.easeOut,
   },
   queueMessage: { flex: 1, minWidth: 0 },
   queuePreview: {
