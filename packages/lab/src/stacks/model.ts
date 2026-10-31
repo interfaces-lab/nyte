@@ -101,17 +101,6 @@ export interface Stack {
 
 export type Status = "needs-you" | "working" | "watching" | "merged" | "done";
 
-export const GROUPS: readonly {
-  readonly id: string;
-  readonly label: string;
-  readonly statuses: readonly Status[];
-}[] = [
-  { id: "needs-you", label: "Needs you", statuses: ["needs-you"] },
-  { id: "working", label: "Working", statuses: ["working"] },
-  { id: "watching", label: "Watching CI", statuses: ["watching"] },
-  { id: "done", label: "Done today", statuses: ["merged", "done"] },
-];
-
 export type Kind = "fix" | "babysit" | "review";
 
 export interface Check {
@@ -138,8 +127,30 @@ export interface DiffLine {
   readonly text: string;
 }
 
+/** Earlier work the lead turned up while triaging. */
+export interface Related {
+  readonly number: number;
+  readonly title: string;
+  readonly relation: "duplicate" | "related";
+  readonly state: "open" | "closed" | "merged";
+}
+
+export interface GuideFile extends FileChange {
+  readonly note: string;
+}
+
+/** The lead's walk through a pull request, in reading order, with what nothing could verify. */
+export interface Guide {
+  readonly summary: string;
+  readonly files: readonly GuideFile[];
+  readonly unchecked: string | null;
+}
+
 export interface Attachment {
   readonly checks?: readonly Check[];
+  readonly questions?: readonly string[];
+  readonly related?: readonly Related[];
+  readonly guide?: Guide;
   readonly diff?: { readonly file: string; readonly lines: readonly DiffLine[] };
   readonly shot?: ShotId;
   readonly images?: readonly string[];
@@ -173,6 +184,8 @@ export interface Answer {
 export interface Ask {
   readonly question: string;
   readonly answers: readonly Answer[];
+  /** What follows when you answer in your own words; without it, a reply sends the work back. */
+  readonly reply?: readonly Step[];
 }
 
 export type ShotId = "row-height" | "model-chip" | "empty-state" | "generic";
@@ -232,6 +245,7 @@ export interface Step {
   readonly checks?: readonly Check[];
   readonly ask?: Ask | null;
   readonly shot?: ShotId;
+  readonly surface?: Surface;
   readonly files?: readonly FileChange[];
   readonly sessions?: readonly Session[];
   readonly findings?: readonly Finding[];
@@ -260,6 +274,8 @@ export interface Item {
   readonly updated: Moment;
   readonly script: readonly Step[];
   readonly due: number;
+  /** The item this one waits for; cleared when that one finishes and this one starts. */
+  readonly after: string | null;
 }
 
 export interface PullRequest {

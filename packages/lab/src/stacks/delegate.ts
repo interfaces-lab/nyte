@@ -2,6 +2,7 @@ import { SURFACES, YOU } from "./model.ts";
 import type { Item, Kind, PullRequest, Stack } from "./model.ts";
 import { babysitSteps, fixSteps, reviewSteps, schedule } from "./script.ts";
 import { hands, leadAgent, mentioned, planSentence, propose, sessionFor } from "./staffing.ts";
+import { REPORTED, VAGUE, triageSteps } from "./triage.ts";
 
 /** A task as the composer read it: what kind, which pull request, and who works it. */
 export interface Request {
@@ -11,6 +12,33 @@ export interface Request {
   readonly staff: readonly string[];
   readonly title?: string;
   readonly images?: readonly string[];
+  /** Hold it until this item finishes. */
+  readonly after?: { readonly id: string; readonly title: string };
+}
+
+/**
+ * The stack whose name, purpose and agents share the most words with the text; the first stack
+ * when nothing matches. An agent named with @ settles it.
+ */
+export function routeStack(text: string, stacks: readonly Stack[]): Stack | undefined {
+  const words = text.toLowerCase().match(/[a-z0-9]{4,}/g) ?? [];
+
+  const scored = stacks.map((stack) => {
+    const known = [
+      stack.name,
+      stack.purpose,
+      ...stack.agents.flatMap((agent) => [agent.name, agent.does]),
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return { stack, score: words.filter((word) => known.includes(word)).length };
+  });
+
+  return scored.reduce<(typeof scored)[number] | undefined>(
+    (best, entry) => (best === undefined || entry.score > best.score ? entry : best),
+    undefined,
+  )?.stack;
 }
 
 const PULL_URL = /github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/;
@@ -69,6 +97,12 @@ export function createItem(
   const lead = leadAgent(stack);
   const images = request.images ?? [];
   const pull = request.pull;
+  const report = pull === null && REPORTED.test(request.text);
+  const after = request.after;
+
+  const plan = `${planSentence(stack, request.kind, staff, pull)}${
+    after === undefined ? "" : ` Starts when “${after.title}” finishes.`
+  }`;
 
   const base = {
     id,
@@ -81,6 +115,7 @@ export function createItem(
     updated: clock,
     script: [],
     due: clock,
+    after: after?.id ?? null,
     sessions: [
       sessionFor(lead, "Planned it", 1, true),
       ...staff.map((agent) => sessionFor(agent, "Waiting", 0)),
@@ -100,7 +135,9 @@ export function createItem(
         who: stack.name,
         what: "planned it",
         at: clock,
-        text: planSentence(stack, request.kind, staff, pull),
+        text: report
+          ? `${stack.name} asks for what's missing before anyone writes code. ${plan}`
+          : plan,
       },
     ],
   };
@@ -114,14 +151,14 @@ export function createItem(
         number: null,
         kind: "fix",
         title,
-        summary: planSentence(stack, "fix", staff, null),
+        summary: report ? "Not reproduced yet." : plan,
         status: "working",
-        now: "Queued",
+        now: after !== undefined ? "Up next" : report ? "Triaging" : "Queued",
         author: YOU,
         branch: `${stack.id}/${slug(title)}`,
         surface: SURFACES.unknown,
       },
-      fixSteps(stack, number, staff),
+      report ? triageSteps(stack, number, staff, VAGUE) : fixSteps(stack, number, staff),
       clock,
     );
   }

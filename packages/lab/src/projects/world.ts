@@ -196,16 +196,18 @@ function observedCheck(check: CheckFact): ObservedCheck {
   };
 }
 
-export function observe(evidence: Evidence, at = evidence.observedAt): Observation {
-  const open = evidence.pullRequests.filter((pull) => pull.state === "OPEN");
-
+export function observe(
+  evidence: Evidence,
+  at = evidence.observedAt,
+  pulls: readonly PullRequestFact[] = evidence.pullRequests.filter((pull) => pull.state === "OPEN"),
+): Observation {
   const baseSha = (pull: PullRequestFact): string =>
-    open.find((candidate) => candidate.head === pull.base)?.headSha ??
+    pulls.find((candidate) => candidate.head === pull.base)?.headSha ??
     (pull.base === evidence.base.branch ? evidence.base.sha : "");
 
   return {
     at,
-    pulls: open.map((pull) => ({
+    pulls: pulls.map((pull) => ({
       number: pull.number,
       state: pull.state,
       head: pull.head,

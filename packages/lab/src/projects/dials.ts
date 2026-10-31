@@ -5,7 +5,7 @@ import type { Matching } from "./contract.ts";
 import { DEFAULT_KNOBS } from "./world.ts";
 import type { Knobs, ModelId } from "./world.ts";
 
-const MODELS = [
+export const MODELS = [
   { value: "openai-codex/gpt-6.1-sol", label: "Sol" },
   { value: "anthropic/claude-opus-5-5", label: "Opus" },
 ] as const satisfies readonly { value: ModelId; label: string }[];
