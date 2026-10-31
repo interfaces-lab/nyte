@@ -13,7 +13,12 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { SortableItem, SortableList } from "../components/sortable-strip.tsx";
+import {
+  MOVE_SHORTCUTS,
+  readMoveStep,
+  SortableItem,
+  SortableList,
+} from "../components/sortable-strip.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { stripStyles } from "./window-tab-strip.stylex.ts";
 
@@ -126,6 +131,23 @@ function TabItem({
                 variant="bare"
                 value={tab.id}
                 aria-label={tab.unread ? `${tab.tooltip}, unread` : tab.tooltip}
+                aria-keyshortcuts={MOVE_SHORTCUTS}
+                onKeyDown={(event) => {
+                  const step = readMoveStep(event);
+                  const target = position + step;
+
+                  if (step === 0 || target < 0 || target >= strip.tabs.length) return;
+                  event.preventDefault();
+                  const element = event.currentTarget;
+
+                  strip.onReorder(
+                    strip.tabs
+                      .map((entry) => entry.id)
+                      .filter((id) => id !== tab.id)
+                      .toSpliced(target, 0, tab.id),
+                  );
+                  requestAnimationFrame(() => element.focus());
+                }}
                 xstyle={[stripStyles.tabButton, !closable && stripStyles.tabButtonUnclosable]}
               />
             }

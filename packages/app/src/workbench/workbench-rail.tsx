@@ -134,7 +134,7 @@ export function WorkbenchRail({ children }: { readonly children: ReactNode }): R
 
     if (resize === undefined || resize.pointerId !== event.pointerId) return;
     resize.nextWidth = clampWidth(resize.startWidth + resize.startX - event.clientX, max);
-    applyWidth(resize.nextWidth);
+    seatRef.current?.style.setProperty("width", `${String(resize.nextWidth)}px`);
   };
 
   const endResize = (event: PointerEvent<HTMLDivElement>): void => {
@@ -148,6 +148,7 @@ export function WorkbenchRail({ children }: { readonly children: ReactNode }): R
 
     resizeRef.current = undefined;
     setWidth(resize.nextWidth);
+    seatRef.current?.style.removeProperty("width");
     setResizing(false);
   };
 
@@ -156,7 +157,7 @@ export function WorkbenchRail({ children }: { readonly children: ReactNode }): R
 
     if (resize === undefined || resize.pointerId !== event.pointerId) return;
     resizeRef.current = undefined;
-    applyWidth(resize.startWidth);
+    seatRef.current?.style.removeProperty("width");
     setResizing(false);
   };
 

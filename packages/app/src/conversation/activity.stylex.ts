@@ -3,40 +3,25 @@ import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
-const activityShine = keyframes({
-  "0%": { backgroundPosition: "200% 0" },
-  "100%": { backgroundPosition: "-200% 0" },
+const pulse = keyframes({
+  "0%, 100%": { opacity: 1 },
+  "50%": { opacity: 0.55 },
 });
 
-const textShimmer = keyframes({
-  from: { backgroundPosition: "100% 0" },
-  to: { backgroundPosition: "-100% 0" },
-});
-
-const ACTIVITY_SHIMMER = `linear-gradient(90deg, ${role.contentSecondary} 0%, ${role.contentSecondary} 28%, ${role.contentPrimary} 58%, ${role.contentSecondary} 76%, ${role.contentSecondary} 100%)`;
+const PULSE = {
+  animationName: {
+    default: pulse,
+    "@media (prefers-reduced-motion: reduce)": "none",
+  },
+  animationDuration: "1.6s",
+  animationTimingFunction: "ease-in-out",
+  animationIterationCount: "infinite",
+} as const;
 
 export const activityStyles = create({
   shimmer: {
-    animationName: {
-      default: activityShine,
-      "@media (prefers-reduced-motion: reduce)": "none",
-    },
-    animationDuration: {
-      default: "2.4s",
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    animationTimingFunction: "linear",
-    animationIterationCount: "infinite",
-    backgroundImage: {
-      default: ACTIVITY_SHIMMER,
-      "@media (prefers-reduced-motion: reduce)": "none",
-    },
-    backgroundSize: "200% 100%",
-    backgroundClip: "text",
-    color: {
-      default: "transparent",
-      "@media (prefers-reduced-motion: reduce)": role.contentSecondary,
-    },
+    color: role.contentSecondary,
+    ...PULSE,
   },
 });
 
@@ -64,29 +49,6 @@ export const markerStyles = create({
   },
   shimmer: {
     minWidth: 0,
-    backgroundImage: {
-      default: ACTIVITY_SHIMMER,
-      "@media (prefers-reduced-motion: reduce)": "none",
-    },
-    backgroundSize: "200% 100%",
-    backgroundClip: {
-      default: "text",
-      "@media (prefers-reduced-motion: reduce)": "border-box",
-    },
-    WebkitBackgroundClip: {
-      default: "text",
-      "@media (prefers-reduced-motion: reduce)": "border-box",
-    },
-    WebkitTextFillColor: {
-      default: "transparent",
-      "@media (prefers-reduced-motion: reduce)": "unset",
-    },
-    animationName: {
-      default: textShimmer,
-      "@media (prefers-reduced-motion: reduce)": "none",
-    },
-    animationDuration: "1s",
-    animationTimingFunction: "linear",
-    animationIterationCount: "infinite",
+    ...PULSE,
   },
 });

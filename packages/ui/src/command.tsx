@@ -22,7 +22,8 @@ const styles = create({
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     transitionProperty: "opacity",
     transitionDuration: {
-      default: motion.durationFast,
+      default: motion.durationNormal,
+      "[data-ending-style]": motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOutQuint,
@@ -58,7 +59,8 @@ const styles = create({
     },
     transitionProperty: "opacity, transform",
     transitionDuration: {
-      default: motion.durationFast,
+      default: motion.durationNormal,
+      "[data-ending-style]": motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOutQuint,

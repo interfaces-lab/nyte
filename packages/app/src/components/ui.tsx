@@ -27,7 +27,7 @@ const styles = create({
     animationName: { default: pulse, "@media (prefers-reduced-motion: reduce)": "none" },
     animationDuration: "1600ms",
     animationTimingFunction: "ease-in-out",
-    animationIterationCount: "infinite",
+    animationIterationCount: 3,
   },
   statusDot: {
     display: "inline-flex",

@@ -7,7 +7,12 @@ import type { ClientCapabilities } from "../client-actions.ts";
 import { errorMessage } from "../errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
-import { SortableItem, SortableList } from "../components/sortable-strip.tsx";
+import {
+  MOVE_SHORTCUTS,
+  readMoveStep,
+  SortableItem,
+  SortableList,
+} from "../components/sortable-strip.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import {
@@ -422,11 +427,29 @@ export function WorkbenchTabStrip({
                     onFocus={(event) =>
                       event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })
                     }
+                    aria-keyshortcuts={MOVE_SHORTCUTS}
                     onKeyDown={(event) => {
                       if (event.key === "Delete") {
                         event.preventDefault();
                         closeTab(tab);
+
+                        return;
                       }
+
+                      const step = readMoveStep(event);
+                      const position = tabs.findIndex((entry) => entry.id === tab.id);
+                      const neighbour = step === 0 ? undefined : tabs[position + step];
+
+                      if (neighbour === undefined) return;
+                      event.preventDefault();
+                      const element = event.currentTarget;
+
+                      workbenchController.actions.moveTab({
+                        view: viewKey,
+                        id: tab.id,
+                        index: view.tabs.findIndex((entry) => entry.id === neighbour.id),
+                      });
+                      requestAnimationFrame(() => element.focus());
                     }}
                   >
                     {tab.kind === "canvas" ? (

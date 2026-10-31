@@ -46,6 +46,7 @@ const styles = create({
   panel: {
     height: "var(--collapsible-panel-height)",
     overflow: "hidden",
+    interpolateSize: "numeric-only",
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     transitionProperty: "height, opacity",
     transitionDuration: {

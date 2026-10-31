@@ -76,7 +76,7 @@ const lineStyles = create({
       ":focus-visible": "0s",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: "ease-in-out",
+    transitionTimingFunction: motion.easeOut,
   },
   agentIcon: {
     display: "inline-flex",

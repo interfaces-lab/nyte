@@ -1,6 +1,5 @@
 import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
-import type { FileTreeBatchOperation } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
@@ -24,6 +23,7 @@ import type { ChangeStatus } from "./change-tree.ts";
 import type { ViewedState } from "./changes-viewed.ts";
 import type { LineStat } from "@nyte-ai/sdk";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
+import { syncTreePaths } from "./tree-paths.ts";
 import { treeItemHeight, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { WorkbenchRail } from "./workbench-rail.tsx";
@@ -202,36 +202,13 @@ export function ChangesSidebar({
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- applies path changes to the imperative Pierre tree
   useLayoutEffect(() => {
-    const next = new Set(
-      shownPaths.flatMap((path) => {
-        const ancestors = [path];
-
-        for (
-          let index = path.lastIndexOf("/");
-          index > 0;
-          index = path.lastIndexOf("/", index - 1)
-        ) {
-          ancestors.push(path.slice(0, index + 1));
-        }
-
-        return ancestors;
-      }),
-    );
-
-    const changes: FileTreeBatchOperation[] = [
-      ...[...paths.current]
-        .filter((path) => !next.has(path))
-        .sort((left, right) => right.length - left.length)
-        .map((path) => ({ type: "remove" as const, path })),
-      ...shownPaths
-        .filter((path) => !paths.current.has(path))
-        .map((path) => ({ type: "add" as const, path })),
-    ];
-
     syncing.current = true;
-
-    if (changes.length > 0) model.batch(changes);
-    paths.current = next;
+    paths.current = syncTreePaths(model, paths.current, shownPaths);
+    syncing.current = false;
+  }, [model, shownPaths]);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- selects the active path in the imperative Pierre tree
+  useLayoutEffect(() => {
+    syncing.current = true;
 
     for (const selected of model.getSelectedPaths()) {
       if (selected !== activePath) model.getItem(selected)?.deselect();

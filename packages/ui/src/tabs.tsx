@@ -162,11 +162,12 @@ const indicator = create({
   list: { position: "relative" },
   base: {
     position: "absolute",
-    top: "var(--active-tab-top)",
-    left: "var(--active-tab-left)",
+    top: 0,
+    left: 0,
+    translate: "var(--active-tab-left) var(--active-tab-top)",
     width: "var(--active-tab-width)",
     height: "var(--active-tab-height)",
-    transitionProperty: "top, left, width, height",
+    transitionProperty: "translate, width, height",
     transitionDuration: {
       default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",

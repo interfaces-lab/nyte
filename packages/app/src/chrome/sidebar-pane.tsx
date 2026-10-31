@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import { motion } from "motion/react";
+import { motion, useMotionValue, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar } from "../theme/schema.stylex.ts";
@@ -18,7 +18,7 @@ const FLOAT_OMEGA = (2 * Math.PI) / 0.18;
 const FLOAT_SPRING = {
   type: "spring",
   stiffness: FLOAT_OMEGA ** 2,
-  damping: 2 * 0.8 * FLOAT_OMEGA,
+  damping: 2 * FLOAT_OMEGA,
 } as const;
 
 const REVEAL_EDGE = 8;
@@ -26,6 +26,8 @@ const REVEAL_EDGE = 8;
 const HOLD_SLACK = 24;
 
 const HIDE_DELAY = 0.12;
+
+const FLOAT_CLEARANCE = 12;
 
 const styles = create({
   seat: {
@@ -36,15 +38,14 @@ const styles = create({
     flexShrink: 0,
     overflow: "clip",
     transitionProperty: "width",
-    transitionDuration: sidebar.slideDuration,
-    transitionTimingFunction: sidebar.slideEasing,
+    transitionDuration: "0s",
   },
   seatHidden: {
     width: 0,
     pointerEvents: "none",
+    transitionDelay: sidebar.slideDuration,
   },
   seatFloating: { overflow: "visible" },
-  still: { transitionDuration: "0s" },
   rail: {
     position: "absolute",
     insetBlock: 0,
@@ -53,11 +54,12 @@ const styles = create({
     width: sidebar.width,
     minHeight: 0,
     visibility: "visible",
-    transitionProperty: "visibility",
+    translate: "none",
+    transitionProperty: "translate, visibility",
     transitionDuration: sidebar.slideDuration,
     transitionTimingFunction: sidebar.slideEasing,
   },
-  railAway: { visibility: "hidden" },
+  railAway: { visibility: "hidden", translate: "-100%" },
   railFloating: {
     position: "absolute",
     zIndex: layer.chrome,
@@ -67,10 +69,7 @@ const styles = create({
     borderRadius: sidebar.floatRadius,
     overflow: "clip",
     pointerEvents: "auto",
-    transform: {
-      default: "translateX(calc(var(--_float, 1) * (-100% - 12px)))",
-      "@media (prefers-reduced-motion: reduce)": "none",
-    },
+    transitionProperty: "visibility",
   },
   handle: {
     position: "fixed",
@@ -116,15 +115,11 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
   const docked = useSidebar().state === "expanded";
   const sidebarWidth = useSetting(preferences.sidebarWidth);
   const rail = useRef<HTMLDivElement | null>(null);
+  const reducedMotion = useReducedMotion();
+  const floatX = useMotionValue(0);
   const [float, setFloat] = useState<"in" | "out">();
-  const [docksInPlace, setDocksInPlace] = useState(false);
 
-  if (docked && float !== undefined) {
-    setFloat(undefined);
-    setDocksInPlace(true);
-  }
-
-  if (!docked && docksInPlace) setDocksInPlace(false);
+  if (docked && float !== undefined) setFloat(undefined);
 
   const presentation = docked ? "expanded" : float === undefined ? "collapsed" : "floating";
   const floating = presentation === "floating";
@@ -138,17 +133,18 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
 
       if (element === null || element.dataset.state === "expanded") return;
 
-      const panel =
-        element.dataset.state === "floating" && event.type === "pointermove"
-          ? element.getBoundingClientRect()
-          : undefined;
+      const holding = element.dataset.state === "floating" && event.type === "pointermove";
 
       const near =
         event.clientX < REVEAL_EDGE ||
-        (panel !== undefined &&
-          (event.clientX < panel.right + HOLD_SLACK ||
+        (holding &&
+          (event.clientX < element.offsetLeft + element.offsetWidth + HOLD_SLACK ||
             (event.target instanceof Element &&
               event.target.closest("[data-base-ui-portal]") !== null)));
+
+      if (near && element.dataset.state === "collapsed") {
+        floatX.jump(-(element.offsetWidth + FLOAT_CLEARANCE));
+      }
 
       setFloat((current) => (near ? "in" : current === undefined ? undefined : "out"));
     };
@@ -226,14 +222,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
   };
 
   return (
-    <div
-      {...props(
-        styles.seat,
-        !docked && styles.seatHidden,
-        floating && styles.seatFloating,
-        (resizing || docksInPlace) && styles.still,
-      )}
-    >
+    <div {...props(styles.seat, !docked && styles.seatHidden, floating && styles.seatFloating)}>
       <motion.div
         ref={rail}
         data-state={presentation}
@@ -245,8 +234,16 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
           floating && [floatingSurfaceStyles.popup, styles.railFloating],
         )}
         initial={false}
-        animate={{ "--_float": float === "in" ? 0 : 1 }}
-        transition={{ ...FLOAT_SPRING, delay: float === "out" ? HIDE_DELAY : 0 }}
+        style={{ x: floatX }}
+        animate={{ x: float === "out" ? -(sidebarWidth + FLOAT_CLEARANCE) : 0 }}
+        transition={
+          float === undefined
+            ? { duration: 0 }
+            : {
+                ...(reducedMotion === true ? { duration: 0 } : FLOAT_SPRING),
+                delay: float === "out" ? HIDE_DELAY : 0,
+              }
+        }
         onAnimationComplete={() => {
           if (float === "out") setFloat(undefined);
         }}

@@ -19,21 +19,29 @@ export function topIn(viewport: HTMLElement, element: Element): number {
 }
 
 export function syncSticky(viewport: HTMLElement, content: HTMLElement): void {
-  const prompts = content.querySelectorAll<HTMLElement>("[data-sticky-user-message]");
   const edge = viewport.getBoundingClientRect().top;
-  let active: HTMLElement | undefined;
+  const height = viewport.clientHeight;
+  const scrolled = viewport.scrollTop > 0;
+
+  const prompts = Array.from(
+    content.querySelectorAll<HTMLElement>("[data-sticky-user-message]"),
+    (element) => {
+      const rect = element.getBoundingClientRect();
+
+      return { element, top: rect.top, eligible: rect.height < height };
+    },
+  );
+
+  const active = prompts.findLast(
+    (prompt) => prompt.eligible && Math.abs(prompt.top - edge) <= STICKY_EPSILON,
+  );
 
   for (const prompt of prompts) {
-    const rect = prompt.getBoundingClientRect();
-    const eligible = rect.height < viewport.clientHeight;
-
-    setDataState(prompt, "stickyDisabled", !eligible);
-
-    if (eligible && Math.abs(rect.top - edge) <= STICKY_EPSILON) active = prompt;
+    setDataState(prompt.element, "stickyDisabled", !prompt.eligible);
+    setDataState(prompt.element, "stickyActive", prompt === active);
   }
 
-  for (const prompt of prompts) setDataState(prompt, "stickyActive", prompt === active);
-  setDataState(viewport, "topFade", viewport.scrollTop > 0 && active === undefined);
+  setDataState(viewport, "topFade", scrolled && active === undefined);
 }
 
 export function scrollsWithin(target: EventTarget | null, root: HTMLElement): boolean {

@@ -8,9 +8,9 @@ import type {
   CodeViewReactOptions,
 } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
-import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
-import type { ReactElement, ReactNode } from "react";
-import type { LineStat } from "@nyte-ai/sdk";
+import { useEffectEvent, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import type { ReactElement, Ref } from "react";
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -40,6 +40,7 @@ import { ReviewCheckbox } from "./changes-sidebar.tsx";
 import { FindWidget } from "./find-widget.tsx";
 import type { FindWidgetHandle } from "./find-widget.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { useCommitCount } from "../work-counts.ts";
 import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-stack-code-view.ts";
 import { diffRangeExcerpt } from "./diff-range.ts";
 import type { ChangesLayout } from "./changes-view-options.ts";
@@ -116,9 +117,63 @@ interface ScrollReport {
   top: number;
   timer: number | undefined;
   path: string | undefined;
+  revealing: boolean;
 }
 
+export interface ChangesStackHandle {
+  /** Scrolls to `path`'s file, smoothly when it is near, and keeps it the active file until the scroll settles. */
+  readonly reveal: (path: string) => void;
+}
+
+interface HeaderInputs {
+  readonly sources: ReadonlyMap<string, ChangesStackItem>;
+  readonly collapsed: ReadonlySet<string>;
+  readonly selected: string | undefined;
+  readonly viewedState: (path: string) => ViewedState;
+  readonly demand: ((path: string) => () => void) | undefined;
+  readonly onToggleCollapsed: (path: string) => void;
+  readonly onViewedChange: (path: string, viewed: boolean) => void;
+  readonly onRevertPath: ((path: string) => void) | undefined;
+  readonly addSelection: () => void;
+}
+
+interface HeaderView {
+  readonly path: string;
+  readonly added: number;
+  readonly removed: number;
+  readonly collapsed: boolean;
+  readonly selected: boolean;
+  readonly viewed: ViewedState;
+  readonly demand: ((path: string) => () => void) | undefined;
+  readonly revertable: boolean;
+}
+
+function createHeaderStore() {
+  let inputs: HeaderInputs | undefined;
+  const listeners = new Set<() => void>();
+
+  return {
+    get: (): HeaderInputs | undefined => inputs,
+
+    set: (next: HeaderInputs): void => {
+      if (next === inputs) return;
+      inputs = next;
+
+      for (const listener of listeners) listener();
+    },
+
+    subscribe: (listener: () => void): (() => void) => {
+      listeners.add(listener);
+
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+type HeaderStore = ReturnType<typeof createHeaderStore>;
+
 export function ChangesStack({
+  ref,
   items,
   collapsedPaths,
   onToggleCollapsed,
@@ -137,6 +192,7 @@ export function ChangesStack({
   onActivePath,
   onDemandPatch,
 }: {
+  readonly ref?: Ref<ChangesStackHandle>;
   readonly items: readonly ChangesStackItem[];
   readonly collapsedPaths: readonly string[];
   readonly onToggleCollapsed: (path: string) => void;
@@ -151,7 +207,7 @@ export function ChangesStack({
   readonly viewedState: (path: string) => ViewedState;
   readonly onViewedChange: (path: string, viewed: boolean) => void;
   readonly onRevertPath?: (path: string) => void;
-  readonly onScrollTop: (scrollTop: number) => void;
+  readonly onScrollTop: (scrollTop: number, activePath: string | undefined) => void;
   readonly onActivePath: (path: string) => void;
   readonly onDemandPatch?: (path: string) => () => void;
 }): ReactElement {
@@ -162,22 +218,24 @@ export function ChangesStack({
   const [codeItems] = useState(createChangesCodeViewItems);
   const model = codeItems(items, collapsedPaths);
   const collapsed = new Set(collapsedPaths);
-  const scrollReport = useRef<ScrollReport>({ top: scrollTop, timer: undefined, path: undefined });
+
+  const scrollReport = useRef<ScrollReport>({
+    top: scrollTop,
+    timer: undefined,
+    path: undefined,
+    revealing: false,
+  });
+
   const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
-  const sources = useRef(model.sourceById);
   const mac = nyte.platform === "darwin";
 
   const [find, setFind] = useState<CodeViewSearch>();
   const findWidget = useRef<FindWidgetHandle>(null);
-
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest sources for viewer callbacks, which run outside render
-  useLayoutEffect(() => {
-    sources.current = model.sourceById;
-  }, [model.sourceById]);
+  const [headers] = useState(createHeaderStore);
 
   const addRange = (id: string, range: SelectedLineRange): boolean => {
     const item = viewer.current?.getItem(id);
-    const source = sources.current.get(id);
+    const source = headers.get()?.sources.get(id);
 
     if (item?.type !== "diff" || source === undefined) return false;
     const reference = diffRangeExcerpt(source.path, item.fileDiff, range);
@@ -240,53 +298,49 @@ export function ChangesStack({
     onFocusApplied?.(focusRevision);
   }, [focusPath, focusRevision, model.items, onFocusApplied]);
 
-  const renderHeader = (codeItem: CodeViewItem<string>): ReactElement | null => {
-    const item = model.sourceById.get(codeItem.id);
-
-    if (item === undefined) return null;
-    const viewed = viewedState(item.path);
-
-    return (
-      <StackHeader
-        path={item.path}
-        stat={item.stat}
-        collapsed={collapsed.has(item.path)}
-        demand={onDemandPatch}
-        onToggleCollapsed={onToggleCollapsed}
-      >
-        {selection?.id === codeItem.id && (
-          <Button
-            iconOnly
-            icon="paperclip"
-            aria-label={ADD_TO_CHAT_LABEL}
-            aria-keyshortcuts={mac ? "Meta+Shift+L" : "Control+Shift+L"}
-            onClick={() => addRange(selection.id, selection.range)}
-          />
-        )}
-        {onRevertPath !== undefined && (
-          <Button
-            iconOnly
-            icon="refresh"
-            aria-label={`Revert ${item.path}`}
-            onClick={() => onRevertPath(item.path)}
-          />
-        )}
-        <ReviewCheckbox
-          state={viewed}
-          label={
-            viewed === "viewed"
-              ? `Mark ${item.path} not viewed`
-              : viewed === "changed"
-                ? `Mark ${item.path} viewed; changed since last view`
-                : viewed === "unknown"
-                  ? `Mark ${item.path} viewed; its earlier mark is not checked against this diff yet`
-                  : `Mark ${item.path} viewed`
-          }
-          onChange={(next) => onViewedChange(item.path, next)}
-        />
-      </StackHeader>
-    );
+  const inputs: HeaderInputs = {
+    sources: model.sourceById,
+    collapsed,
+    selected: selection?.id,
+    viewedState,
+    demand: onDemandPatch,
+    onToggleCollapsed,
+    onViewedChange,
+    onRevertPath,
+    addSelection: () => {
+      if (selection !== null) addRange(selection.id, selection.range);
+    },
   };
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- hands the latest inputs to the headers Pierre renders, which subscribe to their own slice
+  useLayoutEffect(() => headers.set(inputs));
+
+  const renderHeader = (codeItem: CodeViewItem<string>): ReactElement => (
+    <StackHeader id={codeItem.id} headers={headers} />
+  );
+
+  const settleLater = (): void => {
+    const report = scrollReport.current;
+    window.clearTimeout(report.timer);
+    report.timer = window.setTimeout(() => {
+      report.timer = undefined;
+      report.revealing = false;
+
+      if (viewer.current !== null) onScrollTop(report.top, report.path);
+    }, SCROLL_SETTLE_MS);
+  };
+
+  useImperativeHandle(ref, () => ({
+    reveal: (path) => {
+      if (viewer.current?.getItem(path) === undefined) return;
+      const report = scrollReport.current;
+      report.revealing = true;
+      report.path = path;
+      onActivePath(path);
+      viewer.current.scrollTo({ type: "item", id: path, align: "start", behavior: "smooth-auto" });
+      settleLater();
+    },
+  }));
 
   return (
     <div
@@ -347,7 +401,9 @@ export function ChangesStack({
             node.dataset.nyteScrollport = "balanced";
             node.dataset.changesStack = "";
           }}
-          onSelectedLinesChange={setSelection}
+          onSelectedLinesChange={(next) =>
+            setSelection((current) => (sameSelection(current, next) ? current : next))
+          }
           onRevealSearchMatch={(codeItem) => {
             const source = model.sourceById.get(codeItem.id);
 
@@ -358,27 +414,23 @@ export function ChangesStack({
           onScroll={(top, instance) => {
             const report = scrollReport.current;
             report.top = top;
-            window.clearTimeout(report.timer);
-            report.timer = window.setTimeout(() => {
-              report.timer = undefined;
-
-              if (viewer.current !== null) onScrollTop(report.top);
-            }, SCROLL_SETTLE_MS);
+            settleLater();
             const last = items.at(-1);
 
-            if (last === undefined) return;
+            if (report.revealing || last === undefined) return;
 
-            let active = items[0]?.path;
+            const atTop = instance.getRenderedItems().findLast((rendered) => {
+              const itemTop = instance.getTopForItem(rendered.id);
 
-            if (top + instance.getHeight() >= instance.getScrollHeight() - 2) active = last.path;
-            else {
-              for (const [id, source] of model.sourceById) {
-                const itemTop = instance.getTopForItem(id);
+              return itemTop !== undefined && itemTop <= top + 1;
+            });
 
-                if (itemTop === undefined || itemTop > top + 1) break;
-                active = source.path;
-              }
-            }
+            const active =
+              top + instance.getHeight() >= instance.getScrollHeight() - 2
+                ? last.path
+                : atTop === undefined
+                  ? items[0]?.path
+                  : model.sourceById.get(atTop.id)?.path;
 
             if (active === undefined || active === report.path) return;
             report.path = active;
@@ -391,27 +443,35 @@ export function ChangesStack({
 }
 
 function StackHeader({
-  path,
-  stat,
-  collapsed,
-  demand,
-  onToggleCollapsed,
-  children,
+  id,
+  headers,
 }: {
-  readonly path: string;
-  readonly stat: LineStat;
-  readonly collapsed: boolean;
-  readonly demand: ((path: string) => () => void) | undefined;
-  readonly onToggleCollapsed: (path: string) => void;
-  readonly children: ReactNode;
-}): ReactElement {
-  const added = stat.kind === "text" ? stat.added : 0;
-  const removed = stat.kind === "text" ? stat.removed : 0;
+  readonly id: string;
+  readonly headers: HeaderStore;
+}): ReactElement | null {
+  useCommitCount("render:changes-header");
+
+  const view = useSyncExternalStoreWithSelector(
+    headers.subscribe,
+    headers.get,
+    headers.get,
+    (inputs) => headerView(inputs, id),
+    sameHeaderView,
+  );
+
+  if (view === undefined) return null;
+  const path = view.path;
+  const added = view.added;
+  const removed = view.removed;
+  const collapsed = view.collapsed;
+  const viewed = view.viewed;
+  const demand = view.demand;
+  const mac = nyte.platform === "darwin";
 
   return (
     <Collapsible.Root
       open={!collapsed}
-      onOpenChange={() => onToggleCollapsed(path)}
+      onOpenChange={() => headers.get()?.onToggleCollapsed(path)}
       data-change-path={path}
       xstyle={styles.headerRow}
     >
@@ -444,10 +504,85 @@ function StackHeader({
           </span>
         )}
       </Collapsible.Trigger>
-      {children}
-      {}
+      {view.selected && (
+        <Button
+          iconOnly
+          icon="paperclip"
+          aria-label={ADD_TO_CHAT_LABEL}
+          aria-keyshortcuts={mac ? "Meta+Shift+L" : "Control+Shift+L"}
+          onClick={() => headers.get()?.addSelection()}
+        />
+      )}
+      {view.revertable && (
+        <Button
+          iconOnly
+          icon="refresh"
+          aria-label={`Revert ${path}`}
+          onClick={() => headers.get()?.onRevertPath?.(path)}
+        />
+      )}
+      <ReviewCheckbox
+        state={viewed}
+        label={
+          viewed === "viewed"
+            ? `Mark ${path} not viewed`
+            : viewed === "changed"
+              ? `Mark ${path} viewed; changed since last view`
+              : viewed === "unknown"
+                ? `Mark ${path} viewed; its earlier mark is not checked against this diff yet`
+                : `Mark ${path} viewed`
+        }
+        onChange={(next) => headers.get()?.onViewedChange(path, next)}
+      />
       {!collapsed && demand !== undefined && <PatchDemand key={path} path={path} demand={demand} />}
     </Collapsible.Root>
+  );
+}
+
+function headerView(inputs: HeaderInputs | undefined, id: string): HeaderView | undefined {
+  const source = inputs?.sources.get(id);
+
+  if (inputs === undefined || source === undefined) return undefined;
+
+  return {
+    path: source.path,
+    added: source.stat.kind === "text" ? source.stat.added : 0,
+    removed: source.stat.kind === "text" ? source.stat.removed : 0,
+    collapsed: inputs.collapsed.has(source.path),
+    selected: inputs.selected === id,
+    viewed: inputs.viewedState(source.path),
+    demand: inputs.demand,
+    revertable: inputs.onRevertPath !== undefined,
+  };
+}
+
+function sameHeaderView(left: HeaderView | undefined, right: HeaderView | undefined): boolean {
+  if (left === undefined || right === undefined) return left === right;
+
+  return (
+    left.path === right.path &&
+    left.added === right.added &&
+    left.removed === right.removed &&
+    left.collapsed === right.collapsed &&
+    left.selected === right.selected &&
+    left.viewed === right.viewed &&
+    left.demand === right.demand &&
+    left.revertable === right.revertable
+  );
+}
+
+function sameSelection(
+  left: CodeViewLineSelection | null,
+  right: CodeViewLineSelection | null,
+): boolean {
+  if (left === null || right === null) return left === right;
+
+  return (
+    left.id === right.id &&
+    left.range.start === right.range.start &&
+    left.range.end === right.range.end &&
+    left.range.side === right.range.side &&
+    left.range.endSide === right.range.endSide
   );
 }
 

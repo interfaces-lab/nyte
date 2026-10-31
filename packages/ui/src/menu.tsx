@@ -52,7 +52,8 @@ export const menuStyles = create({
     },
     transitionProperty: "opacity, transform",
     transitionDuration: {
-      default: motion.durationFast,
+      default: motion.durationNormal,
+      "[data-ending-style]": motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOutQuint,
@@ -66,7 +67,7 @@ export const menuStyles = create({
       "[data-ending-style]": motion.durationInstant,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: motion.easeOut,
+    transitionTimingFunction: motion.easeOutQuint,
   },
   item: {
     display: "grid",

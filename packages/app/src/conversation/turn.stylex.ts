@@ -91,7 +91,7 @@ export const turnStyles = create({
       default: userPendingIn,
       "@media (prefers-reduced-motion: reduce)": "none",
     },
-    animationDuration: "180ms",
+    animationDuration: motion.durationSlow,
     animationTimingFunction: motion.easeOut,
   },
   userPreview: { display: "block", minWidth: 0 },

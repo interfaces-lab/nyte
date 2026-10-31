@@ -17,7 +17,6 @@ export const sidebarStyles = create({
   content: {
     "--_sidebar-motion-duration": motion.durationNormal,
     "--_sidebar-motion-easing": motion.easeOutQuint,
-    "--_sidebar-archive-duration": motion.durationFast,
     position: "relative",
     display: "flex",
     flexDirection: "column",

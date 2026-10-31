@@ -1,5 +1,5 @@
 import { measureNaturalWidth, prepare } from "@chenglou/pretext";
-import { useFileTree } from "@pierre/trees/react";
+import { FileTree, useFileTree } from "@pierre/trees/react";
 import { create, props } from "@stylexjs/stylex";
 import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
@@ -10,7 +10,7 @@ import { Popover } from "@nyte-ai/ui/popover";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { MentionFile } from "../conversation/message-references.ts";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
-import { WorkspaceFileTree } from "./file-tree.tsx";
+import { syncTreePaths } from "./tree-paths.ts";
 import { treeItemHeight } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
@@ -129,13 +129,16 @@ function useCrumbFit(nav: RefObject<HTMLElement | null>, path: string | undefine
       };
 
       measurements.set(font, measured);
-      setFit(
-        fitCrumbs(
-          measured.labels.map((label) => label + padding),
-          measured.more + padding,
-          padding,
-          node.clientWidth,
-        ),
+
+      const next = fitCrumbs(
+        measured.labels.map((label) => label + padding),
+        measured.more + padding,
+        padding,
+        node.clientWidth,
+      );
+
+      setFit((previous) =>
+        previous.hidden === next.hidden && previous.nameWidth === next.nameWidth ? previous : next,
       );
     };
 
@@ -227,6 +230,7 @@ function HiddenFolders({
             <Popover.Popup aria-label={directory} xstyle={styles.popup}>
               {directory !== undefined && (
                 <BreadcrumbTree
+                  key={directory}
                   directory={directory}
                   files={files}
                   onOpen={(file) => {
@@ -280,6 +284,7 @@ function FileCrumb({
           <Popover.Popup aria-label={directory || "Workspace files"} xstyle={styles.popup}>
             {open && (
               <BreadcrumbTree
+                key={directory}
                 directory={directory}
                 files={files}
                 onOpen={(file) => {
@@ -321,8 +326,11 @@ function BreadcrumbTree({
     search: false,
   });
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes paths into the imperative Pierre tree
-  useLayoutEffect(() => model.resetPaths(paths), [model, paths]);
+  const shownPaths = useRef<ReadonlySet<string>>(new Set());
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes path changes into the imperative Pierre tree
+  useLayoutEffect(() => {
+    shownPaths.current = syncTreePaths(model, shownPaths.current, paths);
+  }, [model, paths]);
 
   const openFile = (event: Event): void => {
     const row = event
@@ -339,7 +347,7 @@ function BreadcrumbTree({
   };
 
   return (
-    <WorkspaceFileTree
+    <FileTree
       model={model}
       onClick={(event) => openFile(event.nativeEvent)}
       onKeyDown={(event) => {

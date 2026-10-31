@@ -36,7 +36,7 @@ const styles = create({
       "[data-instant]": "0s",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: motion.easeOut,
+    transitionTimingFunction: motion.easeOutQuint,
   },
   card: {
     display: "flex",

@@ -13,6 +13,9 @@ import { occludes } from "../../workbench/browser-occlusion.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
+// Mirrors motion.durationNormal and motion.easeOutQuint; motion can't read CSS variables.
+const TRAY_TRANSITION = { duration: 0.15, ease: [0.16, 1, 0.3, 1] } as const;
+
 export const trayParts = create({
   root: {
     position: "relative",
@@ -180,7 +183,7 @@ export function Tray({
               ? { opacity: 1, pointerEvents: "none" }
               : { opacity: 0, y: 4, scale: 0.99, pointerEvents: "none" }
           }
-          transition={reducedMotion ? { duration: 0 } : { duration: 0.15, ease: "easeOut" }}
+          transition={reducedMotion ? { duration: 0 } : TRAY_TRANSITION}
           {...props(trayStyles.surface, xstyle)}
           onKeyDown={(event) => {
             if (onClose === undefined || event.key !== "Escape" || event.defaultPrevented) return;

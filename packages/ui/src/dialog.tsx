@@ -8,7 +8,7 @@ import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
-import { role, shadow, type } from "./styles/vars.stylex.ts";
+import { motion, role, shadow, type } from "./styles/vars.stylex.ts";
 
 const styles = create({
   backdrop: {
@@ -16,6 +16,13 @@ const styles = create({
     inset: 0,
     zIndex: layer.dialogBackdrop,
     backgroundColor: role.bgScrim,
+    opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
+    transitionProperty: "opacity",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOutQuint,
   },
   popup: {
     position: "fixed",
@@ -37,6 +44,19 @@ const styles = create({
     boxShadow: shadow.shadowXl,
     color: role.contentPrimary,
     transform: "translate(-50%, -50%)",
+    opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
+    scale: {
+      default: 1,
+      "[data-starting-style]": 0.98,
+      "[data-ending-style]": 0.98,
+      "@media (prefers-reduced-motion: reduce)": 1,
+    },
+    transitionProperty: "opacity, scale",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOutQuint,
   },
   header: { display: "flex", flexDirection: "column", gap: space.s1 },
   title: {

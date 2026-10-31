@@ -36,12 +36,12 @@ describe("framePace", () => {
     ]);
   });
 
-  test("a frame less than 16 ms after the last flush reveals nothing", () => {
+  test("a frame less than 12 ms after the last flush reveals nothing", () => {
     const first = framePace(extendPace(settledPace(""), BURST, 0), 100);
 
     expect(first.shown).toBe(42);
-    expect(framePace(first, 115)).toBe(first);
-    expect(framePace(first, 116).shown).toBe(78);
+    expect(framePace(first, 111)).toBe(first);
+    expect(framePace(first, 112).shown).toBe(78);
   });
 
   test("text arriving mid catch-up keeps the eight-frame divisor instead of counting down", () => {

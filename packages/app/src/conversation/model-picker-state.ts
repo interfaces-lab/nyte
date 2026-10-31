@@ -66,6 +66,7 @@ const ACP_AGENT_ICONS = new Map<string, IconName>(
     cursor: "agent-cursor",
     deepagents: "agent-langchain",
     devin: "agent-devin",
+    fx: "provider-vercel",
     gemini: "model-gemini",
     "github-copilot-cli": "provider-copilot",
     "glm-acp-agent": "model-zai",

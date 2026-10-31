@@ -36,7 +36,7 @@ const COLOR_TRANSITION = {
     default: motion.durationFast,
     "@media (prefers-reduced-motion: reduce)": "0s",
   },
-  transitionTimingFunction: "ease-in-out",
+  transitionTimingFunction: motion.easeOut,
 } as const;
 
 const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 65%, ${role.contentTertiary})`;

@@ -3,7 +3,7 @@ import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { useEffectEvent, useId, useLayoutEffect, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { StatusDot } from "../../components/ui.tsx";
@@ -47,6 +47,26 @@ const NO_AGENTS: readonly SessionInfo[] = [];
 
 function agentTitle(agent: SessionInfo | undefined, sessionId: SessionId): string {
   return agent?.name ?? sessionId;
+}
+
+function ReleaseOnEmpty({
+  root,
+  onRelease,
+}: {
+  readonly root: HTMLDivElement | null;
+  readonly onRelease: () => void;
+}): null {
+  const release = useEffectEvent(onRelease);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- unmounts before the emptied tray's pill is removed or its content turns inert
+  useLayoutEffect(
+    () => () => {
+      if (root?.contains(document.activeElement) === true) release();
+    },
+    [root],
+  );
+
+  return null;
 }
 
 export function listSubagents(agents: readonly SessionInfo[], view: SubagentTrayView) {
@@ -142,13 +162,14 @@ export function SubagentTray({
     if (held) onRelease();
   };
 
-  if (view.kind === "closed" && active.length === 0) return null;
-
-  if (view.kind === "list" && listed.length === 0) return null;
+  const empty =
+    (view.kind === "closed" && active.length === 0) ||
+    (view.kind === "list" && listed.length === 0);
 
   return (
     <div ref={attachRoot} {...props(trayParts.root)}>
-      {view.kind === "closed" && (
+      {!empty && <ReleaseOnEmpty root={root} onRelease={onRelease} />}
+      {view.kind === "closed" && active.length > 0 && (
         <TrayPill
           label={`Agents, ${String(active.length)} active`}
           controls={trayId}

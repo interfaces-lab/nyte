@@ -51,6 +51,7 @@ import { ChangesSidebar } from "./changes-sidebar.tsx";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { ChangesStack } from "./changes-stack.tsx";
+import type { ChangesStackHandle } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 import { createPatchLoader } from "./changes-patches.ts";
 import type { PatchEntry, PatchSource } from "./changes-patches.ts";
@@ -378,9 +379,7 @@ interface ChangesPanelProps {
   readonly fileTreeVisible: boolean;
   readonly onScopeChange: (scope: WorkbenchChangesScope) => void;
   readonly onToggleFileTree: () => void;
-  readonly onSelectPath: (path: string | undefined) => void;
-  readonly onRevealPath: (path: string) => void;
-  readonly onScrollTop: (scrollTop: number) => void;
+  readonly onScrollTop: (scrollTop: number, selectedPath: string | undefined) => void;
   readonly onRevertPath?: (path: string) => void;
   readonly onOpenLink?: (url: string) => void;
 }
@@ -403,8 +402,6 @@ function ChangesPanelView({
   fileTreeVisible,
   onScopeChange,
   onToggleFileTree,
-  onSelectPath,
-  onRevealPath,
   onScrollTop,
   onRevertPath,
   onOpenLink,
@@ -422,6 +419,7 @@ function ChangesPanelView({
 
   const snapshot = useVcsSnapshot(visible);
   const filterInput = useRef<HTMLInputElement>(null);
+  const stack = useRef<ChangesStackHandle>(null);
   const revertReturnRef = useRef<HTMLButtonElement | null>(null);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | undefined>(undefined);
   const [reverting, setReverting] = useState(false);
@@ -434,6 +432,12 @@ function ChangesPanelView({
   }>({ scope: "", paths: NO_COLLAPSED_PATHS });
 
   const [markNotice, setMarkNotice] = useState({ scope: "", text: "" });
+
+  const [scrolled, setScrolled] = useState<{
+    readonly scope: string;
+    readonly revision: number;
+    readonly path: string | undefined;
+  }>({ scope: "", revision: 0, path: undefined });
 
   const selectedTurn =
     scope.kind === "turn"
@@ -524,7 +528,12 @@ function ChangesPanelView({
 
   const allCollapsed = rows.length > 0 && rows.every((row) => collapsedPaths.includes(row.path));
 
-  const activePath = rows.some((row) => row.path === selectedPath) ? selectedPath : rows[0]?.path;
+  const shownPath =
+    scrolled.scope === activeScopeValue && scrolled.revision === revealPathRevision
+      ? scrolled.path
+      : selectedPath;
+
+  const activePath = rows.some((row) => row.path === shownPath) ? shownPath : rows[0]?.path;
 
   const preparedPaths = visible ? preparationOrder(rows, activePath, collapsedPaths) : [];
 
@@ -832,41 +841,42 @@ function ChangesPanelView({
               files={sidebarFiles}
               activePath={activePath}
               filterInputRef={filterInput}
-              onRevealPath={onRevealPath}
+              onRevealPath={(path) => stack.current?.reveal(path)}
               onAllViewedChange={setViewed}
             />
           )}
-          {visible && (
-            <ChangesStack
-              items={sections}
-              collapsedPaths={collapsedPaths}
-              onToggleCollapsed={toggleCollapsedPath}
-              onExpand={(path) =>
-                setCollapsedSections((current) => ({
-                  ...current,
-                  paths: current.paths.filter((entry) => entry !== path),
-                }))
-              }
-              scrollTop={scrollTop}
-              focusPath={activePath}
-              focusRevision={
-                appliedReveal.scope === activeScopeValue &&
-                appliedReveal.revision === revealPathRevision
-                  ? 0
-                  : revealPathRevision
-              }
-              onFocusApplied={(revision) => setAppliedReveal({ scope: activeScopeValue, revision })}
-              layout={options.layout}
-              wordWrap={options.wordWrap}
-              loadDiffFiles={loadDiffFiles}
-              viewedState={viewedState}
-              onViewedChange={setFileViewed}
-              onRevertPath={revertPath}
-              onScrollTop={onScrollTop}
-              onActivePath={onSelectPath}
-              onDemandPatch={patches.mount}
-            />
-          )}
+          <ChangesStack
+            ref={stack}
+            items={sections}
+            collapsedPaths={collapsedPaths}
+            onToggleCollapsed={toggleCollapsedPath}
+            onExpand={(path) =>
+              setCollapsedSections((current) => ({
+                ...current,
+                paths: current.paths.filter((entry) => entry !== path),
+              }))
+            }
+            scrollTop={scrollTop}
+            focusPath={activePath}
+            focusRevision={
+              appliedReveal.scope === activeScopeValue &&
+              appliedReveal.revision === revealPathRevision
+                ? 0
+                : revealPathRevision
+            }
+            onFocusApplied={(revision) => setAppliedReveal({ scope: activeScopeValue, revision })}
+            layout={options.layout}
+            wordWrap={options.wordWrap}
+            loadDiffFiles={loadDiffFiles}
+            viewedState={viewedState}
+            onViewedChange={setFileViewed}
+            onRevertPath={revertPath}
+            onScrollTop={onScrollTop}
+            onActivePath={(path) =>
+              setScrolled({ scope: activeScopeValue, revision: revealPathRevision, path })
+            }
+            onDemandPatch={patches.mount}
+          />
         </div>
       )}
       {markNotice.scope === activeScopeValue && markNotice.text !== "" && (

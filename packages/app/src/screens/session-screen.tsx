@@ -95,6 +95,12 @@ function DropPreview({
   );
 }
 
+function SessionDropPreview({ layout }: { readonly layout: PaneLayout }): ReactElement | null {
+  const target = useSessionDropTarget();
+
+  return target === undefined ? null : <DropPreview layout={layout} target={target} />;
+}
+
 function SessionPanes({
   viewKey,
   maximized,
@@ -107,8 +113,6 @@ function SessionPanes({
   const [availableWidth, setAvailableWidth] = useState(Number.NaN);
   const layout = fitSplitRatio(usePaneControllerSnapshot().layout, availableWidth);
   const containerRef = useRef<HTMLDivElement>(null);
-  const dropTarget = useSessionDropTarget();
-  const [dragRatio, setDragRatio] = useState<number | undefined>();
   const panes = orderedPanes(layout);
   const leading = panes[0] ?? activePane(layout);
   const trailing = layout.kind === "split" ? panes[1] : undefined;
@@ -132,9 +136,7 @@ function SessionPanes({
         pane={leading}
         floatingMount={floatingMount}
         position={
-          layout.kind === "single"
-            ? { kind: "single" }
-            : { kind: "leading", ratio: dragRatio ?? layout.ratio }
+          layout.kind === "single" ? { kind: "single" } : { kind: "leading", ratio: layout.ratio }
         }
       />
       {layout.kind === "split" && trailing !== undefined && (
@@ -142,8 +144,6 @@ function SessionPanes({
           key="pane-sash"
           direction={layout.direction}
           ratio={layout.ratio}
-          dragRatio={dragRatio}
-          onDragRatio={setDragRatio}
           availableWidth={availableWidth}
           onAvailableWidth={setAvailableWidth}
           containerRef={containerRef}
@@ -157,7 +157,7 @@ function SessionPanes({
           floatingMount={floatingMount}
         />
       )}
-      {dropTarget !== undefined && <DropPreview layout={layout} target={dropTarget} />}
+      <SessionDropPreview layout={layout} />
     </div>
   );
 }

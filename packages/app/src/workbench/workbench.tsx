@@ -386,31 +386,12 @@ function PanelContent({
                 })
               }
               onToggleFileTree={onToggleSidebar}
-              onSelectPath={(path) =>
-                workbenchController.actions.updateTab({
-                  view: viewKey,
-                  id: tab.id,
-                  kind: "changes",
-                  patch: { ...tab, selectedPath: path ?? null },
-                })
-              }
-              onRevealPath={(path) =>
-                workbenchController.actions.updateTab({
-                  view: viewKey,
-                  id: tab.id,
-                  kind: "changes",
-                  patch: {
-                    ...tab,
-                    selectedPath: path,
-                    pathRevealRevision: tab.pathRevealRevision + 1,
-                  },
-                })
-              }
-              onScrollTop={(scrollTop) =>
+              onScrollTop={(scrollTop, selectedPath) =>
                 workbenchController.actions.scrollTab({
                   view: viewKey,
                   id: tab.id,
                   scrollTop: Math.max(0, scrollTop),
+                  selectedPath: selectedPath ?? null,
                 })
               }
               onOpenLink={
@@ -548,7 +529,7 @@ function WorkbenchViewHost({
 
     if (panel !== null) {
       panel.style.width = `${String(resize.nextWidth)}px`;
-      setActiveWidth(panel.getBoundingClientRect().width);
+      setActiveWidth(resize.nextWidth);
     }
   };
 

@@ -100,8 +100,6 @@ export function BackgroundWork({
     if (held) requestAnimationFrame(() => pillRef.current?.focus());
   };
 
-  if (!hasTerminals) return null;
-
   return (
     <div ref={ref} {...props(trayParts.root)}>
       {!trayOpen && hasTerminals && (

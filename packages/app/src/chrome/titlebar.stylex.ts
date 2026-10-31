@@ -25,10 +25,9 @@ export const titlebarStyles = create({
     paddingInlineStart: `max(${shell.trafficLightInset}, 10px)`,
     paddingInlineEnd: space.s2,
     transitionProperty: "width",
-    transitionDuration: sidebar.slideDuration,
-    transitionTimingFunction: sidebar.slideEasing,
+    transitionDuration: "0s",
   },
-  sidebarSlotHidden: { width: 0 },
+  sidebarSlotHidden: { width: 0, transitionDelay: sidebar.slideDuration },
   contentArea: {
     display: "flex",
     alignItems: "center",

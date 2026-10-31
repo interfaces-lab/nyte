@@ -273,6 +273,7 @@ export interface WorkbenchController {
       readonly view: WorkbenchViewKey;
       readonly id: WorkbenchTabId;
       readonly scrollTop: number;
+      readonly selectedPath: string | null;
     }) => void;
     readonly toggle: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly toggleCollapsed: (input: { readonly view: WorkbenchViewKey }) => void;
@@ -864,17 +865,21 @@ export function createWorkbenchController(
         };
       });
     },
-    scrollTab({ view, id, scrollTop }) {
+    scrollTab({ view, id, scrollTop, selectedPath }) {
       update(view, (current) => {
         const tab = current.tabs.find((candidate) => candidate.id === id);
 
-        if (tab === undefined || tab.kind !== "changes" || tab.scrollTop === scrollTop)
+        if (
+          tab === undefined ||
+          tab.kind !== "changes" ||
+          (tab.scrollTop === scrollTop && tab.selectedPath === selectedPath)
+        )
           return current;
 
         return {
           ...current,
           tabs: current.tabs.map((candidate) =>
-            candidate === tab ? { ...tab, scrollTop } : candidate,
+            candidate === tab ? { ...tab, scrollTop, selectedPath } : candidate,
           ),
         };
       });

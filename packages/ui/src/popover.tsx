@@ -28,10 +28,11 @@ const styles = create({
     },
     transitionProperty: "opacity, scale",
     transitionDuration: {
-      default: motion.durationFast,
+      default: motion.durationNormal,
+      "[data-ending-style]": motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: motion.easeOut,
+    transitionTimingFunction: motion.easeOutQuint,
   },
   title: {
     margin: 0,

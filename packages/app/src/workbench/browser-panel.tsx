@@ -286,7 +286,7 @@ function useSurfacePlacement(
 
     window.addEventListener("resize", schedule);
     document.addEventListener("scroll", scrolled, { capture: true, passive: true });
-    const unsubscribe = subscribeOverlayRects(measure);
+    const unsubscribe = visible ? subscribeOverlayRects(measure) : () => undefined;
     placeRef.current = schedule;
     measure();
 

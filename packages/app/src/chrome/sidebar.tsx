@@ -8,7 +8,6 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
 import { Link, useRouter } from "@tanstack/react-router";
-import { motion } from "motion/react";
 import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { clientActionAriaShortcut, clientActionKeys, clientActions } from "../client-actions.ts";
@@ -41,7 +40,7 @@ import { useGitHub, useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { shellActions, useOverlays, useStagePage } from "./shell-state.ts";
-import { recordArchive, SidebarContent } from "./sidebar-content.tsx";
+import { SidebarContent } from "./sidebar-content.tsx";
 import { WorkspaceControls } from "./sidebar-filter.tsx";
 import {
   ChatsList,
@@ -255,10 +254,7 @@ export function Sidebar(): ReactElement {
     open: (sessionId, target) => void showSession(sessionId, target),
     rename: (sessionId, name) => renameSession.mutate({ sessionId, name }),
     pin: (session) => sessionActions.pin({ sessionId: session.id, pinned: !session.pinned }),
-    archive: (session) => {
-      recordArchive(1);
-      sessionActions.archive([session.id], !session.archived, hideFromPanes);
-    },
+    archive: (session) => sessionActions.archive([session.id], !session.archived, hideFromPanes),
     remove: (sessionId) => setConfirmation({ kind: "delete-session", sessionId }),
     openDraft: (draftId) => windowTabs.showDraft(draftId),
     removeDraft: (draftId) => windowTabs.controller().removeDraft(draftId),
@@ -465,7 +461,7 @@ export function Sidebar(): ReactElement {
           </Row>
         </div>
 
-        <motion.div layoutScroll data-nyte-scrollport {...props(styles.scroll)}>
+        <div data-nyte-scrollport {...props(styles.scroll)}>
           <section aria-label={flat ? "Chats" : "Workspaces"} {...props(styles.section)}>
             <Collapsible.Root
               open={collectionExpanded}
@@ -538,7 +534,7 @@ export function Sidebar(): ReactElement {
               </Collapsible.Panel>
             </Collapsible.Root>
           </section>
-        </motion.div>
+        </div>
       </SidebarContent>
 
       <SidebarFooter onOpenSettings={openSettings} />
@@ -573,7 +569,6 @@ export function Sidebar(): ReactElement {
           }}
           onConfirm={() => {
             closeConfirmation();
-            recordArchive(confirmation.sessionIds.length);
             sessionActions.archive(confirmation.sessionIds, true, hideFromPanes);
           }}
         />
