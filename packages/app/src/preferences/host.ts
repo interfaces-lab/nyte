@@ -28,7 +28,7 @@ export function acceptHostSettings(settings: HostSettings): void {
   queryClient.setQueryData(keys.hostSettings, settings);
 }
 
-export async function changeHostSettings(patch: HostSettingsPatch): Promise<void> {
+async function changeHostSettings(patch: HostSettingsPatch): Promise<void> {
   const bridge = nyte.host.settings;
 
   if (bridge === undefined) return;

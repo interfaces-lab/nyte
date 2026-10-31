@@ -38,11 +38,13 @@ import type {
 import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
 import type { BrowserAgent } from "../shared/browser-agent.ts";
 import type { HostWindow } from "../shared/host-window.ts";
+import { planAttention } from "../shared/attention.ts";
+import type { AttentionDelivery, AttentionReminder, AttentionSeen } from "../shared/attention.ts";
 import { desktopBrowserPlugin } from "./browser-plugin.ts";
 import { codemodeRuntimeOptions } from "../workers/codemode-runtime.ts";
 import { imageRuntimeOptions } from "../workers/image-runtime.ts";
-import { DEFAULT_DESKTOP_SETTINGS } from "../shared/desktop-settings.ts";
-import type { DesktopSettings } from "../shared/desktop-settings.ts";
+import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
+import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { DesktopUpdateActivity } from "../shared/host-messages.ts";
 import { desktopSettings, desktopSettingsPlugin } from "./host-settings.ts";
 import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
@@ -62,6 +64,8 @@ export interface DesktopHostDependencies {
   readonly serveTailnet?: typeof serveTailnet;
   readonly keepAwake?: (awake: boolean) => void;
   readonly settingsChanged?: (settings: DesktopSettings) => void;
+  readonly alert?: (delivery: AttentionDelivery) => void;
+  readonly badge?: (count: number) => void;
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
   readonly agent: BrowserAgent;
   readonly openDelayMs?: number | undefined;
@@ -120,6 +124,22 @@ async function listSessions(host: Host): Promise<readonly SessionInfo[]> {
   }
 
   return rows;
+}
+
+/** Rows as this app's windows see them: through the listener with their token, so `unread` is theirs. */
+async function* watchRows(opened: Opened): AsyncIterable<readonly SessionInfo[]> {
+  const connection = await sdk.connect({
+    url: HOST_PORT_ORIGIN,
+    credentials: { kind: "token", token: opened.token },
+    expect: { hostId: opened.host.hostId },
+    fetch: (url, init) => opened.listener.fetch(new Request(url, init)),
+  });
+
+  try {
+    yield* connection.sessions.watch({ parents: { kind: "all" } });
+  } finally {
+    await connection.close();
+  }
 }
 
 async function busyTerminals(host: Host): Promise<number> {
@@ -283,8 +303,15 @@ export class DesktopHost {
   #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
   #rows: readonly SessionInfo[] = [];
   readonly #watching = new AbortController();
-  #rowsWatch: AbortController | undefined;
+  #rowsFollowed = false;
   #awake = false;
+  readonly #since = Date.now();
+  #seen: AttentionSeen | undefined;
+  #badge = 0;
+  readonly #reminders = new Map<
+    string,
+    { readonly signature: string; readonly timer: ReturnType<typeof setInterval> }
+  >();
   #remote: Promise<ActiveRemote> | undefined;
   readonly #remoteOperations = serial();
   #server: Promise<ServerWatch | undefined> | undefined;
@@ -315,7 +342,7 @@ export class DesktopHost {
   #begin(): Promise<Opened> {
     const opened = this.#openOwned();
     opened.then(
-      (opened) => this.#followView(opened.host),
+      (opened) => this.#followView(opened),
       () => undefined,
     );
 
@@ -378,38 +405,77 @@ export class DesktopHost {
     return (await this.#ready()).listener.fetch(request);
   }
 
-  #followView(host: Host): void {
+  #followView(opened: Opened): void {
     void follow(
-      () => host.watch(),
+      () => opened.host.watch(),
       (view) => {
         this.#settings = desktopSettings(view);
         this.#deps.settingsChanged?.(this.#settings);
-        this.#followRows(host);
+        this.#followRows(opened);
         this.#holdAwake();
+
+        if (this.#seen !== undefined) this.#attend();
       },
       this.#watching.signal,
     );
   }
 
-  #followRows(host: Host): void {
-    const wanted = this.#settings.keepAwake;
-
-    if (wanted === (this.#rowsWatch !== undefined)) return;
-    this.#rowsWatch?.abort();
-    this.#rowsWatch = undefined;
-    this.#rows = [];
-
-    if (!wanted) return;
-    const rowsWatch = new AbortController();
-    this.#rowsWatch = rowsWatch;
+  #followRows(opened: Opened): void {
+    if (this.#rowsFollowed) return;
+    this.#rowsFollowed = true;
     void follow(
-      () => host.sessions.watch({ parents: { kind: "all" } }),
+      () => watchRows(opened),
       (rows) => {
         this.#rows = rows;
         this.#holdAwake();
+        this.#attend();
       },
-      AbortSignal.any([rowsWatch.signal, this.#watching.signal]),
+      this.#watching.signal,
     );
+  }
+
+  #attend(): void {
+    if (this.#closing !== undefined) return;
+
+    const plan = planAttention({
+      previous: this.#seen,
+      rows: this.#rows,
+      settings: this.#settings,
+      since: this.#since,
+    });
+
+    this.#seen = plan.seen;
+
+    for (const delivery of plan.deliveries) this.#deps.alert?.(delivery);
+
+    if (plan.badge !== this.#badge) {
+      this.#badge = plan.badge;
+      this.#deps.badge?.(plan.badge);
+    }
+
+    this.#remind(plan.reminders);
+  }
+
+  #remind(reminders: readonly AttentionReminder[]): void {
+    const every = this.#settings.remindMinutes * 60_000;
+
+    const wanted = new Map(
+      reminders.map((reminder) => [reminder.id, JSON.stringify([every, reminder.delivery])]),
+    );
+
+    for (const [id, held] of this.#reminders) {
+      if (wanted.get(id) === held.signature) continue;
+      clearInterval(held.timer);
+      this.#reminders.delete(id);
+    }
+
+    for (const reminder of reminders) {
+      const signature = wanted.get(reminder.id);
+
+      if (signature === undefined || this.#reminders.has(reminder.id)) continue;
+      const timer = setInterval(() => this.#deps.alert?.(reminder.delivery), every);
+      this.#reminders.set(reminder.id, { signature, timer });
+    }
   }
 
   #holdAwake(): void {
@@ -537,6 +603,7 @@ export class DesktopHost {
     this.#closing ??= (async () => {
       this.#watching.abort();
       this.#holdAwake();
+      this.#remind([]);
       await this.#connect.close().catch(() => undefined);
       await this.#remoteOperations.run(() => this.#stopRemote()).catch(() => undefined);
       await this.#sharing.close();
@@ -819,7 +886,7 @@ export class DesktopHost {
       const listener = await host.listen({
         transport: { kind: "http", hostname: "127.0.0.1" },
         auth: { kind: "token", token },
-        origins: APP_ORIGINS,
+        origins: [...APP_ORIGINS, ...this.#settings.webOrigins],
       });
 
       try {

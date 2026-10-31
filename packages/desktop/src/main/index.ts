@@ -25,7 +25,9 @@ import {
   LAUNCH_WINDOWS_ARGUMENT,
   MACHINE_NAME_ARGUMENT,
   MAIN_OPERATION_PATHS,
+  TERMINAL_NOTIFICATION_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
+  VIEWING_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ID_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
@@ -45,6 +47,7 @@ import {
 } from "./app-menu.ts";
 import type { ViewCommand } from "./app-menu.ts";
 import { safeExternalUrl } from "./native/external-url.ts";
+import { Alerts } from "./alerts.ts";
 import { BrowserSurfaces } from "./browser/browser.ts";
 import { BrowserHistoryStore } from "./browser/browser-history.ts";
 import { showContextMenu } from "./native/context-menu.ts";
@@ -60,17 +63,23 @@ import { canvasShellUrl, registerRenderer } from "./renderer-protocol.ts";
 import { ACCOUNT_CHANNELS } from "../shared/account/protocol.ts";
 import { readConnectConfig } from "../shared/connect-config.ts";
 import type { ConnectConfig } from "../shared/connect-config.ts";
-import { adoptStagedCli, installCli, stageCli } from "./native/cli.ts";
+import { adoptStagedCli, inspectBundledCli, installCli, stageCli } from "./native/cli.ts";
 import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
 import { answerAccount } from "../shared/host-account.ts";
 import { answerAgent } from "../shared/host-browser-agent.ts";
 import { HostProcess } from "./host-supervisor.ts";
 import type { HostWindow } from "../shared/host-window.ts";
-import { DEFAULT_DESKTOP_SETTINGS } from "../shared/desktop-settings.ts";
+import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
 import { LaunchStateStore } from "./launch-state.ts";
 import { registerUpdates } from "./updates/updates.ts";
 
-import { decodeBrowserBounds, decodeBrowserFocus, themePreference } from "../shared/ipc-inputs.ts";
+import {
+  decodeBrowserBounds,
+  decodeBrowserFocus,
+  terminalNotice,
+  themePreference,
+  viewedChat,
+} from "../shared/ipc-inputs.ts";
 
 interface NyteWindow {
   readonly window: BrowserWindow;
@@ -236,6 +245,18 @@ const browserSurfaces = new BrowserSurfaces({
   },
 });
 
+const alerts = new Alerts(() => settings, {
+  focused: () =>
+    [...windows].find(([, entry]) => !entry.window.isDestroyed() && entry.window.isFocused())?.[0],
+  latest: () => (currentWindow() ?? restoreWindows()).window.webContents.id,
+  reveal: (window) => {
+    const entry = windows.get(window);
+
+    if (entry !== undefined) reveal(entry);
+  },
+  send: (window, event) => send(window, HOST_EVENT_CHANNEL, event),
+});
+
 function applyViewCommand(contents: Electron.WebContents, command: ViewCommand): void {
   switch (command) {
     case "toggle-devtools":
@@ -357,6 +378,12 @@ const mainCalls: CallTable = {
 
     return updates.setChannel(channel);
   },
+  "host.bundledCli": async () =>
+    inspectBundledCli({
+      resources: process.resourcesPath,
+      packaged: app.isPackaged,
+      appVersion: app.getVersion(),
+    }),
   "host.openExternal": async (_window, { url }) => void shell.openExternal(safeExternalUrl(url)),
   "host.confirmExternal": (window, { url }) => confirmExternal(safeExternalUrl(url), window),
   "host.revealPath": async (_window, { path }) => shell.showItemInFolder(path),
@@ -415,6 +442,8 @@ function startHost(): HostProcess {
         settings = next;
         browserSurfaces.settingsChanged();
       },
+      alert: (delivery) => alerts.agent(delivery),
+      badge: (count) => alerts.badge(count),
       answer: async (request, signal) => {
         if (request.kind === "agent")
           return { kind: "agent", answer: await answerAgent(browserSurfaces.agent, request.call) };
@@ -530,6 +559,18 @@ function registerIpc(): void {
     } catch {
       return;
     }
+  });
+
+  ipcMain.on(VIEWING_CHANNEL, (event, viewed) => {
+    senderWindow(event);
+
+    if (viewedChat.Check(viewed)) alerts.viewing(event.sender.id, viewed);
+  });
+
+  ipcMain.on(TERMINAL_NOTIFICATION_CHANNEL, (event, notice) => {
+    senderWindow(event);
+
+    if (terminalNotice.Check(notice)) alerts.terminal(event.sender.id, notice);
   });
 
   ipcMain.on(BROWSER_FOCUS_CHANNEL, (event, message) => {
@@ -659,6 +700,7 @@ function createWindow(windowId: string = randomUUID()): NyteWindow {
 
   const releaseRendererWork = (): void => {
     hostProcess?.release(id);
+    alerts.reloading(id);
   };
 
   created.webContents.on("render-process-gone", releaseRendererWork);
@@ -744,6 +786,7 @@ function createWindow(windowId: string = randomUUID()): NyteWindow {
       launchState.setWindows(launchState.windows().filter((kept) => kept !== windowId));
     browserSurfaces.releaseWindow(id);
     hostProcess?.release(id);
+    alerts.release(id);
 
     if (windows.size === 0) {
       previewsOpen.abort();

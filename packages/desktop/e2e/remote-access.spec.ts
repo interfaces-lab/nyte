@@ -5,7 +5,7 @@ import { collectErrors } from "@nyte-ai/app/e2e/errors";
 import { APP_ORIGINS } from "@nyte-ai/app/contract/origins.ts";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
-import { chatRow, revealChat, sidebar } from "./ui.ts";
+import { chatRow, leaveSettings, openSettings, revealChat } from "./ui.ts";
 
 test.use({ chapter: "remote-access" });
 
@@ -41,12 +41,7 @@ async function serveShell(page: Page): Promise<void> {
   });
 }
 
-async function openRemoteAccess(page: Page): Promise<void> {
-  await sidebar(page).getByRole("button", { name: "Environments", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Remote access" })).toBeVisible();
-}
-
-test("a browser paired through Remote access shares the desktop's chats until it stops", async ({
+test("a browser paired through Settings > Server shares the desktop's chats until it stops", async ({
   browser,
   desktop,
 }) => {
@@ -54,20 +49,20 @@ test("a browser paired through Remote access shares the desktop's chats until it
   await using cleanup = new AsyncDisposableStack();
   cleanup.defer(() => context.close());
   const { page } = desktop;
-  await openRemoteAccess(page);
+  await openSettings(page, "Server");
 
-  const overTailscale = page
-    .locator("div")
-    .filter({ hasText: /^Over Tailscale/u, hasNotText: "Over Cloudflare Tunnel" });
+  const serve = page.getByRole("switch", { name: "Serve over Tailscale" });
+  await serve.click();
+  await expect(serve).toBeChecked();
+  await expect(page.getByText("Shared over Tailscale")).toBeVisible();
 
-  await overTailscale.getByRole("button", { name: "Start", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Remote access: Over Tailscale" })).toBeVisible();
-
-  await page.getByRole("tab", { name: "Address and Token" }).click();
-  await page.getByRole("button", { name: "Reveal token" }).click();
-  const link = page.locator('code[aria-label="Pairing link"]');
+  await page.getByRole("button", { name: "Pair…", exact: true }).click();
+  const pair = page.getByRole("dialog", { name: "Pair a Device" });
+  await pair.getByRole("button", { name: "Reveal token" }).click();
+  const link = pair.locator('code[aria-label="Pairing link"]');
   await expect(link).toHaveText(/^https:\/\/app\.nyte\.sh\/pair#host=.+&token=[\w-]+$/u);
   const pairingUrl = new URL(await link.innerText());
+  await pair.getByRole("button", { name: "Done", exact: true }).click();
   const fragment = new URLSearchParams(pairingUrl.hash.slice(1));
   const host = fragment.get("host");
   const token = fragment.get("token");
@@ -102,11 +97,16 @@ test("a browser paired through Remote access shares the desktop's chats until it
   );
 
   expect(status).toBe(200);
+  await leaveSettings(page);
   await expect(chatRow(page, CREATED)).toBeVisible();
 
-  await page.getByRole("button", { name: "Remote access: Over Tailscale" }).click();
-  await page.getByRole("menuitem", { name: "Stop Remote Access" }).click();
-  await expect(overTailscale.getByRole("button", { name: "Start", exact: true })).toBeEnabled();
+  await openSettings(page, "Server");
+  await page.getByRole("button", { name: "Stop Sharing…", exact: true }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Stop sharing this Mac?" });
+  await expect(confirm).toContainText("Devices connected over Tailscale are disconnected.");
+  await confirm.getByRole("button", { name: "Stop Sharing", exact: true }).click();
+  await expect(serve).not.toBeChecked();
+  await expect(serve).toBeEnabled();
 
   await chatRow(remote, FIXTURES.alpha).click();
   await expect(remote.getByRole("dialog", { name: "Couldn't open folder" })).toContainText(

@@ -3,11 +3,15 @@ import { RouterContextProvider } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Toaster } from "@nyte-ai/ui/toast";
+import { AppIcon } from "./components/app-icon.ts";
+import { nyte } from "./contract/nyte.ts";
 import { queryClient } from "./data/query-client.ts";
 import { Shell } from "./shell/shell.tsx";
 import type { AppRouter } from "./shell/routes.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { windowTabs } from "./tabs/window-tabs.ts";
+import { activeTab, tabPlace } from "./tabs/model.ts";
+import { preferences, useSetting } from "./preferences/index.ts";
 import { activeSelection } from "./panes/pane-layout.ts";
 import { workspacePathForView } from "./workbench/paths.ts";
 import { workbench } from "./workbench/store.ts";
@@ -35,6 +39,29 @@ function useChatWindowStage(router: AppRouter): void {
   });
 }
 
+/** Tells the desktop which chat this window shows, so it can stay quiet about that one. */
+function useViewedChat(): void {
+  useMountEffect(() => {
+    const attention = nyte.host.attention;
+
+    if (attention === undefined) return undefined;
+    let reported: SessionId | null | undefined;
+
+    const report = (): void => {
+      const place = tabPlace(activeTab(windowTabs.getSnapshot()));
+      const viewed = place.kind === "session" ? place.sessionId : null;
+
+      if (viewed === reported) return;
+      reported = viewed;
+      attention.viewing(viewed);
+    };
+
+    report();
+
+    return windowTabs.subscribe(report);
+  });
+}
+
 function useSavedShells(): void {
   useMountEffect(() => {
     reattachShells(
@@ -53,7 +80,9 @@ export function App({ appIcon, router }: { appIcon: string; router: AppRouter })
   useHostEvents();
   useChatWindowStage(router);
   useClientPlugins();
+  useViewedChat();
   useSavedShells();
+  const toastPosition = useSetting(preferences.toastPosition);
   useMountEffect(() => {
     const frame = requestAnimationFrame(() => {
       performance.mark("nyte:shell-ready");
@@ -66,8 +95,10 @@ export function App({ appIcon, router }: { appIcon: string; router: AppRouter })
   return (
     <QueryClientProvider client={queryClient}>
       <RouterContextProvider router={router}>
-        <Shell appIcon={appIcon} />
-        <Toaster />
+        <AppIcon value={appIcon}>
+          <Shell appIcon={appIcon} />
+        </AppIcon>
+        <Toaster position={toastPosition} />
       </RouterContextProvider>
     </QueryClientProvider>
   );

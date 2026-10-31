@@ -3,8 +3,10 @@ import type { IconName } from "@nyte-ai/ui/icon";
 import { ProvidersSettings } from "./models-settings.tsx";
 import { ProfileSettingsPage } from "./profile.tsx";
 import { prefetchUsage, UsageRangePicker, UsageSettings } from "./usage-settings.tsx";
-import { AdvancedSettings } from "./advanced.tsx";
 import { AgentSettings } from "./agent.tsx";
+import { DeveloperSettings } from "./developer.tsx";
+import { NotificationsSettings } from "./notifications.tsx";
+import { ServerSettings } from "./server.tsx";
 import { AppearanceSettings } from "./appearance.tsx";
 import { BrowserSettings } from "./browser.tsx";
 import { EditorSettings } from "./editor.tsx";
@@ -18,7 +20,7 @@ import type { Capability } from "./capability.ts";
 export interface PageInfo {
   readonly icon: IconName;
   readonly title: string;
-  readonly group: "you" | "app" | "tools" | "providers";
+  readonly group: "server" | "you" | "app" | "tools" | "providers";
   readonly needs: readonly Capability[];
   readonly keywords: readonly string[];
   readonly Page: ComponentType;
@@ -28,6 +30,27 @@ export interface PageInfo {
 }
 
 export const SETTINGS_PAGES = {
+  server: {
+    icon: "server",
+    title: "Server",
+    group: "server",
+    needs: ["desktop"],
+    keywords: [
+      "remote access",
+      "tailscale",
+      "pair",
+      "qr code",
+      "iphone",
+      "address",
+      "token",
+      "cloudflare",
+      "tunnel",
+      "remote host",
+      "connect",
+      "share",
+    ],
+    Page: ServerSettings,
+  },
   profile: {
     icon: "user",
     title: "Profile",
@@ -68,12 +91,30 @@ export const SETTINGS_PAGES = {
       "workspace",
       "sleep",
       "awake",
-      "updates",
-      "channel",
-      "stable",
-      "nightly",
     ],
     Page: GeneralSettings,
+  },
+  notifications: {
+    icon: "bell",
+    title: "Notifications",
+    group: "app",
+    needs: ["desktop"],
+    keywords: [
+      "alerts",
+      "needs you",
+      "question",
+      "done",
+      "failed",
+      "dock",
+      "badge",
+      "bounce",
+      "sound",
+      "remind",
+      "toast",
+      "terminal",
+      "osc",
+    ],
+    Page: NotificationsSettings,
   },
   appearance: {
     icon: "canvas-grid",
@@ -168,17 +209,30 @@ export const SETTINGS_PAGES = {
     icon: "globe",
     title: "Browser",
     group: "tools",
-    needs: ["hostSettings", "browser"],
+    needs: ["browser"],
     keywords: ["ads", "trackers", "https", "agent access", "folders"],
     Page: BrowserSettings,
   },
-  advanced: {
+  developer: {
     icon: "code-brackets",
-    title: "Advanced",
+    title: "Developer",
     group: "tools",
-    needs: ["hostSettings"],
-    keywords: ["trace", "telemetry", "diagnostics", "opentelemetry"],
-    Page: AdvancedSettings,
+    needs: [],
+    keywords: [
+      "developer mode",
+      "debug",
+      "updates",
+      "update channel",
+      "stable",
+      "nightly",
+      "trace",
+      "telemetry",
+      "opentelemetry",
+      "cli",
+      "origins",
+      "web client",
+    ],
+    Page: DeveloperSettings,
   },
   providers: {
     icon: "box-3d",

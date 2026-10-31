@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
 test(
-  "the Environments row links through its tray, reports the lease, and unlinks only on confirm",
+  "the Nyte account group links through its tray, reports the lease, and unlinks only on confirm",
   { timeout: 60_000 },
   async () => {
     expect(

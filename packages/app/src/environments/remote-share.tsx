@@ -1,61 +1,54 @@
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { toast } from "@nyte-ai/ui/toast";
 import { Button } from "@nyte-ai/ui/button";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
+
+const COPIED_MS = 1500;
 
 export const shareStyles = create({
-  panel: { display: "flex", flexDirection: "column", gap: space.s2 },
-  step: { display: "flex", flexDirection: "column", gap: space.s2 },
-  switcher: { alignSelf: "flex-start" },
-  scan: { display: "flex", alignItems: "center", gap: space.s3 },
-  scanText: { display: "flex", flexDirection: "column", gap: space.s1, minWidth: 0 },
-  fields: {
-    display: "grid",
-    gridTemplateColumns: "auto minmax(0, 1fr) auto",
+  pair: {
+    display: "flex",
+    flexDirection: "column",
     alignItems: "center",
-    columnGap: space.s2,
-    rowGap: space.s1_5,
+    gap: space.s3,
   },
-  label: {
-    color: role.contentSecondary,
-  },
-  fieldActions: { display: "inline-flex", gap: space.s2 },
   value: {
-    boxSizing: "border-box",
     minWidth: 0,
-    paddingInline: space.s2,
-    paddingBlock: space.s1,
-    borderRadius: radius.control,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
-    backgroundColor: role.bgBase,
-    color: role.contentPrimary,
+    color: role.contentSecondary,
     fontFamily: type.fontMono,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     fontVariantNumeric: "tabular-nums",
-    userSelect: "all",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+    userSelect: "all",
   },
+  actions: { display: "inline-flex", alignItems: "center", gap: space.s1 },
 });
 
+/** Copies a value and shows a checkmark for a moment. */
 export function CopyButton({ label, value }: { label: string; value: string }): ReactElement {
   const [copied, setCopied] = useState(false);
 
   return (
     <>
       <Button
+        variant="ghost"
         iconOnly
         icon={copied ? "checkmark" : "copy"}
         aria-label={`Copy ${label.toLocaleLowerCase()}`}
         onClick={() => {
           void navigator.clipboard.writeText(value).then(
-            () => setCopied(true),
+            () => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), COPIED_MS);
+            },
             () => {
               setCopied(false);
               toast.add({
@@ -70,5 +63,28 @@ export function CopyButton({ label, value }: { label: string; value: string }): 
         {copied ? `${label} copied` : ""}
       </span>
     </>
+  );
+}
+
+/** A row showing one value to hand to another device, with its actions at the end. */
+export function ValueRow({
+  title,
+  value,
+  children,
+}: {
+  readonly title: string;
+  readonly value: string;
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <div data-settings-row="" {...props(settingsPatterns.rowRule, settingsPatterns.row)}>
+      <span {...props(settingsPatterns.rowCopy)}>
+        <span {...props(settingsPatterns.rowTitle)}>{title}</span>
+        <code aria-label={title} {...props(shareStyles.value)}>
+          {value}
+        </code>
+      </span>
+      <span {...props(shareStyles.actions)}>{children}</span>
+    </div>
   );
 }

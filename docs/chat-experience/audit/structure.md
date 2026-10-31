@@ -20,13 +20,13 @@
 | Folder | Owns | Start at |
 | --- | --- | --- |
 | `index.ts`, `app.tsx` | What the desktop imports; the providers around the shell | `index.ts` |
-| `contract/` | Types and tables the desktop main and preload processes share with the app. No React | `bridge.ts` |
+| `contract/` | Types and tables the desktop main, host and preload processes share with the app, including the desktop settings. No React | `bridge.ts` |
 | `boot/` | Renderer startup, the first frame, the startup failure screen | `startup.ts` |
 | `data/` | The host connection, live watches and every query, one file per domain | `watches.ts`, `sessions.ts` |
 | `lib/` | Helpers with no domain: number and time formats, deferred chunks, small hooks | `format.ts`, `deferred.tsx` |
 | `theme/` | Tokens, fonts, appearance and the global stylesheet | `schema.stylex.ts` |
 | `preferences/` | Stored preferences | `index.ts` |
-| `components/` | App-wide pieces with no feature: chat card, the task mark, overlay occlusion | `task-mark.tsx` |
+| `components/` | App-wide pieces with no feature: chat card, the task mark, overlay occlusion, the app icon | `task-mark.tsx` |
 | `chats/` | The directory of chats, what state each is in, and the tasks (subagents and jobs) each started | `index.ts` (the only import) |
 | `diff/` | Diff rendering and patch loading, shared by the transcript and Changes | `diff-view.tsx` |
 | `references/` | Mentions and references a message carries, and "Add to chat" | `message-references.ts` |
@@ -40,8 +40,8 @@
 | `workbench/` | The workbench beside the chats: rail, tab strip, kind table, view reducer, store and commands | `workbench.tsx`, `model.ts`, `commands.ts` |
 | `workbench/browser/` `changes/` `files/` `terminal/` | One folder per workbench tool | `*-panel.tsx` |
 | `sidebar/` | Sidebar, chat lists, search palette | `sidebar.tsx` |
-| `settings/` | Settings pages, including models, profile and usage | `pages.ts` |
-| `environments/` | The Environments page: this computer, cloud, remote devices, server | `environments.tsx` |
+| `settings/` | Settings pages, including server, notifications, developer, models, profile and usage; `previews/` holds the cards' live previews | `pages.ts` |
+| `environments/` | The groups of Settings › Server: sharing this Mac, its devices, the Nyte account, a remote host | `server-settings.tsx` |
 | `customize/` | The Customize page: plugins, skills, MCP | `customize.tsx` |
 | `account/` | Sign-in, account footer, GitHub account | `account-footer.tsx` |
 | `panes/` | Split panes in a window tab, the workspace stage, opening a workspace | `session-screen.tsx`, `pane-context.tsx` |

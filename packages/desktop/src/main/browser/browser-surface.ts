@@ -6,7 +6,7 @@ import type {
   BrowserSurfaceState,
   HostEvent,
 } from "@nyte-ai/app/contract/bridge.ts";
-import type { DesktopSettings } from "../../shared/desktop-settings.ts";
+import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { BrowserHistoryStore } from "./browser-history.ts";
 import type { BrowserHolder, BrowserOwner, BrowserRect } from "../../shared/browser-agent.ts";
 import { surfaceSecurity } from "./browser-policy.ts";

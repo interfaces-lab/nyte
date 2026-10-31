@@ -2,6 +2,7 @@ import type { chartsRuntime } from "../settings/usage-charts.deferred.ts";
 import type { codeRuntime } from "../chat/markdown/code.deferred.tsx";
 import type { highlightRuntime } from "../chat/markdown/highlight.deferred.ts";
 import type { mermaidRuntime } from "../chat/markdown/mermaid.deferred.ts";
+import type { previewsRuntime } from "../settings/previews/previews.deferred.tsx";
 import type { ghosttyRuntime } from "../workbench/terminal/ghostty.deferred.ts";
 import type { pdfRuntime } from "../workbench/files/pdf/pdf.deferred.ts";
 import type { workbenchRuntime } from "../workbench/panels.deferred.tsx";
@@ -35,6 +36,10 @@ export const deferredEntries = {
     module: new URL("../settings/usage-charts.deferred.ts", import.meta.url).href,
     packages: ["@nivo/", "d3-shape/", "@react-spring/"],
   },
+  previews: {
+    module: new URL("../settings/previews/previews.deferred.tsx", import.meta.url).href,
+    packages: [],
+  },
 } as const;
 
 export interface DeferredRuntimes {
@@ -45,4 +50,5 @@ export interface DeferredRuntimes {
   ghostty: typeof ghosttyRuntime;
   pdf: typeof pdfRuntime;
   charts: typeof chartsRuntime;
+  previews: typeof previewsRuntime;
 }

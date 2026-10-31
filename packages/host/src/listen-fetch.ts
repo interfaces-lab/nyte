@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/schema";
+import { ORIGIN_PATTERN, SdkError } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
 import type { Authority, Disposer, Owned, PrincipalId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
@@ -13,7 +13,7 @@ import {
   errorStatus,
   operationsDigest,
 } from "@nyte-ai/protocol";
-import { createHandler } from "./serve/handler.ts";
+import { allowsOrigin, createHandler } from "./serve/handler.ts";
 import type { HandlerOptions } from "./serve/handler.ts";
 
 type Cached = {
@@ -45,6 +45,14 @@ export async function listenFetch(
 
   if (auth.kind === "token" && auth.token.length < 16)
     throw new SdkError("invalid", "A listener token needs at least 16 characters.");
+  const origin = new RegExp(ORIGIN_PATTERN);
+  const invalid = options.origins?.find((candidate) => !origin.test(candidate));
+
+  if (invalid !== undefined)
+    throw new SdkError(
+      "invalid",
+      `${invalid} isn't a listener origin. Use https://example.com, https://*.example.com or http://localhost:<port>.`,
+    );
   const { server } = host;
   const operations = await operationsDigest();
   const cache = new Map<string, Cached>();
@@ -246,7 +254,7 @@ export async function listenFetch(
   const cors = (request: Request): Readonly<Record<string, string>> => {
     const origin = request.headers.get("Origin");
 
-    return origin !== null && (options.origins ?? []).includes(origin)
+    return origin !== null && allowsOrigin(options.origins, origin)
       ? {
           "Access-Control-Allow-Origin": origin,
           "Access-Control-Expose-Headers": `${HOST_HEADER}, ${OPERATIONS_HEADER}`,

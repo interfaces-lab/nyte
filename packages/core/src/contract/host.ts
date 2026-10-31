@@ -353,6 +353,7 @@ export interface ListenOptions {
   readonly execution?:
     | { readonly kind: "run"; readonly coverage: ExecutionCoverage }
     | { readonly kind: "admit-only" };
+  /** Browser origins that may call the listener, each matching `ORIGIN_PATTERN` from `@nyte-ai/schema`; `https://*.example.com` allows every subdomain of example.com, but not example.com itself. */
   readonly origins?: readonly string[];
   readonly maxBodyBytes?: number;
   readonly identity?: { readonly id: HostId; sign(nonce: string): Awaitable<IdentityChallenge> };

@@ -17,6 +17,7 @@ import type { MouseEvent, ReactElement, ReactNode, Ref } from "react";
 import type { FileDocument, FileEvent } from "@nyte-ai/sdk";
 import { control, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
+import type { ThemePreference } from "../../contract/bridge.ts";
 import { diffStyles } from "../../diff/diff.stylex.ts";
 import { revealLabel, showContextMenu } from "../../components/context-menu.ts";
 import { nyte } from "../../contract/nyte.ts";
@@ -90,7 +91,24 @@ ${PIERRE_TOKEN_CSS}
 
 const EDITOR_LAYOUT = { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 };
 
-function createEditor<EType extends EditorType>(
+/** The `CodeView` options an open file renders with. */
+export function editorViewOptions(input: {
+  readonly theme: ThemePreference;
+  readonly lineNumbers: boolean;
+  readonly wordWrap: boolean;
+}) {
+  return {
+    ...PIERRE_HIGHLIGHTER_OPTIONS,
+    themeType: input.theme,
+    unsafeCSS: EDITOR_CSS,
+    disableFileHeader: true,
+    layout: EDITOR_LAYOUT,
+    disableLineNumbers: !input.lineNumbers,
+    overflow: input.wordWrap ? ("wrap" as const) : ("scroll" as const),
+  };
+}
+
+export function createEditor<EType extends EditorType>(
   editorType: EType,
   options: EditorOptions<EType, undefined, undefined>,
   editStateKey?: string,
@@ -98,7 +116,7 @@ function createEditor<EType extends EditorType>(
   return new Editor(editorType, options, editStateKey);
 }
 
-const styles = create({
+export const styles = create({
   root: {
     position: "absolute",
     inset: 0,
@@ -506,13 +524,7 @@ export function TextFileEditor({
   const dirty = snapshot.contents !== snapshot.savedContents;
 
   const viewOptions = {
-    ...PIERRE_HIGHLIGHTER_OPTIONS,
-    themeType: theme,
-    unsafeCSS: EDITOR_CSS,
-    disableFileHeader: true,
-    layout: EDITOR_LAYOUT,
-    disableLineNumbers: !lineNumbers,
-    overflow: wordWrap ? ("wrap" as const) : ("scroll" as const),
+    ...editorViewOptions({ theme, lineNumbers, wordWrap }),
     onLineClick: (event: { readonly lineNumber: number }) =>
       setClicked((current) => ({ ...current, line: event.lineNumber })),
   };

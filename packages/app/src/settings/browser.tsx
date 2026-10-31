@@ -1,6 +1,15 @@
 import type { ReactElement } from "react";
+import { DESKTOP_SETTING_SCHEMAS } from "../contract/desktop-settings.ts";
 import { hostSetting } from "../preferences/index.ts";
+import { pluginSetting } from "../preferences/plugin.ts";
 import { SelectRow, SettingsSection, SwitchRow } from "./rows.tsx";
+
+const blockAds = pluginSetting("desktop.blockAds", DESKTOP_SETTING_SCHEMAS.blockAds);
+
+const upgradeToHttps = pluginSetting(
+  "desktop.upgradeToHttps",
+  DESKTOP_SETTING_SCHEMAS.upgradeToHttps,
+);
 
 const ACCESS = [
   { value: "ask", label: "Ask" },
@@ -14,12 +23,12 @@ export function BrowserSettings(): ReactElement {
     <>
       <SettingsSection title="Built-in browser">
         <SwitchRow
-          setting={hostSetting("blockAds")}
+          setting={blockAds}
           title="Block ads and trackers"
           description="Filter requests with EasyList and EasyPrivacy"
         />
         <SwitchRow
-          setting={hostSetting("upgradeToHttps")}
+          setting={upgradeToHttps}
           title="Upgrade to HTTPS"
           description="Try https:// first for public sites. Local addresses stay on http"
         />

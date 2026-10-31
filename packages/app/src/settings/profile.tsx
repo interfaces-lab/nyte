@@ -16,7 +16,6 @@ import { nyte } from "../contract/nyte.ts";
 import { openExternal } from "../lib/open-external.ts";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { placeHref } from "../tabs/places.ts";
 import {
   linkedStanding,
   unavailableDetail,
@@ -515,18 +514,18 @@ function GitHubGroup(): ReactElement | null {
 
 function MacGroup({
   connect,
-  onOpenEnvironments,
+  onOpenServer,
 }: {
   readonly connect: ConnectBridge;
-  readonly onOpenEnvironments: () => void;
+  readonly onOpenServer: () => void;
 }): ReactElement {
   const view = useConnectView(connect).data;
   const [trayOpen, setTrayOpen] = useState(false);
   const name = nyte.machineName ?? "This Mac";
 
-  const environments = (
-    <Button variant="ghost" onClick={onOpenEnvironments}>
-      Environments
+  const server = (
+    <Button variant="ghost" onClick={onOpenServer}>
+      Server
       <Icon name="chevron-right" size="xs" />
     </Button>
   );
@@ -536,7 +535,7 @@ function MacGroup({
   if (view === undefined || view.kind === "unavailable") {
     return (
       <Group label="This Mac">
-        <ConnectionRow glyph={macGlyph} title={name} control={environments} />
+        <ConnectionRow glyph={macGlyph} title={name} control={server} />
       </Group>
     );
   }
@@ -555,7 +554,7 @@ function MacGroup({
               {` · ${view.owner.label}`}
             </>
           }
-          control={environments}
+          control={server}
         />
       </Group>
     );
@@ -582,9 +581,9 @@ function MacGroup({
 }
 
 export function ProfileSettings({
-  onOpenEnvironments,
+  onOpenServer,
 }: {
-  readonly onOpenEnvironments: () => void;
+  readonly onOpenServer: () => void;
 }): ReactElement {
   const desktop = nyte.clientSurface === "desktop";
 
@@ -592,7 +591,7 @@ export function ProfileSettings({
     <div {...props(styles.page)}>
       {desktop && <AccountGroup connect={nyte.host.connect} />}
       <GitHubGroup />
-      {desktop && <MacGroup connect={nyte.host.connect} onOpenEnvironments={onOpenEnvironments} />}
+      {desktop && <MacGroup connect={nyte.host.connect} onOpenServer={onOpenServer} />}
     </div>
   );
 }
@@ -602,9 +601,10 @@ export function ProfileSettingsPage(): ReactElement {
 
   return (
     <ProfileSettings
-      onOpenEnvironments={() =>
+      onOpenServer={() =>
         void router.navigate({
-          href: placeHref({ kind: "environments", section: undefined }),
+          to: "/settings/$section",
+          params: { section: "server" },
           replace: true,
         })
       }

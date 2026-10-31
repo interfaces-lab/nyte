@@ -26,35 +26,58 @@ const PEEK = 12;
 
 const EXIT = "translateY(150%)";
 
+const ENTER_TOP = "translateY(-150%)";
+
 const COPIED_MS = 1500;
 
 const ANCHORED = "@supports (position-anchor: --a)";
 
+/** Where the stack sits in the window. */
+export const TOAST_POSITIONS = [
+  "top-left",
+  "top-center",
+  "top-right",
+  "bottom-left",
+  "bottom-center",
+  "bottom-right",
+] as const;
+
+export type ToastPosition = (typeof TOAST_POSITIONS)[number];
+
 const styles = create({
-  /**
-   * Above the element named `toastSchema.anchor` where anchor positioning is supported. Without
-   * support or without that element, the anchor() fallbacks keep the bottom-end inset.
-   */
   viewport: {
     position: "fixed",
+    zIndex: layer.toast,
+    boxSizing: "border-box",
+    width: "min(380px, calc(100vw - 32px))",
+    marginBlock: 0,
+    marginInline: 0,
+    padding: 0,
+    pointerEvents: "none",
+    outline: "none",
+    fontFamily: type.fontSans,
+  },
+  /**
+   * Bottom right, above the element named `toastSchema.anchor` where anchor positioning is
+   * supported. Without support or without that element, the anchor() fallbacks keep the inset.
+   */
+  viewportAnchored: {
     positionAnchor: toastSchema.anchor,
     insetInlineEnd: { default: space.s4, [ANCHORED]: `anchor(end, ${space.s4})` },
     insetBlockEnd: {
       default: space.s4,
       [ANCHORED]: `calc(anchor(start, calc(${space.s4} - ${space.s2})) + ${space.s2})`,
     },
-    zIndex: layer.toast,
-    boxSizing: "border-box",
     width: {
       default: "min(380px, calc(100vw - 32px))",
       [ANCHORED]: "min(380px, calc(100vw - 32px), anchor-size(width, 100vw))",
     },
-    margin: 0,
-    padding: 0,
-    pointerEvents: "none",
-    outline: "none",
-    fontFamily: type.fontSans,
   },
+  viewportTop: { insetBlockStart: space.s4 },
+  viewportBottom: { insetBlockEnd: space.s4 },
+  viewportLeft: { insetInlineStart: space.s4 },
+  viewportRight: { insetInlineEnd: space.s4 },
+  viewportCenter: { insetInlineStart: 0, insetInlineEnd: 0, marginInline: "auto" },
   root: {
     "--_gap": `${GAP}px`,
     "--_height": "var(--toast-frontmost-height, var(--toast-height))",
@@ -110,6 +133,35 @@ const styles = create({
       content: "''",
       position: "absolute",
       insetBlockStart: "100%",
+      insetInlineStart: 0,
+      width: "100%",
+      height: "calc(var(--_gap) + 1px)",
+    },
+  },
+  rootTop: {
+    "--_offset-y":
+      "calc(var(--toast-offset-y) + calc(var(--toast-index) * var(--_gap)) + var(--toast-swipe-movement-y))",
+    insetBlockStart: 0,
+    insetBlockEnd: "auto",
+    transformOrigin: "top",
+    transform: {
+      default: `translateX(var(--toast-swipe-movement-x)) translateY(calc(var(--toast-swipe-movement-y) + (var(--toast-index) * ${PEEK}px) + (var(--_shrink) * var(--_height)))) scale(var(--_scale))`,
+      "[data-expanded]": "translateX(var(--toast-swipe-movement-x)) translateY(var(--_offset-y))",
+      "[data-starting-style]": ENTER_TOP,
+      "[data-ending-style]": {
+        default: "translateY(-8px)",
+        "[data-swipe-direction='left']":
+          "translateX(calc(var(--toast-swipe-movement-x) - 150%)) translateY(var(--_offset-y))",
+        "[data-swipe-direction='right']":
+          "translateX(calc(var(--toast-swipe-movement-x) + 150%)) translateY(var(--_offset-y))",
+        "[data-swipe-direction='up']": "translateY(calc(var(--toast-swipe-movement-y) - 150%))",
+      },
+    },
+    "::after": {
+      content: "''",
+      position: "absolute",
+      insetBlockStart: "auto",
+      insetBlockEnd: "100%",
       insetInlineStart: 0,
       width: "100%",
       height: "calc(var(--_gap) + 1px)",
@@ -274,8 +326,18 @@ function CopyButton({
   );
 }
 
-function ToastList(): ReactElement[] {
+const SWIPE: Readonly<Record<ToastPosition, Toast.Root.Props["swipeDirection"]>> = {
+  "top-left": ["up", "left"],
+  "top-center": ["up"],
+  "top-right": ["up", "right"],
+  "bottom-left": ["down", "left"],
+  "bottom-center": ["down"],
+  "bottom-right": ["down", "right"],
+};
+
+function ToastList({ position }: { readonly position: ToastPosition }): ReactElement[] {
   const { toasts } = Toast.useToastManager();
+  const top = position.startsWith("top");
 
   return toasts.map((item) => {
     const copy = item.type === "error" ? copyText(item.title, item.description) : undefined;
@@ -291,7 +353,13 @@ function ToastList(): ReactElement[] {
     );
 
     return (
-      <Toast.Root key={item.id} toast={item} data-slot="toast" {...props(styles.root)}>
+      <Toast.Root
+        key={item.id}
+        toast={item}
+        swipeDirection={SWIPE[position]}
+        data-slot="toast"
+        {...props(styles.root, top && styles.rootTop)}
+      >
         <Toast.Content {...props(text.base, styles.content, below && styles.withActionsBelow)}>
           {status !== undefined && (
             <span {...props(status.intent, styles.icon)}>
@@ -323,13 +391,29 @@ export const toast = Toast.createToastManager();
 
 export function Toaster({
   toastManager = toast,
+  position = "bottom-right",
   ...rest
-}: Omit<Toast.Provider.Props, "children">): ReactElement {
+}: Omit<Toast.Provider.Props, "children"> & {
+  readonly position?: ToastPosition;
+}): ReactElement {
   return (
     <Toast.Provider toastManager={toastManager} {...rest}>
       <Toast.Portal>
-        <Toast.Viewport data-slot="toast-viewport" {...props(styles.viewport)}>
-          <ToastList />
+        <Toast.Viewport
+          data-slot="toast-viewport"
+          {...props(
+            styles.viewport,
+            position === "bottom-right"
+              ? styles.viewportAnchored
+              : [
+                  position.startsWith("top") ? styles.viewportTop : styles.viewportBottom,
+                  position.endsWith("left") && styles.viewportLeft,
+                  position.endsWith("right") && styles.viewportRight,
+                  position.endsWith("center") && styles.viewportCenter,
+                ],
+          )}
+        >
+          <ToastList position={position} />
         </Toast.Viewport>
       </Toast.Portal>
     </Toast.Provider>

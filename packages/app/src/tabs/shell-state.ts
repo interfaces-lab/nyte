@@ -85,13 +85,6 @@ export const shellActions = Object.freeze({
       place: { kind: "customize", section: undefined, sessionId },
     });
   },
-  openEnvironments(): void {
-    windowTabs.dispatch({
-      kind: "open",
-      target: "permanent",
-      place: { kind: "environments", section: undefined },
-    });
-  },
   showWorkspace(): void {
     windowTabs.dispatch({ kind: "leave-page" });
   },

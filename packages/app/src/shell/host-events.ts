@@ -12,6 +12,7 @@ import { applyBrowserHistory } from "../workbench/browser/browser-history.ts";
 import { workbench } from "../workbench/store.ts";
 import { requestTrust } from "../panes/open-workspace.tsx";
 import { acceptHostSettings } from "../preferences/host.ts";
+import { windowTabs } from "../tabs/window-tabs.ts";
 
 export function useHostEvents(): void {
   useMountEffect(() => {
@@ -44,6 +45,10 @@ export function useHostEvents(): void {
           return;
         case "server_changed":
           void queryClient.invalidateQueries({ queryKey: keys.server });
+
+          return;
+        case "open_session":
+          windowTabs.openChat(event.session, "permanent");
 
           return;
         case "remote_access_changed":

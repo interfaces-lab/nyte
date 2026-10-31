@@ -105,6 +105,8 @@ function open(options: HostProcessOptions): void {
     connect,
     keepAwake: (awake) => post({ kind: "awake", awake }),
     settingsChanged: (settings) => post({ kind: "settings", settings }),
+    alert: (delivery) => post({ kind: "alert", delivery }),
+    badge: (count) => post({ kind: "badge", count }),
     emitHostEvent: (event, window) => post({ kind: "event", event, window }),
     agent: remoteAgent(askAgent),
     preview,

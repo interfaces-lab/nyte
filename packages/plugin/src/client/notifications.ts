@@ -1,4 +1,4 @@
-import type { Failure } from "@nyte-ai/schema";
+import type { RunEnd } from "@nyte-ai/schema";
 import type { Plugin } from "@nyte-ai/plugin/client";
 import { endedStatus, sessionTitle, taskLabel } from "./presentation.ts";
 
@@ -20,24 +20,31 @@ export default {
       const info = await api.sdk.session(event.session).info();
 
       if (info.parent !== null) return;
-      const title = sessionTitle(info);
-      const status = endedStatus(event.end);
+      const message = describeRunEnd(event.end);
 
-      if (status.kind === "completed")
-        api.ui.notify({ title, message: taskLabel("done"), level: "info" });
-      else if (status.kind === "failed")
+      if (message !== undefined)
         api.ui.notify({
-          title,
-          message: `${taskLabel("failed")}: ${line(status.failure)}`,
-          level: "error",
+          title: sessionTitle(info),
+          message,
+          level: event.end.kind === "failed" ? "error" : "info",
         });
     },
   },
 } satisfies Plugin;
 
-/** Returns a failure's message as one line of at most 120 characters. */
-function line(failure: Failure): string {
-  const text = failure.message.replace(/\s+/g, " ").trim();
+/**
+ * What to tell the user about a run's end: that it's done, or that it failed and why, on one
+ * line of at most 120 characters. A stopped run says nothing, because someone asked for it.
+ *
+ * @category plugins
+ */
+export function describeRunEnd(end: RunEnd): string | undefined {
+  const status = endedStatus(end);
 
-  return text.length > 120 ? `${text.slice(0, 119)}…` : text;
+  if (status.kind === "completed") return taskLabel("done");
+
+  if (status.kind !== "failed") return undefined;
+  const text = status.failure.message.replace(/\s+/g, " ").trim();
+
+  return `${taskLabel("failed")}: ${text.length > 120 ? `${text.slice(0, 119)}…` : text}`;
 }

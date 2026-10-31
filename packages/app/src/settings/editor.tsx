@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { Deferred } from "../lib/deferred.tsx";
 import { preferences } from "../preferences/index.ts";
 import { SelectRow, SettingsSection, SwitchRow } from "./rows.tsx";
 
@@ -10,7 +11,12 @@ const LAYOUTS = [
 export function EditorSettings(): ReactElement {
   return (
     <>
-      <SettingsSection title="Files">
+      <SettingsSection
+        title="Files"
+        preview={
+          <Deferred entry="previews">{(previews) => <previews.FileEditorPreview />}</Deferred>
+        }
+      >
         <SwitchRow
           setting={preferences.fileLineNumbers}
           title="Line numbers"
@@ -39,14 +45,10 @@ export function EditorSettings(): ReactElement {
       </SettingsSection>
       <SettingsSection
         title="Changes"
-        description="Defaults for repositories. Each can still pick its own from the Changes menu"
+        preview={<Deferred entry="previews">{(previews) => <previews.ChangesPreview />}</Deferred>}
+        note="Each repository can still pick its own layout from the Changes menu."
       >
-        <SelectRow
-          setting={preferences.changesLayout}
-          title="Diff layout"
-          description="Show changes in one column, or old and new side by side"
-          options={LAYOUTS}
-        />
+        <SelectRow setting={preferences.changesLayout} title="Diff layout" options={LAYOUTS} />
         <SwitchRow
           setting={preferences.changesIgnoreWhitespace}
           title="Ignore whitespace"

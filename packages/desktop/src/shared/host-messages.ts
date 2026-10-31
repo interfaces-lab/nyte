@@ -5,7 +5,8 @@ import type {
 } from "@nyte-ai/plugin/core/canvas-preview";
 import type { CallReply, CallRequest } from "./ipc.ts";
 import type { AccountState } from "@nyte-ai/connect/host";
-import type { DesktopSettings } from "./desktop-settings.ts";
+import type { AttentionDelivery } from "./attention.ts";
+import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { AccountAnswer, AccountCall } from "./host-account.ts";
 import type { AgentAnswer, AgentCall } from "./host-browser-agent.ts";
 import type { HostWindow } from "./host-window.ts";
@@ -61,6 +62,8 @@ export type HostMessage =
   | { readonly kind: "event"; readonly event: HostEvent; readonly window?: HostWindow }
   | { readonly kind: "awake"; readonly awake: boolean }
   | { readonly kind: "settings"; readonly settings: DesktopSettings }
+  | { readonly kind: "alert"; readonly delivery: AttentionDelivery }
+  | { readonly kind: "badge"; readonly count: number }
   | { readonly kind: "mark"; readonly name: string; readonly at: number }
   | RpcMessage<HostAsk, HostAnswer>
   | { readonly kind: "closed" };

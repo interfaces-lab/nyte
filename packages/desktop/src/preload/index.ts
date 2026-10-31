@@ -13,7 +13,9 @@ import {
   HOST_PORT_CHANNEL,
   LAUNCH_WINDOWS_ARGUMENT,
   MACHINE_NAME_ARGUMENT,
+  TERMINAL_NOTIFICATION_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
+  VIEWING_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ID_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
@@ -135,6 +137,7 @@ const bridge = {
       channel: none("host.updates.channel"),
       setChannel: object("host.updates.setChannel"),
     },
+    bundledCli: none("host.bundledCli"),
     server: {
       state: none("host.server.state"),
       connect: object("host.server.connect"),
@@ -181,6 +184,10 @@ const bridge = {
       setBounds: (message: BrowserBoundsMessage) =>
         ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
       setFocus: (message: BrowserFocusMessage) => ipcRenderer.send(BROWSER_FOCUS_CHANNEL, message),
+    },
+    attention: {
+      viewing: (session) => ipcRenderer.send(VIEWING_CHANNEL, session),
+      notify: (input) => ipcRenderer.send(TERMINAL_NOTIFICATION_CHANNEL, input),
     },
     onEvent(listener: (event: HostEvent) => void) {
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {

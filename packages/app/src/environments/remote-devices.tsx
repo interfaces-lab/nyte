@@ -5,15 +5,18 @@ import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/toast";
 import { errorMessage } from "../contract/errors.ts";
 import type { RemotePairing } from "../contract/bridge.ts";
-import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../contract/nyte.ts";
 import { keys } from "../data/query-client.ts";
-import { modelsSettingsStyles as styles } from "../settings/models-settings.stylex.ts";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
+import {
+  SettingsDialog,
+  SettingsDialogCard,
+  SettingsField,
+  SettingsFormDialog,
+} from "../settings/dialog.tsx";
 import { PairingCode, pairingPayload } from "./pairing-code.tsx";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { CopyButton, shareStyles } from "./remote-share.tsx";
+import { CopyButton, ValueRow, shareStyles } from "./remote-share.tsx";
 
 export function useRevokeDevice() {
   const client = useQueryClient();
@@ -30,7 +33,8 @@ export function useRevokeDevice() {
   });
 }
 
-export function PairingPanel({
+/** One device's pairing code, until it's claimed, removed, expires, or you close it. */
+export function PairingDialog({
   pairing,
   name,
   onDone,
@@ -50,47 +54,46 @@ export function PairingPanel({
   });
 
   return (
-    <div {...props(shareStyles.panel)}>
-      <div {...props(shareStyles.scan)}>
+    <SettingsDialog
+      open
+      title={`Pair ${name}`}
+      description={`In the Nyte iOS app, tap Scan QR code. Anyone with this code can connect as ${name} until you remove it. It expires at ${new Date(pairing.expiresAt).toLocaleTimeString()} if unused.`}
+      onOpenChange={(open) => {
+        if (!open) onDone();
+      }}
+    >
+      <div {...props(shareStyles.pair)}>
         <PairingCode
           value={pairingPayload({ address: pairing.address, token: pairing.token })}
-          size={132}
+          size={160}
         />
-        <span {...props(shareStyles.scanText)}>
-          <span {...props(text.sm, shareStyles.label)}>
-            In the iOS app, tap Scan QR code on the connect screen.
-          </span>
-          <span {...props(text.sm, styles.deviceCodeNote)}>
-            {`Anyone with this code can connect as ${name} until you remove it. It expires at ${new Date(pairing.expiresAt).toLocaleTimeString()} if unused.`}
-          </span>
-        </span>
       </div>
-      <div {...props(shareStyles.fields)}>
-        <span {...props(text.sm, shareStyles.label)}>Link</span>
-        <code aria-label="Pairing link" {...props(text.sm, shareStyles.value)}>
-          {pairing.address}/pair
-        </code>
-        <span {...props(shareStyles.fieldActions)}>
+      <SettingsDialogCard>
+        <ValueRow title="Pairing link" value={`${pairing.address}/pair`}>
           <CopyButton label="Pairing link" value={link} />
-        </span>
-      </div>
-      <Button onClick={onDone}>Done</Button>
-    </div>
+        </ValueRow>
+      </SettingsDialogCard>
+    </SettingsDialog>
   );
 }
 
-export function AddDevice({
+/** Names a new device, then hands its pairing code back without caching it in a mutation. */
+export function NameDeviceDialog({
+  onOpenChange,
   onPaired,
 }: {
+  onOpenChange: (open: boolean) => void;
   onPaired: (pairing: RemotePairing, name: string) => void;
 }): ReactElement {
   const client = useQueryClient();
   const [name, setName] = useState("");
   const [pending, setPending] = useState(false);
+  const [failure, setFailure] = useState<string | undefined>(undefined);
 
-  const add = async (): Promise<void> => {
+  const pair = async (): Promise<void> => {
     const chosen = name.trim();
     setPending(true);
+    setFailure(undefined);
 
     const outcome = await nyte.host.remote.pair({ plugin: "cloudflare", name: chosen }).then(
       (pairing) => ({ kind: "paired" as const, pairing }),
@@ -101,43 +104,37 @@ export function AddDevice({
     void client.invalidateQueries({ queryKey: keys.remoteAccess });
 
     if (outcome.kind === "failed") {
-      toast.add({
-        type: "error",
-        title: `Couldn't add the device: ${errorMessage(outcome.cause)}`,
-        id: "cloudflare-device",
-      });
+      setFailure(`Couldn't add the device: ${errorMessage(outcome.cause)}`);
 
       return;
     }
 
-    setName("");
     onPaired(outcome.pairing, chosen);
   };
 
   return (
-    <form
-      {...props(styles.keyRow)}
-      onSubmit={(event) => {
-        event.preventDefault();
-
-        if (!pending && name.trim() !== "") void add();
-      }}
+    <SettingsFormDialog
+      open
+      title="Pair a Device"
+      description="Each device gets its own code, so you can remove one without the others."
+      submitLabel="Create Pairing Code"
+      canSubmit={name.trim() !== ""}
+      pending={pending}
+      error={failure}
+      onOpenChange={onOpenChange}
+      onSubmit={() => void pair()}
     >
-      <Input
-        variant="code"
-        aria-label="Device name"
-        autoComplete="off"
-        spellCheck={false}
-        placeholder="iPhone"
-        maxLength={64}
-        value={name}
-        disabled={pending}
-        xstyle={styles.keyInput}
-        onValueChange={setName}
-      />
-      <Button type="submit" loading={pending} disabled={name.trim() === ""}>
-        Add Device
-      </Button>
-    </form>
+      <SettingsField label="Device name">
+        <Input
+          aria-label="Device name"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="iPhone"
+          maxLength={64}
+          value={name}
+          onValueChange={setName}
+        />
+      </SettingsField>
+    </SettingsFormDialog>
   );
 }

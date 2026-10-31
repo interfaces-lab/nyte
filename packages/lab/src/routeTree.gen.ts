@@ -13,7 +13,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as HubsRouteImport } from './routes/hubs'
 import { Route as PeekRouteImport } from './routes/peek'
-import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StacksRouteImport } from './routes/stacks'
 import { Route as StacksV1RouteImport } from './routes/stacks-v1'
 import { Route as TabsRouteImport } from './routes/tabs'
@@ -38,11 +37,6 @@ const HubsRoute = HubsRouteImport.update({
 const PeekRoute = PeekRouteImport.update({
   id: '/peek',
   path: '/peek',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StacksRoute = StacksRouteImport.update({
@@ -76,7 +70,6 @@ export interface FileRoutesByFullPath {
   '/changes': typeof ChangesRoute
   '/hubs': typeof HubsRoute
   '/peek': typeof PeekRoute
-  '/settings': typeof SettingsRoute
   '/stacks': typeof StacksRoute
   '/stacks-v1': typeof StacksV1Route
   '/tabs': typeof TabsRoute
@@ -88,7 +81,6 @@ export interface FileRoutesByTo {
   '/changes': typeof ChangesRoute
   '/hubs': typeof HubsRoute
   '/peek': typeof PeekRoute
-  '/settings': typeof SettingsRoute
   '/stacks': typeof StacksRoute
   '/stacks-v1': typeof StacksV1Route
   '/tabs': typeof TabsRoute
@@ -101,7 +93,6 @@ export interface FileRoutesById {
   '/changes': typeof ChangesRoute
   '/hubs': typeof HubsRoute
   '/peek': typeof PeekRoute
-  '/settings': typeof SettingsRoute
   '/stacks': typeof StacksRoute
   '/stacks-v1': typeof StacksV1Route
   '/tabs': typeof TabsRoute
@@ -115,7 +106,6 @@ export interface FileRouteTypes {
     | '/changes'
     | '/hubs'
     | '/peek'
-    | '/settings'
     | '/stacks'
     | '/stacks-v1'
     | '/tabs'
@@ -127,7 +117,6 @@ export interface FileRouteTypes {
     | '/changes'
     | '/hubs'
     | '/peek'
-    | '/settings'
     | '/stacks'
     | '/stacks-v1'
     | '/tabs'
@@ -139,7 +128,6 @@ export interface FileRouteTypes {
     | '/changes'
     | '/hubs'
     | '/peek'
-    | '/settings'
     | '/stacks'
     | '/stacks-v1'
     | '/tabs'
@@ -152,7 +140,6 @@ export interface RootRouteChildren {
   ChangesRoute: typeof ChangesRoute
   HubsRoute: typeof HubsRoute
   PeekRoute: typeof PeekRoute
-  SettingsRoute: typeof SettingsRoute
   StacksRoute: typeof StacksRoute
   StacksV1Route: typeof StacksV1Route
   TabsRoute: typeof TabsRoute
@@ -188,13 +175,6 @@ declare module '@tanstack/react-router' {
       path: '/peek'
       fullPath: '/peek'
       preLoaderRoute: typeof PeekRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/stacks': {
@@ -240,7 +220,6 @@ const rootRouteChildren: RootRouteChildren = {
   ChangesRoute: ChangesRoute,
   HubsRoute: HubsRoute,
   PeekRoute: PeekRoute,
-  SettingsRoute: SettingsRoute,
   StacksRoute: StacksRoute,
   StacksV1Route: StacksV1Route,
   TabsRoute: TabsRoute,

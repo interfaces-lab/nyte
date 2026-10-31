@@ -154,6 +154,14 @@ describe("listen", () => {
     ).rejects.toMatchObject({ code: "invalid" });
   });
 
+  it("refuses a wildcard origin over a top-level domain", async () => {
+    await expect(
+      serve(await compose(fakeModels()), { origins: ["https://*.com"] }),
+    ).rejects.toMatchObject({
+      code: "invalid",
+    });
+  });
+
   it("accepts exactly the token, compared by digest, and nothing else", async () => {
     const listener = await serve(await compose(fakeModels()));
 

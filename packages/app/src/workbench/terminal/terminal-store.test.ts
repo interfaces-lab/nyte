@@ -138,6 +138,7 @@ function sink() {
       contents += data;
     },
     update(_tab: Parameters<TerminalOutput["update"]>[0]) {},
+    visible: () => false,
     dispose() {},
   } satisfies TerminalOutput & { readonly contents: string };
 }

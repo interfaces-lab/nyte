@@ -162,8 +162,6 @@ function placeTitle(place: Place, chats: ChatDirectory): string {
       return chatTitle(chats.get(place.sessionId));
     case "customize":
       return "Customize";
-    case "environments":
-      return "Environments";
     default: {
       const _exhaustive: never = place;
 

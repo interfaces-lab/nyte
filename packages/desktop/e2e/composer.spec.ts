@@ -301,8 +301,8 @@ test("the footer under the composer shows where the chat runs, and its branch me
 
   await test.step("the machine segment opens the environment menu", async () => {
     await footer.getByRole("button", { name: "This Mac" }).click();
-    await expect(page.getByRole("menuitem", { name: "Environments…" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Server Settings…" })).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("menuitem", { name: "Environments…" })).toBeHidden();
+    await expect(page.getByRole("menuitem", { name: "Server Settings…" })).toBeHidden();
   });
 });

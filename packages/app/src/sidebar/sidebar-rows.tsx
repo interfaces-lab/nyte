@@ -147,10 +147,40 @@ export function SessionRow({
   readonly place: SessionPlace;
   readonly rail: RailRows;
 }): ReactElement {
-  const selected = session.id === rail.activeSessionId;
   const chat = useChat(session.id);
   const shown = chat.kind === "ready" ? chat.chat : undefined;
   const unread = useChatWindow((snapshot) => snapshot.unread.has(session.id));
+  const mark = shown?.mark ?? "done";
+
+  return (
+    <SessionRowView
+      session={session}
+      place={place}
+      rail={rail}
+      mark={mark}
+      unread={unread}
+      ask={shown === undefined ? undefined : askLine(shown, mark)}
+    />
+  );
+}
+
+/** A chat's row drawn from its mark and ask line, which a settings preview passes itself. */
+export function SessionRowView({
+  session,
+  place,
+  rail,
+  mark,
+  unread,
+  ask,
+}: {
+  readonly session: SessionInfo;
+  readonly place: SessionPlace;
+  readonly rail: RailRows;
+  readonly mark: TaskState;
+  readonly unread: boolean;
+  readonly ask: string | undefined;
+}): ReactElement {
+  const selected = session.id === rail.activeSessionId;
   const showUpdated = rail.showUpdated;
   const draggable = place.workspace === rail.openWorkspace;
   const unreachable = session.workspace !== null && rail.unavailable.has(session.workspace);
@@ -160,10 +190,7 @@ export function SessionRow({
   const onPin = (): void => rail.pin(session);
   const onArchive = (): void => rail.archive(session);
   const onDelete = (): void => rail.remove(session.id);
-  const mark = shown?.mark ?? "done";
   const title = sessionTitle(session);
-
-  const ask = shown === undefined ? undefined : askLine(shown, mark);
 
   const [draftName, setDraftName] = useState<string | undefined>();
   const warming = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);

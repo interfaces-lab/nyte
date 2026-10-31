@@ -39,6 +39,14 @@ const code = () => document.querySelector('[aria-label="Pairing code for the Nyt
 
 const nameField = () => document.querySelector<HTMLInputElement>('input[aria-label="Device name"]');
 
+const dialogText = () => document.querySelector('[role="dialog"]')?.textContent ?? "";
+
+const pairButton = () =>
+  [...document.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Pair…");
+
+const pressable = (button: HTMLButtonElement | undefined): button is HTMLButtonElement =>
+  button !== undefined && !button.disabled && button.getAttribute("aria-disabled") !== "true";
+
 function pending(id: string): RemoteDevice {
   return {
     id,
@@ -88,6 +96,9 @@ export async function run() {
   const root = createRoot(container);
 
   async function addDevice(): Promise<void> {
+    await until(() => pressable(pairButton()), "Pair… to enable");
+    pairButton()?.click();
+    await until(() => nameField() !== null, "the device name field");
     const field = nameField();
 
     if (field === null) throw new Error("No device name field");
@@ -96,8 +107,8 @@ export async function run() {
     await until(() => field.value === "Phone", "the typed name");
     const submit = field.form?.querySelector<HTMLButtonElement>('button[type="submit"]');
 
-    if (submit === null || submit === undefined) throw new Error("No Add Device button");
-    await until(() => !submit.disabled, "Add Device to enable");
+    if (submit === null || submit === undefined) throw new Error("No Create Pairing Code button");
+    await until(() => !submit.disabled, "Create Pairing Code to enable");
     submit.click();
     await until(() => code() !== null, "the pairing code");
   }
@@ -115,15 +126,14 @@ export async function run() {
 
     await until(
       () =>
-        container.textContent?.includes("Devices can be added once the tunnel connects.") === true,
+        container.textContent?.includes("You can pair devices once the tunnel connects.") === true,
       "the connecting note",
     );
 
-    if (nameField() !== null) throw new Error("Add Device showed before the tunnel connected");
+    if (pressable(pairButton())) throw new Error("Pair… was enabled before the tunnel connected");
 
     connection = { kind: "connected", connections: 1 };
     await refresh();
-    await until(() => nameField() !== null, "Add Device once connected");
 
     await addDevice();
     await wait(100);
@@ -132,10 +142,10 @@ export async function run() {
 
     if (code() === null) throw new Error("A stale device list dropped the new code");
 
-    if (!container.textContent?.includes("Anyone with this code can connect as Phone"))
+    if (!dialogText().includes("Anyone with this code can connect as Phone"))
       throw new Error("The code's note does not say what it grants");
 
-    if (container.textContent.includes("once")) throw new Error("The note implies a one-use code");
+    if (dialogText().includes("once")) throw new Error("The note implies a one-use code");
 
     devices = [pending("device-1")];
     await refresh();
@@ -146,7 +156,6 @@ export async function run() {
     devices = [{ ...pending("device-1"), state: { kind: "paired", pairedAt: 1 } }];
     await refresh();
     await until(() => code() === null, "a claimed code to leave");
-    await until(() => nameField() !== null, "Add Device after a claim");
 
     await addDevice();
     devices = [devices[0] ?? pending("device-1"), pending("device-2")];

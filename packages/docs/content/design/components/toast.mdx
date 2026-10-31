@@ -118,13 +118,14 @@ Each state accepts a string or an options object. `success` and `error` also acc
 
 ### Toaster
 
-`Toaster` accepts Base UI's `Toast.Provider` props except `children`. The stack sits at the bottom-right and uses the current color tokens.
+`Toaster` accepts Base UI's `Toast.Provider` props except `children`, plus `position`. The stack uses the current color tokens, and toasts swipe away toward the nearest edge. At `bottom-right` the stack sits above the element whose `anchorName` is `toast.anchor`, where the browser supports anchor positioning, and keeps the window inset otherwise.
 
-| Prop           | Type           | Default | Description                                                        |
-| -------------- | -------------- | ------- | ------------------------------------------------------------------ |
-| `timeout`      | `number`       | `5000`  | Default auto-close milliseconds. `0` disables automatic dismissal. |
-| `limit`        | `number`       | `3`     | Visible toast limit. Older toasts are hidden rather than removed.  |
-| `toastManager` | `ToastManager` | `toast` | Manager whose notifications this stack renders.                    |
+| Prop           | Type            | Default          | Description                                                                                                                                  |
+| -------------- | --------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeout`      | `number`        | `5000`           | Default auto-close milliseconds. `0` disables automatic dismissal.                                                                           |
+| `limit`        | `number`        | `3`              | Visible toast limit. Older toasts are hidden rather than removed.                                                                            |
+| `toastManager` | `ToastManager`  | `toast`          | Manager whose notifications this stack renders.                                                                                              |
+| `position`     | `ToastPosition` | `"bottom-right"` | Where the stack sits: `top-left`, `top-center`, `top-right`, `bottom-left`, `bottom-center` or `bottom-right`. `TOAST_POSITIONS` lists them. |
 
 ### toast
 
