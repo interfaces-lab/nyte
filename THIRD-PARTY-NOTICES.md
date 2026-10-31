@@ -276,10 +276,9 @@ SOFTWARE.
   https://github.com/agentclientprotocol/registry
 - Package: `@agentclientprotocol/sdk` 1.9.0
 - What: the ACP model API in `packages/plugin/src/acp/` talks to agents through
-  the SDK's client connection and schema types.
-  `packages/plugin/src/acp/registry-seed.json` is a trimmed snapshot of the
-  registry's agent list (ids, names and launch commands), used until the first
-  registry fetch.
+  the SDK's client connection and schema types, and
+  `packages/plugin/src/acp/registry-seed.json` copies entries from the
+  registry's agent list.
 
 License: Apache License 2.0, reproduced in the appendix below. Copyright 2025
 Zed Industries, Inc. and contributors. Neither project ships a `NOTICE` file, so
