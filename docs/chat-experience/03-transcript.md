@@ -221,6 +221,8 @@ The divider uses a **boundary**, separate from the read mark. The boundary is in
 - Shows a 1 px rule, a small "New" label in the accent colour, and a 1 px rule. Screen readers hear "New messages below".
 - Not interactive. It is never an anchor target for saved position, but it is the jump target for the up pill.
 
+> The up and down New Messages pills (5.5 to 5.7) were removed after shipping. The New divider remains.
+
 ### 5.5 Down pill "↓ N New Messages"
 
 1. **Shown when**:

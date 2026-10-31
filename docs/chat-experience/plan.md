@@ -90,7 +90,7 @@ Status: `todo`, `doing`, `done`, `deferred`.
 | --- | --- | --- | --- |
 | D1 | Clients receive the read mark, not only an `unread` flag | core and sdk tests; `check:store` | done (`SessionView.seenThrough`, breaking wire field; core and sdk tests; check:store clean) |
 | D2 | The "New" divider sits above the first unread message on opening a chat, and stays until the chat is left | renderer test; desktop e2e | done |
-| D3 | Up and down "N New Messages" pills: count, click, ×, priority, as 03-transcript.md §5.5–5.7 | renderer test; desktop e2e | done |
+| D3 | Up and down "N New Messages" pills: count, click, ×, priority, as 03-transcript.md §5.5–5.7 | renderer test; desktop e2e | removed by the owner after shipping; the New divider stays |
 | D4 | Following holds within 4 px; only upward input releases it | transcript-frames renderer test | done |
 | D5 | The scroll-to-bottom button focuses the composer after the jump | composer or transcript test | done |
 
