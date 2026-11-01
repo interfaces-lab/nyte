@@ -18,7 +18,7 @@ import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { MouseEvent, ReactElement } from "react";
 import type { GitHubRepository } from "@nyte-ai/sdk";
-import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
+import { ChatCardContent, ChatCardTrigger, ChatCopyMenuItems } from "../components/chat-card.tsx";
 import { formatTimeAgo } from "../lib/format.ts";
 import { draftPreviewText } from "../references/message-references.ts";
 import type { ChatDraft } from "../panes/session-view-state.ts";
@@ -263,6 +263,7 @@ export function SessionRowView({
       <MenuItem icon="copy" onClick={() => void navigator.clipboard.writeText(title)}>
         Copy Chat Title
       </MenuItem>
+      <ChatCopyMenuItems sessionId={session.id} />
       <MenuItem icon={session.archived ? "unarchive" : "archive"} onClick={onArchive}>
         {session.archived ? "Restore Chat" : "Archive Chat"}
       </MenuItem>

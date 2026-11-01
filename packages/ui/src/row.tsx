@@ -157,6 +157,7 @@ const styles = create({
     whiteSpace: "nowrap",
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   meta: {
     display: "inline-flex",

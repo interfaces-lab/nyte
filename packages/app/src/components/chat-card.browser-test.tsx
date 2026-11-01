@@ -206,7 +206,7 @@ export async function run(): Promise<string> {
     );
 
     const rowCard = await openCard(row);
-    const expected = "nyte-ai/nyte | main | ~/Developer/nyte | Local";
+    const expected = "nyte-ai/nyte | main · ~/Developer/nyte";
     check(readCard(rowCard) === expected, `The row card read ${readCard(rowCard)}`);
     check(rowCard.textContent.includes("Fix the scroll restore"), "The row card lacks the title");
     const rowBox = row.getBoundingClientRect();
@@ -224,7 +224,11 @@ export async function run(): Promise<string> {
 
     folderLine.click();
     await until(
-      () => (folderLine.getAttribute("aria-description") === "Copied" ? folderLine : null),
+      () =>
+        folderLine.closest("[data-slot='row']")?.querySelector("[role='status']")?.textContent ===
+        "Copied"
+          ? folderLine
+          : null,
       "the copied folder",
     );
     check((await navigator.clipboard.readText()) === PATH, "The folder line copied the short path");

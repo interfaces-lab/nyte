@@ -140,7 +140,7 @@ import {
   IconBubbleQuestionDefault,
   IconStarDefault,
 } from "central-icons-filled";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   createContext,
   use,
@@ -374,7 +374,13 @@ const styles = create({
     justifyContent: "center",
     flexShrink: 0,
   },
+  swap: { display: "inline-grid", flexShrink: 0 },
+  swapLayer: { display: "inline-grid", gridArea: "1 / 1" },
 });
+
+const SWAP_HIDDEN = { opacity: 0, scale: 0.25, filter: "blur(4px)" };
+
+const SWAP_SHOWN = { opacity: 1, scale: 1, filter: "blur(0px)" };
 
 const glyphSizes = create({
   "2xs": { width: glyph["2xs"], height: glyph["2xs"] },
@@ -447,6 +453,30 @@ export function Icon(iconProps: IconProps): ReactElement {
     <IconFrame size={size} label={label} className={className} style={style} xstyle={xstyle}>
       <Glyph size="100%" mode="raw" ariaHidden={true} />
     </IconFrame>
+  );
+}
+
+/** An icon that cross-fades when its glyph changes, such as copy turning into a checkmark. */
+export function IconSwap(iconProps: IconProps): ReactElement {
+  const reducedMotion = useReducedMotion();
+
+  return (
+    <span {...props(styles.swap)}>
+      <AnimatePresence initial={false}>
+        <motion.span
+          key={`${iconProps.variant ?? "outlined"}:${iconProps.name}`}
+          className={props(styles.swapLayer).className}
+          initial={reducedMotion ? { opacity: 0 } : SWAP_HIDDEN}
+          animate={SWAP_SHOWN}
+          exit={reducedMotion ? { opacity: 0 } : SWAP_HIDDEN}
+          transition={
+            reducedMotion ? { duration: 0.15 } : { type: "spring", duration: 0.3, bounce: 0 }
+          }
+        >
+          <Icon {...iconProps} />
+        </motion.span>
+      </AnimatePresence>
+    </span>
   );
 }
 

@@ -2,10 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import { Icon } from "@nyte-ai/ui/icon";
+import { Icon, IconSwap } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
+import { MenuItem } from "@nyte-ai/ui/menu";
 import { PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { Row } from "@nyte-ai/ui/row";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { row, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -17,7 +19,7 @@ import { gitStatusWatch } from "../data/watches.ts";
 import { useWatch } from "../data/watch-store.ts";
 import { chatCardFacts } from "./chat-card-facts.ts";
 import { useCopyConfirmation } from "./copy-confirmation.ts";
-import type { ChatFact } from "./chat-card-facts.ts";
+import type { ChatCardFacts, ChatFact } from "./chat-card-facts.ts";
 
 const OPEN_DELAY_MS = 250;
 
@@ -34,6 +36,12 @@ const ICONS = {
   folder: "folder",
 } satisfies Record<ChatFact["kind"], IconName>;
 
+const COPY_LABELS = {
+  repository: "Copy Path",
+  worktree: "Copy Worktree Path",
+  folder: "Copy Path",
+} satisfies Record<ChatFact["kind"], string>;
+
 const styles = create({
   card: { gap: space.s2, padding: space.s1 },
   block: { display: "flex", flexDirection: "column" },
@@ -44,9 +52,12 @@ const styles = create({
     overflowWrap: "anywhere",
   },
   fact: { paddingBlock: space.s1 },
-  icon: { color: role.contentTertiary },
+  // Icons sit on the label's first line, however far the text below wraps.
+  factPrimary: { alignItems: "start" },
+  icon: { height: type.leadingSm, color: role.contentTertiary },
   wrap: { whiteSpace: "normal", overflowWrap: "anywhere" },
   copy: { color: role.contentTertiary },
+  copyLine: { display: "grid", placeItems: "center", height: type.leadingSm },
   footer: { paddingInline: row.paddingInlineMd, paddingBlockEnd: space.s1 },
 });
 
@@ -77,13 +88,60 @@ export function ChatCardContent({
   );
 }
 
+/** Copy items for a chat's folder and branch, for menus a keyboard can reach. */
+export function ChatCopyMenuItems({
+  sessionId,
+}: {
+  readonly sessionId: SessionId;
+}): ReactElement | null {
+  const card = useChatCard(sessionId);
+
+  if (card === undefined) return null;
+  const branch = card.branch;
+
+  return (
+    <>
+      {card.facts.map((fact) => (
+        <MenuItem
+          key={fact.kind}
+          icon="copy"
+          onClick={() => void navigator.clipboard.writeText(fact.copy)}
+        >
+          {COPY_LABELS[fact.kind]}
+        </MenuItem>
+      ))}
+      {branch !== undefined && (
+        <MenuItem icon="copy" onClick={() => void navigator.clipboard.writeText(branch)}>
+          Copy Branch
+        </MenuItem>
+      )}
+    </>
+  );
+}
+
 function ChatBlock({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
+  const card = useChatCard(sessionId);
+
+  if (card === undefined) return null;
+
+  return (
+    <div {...props(styles.block)}>
+      <div {...props(text.base, styles.title)}>{card.title}</div>
+      {card.facts.map((fact) => (
+        <FactLine key={fact.kind} fact={fact} />
+      ))}
+    </div>
+  );
+}
+
+function useChatCard(sessionId: SessionId): ChatCardFacts | undefined {
   const chat = useChat(sessionId);
 
   const workspace =
     chat.kind === "ready" && chat.chat.location.kind === "folder"
       ? chat.chat.location.workspace
       : undefined;
+
   const git = useWatch(workspace === undefined ? undefined : gitStatusWatch(workspace)).value;
 
   const repository = useQuery({
@@ -98,23 +156,14 @@ function ChatBlock({ sessionId }: { readonly sessionId: SessionId }): ReactEleme
     staleTime: 30_000,
   }).data;
 
-  if (chat.kind !== "ready") return null;
+  if (chat.kind !== "ready") return undefined;
 
-  const card = chatCardFacts({
+  return chatCardFacts({
     chat: chat.chat,
     git,
     repository: repository ?? undefined,
     surface: nyte.clientSurface,
   });
-
-  return (
-    <div {...props(styles.block)}>
-      <div {...props(text.base, styles.title)}>{card.title}</div>
-      {card.facts.map((fact) => (
-        <FactLine key={fact.kind} fact={fact} />
-      ))}
-    </div>
-  );
 }
 
 function FactLine({ fact }: { readonly fact: ChatFact }): ReactElement {
@@ -123,8 +172,9 @@ function FactLine({ fact }: { readonly fact: ChatFact }): ReactElement {
   return (
     <Row interactive xstyle={styles.fact}>
       <Row.Primary
-        aria-description={confirmation.copied ? "Copied" : "Click to copy"}
+        aria-description={COPY_LABELS[fact.kind]}
         onClick={() => confirmation.copy(fact.copy)}
+        xstyle={styles.factPrimary}
       >
         <Row.Leading xstyle={styles.icon}>
           <Icon name={ICONS[fact.kind]} size="sm" />
@@ -136,9 +186,14 @@ function FactLine({ fact }: { readonly fact: ChatFact }): ReactElement {
           )}
         </Row.Body>
         <Row.Meta xstyle={styles.copy}>
-          <Icon name={confirmation.copied ? "checkmark" : "copy"} size="xs" />
+          <span {...props(styles.copyLine)}>
+            <IconSwap name={confirmation.copied ? "checkmark" : "copy"} size="xs" />
+          </span>
         </Row.Meta>
       </Row.Primary>
+      <span role="status" {...props(srOnly)}>
+        {confirmation.copied ? "Copied" : ""}
+      </span>
     </Row>
   );
 }

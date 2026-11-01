@@ -13,6 +13,7 @@ export interface ChatFact {
 export interface ChatCardFacts {
   readonly title: string;
   readonly facts: readonly ChatFact[];
+  readonly branch: string | undefined;
 }
 
 export interface ChatCardSources {
@@ -28,7 +29,7 @@ export function chatCardFacts(sources: ChatCardSources): ChatCardFacts {
   const title = sources.chat.title;
   const location = sources.chat.location;
 
-  if (location.kind !== "folder") return { title, facts: [] };
+  if (location.kind !== "folder") return { title, facts: [], branch: undefined };
   const git = sources.git;
   const repository = sources.repository;
   const worktree = location.worktree;
@@ -36,22 +37,29 @@ export function chatCardFacts(sources: ChatCardSources): ChatCardFacts {
   const branch = (git?.kind === "repository" ? git.branch : null) ?? worktree?.branch;
   const name = repository === undefined ? folder.name : `${repository.owner}/${repository.name}`;
   const inRepository = repository !== undefined || git?.kind === "repository" || worktree !== null;
+  const path = folder.path.replace(HOME, "~");
 
   const facts: readonly (ChatFact | false)[] = [
-    inRepository && { kind: "repository", text: name, detail: branch, copy: branch ?? name },
+    inRepository
+      ? {
+          kind: "repository",
+          text: name,
+          detail: branch === undefined ? path : `${branch} · ${path}`,
+          copy: folder.path,
+        }
+      : {
+          kind: "folder",
+          text: path,
+          detail: sources.surface === "desktop" ? "Local" : "Remote",
+          copy: folder.path,
+        },
     worktree !== null && {
       kind: "worktree",
       text: location.name,
       detail: "Worktree",
       copy: location.path,
     },
-    {
-      kind: "folder",
-      text: folder.path.replace(HOME, "~"),
-      detail: sources.surface === "desktop" ? "Local" : "Remote",
-      copy: folder.path,
-    },
   ];
 
-  return { title, facts: facts.filter((fact) => fact !== false) };
+  return { title, facts: facts.filter((fact) => fact !== false), branch };
 }

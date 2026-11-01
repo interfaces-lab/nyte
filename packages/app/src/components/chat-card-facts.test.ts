@@ -39,7 +39,7 @@ function repository(branch: string | null): GitStatus {
   };
 }
 
-test("a local git chat shows its repository with the branch, then its folder under ~", () => {
+test("a local git chat shows its repository with the branch and its folder under ~ on one line", () => {
   expect(
     chatCardFacts({
       chat: chat({ name: "Fix the scroll", workspace: project.id }, [project]),
@@ -50,18 +50,18 @@ test("a local git chat shows its repository with the branch, then its folder und
   ).toEqual({
     title: "Fix the scroll",
     facts: [
-      { kind: "repository", text: "nyte-ai/nyte", detail: "main", copy: "main" },
       {
-        kind: "folder",
-        text: "~/Developer/nyte",
-        detail: "Local",
+        kind: "repository",
+        text: "nyte-ai/nyte",
+        detail: "main · ~/Developer/nyte",
         copy: "/Users/ada/Developer/nyte",
       },
     ],
+    branch: "main",
   });
 });
 
-test("a worktree chat names its worktree before the folder it was made from", () => {
+test("a worktree chat names the folder it was made from, then its worktree", () => {
   expect(
     chatCardFacts({
       chat: chat({ name: null, workspace: worktree.id }, [project, worktree]),
@@ -72,20 +72,20 @@ test("a worktree chat names its worktree before the folder it was made from", ()
   ).toEqual({
     title: "New chat",
     facts: [
-      { kind: "repository", text: "nyte", detail: "fix-scroll", copy: "fix-scroll" },
+      {
+        kind: "repository",
+        text: "nyte",
+        detail: "fix-scroll · ~/Developer/nyte",
+        copy: "/Users/ada/Developer/nyte",
+      },
       {
         kind: "worktree",
         text: "fix-scroll",
         detail: "Worktree",
         copy: "/Users/ada/.nyte/worktrees/nyte/fix-scroll",
       },
-      {
-        kind: "folder",
-        text: "~/Developer/nyte",
-        detail: "Remote",
-        copy: "/Users/ada/Developer/nyte",
-      },
     ],
+    branch: "fix-scroll",
   });
 });
 

@@ -22,7 +22,7 @@ import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
 import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
-import { ControlGlyphs, Icon, type GlyphSize, type IconName } from "./icon.tsx";
+import { ControlGlyphs, Icon, IconSwap, type GlyphSize, type IconName } from "./icon.tsx";
 import { Loader } from "./loader.tsx";
 
 /** A loading button is disabled but keeps its look behind the loader. */
@@ -403,7 +403,7 @@ function ButtonContent({
   return (
     <ControlGlyphs>
       <span {...props(contentStyles.content, loading && contentStyles.loading)}>
-        {icon !== undefined && <Icon name={icon} size={buttonGlyphSize(size, iconOnly)} />}
+        {icon !== undefined && <IconSwap name={icon} size={buttonGlyphSize(size, iconOnly)} />}
         {children}
       </span>
       {loading && (

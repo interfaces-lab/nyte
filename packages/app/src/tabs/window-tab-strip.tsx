@@ -16,7 +16,7 @@ import { Tabs } from "@nyte-ai/ui/tabs";
 import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { SessionId } from "@nyte-ai/sdk";
-import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
+import { ChatCardContent, ChatCardTrigger, ChatCopyMenuItems } from "../components/chat-card.tsx";
 import {
   MOVE_SHORTCUTS,
   readMoveStep,
@@ -116,6 +116,7 @@ function TabItem({
   const shortcut = (key: string): string => (strip.mac ? `⌘${key}` : `Ctrl+${key}`);
   const modifierHeld = strip.mac ? held.meta : held.ctrl;
   const parent = tab.parent;
+  const focusedChat = tab.sessions.at(0);
 
   return (
     <ContextMenu>
@@ -224,6 +225,7 @@ function TabItem({
         <ContextMenuItem icon="plus" meta={shortcut("T")} onClick={strip.onNewTab}>
           New Tab
         </ContextMenuItem>
+        {focusedChat !== undefined && <ChatCopyMenuItems sessionId={focusedChat} />}
         <ContextMenuSeparator />
         <ContextMenuItem icon="close" meta={shortcut("W")} onClick={() => strip.onClose(tab.id)}>
           Close Tab
