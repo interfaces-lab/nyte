@@ -466,15 +466,12 @@ const STATES: readonly ComposerState[] = [
   {
     name: "idle",
     view: { ...view(COMPLETED), context: { tokens: 0, window: 0, lastRequest: null } },
-    check: ({ region, editor, button }) => [
+    check: ({ editor, button }) => [
       ...(editor.dataset.placeholder === "Add a follow-up"
         ? []
         : ["placeholder is not the follow-up prompt"]),
       ...(inert(button("Send message")) ? [] : ["Send is live with nothing to send"]),
       ...(button("Stop response") === null ? [] : ["Stop shows with no run"]),
-      ...(region.querySelector("[role='meter']") === null
-        ? []
-        : ["the context ring shows before the host knows the window"]),
     ],
   },
   {
@@ -494,8 +491,6 @@ const STATES: readonly ComposerState[] = [
     check: async ({ region, editor, button }) => {
       const steering = editor.dataset.placeholder;
       const footer = region.querySelector<HTMLElement>("[data-composer-footer]");
-      const meter = footer?.querySelector("[role='meter']");
-      const ring = `${meter?.getAttribute("aria-valuetext") ?? "nothing"} in a ${String(meter?.clientWidth)}×${String(meter?.clientHeight)} box, footer ${String(footer?.offsetHeight)} px`;
       preferences.runningMessage.set("queue");
 
       const queueing = await until(
@@ -512,9 +507,9 @@ const STATES: readonly ComposerState[] = [
         ...(button("Send message") === null ? [] : ["Send shows beside Stop with nothing to send"]),
         ...(steering === "Steer without stopping" ? [] : [`steering placeholder is "${steering}"`]),
         ...(queueing === "Queue for next turn" ? [] : [`queueing placeholder is "${queueing}"`]),
-        ...(ring === "25% context used in a 20×20 box, footer 32 px"
+        ...(footer?.offsetHeight === 26
           ? []
-          : [`the footer's context ring reads "${ring}"`]),
+          : [`the footer is ${String(footer?.offsetHeight)} px, not 26`]),
       ];
     },
   },
