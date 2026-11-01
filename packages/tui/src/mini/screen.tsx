@@ -124,7 +124,7 @@ export function MiniScreen(): JSX.Element {
 
 /**
  * What the rule shows while something runs. A running tool names itself in place of the turn's
- * generic "Working"; a question or a retry keeps the turn's own words.
+ * planning words; a question or a retry keeps the turn's own words.
  */
 type Activity =
   | {

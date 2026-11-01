@@ -152,7 +152,7 @@ test("names the space handle, the steps around an off-scale length, or a named m
     "Use calc(${space.s1} * -1) (-4) or calc(${space.s1_5} * -1) (-6)",
   );
   expect(message("aboveScale:")).toContain("packages/ui/src/styles/schema.stylex.ts");
-  expect(message("offGridSize:")).toContain("Use 14, 16, or glyph.box (15)");
+  expect(message("offGridSize:")).toContain("Use 14 or 16.");
 });
 
 test("sends a literal font weight to its type.weight* handle", () => {

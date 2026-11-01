@@ -1,18 +1,18 @@
 import { Button } from "@nyte-ai/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
-import { toast } from "@nyte-ai/ui/toast";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ReactElement } from "react";
-import type { HostBridge, UpdateChannel } from "../bridge.ts";
-import { modifierKeyLabel } from "../conversation/composer-keys.ts";
+import { modifierKeyLabel } from "../chat/composer/composer-keys.ts";
+import { DESKTOP_SETTING_SCHEMAS } from "../contract/desktop-settings.ts";
 import { hostSetting, preferences, useSetting } from "../preferences/index.ts";
+import { pluginSetting } from "../preferences/plugin.ts";
 import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
 import { settingsStyles as styles } from "./settings.stylex.ts";
-import { nyte } from "../nyte.ts";
-import { keys } from "../query-keys.ts";
-import { errorMessage } from "../errors.ts";
+import { nyte } from "../contract/nyte.ts";
+
+const keepAwake = pluginSetting("desktop.keepAwake", DESKTOP_SETTING_SCHEMAS.keepAwake);
+
+const pauseOnSleep = pluginSetting("desktop.pauseOnSleep", DESKTOP_SETTING_SCHEMAS.pauseOnSleep);
 
 const STARTUP = [
   { value: "new-chat", label: "New chat" },
@@ -34,63 +34,6 @@ const WORKSPACE_TRUST = [
   { value: "always", label: "Always load" },
   { value: "never", label: "Never load" },
 ] as const;
-
-const UPDATE_CHANNEL = [
-  { value: "stable", label: "Stable" },
-  { value: "nightly", label: "Nightly" },
-] as const;
-
-function UpdateChannelSettings({
-  updates,
-}: {
-  readonly updates: NonNullable<HostBridge["updates"]>;
-}): ReactElement {
-  const client = useQueryClient();
-
-  const channel = useQuery({
-    queryKey: keys.updateChannel,
-    queryFn: () =>
-      updates.channel().catch((cause: unknown) => {
-        toast.add({ type: "error", title: errorMessage(cause) });
-        throw cause;
-      }),
-  });
-
-  const change = useMutation({
-    mutationFn: (value: UpdateChannel) => updates.setChannel({ channel: value }),
-    onSuccess: (value) => client.setQueryData(keys.updateChannel, value),
-    onError: (cause) => toast.add({ type: "error", title: errorMessage(cause) }),
-  });
-
-  return (
-    <SettingsSection title="Updates">
-      <SettingsRow
-        title="Update channel"
-        description="Nightly downloads updates in the background and installs them when you quit"
-      >
-        <Select
-          items={UPDATE_CHANNEL}
-          value={channel.data ?? null}
-          disabled={channel.data === undefined || change.isPending}
-          onValueChange={(next) => {
-            if (next !== null) change.mutate(next);
-          }}
-        >
-          <SelectTrigger aria-label="Update channel">
-            <SelectValue placeholder={channel.isError ? "Unavailable" : "Loading…"} />
-          </SelectTrigger>
-          <SelectContent>
-            {UPDATE_CHANNEL.map((option) => (
-              <SelectItem key={option.value} value={option.value} label={option.label}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
-    </SettingsSection>
-  );
-}
 
 function TrustedSitesRow(): ReactElement {
   const hosts = useSetting(preferences.trustedLinkHosts);
@@ -116,7 +59,6 @@ function TrustedSitesRow(): ReactElement {
 
 export function GeneralSettings(): ReactElement {
   const modifier = modifierKeyLabel(nyte.platform === "darwin");
-  const updates = nyte.host.updates;
 
   return (
     <>
@@ -161,17 +103,18 @@ export function GeneralSettings(): ReactElement {
       </SettingsSection>
       <SettingsSection title="System">
         <SwitchRow
-          setting={hostSetting("keepAwake")}
+          setting={keepAwake}
           title="Keep awake while working"
           description="Stop the computer from sleeping while a chat is working. The display can still turn off"
+          needs={["desktop"]}
         />
         <SwitchRow
-          setting={hostSetting("pauseOnSleep")}
+          setting={pauseOnSleep}
           title="Pause agents while asleep"
           description="Stop model requests while the computer sleeps. Chats continue when it wakes"
+          needs={["desktop"]}
         />
       </SettingsSection>
-      {updates !== undefined && <UpdateChannelSettings updates={updates} />}
     </>
   );
 }

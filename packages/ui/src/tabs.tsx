@@ -3,7 +3,7 @@ import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ReactElement } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
-import { button, media, radius, space, target } from "./styles/schema.stylex.ts";
+import { button, control, media, radius, space, target } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { text } from "./styles/text.stylex.ts";
@@ -68,7 +68,7 @@ const tabs = create({
     alignItems: "center",
     justifyContent: "center",
     gap: space.s1_5,
-    height: button.heightSm,
+    height: control.heightSm,
     paddingInline: button.paddingInlineSm,
     borderStyle: "none",
     borderRadius: button.radiusSm,
@@ -120,7 +120,7 @@ const tabs = create({
   pill: {
     display: "inline-flex",
     alignItems: "center",
-    height: button.heightMd,
+    height: control.heightMd,
     paddingInline: button.pillPaddingInlineMd,
     borderRadius: radius.pill,
     borderWidth: 1,
@@ -142,7 +142,7 @@ const tabs = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    height: button.heightMd,
+    height: control.heightMd,
     flexShrink: 0,
     paddingBlock: space.s0_5,
     paddingInline: space.s2_5,
@@ -162,11 +162,12 @@ const indicator = create({
   list: { position: "relative" },
   base: {
     position: "absolute",
-    top: "var(--active-tab-top)",
-    left: "var(--active-tab-left)",
+    top: 0,
+    left: 0,
+    translate: "var(--active-tab-left) var(--active-tab-top)",
     width: "var(--active-tab-width)",
     height: "var(--active-tab-height)",
-    transitionProperty: "top, left, width, height",
+    transitionProperty: "translate, width, height",
     transitionDuration: {
       default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",

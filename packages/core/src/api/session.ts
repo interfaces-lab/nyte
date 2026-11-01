@@ -36,6 +36,7 @@ import { discardSession, releaseStart, stopStart } from "../engine/start.ts";
 import { completeSessionCommand, runCommand } from "../extend/registry.ts";
 import { configure } from "../extend/settings.ts";
 import { isolateWorkspace, releaseWorktree } from "../env/worktrees.ts";
+import { backgroundItems, countBackground } from "../fold/background.ts";
 import { commit } from "../fold/commit.ts";
 import { headRef, seenRef, sessionRef, workspaceRef } from "../store/refs.ts";
 import {
@@ -62,6 +63,7 @@ import type { StoreConnection } from "../contract/store.ts";
 const DEFAULT_LIMIT = 50;
 
 const DIRECTORY_EVENTS: ReadonlySet<string> = new Set([
+  "background",
   "session",
   "run",
   "head",
@@ -73,6 +75,7 @@ const DIRECTORY_EVENTS: ReadonlySet<string> = new Set([
 interface DirectoryEntry {
   readonly version: Revision;
   readonly activation: Activation;
+  readonly background: string;
   readonly info: SessionInfo;
   readonly fingerprint: string;
 }
@@ -195,6 +198,7 @@ async function describeSession(
 ): Promise<SessionInfo> {
   const id = record.id;
   const runs = await liveRuns(kernel.store, id);
+  const background = backgroundItems(kernel, id);
 
   const heads = await Promise.all(
     record.heads.map((head) =>
@@ -204,6 +208,9 @@ async function describeSession(
         principal,
         head,
         runs.find((run) => run.record.view.head === head.name)?.record,
+        countBackground(
+          background.flatMap((entry) => (entry.head === head.name ? [entry.item] : [])),
+        ),
       ),
     ),
   );
@@ -299,8 +306,13 @@ export function watchSessions(
               const id = asId<"session">(ref.name.slice("sessions/".length));
               const previous = cached.get(id);
               const activation = kernel.sessions.activation(id);
+              const background = backgroundKey(kernel, id);
 
-              if (previous?.version === version && previous.activation === activation) {
+              if (
+                previous?.version === version &&
+                previous.activation === activation &&
+                previous.background === background
+              ) {
                 next.set(id, previous);
 
                 return previous.info;
@@ -311,7 +323,7 @@ export function watchSessions(
               const current = await describeSession(kernel, found.record, principal);
               const fingerprint = JSON.stringify(current);
               const info = previous?.fingerprint === fingerprint ? previous.info : current;
-              next.set(id, { version, activation, fingerprint, info });
+              next.set(id, { version, activation, background, fingerprint, info });
 
               return info;
             }),
@@ -634,12 +646,24 @@ async function listChildSessionIds(
   return children;
 }
 
+function backgroundKey(kernel: Kernel, session: SessionId): string {
+  return backgroundItems(kernel, session)
+    .flatMap(({ head, item }) =>
+      item.kind !== "page" && (item.state === "working" || item.state === "waiting")
+        ? [`${head} ${item.state}`]
+        : [],
+    )
+    .toSorted()
+    .join("\n");
+}
+
 async function headInfo(
   store: StoreConnection,
   id: SessionId,
   principal: PrincipalId,
   head: HeadRecord,
   run: RunRecord | undefined,
+  background: HeadInfo["background"],
 ): Promise<HeadInfo> {
   const { refs } = store;
 
@@ -656,6 +680,7 @@ async function headInfo(
     stack: head.stack,
     execution: run === undefined ? { kind: "idle", lastRun: head.lastRun } : execution(run),
     unread: commit !== (seen?.record.commit ?? null),
+    background,
   };
 }
 

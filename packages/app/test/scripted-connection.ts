@@ -1,7 +1,9 @@
 import { SdkError, watchStore } from "@nyte-ai/sdk";
 import type {
   Connection,
+  GitApi,
   GitHubAccountApi,
+  GitHubApi,
   HostView,
   JobId,
   Json,
@@ -19,11 +21,17 @@ import { asId } from "@nyte-ai/schema";
 export interface ConnectionScript {
   readonly views?: ReadonlyMap<SessionId, readonly SessionView[] | ViewStream>;
   readonly sessions?: readonly SessionInfo[] | ViewStream<readonly SessionInfo[]>;
+  /** A session left out has no children. */
+  readonly children?: ReadonlyMap<SessionId, readonly SessionInfo[]>;
   readonly workspaces?: readonly WorkspaceInfo[];
   readonly session?: (id: SessionId) => Partial<Session>;
   readonly host?: ViewStream<HostView>;
   readonly models?: Partial<ModelsApi>;
   readonly github?: Partial<GitHubAccountApi>;
+  /** Shared by every workspace; members left out are refused. */
+  readonly git?: Partial<GitApi>;
+  /** Shared by every workspace; members left out are refused. */
+  readonly workspaceGitHub?: Partial<GitHubApi>;
 }
 
 export interface ScriptedSend {
@@ -87,6 +95,7 @@ async function* replay<T>(values: readonly T[]): AsyncIterable<T> {
   await new Promise<never>(() => undefined);
 }
 
+/** A session's handle also stands for its heads, so `head()` returns what the script changes on it. */
 export function scriptedConnection(script: ConnectionScript = {}): {
   readonly connection: Connection;
   readonly sent: readonly ScriptedSend[];
@@ -99,7 +108,11 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     const scripted = script.views?.get(id) ?? [];
     const stream = "watch" in scripted ? scripted : undefined;
     const views = "watch" in scripted ? undefined : scripted;
-    const row = rows.find((candidate) => candidate.id === id);
+
+    const row = [...rows, ...[...(script.children?.values() ?? [])].flat()].find(
+      (candidate) => candidate.id === id,
+    );
+
     const base: Session = {
       id,
       sessionId: id,
@@ -151,7 +164,9 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       }),
     };
 
-    return { ...base, ...script.session?.(id) };
+    const handle: Session = { ...base, head: () => handle, ...script.session?.(id) };
+
+    return handle;
   };
 
   const workspace = (id: WorkspaceId) => ({
@@ -188,17 +203,53 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     changes: refuse,
     patches: refused,
     files: refuse,
-    git: refuse,
-    github: refuse,
+    git: script.git === undefined ? refuse : async () => ({ kind: "available" as const, api: git }),
+    github:
+      script.workspaceGitHub === undefined
+        ? refuse
+        : async () => ({ kind: "available" as const, api: github }),
     browser: refuse,
   });
+
+  const git: GitApi = {
+    status: refuse,
+    watch: refused,
+    changes: refuse,
+    watchChanges: refused,
+    patches: refused,
+    contents: refuse,
+    log: refuse,
+    refs: refuse,
+    blame: refuse,
+    stage: refuse,
+    unstage: refuse,
+    discard: refuse,
+    commit: refuse,
+    branch: refuse,
+    checkout: refuse,
+    push: refuse,
+    ...script.git,
+  };
+
+  const github: GitHubApi = {
+    state: refuse,
+    createPullRequest: refuse,
+    ...script.workspaceGitHub,
+  };
 
   const connection: Connection = {
     hostId: asId<"host">("scripted"),
     principal: asId<"principal">("tester"),
     credential: { kind: "token", token: "scripted-token-0000" },
     sessions: {
-      watch: () => ("watch" in listed ? listed.watch() : replay([rows])),
+      watch: (input) => {
+        const parents = input?.parents;
+
+        if (parents?.kind === "children")
+          return replay([script.children?.get(parents.session) ?? []]);
+
+        return "watch" in listed ? listed.watch() : replay([rows]);
+      },
       start: refuse,
       list: async () => ({ items: rows, next: null }),
     },
@@ -217,6 +268,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       list: refuse,
       accounts: refuse,
       selectAccount: refuse,
+      renameAccount: refuse,
       usage: refuse,
       refresh: refuse,
       setDefault: refuse,

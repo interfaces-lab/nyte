@@ -19,7 +19,7 @@ import {
   spectrum,
   type Strength,
 } from "./strip";
-import { AdvancedStrip, BrowserStrip, EditorStrip, TerminalStrip } from "./tool-strips";
+import { BrowserStrip, DeveloperStrip, EditorStrip, TerminalStrip } from "./tool-strips";
 
 const PICKER = { x: 73 * CELL, y: 60, w: 5 * CELL, h: 84 } as const;
 
@@ -486,7 +486,7 @@ export const PAGE_STRIPS = {
   editor: EditorStrip,
   terminal: TerminalStrip,
   browser: BrowserStrip,
-  advanced: AdvancedStrip,
+  developer: DeveloperStrip,
 } as const;
 
 const ripple = keyframes({

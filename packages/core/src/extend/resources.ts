@@ -1,5 +1,6 @@
 import { SdkError, standard } from "@nyte-ai/schema";
 import type { FileEntryView, SessionId, ValidationIssue, WorkspaceId } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import { Type } from "typebox";
 import { isMap, isScalar, parseDocument } from "yaml";
 import type { Kernel } from "../contract/kernel.ts";
@@ -9,6 +10,7 @@ import type {
   ExecutionEnv,
   FilesApi,
   Resources,
+  RootWatch,
   ScanEntry,
 } from "../contract/workspace.ts";
 import { classifyFileSupport, readWorkspace } from "../env/environment.ts";
@@ -17,12 +19,13 @@ import { kvRef } from "../store/refs.ts";
 import { readKv, requireSession } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
+import { PLUGIN_FOLDER, reloadUserPlugins, samePlugins, sessionPlugins } from "./plugin-folders.ts";
 
 type Skill = Resources["skills"][number];
 
-type Prompt = Resources["prompts"][number];
-
 type ContextFile = Resources["contextFiles"][number];
+
+type PromptInputs = Pick<Resources, "contextFiles" | "prompt">;
 
 const CONTEXT_NAMES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 
@@ -43,6 +46,9 @@ type FoundContext = ContextFile & {
 
 const SKILL_DIRECTORIES = [".nyte/skills", ".agents/skills"];
 
+/** The home's key in `WorkspaceState.watches`; a workspace's is its id. */
+const HOME = "home";
+
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 const ABSOLUTE = /^(?:\/|[A-Za-z]:[\\/])/;
@@ -53,77 +59,82 @@ export const SKILL_PATHS = "skills.paths";
 
 const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
-/** Returns the session's resources, scanned once and cached until a skill file under a scanned skill directory or path moves, which drops the scan and reloads the session's plugins so the skill list follows the disk. */
+/** Returns the session's resources, scanned once and kept until a folder they load from changes. Before the scan reads them, the session joins the watches on those folders (`refresh` answers a change), so a change during the scan still counts. */
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
   const record = (await requireSession(kernel.store, session)).record;
   const workspace = record.workspace;
+  const contextFiles = record.contextFiles ?? true;
   const table = kernel.workspaceState.scans;
   const cached = table.get(session);
 
   if (cached !== undefined && cached.workspace === workspace) return cached.resources;
-  dropScans(kernel, (key) => key === session);
-  const watching = new AbortController();
 
   const entry: ScanEntry = {
     workspace,
-    resources: scan(
-      kernel,
-      workspace,
-      () => kernel.environments.attach(session),
-      record.contextFiles ?? true,
-    ).then((resources) => {
-      const api = kernel.plugins.runtimes().get(session)?.api("resources");
+    resources: follow(kernel, session, workspace)
+      .then(() => scan(kernel, workspace, () => kernel.environments.attach(session), contextFiles))
+      .then((resources) => {
+        const api = kernel.plugins.runtimes().get(session)?.api("resources");
 
-      for (const issue of resourceIssues(resources)) api?.report(issue);
+        for (const issue of resourceIssues(resources)) api?.report(issue);
 
-      return resources;
-    }),
-    stop: () => watching.abort(),
+        return resources;
+      }),
   };
 
   table.set(session, entry);
-
-  const moved = (): void => {
-    if (table.get(session) !== entry) return;
-    dropScans(kernel, (key) => key === session);
-    void kernel.plugins
-      .reload(session)
-      .catch((error: unknown) =>
-        dev("resources", "reload failed", { session, error: String(error) }),
-      );
-  };
-
-  entry.resources.then(
-    async (resources) => {
-      const paths = userSkillPaths(await skillPaths(kernel.store));
-
-      for (const [files, watched] of [
-        [resources.project, SKILL_DIRECTORIES],
-        [resources.user, [...SKILL_DIRECTORIES, ...paths]],
-      ] as const)
-        if (files !== null)
-          void skillsMoved(files, watched, watching.signal).then((changed) => {
-            if (changed) moved();
-          });
-    },
-    () => dropScans(kernel, (key, found) => key === session && found === entry),
+  entry.resources.catch(() =>
+    dropScans(kernel, (key, known) => key === session && known === entry),
   );
 
   return entry.resources;
 }
 
-/** Drops the cached scans `chosen` picks (every one by default) and stops each one's watch. */
+/** Drops the cached scans `chosen` picks (every one by default), so their sessions scan again; the watches stay. */
 export function dropScans(
   kernel: Kernel,
   chosen: (session: SessionId, entry: ScanEntry) => boolean = () => true,
 ): void {
   const table = kernel.workspaceState.scans;
 
-  for (const [session, entry] of table) {
-    if (!chosen(session, entry)) continue;
-    table.delete(session);
-    entry.stop();
+  for (const [session, entry] of table) if (chosen(session, entry)) table.delete(session);
+}
+
+/** Drops the scans of the sessions `chosen` picks (every one by default) and takes those sessions off the watches, stopping each watch no session is left on. */
+export function forgetScans(
+  kernel: Kernel,
+  chosen: (session: SessionId) => boolean = () => true,
+): void {
+  dropScans(kernel, (session) => chosen(session));
+  const watches = kernel.workspaceState.watches;
+
+  for (const [key, watch] of watches) {
+    for (const session of watch.sessions) if (chosen(session)) watch.sessions.delete(session);
+
+    if (watch.sessions.size > 0 || watch.kept) continue;
+    watches.delete(key);
+    watch.stop();
   }
+}
+
+/** Starts the home's watch for the host's lifetime, so a change under `<home>/.nyte/plugins` reloads the host's own plugins with no chat open. */
+export async function watchHome(kernel: Kernel): Promise<void> {
+  const home = await attachHome(kernel).catch(() => null);
+
+  if (home === null) return;
+  watchRoot(kernel, HOME, home.files, null, await homePaths(kernel), true);
+}
+
+/** Closes the watches as the host closes: no watch starts and no change is answered after, every scan is dropped, every watch (the home's too) stops, and the changes already being answered finish first, so none reloads a plugin on a closing host. */
+export async function closeWatches(kernel: Kernel): Promise<void> {
+  const state = kernel.workspaceState;
+  state.closed = true;
+  state.scans.clear();
+  const stopped = [...state.watches.values()];
+  state.watches.clear();
+
+  for (const watch of stopped) watch.stop();
+  await Promise.all(stopped.map((watch) => watch.settled()));
 }
 
 /** Scans the resources a new chat in `workspace` would read, before the chat exists, over the workspace's own attachment. */
@@ -133,6 +144,31 @@ export function scanWorkspaceResources(kernel: Kernel, workspace: WorkspaceId): 
 
 export function resourceIssues(resources: Resources): readonly ValidationIssue[] {
   return scanIssues.get(resources) ?? [];
+}
+
+/**
+ * Reads the session's prompt files again before a request and, when they differ from its cached
+ * scan, drops the scan and reloads the session's plugins, so the request about to be built and its
+ * plugins' `inputs` carry them. Prompt files are read rather than watched: they sit in every
+ * folder above the workspace and in `<home>/.nyte`, where a watch costs more than a read.
+ */
+export async function refreshPromptFiles(kernel: Kernel, session: SessionId): Promise<void> {
+  const cached = kernel.workspaceState.scans.get(session);
+
+  if (cached === undefined) return;
+  const resources = await cached.resources.catch(() => null);
+  const record = (await requireSession(kernel.store, session)).record;
+
+  if (resources === null || record.workspace !== cached.workspace) return;
+
+  const found = await readers(kernel, record.workspace, () => kernel.environments.attach(session));
+
+  const fresh = await readPromptInputs(kernel, found, record.contextFiles ?? true);
+  const known: PromptInputs = { contextFiles: resources.contextFiles, prompt: resources.prompt };
+
+  if (JSON.stringify(fresh) === JSON.stringify(known)) return;
+  dropScans(kernel, (key, entry) => key === session && entry === cached);
+  await kernel.plugins.reload(session);
 }
 
 export const resourcesPlugin: Plugin<"core"> = {
@@ -226,24 +262,13 @@ async function scan(
   attach: () => Promise<ExecutionEnv>,
   withContext: boolean,
 ): Promise<Resources> {
-  const record = await readWorkspace(kernel.store, workspace);
-  const homeEnv = await attachHome(kernel);
-  const user = homeEnv?.files ?? null;
-
-  const trusted = record !== null && (await projectTrust(kernel, record)) === true;
-  const provider = record === null ? undefined : kernel.environments.provider(record.target.kind);
-
-  const attached = classifyFileSupport(provider) === "available" ? attach() : null;
-
-  const env =
-    attached === null ? null : trusted ? await attached : await attached.catch(() => null);
-  const folder = env?.files ?? null;
-  const project = trusted ? folder : null;
-  const root = env !== null && env.cwd.startsWith("/") ? env.cwd : null;
+  const found = await readers(kernel, workspace, attach);
+  const user = found.homeEnv?.files ?? null;
   const home = kernel.home;
 
-  const [projectSkills, userSkills, pathSkills] = await Promise.all([
-    project === null ? [] : skillsIn(project, SKILL_DIRECTORIES, "project", root),
+  const [inputs, projectSkills, userSkills, pathSkills] = await Promise.all([
+    readPromptInputs(kernel, found, withContext),
+    found.project === null ? [] : skillsIn(found.project, SKILL_DIRECTORIES, "project", found.root),
     user === null ? [] : skillsIn(user, SKILL_DIRECTORIES, "user", home),
     user === null ? [] : skillsAt(user, await skillPaths(kernel.store), home),
   ]);
@@ -264,35 +289,48 @@ async function scan(
     source: { plugin: "resources" },
   }));
 
-  const contextFiles = withContext
-    ? await findContextFiles(
-        homeEnv === null || home === null
-          ? null
-          : {
-              files: homeEnv.files,
-              real: realPaths(kernel.environments.provider("local"), homeEnv),
-              home,
-            },
-        env === null ? null : { files: env.files, real: realPaths(provider, env), root },
-      )
-    : [];
+  const resources: Resources = { user, project: found.project, skills, ...inputs };
 
-  const [userSystem, userAppend, projectSystem, projectAppend] = await Promise.all([
+  scanIssues.set(resources, issues);
+
+  return resources;
+}
+
+/** The prompt files `found` reads: the context files (the user's in `<home>/.nyte`, each ancestor's, then the folder's own) when `withContext`, and `.nyte/SYSTEM.md` and `.nyte/APPEND_SYSTEM.md`, a trusted folder's before the user's. */
+async function readPromptInputs(
+  kernel: Kernel,
+  found: Awaited<ReturnType<typeof readers>>,
+  withContext: boolean,
+): Promise<PromptInputs> {
+  const user = found.homeEnv?.files ?? null;
+  const home = kernel.home;
+
+  const [contextFiles, userSystem, userAppend, projectSystem, projectAppend] = await Promise.all([
+    withContext
+      ? findContextFiles(
+          found.homeEnv === null || home === null
+            ? null
+            : {
+                files: found.homeEnv.files,
+                real: realPaths(kernel.environments.provider("local"), found.homeEnv),
+                home,
+              },
+          found.env === null
+            ? null
+            : {
+                files: found.env.files,
+                real: realPaths(found.provider, found.env),
+                root: found.root,
+              },
+        )
+      : [],
     user === null ? null : readText(user, ".nyte/SYSTEM.md"),
     user === null ? null : readText(user, ".nyte/APPEND_SYSTEM.md"),
-    project === null ? null : readText(project, ".nyte/SYSTEM.md"),
-    project === null ? null : readText(project, ".nyte/APPEND_SYSTEM.md"),
+    found.project === null ? null : readText(found.project, ".nyte/SYSTEM.md"),
+    found.project === null ? null : readText(found.project, ".nyte/APPEND_SYSTEM.md"),
   ]);
 
-  const [projectPrompts, userPrompts] = await Promise.all([
-    project === null ? [] : promptsIn(project, "project"),
-    user === null ? [] : promptsIn(user, "user"),
-  ]);
-
-  const resources: Resources = {
-    user,
-    project,
-    skills,
+  return {
     contextFiles,
     prompt: {
       system: projectSystem ?? userSystem,
@@ -304,12 +342,192 @@ async function scan(
             ? "user"
             : null,
     },
-    prompts: byName([...projectPrompts, ...userPrompts]).kept,
+  };
+}
+
+/** What a workspace's files are read through: the home's environment, the workspace's (null where its provider serves no files or, untrusted, it does not attach), the workspace's files again as `project` once it is trusted, and its root as an absolute path. */
+async function readers(
+  kernel: Kernel,
+  workspace: WorkspaceId,
+  attach: () => Promise<ExecutionEnv>,
+) {
+  const record = await readWorkspace(kernel.store, workspace);
+  const homeEnv = await attachHome(kernel);
+  const trusted = record !== null && (await projectTrust(kernel, record)) === true;
+  const provider = record === null ? undefined : kernel.environments.provider(record.target.kind);
+  const attached = classifyFileSupport(provider) === "available" ? attach() : null;
+
+  const env =
+    attached === null ? null : trusted ? await attached : await attached.catch(() => null);
+
+  return {
+    homeEnv,
+    provider,
+    env,
+    project: trusted ? (env?.files ?? null) : null,
+    root: env !== null && env.cwd.startsWith("/") ? env.cwd : null,
+  };
+}
+
+/** Puts `session` on the watches of the folders its resources load from: the home's (`homePaths`) and, once the workspace is trusted, the workspace's (`.nyte/plugins` and the skill folders), which watches through the files of the first session on it. */
+async function follow(kernel: Kernel, session: SessionId, workspace: WorkspaceId): Promise<void> {
+  const home = await attachHome(kernel).catch(() => null);
+
+  if (home !== null) watchRoot(kernel, HOME, home.files, session, await homePaths(kernel));
+
+  const record = await readWorkspace(kernel.store, workspace);
+
+  if (record === null || (await projectTrust(kernel, record)) !== true) return;
+
+  if (classifyFileSupport(kernel.environments.provider(record.target.kind)) !== "available") return;
+  const env = await kernel.environments.attach(session).catch(() => null);
+
+  if (env !== null)
+    watchRoot(kernel, workspace, env.files, session, [...SKILL_DIRECTORIES, PLUGIN_FOLDER]);
+}
+
+/** The folders the home's watch covers: `.nyte/plugins`, the skill folders and the skill paths. */
+async function homePaths(kernel: Kernel): Promise<readonly string[]> {
+  return [...SKILL_DIRECTORIES, PLUGIN_FOLDER, ...userSkillPaths(await skillPaths(kernel.store))];
+}
+
+/** Adds `session` (none for the host's own) to the watch on `key`'s `paths`, starting the watch, or restarting it when its paths changed. */
+function watchRoot(
+  kernel: Kernel,
+  key: string,
+  files: FilesApi,
+  session: SessionId | null,
+  paths: readonly string[],
+  kept = false,
+): void {
+  const watches = kernel.workspaceState.watches;
+  const joined = paths.join("\n");
+  const known = watches.get(key);
+
+  if (kernel.workspaceState.closed) return;
+
+  if (known !== undefined && known.paths === joined && (known.kept || !kept)) {
+    if (session !== null) known.sessions.add(session);
+
+    return;
+  }
+
+  known?.stop();
+  const events = files.watch({ paths })[Symbol.asyncIterator]();
+  const changes = serial();
+
+  const watch: RootWatch = {
+    paths: joined,
+    sessions: new Set([...(known?.sessions ?? []), ...(session === null ? [] : [session])]),
+    kept: kept || known?.kept === true,
+    stop: () => void events.return?.(),
+    settled: () => changes.settled(),
   };
 
-  scanIssues.set(resources, issues);
+  watches.set(key, watch);
+  void drain(kernel, key, watch, events, changes);
+}
 
-  return resources;
+/** Answers a watch's changes one batch at a time, folding the changes that arrive while a batch waits into it, until the watch ends. A watch that ends unasked (its files closed with the session that lent them) leaves its key and refreshes its sessions, which watch again through files of their own. */
+async function drain(
+  kernel: Kernel,
+  key: string,
+  watch: RootWatch,
+  events: AsyncIterator<readonly { readonly path: string }[]>,
+  changes: ReturnType<typeof serial>,
+): Promise<void> {
+  let waiting: string[] | null = null;
+
+  try {
+    for (;;) {
+      const next = await events.next();
+
+      if (next.done === true) return;
+
+      if (next.value.length === 0) continue;
+      const queued = waiting !== null;
+      waiting = [...(waiting ?? []), ...next.value.map((event) => event.path)];
+
+      if (queued) continue;
+      void changes
+        .run(async () => {
+          const paths = waiting ?? [];
+          waiting = null;
+          await refreshRoot(kernel, key, watch, paths);
+        })
+        .catch((error: unknown) =>
+          dev("resources", "refresh failed", { key, error: String(error) }),
+        );
+    }
+  } catch (error) {
+    dev("resources", "watch failed", { key, error: String(error) });
+  } finally {
+    if (kernel.workspaceState.watches.get(key) === watch) {
+      kernel.workspaceState.watches.delete(key);
+      void changes
+        .run(async () => {
+          for (const session of watch.sessions) await refresh(kernel, session);
+        })
+        .catch((error: unknown) =>
+          dev("resources", "refresh failed", { key, error: String(error) }),
+        );
+    }
+  }
+}
+
+/** Answers changes under a root: under the home's `.nyte/plugins` the host's own plugins reload; any other change refreshes the sessions on the watch. */
+async function refreshRoot(
+  kernel: Kernel,
+  key: string,
+  watch: RootWatch,
+  paths: readonly string[],
+): Promise<void> {
+  if (kernel.workspaceState.closed) return;
+
+  const plugins = paths.filter(
+    (path) => path === PLUGIN_FOLDER || path.startsWith(`${PLUGIN_FOLDER}/`),
+  );
+
+  if (key === HOME && plugins.length > 0) await reloadUserPlugins(kernel);
+
+  if (key === HOME && plugins.length === paths.length) return;
+
+  for (const session of watch.sessions) await refresh(kernel, session);
+}
+
+/** Scans `session`'s resources again and reloads its plugins when what they read, or the plugins it would load now (its assigned files loaded again, or a new chat's in its workspace), differ from what it runs. Nothing reloads once the host closes its watches. */
+async function refresh(kernel: Kernel, session: SessionId): Promise<void> {
+  const before = kernel.workspaceState.scans.get(session);
+  dropScans(kernel, (key) => key === session);
+  const runtime = kernel.plugins.runtimes().get(session);
+
+  if (runtime === undefined || kernel.workspaceState.closed) return;
+  const after = await scanResources(kernel, session);
+  const read = await before?.resources.catch(() => null);
+  const workspace = kernel.workspaceState.scans.get(session)?.workspace;
+
+  const plugins =
+    workspace === undefined
+      ? null
+      : await sessionPlugins(kernel, runtime, workspace).catch(() => null);
+
+  const unchanged =
+    read !== undefined &&
+    read !== null &&
+    sameInputs(read, after) &&
+    plugins !== null &&
+    samePlugins(runtime.requested(), plugins);
+
+  if (unchanged || kernel.workspaceState.closed) return;
+  await kernel.plugins.reload(session);
+}
+
+/** Whether two scans read the same skills and prompt files. */
+function sameInputs(left: Resources, right: Resources): boolean {
+  const read = (resources: Resources) =>
+    JSON.stringify([resources.skills, resources.contextFiles, resources.prompt]);
+
+  return read(left) === read(right);
 }
 
 function attachHome(kernel: Kernel): Promise<ExecutionEnv | null> {
@@ -328,33 +546,6 @@ function attachHome(kernel: Kernel): Promise<ExecutionEnv | null> {
   });
 
   return attached;
-}
-
-/** Resolves true once a file under one of `paths` moves in `files`, false when the watch ends, fails or `signal` aborts first. */
-async function skillsMoved(
-  files: FilesApi,
-  paths: readonly string[],
-  signal: AbortSignal,
-): Promise<boolean> {
-  if (signal.aborted) return false;
-  const events = files.watch({ paths })[Symbol.asyncIterator]();
-  const stop = (): void => void events.return?.();
-  signal.addEventListener("abort", stop, { once: true });
-
-  try {
-    for (;;) {
-      const next = await events.next();
-
-      if (next.done === true || signal.aborted) return false;
-
-      if (next.value.length > 0) return true;
-    }
-  } catch {
-    return false;
-  } finally {
-    signal.removeEventListener("abort", stop);
-    stop();
-  }
 }
 
 function userSkillPaths(paths: readonly string[]): readonly string[] {
@@ -470,16 +661,6 @@ async function skillsAt(
   );
 
   return found.flat();
-}
-
-async function promptsIn(files: FilesApi, scope: Prompt["scope"]): Promise<readonly Prompt[]> {
-  const entries = await listDirectChildren(files, ".nyte/prompts", ["file"]);
-
-  return entries.flatMap(({ name }) =>
-    name.endsWith(".md")
-      ? [{ name: name.slice(0, -".md".length), location: `.nyte/prompts/${name}`, scope }]
-      : [],
-  );
 }
 
 function parseSkillMetadata(

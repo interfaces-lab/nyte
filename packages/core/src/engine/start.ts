@@ -6,7 +6,6 @@ import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { SessionRecord } from "../contract/records.ts";
 import { releaseWorktree } from "../env/worktrees.ts";
-import { dropScans } from "../extend/resources.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
 import { releaseParts } from "../store/parts.ts";
@@ -124,9 +123,9 @@ export async function discardSession(
   if (outcome.kind === "stale") return false;
   kernel.executionState.starting.get(session)?.abort.abort();
   kernel.plugins.state.assigned.delete(session);
-  dropScans(kernel, (key) => key === session);
   await kernel.plugins.close(session);
   kernel.sessions.forget(session);
+  kernel.children.forget(session);
   releaseParts(kernel.partTable, session);
 
   await Promise.allSettled([

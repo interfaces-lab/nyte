@@ -1,0 +1,308 @@
+import { openQuestions } from "@nyte-ai/plugin/question/schema";
+import type { OpenQuestion, QuestionAnswers, QuestionInfo } from "@nyte-ai/plugin/question/schema";
+import type { SessionId } from "@nyte-ai/sdk";
+import { useMutation } from "@tanstack/react-query";
+import { createContext, useRef, useState } from "react";
+import { useWaitingDescendants } from "../../chats/index.ts";
+import { connection } from "../../data/connection.ts";
+import { sessionWatch } from "../../data/watches.ts";
+import { useWatchSelect } from "../../data/watch-store.ts";
+import { sameComposerDocument } from "../composer/composer-document.ts";
+import type { ComposerDocumentState } from "../composer/composer-document.ts";
+
+const EMPTY_DOCUMENT: ComposerDocumentState = { text: "", selectionStart: 0, selectionEnd: 0 };
+
+type FieldDraft =
+  | {
+      readonly kind: "single";
+      readonly selection:
+        | { readonly kind: "empty" }
+        | { readonly kind: "option"; readonly label: string }
+        | { readonly kind: "custom" };
+      readonly document: ComposerDocumentState;
+    }
+  | {
+      readonly kind: "multiple";
+      readonly options: readonly string[];
+      readonly document: ComposerDocumentState;
+    };
+
+interface RequestDraft {
+  readonly sessionId: SessionId;
+  readonly part: OpenQuestion["part"];
+  readonly current: number;
+  readonly fields: readonly FieldDraft[];
+}
+
+export async function answerQuestion(
+  sessionId: SessionId,
+  question: OpenQuestion,
+  answers: QuestionAnswers,
+): Promise<void> {
+  const outcome = await connection()
+    .session(sessionId)
+    .part(question.part)
+    .act("answer", { answers });
+
+  switch (outcome.kind) {
+    case "ok":
+      return;
+    case "rejected":
+      throw new Error(outcome.reason);
+    case "failed":
+      throw new Error(outcome.message);
+    case "no-owner":
+      throw new Error("This host cannot answer these questions yet.");
+    case "unknown-action":
+      throw new Error("Question answers are unavailable on this host.");
+    case "closed":
+      throw new Error("This question is no longer waiting.");
+    default: {
+      const exhaustive: never = outcome;
+
+      return exhaustive;
+    }
+  }
+}
+
+function fieldAnswers(field: FieldDraft): string[] {
+  const custom = field.document.text.trim();
+
+  if (field.kind === "multiple")
+    return Array.from(
+      new Set([...field.options.map((label) => label.trim()), ...(custom !== "" ? [custom] : [])]),
+    );
+
+  switch (field.selection.kind) {
+    case "empty":
+      return [];
+    case "option":
+      return [field.selection.label];
+    case "custom":
+      return custom === "" ? [] : [custom];
+    default: {
+      const exhaustive: never = field.selection;
+
+      return exhaustive;
+    }
+  }
+}
+
+export type QuestionOutcome =
+  | { readonly kind: "blocked" }
+  | { readonly kind: "next" }
+  | { readonly kind: "sent" }
+  | { readonly kind: "failed" };
+
+export interface QuestionDock {
+  readonly request: OpenQuestion;
+  readonly field: QuestionInfo;
+  readonly origin: string | undefined;
+  readonly current: number;
+  readonly total: number;
+  readonly last: boolean;
+  readonly document: ComposerDocumentState;
+  readonly pending: boolean;
+  readonly settled: boolean;
+  readonly error: string | undefined;
+  readonly answered: readonly boolean[];
+  readonly isSelected: (label: string) => boolean;
+  readonly select: (label: string) => void;
+  readonly changeDocument: (document: ComposerDocumentState) => void;
+  readonly jump: (index: number) => void;
+  readonly advance: (document?: ComposerDocumentState) => Promise<QuestionOutcome>;
+  readonly dismiss: () => Promise<Exclude<QuestionOutcome, { readonly kind: "next" }>>;
+}
+
+export const QuestionDockContext = createContext<QuestionDock | undefined>(undefined);
+
+export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined {
+  const parts = useWatchSelect(sessionWatch(sessionId), (state) => state.value?.parts);
+  const waiting = useWaitingDescendants(sessionId);
+
+  const [stored, setStored] = useState<readonly RequestDraft[]>([]);
+
+  const submitting = useRef(false);
+
+  const reply = useMutation({
+    mutationKey: ["question", sessionId, "answer"],
+    retry: false,
+    mutationFn: async (submission: {
+      readonly sessionId: SessionId;
+      readonly request: OpenQuestion;
+      readonly answers: QuestionAnswers | null;
+    }) => {
+      if (submission.answers === null)
+        await connection().session(submission.sessionId).part(submission.request.part).close();
+      else await answerQuestion(submission.sessionId, submission.request, submission.answers);
+
+      return { sessionId: submission.sessionId, part: submission.request.part };
+    },
+  });
+
+  const own = openQuestions({ parts: parts ?? [] });
+
+  const requests = [
+    ...own.map((request) => ({ sessionId, request, origin: undefined })),
+    ...waiting.flatMap((entry) =>
+      openQuestions(entry.view).map((request) => ({
+        sessionId: entry.id,
+        request,
+        origin: entry.title,
+      })),
+    ),
+  ];
+
+  const recent = stored.findLast((draft) =>
+    requests.some(
+      (request) => request.sessionId === draft.sessionId && request.request.part === draft.part,
+    ),
+  );
+
+  const active =
+    requests.find(
+      (request) => request.sessionId === recent?.sessionId && request.request.part === recent.part,
+    ) ?? requests[0];
+
+  const save = (next: RequestDraft): void => {
+    setStored((current) => [
+      ...current.filter((draft) => draft.sessionId !== next.sessionId || draft.part !== next.part),
+      next,
+    ]);
+  };
+
+  if (active === undefined) return undefined;
+
+  const draft: RequestDraft =
+    recent?.sessionId === active.sessionId && recent.part === active.request.part
+      ? recent
+      : {
+          sessionId: active.sessionId,
+          part: active.request.part,
+          current: 0,
+          fields: active.request.questions.map((field): FieldDraft =>
+            field.multiple === true
+              ? { kind: "multiple", options: [], document: EMPTY_DOCUMENT }
+              : { kind: "single", selection: { kind: "empty" }, document: EMPTY_DOCUMENT },
+          ),
+        };
+
+  const field = active.request.questions[draft.current];
+  const selected = draft.fields[draft.current];
+
+  if (field === undefined || selected === undefined) return undefined;
+
+  const settled =
+    reply.isSuccess &&
+    reply.data.sessionId === active.sessionId &&
+    reply.data.part === active.request.part;
+
+  const pending = reply.isPending;
+  const blocked = pending || settled;
+
+  const customDocumentVisible =
+    selected.kind === "multiple" || selected.selection.kind === "custom";
+
+  const displayed = customDocumentVisible ? selected.document : EMPTY_DOCUMENT;
+
+  const replace = (next: FieldDraft): void => {
+    save({
+      ...draft,
+      fields: draft.fields.map((value, index) => (index === draft.current ? next : value)),
+    });
+  };
+
+  const customDraft = (document: ComposerDocumentState): FieldDraft =>
+    selected.kind === "multiple"
+      ? { ...selected, document }
+      : { ...selected, document, selection: { kind: "custom" } };
+
+  const last = draft.current === draft.fields.length - 1;
+
+  const sendReply = (answers: QuestionAnswers | null) => {
+    submitting.current = true;
+
+    return reply
+      .mutateAsync({ sessionId: active.sessionId, request: active.request, answers })
+      .then(
+        () => ({ kind: "sent" }) as const,
+        () => ({ kind: "failed" }) as const,
+      )
+      .finally(() => {
+        submitting.current = false;
+      });
+  };
+
+  return {
+    request: active.request,
+    field,
+    origin: active.origin,
+    current: draft.current,
+    total: draft.fields.length,
+    last,
+    document: displayed,
+    pending,
+    settled,
+    error:
+      reply.isError &&
+      reply.variables.sessionId === active.sessionId &&
+      reply.variables.request.part === active.request.part
+        ? reply.error.message
+        : undefined,
+    answered: draft.fields.map((value) => fieldAnswers(value).length > 0),
+    isSelected: (label) =>
+      selected.kind === "multiple"
+        ? selected.options.includes(label)
+        : selected.selection.kind === "option" && selected.selection.label === label,
+    select: (label) => {
+      if (blocked || submitting.current) return;
+      replace(
+        selected.kind === "multiple"
+          ? {
+              ...selected,
+              options: selected.options.includes(label)
+                ? selected.options.filter((value) => value !== label)
+                : [...selected.options, label],
+            }
+          : { ...selected, selection: { kind: "option", label } },
+      );
+    },
+    changeDocument: (document) => {
+      if (blocked || sameComposerDocument(document, displayed)) return;
+
+      if (!customDocumentVisible && document.text === displayed.text) return;
+      replace(customDraft(document));
+    },
+    jump: (current) => {
+      if (!blocked && !submitting.current && draft.fields[current] !== undefined)
+        save({ ...draft, current });
+    },
+    advance: async (document) => {
+      if (blocked || submitting.current) return { kind: "blocked" };
+
+      const fields =
+        document === undefined || document.text === displayed.text
+          ? draft.fields
+          : draft.fields.map((value, index) =>
+              index === draft.current ? customDraft(document) : value,
+            );
+
+      const next = { ...draft, fields };
+
+      if (!last) {
+        save({ ...next, current: draft.current + 1 });
+
+        return { kind: "next" };
+      }
+
+      save(next);
+
+      return sendReply(fields.map(fieldAnswers));
+    },
+    dismiss: async () => {
+      if (blocked || submitting.current) return { kind: "blocked" };
+
+      return sendReply(null);
+    },
+  };
+}

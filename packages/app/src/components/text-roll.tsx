@@ -2,6 +2,7 @@ import { create, keyframes, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
+import { motion } from "@nyte-ai/ui/styles/vars.stylex";
 
 const HOLD_MS = 1_200;
 
@@ -33,8 +34,8 @@ const styles = create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    animationDuration: "300ms",
-    animationTimingFunction: "cubic-bezier(.215, .61, .355, 1)",
+    animationDuration: motion.durationSlow,
+    animationTimingFunction: motion.easeOutQuint,
     animationFillMode: "both",
   },
   in: { animationName: rollIn },

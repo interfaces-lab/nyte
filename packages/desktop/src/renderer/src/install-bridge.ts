@@ -1,4 +1,4 @@
-import { installBridge } from "@nyte-ai/app/nyte.ts";
+import { installBridge } from "@nyte-ai/app/contract/nyte.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { messagePortEnd, portFetch } from "../../shared/host-port.ts";

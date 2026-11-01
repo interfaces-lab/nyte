@@ -531,6 +531,7 @@ function entries(decide: (command: ChatCommand) => Interaction): Interactions {
     "chat.queue.up": decide("chat.queue.up"),
     "chat.queue.down": decide("chat.queue.down"),
     "chat.task.stop": decide("chat.task.stop"),
+    "chat.account.rename": decide("chat.account.rename"),
     "chat.tools.toggle": decide("chat.tools.toggle"),
     "chat.skills.open": decide("chat.skills.open"),
     "chat.commands.open": decide("chat.commands.open"),
@@ -586,7 +587,8 @@ function otherInteraction(
     command === "chat.queue.delete" ||
     command === "chat.queue.up" ||
     command === "chat.queue.down" ||
-    command === "chat.task.stop";
+    command === "chat.task.stop" ||
+    command === "chat.account.rename";
 
   if (command.startsWith("composer.") || dialogOnly) return OFF;
 

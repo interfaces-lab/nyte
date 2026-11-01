@@ -585,7 +585,7 @@ describe("commands", () => {
   });
 
   it("lists and runs a new chat's commands before any chat, the folder's own only while it is trusted", async () => {
-    const imported: string[][] = [];
+    const imported: string[] = [];
 
     const folder: Plugin<"core"> = {
       id: "folder",
@@ -620,10 +620,10 @@ describe("commands", () => {
 
     const { host, workspace } = await world({
       plugins: [{ id: "host", contribute: { commands: [says("hello", "hi")] } }, chatOnly],
-      loadPlugins: async (paths) => {
-        imported.push([...paths]);
+      loadPluginDirectory: async (dir) => {
+        imported.push(dir);
 
-        return [folder];
+        return { loaded: [{ plugin: folder, path: `${dir}/x.ts` }], failed: [] };
       },
     });
     const at = host.workspace(workspace);
@@ -633,7 +633,7 @@ describe("commands", () => {
       "probe",
       "ask",
     ]);
-    expect(imported).toEqual([["/work/project/.nyte/plugins/x.ts"]]);
+    expect(imported).toEqual(["/work/project/.nyte/plugins"]);
     expect(await at.command("probe", "")).toEqual({ kind: "ran", output: "answered" });
     expect(await at.command("ask", "")).toEqual({ kind: "prompt", content: "Review this." });
     expect(await at.command("never", "")).toEqual({ kind: "unknown" });

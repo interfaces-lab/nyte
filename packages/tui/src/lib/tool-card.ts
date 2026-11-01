@@ -2,6 +2,7 @@ import { pathToFiletype } from "@opentui/core";
 import { isJsonObject } from "@nyte-ai/schema";
 import type { ToolClass } from "@nyte-ai/sdk";
 import {
+  callTaskState,
   delegateSubject,
   formatDuration,
   toolNoun,
@@ -9,7 +10,7 @@ import {
   toolStatus,
   toolVerbs,
 } from "@nyte-ai/plugin/client/presentation";
-import type { ToolMessage, ToolStatus } from "@nyte-ai/plugin/client/presentation";
+import type { TaskState, ToolMessage, ToolStatus } from "@nyte-ai/plugin/client/presentation";
 import type { ShellJob } from "../model/state.ts";
 import {
   keycap,
@@ -33,11 +34,11 @@ import {
   statusMark,
   taskActivity,
   taskConfiguration,
-  taskLabel,
   taskStatus,
-  toneStatus,
+  taskTitle,
+  toneMark,
 } from "./tasks.ts";
-import type { Task, TaskStatus } from "./tasks.ts";
+import type { Task } from "./tasks.ts";
 import { displayWidth } from "./width.ts";
 
 type Role = "running" | "warning" | "ok" | "error" | "user" | "foreground" | "dim" | "tool";
@@ -179,7 +180,7 @@ function settled(
   const cut = previewCut(toolClass);
   const title = toolLine(toolClass, status.tense);
   const command = shellCommand(toolClass);
-  const check = statusMark("done");
+  const check = toneMark("success");
 
   if (toolClass.kind === "edit" && patch !== undefined)
     return {
@@ -235,7 +236,7 @@ function settled(
         .join(" · ")
     : summary;
 
-  const mark = statusMark(isError ? "failed" : "done");
+  const mark = toneMark(isError ? "failure" : "success");
 
   if (collapsedRead || inline !== undefined)
     return {
@@ -268,10 +269,10 @@ function findChildTask(message: ToolMessage, tasks: readonly Task[]): Task | und
   );
 }
 
-export function agentStatus(message: ToolMessage, tasks: readonly Task[]): TaskStatus {
+export function agentStatus(message: ToolMessage, tasks: readonly Task[]): TaskState {
   const task = findChildTask(message, tasks);
 
-  return task === undefined ? toneStatus(toolStatus(message).tone) : taskStatus(task);
+  return task === undefined ? callTaskState(toolStatus(message)) : taskStatus(task);
 }
 
 function delegation(
@@ -284,8 +285,8 @@ function delegation(
   const word = status.word?.toLowerCase();
 
   if (toolClass.role !== "create" && toolClass.role !== "task") {
-    const own = statusMark(toneStatus(status.tone));
-    const name = task === undefined ? delegateSubject(toolClass) : taskLabel(task);
+    const own = toneMark(status.tone);
+    const name = task === undefined ? delegateSubject(toolClass) : taskTitle(task);
 
     const verb =
       status.tense === "none" ? undefined : lowerFirst(toolVerbs(toolClass)[status.tense]);
@@ -319,7 +320,7 @@ function delegation(
     heading: [
       { text: `${mark.glyph} `, role: mark.tone },
       {
-        text: task === undefined ? delegateSubject(toolClass) : taskLabel(task),
+        text: task === undefined ? delegateSubject(toolClass) : taskTitle(task),
         role: "foreground",
       },
       ...(rest === undefined ? [] : [{ text: `  ${rest}`, role: "dim" } as const]),
@@ -350,7 +351,7 @@ export function toolCard(
             : "";
 
       const inline = inlineToolPreview(text);
-      const mark = statusMark(toneStatus(status.tone));
+      const mark = toneMark(status.tone);
 
       return {
         heading: heading(
@@ -404,7 +405,7 @@ function shellOutcome(job: ShellJob): string | undefined {
 export function shellCard(job: ShellJob, now: number, expanded: boolean): ToolCardModel {
   const outcome = shellOutcome(job);
   const running = job.state.kind === "running";
-  const mark = statusMark(running ? "running" : outcome === undefined ? "done" : "failed");
+  const mark = toneMark(running ? "running" : outcome === undefined ? "success" : "failure");
 
   return {
     heading: heading(

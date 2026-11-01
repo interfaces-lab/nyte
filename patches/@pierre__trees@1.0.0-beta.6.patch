@@ -1,0 +1,13 @@
+diff --git a/dist/render/FileTreeView.js b/dist/render/FileTreeView.js
+index 7d3b818c43a7621ab9170da32b180232ed3c9472..f4fb5f3f8e8fa371bb44d34de8ff2a8b5ac6edc4 100644
+--- a/dist/render/FileTreeView.js
++++ b/dist/render/FileTreeView.js
+@@ -1892,7 +1892,7 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 					ref: contextMenuTriggerRef,
+ 					type: "button",
+ 					"data-type": CONTEXT_MENU_TRIGGER_TYPE,
+-					"aria-label": "Options",
++					"aria-label": triggerPath == null ? "Options" : `Options for ${triggerPath}`,
+ 					"aria-haspopup": "menu",
+ 					"aria-expanded": contextMenuState != null ? "true" : "false",
+ 					"data-visible": triggerButtonVisible ? "true" : "false",

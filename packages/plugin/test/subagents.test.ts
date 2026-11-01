@@ -5,7 +5,7 @@ import { memoryStore } from "@nyte-ai/core/store";
 import subagents from "@nyte-ai/plugin/core/subagents";
 import { asId } from "@nyte-ai/schema";
 import type { Message, WorkspaceTarget } from "@nyte-ai/schema";
-import { contentText } from "@nyte-ai/schema/model";
+import { getSystemMessageText } from "@nyte-ai/schema/model";
 import { assert, describe, expect, it } from "vitest";
 import { env, fakeModels, open, until } from "./fake-models.ts";
 import type { Reply, Request } from "./fake-models.ts";
@@ -56,11 +56,22 @@ describe("subagents", () => {
       content: "Delegate it.",
     });
 
-    await until(async () => {
-      const execution = (await parent.view()).execution;
+    const waiting = await until(async () => {
+      const shown = await parent.view();
 
-      return execution.kind === "waiting" && execution.on.kind === "run" ? true : undefined;
+      return shown.execution.kind === "waiting" && shown.background.length > 0 ? shown : undefined;
     });
+
+    expect(waiting.background).toMatchObject([
+      {
+        kind: "child",
+        title: "Finder",
+        state: "working",
+        startedBy: expect.stringMatching(/:call-task$/),
+      },
+    ]);
+    expect(waiting.heads[0].background).toEqual({ working: 1, waiting: 0 });
+    expect((await parent.info()).heads[0].background).toEqual({ working: 1, waiting: 0 });
 
     gate.resolve();
     const end = await receipt.settled();
@@ -85,6 +96,9 @@ describe("subagents", () => {
 
     const view = await parent.view();
     const state = settledCall(view.messages, "call-task");
+
+    expect(view.background).toMatchObject([{ kind: "child", id: child.id, state: "done" }]);
+    expect(view.heads[0].background).toEqual({ working: 0, waiting: 0 });
 
     expect(state.class).toEqual({ kind: "delegate", child: null, role: "task", title: "Finder" });
     expect(state.outcome).toMatchObject({ kind: "ok", content: [{ kind: "text", text: report }] });
@@ -234,7 +248,7 @@ describe("subagents", () => {
     const system = childRequest?.context.messages[0];
 
     assert(system?.role === "system");
-    expect(contentText(system.content)).toContain("<0100-session>\nYou count.\n</0100-session>");
+    expect(getSystemMessageText(system)).toContain("<0100-session>\nYou count.\n</0100-session>");
     expect((await host.session(asId(child)).info()).name).toBe("Counter");
   });
 

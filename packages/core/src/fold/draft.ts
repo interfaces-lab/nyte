@@ -14,7 +14,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { Draft, FoldHead, FoldRun, FoldTurn, Path } from "../contract/fold.ts";
 import type { PartRecord } from "../contract/records.ts";
-import { START } from "../store/session.ts";
+import { NO_BACKGROUND, START } from "../store/session.ts";
 
 export const IDLE: Execution = { kind: "idle", lastRun: null };
 
@@ -190,7 +190,14 @@ export function emptyHead(
   path: { readonly messages: readonly Message[]; readonly turns: readonly TurnInfo[] },
 ): FoldHead {
   return {
-    info: { name, tip: START, stack: null, execution: IDLE, unread: false },
+    info: {
+      name,
+      tip: START,
+      stack: null,
+      execution: IDLE,
+      unread: false,
+      background: NO_BACKGROUND,
+    },
     revision: null,
     messages: path.messages,
     live: [],

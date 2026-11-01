@@ -105,6 +105,9 @@ export function createClient(transport: Transport, context: ClientContext): Conn
       async selectAccount(provider, account) {
         await rows.call("models.selectAccount", { provider, account });
       },
+      async renameAccount(provider, account, label) {
+        await rows.call("models.renameAccount", { provider, account, label });
+      },
       usage: () => rows.call("models.usage", {}),
       async refresh(provider) {
         await rows.call("models.refresh", { provider });

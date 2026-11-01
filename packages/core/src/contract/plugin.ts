@@ -67,6 +67,12 @@ export interface SettingDefinition<T = unknown> {
   }[];
   readonly default: T;
   readonly scope: "host" | "session";
+  readonly secret?: true;
+}
+
+export interface SecretEntry {
+  readonly secret: boolean;
+  readonly value?: string;
 }
 
 export interface Setting<T = unknown> {
@@ -212,6 +218,9 @@ export interface ClientApi {
   readonly client: { readonly name: string; readonly frameworks: readonly string[] };
 
   readonly session: Session | null;
+
+  /** Sessions on screen, uncovered, in a focused window. */
+  readonly looking: ReadonlySet<SessionId>;
   readonly ui: {
     notify(input: {
       readonly title?: string;

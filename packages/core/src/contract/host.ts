@@ -39,6 +39,7 @@ import type {
   SessionEvent,
   SessionId,
   SettingOutcome,
+  ValidationIssue,
   WorkspaceId,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
@@ -223,6 +224,9 @@ export interface ModelsApi {
   /** Activates a saved login for subsequent requests. Requires owner authority. */
   selectAccount(provider: string, account: string): Promise<void>;
 
+  /** Renames a saved login; rejects an empty name. Requires owner authority. */
+  renameAccount(provider: string, account: string, label: string): Promise<void>;
+
   /** Loads cached provider usage, refreshing expired entries. Requires owner authority. */
   usage(): Promise<readonly ProviderUsage[]>;
 
@@ -272,6 +276,12 @@ export interface Login {
 }
 
 export type PluginFile = { readonly path: string };
+
+/** A plugin directory loaded file by file: each file that gave a core plugin, with its path, and each that did not, with one issue naming it. */
+export type PluginDirectory = {
+  readonly loaded: readonly { readonly plugin: Plugin<"core">; readonly path: string }[];
+  readonly failed: readonly { readonly path: string; readonly issue: ValidationIssue }[];
+};
 
 export interface PluginsApi<Entry> {
   replace(
@@ -343,6 +353,7 @@ export interface ListenOptions {
   readonly execution?:
     | { readonly kind: "run"; readonly coverage: ExecutionCoverage }
     | { readonly kind: "admit-only" };
+  /** Browser origins that may call the listener, each matching `ORIGIN_PATTERN` from `@nyte-ai/schema`; `https://*.example.com` allows every subdomain of example.com, but not example.com itself. */
   readonly origins?: readonly string[];
   readonly maxBodyBytes?: number;
   readonly identity?: { readonly id: HostId; sign(nonce: string): Awaitable<IdentityChallenge> };

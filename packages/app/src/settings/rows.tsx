@@ -18,13 +18,23 @@ import { settingsStyles } from "./settings.stylex.ts";
 
 const ROW_MARK = { "data-settings-row": "" } as const;
 
+/**
+ * A bold title over one card of rows. The card can open with a live `preview` of what its rows
+ * change; a `note` and `actions` sit under the card, for what the whole group needs said or done.
+ */
 export function SettingsSection({
   title,
   description,
+  preview,
+  note,
+  actions,
   children,
 }: {
   readonly title?: string;
   readonly description?: string;
+  readonly preview?: ReactNode;
+  readonly note?: ReactNode;
+  readonly actions?: ReactNode;
   readonly children: ReactNode;
 }): ReactElement {
   return (
@@ -37,7 +47,20 @@ export function SettingsSection({
           )}
         </div>
       )}
-      <div {...props(settingsPatterns.group)}>{children}</div>
+      <div {...props(settingsPatterns.group)}>
+        {preview !== undefined && (
+          <div inert {...props(settingsPatterns.preview)}>
+            {preview}
+          </div>
+        )}
+        {children}
+      </div>
+      {(note !== undefined || actions !== undefined) && (
+        <div {...props(settingsPatterns.under)}>
+          {note !== undefined && <p {...props(settingsPatterns.note)}>{note}</p>}
+          {actions !== undefined && <div {...props(settingsPatterns.actions)}>{actions}</div>}
+        </div>
+      )}
     </section>
   );
 }
@@ -49,7 +72,7 @@ export function SettingsRow({
   detail,
   children,
 }: {
-  readonly title: string;
+  readonly title: ReactNode;
   readonly description?: string;
   readonly controlWidth?: "standard" | "wide";
   readonly detail?: ReactNode;
@@ -96,7 +119,7 @@ export function SettingsSwitchRow({
 
 interface Copy {
   readonly title: string;
-  readonly description: string;
+  readonly description?: string;
 }
 
 interface Bound<T> extends Copy {

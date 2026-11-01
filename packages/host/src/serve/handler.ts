@@ -316,13 +316,29 @@ function corsHeaders(
 
   if (origin === null || origin === new URL(request.url).origin) return {};
 
-  if (!(origins ?? []).includes(origin)) return null;
+  if (!allowsOrigin(origins, origin)) return null;
 
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Expose-Headers": EXPOSED_HEADERS,
     Vary: "Origin",
   };
+}
+
+/** Whether `origins` lists `origin`, or holds an `https://*.example.com` entry for one of that domain's subdomains. The domain itself needs its own entry. */
+export function allowsOrigin(origins: readonly string[] | undefined, origin: string): boolean {
+  return (origins ?? []).some((allowed) => {
+    if (!allowed.startsWith("https://*.")) return allowed === origin;
+    const domain = allowed.slice("https://*".length);
+    const subdomain = origin.slice("https://".length, origin.length - domain.length);
+
+    return (
+      origin.startsWith("https://") &&
+      origin.endsWith(domain) &&
+      subdomain !== "" &&
+      !subdomain.includes(":")
+    );
+  });
 }
 
 function readOperation(request: Request): OperationName {

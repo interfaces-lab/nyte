@@ -12,7 +12,7 @@ export const WOKEN = `${WAITS}woken/`;
 /** Digits a time key is padded to, so the index lists times in order. */
 export const TIME_DIGITS = 16;
 
-/** One entry of the store-side wait index: the index ref (null for a wait found from the call record itself), the parked call it points at, which wait of the call (its count of earlier waits), and which of the wait's targets, null for a deadline or input stop, which ends the whole wait. */
+/** One entry of the store-side wait index: the index ref (null for a wait found from the call record itself; a wake counts it only while the call's wait still writes that name, since a ref an older Nyte wrote unescaped can decode to another call's id), the parked call it points at, which wait of the call (its count of earlier waits), and which of the wait's targets, null for a deadline or input stop, which ends the whole wait. */
 export interface Indexed {
   readonly name: string | null;
   readonly session: SessionId;
@@ -21,7 +21,7 @@ export interface Indexed {
   readonly target: number | null;
 }
 
-/** The index refs a parked call's current wait needs: one per target it still waits on, its earliest deadline, and its input stop. */
+/** The index refs a parked call's current wait needs: one per target it still waits on, its earliest deadline, and its input stop. A call id can hold `/` (a Responses item id is base64), so it is escaped to stay one segment for `readIndexed`. */
 export function waitIndex(
   session: SessionId,
   record: Pick<CallRecord, "id" | "head" | "waiting" | "partial" | "waits">,
@@ -31,7 +31,7 @@ export function waitIndex(
   if (target === null) return [];
 
   const tail = (slot: number | "deadline" | "input") =>
-    `${session}/${record.id}/${record.waits.length}/${slot}`;
+    `${session}/${record.id.replaceAll("%", "%25").replaceAll("/", "%2F")}/${record.waits.length}/${slot}`;
 
   const targets = "targets" in target ? target.targets : [target];
   const deadline = findEarliestDeadline(target);
@@ -82,7 +82,7 @@ export function readIndexed(name: string): Indexed | null {
   return {
     name,
     session: asId<"session">(session),
-    call: asId<"call">(call),
+    call: asId<"call">(call.replace(/%2F|%25/g, (escaped) => (escaped === "%2F" ? "/" : "%"))),
     occurrence: Number(occurrence),
     target: slot === "deadline" || slot === "input" ? null : Number(slot),
   };

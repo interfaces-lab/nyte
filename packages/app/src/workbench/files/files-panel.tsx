@@ -1,0 +1,607 @@
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { FileTree, useFileTree } from "@pierre/trees/react";
+import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
+import { create, props } from "@stylexjs/stylex";
+import { useLayoutEffect, useRef, useState } from "react";
+import type { ReactElement } from "react";
+import { worktreeFiles } from "./worktree-files.ts";
+import { errorMessage } from "../../contract/errors.ts";
+import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
+import {
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuSeparator,
+  MenuSwitchItem,
+  MenuTrigger,
+} from "@nyte-ai/ui/menu";
+import type { HostBridge } from "../../contract/bridge.ts";
+import { revealLabel, showContextMenu } from "../../components/context-menu.ts";
+import { PanelToggleIcon } from "@nyte-ai/ui/icon";
+import { Button } from "@nyte-ai/ui/button";
+import { selectionWithin } from "@nyte-ai/ui/selection";
+import { Toggle } from "@nyte-ai/ui/toggle";
+import { setTreeDrag } from "../../references/composer-file-drop.ts";
+import { nyte } from "../../contract/nyte.ts";
+import { preferences, useSetting, type Preference } from "../../preferences/index.ts";
+import { refreshVcs, useVcsSnapshot } from "../../data/vcs.ts";
+import { useHostState } from "../../data/host.ts";
+import { useMentionFiles, useWorkspaceFile } from "../../data/files.ts";
+import { workbench } from "../../theme/schema.stylex.ts";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import type { WorkbenchViewKey } from "../model.ts";
+import { FileBreadcrumbs } from "./file-breadcrumbs.tsx";
+import { opensReadOnly, WorkspaceFileEditor } from "./file-editor.tsx";
+import { FilesEmptyState } from "./files-empty-state.tsx";
+import type { FileEditorHandle } from "./file-editor.tsx";
+import { fileActions, useFileTabs } from "./file-store.ts";
+import { opensAsMarkdown } from "./markdown-parse.ts";
+import { WorkspaceSearch } from "../workspace-search.tsx";
+import { PIERRE_TREE_CSS } from "../../lib/pierre-worker-provider.tsx";
+import { syncTreePaths } from "./tree-paths.ts";
+import { treeItemHeight, treeStatus, useTreeStatusTheme } from "./tree-theme.ts";
+import { workbenchStyles } from "../workbench.stylex.ts";
+import { SidePanel } from "../side-panel.tsx";
+
+const styles = create({
+  panel: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
+  toolbar: { gap: space.s2, height: "auto", minHeight: workbench.headerHeight },
+  explorerHeader: {
+    display: "flex",
+    alignItems: "center",
+    height: workbench.headerHeight,
+    flexShrink: 0,
+    paddingInline: space.s2_5,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+  },
+  dirty: {
+    flexShrink: 0,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
+  },
+  body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
+  editors: { position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
+  explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
+  sidebarBody: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
+  hidden: { display: "none" },
+  empty: {
+    padding: space.s5,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
+  menu: {
+    minWidth: "min(220px, var(--available-width))",
+    maxWidth: "min(420px, var(--available-width))",
+  },
+  tree: {
+    display: "block",
+    flex: 1,
+    width: "100%",
+    minHeight: 0,
+    "--trees-border-radius-override": radius.indicator,
+    "--trees-item-margin-x-override": "0px",
+    "--trees-item-padding-x-override": "5px",
+    "--trees-item-row-gap-override": "4px",
+    "--trees-level-gap-override": "5px",
+    "--trees-padding-inline-override": "6px",
+  },
+});
+
+const FILE_TOGGLES = [
+  ["Line Numbers", preferences.fileLineNumbers],
+  ["Word Wrap", preferences.fileWordWrap],
+  ["Git Blame", preferences.fileGitBlame],
+  ["Auto Save", preferences.fileAutoSave],
+  ["Format on Save", preferences.fileFormatOnSave],
+] as const;
+
+function FilePreferenceItem({
+  label,
+  setting,
+}: {
+  readonly label: string;
+  readonly setting: Preference<boolean>;
+}): ReactElement {
+  const checked = useSetting(setting);
+
+  return (
+    <MenuSwitchItem layout="plain" checked={checked} onCheckedChange={setting.set}>
+      {label}
+    </MenuSwitchItem>
+  );
+}
+
+async function discardEdits(editor: FileEditorHandle | undefined): Promise<string | undefined> {
+  if (editor === undefined) return "The file is not ready to reload.";
+
+  try {
+    await editor.discard();
+
+    return undefined;
+  } catch (cause: unknown) {
+    return errorMessage(cause);
+  }
+}
+
+export function FilesPanel({
+  viewKey,
+  visible,
+  workspaceActive,
+  sidebarVisible,
+  onToggleSidebar,
+}: {
+  readonly viewKey: WorkbenchViewKey;
+  readonly visible: boolean;
+  readonly workspaceActive: boolean;
+  readonly sidebarVisible: boolean;
+  readonly onToggleSidebar: () => void;
+}): ReactElement {
+  const treeStatusTheme = useTreeStatusTheme();
+  const shown = workspaceActive && visible;
+  const host = useHostState();
+  const files = useMentionFiles(host.data.workspace, shown);
+  const fileEntries = useRef(files.data);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest file list for tree callbacks, which run outside render
+  useLayoutEffect(() => {
+    fileEntries.current = files.data;
+  }, [files.data]);
+  const vcs = useVcsSnapshot(shown);
+
+  const changes = vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : undefined;
+
+  const tabs = useFileTabs(viewKey);
+  const autoSave = useSetting(preferences.fileAutoSave);
+  const [sidebar, setSidebar] = useState<"explorer" | "search">("explorer");
+  const [searchOpened, setSearchOpened] = useState(false);
+  const [discardPath, setDiscardPath] = useState<string>();
+  const [discarding, setDiscarding] = useState(false);
+  const [discardError, setDiscardError] = useState<string>();
+  const [copyError, setCopyError] = useState<string>();
+  const menuRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const editors = useRef(new Map<string, FileEditorHandle>());
+  const hostState = useRef(host.data);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest host state for tree callbacks, which run outside render
+  useLayoutEffect(() => {
+    hostState.current = host.data;
+  }, [host.data]);
+  const activeFile = tabs.active;
+  const activeDocument = useWorkspaceFile(activeFile?.path).data;
+  const readOnly = activeDocument !== undefined && opensReadOnly(activeDocument);
+
+  const unsaved = activeFile?.dirty === true;
+
+  const showSidebar = (): void => {
+    if (!sidebarVisible) onToggleSidebar();
+  };
+
+  const showSearch = (): void => {
+    showSidebar();
+    setSearchOpened(true);
+    setSidebar("search");
+    requestAnimationFrame(() => searchRef.current?.querySelector("input")?.focus());
+  };
+
+  const copyPath = (value: string): void => {
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => setCopyError(undefined))
+      .catch((cause: unknown) => setCopyError(errorMessage(cause)));
+  };
+
+  const contextMenu = nyte.host.contextMenu;
+  const revealPath = nyte.host.revealPath;
+
+  const openRowMenu = (
+    menu: NonNullable<HostBridge["contextMenu"]>,
+    item: ContextMenuItem,
+    context: ContextMenuOpenContext,
+  ): void => {
+    context.close({ restoreFocus: false });
+    const file = fileEntries.current?.find((entry) => entry.displayPath === item.path);
+    const root = hostState.current?.workspace?.path;
+    const separator = nyte.platform === "win32" ? "\\" : "/";
+    const relative = item.path.replace(/\/$/, "");
+
+    const absolutePath =
+      file?.path ?? (root === undefined ? undefined : `${root}${separator}${relative}`);
+
+    void showContextMenu(
+      menu,
+      { clientX: context.anchorRect.left, clientY: context.anchorRect.bottom },
+      [
+        file !== undefined && {
+          kind: "item",
+          label: "Open File",
+          run: () => fileActions.open(viewKey, file),
+        },
+        absolutePath !== undefined &&
+          revealPath !== undefined && {
+            kind: "item",
+            label: revealLabel(nyte.platform),
+            run: () => void revealPath({ path: absolutePath }),
+          },
+        { kind: "separator" },
+        { kind: "item", label: "Search Files", run: showSearch },
+        { kind: "separator" },
+        absolutePath !== undefined && {
+          kind: "item",
+          label: "Copy Path",
+          run: () => copyPath(absolutePath),
+        },
+        { kind: "item", label: "Copy Relative Path", run: () => copyPath(relative) },
+        { kind: "separator" },
+        { kind: "item", label: "Refresh Explorer", run: refreshVcs },
+      ],
+    );
+  };
+
+  const [itemHeight] = useState(treeItemHeight);
+
+  const { model } = useFileTree({
+    paths: [],
+    density: "compact",
+    itemHeight,
+    unsafeCSS: PIERRE_TREE_CSS,
+    flattenEmptyDirectories: true,
+    initialExpansion: 1,
+    search: false,
+    dragAndDrop: {
+      canDrag: (paths) => {
+        const dragged = new Set(paths);
+        const files = (fileEntries.current ?? []).filter((file) => dragged.has(file.displayPath));
+        setTreeDrag(files);
+
+        return files.length > 0;
+      },
+      canDrop: () => false,
+    },
+    composition: {
+      contextMenu:
+        contextMenu === undefined
+          ? undefined
+          : {
+              triggerMode: "both",
+              buttonVisibility: "always",
+              render: () => null,
+              onOpen: (item, context) => openRowMenu(contextMenu, item, context),
+            },
+    },
+  });
+
+  const openFromTree = (event: Event, preview: boolean): void => {
+    if (
+      event
+        .composedPath()
+        .some(
+          (target) =>
+            target instanceof HTMLElement &&
+            (target.dataset.type === "context-menu-trigger" ||
+              target.dataset.type === "context-menu-anchor"),
+        )
+    )
+      return;
+
+    const row = event
+      .composedPath()
+      .find((target) => target instanceof HTMLElement && target.dataset.type === "item");
+
+    if (!(row instanceof HTMLElement) || row.dataset.itemType !== "file") return;
+
+    if (selectionWithin(row)) return;
+    const file = files.data?.find((candidate) => candidate.displayPath === row.dataset.itemPath);
+
+    if (file !== undefined) fileActions.open(viewKey, { ...file, preview });
+  };
+
+  const paths = (files.data ?? []).map((file) => file.displayPath);
+
+  const drafts = tabs.tabs.flatMap((file) =>
+    file.draft === undefined ? [] : [{ path: file.path, contents: file.draft.contents }],
+  );
+
+  const revealed = useRef(0);
+  const shownPaths = useRef<ReadonlySet<string>>(new Set());
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes path changes into the imperative Pierre tree
+  useLayoutEffect(() => {
+    shownPaths.current = syncTreePaths(model, shownPaths.current, paths);
+  }, [model, paths]);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- reveals the requested path once the Pierre tree has it
+  useLayoutEffect(() => {
+    if (tabs.revealPath === undefined || revealed.current === tabs.revealRevision) return;
+    const item = model.getItem(tabs.revealPath);
+
+    if (item === null) return;
+    revealed.current = tabs.revealRevision;
+
+    if ("expand" in item) item.expand();
+    item.select();
+    model.scrollToPath(tabs.revealPath, { offset: "nearest" });
+  }, [model, paths, tabs.revealPath, tabs.revealRevision]);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- pushes worktree statuses into the imperative Pierre tree
+  useLayoutEffect(() => {
+    model.setGitStatus(
+      changes?.map((file) => ({ path: file.path, status: treeStatus(file.kind) })),
+    );
+  }, [model, changes]);
+
+  const discard = async (): Promise<void> => {
+    if (discardPath === undefined) return;
+    setDiscarding(true);
+    const failure = await discardEdits(editors.current.get(discardPath));
+    setDiscarding(false);
+
+    if (failure !== undefined) {
+      setDiscardError(failure);
+
+      return;
+    }
+
+    setDiscardPath(undefined);
+    setDiscardError(undefined);
+  };
+
+  return (
+    <section
+      aria-label="Files"
+      {...props(styles.panel, treeStatusTheme)}
+      onKeyDownCapture={(event) => {
+        if (!(event.metaKey || event.ctrlKey)) return;
+        const key = event.key.toLowerCase();
+
+        if (key === "s") {
+          event.preventDefault();
+
+          if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
+        }
+
+        if (key === "f") {
+          event.preventDefault();
+          showSearch();
+        }
+      }}
+    >
+      <div {...props(workbenchStyles.toolbar, styles.toolbar)}>
+        <Button
+          iconOnly
+          icon="arrow-left"
+          aria-label="Go back"
+          disabled={!tabs.canGoBack}
+          onClick={() => fileActions.back(viewKey)}
+        />
+        <Button
+          iconOnly
+          icon="arrow-right"
+          aria-label="Go forward"
+          disabled={!tabs.canGoForward}
+          onClick={() => fileActions.forward(viewKey)}
+        />
+        <FileBreadcrumbs
+          path={activeFile?.displayPath}
+          external={activeFile?.external === true}
+          files={files.data}
+          onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
+        />
+        {activeFile?.dirty && (
+          <span aria-label="Unsaved changes" {...props(styles.dirty)}>
+            ●
+          </span>
+        )}
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button iconOnly ref={menuRef} icon="more-horizontal" aria-label="File options" />
+            }
+          />
+          <MenuContent align="end" xstyle={styles.menu}>
+            {activeFile !== undefined &&
+              activeDocument?.kind === "text" &&
+              opensAsMarkdown(activeFile.path) && (
+                <>
+                  <MenuItem
+                    layout="plain"
+                    onClick={() =>
+                      fileActions.setShowSource(viewKey, activeFile.path, !activeFile.showSource)
+                    }
+                  >
+                    {activeFile.showSource ? "View Document" : "View Source"}
+                  </MenuItem>
+                  <MenuSeparator inset />
+                </>
+              )}
+            <MenuItem
+              layout="plain"
+              meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}
+              disabled={!unsaved}
+              onClick={() => {
+                if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
+              }}
+            >
+              Save File
+            </MenuItem>
+            <MenuItem
+              layout="plain"
+              disabled={activeDocument?.kind !== "text" || readOnly}
+              onClick={() => {
+                if (activeFile !== undefined) void editors.current.get(activeFile.path)?.format();
+              }}
+            >
+              Format Document
+            </MenuItem>
+            <MenuSeparator inset />
+            <MenuItem
+              layout="plain"
+              disabled={activeFile === undefined}
+              onClick={() => {
+                if (activeFile !== undefined) copyPath(activeFile.path);
+              }}
+            >
+              Copy Path
+            </MenuItem>
+            <MenuItem
+              layout="plain"
+              disabled={activeFile === undefined || readOnly}
+              onClick={() => {
+                if (activeFile !== undefined) copyPath(activeFile.displayPath);
+              }}
+            >
+              Copy Relative Path
+            </MenuItem>
+            {revealPath !== undefined && (
+              <MenuItem
+                layout="plain"
+                disabled={activeFile === undefined}
+                onClick={() => {
+                  if (activeFile !== undefined) void revealPath({ path: activeFile.path });
+                }}
+              >
+                {revealLabel(nyte.platform)}
+              </MenuItem>
+            )}
+            <MenuSeparator inset />
+            {FILE_TOGGLES.map(([label, setting]) => (
+              <FilePreferenceItem key={label} label={label} setting={setting} />
+            ))}
+            <MenuSeparator inset />
+            <MenuItem
+              layout="plain"
+              variant={unsaved ? "danger" : "default"}
+              disabled={!unsaved}
+              onClick={() => {
+                setDiscardError(undefined);
+                setDiscardPath(activeFile?.path);
+              }}
+            >
+              Discard Changes…
+            </MenuItem>
+          </MenuContent>
+        </Menu>
+        <Toggle
+          iconOnly
+          icon="search"
+          aria-label="Search Files"
+          pressed={sidebarVisible && sidebar === "search"}
+          onPressedChange={(pressed) => (pressed ? showSearch() : setSidebar("explorer"))}
+        />
+        <Toggle
+          iconOnly
+          indicator="glyph"
+          aria-label="Files Sidebar"
+          pressed={sidebarVisible}
+          onPressedChange={onToggleSidebar}
+        >
+          <PanelToggleIcon side="right" visible={sidebarVisible} />
+        </Toggle>
+      </div>
+      {copyError !== undefined && (
+        <div role="alert" {...props(styles.empty)}>
+          Could not copy path. {copyError}
+        </div>
+      )}
+      <div {...props(styles.body)}>
+        <div {...props(styles.editors)}>
+          {activeFile === undefined && (
+            <FilesEmptyState
+              files={files.data}
+              changes={changes ?? []}
+              explorerVisible={sidebarVisible && sidebar === "explorer"}
+              onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
+              onShowExplorer={() => {
+                setSidebar("explorer");
+                showSidebar();
+              }}
+              onSearch={showSearch}
+            />
+          )}
+          {tabs.tabs.map((file) => (
+            <WorkspaceFileEditor
+              key={file.path}
+              ref={(editor) => {
+                if (editor === null) editors.current.delete(file.path);
+                else editors.current.set(file.path, editor);
+              }}
+              viewKey={viewKey}
+              file={file}
+              active={shown && file.id === activeFile?.id}
+              autoSave={
+                autoSave &&
+                workspaceActive &&
+                tabs.pendingClose?.id !== file.id &&
+                discardPath !== file.path
+              }
+            />
+          ))}
+        </div>
+        {sidebarVisible && (
+          <SidePanel>
+            <aside
+              aria-label={sidebar === "search" ? "Workspace search" : "Explorer"}
+              {...props(styles.explorer)}
+            >
+              <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
+                <div {...props(styles.explorerHeader)}>
+                  {host.data.workspace?.name ?? "Workspace"}
+                </div>
+                {files.isError && (
+                  <div role="alert" {...props(styles.empty)}>
+                    Could not load files. {files.error.message}
+                  </div>
+                )}
+                <FileTree
+                  model={model}
+                  onDragEnd={() => setTreeDrag([])}
+                  onClick={(event) => {
+                    if (!(event.metaKey || event.ctrlKey || event.shiftKey)) {
+                      openFromTree(event.nativeEvent, true);
+                    }
+                  }}
+                  onDoubleClick={(event) => openFromTree(event.nativeEvent, false)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") openFromTree(event.nativeEvent, true);
+                  }}
+                  {...props(workbenchStyles.treeTheme, styles.tree)}
+                />
+              </div>
+              <div
+                ref={searchRef}
+                {...props(styles.sidebarBody, sidebar !== "search" && styles.hidden)}
+              >
+                {searchOpened && (
+                  <WorkspaceSearch
+                    active={shown && sidebar === "search"}
+                    drafts={drafts}
+                    onOpen={(location) => fileActions.open(viewKey, location)}
+                  />
+                )}
+              </div>
+            </aside>
+          </SidePanel>
+        )}
+      </div>
+      <ConfirmDialog
+        open={discardPath !== undefined}
+        pending={discarding}
+        error={discardError}
+        finalFocus={menuRef}
+        title="Discard Changes"
+        description="Your unsaved edits will be replaced by the current file on disk."
+        confirmLabel="Discard Changes"
+        pendingLabel="Reloading…"
+        onOpenChange={(open) => {
+          if (!open) setDiscardPath(undefined);
+        }}
+        onConfirm={() => void discard()}
+      />
+    </section>
+  );
+}

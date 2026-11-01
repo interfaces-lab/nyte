@@ -12,6 +12,6 @@ export const styles = create({
   tooSmall: { width: 12 },
   tooLarge: { minHeight: 40 },
   hairline: { height: 1 },
-  fromToken: { height: "var(--nyte-btn-height-md)" },
+  fromToken: { height: "var(--nyte-control-height-md)" },
   hoverReveal: { opacity: { default: 0, "@media (hover: none)": 1 } },
 });

@@ -1,64 +1,36 @@
 /**
- * The settings pages that aren't hubs, each under its strip: rows come from
- * the settings draft's catalog, so the strip is judged above a real page.
+ * The settings pages that aren't hubs, each under its strip, so the strip is
+ * judged above the real page.
  * Appearance owns its hue and intensity here, so the strip repaints as they
  * move.
  */
 import { props } from "@stylexjs/stylex";
-import { useState, type ReactElement } from "react";
+import { useState, type ComponentType, type ReactElement } from "react";
 import { appearanceStyles as appearance } from "@nyte-ai/app/settings/appearance.stylex.ts";
 import { settingsPatterns } from "@nyte-ai/app/theme/settings-patterns.stylex.ts";
 import { Slider } from "@nyte-ai/ui/slider";
-import { SECTIONS } from "../settings/catalog";
-import { SettingRow } from "../settings/page";
+import { AgentSettings } from "@nyte-ai/app/settings/agent.tsx";
+import { AppearanceSettings } from "@nyte-ai/app/settings/appearance.tsx";
+import { BrowserSettings } from "@nyte-ai/app/settings/browser.tsx";
+import { DeveloperSettings } from "@nyte-ai/app/settings/developer.tsx";
+import { EditorSettings } from "@nyte-ai/app/settings/editor.tsx";
+import { GeneralSettings } from "@nyte-ai/app/settings/general.tsx";
+import { TerminalSettings } from "@nyte-ai/app/settings/terminal.tsx";
 import { AppearanceStrip, AppearanceWavesStrip, PAGE_STRIPS } from "./page-strips";
 
-/** Which catalog groups a page shows: by section, and optionally by group title. */
-const CATALOG = {
-  general: { section: "general" },
-  agent: { section: "agent" },
-  editor: { section: "editor", except: "Terminal" },
-  terminal: { section: "editor", only: "Terminal" },
-  browser: { section: "browser" },
-  advanced: { section: "advanced" },
-} as const satisfies Readonly<
-  Record<string, { readonly section: string; readonly only?: string; readonly except?: string }>
->;
+/** The real settings page each strip sits above. */
+const PAGES = {
+  general: GeneralSettings,
+  agent: AgentSettings,
+  editor: EditorSettings,
+  terminal: TerminalSettings,
+  browser: BrowserSettings,
+  developer: DeveloperSettings,
+} as const satisfies Readonly<Record<string, ComponentType>>;
 
 export type StripPage = keyof typeof PAGE_STRIPS | "appearance";
 
 export type AppearanceArt = "brush" | "waves";
-
-function CatalogGroups({
-  section,
-  keep,
-}: {
-  readonly section: string;
-  readonly keep: (title: string | undefined) => boolean;
-}): ReactElement {
-  const groups = SECTIONS.find((entry) => entry.id === section)?.groups ?? [];
-
-  return (
-    <>
-      {groups
-        .filter((group) => keep(group.title))
-        .map((group, index) => (
-          <section key={group.title ?? index} {...props(settingsPatterns.section)}>
-            {group.title !== undefined && (
-              <div {...props(settingsPatterns.sectionHeader)}>
-                <h2 {...props(settingsPatterns.sectionTitle)}>{group.title}</h2>
-              </div>
-            )}
-            <div {...props(settingsPatterns.group)}>
-              {group.settings.map((setting) => (
-                <SettingRow key={setting.title} setting={setting} annotated={false} />
-              ))}
-            </div>
-          </section>
-        ))}
-    </>
-  );
-}
 
 function TintRow({
   title,
@@ -137,7 +109,7 @@ function AppearancePage({ art }: { readonly art: AppearanceArt }): ReactElement 
           />
         </div>
       </section>
-      <CatalogGroups section="appearance" keep={(title) => title !== "Colors"} />
+      <AppearanceSettings />
     </>
   );
 }
@@ -178,19 +150,12 @@ export function StripPageBody({
     );
   }
 
-  const catalog: { readonly section: string; readonly only?: string; readonly except?: string } =
-    CATALOG[page];
+  const Page = PAGES[page];
 
   return (
     <>
       <PageStrip />
-      <CatalogGroups
-        section={catalog.section}
-        keep={(title) =>
-          (catalog.only === undefined || title === catalog.only) &&
-          (catalog.except === undefined || title !== catalog.except)
-        }
-      />
+      <Page />
     </>
   );
 }

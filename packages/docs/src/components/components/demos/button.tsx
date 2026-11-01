@@ -13,6 +13,9 @@ export function ButtonVariantsDemo() {
         Danger
       </Button>
       <Button variant="plain">Plain</Button>
+      <Button variant="quiet" size="xs">
+        Quiet
+      </Button>
       <Button variant="text">Text</Button>
     </>
   );
@@ -52,6 +55,9 @@ export function ButtonStatesDemo() {
       </Button>
       <Button variant="outline" disabled disabledReason="No changes to save">
         Save Changes
+      </Button>
+      <Button variant="solid" icon="arrow-up" disabled>
+        Send
       </Button>
     </>
   );

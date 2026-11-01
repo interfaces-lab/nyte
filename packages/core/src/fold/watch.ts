@@ -26,12 +26,15 @@ import type {
 } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeRunRecord } from "../contract/records.ts";
+import { linkStoredChildren } from "../engine/children.ts";
+import type { StoredChild } from "../engine/children.ts";
 import { settleAnswersFrom } from "../store/parts.ts";
 import { collectSessionEvents } from "../store/log.ts";
 import { headRef, parseHeadRef, runRef } from "../store/refs.ts";
 import { EMPTY_REVISION, load } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { followedTrace, startSpan, tracing } from "../util/trace.ts";
+import { backgroundItems } from "./background.ts";
 import { foldCheckpointing } from "./checkpoint.ts";
 import { emptyFold, fold } from "./fold.ts";
 import { withPair } from "./project.ts";
@@ -49,14 +52,14 @@ interface FoldFeed {
   readonly ready: Promise<void>;
   /** Reads what the log holds past the fold into it. */
   sync(): Promise<void>;
-  /** Reads what the log holds past the fold and publishes it on the bus, for every subscriber of the session. */
+  /** Reads what the log holds past the fold and publishes it on the bus, for every subscriber of the session, then reconciles the session's children with the store. */
   refresh(): Promise<void>;
   dispose(): void;
 }
 
 type Feeds = Pick<
   Kernel,
-  "store" | "bus" | "publisher" | "sessions" | "jobs" | "pages" | "description"
+  "store" | "bus" | "publisher" | "sessions" | "jobs" | "pages" | "children" | "description"
 >;
 
 type LiveStreams = ReadonlyMap<SessionId, ReadonlyMap<PartId, LiveStream>>;
@@ -425,6 +428,7 @@ function openFoldFeed(
   let held: FeedItem[] | null = [];
   let reading: Promise<void> = Promise.resolve();
   let mark: number | undefined;
+  const children = new Map<SessionId, StoredChild>();
 
   const deliver = (item: FeedItem): void => {
     const event = item.event;
@@ -507,6 +511,7 @@ function openFoldFeed(
 
       if (!open) return;
       await readPast();
+      await linkStoredChildren(kernel, session, children);
 
       if (!open) return;
 
@@ -520,9 +525,12 @@ function openFoldFeed(
           activation: kernel.sessions.activation(session),
         },
         { ...seed, head: null, kind: "catalog", catalog: kernel.sessions.catalog(session) },
-        ...[...kernel.jobs.background(session), ...kernel.pages.background(session)].map(
-          ({ head, item }): SessionEvent => ({ ...seed, head, kind: "background", item }),
-        ),
+        ...backgroundItems(kernel, session).map(({ head, item }): SessionEvent => ({
+          ...seed,
+          head,
+          kind: "background",
+          item,
+        })),
       ];
 
       for (const event of events) deliver({ event, head: null });
@@ -579,11 +587,13 @@ function openFoldFeed(
         if (last === undefined || events.length < LOG_PAGE) {
           mark = reached;
 
-          return;
+          break;
         }
 
         cursor = last.seq;
       }
+
+      if (open) await linkStoredChildren(kernel, session, children);
     },
     dispose() {
       open = false;

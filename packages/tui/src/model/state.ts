@@ -30,13 +30,10 @@ export interface State {
 }
 
 export interface Facts {
-  /** Whether `ports.host` answers yet; until it does, host effects wait and a new chat's first message waits with them. */
   readonly host: "opening" | "open";
   readonly chat: Chat | null;
   readonly catalog: CatalogFacts;
-  /** The host's own settings, which a chat's catalog repeats; what a blank chat offers. */
   readonly hostSettings: readonly SettingInfo[];
-  /** The plugin commands and skills a new chat in `workspace` would offer; what a blank chat there offers. */
   readonly folderCatalog: FolderCatalog | null;
   readonly settings: ResolvedSettings;
   readonly tasks: readonly Task[];
@@ -44,16 +41,8 @@ export interface Facts {
   readonly workspace: WorkspaceFacts;
   readonly terminal: TerminalFacts;
   readonly focused: boolean;
-  readonly remote: RemoteFacts;
 }
 
-export type RemoteFacts =
-  | { readonly kind: "off" }
-  | { readonly kind: "connecting" }
-  | { readonly kind: "shared"; readonly devices: number }
-  | { readonly kind: "interrupted" };
-
-/** The chat on screen: a blank one is a client-side draft that the first send starts under `id`; a session is a started chat the TUI follows. */
 export type Chat = BlankChat | FollowedSession;
 
 export interface BlankChat {
@@ -61,14 +50,9 @@ export interface BlankChat {
   readonly id: SessionId;
   readonly folder: ChatFolder;
   readonly selection: Selection;
-  /**
-   * Set on a launch's first chat when no model is known before the host answers: `selection`
-   * is a stand-in the footer leaves out, and the first send starts on the host's default.
-   */
   readonly unresolved?: true;
 }
 
-/** Where a blank chat starts: the folder the TUI launched in until the host registers it, then that workspace. */
 export type ChatFolder =
   | { readonly kind: "launch-folder" }
   | { readonly kind: "folder"; readonly id: WorkspaceId };
@@ -127,11 +111,9 @@ export interface WorkspaceFacts {
 export interface TerminalFacts {
   readonly width: number;
   readonly height: number;
-  /** The mode the terminal reported, or `null` when it hasn't. */
   readonly theme: ThemeMode | null;
   readonly selection: boolean;
   readonly dragging: boolean;
-  /** Whether the terminal draws OSC 8 hyperlinks. */
   readonly hyperlinks: boolean;
 }
 
@@ -223,7 +205,6 @@ export interface QuestionLocal {
   readonly drafts: ReadonlyMap<SessionId, ReadonlyMap<PartId, QuestionDraft>>;
 }
 
-/** The approval panel's highlight, kept for the part it was moved on, and the part whose answer is in flight. */
 export interface ApprovalLocal {
   readonly part: PartId | null;
   readonly highlighted: number;
@@ -278,7 +259,6 @@ interface Bootstrap {
   readonly cwd: string;
   readonly settings: ResolvedSettings;
   readonly terminal: TerminalFacts;
-  /** The chat the first frame shows, drawn from what the last launch saw; `null` until the host opens one. */
   readonly chat: BlankChat | null;
 }
 
@@ -298,7 +278,6 @@ export function initialState(bootstrap: Bootstrap): State {
       workspace: { cwd: bootstrap.cwd, branch: null, dirty: false, mentions: null },
       terminal: bootstrap.terminal,
       focused: true,
-      remote: { kind: "off" },
     },
     local: {
       draft: EMPTY_DRAFT,
@@ -334,7 +313,6 @@ export function initialState(bootstrap: Bootstrap): State {
   };
 }
 
-/** The workspace a chat starts in or runs in. */
 export function chatFolder(chat: Chat): ChatFolder {
   return chat.kind === "blank" ? chat.folder : { kind: "folder", id: chat.info.workspace };
 }
@@ -351,7 +329,6 @@ export function awaitingTrust(state: State, workspace: WorkspaceId): boolean {
   );
 }
 
-/** The started session on screen, or `null` while the chat is blank or opening. */
 export function followedSession(state: State): FollowedSession | null {
   const { chat } = state.facts;
 

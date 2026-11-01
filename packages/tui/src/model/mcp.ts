@@ -20,7 +20,8 @@ function attention(server: McpServerView): number {
   return server.state.kind === "failed" || server.state.kind === "needs-sign-in" ? 0 : 1;
 }
 
-function status(state: McpServerState): NonNullable<Choice["status"]> {
+/** A server's state as a short badge: the tool count when connected. */
+export function serverStatus(state: McpServerState): NonNullable<Choice["status"]> {
   switch (state.kind) {
     case "connected":
       return {
@@ -77,7 +78,7 @@ export function mcpServerChoices(view: McpView): readonly Choice[] {
         `server:${server.name}`,
         server.name,
         server.state.kind === "failed" ? server.state.message : target(server),
-        status(server.state),
+        serverStatus(server.state),
       ),
     );
 
@@ -143,7 +144,7 @@ export function mcpDetailLines(server: McpServerView): readonly string[] {
             `Failed: ${state.message}`,
             ...(state.stderr === null ? [] : ["", "stderr:", ...state.stderr.split("\n")]),
           ]
-        : [`State: ${status(state).text}`];
+        : [`State: ${serverStatus(state).text}`];
 
   return [
     target(server),

@@ -37,6 +37,7 @@ import { stopRequested } from "../engine/fence.ts";
 import { awaitMcpServers } from "../env/mcp.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { modelInfo, withLimits } from "../extend/models.ts";
+import { refreshPromptFiles } from "../extend/resources.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
 import { callRef, kvRef, partRef, runRef } from "../store/refs.ts";
@@ -167,6 +168,7 @@ async function turn(
     ready: (waiting) => unpaused(kernel, waiting),
 
     async prepareRequest(asked) {
+      await refreshPromptFiles(kernel, session);
       const runtime = kernel.plugins.runtime(session);
       context.holds.push({ runtime, release: runtime.hold() });
 
@@ -748,7 +750,7 @@ async function retry(
         ...request,
       ],
       updates: [
-        ...(await settledParts(context, kept)),
+        ...(await settledParts(context, kept, true)),
         ...(await keepOpen(
           context,
           cut.filter((entry) => !kept.includes(entry)),

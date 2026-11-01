@@ -4,7 +4,12 @@ import { createModels } from "@nyte-ai/ai/models";
 import type { Models } from "@nyte-ai/ai";
 import { serial } from "@nyte-ai/schema/serial";
 import type { Api, Model } from "@nyte-ai/schema/model";
-import { readNyteUsage } from "./store-usage.ts";
+import {
+  loadStoreUsageCache,
+  readNyteUsage,
+  saveStoreUsageCache,
+  type StoreUsageCache,
+} from "./store-usage.ts";
 import {
   loadUsageScanCaches,
   readLocalUsage,
@@ -33,12 +38,15 @@ export class UsageScanner implements UsageScanReader {
   private readonly home: string;
   private readonly cachePath: string;
   private caches: UsageScanCaches | undefined;
+  private readonly storeCachePath: string;
+  private storeCache: StoreUsageCache | undefined;
   private readonly models: ReturnType<typeof createModels>;
   private readonly scans = serial();
 
   constructor(home: string) {
     this.home = home;
     this.cachePath = join(home, ".nyte", "usage-scan-cache.json");
+    this.storeCachePath = join(home, ".nyte", "usage-store-cache.json");
     this.models = createModels({
       modelsStore: new FileModelsStore(join(home, ".nyte", "models-store.json")),
     });
@@ -64,9 +72,15 @@ export class UsageScanner implements UsageScanReader {
             };
 
       const caches = (this.caches ??= await loadUsageScanCaches(this.cachePath));
+      const storeCache = (this.storeCache ??= await loadStoreUsageCache(this.storeCachePath));
       const local = await readLocalUsage({ models, window: request.window, caches });
-      const report = readNyteUsage(this.home, request.window);
-      void this.scans.run(() => saveUsageScanCaches(this.cachePath, caches));
+      const report = readNyteUsage(this.home, request.window, storeCache);
+      void this.scans.run(() =>
+        Promise.all([
+          saveUsageScanCaches(this.cachePath, caches),
+          saveStoreUsageCache(this.storeCachePath, storeCache),
+        ]),
+      );
 
       return {
         ...report,

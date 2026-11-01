@@ -1,5 +1,6 @@
 import type {
   Activation,
+  BackgroundItem,
   CallId,
   CommitId,
   Configuration,
@@ -45,6 +46,7 @@ import type {
   ImageProcessor,
   ModelState,
   OpenOptions,
+  PluginDirectory,
   PluginFile,
   PluginsApi,
 } from "./host.ts";
@@ -63,7 +65,7 @@ import type {
   SettingsRegistry,
 } from "./plugin.ts";
 import type { Presence } from "../engine/presence.ts";
-import type { CallRecord } from "./records.ts";
+import type { CallRecord, SessionRecord } from "./records.ts";
 import type { Session } from "./session.ts";
 import type { StoreConnection } from "./store.ts";
 import type { ToolDefinition } from "./tools.ts";
@@ -139,6 +141,8 @@ export interface Kernel {
 
   readonly pages: PageTable;
 
+  readonly children: ChildTable;
+
   readonly connections: ConnectionRegistry;
 
   request<T>(session: SessionId, input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
@@ -163,10 +167,8 @@ export interface PluginHost {
 
   host: readonly Plugin<"core">[];
 
-  readonly sources: ReadonlyMap<
-    Plugin<"core">,
-    { readonly source: "user" | "project"; readonly path: string }
-  >;
+  /** The file each host plugin from `<home>/.nyte/plugins` came from; core writes it as it loads that folder. */
+  readonly sources: Map<Plugin<"core">, { readonly source: "user"; readonly path: string }>;
 
   readonly state: PluginState;
 
@@ -176,6 +178,7 @@ export interface PluginHost {
 
   runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
 
+  /** Closes `session`'s runtime and takes it off the folder watches, which stop once no session is left on them. */
   close(session: SessionId): Promise<void>;
 
   api(owner: string, session: SessionId): PluginApi<"core">;
@@ -185,6 +188,9 @@ export interface PluginHost {
   check(plugins: readonly Plugin<"core">[]): ReturnType<Host["plugins"]["check"]>;
 
   load(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
+
+  /** Loads the plugin files in `dir` one by one, so a bad file is reported without dropping the others; the same plugin object while none of a file's graph changed. */
+  directory(dir: string): Promise<PluginDirectory>;
 }
 
 export interface SessionDirectory {
@@ -205,6 +211,17 @@ interface Handles {
   session(context: ConnectionContext, session: SessionId): Session;
 
   activationSession(context: ConnectionContext, session: SessionId): Session;
+}
+
+export interface ChildTable {
+  /** Follows `record` when it has a parent and takes `own`, read from the store after the {@link ChildTable.heard} count `since`, unless a run event for the child arrived on the bus after `since`: then it returns false and takes nothing. A `since` of 0 takes `own` only while this process has heard no run event for the child. */
+  link(record: SessionRecord, own: BackgroundItem["state"] | null, since: number): boolean;
+  /** How many run events of children this process has heard on the bus. */
+  heard(): number;
+  forget(session: SessionId): void;
+  background(
+    session: SessionId,
+  ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];
 }
 
 export interface RunTable {
@@ -336,6 +353,9 @@ export interface PluginRuntime {
 
   load(plugins: readonly Plugin<"core">[]): Promise<readonly PluginLoadOutcome[]>;
 
+  /** The plugins its last `load` was asked for, in order, whether or not each activated. */
+  requested(): readonly Plugin<"core">[];
+
   outcomes(): readonly PluginLoadOutcome[];
 
   issues(): readonly HostView["plugins"][number][];
@@ -374,7 +394,19 @@ export interface PluginState {
   readonly settings: Set<(id: string, session: SessionId | null) => void>;
   readonly publishing: Map<SessionId, Promise<void>>;
   secretKey: Promise<CryptoKey> | null;
+  /** What the last load of `<home>/.nyte/plugins` gave: its plugins, taken by the host or not, which the next load compares against to tell whether anything changed; the files the host refused, with why; and the files the host view shows as failing, withdrawn by the next load that no longer fails them. */
+  user: {
+    readonly plugins: readonly Plugin<"core">[];
+    readonly refused: readonly PluginFailure[];
+    readonly failing: readonly string[];
+  };
 }
+
+/** A file of a plugin folder that failed to load or that the host refused, with why. */
+export type PluginFailure = {
+  readonly path: string;
+  readonly issues: HostView["plugins"][number]["issues"];
+};
 
 export type Attached = { readonly env: ExecutionEnv | null };
 

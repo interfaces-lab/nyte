@@ -1,6 +1,6 @@
 ---
 title: Spinner
-description: "A dithered moon that cycles its phases while work runs"
+description: "A dithered moon that cycles its phases while AI works"
 ---
 
 ```ts title="Import"
@@ -9,7 +9,9 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 
 ## Usage
 
-- The spinner is 15px and takes the text color of its parent.
+- `Spinner` means AI is working: a running chat, turn, subagent, or tool call. Any other loading
+  shows a [Loader](/design/loader).
+- The spinner fills a 16px glyph slot and takes the text color of its parent.
 - Under reduced motion it holds one phase.
 
 ## Examples

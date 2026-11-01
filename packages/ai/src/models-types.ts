@@ -252,6 +252,14 @@ export interface Models {
     options?: AuthOperationOptions,
   ): Promise<void>;
 
+  /** Rename a stored account; the label is trimmed and must not be empty. */
+  renameAccount(
+    providerId: string,
+    accountId: string,
+    label: string,
+    options?: AuthOperationOptions,
+  ): Promise<void>;
+
   /** Return models whose providers have complete auth configuration. */
   getAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly Model<Api>[]>;
 

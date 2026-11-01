@@ -27,7 +27,7 @@ import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
 import { advanceSeen } from "../fold/seen.ts";
 import { historyHead, viewHead, watchHead } from "../fold/view.ts";
-import { headRef, sessionRef } from "../store/refs.ts";
+import { headRef, promptRef, sessionRef } from "../store/refs.ts";
 import {
   attempt,
   createPosition,
@@ -152,6 +152,12 @@ export async function createHead(
     };
 
     const rows = new Map<HeadName, Partial<HeadInfo>>([[head, { tip: from }]]);
+    const prompt = await kernel.store.refs.get(promptRef(session, MAIN));
+
+    const inherited: readonly RefUpdate[] =
+      prompt === null || prompt.target === null
+        ? []
+        : [{ name: promptRef(session, head), target: prompt.target, expect: "absent" }];
 
     const created: readonly RefUpdate[] =
       source === null
@@ -173,6 +179,7 @@ export async function createHead(
         events: [await sessionEvent(kernel, record, rows)],
       },
       ...created,
+      ...inherited,
     ]);
 
     return outcome.kind === "set" ? { kind: "created", basedOn: from } : STALE;
@@ -263,7 +270,10 @@ export async function removeHead(
     const run = await liveRun(kernel.store, session, head);
 
     if (run !== null) return { kind: "busy", run: run.record.view.id };
-    const tip = await readTip(kernel.store, session, head);
+    const [tip, prompt] = await Promise.all([
+      readTip(kernel.store, session, head),
+      kernel.store.refs.get(promptRef(session, head)),
+    ]);
 
     if (options?.expect !== undefined && !sameRevision(options.expect, tip.ref))
       throw new SdkError("stale", `Head ${head} moved since ${options.expect}.`);
@@ -285,8 +295,12 @@ export async function removeHead(
             },
           ];
 
+    const forgotten: readonly RefUpdate[] =
+      prompt === null ? [] : [{ name: prompt.name, target: null, expect: prompt.revision }];
+
     const outcome = await commit(kernel, [
       ...removed,
+      ...forgotten,
       {
         name: sessionRef(session),
         target: await put(kernel.store, "session", record),

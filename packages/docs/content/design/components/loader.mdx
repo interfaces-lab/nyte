@@ -1,0 +1,40 @@
+---
+title: Loader
+description: "A turning ring for loading that isn't AI work"
+---
+
+```ts title="Import"
+import { Loader } from "@nyte-ai/ui/loader";
+```
+
+## Usage
+
+- `Loader` is for loading that isn't AI work: a page, an account, a download, a process. A running
+  chat, turn, subagent, or tool call shows a [Spinner](/design/spinner).
+- Choose the indicator at the call site. Don't restyle one to look like the other.
+- The loader fills a 16px glyph slot and takes the text color of its parent.
+- Under reduced motion it holds still.
+- A `Button` with `loading` shows a loader in place of its content.
+
+## Examples
+
+<Preview>
+  <LoaderDemo />
+</Preview>
+
+```tsx
+<Loader />
+```
+
+## Props
+
+| Prop        | Type                  | Default | Description                     |
+| ----------- | --------------------- | ------- | ------------------------------- |
+| `xstyle`    | `XStyle`              |         | See [Theming](/design/theming). |
+| `className` | `string`              |         | See [Theming](/design/theming). |
+| `style`     | `React.CSSProperties` |         | See [Theming](/design/theming). |
+
+## Accessibility
+
+- The loader is `aria-hidden`. Announce what is loading with nearby text or `aria-busy` on the
+  region.

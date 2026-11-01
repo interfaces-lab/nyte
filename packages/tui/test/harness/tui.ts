@@ -61,7 +61,6 @@ export interface Tui extends TestRendererSetup {
   until(done: () => boolean): Promise<void>;
   frame(predicate: (frame: string) => boolean): Promise<string>;
   state(predicate: (store: Store) => boolean): Promise<void>;
-  /** Renders until no code block is still waiting on its syntax highlight. */
   highlighted(): Promise<void>;
   ready(): Promise<void>;
   remount(): Promise<void>;
@@ -101,7 +100,7 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     renderer: setup.renderer,
     keymap: createKeymap(setup.renderer),
     hungUp: hungUp.signal,
-    host: opening.promise.then(() => ({ connection, endpoint: null, folder: null })),
+    host: opening.promise.then(() => ({ connection, folder: null })),
     ...(options.host === undefined
       ? {
           plugins: async () => ({

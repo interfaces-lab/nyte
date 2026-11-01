@@ -3,7 +3,7 @@ import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-r
 import type { ReactElement, ReactNode } from "react";
 import inter from "@fontsource-variable/inter/opsz.css?url";
 import globalCss from "@nyte-ai/app/theme/global.css?url";
-import { queryClient } from "@nyte-ai/app/queries.ts";
+import { queryClient } from "@nyte-ai/app/data/query-client.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { LabNav } from "../shell/lab-nav";
 import reset from "../shell/reset.css?url";
@@ -12,10 +12,7 @@ import reset from "../shell/reset.css?url";
 const dev = import.meta.env.DEV
   ? {
       links: [{ rel: "stylesheet", href: "/virtual:stylex.css" }],
-      scripts: [
-        { type: "module", src: "/src/devtools.ts" },
-        { type: "module", src: "/@id/virtual:stylex:runtime" },
-      ],
+      scripts: [{ type: "module", src: "/@id/virtual:stylex:runtime" }],
     }
   : { links: [], scripts: [] };
 
@@ -49,6 +46,7 @@ function Document({ children }: { readonly children: ReactNode }): ReactElement 
       </head>
       <body>
         <div id="root">{children}</div>
+        <LabNav />
         <Scripts />
       </body>
     </html>
@@ -60,7 +58,6 @@ function LabLayout(): ReactElement {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Outlet />
-        <LabNav />
       </TooltipProvider>
     </QueryClientProvider>
   );

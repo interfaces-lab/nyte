@@ -276,10 +276,9 @@ SOFTWARE.
   https://github.com/agentclientprotocol/registry
 - Package: `@agentclientprotocol/sdk` 1.9.0
 - What: the ACP model API in `packages/plugin/src/acp/` talks to agents through
-  the SDK's client connection and schema types.
-  `packages/plugin/src/acp/registry-seed.json` is a trimmed snapshot of the
-  registry's agent list (ids, names and launch commands), used until the first
-  registry fetch.
+  the SDK's client connection and schema types, and
+  `packages/plugin/src/acp/registry-seed.json` copies entries from the
+  registry's agent list.
 
 License: Apache License 2.0, reproduced in the appendix below. Copyright 2025
 Zed Industries, Inc. and contributors. Neither project ships a `NOTICE` file, so
@@ -485,6 +484,39 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Visual Studio Code (`microsoft/vscode`)
+
+- Repository: https://github.com/microsoft/vscode
+- What: the zsh and bash startup scripts in `packages/host/src/local/shell-integration`
+  adapt portions of VS Code's shell integration scripts at tag `1.105.1`; the
+  folder's `UPSTREAM.md` lists them.
+
+License: MIT, with the following notice:
+
+```text
+MIT License
+
+Copyright (c) 2015 - present Microsoft Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## EasyList and EasyPrivacy
 
 - Homepage: https://easylist.to
@@ -598,29 +630,6 @@ wherever the gameplay is used: "Gameplay – youtube.com/@Naybr".
   repository.
 
 License: every one is public domain or CC0. None requires attribution.
-
-## Design references
-
-These credits record design sources. They do not grant a license to the
-referenced products or imply endorsement.
-
-### Cursor
-
-- Product: https://cursor.com
-- Desktop design references include mention-preview folder rows, native
-  context menus and file-manager labels, transcript overscroll and edge
-  fades, collapsed-message previews, shell command and output presentation,
-  and Changes-panel shortcuts and default commit behavior in `packages/app`.
-- The mention-preview reference is the file and folder path presentation in
-  `/Applications/Cursor.app/Contents/Resources/app/out/vs/workbench/workbench.glass.main.js`.
-  Scroll and fade references include `--composer-messages-bottom-overscroll`,
-  `--cursor-spacing-8`, `.composer-fade-overlay`, and `UMs`.
-- Composer and read-only message behavior was studied in the workbench
-  modules `ComposerLexicalRenderer.js`, `ComposerRichTextInline.js`,
-  `promptInputRichText.js`, and `draftAgentRepositoryService.js`. Nyte uses
-  its own message model and workspace and draft visibility rules.
-- A Cursor iOS study informed the mobile interaction order and visual
-  hierarchy. Its iPad layouts were adapted to iPhone rather than copied.
 
 ## Appendix: Apache License 2.0
 

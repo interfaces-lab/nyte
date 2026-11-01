@@ -159,7 +159,7 @@ const write: ToolDefinition<Infer<typeof writeParameters>, PatchEntry> = {
       `Wrote ${new TextEncoder().encode(args.content).byteLength} bytes to ${args.path}.`,
     );
 
-    if (previous.kind === "binary" || previous.kind === "large") return result;
+    if (previous.kind !== "text" && previous.kind !== "missing") return result;
     const before = previous.kind === "text" ? previous.contents : null;
 
     return { ...result, output: await createTextPatch(args.path, before, args.content) };

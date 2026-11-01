@@ -142,7 +142,7 @@ export function FileRow({
   return (
     <div {...props(styles.row, defaultMarker())}>
       <span {...props(styles.leading)}>
-        {leading ?? <Icon name="file" size={16} xstyle={styles.fileIcon} />}
+        {leading ?? <Icon name="file" size="md" xstyle={styles.fileIcon} />}
       </span>
       <FileName path={file.path} dim={dim} />
       {stat ?? <Stat added={file.added} removed={file.removed} />}
@@ -177,10 +177,10 @@ export function useChecks(): {
 function ScopeChip(): ReactElement {
   return (
     <button type="button" {...props(styles.scopeChip)}>
-      <Icon name="git" size={14} />
+      <Icon name="git" size="sm" />
       <span {...props(styles.scopeLabel)}>Uncommitted</span>
       <Stat added={TOTAL.added} removed={TOTAL.removed} />
-      <Icon name="chevron-down" size={12} xstyle={styles.chevron} />
+      <Icon name="chevron-down" size="xs" xstyle={styles.chevron} />
     </button>
   );
 }
@@ -188,7 +188,7 @@ function ScopeChip(): ReactElement {
 function BranchLabel(): ReactElement {
   return (
     <span {...props(styles.branch)}>
-      <Icon name="git-branch" size={14} />
+      <Icon name="git-branch" size="sm" />
       {BRANCH.name}
     </span>
   );
@@ -246,7 +246,7 @@ export function PrimaryButton({
         disabled={disabled}
         {...props(styles.primary, styles.primaryMenu)}
       >
-        <Icon name="chevron-down" size={14} />
+        <Icon name="chevron-down" size="sm" />
       </button>
     </span>
   );

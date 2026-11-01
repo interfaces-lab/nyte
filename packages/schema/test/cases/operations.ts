@@ -67,6 +67,12 @@ export const operations = {
     { provider: "test" },
   ),
   "models.selectAccount output": operation(OPERATIONS["models.selectAccount"].output, null, 0),
+  "models.renameAccount input": operation(
+    OPERATIONS["models.renameAccount"].input,
+    { provider: "test", account: "work", label: "Work" },
+    { provider: "test", account: "work" },
+  ),
+  "models.renameAccount output": operation(OPERATIONS["models.renameAccount"].output, null, 0),
   "models.usage input": operation(OPERATIONS["models.usage"].input, {}, 1),
   "models.usage output": operation(OPERATIONS["models.usage"].output, [], [{}]),
   "models.refresh input": operation(
@@ -655,7 +661,7 @@ export const operations = {
   ),
   "git.log input": operation(
     OPERATIONS["git.log"].input,
-    { workspace, cursor, limit: 20 },
+    { workspace, head: gitCommit, cursor, limit: 20 },
     { workspace, limit: "20" },
   ),
   "git.log output": operation(
@@ -687,6 +693,11 @@ export const operations = {
     OPERATIONS["git.branch"].input,
     { workspace, input: { name: "fix", checkout: true } },
     { workspace, input: { name: "fix" } },
+  ),
+  "git.checkout input": operation(
+    OPERATIONS["git.checkout"].input,
+    { workspace, input: { name: "fix" }, options: { expect: gitRevision } },
+    { workspace, input: { name: 1 } },
   ),
   "git.push input": operation(
     OPERATIONS["git.push"].input,

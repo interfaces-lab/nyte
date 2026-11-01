@@ -1,8 +1,9 @@
-import { clientCapabilities } from "../client-actions.ts";
-import { nyte } from "../nyte.ts";
+import { clientCapabilities } from "../contract/client-actions.ts";
+import { nyte } from "../contract/nyte.ts";
 
 export interface SettingsContext {
-  readonly hostSettings: boolean;
+  /** Runs in the desktop app, so the Mac's own notifications, Dock and sharing are here. */
+  readonly desktop: boolean;
   readonly mac: boolean;
   readonly browser: boolean;
   readonly providers: boolean;
@@ -17,7 +18,7 @@ export function settingsContext(): SettingsContext {
   const { browser } = clientCapabilities(nyte.host);
 
   return {
-    hostSettings: nyte.host.settings !== undefined,
+    desktop: ownEnvironment,
     mac: nyte.platform === "darwin",
     browser,
     providers: ownEnvironment,

@@ -57,6 +57,7 @@ function row(name: HeadName): HeadInfo {
     stack: null,
     execution: { kind: "idle", lastRun: null },
     unread: false,
+    background: { working: 0, waiting: 0 },
   };
 }
 
@@ -456,11 +457,19 @@ describe("fold", () => {
       usage,
       execution,
       reportsHeld: false,
+      seenThrough: null,
       background: [],
       configuration: { selected: configuration, effective: configuration },
       context: { tokens: 120, window: 1000, lastRequest: usage },
       heads: [
-        { name: "main", tip: { kind: "commit", id: "c3" }, stack: null, execution, unread: true },
+        {
+          name: "main",
+          tip: { kind: "commit", id: "c3" },
+          stack: null,
+          execution,
+          unread: true,
+          background: { working: 0, waiting: 0 },
+        },
       ],
       changes: [],
       catalog,

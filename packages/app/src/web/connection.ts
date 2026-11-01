@@ -1,6 +1,5 @@
 import { Type } from "typebox";
-import { Value } from "typebox/value";
-import { errorMessage } from "../errors.ts";
+import { localArea, readStored, removeStored, writeStored } from "../lib/storage.ts";
 import type { Connection } from "./bridge.ts";
 
 const STORAGE_KEY = "nyte:connection";
@@ -13,31 +12,42 @@ const ConnectionSchema = Type.Object(
   { additionalProperties: false },
 );
 
+type CheckedConnection =
+  | { readonly kind: "valid"; readonly connection: Connection }
+  | { readonly kind: "invalid"; readonly message: string };
+
 export function parseConnection(value: Connection): Connection {
+  const checked = checkConnection(value);
+
+  if (checked.kind === "invalid") throw new Error(checked.message);
+
+  return checked.connection;
+}
+
+function checkConnection(value: Connection): CheckedConnection {
   const token = value.token.trim();
 
-  if (!token || value.url.trim() === "") throw new Error("Enter the address and the token.");
-  let url: URL;
+  if (!token || value.url.trim() === "") return invalid("Enter the address and the token.");
+  const url = URL.parse(value.url.trim());
 
-  try {
-    url = new URL(value.url.trim());
-  } catch {
-    throw new Error("Enter the full address, starting with https://.");
-  }
+  if (url === null) return invalid("Enter the full address, starting with https://.");
 
   const loopback =
     url.hostname === "localhost" ||
     url.hostname === "[::1]" ||
     /^127(\.\d{1,3}){3}$/u.test(url.hostname);
 
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
-    throw new Error("Use the HTTPS address Nyte shows on your computer.");
-  }
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback))
+    return invalid("Use the HTTPS address Nyte shows on your computer.");
 
   if (url.username || url.password || url.search || url.hash)
-    throw new Error("Enter only the address. The token has its own field.");
+    return invalid("Enter only the address. The token has its own field.");
 
-  return { url: url.href.replace(/\/$/, ""), token };
+  return { kind: "valid", connection: { url: url.href.replace(/\/$/, ""), token } };
+}
+
+function invalid(message: string): CheckedConnection {
+  return { kind: "invalid", message };
 }
 
 export function displayAddress(connection: Connection): string {
@@ -45,28 +55,18 @@ export function displayAddress(connection: Connection): string {
 }
 
 export function loadConnection(): Connection | undefined {
-  const text = localStorage.getItem(STORAGE_KEY);
+  const stored = readStored(localArea(), STORAGE_KEY, ConnectionSchema, undefined);
+  const checked = stored === undefined ? undefined : checkConnection(stored);
 
-  if (text === null) return undefined;
-
-  try {
-    const value: unknown = JSON.parse(text);
-
-    return Value.Check(ConnectionSchema, value) ? parseConnection(value) : undefined;
-  } catch {
-    return undefined;
-  }
+  return checked?.kind === "valid" ? checked.connection : undefined;
 }
 
 export function saveConnection(connection: Connection): void {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({ url: connection.url, token: connection.token }),
-  );
+  writeStored(localArea(), STORAGE_KEY, { url: connection.url, token: connection.token });
 }
 
 export function forgetConnection(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  removeStored(localArea(), STORAGE_KEY);
 }
 
 export type PairingRequest =
@@ -83,9 +83,7 @@ export function readPairingRequest(url: URL): PairingRequest | undefined {
   if (host === null || token === null) return undefined;
   const connection = { url: host, token };
 
-  try {
-    return { kind: "valid", connection: parseConnection(connection) };
-  } catch (cause) {
-    return { kind: "invalid", connection, message: errorMessage(cause) };
-  }
+  const checked = checkConnection(connection);
+
+  return checked.kind === "valid" ? checked : { ...checked, connection };
 }

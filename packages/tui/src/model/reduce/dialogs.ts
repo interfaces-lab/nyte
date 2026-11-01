@@ -10,7 +10,7 @@ import { resolveCommand } from "../commands.ts";
 import { withPrompt } from "../dialogs/auth.ts";
 import { dialogText, reduceDialog } from "../dialogs/dialog.ts";
 import type { Dialog, DialogInput, DialogRequest, LoadRequest } from "../dialogs/dialog.ts";
-import { typedLabel } from "../dialogs/list.ts";
+import { accountDescription, typedLabel } from "../dialogs/list.ts";
 import type { ListDialog, ListPurpose } from "../dialogs/list.ts";
 import { modelList, withModels } from "../dialogs/model-picker.ts";
 import type { ModelDialog } from "../dialogs/model-picker.ts";
@@ -111,7 +111,12 @@ export function listDialog(state: State, id: string, purpose: ListPurpose): List
     choices: items === null ? { kind: "loading" } : { kind: "ready", items },
     query: "",
     highlighted: items === null ? 0 : initialHighlight(state, purpose, items),
-    answering: typedLabel(purpose) === null ? null : "",
+    answering:
+      purpose.kind === "account-name"
+        ? purpose.account.label
+        : typedLabel(purpose) === null
+          ? null
+          : "",
     busy: false,
   };
 }
@@ -473,7 +478,7 @@ function loaded(state: State, msg: Extract<Outcome, { kind: "loaded" }>, now: nu
       const items = data.accounts.map((account) => ({
         id: JSON.stringify([account.provider, account.id]),
         label: account.label,
-        description: `${account.provider} · ${account.method.kind === "oauth" ? "OAuth" : "API key"}`,
+        description: accountDescription(account),
         timing: null,
         status: account.active ? { text: "active", tone: "ok" as const } : null,
         mark: account.active ? { glyph: GLYPHS.check, tone: "ok" as const } : null,

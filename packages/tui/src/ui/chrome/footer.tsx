@@ -19,10 +19,6 @@ function segmentColor(theme: CliTheme, segment: PowerlineSegment): string {
       return theme.thinking;
     case "queue":
       return theme.warning;
-    case "remote":
-      if (segment.remote === "shared") return theme.ok;
-
-      return segment.remote === "interrupted" ? theme.warning : theme.dim;
     case "usage":
       if (segment.level === "error") return theme.error;
 

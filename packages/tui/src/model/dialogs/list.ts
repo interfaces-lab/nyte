@@ -64,6 +64,7 @@ export type ListPurpose =
       readonly provider: string | null;
       readonly accounts: readonly ModelAccount[];
     }
+  | { readonly kind: "account-name"; readonly account: ModelAccount }
   | { readonly kind: "queue"; readonly message: MessageId }
   | { readonly kind: "settings"; readonly highlight: string | null }
   | { readonly kind: "setting"; readonly key: string }
@@ -106,11 +107,15 @@ export function listActions(purpose: ListPurpose): readonly ListAction[] {
   if (purpose.kind === "tasks" && purpose.section === "active")
     return [{ command: "chat.task.stop", label: "cancel" }];
 
+  if (purpose.kind === "accounts") return [{ command: "chat.account.rename", label: "rename" }];
+
   return [];
 }
 
 export function typedLabel(purpose: ListPurpose): string | null {
   if (purpose.kind === "summary") return "Summarize with custom prompt";
+
+  if (purpose.kind === "account-name") return "Account name";
 
   return null;
 }
@@ -125,6 +130,8 @@ export function acceptLabel(purpose: ListPurpose): string {
       return "open";
     case "tasks":
       return "inspect";
+    case "account-name":
+      return "save";
     default:
       return "select";
   }
@@ -135,7 +142,8 @@ export function cancelLabel(purpose: ListPurpose): string {
 
   if (purpose.kind === "approval") return "deny";
 
-  if (purpose.kind === "setting" || purpose.kind === "summary") return "back";
+  if (purpose.kind === "setting" || purpose.kind === "summary" || purpose.kind === "account-name")
+    return "back";
 
   if (purpose.kind === "tasks" && purpose.section === "finished") return "back";
 
@@ -152,6 +160,8 @@ export function emptyLabel(purpose: ListPurpose): string {
       return "No skills found. Add SKILL.md to .nyte/skills.";
     case "accounts":
       return "No saved accounts. Use /login to add one.";
+    case "account-name":
+      return accountDescription(purpose.account);
     case "provider":
       return purpose.mode === "login" ? "No providers support login" : "No stored credentials";
     case "queue":
@@ -159,6 +169,10 @@ export function emptyLabel(purpose: ListPurpose): string {
     default:
       return "No choices";
   }
+}
+
+export function accountDescription(account: ModelAccount): string {
+  return `${account.provider} · ${account.method.kind === "oauth" ? "OAuth" : "API key"}`;
 }
 
 export function matchesTerms(query: string, haystack: string): boolean {

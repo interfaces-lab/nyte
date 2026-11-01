@@ -5,12 +5,14 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { Type } from "typebox";
-import { formatTimeAgo } from "../components/ui.tsx";
-import { errorMessage } from "../errors.ts";
+import { formatTimeAgo } from "../lib/format.ts";
+import { errorMessage } from "../contract/errors.ts";
 import type { Setting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
-import { useWorkspaces } from "../queries.ts";
-import { connected, sessionsWatch, useWatch } from "../sdk.tsx";
+import { useWorkspaces } from "../data/workspaces.ts";
+import { connected } from "../data/connection.ts";
+import { sessionsWatch } from "../data/watches.ts";
+import { useWatch } from "../data/watch-store.ts";
 import { NumberRow, SettingsRow, SettingsSection, TextRow } from "./rows.tsx";
 
 const branchPrefix = pluginSetting("worktrees.branchPrefix", Type.String());

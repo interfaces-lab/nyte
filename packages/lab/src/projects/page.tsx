@@ -11,6 +11,8 @@ import { useProjectDials } from "./dials.ts";
 import type { Evidence } from "./evidence.ts";
 import { styles } from "./page.stylex";
 import { Journey } from "./journey.tsx";
+import { Triggers } from "./routine.tsx";
+import type { Routine } from "./routine.ts";
 import { ProjectsSidebar, StatusGlyph } from "./sidebar.tsx";
 import { ChatTab, LaneTab } from "./tab-content.tsx";
 import type { Answer, Next } from "./tab-content.tsx";
@@ -76,6 +78,7 @@ function happened(step: Step, title: string, pulls: number, runs: number): strin
 
 function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
   const [shell, setShell] = useState(START);
+  const [routines, setRoutines] = useState<readonly Routine[]>([]);
   const dials = useProjectDials();
   useDisplayMode(dials.scheme);
   const all = scenarios(evidence, dials.knobs);
@@ -148,9 +151,11 @@ function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
       id,
       title: found?.title ?? lane.name,
       tooltip: found?.title ?? `${lane.name} stack`,
+      sessions: [],
+      preview: false,
       glyph:
         found === undefined ? (
-          <Icon name="layers" size={14} />
+          <Icon name="layers" size="sm" />
         ) : found.status === null ? undefined : (
           <StatusGlyph status={found.status} />
         ),
@@ -213,6 +218,15 @@ function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
               next={next}
               empty={`Nothing in ${lane.name} yet. Drag “${title}” from Workspaces onto ${lane.name}.`}
               prompts={prompts}
+              triggers={
+                <Triggers
+                  evidence={evidence}
+                  lane={lane}
+                  knobs={dials.knobs}
+                  created={routines}
+                  onCreate={(routine) => setRoutines((current) => [...current, routine])}
+                />
+              }
               onOpen={open}
             />
           ) : (

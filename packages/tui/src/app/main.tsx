@@ -100,7 +100,6 @@ export async function runTui(flags: RunFlags, source: HostSource): Promise<numbe
 
     return {
       connection: local.connection,
-      endpoint: local.endpoint,
       folder: cwd,
       contextFiles: flags.contextFiles,
     };

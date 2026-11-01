@@ -2,7 +2,6 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
 import { layer, radius, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
@@ -36,16 +35,7 @@ const styles = create({
       "[data-instant]": "0s",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: motion.easeOut,
-  },
-  card: {
-    display: "flex",
-    flexDirection: "column",
-    width: "max-content",
-    maxWidth: "min(260px, var(--available-width))",
-    padding: space.s2,
-    color: role.contentPrimary,
-    whiteSpace: "normal",
+    transitionTimingFunction: motion.easeOutQuint,
   },
 });
 
@@ -70,7 +60,6 @@ export function TooltipContent({
   sideOffset = 6,
   alignOffset,
   tint,
-  variant = "label",
   xstyle,
   className,
   style,
@@ -78,7 +67,6 @@ export function TooltipContent({
 }: StyledProps<TooltipPrimitive.Popup.Props, Restyle<"TooltipContent">> &
   Pick<TooltipPrimitive.Positioner.Props, "side" | "align" | "sideOffset" | "alignOffset"> & {
     readonly tint?: Tint;
-    readonly variant?: "label" | "card";
   }): ReactElement {
   return (
     <TooltipPrimitive.Portal>
@@ -94,13 +82,7 @@ export function TooltipContent({
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           {...mergeStyleProps(
-            props(
-              text.xs,
-              tint !== undefined && surfaceTheme[tint],
-              styles.popup,
-              variant === "card" && [text.base, floatingSurfaceStyles.popup, styles.card],
-              xstyle,
-            ),
+            props(text.xs, tint !== undefined && surfaceTheme[tint], styles.popup, xstyle),
             className,
             style,
           )}

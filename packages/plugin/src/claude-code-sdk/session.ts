@@ -1,13 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type {
-  CanUseTool,
   EffortLevel,
-  HookInput,
-  HookJSONOutput,
   McpSdkServerConfigWithInstance,
   Options,
-  PermissionResult,
   Query,
   SDKMessage,
   SDKUserMessage,
@@ -17,80 +12,90 @@ import type {
   query,
 } from "@anthropic-ai/claude-agent-sdk";
 import { createAssistantMessageEventStream } from "@nyte-ai/ai";
-import type { Api, AssistantMessageEventStream, Message, Model, Tool } from "@nyte-ai/ai";
+import type {
+  Api,
+  AssistantMessageEventStream,
+  Message,
+  Model,
+  ProviderEnv,
+  Tool,
+} from "@nyte-ai/ai";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { ContentBlock } from "./transcript.ts";
-import {
-  BACKGROUND_TOOL,
-  emptyMessage,
-  mirrorCall,
-  NYTE_SERVER,
-  NYTE_TOOL_PREFIX,
-  Translator,
-} from "./translate.ts";
+import { messageKey } from "./transcript.ts";
+import { emptyMessage, NYTE_SERVER, NYTE_TOOL_PREFIX, Translator } from "./translate.ts";
 
 interface Launch {
+  /** What only a new process can change: model, folder, thinking and system prompt. Effort and tools change on a running one. */
   readonly key: string;
   readonly model: string;
   readonly cwd: string;
+  readonly system: string;
   readonly thinking: boolean;
   readonly effort: EffortLevel | undefined;
-  readonly ultracode: boolean;
-  readonly env: Record<string, string | undefined> | undefined;
+  readonly env: ProviderEnv | undefined;
   readonly session: string;
   readonly history: readonly SessionStoreEntry[];
   readonly tools: readonly Tool[];
   readonly query: StartQuery;
   /** The installed `claude` to run; without one the Agent SDK looks for its own. */
   readonly claude: string | undefined;
-  readonly approve: Approve;
 }
-
-/** Decides a call Claude Code asks to run under Nyte's permissions policy, by the tool's own name. */
-export type Approve = (
-  name: string,
-  input: Parameters<CanUseTool>[1],
-  signal: AbortSignal,
-) => Promise<PermissionResult>;
 
 /** Starts Claude Code: the Agent SDK's `query`, or a stand-in with the parts of its `Query` a session uses. */
 export type StartQuery = (
   params: Parameters<typeof query>[0],
 ) => AsyncIterable<SDKMessage> & Pick<Query, "applyFlagSettings" | "close">;
 
-export type QuestionAnswers = Record<string, string> | null;
-
-interface ClaudeToolOutput {
-  readonly text: string;
-  readonly isError: boolean;
-}
-
 type ToolReply = Awaited<ReturnType<SdkMcpToolDefinition["handler"]>>;
-
-const ALLOW: PermissionResult = { behavior: "allow" };
-
-const SKIPPED = "Nyte did not run this tool call.";
 
 const toolUseId = Type.String({ minLength: 1 });
 
-const toolInput = Type.Record(Type.String(), Type.Unknown());
+/** Claude Code features with a Nyte counterpart, or that would act outside Nyte's sight. */
+const ISOLATION_ENV = {
+  CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
+  CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+  DISABLE_AUTO_COMPACT: "1",
+  CLAUDE_CODE_ENABLE_AWAY_SUMMARY: "0",
+  // Tool search would hide every Nyte tool, since they all reach Claude through MCP.
+  ENABLE_TOOL_SEARCH: "false",
+  CLAUDE_CODE_DISABLE_ADVISOR_TOOL: "1",
+  // Nyte truncates tool output itself.
+  MAX_MCP_OUTPUT_TOKENS: "200000",
+  // Skips the subscription login.
+  CLAUDE_CODE_SIMPLE: undefined,
+  // Overrides the effort Nyte picks.
+  CLAUDE_CODE_EFFORT_LEVEL: undefined,
+  // Would fail any Nyte tool call that waits on the user longer.
+  MCP_TOOL_TIMEOUT: undefined,
+};
 
-/** How long Claude Code waits on the PreToolUse hook, which holds a call while the user decides it: a week, so a hook timeout never lets a call past Nyte's policy. */
-const APPROVAL_HOOK_SECONDS = 7 * 24 * 60 * 60;
+/**
+ * Claude Code as a bare model: only the tools and system prompt Nyte passes, none of the user's
+ * Claude Code settings, hooks, MCP servers, skills or CLAUDE.md, and prompts sent as written
+ * (`verbatimPrompts` needs Claude Code 2.1.248 or later).
+ */
+export function isolatedOptions(claude: string | undefined, env: ProviderEnv | undefined): Options {
+  return {
+    pathToClaudeCodeExecutable: claude,
+    env: { ...process.env, ...env, CLAUDE_AGENT_SDK_CLIENT_APP: "nyte", ...ISOLATION_ENV },
+    tools: [],
+    settingSources: [],
+    settings: { disableAllHooks: true },
+    strictMcpConfig: true,
+    skills: [],
+    permissionMode: "dontAsk",
+    verbatimPrompts: true,
+  };
+}
 
-type TurnItem =
-  | Extract<SDKMessage, { type: "stream_event" | "result" | "assistant" }>
-  | Extract<SDKMessage, { subtype: "session_state_changed" }>;
+type TurnItem = Extract<SDKMessage, { type: "stream_event" | "result" | "assistant" }>;
 
 class Inbox<T> {
   readonly #items: T[] = [];
   #waiter: (() => void) | undefined;
   #ended = false;
-
-  has(match: (item: T) => boolean): boolean {
-    return this.#items.some(match);
-  }
 
   push(item: T): void {
     this.#items.push(item);
@@ -129,8 +134,6 @@ class Inbox<T> {
   }
 }
 
-type ToolResultBlock = Extract<ContentBlock, { readonly type: "tool_result" }>;
-
 function toolError(text: string): ToolReply {
   return { content: [{ type: "text", text }], isError: true };
 }
@@ -144,14 +147,6 @@ function reply(message: Extract<Message, { readonly role: "toolResult" }>): Tool
     ),
     isError: message.isError,
   };
-}
-
-function resultText(content: ToolResultBlock["content"]): string {
-  if (!Array.isArray(content)) return content ?? "";
-
-  return content
-    .map((block) => (block.type === "text" ? block.text : `[${block.type} content]`))
-    .join("\n");
 }
 
 function storePath(key: SessionKey): string {
@@ -169,38 +164,31 @@ function memoryStore(session: string, history: readonly SessionStoreEntry[]) {
   };
 }
 
+/**
+ * One running `claude` for a Nyte session. Claude's calls to Nyte's tools end the response that
+ * makes them; Nyte runs them like any model's calls, and their results answer Claude's MCP
+ * requests when the next response starts.
+ */
 export class ClaudeCodeSession {
-  readonly key: string;
-  known: readonly string[] = [];
+  readonly #key: string;
+  /** Message keys of the transcript Claude has seen, up to its last reply. */
+  #known: readonly string[] = [];
 
   readonly #prompts = new Inbox<SDKUserMessage>();
   readonly #turn = new Inbox<TurnItem>();
-  readonly #results = new Map<string, ClaudeToolOutput>();
-  readonly #questions = new Map<string, PromiseWithResolvers<QuestionAnswers>>();
-  readonly #asking = new Set<string>();
-  readonly #changes = new Set<() => void>();
   readonly #replies = new Map<string, PromiseWithResolvers<ToolReply>>();
-  readonly #gates = new Map<string, PromiseWithResolvers<PermissionResult>>();
-  readonly #permits = new Map<string, Promise<PermissionResult>>();
-  readonly #approve: Approve;
   readonly #server: McpSdkServerConfigWithInstance;
   readonly #query: ReturnType<StartQuery>;
   #tools: readonly Tool[];
-  #order: string[] = [];
-  #settings: { readonly effort: EffortLevel | undefined; readonly ultracode: boolean };
-  #background: readonly string[] = [];
-  #notes: string[] = [];
+  #effort: EffortLevel | undefined;
   #idle = true;
-  #held = false;
   #stderr = "";
   #failure: Error | undefined;
 
   constructor(launch: Launch) {
-    this.key = launch.key;
-    this.#settings = { effort: launch.effort, ultracode: launch.ultracode };
+    this.#key = launch.key;
+    this.#effort = launch.effort;
     this.#tools = launch.tools;
-    this.#approve = launch.approve;
-    const session = launch.session;
     this.#server = createSdkMcpServer({ name: NYTE_SERVER, tools: [] });
     this.#server.instance.server.registerCapabilities({ tools: { listChanged: true } });
 
@@ -225,60 +213,24 @@ export class ClaudeCodeSession {
     };
 
     const options: Options = {
+      ...isolatedOptions(launch.claude, launch.env),
       model: launch.model,
       cwd: launch.cwd,
-      systemPrompt: { type: "preset", preset: "claude_code" },
+      systemPrompt: { type: "custom", prompt: launch.system },
       includePartialMessages: true,
       mcpServers: { [NYTE_SERVER]: this.#server },
-      disallowedTools: ["Bash"],
-      allowedTools: ["Grep", "Glob"],
-      permissionMode: "default",
-      canUseTool: async (name, input, { signal, toolUseID, agentID }) => {
-        if (name.startsWith(NYTE_TOOL_PREFIX))
-          return agentID === undefined
-            ? ALLOW
-            : { behavior: "deny", message: "Only the main agent can use Nyte's tools." };
-
-        if (name === "AskUserQuestion") {
-          if (agentID !== undefined)
-            return { behavior: "deny", message: "Only the main agent can ask the user questions." };
-          const answers = await this.#question(toolUseID, signal);
-
-          return answers === null
-            ? { behavior: "deny", message: "The user did not answer." }
-            : { behavior: "allow", updatedInput: { ...input, answers } };
-        }
-
-        return await this.#permit(toolUseID, name, input, agentID === undefined, signal);
-      },
-      hooks: {
-        PreToolUse: [
-          {
-            hooks: [(input, _id, { signal }) => this.#beforeTool(input, signal)],
-            timeout: APPROVAL_HOOK_SECONDS,
-          },
-        ],
-      },
+      allowedTools: [`${NYTE_TOOL_PREFIX}*`],
       thinking: launch.thinking
         ? { type: "adaptive", display: "summarized" }
         : { type: "disabled" },
-      env: {
-        ...process.env,
-        ...launch.env,
-        CLAUDE_AGENT_SDK_CLIENT_APP: "nyte",
-        CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
-      },
       stderr: (chunk) => (this.#stderr = (this.#stderr + chunk).slice(-4_096)),
-      pathToClaudeCodeExecutable: launch.claude,
     };
 
     if (launch.effort !== undefined) options.effort = launch.effort;
 
-    if (launch.ultracode) options.settings = { ultracode: true, enableWorkflows: true };
-
     if (launch.history.length > 0) {
-      options.resume = session;
-      options.sessionStore = memoryStore(session, launch.history);
+      options.resume = launch.session;
+      options.sessionStore = memoryStore(launch.session, launch.history);
     }
 
     this.#query = launch.query({ prompt: this.#prompts, options });
@@ -289,14 +241,20 @@ export class ClaudeCodeSession {
     return this.#failure !== undefined;
   }
 
-  async configure(effort: EffortLevel | undefined, ultracode: boolean): Promise<void> {
-    if (this.#settings.effort === effort && this.#settings.ultracode === ultracode) return;
-    this.#settings = { effort, ultracode };
-    await this.#query.applyFlagSettings({
-      effortLevel: effort ?? null,
-      ultracode: ultracode ? true : null,
-      enableWorkflows: ultracode ? true : null,
-    });
+  /** Whether this process can take the turn for `keys`: it was launched as `key` and has seen their start. */
+  follows(key: string, keys: readonly string[]): boolean {
+    return (
+      !this.closed &&
+      this.#key === key &&
+      this.#known.length < keys.length &&
+      this.#known.every((known, index) => keys[index] === known)
+    );
+  }
+
+  async configure(effort: EffortLevel | undefined): Promise<void> {
+    if (this.#effort === effort) return;
+    this.#effort = effort;
+    await this.#query.applyFlagSettings({ effortLevel: effort ?? null });
   }
 
   /** Serves `tools` as the Nyte MCP server's tools from now on, telling Claude Code when they changed. */
@@ -306,40 +264,16 @@ export class ClaudeCodeSession {
     this.#server.instance.sendToolListChanged();
   }
 
-  /** Answers Claude Code from Nyte's tool results: a Nyte tool call gets its result, and a call Claude Code asked to run but Nyte settled without running it is denied with that result. */
+  /** Answers Claude's waiting Nyte tool calls with the results Nyte recorded for them. */
   deliver(messages: readonly Message[]): void {
-    for (const message of messages) {
-      if (message.role !== "toolResult") continue;
-      const id = message.toolCallId;
-
-      if (this.#replies.has(id)) this.#reply(id).resolve(reply(message));
-      else
-        this.#gates.get(id)?.resolve({
-          behavior: "deny",
-          message:
-            message.content
-              .flatMap((block) => (block.type === "text" ? [block.text] : []))
-              .join("\n") || SKIPPED,
-        });
-    }
-  }
-
-  /** Lets Claude Code's call `id` go on to its approval now that Nyte records it (so the workspace snapshot before it is taken), and denies the calls before it in the same message that Nyte settled without running. */
-  recording(id: string): void {
-    const position = this.#order.findIndex((known) => known === id);
-
-    for (const [index, earlier] of this.#order.entries()) {
-      if (index > position) break;
-      this.#gate(earlier).resolve(
-        index === position ? ALLOW : { behavior: "deny", message: SKIPPED },
-      );
-    }
+    for (const message of messages)
+      if (message.role === "toolResult")
+        this.#replies.get(message.toolCallId)?.resolve(reply(message));
   }
 
   send(content: readonly ContentBlock[]): void {
     if (this.#idle) this.#turn.clear();
     this.#idle = false;
-    this.#held = false;
     this.#prompts.push({
       type: "user",
       message: { role: "user", content: [...content] },
@@ -348,7 +282,12 @@ export class ClaudeCodeSession {
     });
   }
 
-  respond(model: Model<Api>, signal: AbortSignal | undefined): AssistantMessageEventStream {
+  /** Streams Claude's next response to the transcript whose message keys are `keys`. */
+  respond(
+    model: Model<Api>,
+    keys: readonly string[],
+    signal: AbortSignal | undefined,
+  ): AssistantMessageEventStream {
     const stream = createAssistantMessageEventStream();
     const output = emptyMessage(model);
     const translator = new Translator(model, output, stream);
@@ -364,17 +303,6 @@ export class ClaudeCodeSession {
           const item = await this.#turn.next();
 
           if (item === undefined) throw this.#failure ?? new Error("Claude Code exited.");
-
-          if (item.type === "system") {
-            if (item.state !== "idle" || !this.#held) continue;
-            this.#held = false;
-            this.#idle = true;
-
-            if (output.stopReason === "pending") output.stopReason = "stop";
-            break;
-          }
-
-          if (item.type === "result" && this.#held) continue;
 
           if (item.type === "assistant") {
             if (item.error !== undefined)
@@ -399,25 +327,11 @@ export class ClaudeCodeSession {
             break;
           }
 
-          this.#held = false;
-          const stop = translator.apply(item.event);
-
-          if (stop === "tool_use") {
-            if (output.content.some((block) => block.type === "toolCall")) break;
-
-            continue;
-          }
-
-          if (stop !== undefined && this.#background.length > 0) {
-            translator.append(
-              mirrorCall(`claude-code-background-${randomUUID()}`, BACKGROUND_TOOL, {
-                tasks: [...this.#background],
-              }),
-            );
-            output.stopReason = "toolUse";
-            this.#held = true;
+          if (
+            translator.apply(item.event) === "tool_use" &&
+            output.content.some((block) => block.type === "toolCall")
+          )
             break;
-          }
         }
 
         if (output.stopReason === "error")
@@ -426,6 +340,7 @@ export class ClaudeCodeSession {
         if (output.stopReason === "aborted" || output.stopReason === "pending")
           throw new Error("Claude Code ended without a response.");
 
+        this.#known = [...keys, messageKey(output)];
         stream.push({ type: "done", reason: output.stopReason, message: output });
       } catch (error) {
         output.stopReason = signal?.aborted === true ? "aborted" : "error";
@@ -441,74 +356,14 @@ export class ClaudeCodeSession {
     return stream;
   }
 
-  get asking(): boolean {
-    return this.#asking.size > 0;
-  }
-
-  answer(id: string, answers: QuestionAnswers): void {
-    this.#pending(id).resolve(answers);
-  }
-
-  async result(id: string, signal: AbortSignal): Promise<ClaudeToolOutput> {
-    await this.#until(() => this.#results.has(id), signal);
-    const output = this.#results.get(id);
-
-    if (output === undefined)
-      throw this.#failure ?? new Error("Claude Code is no longer running this turn.");
-
-    return output;
-  }
-
-  async background(signal: AbortSignal): Promise<string> {
-    await this.#until(
-      () => this.#turn.has((item) => item.type === "stream_event" || item.type === "system"),
-      signal,
-    );
-
-    if (this.#failure !== undefined) throw this.#failure;
-    const notes = this.#notes.splice(0);
-
-    return notes.length === 0 ? "Background work finished." : notes.join("\n\n");
-  }
-
   close(reason: Error = new Error("Claude Code closed.")): void {
     if (this.#failure !== undefined) return;
     this.#failure = reason;
 
-    for (const pending of this.#questions.values()) pending.resolve(null);
-
     for (const pending of this.#replies.values()) pending.resolve(toolError(reason.message));
-
-    for (const pending of this.#gates.values())
-      pending.resolve({ behavior: "deny", message: reason.message });
     this.#prompts.end();
     this.#turn.end();
     this.#query.close();
-    this.#changed();
-  }
-
-  #pending(id: string): PromiseWithResolvers<QuestionAnswers> {
-    const known = this.#questions.get(id);
-
-    if (known !== undefined) return known;
-    const created = Promise.withResolvers<QuestionAnswers>();
-    this.#questions.set(id, created);
-
-    return created;
-  }
-
-  async #question(id: string, signal: AbortSignal): Promise<QuestionAnswers> {
-    const pending = this.#pending(id);
-    const cancel = () => this.answer(id, null);
-    this.#asking.add(id);
-    signal.addEventListener("abort", cancel, { once: true });
-
-    try {
-      return await pending.promise;
-    } finally {
-      this.#asking.delete(id);
-      signal.removeEventListener("abort", cancel);
-    }
   }
 
   #reply(id: string): PromiseWithResolvers<ToolReply> {
@@ -517,16 +372,6 @@ export class ClaudeCodeSession {
     if (known !== undefined) return known;
     const created = Promise.withResolvers<ToolReply>();
     this.#replies.set(id, created);
-
-    return created;
-  }
-
-  #gate(id: string): PromiseWithResolvers<PermissionResult> {
-    const known = this.#gates.get(id);
-
-    if (known !== undefined) return known;
-    const created = Promise.withResolvers<PermissionResult>();
-    this.#gates.set(id, created);
 
     return created;
   }
@@ -541,94 +386,6 @@ export class ClaudeCodeSession {
     } finally {
       this.#replies.delete(id);
       signal.removeEventListener("abort", cancel);
-    }
-  }
-
-  /** Decides call `id` once, whichever of the PreToolUse hook and `canUseTool` asks first: a main-agent call waits until Nyte records it, then every call goes to Nyte's policy. */
-  #permit(
-    id: string,
-    name: string,
-    input: Record<string, unknown>,
-    main: boolean,
-    signal: AbortSignal,
-  ): Promise<PermissionResult> {
-    const known = this.#permits.get(id);
-
-    if (known !== undefined) return known;
-
-    const decided = (async (): Promise<PermissionResult> => {
-      if (main) {
-        const recorded = await this.#recorded(id, signal);
-
-        if (recorded.behavior === "deny") return recorded;
-      }
-
-      return this.#approve(name, input, signal);
-    })();
-
-    this.#permits.set(id, decided);
-
-    return decided;
-  }
-
-  async #beforeTool(input: HookInput, signal: AbortSignal): Promise<HookJSONOutput> {
-    if (
-      input.hook_event_name !== "PreToolUse" ||
-      input.tool_name.startsWith(NYTE_TOOL_PREFIX) ||
-      input.tool_name === "AskUserQuestion"
-    )
-      return {};
-
-    const decided = await this.#permit(
-      input.tool_use_id,
-      input.tool_name,
-      Value.Check(toolInput, input.tool_input) ? input.tool_input : {},
-      input.agent_id === undefined,
-      signal,
-    );
-
-    return decided.behavior === "allow"
-      ? {}
-      : {
-          hookSpecificOutput: {
-            hookEventName: "PreToolUse",
-            permissionDecision: "deny",
-            permissionDecisionReason: decided.message,
-          },
-        };
-  }
-
-  async #recorded(id: string, signal: AbortSignal): Promise<PermissionResult> {
-    const pending = this.#gate(id);
-    const cancel = () => pending.resolve({ behavior: "deny", message: "Request was aborted" });
-    signal.addEventListener("abort", cancel, { once: true });
-
-    try {
-      return await pending.promise;
-    } finally {
-      signal.removeEventListener("abort", cancel);
-    }
-  }
-
-  async #until(ready: () => boolean, signal: AbortSignal): Promise<void> {
-    while (!ready() && this.#failure === undefined) {
-      signal.throwIfAborted();
-
-      await new Promise<void>((resolve) => {
-        const done = () => {
-          this.#changes.delete(done);
-          signal.removeEventListener("abort", done);
-          resolve();
-        };
-
-        this.#changes.add(done);
-        signal.addEventListener("abort", done, { once: true });
-      });
-    }
-
-    if (signal.aborted) {
-      this.close(new Error("Request was aborted"));
-      signal.throwIfAborted();
     }
   }
 
@@ -648,76 +405,27 @@ export class ClaudeCodeSession {
     return tail === "" ? "" : ` (${tail})`;
   }
 
+  /** Queues the main agent's messages for the turn. A Nyte call's reply waits from the call's start, since its result can reach Nyte before Claude Code asks for it. */
   #route(message: SDKMessage): void {
-    switch (message.type) {
-      case "stream_event":
-        if (message.parent_tool_use_id !== null) break;
-        this.#track(message.event);
-        this.#turn.push(message);
-        break;
-      case "assistant":
-        if (message.parent_tool_use_id === null) this.#turn.push(message);
-        break;
-      case "result":
-        this.#turn.push(message);
-        break;
-      case "user": {
-        const content = message.message.content;
-
-        if (message.parent_tool_use_id !== null || !Array.isArray(content)) break;
-
-        for (const block of content)
-          if (block.type === "tool_result")
-            this.#results.set(block.tool_use_id, {
-              text: resultText(block.content),
-              isError: block.is_error === true,
-            });
-
-        break;
-      }
-
-      case "system":
-        if (message.subtype === "background_tasks_changed")
-          this.#background = message.tasks.flatMap((task) =>
-            task.ambient === true ? [] : [task.description],
-          );
-        else if (message.subtype === "task_notification") this.#notes.push(message.summary);
-        else if (message.subtype === "session_state_changed" && message.state === "idle")
-          this.#turn.push(message);
-        break;
-      default:
-        break;
-    }
-
-    this.#changed();
-  }
-
-  #track(event: Extract<SDKMessage, { type: "stream_event" }>["event"]): void {
-    if (event.type === "message_start") {
-      for (const id of this.#order) {
-        this.#gates.delete(id);
-        this.#permits.delete(id);
-      }
-
-      this.#order = [];
+    if (message.type === "result") {
+      this.#turn.push(message);
 
       return;
     }
 
-    if (event.type !== "content_block_start" || event.content_block.type !== "tool_use") return;
-    const id = event.content_block.id;
-
-    if (event.content_block.name.startsWith(NYTE_TOOL_PREFIX)) {
-      this.#reply(id);
-
+    if (
+      (message.type !== "stream_event" && message.type !== "assistant") ||
+      message.parent_tool_use_id !== null
+    )
       return;
-    }
 
-    this.#order.push(id);
-    this.#gate(id);
-  }
-
-  #changed(): void {
-    for (const change of this.#changes) change();
+    if (
+      message.type === "stream_event" &&
+      message.event.type === "content_block_start" &&
+      message.event.content_block.type === "tool_use" &&
+      message.event.content_block.name.startsWith(NYTE_TOOL_PREFIX)
+    )
+      this.#reply(message.event.content_block.id);
+    this.#turn.push(message);
   }
 }

@@ -147,9 +147,10 @@ export const SessionViewType = Type.Object({
   heads: Type.Array(HeadInfoType),
   changes: Type.Array(FileChangeType),
   catalog: SessionCatalogViewType,
+  seenThrough: nullable(Type.Number()),
 });
 
-/** A head's view: its last `tail` messages, at most `tail` and contiguous; `leadingPrompt`, the prompt of the earliest turn among them when that prompt is before them, else null; the turns those messages belong to from the earliest one on (older turns and the messages between `leadingPrompt` and `messages` arrive through `head.history`); and `usage`, the sum of every completed run on the head's history. */
+/** A head's view: its last `tail` messages, at most `tail` and contiguous; `leadingPrompt`, the prompt of the earliest turn among them when that prompt is before them, else null; the turns those messages belong to from the earliest one on (older turns and the messages between `leadingPrompt` and `messages` arrive through `head.history`); `usage`, the sum of every completed run on the head's history; and `seenThrough`, the time of the commit the viewing principal last saw on this head, or null before it saw one: a message whose `at` is after it arrived unseen. */
 export type SessionView = Decoded<typeof SessionViewType>;
 
 export const HistoryPageType = Type.Object({
@@ -198,10 +199,11 @@ export const ViewFrameType = Type.Union([
     heads: Type.Optional(viewSplice(HeadInfoType)),
     changes: Type.Optional(viewSplice(FileChangeType)),
     catalog: Type.Optional(VIEW.catalog),
+    seenThrough: Type.Optional(VIEW.seenThrough),
   }),
 ]);
 
-/** One frame of a head's watch on the wire: the whole view first, then each later view as what changed since the frame before it, an absent field unchanged; a null `leadingPrompt` clears it. */
+/** One frame of a head's watch on the wire: the whole view first, then each later view as what changed since the frame before it, an absent field unchanged; a null `leadingPrompt` or `seenThrough` clears it. */
 export type ViewFrame = Decoded<typeof ViewFrameType>;
 
 export const SessionsFrameType = Type.Object({

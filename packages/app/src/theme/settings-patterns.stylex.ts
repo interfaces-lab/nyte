@@ -7,9 +7,9 @@ export const settingsPatterns = create({
   pageTitle: {
     margin: 0,
     color: role.contentPrimary,
-    fontSize: settings.pageTitleSize,
+    fontSize: type.font2xl,
     fontWeight: type.weightMedium,
-    lineHeight: settings.pageTitleLineHeight,
+    lineHeight: type.leading2xl,
     letterSpacing: 0,
   },
   section: {
@@ -27,9 +27,9 @@ export const settingsPatterns = create({
   sectionTitle: {
     margin: 0,
     color: role.contentPrimary,
-    fontSize: settings.sectionTitleSize,
-    fontWeight: type.weightMedium,
-    lineHeight: settings.sectionTitleLineHeight,
+    fontSize: type.fontLg,
+    fontWeight: type.weightSemibold,
+    lineHeight: type.leadingLg,
   },
   sectionDescription: {
     margin: 0,
@@ -43,6 +43,36 @@ export const settingsPatterns = create({
     overflow: "clip",
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
+  },
+  /** Inset in the card, its corner concentric with the card's. Display only: the slot is inert. */
+  preview: {
+    marginBlockStart: space.s2,
+    marginInline: space.s2,
+    marginBlockEnd: space.s1,
+    overflow: "clip",
+    borderRadius: `max(${radius.control}, calc(${radius.card} - ${space.s2}))`,
+    backgroundColor: role.bgBase,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+  },
+  under: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: space.s4,
+    paddingInline: settings.rowPaddingInline,
+  },
+  note: {
+    margin: 0,
+    color: role.contentTertiary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+    textWrap: "pretty",
+  },
+  actions: {
+    display: "flex",
+    flex: "none",
+    gap: space.s2,
+    marginInlineStart: "auto",
   },
   rowRule: {
     position: "relative",

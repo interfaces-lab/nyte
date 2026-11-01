@@ -34,7 +34,7 @@ import type {
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-import { scriptedReply } from "../src/main/fixtures/e2e-models.ts";
+import { scriptedReply } from "../src/host/fixtures/e2e-models.ts";
 import { inspectProcessTree, survivors } from "./process-tree.ts";
 
 const POLISH_MODEL = "scripted-polish";

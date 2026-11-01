@@ -1,4 +1,3 @@
-import { watch } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
@@ -8,15 +7,7 @@ import { defaultProviderAuthContext } from "@nyte-ai/ai/auth/context";
 import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
 import { isJson } from "@nyte-ai/schema";
-import { serial } from "@nyte-ai/schema/serial";
-import type {
-  HostDescription,
-  HostView,
-  Json,
-  PluginReplacementReport,
-  ValidationIssue,
-  WorkspaceTarget,
-} from "@nyte-ai/schema";
+import type { HostDescription, Json, ValidationIssue, WorkspaceTarget } from "@nyte-ai/schema";
 import { dev, processEnvironment } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
 import { readModelSelection } from "@nyte-ai/core/store";
@@ -47,14 +38,13 @@ import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts"
 import { listen } from "./listen.ts";
 import { nodeImages } from "./images/node.ts";
 import { createMcpHub } from "./mcp/hub.ts";
-import { loadPluginDirectory, pluginLoader } from "./plugins/loader.ts";
+import { createPluginLoader } from "./plugins/loader.ts";
+import type { PluginImport } from "./plugins/loader.ts";
 import { defaultSecrets } from "./secrets.ts";
 import type { SecretsSource } from "./secrets.ts";
 import { sqliteStore, storePath } from "./sqlite.ts";
 
 declare const NYTE_BUILT_VERSION: string | undefined;
-
-const RELOAD_DEBOUNCE_MS = 250;
 
 const STORE_POLL_MS = 500;
 
@@ -67,6 +57,8 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   readonly shell?: () => string | null;
   readonly label?: string;
   readonly onRevoked?: () => void;
+  /** How plugin files are imported fresh; Node's resolve hook (`nodePluginImport`) by default. A Bun host passes its own. */
+  readonly pluginImport?: PluginImport;
 };
 
 export async function openHost(options: OpenHostOptions): Promise<Host> {
@@ -110,10 +102,9 @@ async function composeOpen(
   const claudeCode = claudeCodeSdk();
   const acp = acpAgents();
 
-  const [models, files, settings] = await Promise.all([
+  const [models, settings] = await Promise.all([
     options.models ??
       nyteModels({ store, secrets, home, providers: [claudeCode.provider, acp.provider] }),
-    filePlugins(home),
     settingsSeed(home),
     usesLocalProvider
       ? store.open().then(async (connection) => {
@@ -150,17 +141,22 @@ async function composeOpen(
 
   let projectDirs: () => Promise<readonly string[]> = async () => [];
 
+  const loader = createPluginLoader({
+    dirs: async () => [join(home, ".nyte", "plugins"), ...(await projectDirs())],
+    import: options.pluginImport,
+  });
+
   const host = await composeHost({
     ...options,
     store,
     workspace,
-    loadPlugins: async (paths) => pluginLoader([...files.dirs, ...(await projectDirs())])(paths),
+    loadPlugins: (paths) => loader.load(paths),
+    loadPluginDirectory: (dir) => loader.directory(dir),
     models,
     mcp: options.mcp ?? createMcpHub({ home }),
     github: options.github ?? (usesLocalProvider ? localGitHubAccount({ home }) : undefined),
     images: options.images ?? nodeImages(),
-    plugins: [...plugins, ...files.plugins],
-    pluginSources: files.sources,
+    plugins,
     secrets,
     home,
     description,
@@ -172,6 +168,10 @@ async function composeOpen(
       capabilities: given.some((plugin) => plugin.id === browserTools.id) ? [browserTools.id] : [],
     },
     revoked: options.onRevoked,
+  }).catch((error: unknown) => {
+    loader.close();
+
+    throw error;
   });
 
   projectDirs = async () =>
@@ -181,8 +181,6 @@ async function composeOpen(
         : [],
     );
 
-  for (const row of files.failed) host.server.report(row);
-
   if (settings.issue !== null)
     host.server.report({
       id: "settings",
@@ -191,45 +189,8 @@ async function composeOpen(
       issues: [settings.issue],
     });
 
-  dev("open", "host", {
-    home,
-    seedIds: Object.keys(settings.seed?.settings ?? {}).length,
-    pluginFiles: files.plugins.length + files.failed.length,
-    failedFiles: files.failed.length,
-  });
+  dev("open", "host", { home, seedIds: Object.keys(settings.seed?.settings ?? {}).length });
 
-  const reported = new Map(
-    host.server
-      .pluginRows()
-      .filter((row) => row.path !== null && row.id === row.path)
-      .map((row) => [row.id, row]),
-  );
-
-  const reload = async (): Promise<void> => {
-    const next = await filePlugins(home);
-
-    for (const [plugin, source] of next.sources) files.sources.set(plugin, source);
-    const report = await host.plugins.replace([...plugins, ...next.plugins]);
-    const failed = [...next.failed, ...refused(next, report)];
-
-    for (const [id, row] of reported)
-      if (!failed.some((row) => row.id === id)) host.server.report({ ...row, issues: [] });
-
-    for (const row of failed) host.server.report(row);
-    reported.clear();
-
-    for (const row of failed) reported.set(row.id, row);
-
-    for (const plugin of files.sources.keys())
-      if (!host.server.loaded(plugin)) files.sources.delete(plugin);
-    dev("open", "plugins reloaded", {
-      generation: report.generation,
-      pluginFiles: next.plugins.length,
-      failedFiles: failed.length,
-    });
-  };
-
-  const unwatch = watchPlugins(files.dirs, reload);
   const listeners = new Set<Listener>();
   let identity: ReturnType<typeof identitySigner> | null = null;
 
@@ -250,10 +211,9 @@ async function composeOpen(
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      await unwatch();
-
       for (const listener of listeners) await listener.close();
       await host.close();
+      loader.close();
       await owned?.close();
     })();
 
@@ -310,95 +270,6 @@ async function nyteModels(input: {
   });
 
   return models;
-}
-
-async function filePlugins(home: string): Promise<{
-  readonly plugins: readonly Plugin<"core">[];
-  readonly sources: Map<
-    Plugin<"core">,
-    { readonly source: "user" | "project"; readonly path: string }
-  >;
-  readonly dirs: readonly string[];
-  readonly failed: readonly HostView["plugins"][number][];
-}> {
-  const scopes = [{ source: "user" as const, dir: join(home, ".nyte", "plugins") }];
-
-  const plugins: Plugin<"core">[] = [];
-  const sources = new Map<Plugin<"core">, { source: "user" | "project"; path: string }>();
-  const failed: HostView["plugins"][number][] = [];
-
-  for (const { source, dir } of scopes) {
-    const found = await loadPluginDirectory(dir);
-
-    for (const { plugin, path } of found.loaded) {
-      plugins.push(plugin);
-      sources.set(plugin, { source, path });
-    }
-
-    for (const { path, issue } of found.failed)
-      failed.push({ id: path, source, path, issues: [issue] });
-  }
-
-  return { plugins, sources, dirs: scopes.map((scope) => scope.dir), failed };
-}
-
-function refused(
-  files: Awaited<ReturnType<typeof filePlugins>>,
-  report: PluginReplacementReport,
-): readonly HostView["plugins"][number][] {
-  return report.plugins.flatMap((outcome) => {
-    const plugin = files.plugins.find((candidate) => candidate.id === outcome.id);
-    const file = plugin === undefined ? undefined : files.sources.get(plugin);
-
-    return outcome.kind === "activated" || file === undefined
-      ? []
-      : [{ id: file.path, source: file.source, path: file.path, issues: outcome.issues }];
-  });
-}
-
-function watchPlugins(dirs: readonly string[], reload: () => Promise<void>): () => Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const reloads = serial();
-
-  const run = (): void => {
-    timer = null;
-    void reloads.run(reload).catch((error: unknown) =>
-      dev("open", "plugin reload failed", {
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    );
-  };
-
-  const changed = (): void => {
-    if (timer !== null) clearTimeout(timer);
-    timer = setTimeout(run, RELOAD_DEBOUNCE_MS);
-    timer.unref();
-  };
-
-  const watchers = dirs.flatMap((dir) => {
-    try {
-      const watcher = watch(dir, { recursive: true, persistent: false }, changed);
-
-      watcher.on("error", (error) => {
-        dev("open", "plugin watch failed", { dir, message: error.message });
-        watcher.close();
-      });
-      dev("open", "plugins watched", { dir });
-
-      return [watcher];
-    } catch (error) {
-      dev("open", "plugins unwatched", { dir, code: readErrorCode(error) });
-
-      return [];
-    }
-  });
-
-  return async () => {
-    for (const watcher of watchers) watcher.close();
-
-    if (timer !== null) clearTimeout(timer);
-    await reloads.settled();
-  };
 }
 
 async function settingsSeed(home: string): Promise<{

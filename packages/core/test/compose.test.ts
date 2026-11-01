@@ -193,6 +193,7 @@ describe("composeHost", () => {
       "resources",
       "interruptions",
       "worktrees",
+      "variables",
       "chat-only",
       "extra",
     ]);
@@ -235,7 +236,14 @@ describe("composeHost", () => {
     await views.return?.();
 
     const seeded = [
-      ...["system-prompt", "environment", "resources", "interruptions", "worktrees"].map((id) => ({
+      ...[
+        "system-prompt",
+        "environment",
+        "resources",
+        "interruptions",
+        "worktrees",
+        "variables",
+      ].map((id) => ({
         id,
         source: "builtin",
         path: null,
@@ -461,23 +469,28 @@ describe("composeHost", () => {
     const bad: Plugin<"core"> = { id: "models" };
     const good: Plugin<"core"> = { id: "good" };
 
-    const compose = (sources: Map<Plugin<"core">, { source: "user"; path: string }>) =>
-      composed({
-        store: memoryStore(),
-        models: fakeModels().models,
-        plugins: [chatOnly, bad, good],
-        workspace: { kind: "chat-only", locator: null },
-        home: null,
-        description: { name: "test", platform: "darwin", version: "0.1.0" },
-        pluginSources: sources,
-      });
+    const folders: string[] = [];
 
-    await using host = await compose(
-      new Map([
-        [bad, { source: "user", path: "/home/.nyte/plugins/bad.ts" }],
-        [good, { source: "user", path: "/home/.nyte/plugins/good.ts" }],
-      ]),
-    );
+    await using host = await composed({
+      store: memoryStore(),
+      models: fakeModels().models,
+      plugins: [chatOnly],
+      workspace: { kind: "chat-only", locator: null },
+      home: "/home",
+      description: { name: "test", platform: "darwin", version: "0.1.0" },
+      loadPluginDirectory: async (dir) => {
+        folders.push(dir);
+
+        return {
+          loaded: [
+            { plugin: bad, path: "/home/.nyte/plugins/bad.ts" },
+            { plugin: good, path: "/home/.nyte/plugins/good.ts" },
+          ],
+          failed: [],
+        };
+      },
+    });
+    expect(folders).toEqual(["/home/.nyte/plugins"]);
     const rows = host.kernel.host.current().plugins;
 
     expect(host.kernel.plugins.host.map((plugin) => plugin.id)).toEqual(["chat-only", "good"]);
@@ -497,7 +510,16 @@ describe("composeHost", () => {
     expect(
       host.kernel.host.current().plugins.some((row) => row.id === "/home/.nyte/plugins/bad.ts"),
     ).toBe(true);
-    await expect(compose(new Map())).rejects.toMatchObject({ code: "invalid" });
+    await expect(
+      composed({
+        store: memoryStore(),
+        models: fakeModels().models,
+        plugins: [chatOnly, bad],
+        workspace: { kind: "chat-only", locator: null },
+        home: null,
+        description: { name: "test", platform: "darwin", version: "0.1.0" },
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
   });
 
   it("checks plugin objects and files alike in-process, each file through loadPlugins in order (§47l)", async () => {

@@ -13,7 +13,7 @@ export function TasksLine(): JSX.Element {
   return (
     <Show when={app.screen().tasksLine}>
       {(line: Accessor<NonNullable<ScreenModel["tasksLine"]>>) => {
-        const mark = () => statusMark(line().attention ? "waiting" : "running");
+        const mark = () => statusMark(line().attention ? "waiting" : "working");
 
         return (
           <text

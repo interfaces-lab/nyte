@@ -63,6 +63,7 @@ export function applyViewFrame(view: SessionView | null, frame: ViewFrame): Sess
     heads: applySplice(view.heads, frame.heads),
     changes: applySplice(view.changes, frame.changes),
     catalog: frame.catalog ?? view.catalog,
+    seenThrough: frame.seenThrough === undefined ? view.seenThrough : frame.seenThrough,
   };
 }
 
@@ -137,6 +138,7 @@ function viewDelta(previous: SessionView, next: SessionView): ViewDelta {
     heads: splice(previous.heads, next.heads),
     changes: splice(previous.changes, next.changes),
     catalog: previous.catalog === next.catalog ? undefined : next.catalog,
+    seenThrough: previous.seenThrough === next.seenThrough ? undefined : next.seenThrough,
   };
 }
 

@@ -32,7 +32,15 @@ const QUERY_INPUT = wireObject({
 });
 
 export const FILE_OPERATIONS = {
-  "files.read": { ...FILES, kind: "query", input: ON_PATH, output: FileDocumentSchema },
+  "files.read": {
+    ...FILES,
+    kind: "query",
+    input: wireObject({
+      ...PATH,
+      options: Type.Optional(Type.Object({ as: Type.Enum(["text", "document"]) })),
+    }),
+    output: FileDocumentSchema,
+  },
   "files.bytes": { ...FILES, kind: "stream", input: ON_PATH, output: BYTES },
   "files.stat": {
     ...FILES,

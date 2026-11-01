@@ -32,7 +32,7 @@ const styles = create({
     flexShrink: 0,
     fontSize: 14,
     lineHeight: 1,
-    color: role.contentInteractiveTertiary,
+    color: role.contentAccent,
   },
   sprite: {
     position: "absolute",

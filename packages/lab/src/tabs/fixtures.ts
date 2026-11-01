@@ -1,4 +1,4 @@
-import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { IconName } from "@nyte-ai/ui/icon";
 
 /** pinned: always in the strip, never closes. page: a full-tab place opened on demand. */
@@ -9,7 +9,7 @@ export interface ShellTab {
   readonly kind: TabKind;
   readonly title: string;
   readonly icon: IconName;
-  readonly mark: SessionMark;
+  readonly mark: TaskState;
   readonly unread: boolean;
   readonly split?: "right" | "down";
 }
@@ -31,7 +31,7 @@ export const PAGES: readonly ShellTab[] = [
     kind: "page",
     title: "Customize",
     icon: "customize",
-    mark: "idle",
+    mark: "done",
     unread: false,
   },
   {
@@ -39,7 +39,7 @@ export const PAGES: readonly ShellTab[] = [
     kind: "page",
     title: "Environments",
     icon: "server",
-    mark: "idle",
+    mark: "done",
     unread: false,
   },
 ];
@@ -82,7 +82,7 @@ export const CHATS: readonly ShellTab[] = [
     kind: "chat",
     title: "Map translucent tints to nyte tokens",
     icon: "agent",
-    mark: "idle",
+    mark: "done",
     unread: true,
     split: "right",
   },
@@ -91,7 +91,7 @@ export const CHATS: readonly ShellTab[] = [
     kind: "chat",
     title: "Review: titlebar alignment #412",
     icon: "pull-request",
-    mark: "idle",
+    mark: "done",
     unread: false,
   },
   {

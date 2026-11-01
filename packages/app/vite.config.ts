@@ -1,7 +1,7 @@
 import { stylex } from "@nyte-ai/ui/stylex";
 import react from "@vitejs/plugin-react";
 import { defaultClientConditions, defineConfig } from "vite";
-import { deferredEntries } from "./src/deferred-entries.ts";
+import { deferredEntries } from "./src/lib/deferred-entries.ts";
 import {
   canvasShell,
   deferredChunks,

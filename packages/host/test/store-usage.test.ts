@@ -9,10 +9,13 @@ import type { DurableEvent, Usage } from "@nyte-ai/schema";
 import { sqliteStore } from "../src/sqlite.ts";
 import {
   USAGE_EVENTS,
+  foldUsage,
   localDay,
   projectUsageReport,
   readNyteUsage,
   shiftDay,
+  type UsageCell,
+  type UsageRecord,
 } from "../src/store-usage.ts";
 
 const folders: string[] = [];
@@ -158,38 +161,34 @@ test("reads charged requests once, with workspace and session metadata, not run 
 test("projects local calendar days, inclusive windows and prior totals without counting reasoning twice", () => {
   const day = localDay(at);
 
+  const cells = new Map<string, UsageCell>();
+
+  const records: readonly UsageRecord[] = [
+    { at, subject: { kind: "tool" }, usage },
+    { at: new Date(2026, 8, 1, 23, 30).getTime(), subject: { kind: "compaction" }, usage },
+    {
+      at,
+      subject: { kind: "tool" },
+      usage: {
+        ...usage,
+        total: 0,
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: { ...usage.cost, total: 0 },
+      },
+    },
+  ];
+
+  for (const record of records) foldUsage(cells, record);
+
   const report = projectUsageReport(
     [
       {
         workspacePath: null,
         failure: null,
-        sessions: [
-          {
-            sessionId,
-            name: undefined,
-            records: [
-              { at, subject: { kind: "tool" }, usage },
-              {
-                at: new Date(2026, 8, 1, 23, 30).getTime(),
-                subject: { kind: "compaction" },
-                usage,
-              },
-              {
-                at,
-                subject: { kind: "tool" },
-                usage: {
-                  ...usage,
-                  total: 0,
-                  input: 0,
-                  output: 0,
-                  cacheRead: 0,
-                  cacheWrite: 0,
-                  cost: { ...usage.cost, total: 0 },
-                },
-              },
-            ],
-          },
-        ],
+        sessions: [{ sessionId, name: undefined, cells: cells.values() }],
       },
     ],
     { sinceDay: day, untilDay: day },
@@ -225,7 +224,7 @@ test("a migrated store answers the usage read from the log kind index, not a log
       .map((row) => String(row.detail));
 
     expect(plan.filter((detail) => detail.includes("log"))).toEqual([
-      "SEARCH log USING INDEX log_kind (<expr>=?)",
+      "SEARCH log USING INDEX log_kind (<expr>=? AND rowid>?)",
     ]);
   } finally {
     database.close();

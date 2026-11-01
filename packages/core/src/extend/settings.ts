@@ -14,10 +14,19 @@ import { WORKSPACE_TRUST } from "../env/trust.ts";
 import { trustChanged } from "../env/workspaces.ts";
 import { commit } from "../fold/commit.ts";
 import { headRef, kvRef, sessionRef } from "../store/refs.ts";
-import { attempt, EMPTY_REVISION, MAIN, put, requireSession, STALE } from "../store/session.ts";
+import {
+  attempt,
+  EMPTY_REVISION,
+  MAIN,
+  put,
+  readKv,
+  requireSession,
+  STALE,
+} from "../store/session.ts";
 import { check } from "../util/json-schema.ts";
 import { publishCatalog } from "./registry.ts";
 import { dropScans, SKILL_PATHS } from "./resources.ts";
+import { sealSecretEntries } from "./secret-settings.ts";
 import { findSettingDefinition, readSetting, settingInfos } from "./setting-layers.ts";
 
 export function createSettingsApi(kernel: Kernel): SettingsApi {
@@ -29,7 +38,7 @@ export function createSettingsApi(kernel: Kernel): SettingsApi {
       const checked = await check(found.definition.schema, value);
 
       if (checked.kind === "invalid") return { kind: "invalid", issues: checked.issues };
-      await storeHostValue(kernel, id, value);
+      await storeHostValue(kernel, found.definition, value);
 
       return { kind: "applied" };
     },
@@ -62,7 +71,7 @@ export function settingHandle<T>(
         });
 
       if (definition.scope === "host" || session === null) {
-        await storeHostValue(kernel, id, value);
+        await storeHostValue(kernel, definition, value);
 
         return;
       }
@@ -116,10 +125,19 @@ export async function publishSettings(kernel: Kernel): Promise<void> {
   kernel.host.update({ settings: await settingInfos(kernel, null) });
 }
 
-async function storeHostValue(kernel: Kernel, id: string, value: Json): Promise<void> {
-  await commit(kernel, [
-    { name: kvRef("host", "settings", id), target: await put(kernel.store, "kv", value) },
-  ]);
+async function storeHostValue(
+  kernel: Kernel,
+  definition: Pick<SettingDefinition, "id" | "secret">,
+  value: Json,
+): Promise<void> {
+  const id = definition.id;
+  const name = kvRef("host", "settings", id);
+
+  const stored = definition.secret
+    ? await sealSecretEntries(kernel, value, await readKv(kernel.store, name))
+    : value;
+
+  await commit(kernel, [{ name, target: await put(kernel.store, "kv", stored) }]);
   changed(kernel, id, null);
 
   if (id === WORKSPACE_TRUST) void trustChanged(kernel).catch(() => undefined);

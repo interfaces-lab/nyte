@@ -29,7 +29,6 @@ import type {
   PendingOp,
   QuestionRequest,
   QuestionTypedDraft,
-  RemoteFacts,
   Selection,
   ShellJob,
   TerminalFacts,
@@ -189,7 +188,6 @@ export type Fact =
   | { readonly kind: "shell-job"; readonly job: ShellJob }
   | { readonly kind: "terminal"; readonly terminal: TerminalFacts }
   | { readonly kind: "terminal-focus"; readonly focused: boolean }
-  | { readonly kind: "remote"; readonly remote: RemoteFacts }
   | {
       readonly kind: "draft-changed";
       readonly text: string;

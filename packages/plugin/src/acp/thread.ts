@@ -15,7 +15,14 @@ import type { Api, AssistantMessageEventStream, Model, StopReason } from "@nyte-
 import type { RuntimeCall, RuntimeVerdict } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { emptyMessage, MIRROR_TOOL, mirrorClass, toolText, Translator } from "./translate.ts";
+import {
+  agentUsage,
+  emptyMessage,
+  MIRROR_TOOL,
+  mirrorClass,
+  toolText,
+  Translator,
+} from "./translate.ts";
 import type { MirrorArguments } from "./translate.ts";
 
 /** Where Nyte is with one of the agent's calls: recording it (its mirror runs), or done with it without running it. */
@@ -273,7 +280,7 @@ export class AcpThread {
           } else {
             translator.end();
 
-            if (event.response.usage !== undefined && event.response.usage !== null)
+            if (Value.Check(agentUsage, event.response.usage))
               translator.usage(event.response.usage);
             output.rawStopReason = event.response.stopReason;
             const mapped = stopReason(event.response);

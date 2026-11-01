@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
-import { button, media, radius, space, target } from "./styles/schema.stylex.ts";
+import { button, control, media, radius, space, target } from "./styles/schema.stylex.ts";
 import {
   mergeStyleProps,
   type StateStyledProps,
@@ -22,10 +22,13 @@ import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
 import { text } from "./styles/text.stylex.ts";
 import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
-import { ControlGlyphs, Icon, type IconName } from "./icon.tsx";
-import { Spinner } from "./spinner.tsx";
+import { ControlGlyphs, Icon, type GlyphSize, type IconName } from "./icon.tsx";
+import { Loader } from "./loader.tsx";
 
-const control = create({
+/** A loading button is disabled but keeps its look behind the loader. */
+const disabled = "[data-disabled]:not([aria-busy='true'])";
+
+const controlStyles = create({
   base: {
     "--_btn-hit-inset": `calc(max(0px, ${target.min} - var(--_btn-height)) / 2)`,
     position: "relative",
@@ -64,10 +67,11 @@ const control = create({
       ":active:not([data-disabled])": role.contentPrimary,
       "[data-pressed]:not([data-disabled])": role.contentPrimary,
       '[aria-expanded="true"]:not([data-disabled])': role.contentPrimary,
+      [disabled]: role.contentDisabled,
     },
     scale: { default: "1", ":active:not([data-disabled])": "0.97" },
     touchAction: "manipulation",
-    transitionProperty: "background-color, color, opacity, scale",
+    transitionProperty: "background-color, color, scale",
     transitionDuration: {
       default: motion.durationFast,
       ":active:not([data-disabled])": "0s",
@@ -85,7 +89,7 @@ const control = create({
     width: "var(--_btn-height)",
     minWidth: 0,
     marginInline: "var(--_btn-hit-inset)",
-    paddingInline: button.iconPaddingInline,
+    paddingInline: button.paddingInlineTight,
     "::before": { insetInline: "calc(-1 * var(--_btn-hit-inset))" },
   },
   joined: {
@@ -107,7 +111,6 @@ const control = create({
   },
   joinedIcon: { width: `max(var(--_btn-height), ${target.min})` },
   pill: { borderRadius: radius.pill },
-  dimmed: { opacity: { default: null, "[data-disabled]:not([aria-busy='true'])": 0.5 } },
 });
 
 const group = create({
@@ -117,7 +120,6 @@ const group = create({
     gap: 0,
     minWidth: 0,
     flexWrap: "wrap",
-    opacity: { default: 1, ":has([data-disabled]:not([aria-busy='true']))": 0.5 },
   },
 });
 
@@ -126,37 +128,37 @@ const ButtonGroupContext = createContext(false);
 const buttonSizes = create({
   "2xs": {
     "--_btn-radius": button.radius2xs,
-    "--_btn-height": button.height2xs,
+    "--_btn-height": control.height2xs,
     paddingInline: button.paddingInline2xs,
     gap: button.gap2xs,
   },
   xs: {
     "--_btn-radius": button.radiusXs,
-    "--_btn-height": button.heightXs,
+    "--_btn-height": control.heightXs,
     paddingInline: button.paddingInlineXs,
     gap: button.gapXs,
   },
   sm: {
     "--_btn-radius": button.radiusSm,
-    "--_btn-height": button.heightSm,
+    "--_btn-height": control.heightSm,
     paddingInline: button.paddingInlineSm,
     gap: button.gapSm,
   },
   md: {
     "--_btn-radius": button.radiusMd,
-    "--_btn-height": button.heightMd,
+    "--_btn-height": control.heightMd,
     paddingInline: button.paddingInlineMd,
     gap: button.gapMd,
   },
   lg: {
     "--_btn-radius": button.radiusLg,
-    "--_btn-height": button.heightLg,
+    "--_btn-height": control.heightLg,
     paddingInline: button.paddingInlineLg,
     gap: button.gapLg,
   },
   xl: {
     "--_btn-radius": button.radiusXl,
-    "--_btn-height": button.heightXl,
+    "--_btn-height": control.heightXl,
     paddingInline: button.paddingInlineXl,
     gap: button.gapXl,
   },
@@ -180,17 +182,21 @@ const ghostFill = {
 const buttonVariants = create({
   ghost: { backgroundColor: ghostFill },
   outline: {
-    backgroundColor: role.bgElevated,
-    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
+    backgroundColor: { default: role.bgElevated, [disabled]: role.bgInteractiveSecondary },
+    boxShadow: {
+      default: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
+      [disabled]: `inset 0 0 0 1px ${role.borderPrimary}`,
+    },
   },
   solid: {
-    color: role.contentOnInteractiveStrong,
+    color: { default: role.contentOnInteractiveStrong, [disabled]: role.contentDisabled },
     backgroundColor: {
       default: role.buttonFill,
       ":hover:not([data-disabled])": {
         [media.hover]: role.buttonFillHover,
       },
       ":active:not([data-disabled])": role.buttonFillPressed,
+      [disabled]: role.bgInteractiveSecondary,
     },
     backgroundImage: "none",
   },
@@ -200,6 +206,22 @@ const buttonVariants = create({
     backgroundColor: {
       default: "transparent",
       '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
+    },
+  },
+  quiet: {
+    paddingInline: button.paddingInlineTight,
+    fontWeight: type.weightRegular,
+    backgroundImage: "none",
+    backgroundColor: {
+      default: "transparent",
+      '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
+    },
+    color: {
+      default: role.contentTertiary,
+      ":hover:not([data-disabled])": { [media.hover]: role.contentPrimary },
+      ":active:not([data-disabled])": role.contentPrimary,
+      '[aria-expanded="true"]:not([data-disabled])': role.contentPrimary,
+      [disabled]: role.contentDisabled,
     },
   },
   text: {
@@ -228,12 +250,16 @@ const buttonVariants = create({
     paddingInline: 0,
     verticalAlign: "baseline",
     backgroundImage: "none",
-    color: "inherit",
+    color: { default: "inherit", [disabled]: role.contentDisabled },
     fontSize: "inherit",
     fontWeight: "inherit",
     lineHeight: "inherit",
     letterSpacing: "inherit",
-    transitionDuration: motion.durationNormal,
+    transitionDuration: {
+      default: motion.durationNormal,
+      ":active:not([data-disabled])": "0s",
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
     "::before": {
       zIndex: -1,
       insetBlock: `calc(${space.px} * -1)`,
@@ -296,11 +322,11 @@ export type ButtonProps = Omit<
   };
 
 const glyphSizes = {
-  text: { "2xs": 12, xs: 12, sm: 14, md: 14, lg: 14, xl: 16 },
-  iconOnly: { "2xs": 12, xs: 12, sm: 14, md: 16, lg: 16, xl: 18 },
-} as const satisfies Record<string, Record<ButtonSize, number>>;
+  text: { "2xs": "xs", xs: "xs", sm: "sm", md: "sm", lg: "sm", xl: "md" },
+  iconOnly: { "2xs": "xs", xs: "xs", sm: "sm", md: "md", lg: "md", xl: "lg" },
+} as const satisfies Record<string, Record<ButtonSize, GlyphSize>>;
 
-export function buttonGlyphSize(size: ButtonSize, iconOnly: boolean): number {
+export function buttonGlyphSize(size: ButtonSize, iconOnly: boolean): GlyphSize {
   return glyphSizes[iconOnly ? "iconOnly" : "text"][size];
 }
 
@@ -341,18 +367,17 @@ export function buttonStyle<State>(
     props(
       size === "2xs" || size === "xs" ? text.sm : text.base,
       tone !== "neutral" && intent[tone],
-      control.base,
+      controlStyles.base,
       buttonSizes[size],
       pill && pillSizes[size],
-      iconOnly && control.iconOnly,
+      iconOnly && controlStyles.iconOnly,
       buttonVariants[variant],
-      pill && control.pill,
-      joined && control.joined,
-      joined && iconOnly && control.joinedIcon,
+      pill && controlStyles.pill,
+      joined && controlStyles.joined,
+      joined && iconOnly && controlStyles.joinedIcon,
       size === "2xs" ? focus.ringInset : focus.ring,
       xstyle,
       glyphPressed && contentStyles.glyphPressed,
-      !joined && control.dimmed,
     ),
     className,
     style,
@@ -383,7 +408,7 @@ function ButtonContent({
       </span>
       {loading && (
         <span aria-hidden="true" {...props(contentStyles.spinner)}>
-          <Spinner />
+          <Loader />
         </span>
       )}
     </ControlGlyphs>
@@ -468,7 +493,7 @@ export function PickerTrigger({
     >
       <ControlGlyphs>
         <span {...props(picker.value)}>{children}</span>
-        <Icon name="chevron-down" size={12} />
+        <Icon name="chevron-down" size="xs" />
       </ControlGlyphs>
     </ButtonPrimitive>
   );

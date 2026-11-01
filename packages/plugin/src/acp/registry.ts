@@ -12,6 +12,8 @@ export interface AcpAgent {
   readonly command: string;
   readonly args: readonly string[];
   readonly env: Readonly<Record<string, string>>;
+  /** The ACP session mode each new session is set to, so the agent's permission asks reach Nyte; else the agent's own default. */
+  readonly mode?: string;
 }
 
 const launch = {
@@ -19,9 +21,12 @@ const launch = {
   env: Type.Optional(Type.Record(Type.String(), Type.String())),
 };
 
+const mode = Type.Optional(Type.String({ minLength: 1 }));
+
 const registryAgent = Type.Object({
   id: Type.String({ minLength: 1 }),
   name: Type.String({ minLength: 1 }),
+  mode,
   distribution: Type.Object({
     binary: Type.Optional(
       Type.Record(Type.String(), Type.Object({ cmd: Type.String({ minLength: 1 }), ...launch })),
@@ -33,6 +38,18 @@ const registryAgent = Type.Object({
 type RegistryAgent = Static<typeof registryAgent>;
 
 const registry = Type.Object({ agents: Type.Array(Type.Unknown()) });
+
+const userAgentsFile = Type.Object({
+  agents: Type.Array(
+    Type.Object({
+      id: Type.String({ minLength: 1 }),
+      name: Type.String({ minLength: 1 }),
+      command: Type.String({ minLength: 1 }),
+      mode,
+      ...launch,
+    }),
+  ),
+});
 
 const packageBin = Type.Object({
   bin: Type.Union([Type.String(), Type.Record(Type.String(), Type.String())]),
@@ -116,6 +133,7 @@ async function installed(agent: RegistryAgent, path: string): Promise<AcpAgent |
         command,
         args: binary.args ?? [],
         env: binary.env ?? {},
+        mode: agent.mode,
       };
   }
 
@@ -126,7 +144,14 @@ async function installed(agent: RegistryAgent, path: string): Promise<AcpAgent |
 
   return command === undefined
     ? undefined
-    : { id: agent.id, name: agent.name, command, args: npx.args ?? [], env: npx.env ?? {} };
+    : {
+        id: agent.id,
+        name: agent.name,
+        command,
+        args: npx.args ?? [],
+        env: npx.env ?? {},
+        mode: agent.mode,
+      };
 }
 
 /**
@@ -147,4 +172,41 @@ export async function installedAgents(
   const found = await Promise.all(agents.map((agent) => installed(agent, path)));
 
   return found.filter((agent): agent is AcpAgent => agent !== undefined);
+}
+
+/**
+ * The agents the user lists in `file` (`{ "agents": [{ id, name, command,
+ * args?, env?, mode? }] }`), none when there is no file. Each is listed as
+ * written, installed or not, and its command runs without shell expansion.
+ * The file is the host's alone, so no client or project picks what runs.
+ */
+export async function userAgents(file: string): Promise<readonly AcpAgent[]> {
+  const text = await readFile(file, "utf8").catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  });
+
+  if (text === undefined) return [];
+  let document: unknown;
+
+  try {
+    document = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${file} is not valid JSON.`, { cause: error });
+  }
+
+  if (!Value.Check(userAgentsFile, document)) {
+    const [first] = Value.Errors(userAgentsFile, document);
+
+    throw new Error(`${file}: ${first?.instancePath || "/"} ${first?.message ?? "is invalid"}.`);
+  }
+
+  return document.agents.map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    command: agent.command,
+    args: agent.args ?? [],
+    env: agent.env ?? {},
+    mode: agent.mode,
+  }));
 }

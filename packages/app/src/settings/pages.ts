@@ -1,15 +1,18 @@
 import type { ComponentType } from "react";
 import type { IconName } from "@nyte-ai/ui/icon";
-import { ProvidersSettings } from "../chrome/models-settings.tsx";
+import { ProvidersSettings } from "./models-settings.tsx";
 import { ProfileSettingsPage } from "./profile.tsx";
-import { UsageRangePicker, UsageSettings } from "../chrome/usage-settings.tsx";
-import { AdvancedSettings } from "./advanced.tsx";
+import { prefetchUsage, UsageRangePicker, UsageSettings } from "./usage-settings.tsx";
 import { AgentSettings } from "./agent.tsx";
+import { DeveloperSettings } from "./developer.tsx";
+import { NotificationsSettings } from "./notifications.tsx";
+import { ServerSettings } from "./server.tsx";
 import { AppearanceSettings } from "./appearance.tsx";
 import { BrowserSettings } from "./browser.tsx";
 import { EditorSettings } from "./editor.tsx";
 import { GeneralSettings } from "./general.tsx";
 import { TerminalSettings } from "./terminal.tsx";
+import { VariablesSettings } from "./variables.tsx";
 import { SourceControlSettings } from "./source-control.tsx";
 import { available, settingsContext } from "./capability.ts";
 import type { Capability } from "./capability.ts";
@@ -17,14 +20,37 @@ import type { Capability } from "./capability.ts";
 export interface PageInfo {
   readonly icon: IconName;
   readonly title: string;
-  readonly group: "you" | "app" | "tools" | "providers";
+  readonly group: "server" | "you" | "app" | "tools" | "providers";
   readonly needs: readonly Capability[];
   readonly keywords: readonly string[];
   readonly Page: ComponentType;
   readonly Actions?: ComponentType;
+  /** Starts the page's reads before it opens, when the pointer or focus reaches its link. */
+  readonly prefetch?: () => void;
 }
 
 export const SETTINGS_PAGES = {
+  server: {
+    icon: "server",
+    title: "Server",
+    group: "server",
+    needs: ["desktop"],
+    keywords: [
+      "remote access",
+      "tailscale",
+      "pair",
+      "qr code",
+      "iphone",
+      "address",
+      "token",
+      "cloudflare",
+      "tunnel",
+      "remote host",
+      "connect",
+      "share",
+    ],
+    Page: ServerSettings,
+  },
   profile: {
     icon: "user",
     title: "Profile",
@@ -65,12 +91,30 @@ export const SETTINGS_PAGES = {
       "workspace",
       "sleep",
       "awake",
-      "updates",
-      "channel",
-      "stable",
-      "nightly",
     ],
     Page: GeneralSettings,
+  },
+  notifications: {
+    icon: "bell",
+    title: "Notifications",
+    group: "app",
+    needs: ["desktop"],
+    keywords: [
+      "alerts",
+      "needs you",
+      "question",
+      "done",
+      "failed",
+      "dock",
+      "badge",
+      "bounce",
+      "sound",
+      "remind",
+      "toast",
+      "terminal",
+      "osc",
+    ],
+    Page: NotificationsSettings,
   },
   appearance: {
     icon: "canvas-grid",
@@ -97,22 +141,14 @@ export const SETTINGS_PAGES = {
     keywords: ["tokens", "cost", "spend", "billing", "cache", "activity", "charts", "history"],
     Page: UsageSettings,
     Actions: UsageRangePicker,
+    prefetch: prefetchUsage,
   },
   agent: {
     icon: "agent",
     title: "Agent",
     group: "tools",
     needs: ["providers"],
-    keywords: [
-      "model",
-      "reasoning",
-      "thinking",
-      "context",
-      "compaction",
-      "cache",
-      "permissions",
-      "approvals",
-    ],
+    keywords: ["model", "reasoning", "thinking", "context", "compaction", "cache"],
     Page: AgentSettings,
   },
   editor: {
@@ -143,6 +179,14 @@ export const SETTINGS_PAGES = {
     keywords: ["shell", "scrollback", "cursor", "blink"],
     Page: TerminalSettings,
   },
+  variables: {
+    icon: "brackets",
+    title: "Environment variables",
+    group: "tools",
+    needs: [],
+    keywords: ["env", "environment", ".env", "secret", "api key", "token", "variables"],
+    Page: VariablesSettings,
+  },
   "source-control": {
     icon: "git-branch",
     title: "Source control",
@@ -165,17 +209,30 @@ export const SETTINGS_PAGES = {
     icon: "globe",
     title: "Browser",
     group: "tools",
-    needs: ["hostSettings", "browser"],
+    needs: ["browser"],
     keywords: ["ads", "trackers", "https", "agent access", "folders"],
     Page: BrowserSettings,
   },
-  advanced: {
+  developer: {
     icon: "code-brackets",
-    title: "Advanced",
+    title: "Developer",
     group: "tools",
-    needs: ["hostSettings"],
-    keywords: ["trace", "telemetry", "diagnostics", "opentelemetry"],
-    Page: AdvancedSettings,
+    needs: [],
+    keywords: [
+      "developer mode",
+      "debug",
+      "updates",
+      "update channel",
+      "stable",
+      "nightly",
+      "trace",
+      "telemetry",
+      "opentelemetry",
+      "cli",
+      "origins",
+      "web client",
+    ],
+    Page: DeveloperSettings,
   },
   providers: {
     icon: "box-3d",

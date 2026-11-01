@@ -13,10 +13,6 @@ import type { MsgOf, SomeHandlers, Step } from "../step.ts";
 import { deriveTranscript } from "../transcript.ts";
 import { anchorAt } from "../window.ts";
 
-/**
- * Wraps a handler for a fact about one session: the fact applies only while that session is
- * the followed one, and is dropped otherwise.
- */
 function followedOnly<M extends { readonly session: SessionId }>(
   handle: (state: State, session: FollowedSession, msg: M, now: number) => Step,
 ): (state: State, msg: M, now: number) => Step {
@@ -125,7 +121,6 @@ export const factHandlers = {
 
     return msg.focused && !state.facts.focused ? see(next) : stay(next);
   },
-  remote: (state, msg) => stay(withFacts(state, { remote: msg.remote })),
   "draft-changed": (state, msg, now) => draftChanged(state, msg, now),
   scrolled: (state, msg) => stay(scrolled(state, msg.atBottom)),
   failure: (state, msg) =>
@@ -166,7 +161,6 @@ function opened(state: State, msg: Extract<Fact, { kind: "session-opened" }>): S
   );
 }
 
-/** Resets what belonged to the chat on screen before: its question, scroll and history. */
 function entered(next: State): State {
   return withLocal(next, {
     question: { ...next.local.question, dismissed: null, highlighted: 0 },
@@ -453,7 +447,6 @@ function landHandback(next: State, now: number): Step {
     : { ...landed, state: withNotice(landed.state, head.notice, "ok", now) };
 }
 
-/** Records a `!` command's report; one that ended rereads the branch and dirty mark it may have changed. */
 function shellReported(state: State, job: ShellJob): Step {
   const known = state.facts.shells.find((candidate) => candidate.id === job.id);
   const reported = { ...job, delivered: known?.delivered ?? job.delivered };

@@ -5,8 +5,8 @@ const PAGES = [
   ["/stacks", "Stacks"],
   ["/tabs", "Tabs"],
   ["/peek", "Peek"],
+  ["/design-mode", "Design Mode"],
   ["/changes", "Changes"],
-  ["/settings", "Settings"],
   ["/hubs", "Hubs"],
 ] as const;
 

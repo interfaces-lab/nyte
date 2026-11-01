@@ -45,7 +45,9 @@ function protocolStream(job: Job, stderr: (bytes: Uint8Array) => void): Readable
 /**
  * One agent process, started in a session's environment so the host's
  * environment, sandbox and login-shell gate apply to it, and the ACP
- * connection over its stdio. Each `open` starts an ACP session on it.
+ * connection over its stdio. Each `open` starts an ACP session on it. A
+ * failed `initialize` closes it: an agent that refuses it (fx before
+ * `fx login`) stays up and keeps refusing, so the next turn needs a new one.
  */
 export class AcpProcess {
   readonly agent: AcpAgent;
@@ -92,7 +94,9 @@ export class AcpProcess {
       clientInfo: { name: "nyte", title: "Nyte", version: manifest.version },
     });
 
-    this.#ready.catch(() => undefined);
+    this.#ready.catch((error: unknown) =>
+      this.close(error instanceof Error ? error : new Error(String(error))),
+    );
   }
 
   /** Starts `agent` through `env.exec` with its stdio kept whole for the protocol, after the process environment is whole. */
@@ -133,6 +137,12 @@ export class AcpProcess {
         });
       throw error;
     }
+
+    if (this.agent.mode !== undefined)
+      await this.#connection.agent.request(methods.agent.session.setMode, {
+        sessionId,
+        modeId: this.agent.mode,
+      });
 
     const thread = new AcpThread(`acp-${randomUUID().slice(0, 8)}-`, {
       cwd,

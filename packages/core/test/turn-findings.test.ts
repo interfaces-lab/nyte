@@ -590,7 +590,6 @@ describe("turn findings (CORE-DIET D3)", () => {
     host.kernel.workspaceState.scans.set(session.id, {
       workspace: (await session.info()).workspace,
       resources: unreadable,
-      stop: () => undefined,
     });
 
     expect(await (await session.send("Go.")).settled()).toMatchObject({

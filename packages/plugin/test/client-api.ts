@@ -44,6 +44,7 @@ export function clientApi(
     reload: () => undefined,
     client: { name: "test", frameworks: ["react", "tui"] },
     session: null,
+    looking: new Set(),
     ui: { notify: (input) => notified.push(input) },
   };
 }

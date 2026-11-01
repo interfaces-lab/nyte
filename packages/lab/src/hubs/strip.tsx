@@ -349,7 +349,7 @@ export function Chip({
   return (
     <Slot x={x} y={y} align={align}>
       <span {...props(text.base, chip.plate, chip[tone])}>
-        {icon !== undefined && <Icon name={icon} size={12} />}
+        {icon !== undefined && <Icon name={icon} size="xs" />}
         {label}
       </span>
     </Slot>
@@ -386,7 +386,7 @@ export function Label({
           mono && text.mono,
         )}
       >
-        {icon !== undefined && <Icon name={icon} size={12} />}
+        {icon !== undefined && <Icon name={icon} size="xs" />}
         {children}
       </span>
     </Slot>
@@ -409,7 +409,9 @@ export function Glyph({
   return (
     <foreignObject x={x - size / 2} y={y - size / 2} width={size} height={size}>
       <div {...props(glyph.box, glyph[tone])}>
-        <Icon name={name} size={size} />
+        <span {...props(glyph.zoom(size))}>
+          <Icon name={name} />
+        </span>
       </div>
     </foreignObject>
   );
@@ -667,6 +669,8 @@ const glyph = create({
   },
   tertiary: { color: role.contentTertiary },
   primary: { color: role.contentPrimary },
+  /** Scales a default 16 px `Icon` to the drawing's size. */
+  zoom: (size: number) => ({ display: "flex", zoom: size / 16 }),
 });
 
 const frame = create({

@@ -132,7 +132,7 @@ describe("placeholder", () => {
       "Answer subagent c1, or press Enter to pick one",
     );
     expect(deriveScreen(later, null).tasksLine).toEqual({
-      text: "a background task needs your answer",
+      text: "Needs attention in the background",
       attention: true,
     });
   });
@@ -303,7 +303,7 @@ describe("footer and status", () => {
         null,
       ).tasksLine,
     ).toEqual({
-      text: "1 running in background",
+      text: "1 working in the background",
       attention: false,
     });
     expect(deriveScreen(ready(idle), null).tasksLine).toBeNull();

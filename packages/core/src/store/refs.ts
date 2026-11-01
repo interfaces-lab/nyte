@@ -37,6 +37,11 @@ export function headRef(id: SessionId, head: HeadName): string {
   return `sessions/${id}/heads/${head}`;
 }
 
+/** The system prompt a head's requests sent (`PromptRecord`). */
+export function promptRef(id: SessionId, head: HeadName): string {
+  return `sessions/${id}/prompts/${head}`;
+}
+
 export function inboxRef(id: SessionId, head: HeadName): string {
   return `sessions/${id}/inbox/${head}`;
 }

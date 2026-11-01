@@ -9,12 +9,12 @@ Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwrig
 | `first-run.spec.ts` | An empty home: new chat, nothing listed |
 | `startup.spec.ts` | A relaunch with the host held: the last run's chats and model, a draft that sends once the host opens |
 | `host-restart.spec.ts` | The Nyte Host killed under a chat: it restarts, the window reconnects through a new port with the same token, a message sent during the outage lands once; a crash loop stops and offers Restart |
-| `navigation.spec.ts` | Tabs, history, Chat actions, Environments, Customize, Search |
+| `navigation.spec.ts` | Tabs, the chat card, history, Chat actions, Customize, Search |
 | `settings.spec.ts` | Every settings page, the settings search, Back |
 | `chat.spec.ts` | Seeded chats folded past five, a first message, stop, provider errors, thinking |
-| `composer.spec.ts` | Send state, Shift+Enter, drafts, the skills list, attachments, the model button; an image attached through Attach Files… starting a new chat in an open folder |
+| `composer.spec.ts` | Send state, Shift+Enter, drafts, the running placeholder, prompt history, the skills list, attachments, the model button and its Ctrl/Cmd+/ shortcut, paste with no field focused; an image attached through Attach Files… starting a new chat in an open folder; the footer under the composer in a git folder: branch and machine segments, checking out, creating and git's refusal, the context ring's readout, its proportions and screenshots in light and dark |
 | `markdown.spec.ts` | Headings, lists, code blocks, tables in an answer |
-| `subagents.spec.ts` | Two background agents: one block, a line per report, the parent wakes |
+| `subagents.spec.ts` | Two background agents: one block, a line per report, the parent wakes; a transcript link opens the child next to its parent and its tab menu reopens the parent; a tray row previews, Open as full chat opens the tab, Clear Finished empties the tray |
 | `transcript.spec.ts` | A 36-turn chat: virtualised window, scroll to top and back |
 | `chat-rendering.spec.ts` | Chat switching, native history scrolling, latest-turn footer handoff, and message edit/cancel/save; observes row coverage and identity through transitions and saves a video, screenshots and accessibility snapshots |
 | `subagent-load.spec.ts` | Only with `NYTE_PERF_DIR`: typing while five agents stream, a child chat open, and the agents row evicted/remounted. Gates keydown-to-paint p99 at 50 ms and maximum at 100 ms, whole-run render work p99 at 16.67 ms, and no renderer task over 50 ms after typing starts through completion. Saves trace, frame cadence, latency, row churn and work counts |

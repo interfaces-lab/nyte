@@ -22,10 +22,6 @@ type ApiUsage = {
 
 export const CLAUDE_CODE_PROVIDER = "claude-code";
 
-export const MIRROR_TOOL = "claude_code";
-
-export const BACKGROUND_TOOL = "BackgroundTasks";
-
 export const NYTE_SERVER = "nyte";
 
 export const NYTE_TOOL_PREFIX = `mcp__${NYTE_SERVER}__`;
@@ -48,10 +44,6 @@ export function emptyMessage(model: Model<Api>): AssistantMessage {
     stopReason: "pending",
     timestamp: Date.now(),
   };
-}
-
-export function mirrorCall(id: string, name: string, input: Record<string, unknown>): ToolCall {
-  return { type: "toolCall", id, name: MIRROR_TOOL, arguments: { id, name, input } };
 }
 
 function stopReason(reason: string): StopReason {
@@ -124,17 +116,6 @@ export class Translator {
     }
   }
 
-  append(call: ToolCall): void {
-    const contentIndex = this.#output.content.push(call) - 1;
-    this.#stream.push({ type: "toolcall_start", contentIndex, partial: this.#output });
-    this.#stream.push({
-      type: "toolcall_end",
-      contentIndex,
-      toolCall: call,
-      partial: this.#output,
-    });
-  }
-
   #usage(usage: ApiUsage): void {
     const usageOutput = this.#output.usage;
 
@@ -167,15 +148,13 @@ export class Translator {
                 thinkingSignature: block.data,
                 redacted: true,
               }
-            : block.type === "tool_use"
-              ? block.name.startsWith(NYTE_TOOL_PREFIX)
-                ? {
-                    type: "toolCall",
-                    id: block.id,
-                    name: block.name.slice(NYTE_TOOL_PREFIX.length),
-                    arguments: {},
-                  }
-                : mirrorCall(block.id, block.name, {})
+            : block.type === "tool_use" && block.name.startsWith(NYTE_TOOL_PREFIX)
+              ? {
+                  type: "toolCall",
+                  id: block.id,
+                  name: block.name.slice(NYTE_TOOL_PREFIX.length),
+                  arguments: {},
+                }
               : undefined;
 
     if (content === undefined) return;
@@ -221,8 +200,7 @@ export class Translator {
       content.thinkingSignature = (content.thinkingSignature ?? "") + delta.signature;
     } else if (delta.type === "input_json_delta" && content?.type === "toolCall") {
       slot.json += delta.partial_json;
-      const input = parseStreamingJson(slot.json);
-      content.arguments = content.name === MIRROR_TOOL ? { ...content.arguments, input } : input;
+      content.arguments = parseStreamingJson(slot.json);
       this.#stream.push({
         type: "toolcall_delta",
         contentIndex,
@@ -261,12 +239,9 @@ export class Translator {
         toolCall: content,
         partial: this.#output,
       });
+      this.#output.stopReason = "toolUse";
 
-      if (content.name !== MIRROR_TOOL) {
-        this.#output.stopReason = "toolUse";
-
-        return "tool_use";
-      }
+      return "tool_use";
     }
 
     return undefined;

@@ -9,7 +9,7 @@ test("a paired browser opens a terminal on the host's Home folder", async ({ pag
   await test.step("the workbench offers a terminal on the web", async () => {
     await page
       .getByRole("navigation", { name: "Workbench navigation" })
-      .getByRole("button", { name: "Terminal", exact: true })
+      .getByRole("button", { name: "New Terminal", exact: true })
       .click();
   });
 
@@ -28,7 +28,7 @@ test("a paired browser opens a terminal on the host's Home folder", async ({ pag
   await test.step("an idle shell closes without a dialog", async () => {
     await page
       .getByRole("navigation", { name: "Workbench navigation" })
-      .getByRole("button", { name: "Terminal", exact: true })
+      .getByRole("button", { name: "New Terminal", exact: true })
       .click();
     const terminal = page.getByRole("tabpanel").getByRole("region", { name: "Terminal" });
     const input = terminal.getByRole("textbox", { name: "Terminal input" });
@@ -51,7 +51,7 @@ test("a paired browser opens a terminal on the host's Home folder", async ({ pag
   await test.step("a shell with a running process asks before closing", async () => {
     await page
       .getByRole("navigation", { name: "Workbench navigation" })
-      .getByRole("button", { name: "Terminal", exact: true })
+      .getByRole("button", { name: "New Terminal", exact: true })
       .click();
     const terminal = page.getByRole("tabpanel").getByRole("region", { name: "Terminal" });
     await terminal.getByRole("textbox", { name: "Terminal input" }).focus();

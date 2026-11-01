@@ -114,10 +114,10 @@ test("a blank chat in a trusted folder offers its project plugin's command and r
       },
     },
     workspace: { kind: "local", path: "/work/project" },
-    loadPlugins: async (paths) => {
-      loaded.push(...paths);
+    loadPluginDirectory: async (dir) => {
+      loaded.push(dir);
 
-      return [probe];
+      return { loaded: [{ plugin: probe, path: `${dir}/qa-probe/index.ts` }], failed: [] };
     },
   });
 
@@ -133,7 +133,7 @@ test("a blank chat in a trusted folder offers its project plugin's command and r
   tui.press("chat.submit");
   await tui.frame((frame) => frame.includes("QA plugin answered"));
 
-  expect(loaded).toContain("/work/project/.nyte/plugins/qa-probe");
+  expect(loaded).toContain("/work/project/.nyte/plugins");
   expect(tui.store.state().facts.chat?.kind).toBe("blank");
   expect((await fixture.host.sessions.list()).items).toEqual([]);
   expect(fixture.requests).toHaveLength(0);

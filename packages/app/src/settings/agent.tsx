@@ -1,10 +1,9 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { NewChatsSection } from "../chrome/models-settings.tsx";
+import { NewChatsSection } from "./models-settings.tsx";
 import { hostSetting } from "../preferences/index.ts";
-import { useCatalog } from "../queries.ts";
+import { useCatalog } from "../data/catalog.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { PermissionsSection } from "./permissions.tsx";
 import { NumberRow, SelectRow, SettingsSection, SwitchRow } from "./rows.tsx";
 
 const CACHE_WARMING = [
@@ -27,7 +26,6 @@ export function AgentSettings(): ReactElement {
           Couldn&rsquo;t load the model catalog. Try again.
         </p>
       )}
-      <PermissionsSection />
       <SettingsSection title="Context" description="Applies to chats started after the change">
         <SwitchRow
           setting={hostSetting("autoCompaction")}

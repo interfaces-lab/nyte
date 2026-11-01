@@ -75,7 +75,7 @@ const [open, setOpen] = useState(false);
   <Row>
     <Row.Primary render={<Collapsible.Trigger variant="plain" />}>
       <Row.Leading>
-        <Icon name={expanded ? "folder-open" : "folder"} size={14} />
+        <Icon name={expanded ? "folder-open" : "folder"} size="sm" />
       </Row.Leading>
       <Row.Label>{name}</Row.Label>
     </Row.Primary>
@@ -114,9 +114,9 @@ See [Theming](/design/theming).
 Renders a `<span>` with `aria-hidden`, holding a `chevron-right` [icon](/design/icon).
 It takes every `<span>` prop, plus:
 
-| Prop   | Type     | Default | Description          |
-| ------ | -------- | ------- | -------------------- |
-| `size` | `number` | `11`    | Icon size in pixels. |
+| Prop   | Type        | Default | Description   |
+| ------ | ----------- | ------- | ------------- |
+| `size` | `GlyphSize` | `"2xs"` | A glyph step. |
 
 ### Preview
 

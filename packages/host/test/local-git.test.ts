@@ -378,6 +378,29 @@ describe.skipIf(!hasGit)("localGit", () => {
     expect(blame.lines[0]?.at).toBeGreaterThan(0);
   });
 
+  it("pages history from the commit it was asked for after a checkout moves HEAD", async () => {
+    const { root, git } = await repository();
+
+    for (const name of ["two", "three"]) {
+      await writeFile(join(root, `${name}.txt`), name);
+      sh(root, "add", "-A");
+      sh(root, "commit", "-q", "-m", `add ${name}`);
+    }
+
+    const main = (await repo(git)).head;
+    assert(main !== null);
+    sh(root, "checkout", "-q", "-b", "side", "HEAD~2");
+    await writeFile(join(root, "side.txt"), "side");
+    sh(root, "add", "-A");
+    sh(root, "commit", "-q", "-m", "on side");
+
+    const page = await git.log({ head: main, limit: 2 });
+    expect(page.items.map((commit) => commit.subject)).toEqual(["add three", "add two"]);
+    assert(page.next !== null);
+    const rest = await git.log({ head: main, cursor: page.next, limit: 2 });
+    expect(rest.items.map((commit) => commit.subject)).toEqual(["first"]);
+  });
+
   it("stages, unstages, discards and commits under expect, answering stale, unchanged and rejected", async () => {
     const { root, git } = await repository();
     await writeFile(join(root, "a.txt"), "edited\n");
@@ -423,7 +446,7 @@ describe.skipIf(!hasGit)("localGit", () => {
     expect(await git.stage(["missing.txt"])).toMatchObject({ kind: "rejected" });
   });
 
-  it("branches, pushes to a remote with an upstream, and answers busy while the index is locked", async () => {
+  it("branches, checks out a branch or relays git's refusal, pushes to a remote with an upstream, and answers busy while the index is locked", async () => {
     const { root, git } = await repository();
     const remote = await folder();
     sh(remote, "init", "-q", "--bare");
@@ -439,7 +462,19 @@ describe.skipIf(!hasGit)("localGit", () => {
     expect((await repo(git)).upstream).toEqual({ name: "origin/work", ahead: 0, behind: 0 });
     expect(await git.push()).toEqual({ kind: "unchanged" });
 
+    await writeFile(join(root, "a.txt"), "changed on work\n");
+    sh(root, "commit", "-q", "-am", "work");
+    expect(await git.checkout({ name: "main" })).toMatchObject({ kind: "applied" });
+    expect((await repo(git)).branch).toBe("main");
+    await writeFile(join(root, "a.txt"), "local edit\n");
+    expect(await git.checkout({ name: "work" })).toMatchObject({
+      kind: "rejected",
+      reason: expect.stringContaining("would be overwritten by checkout"),
+    });
+    expect((await repo(git)).branch).toBe("main");
+
     await writeFile(join(root, ".git", "index.lock"), "");
+    expect(await git.checkout({ name: "topic" })).toEqual({ kind: "busy", runs: [] });
     expect(await git.stage(["a.txt"])).toEqual({ kind: "busy", runs: [] });
     expect(await git.commit({ message: "x", files: "all" })).toEqual({ kind: "busy", runs: [] });
     expect(await git.branch({ name: "free", checkout: false })).toMatchObject({ kind: "applied" });

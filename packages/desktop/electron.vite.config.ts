@@ -5,8 +5,8 @@ import { resolve } from "node:path";
 import { resolvePhotonWasmPath } from "@nyte-ai/host/images";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
-import { deferredEntries } from "@nyte-ai/app/deferred-entries.ts";
-import { PICKER_SCRIPT } from "./src/main/browser-picker-page.ts";
+import { deferredEntries } from "@nyte-ai/app/lib/deferred-entries.ts";
+import { PICKER_SCRIPT } from "./src/main/browser/browser-picker-page.ts";
 import packageMetadata from "./package.json" with { type: "json" };
 import {
   deferredChunks,
@@ -16,8 +16,8 @@ import {
 } from "@nyte-ai/app/vite";
 
 const E2E_FIXTURES = new Map([
-  [resolve("src/main/models.ts"), resolve("src/main/fixtures/e2e-models.ts")],
-  [resolve("src/main/tailnet.ts"), resolve("src/main/fixtures/e2e-tailnet.ts")],
+  [resolve("src/host/models.ts"), resolve("src/host/fixtures/e2e-models.ts")],
+  [resolve("src/host/connections/tailnet.ts"), resolve("src/host/fixtures/e2e-tailnet.ts")],
 ]);
 
 const e2eFixtures: Plugin = {
@@ -39,7 +39,7 @@ const renderer = {
     deferredChunks({
       ...deferredEntries,
       account: {
-        module: new URL("./src/account/clerk.tsx", import.meta.url).href,
+        module: new URL("./src/renderer/src/account/clerk.tsx", import.meta.url).href,
         packages: ["@clerk/"],
       },
     }),
@@ -130,18 +130,18 @@ const config = (mode: string): UserConfig => ({
       rolldownOptions: {
         input: {
           index: resolve("src/main/index.ts"),
-          "host-entry": resolve("src/main/host-entry.ts"),
-          "usage-worker": resolve("src/main/usage-worker.ts"),
-          "codemode-worker": resolve("src/main/codemode-worker.ts"),
-          "codemode-runtime": resolve("src/main/codemode-runtime.ts"),
-          "image-worker": resolve("src/main/image-worker.ts"),
-          "image-runtime": resolve("src/main/image-runtime.ts"),
+          "host-entry": resolve("src/host/host-entry.ts"),
+          "usage-worker": resolve("src/workers/usage-worker.ts"),
+          "codemode-worker": resolve("src/workers/codemode-worker.ts"),
+          "codemode-runtime": resolve("src/workers/codemode-runtime.ts"),
+          "image-worker": resolve("src/workers/image-worker.ts"),
+          "image-runtime": resolve("src/workers/image-runtime.ts"),
         },
         output: {
           entryFileNames: "[name].js",
           chunkFileNames: (chunk) =>
-            chunk.moduleIds.includes(resolve("src/main/codemode-runtime.ts")) ||
-            chunk.moduleIds.includes(resolve("src/main/image-runtime.ts"))
+            chunk.moduleIds.includes(resolve("src/workers/codemode-runtime.ts")) ||
+            chunk.moduleIds.includes(resolve("src/workers/image-runtime.ts"))
               ? "[name]-[hash].js"
               : "chunks/[name].js",
         },

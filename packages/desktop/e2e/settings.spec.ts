@@ -12,12 +12,18 @@ test("the settings journey", async ({ desktop }) => {
     const names = await settingsNav(page).getByRole("link").allInnerTexts();
     expect(names.filter((name) => name !== "Usage")).toEqual([
       "Settings",
+      "Server",
       "Profile",
       "General",
+      "Notifications",
       "Appearance",
       "Agent",
       "Editor",
       "Terminal",
+      "Environment variables",
+      "Source control",
+      "Browser",
+      "Developer",
       "Providers",
     ]);
   });
@@ -33,7 +39,7 @@ test("the settings journey", async ({ desktop }) => {
       "Startup",
       "Chat",
       "Links",
-      "Updates",
+      "System",
     ]);
     await expect(page.getByRole("combobox", { name: "Window restoration" })).toHaveText("New chat");
     await expect(page.getByRole("combobox", { name: "Messages while running" })).toHaveText(

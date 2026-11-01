@@ -2,7 +2,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { layer, menu } from "./styles/schema.stylex.ts";
+import { layer, menu, row } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
@@ -61,7 +61,8 @@ const styles = create({
     },
     transitionProperty: "opacity, transform",
     transitionDuration: {
-      default: motion.durationFast,
+      default: motion.durationNormal,
+      "[data-ending-style]": motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOutQuint,
@@ -71,7 +72,7 @@ const styles = create({
     gridTemplateColumns: "minmax(0, 1fr) auto",
     alignItems: "center",
     columnGap: menu.itemGap,
-    minHeight: menu.itemHeight,
+    minHeight: row.heightMd,
     paddingBlock: menu.itemPaddingBlock,
     paddingInline: menu.itemPaddingInline,
     borderRadius: menu.itemRadius,
@@ -184,7 +185,7 @@ export function SelectItem({
     >
       <SelectPrimitive.ItemText {...props(styles.itemText)}>{children}</SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator {...props(styles.itemIndicator)}>
-        <Icon name="checkmark" size={11} />
+        <Icon name="checkmark" size="2xs" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   );

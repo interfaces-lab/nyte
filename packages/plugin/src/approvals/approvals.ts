@@ -40,7 +40,7 @@ const DENIED = "The user denied this tool call. Ask them how to proceed instead 
 const UNANSWERED = "The approval request closed before the user answered.";
 
 /**
- * The host's policy for tool calls, `full` by default. It applies to every
+ * The host's policy for tool calls, `ask` by default. It applies to every
  * session at its next call, including one already running.
  *
  * @category plugins
@@ -51,7 +51,7 @@ export const permissions: SettingDefinition<ApprovalPolicy> = {
   label: "Permissions",
   schema: approvalPolicy,
   choices: APPROVAL_POLICIES,
-  default: "full",
+  default: "ask",
   scope: "host",
 };
 

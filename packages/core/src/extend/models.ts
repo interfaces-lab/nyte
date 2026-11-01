@@ -66,6 +66,10 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
       bumpGeneration(kernel);
       void kernel.modelState.refresh(models, provider).catch(() => undefined);
     },
+    async renameAccount(provider, account, label) {
+      await models.renameAccount(provider, account, label);
+      bumpGeneration(kernel);
+    },
     async usage() {
       const before = await models.listAccounts();
       const usage = await Promise.all(

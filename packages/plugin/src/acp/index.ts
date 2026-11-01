@@ -19,7 +19,7 @@ import { standard } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import type { Plugin } from "../core.ts";
 import { AcpProcess } from "./connection.ts";
-import { installedAgents, registryEntries } from "./registry.ts";
+import { installedAgents, registryEntries, userAgents } from "./registry.ts";
 import seed from "./registry-seed.json" with { type: "json" };
 import type { AcpAgent } from "./registry.ts";
 import type { AcpThread } from "./thread.ts";
@@ -93,12 +93,17 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
  * Nyte settles without running is refused). A stopped run cancels the
  * agent's turn. Which agents there are, and the command, arguments and
  * environment each starts with, come from the registry list shipped in
- * `registry-seed.json` alone, never from the network, so no remote entry
- * picks what runs on this machine. An installed agent is listed but runs
- * only once the user picks it, never as a default the host chooses.
- * `agents`, when given, replaces the registry lookup, as tests do.
+ * `registry-seed.json` and the user's `agentsFile`, never from the network,
+ * so no remote entry picks what runs on this machine; a user agent replaces
+ * a registry agent of the same id. An agent with a `mode` has each new
+ * session set to it. An installed agent is listed but runs only once the
+ * user picks it, never as a default the host chooses. `agents`, when given,
+ * replaces both lookups, as tests do.
  */
-export function acpAgents(options?: { readonly agents?: () => Promise<readonly AcpAgent[]> }) {
+export function acpAgents(options?: {
+  readonly agents?: () => Promise<readonly AcpAgent[]>;
+  readonly agentsFile?: string;
+}) {
   let agents: readonly AcpAgent[] = [];
   const live = new Map<string, Live>();
   const bindings = new Map<string, Binding>();
@@ -278,8 +283,18 @@ export function acpAgents(options?: { readonly agents?: () => Promise<readonly A
       }
 
       await processEnvironment();
-      const found = await installedAgents(registryEntries(seed), process.env.PATH ?? "");
-      await context.publish({ update: () => (agents = found) });
+
+      const [own, found] = await Promise.all([
+        options?.agentsFile === undefined ? [] : userAgents(options.agentsFile),
+        installedAgents(registryEntries(seed), process.env.PATH ?? ""),
+      ]);
+
+      const listed = [
+        ...own,
+        ...found.filter((agent) => !own.some((mine) => mine.id === agent.id)),
+      ];
+
+      await context.publish({ update: () => (agents = listed) });
     },
     stream: (model, context, streamOptions) =>
       stream(model, context, {

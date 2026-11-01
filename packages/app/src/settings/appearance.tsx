@@ -1,9 +1,10 @@
-import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Slider } from "@nyte-ai/ui/slider";
 import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore, type ReactElement } from "react";
-import { nyte } from "../nyte.ts";
+import { Deferred } from "../lib/deferred.tsx";
+import { nyte } from "../contract/nyte.ts";
 import { CHAT_WIDTH, preferences, useSetting } from "../preferences/index.ts";
 import { subscribeSystemTransparency, systemReducesTransparency } from "../theme/appearance.ts";
 import {
@@ -58,33 +59,6 @@ const CODE_FONT_OPTIONS = [
     fontFamily: codeFontFamily("jetbrains-mono"),
   },
 ] as const satisfies readonly FontOption<CodeFont>[];
-
-function CodeFontPreview(): ReactElement {
-  return (
-    <div aria-label="Code and diff font preview" {...props(styles.codeFontPreview)}>
-      <div {...props(intent.danger, styles.diffLine, styles.diffRemovedLine)}>
-        <span {...props(styles.diffRemovedNumber)}>1</span>
-        <code {...props(styles.codePreviewText)}>
-          <span {...props(surfaceTheme.purple, styles.codeKeyword)}>return</span> a + b;
-        </code>
-      </div>
-      <div {...props(intent.success, styles.diffLine, styles.diffAddedLine)}>
-        <span {...props(styles.diffAddedNumber)}>1</span>
-        <code {...props(styles.codePreviewText)}>
-          <span {...props(surfaceTheme.purple, styles.codeKeyword)}>const</span>{" "}
-          <span {...props(surfaceTheme.blue, styles.codeIdentifier)}>result</span> = a + b;
-        </code>
-      </div>
-      <div {...props(intent.success, styles.diffLine, styles.diffAddedLine)}>
-        <span {...props(styles.diffAddedNumber)}>2</span>
-        <code {...props(styles.codePreviewText)}>
-          <span {...props(surfaceTheme.purple, styles.codeKeyword)}>return</span>{" "}
-          <span {...props(surfaceTheme.blue, styles.codeIdentifier)}>result</span>;
-        </code>
-      </div>
-    </div>
-  );
-}
 
 function TintSlider({
   label,
@@ -255,7 +229,6 @@ function FontFamilyRows(): ReactElement {
         title="Code font family"
         description="Code in chat, editors, diffs, and the terminal"
         controlWidth="wide"
-        detail={<CodeFontPreview />}
       >
         <FontFamilySelect<CodeFont>
           label="Code font family"
@@ -302,7 +275,12 @@ export function AppearanceSettings(): ReactElement {
           description="Show a hand cursor over buttons, rows, and links"
         />
       </SettingsSection>
-      <SettingsSection title="Agent conversations">
+      <SettingsSection
+        title="Agent conversations"
+        preview={
+          <Deferred entry="previews">{(previews) => <previews.ConversationPreview />}</Deferred>
+        }
+      >
         <StepsRow
           setting={preferences.toolCalls}
           title="Tool call density"
@@ -316,12 +294,21 @@ export function AppearanceSettings(): ReactElement {
           description="Wrap long lines in chat code blocks instead of scrolling sideways"
         />
       </SettingsSection>
-      <SettingsSection title="Colors">
+      <SettingsSection
+        title="Colors"
+        preview={<Deferred entry="previews">{(previews) => <previews.WindowPreview />}</Deferred>}
+      >
         <HueRow />
         <IntensityRow />
         <ReduceTransparencyRow />
       </SettingsSection>
-      <SettingsSection title="Typography">
+      <SettingsSection
+        title="Typography"
+        preview={
+          <Deferred entry="previews">{(previews) => <previews.TypographyPreview />}</Deferred>
+        }
+        note="Fonts installed on this Mac appear in both font lists."
+      >
         <NumberRow
           setting={preferences.uiFontSize}
           title="UI font size"

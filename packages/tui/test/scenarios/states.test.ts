@@ -9,7 +9,6 @@ import { SAMPLE_ANSWER, saveFrame, saveProof } from "./scenario.ts";
 
 const LONG_LINES = 3_000;
 
-/** Sends `prompt`, answered with `answer`, and renders until `shows` is on screen and the run is idle. */
 async function answered(tui: Tui, prompt: string, answer: string, shows: string): Promise<void> {
   tui.fixture.reply({ content: [{ type: "text", text: answer }] });
   await tui.send(prompt);
@@ -146,10 +145,6 @@ test("offline, then back: a message sent while the service is down waits as pend
   await tui.frame((frame) => frame.includes("… are you there"));
   await saveFrame(tui, "state-offline");
 
-  tui.store.dispatch({ kind: "remote", remote: { kind: "connecting" } });
-  await tui.renderOnce();
-  await saveFrame(tui, "state-reconnecting");
-
   await using second = await listen(fixture.host, {
     transport: { kind: "http", port: Number(new URL(url).port) },
     auth: { kind: "token", token },
@@ -157,9 +152,6 @@ test("offline, then back: a message sent while the service is down waits as pend
 
   fixture.reply({ content: [{ type: "text", text: "back again" }] });
   await tui.frame((frame) => frame.includes("back again"));
-  tui.store.dispatch({ kind: "remote", remote: { kind: "shared", devices: 1 } });
-  await tui.renderOnce();
-  await saveFrame(tui, "state-reconnected");
 
   await saveProof("state-offline-gap", {
     step: "The service connection drops",
@@ -167,7 +159,7 @@ test("offline, then back: a message sent while the service is down waits as pend
       "The unsent message with a leading … and nothing else: no offline or reconnecting mark until it lands.",
     frame: "state-offline",
     verdict: "gap",
-    why: "The footer's connection mark covers Nyte Connect sharing only (remote facts); the SDK's own reconnect to the service is not shown.",
+    why: "The footer has no connection mark; the SDK's own reconnect to the service is not shown.",
   });
 
   await tui.dispose();

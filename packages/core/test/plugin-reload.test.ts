@@ -208,7 +208,6 @@ describe("plugin reload (D4)", () => {
     kernel.workspaceState.scans.set(session.id, {
       workspace,
       resources: unreadable,
-      stop: () => undefined,
     });
 
     await expect(kernel.plugins.reload(session.id)).rejects.toThrow("The scan failed.");

@@ -3,7 +3,7 @@ import process from "node:process";
 import { dev } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
-import type { ExecutionEnv, GitHubAccountApi, Plugin } from "@nyte-ai/core";
+import type { ExecutionEnv, GitHubAccountApi, Plugin, PluginDirectory } from "@nyte-ai/core";
 import { chatOnly, fakeModels, testModel } from "@nyte-ai/bench";
 import type { FakeModels } from "@nyte-ai/bench";
 import questionPlugin from "@nyte-ai/plugin/core/question";
@@ -35,6 +35,7 @@ export async function openTestHost(options?: {
   readonly github?: GitHubAccountApi;
   readonly workspace?: WorkspaceTarget;
   readonly loadPlugins?: (paths: readonly string[]) => Promise<readonly Plugin<"core">[]>;
+  readonly loadPluginDirectory?: (dir: string) => Promise<PluginDirectory>;
 }): Promise<TestHost> {
   dev.off();
   const models = fakeModels({ models: options?.models });
@@ -53,6 +54,7 @@ export async function openTestHost(options?: {
     description: { name: "tui-test", platform: process.platform, version: "0.0.0" },
     github: options?.github,
     loadPlugins: options?.loadPlugins,
+    loadPluginDirectory: options?.loadPluginDirectory,
   });
 
   let closed: Promise<void> | null = null;
@@ -109,6 +111,8 @@ export function testEnvironment(exec: ExecutionEnv["exec"]): Plugin<"core"> {
             read: async (path) => ({
               kind: "text",
               path,
+              scope: "workspace",
+              mime: "text/plain",
               contents: await readFile(path, "utf8"),
               version: asId("v1"),
             }),

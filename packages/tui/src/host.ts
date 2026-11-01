@@ -8,6 +8,7 @@ import { dev, sdk } from "@nyte-ai/sdk";
 import type { Host, OpenHostOptions } from "@nyte-ai/sdk";
 import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 import { imageRuntimeOptions } from "./image-runtime.ts";
+import { bunPluginImport } from "./plugin-import.ts";
 
 export function openTerminalHost(
   options: Pick<OpenHostOptions, "execution" | "label" | "onRevoked"> = {},
@@ -17,6 +18,7 @@ export function openTerminalHost(
   return sdk.open({
     plugins: [codemodePlugin(codemodeRuntimeOptions()), canvasPlugin(chromiumCanvasPreview(files))],
     images: nodeImages(imageRuntimeOptions()),
+    pluginImport: bunPluginImport(),
     execution: options.execution ?? { kind: "run", coverage: { kind: "all" } },
     label: options.label,
     onRevoked: options.onRevoked,

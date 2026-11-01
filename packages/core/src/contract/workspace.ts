@@ -24,6 +24,7 @@ import type {
   ForgetOutcome,
   FormatOutcome,
   WorktreeCleanup,
+  GitCommitId,
   GitCommitView,
   GitFileSides,
   GitOutcome,
@@ -90,7 +91,12 @@ export interface GitApi {
   ): AsyncIterable<PatchSet>;
   contents(path: string, scope: GitScope): Promise<GitFileSides>;
 
-  log(input?: { readonly cursor?: Cursor; readonly limit?: number }): Promise<Paged<GitCommitView>>;
+  /** Lists history from `head`, or from HEAD when omitted; pass the same `head` with every cursor. */
+  log(input?: {
+    readonly head?: GitCommitId;
+    readonly cursor?: Cursor;
+    readonly limit?: number;
+  }): Promise<Paged<GitCommitView>>;
   refs(): Promise<GitRefsView>;
   blame(path: string): Promise<BlameView>;
 
@@ -101,10 +107,13 @@ export interface GitApi {
     input: { readonly message: string; readonly files: "staged" | "all" | readonly string[] },
     options?: GitWrite,
   ): Promise<GitOutcome>;
+  /** With `checkout`, answers `busy` while any run in the workspace is live. */
   branch(
     input: { readonly name: string; readonly checkout: boolean },
     options?: GitWrite,
   ): Promise<GitOutcome>;
+  /** Answers `busy` while any run in the workspace is live, and `rejected` when git refuses, such as over local changes it would overwrite. */
+  checkout(input: { readonly name: string }, options?: GitWrite): Promise<GitOutcome>;
   push(input?: { readonly setUpstream?: boolean }, options?: GitWrite): Promise<GitOutcome>;
 }
 
@@ -295,6 +304,12 @@ export interface EnvironmentProvider {
   destroy?(target: WorkspaceTarget): Promise<void>;
 }
 
+/**
+ * What a session's plugins read from its folders (`PluginApi.inputs`): its skills, kept until a
+ * watched skill or plugin folder changes, and its prompt files (the context files and
+ * `.nyte/SYSTEM.md` and `.nyte/APPEND_SYSTEM.md`), read again before each request, which reloads
+ * the session's plugins when they changed.
+ */
 export interface Resources {
   readonly user: FilesApi | null;
   readonly project: FilesApi | null;
@@ -314,11 +329,6 @@ export interface Resources {
     readonly append: string | null;
     readonly scope: "user" | "project" | null;
   };
-  readonly prompts: readonly {
-    readonly name: string;
-    readonly location: string;
-    readonly scope: "user" | "project";
-  }[];
 }
 
 export type EnvironmentCapabilities = {
@@ -350,7 +360,7 @@ export interface EnvironmentRegistry {
 }
 
 export interface FilesApi {
-  read(path: string): Promise<FileDocument>;
+  read(path: string, options?: { readonly as: "text" | "document" }): Promise<FileDocument>;
   bytes(path: string): Promise<ByteReader>;
   stat(path: string): Promise<{
     readonly kind: "file" | "directory" | "symlink";
@@ -375,6 +385,7 @@ export interface FilesApi {
     readonly limit?: number;
   }): Promise<readonly FileEntryView[]>;
   search(input: SearchInput): AsyncIterable<SearchFrame>;
+  /** Changes under the folder; given `paths`, only under them, and every file there, ignored by `.gitignore` or not, since the caller named them. Without `paths` a provider may leave ignored files out. */
   watch(input?: { readonly paths?: readonly string[] }): AsyncIterable<readonly FileEvent[]>;
   upload(source: AsyncIterable<Uint8Array>): Promise<BlobId>;
 }
@@ -614,18 +625,31 @@ export type PatchSlot = {
 
 export type PatchCache = { readonly revision: SnapshotId; readonly slots: Map<string, PatchSlot> };
 
-/** A session's cached resource scan, with `stop` ending the watch on its skill files. */
+/** A session's cached resource scan. */
 export type ScanEntry = {
   readonly workspace: WorkspaceId;
   readonly resources: Promise<Resources>;
+};
+
+/** One watch on the folders a root (`home`, or a workspace by id) loads plugins and skills from, shared by the sessions that read them and kept until the last one goes. */
+export type RootWatch = {
+  readonly paths: string;
+  readonly sessions: Set<SessionId>;
+  /** Whether the host keeps it with no session on it: the home's, whose `.nyte/plugins` the host loads its own plugins from. */
+  readonly kept: boolean;
   readonly stop: Disposer;
+  /** Resolves once the changes it is answering are answered. */
+  settled(): Promise<void>;
 };
 
 export interface WorkspaceState {
   readonly listeners: Set<(id: WorkspaceId) => void>;
   readonly patches: Map<string, PatchCache>;
-  /** Each session's cached scan; drop entries through `dropScans`, which stops their watches. */
+  /** Each session's cached scan; `dropScans` empties it, `forgetScans` also leaves the watches. */
   readonly scans: Map<SessionId, ScanEntry>;
+  readonly watches: Map<string, RootWatch>;
+  /** Set once the host closes its watches: no watch starts and no change is answered after. */
+  closed: boolean;
   home: Promise<ExecutionEnv | null> | null;
   readonly batches: Map<ReceiptId, AbortController>;
   readonly held: Map<ReceiptId, HeldBatch>;

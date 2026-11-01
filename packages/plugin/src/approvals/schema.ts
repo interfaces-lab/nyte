@@ -22,17 +22,17 @@ export const approvalPolicy = policy;
 
 /** Each policy with the words every client shows for it, in menu order. */
 export const APPROVAL_POLICIES = [
-  { value: "ask", label: "Ask first", description: "Asks before every command and file change" },
+  { value: "ask", label: "Ask first", badge: "Asks before commands, file edits and other tools" },
   {
     value: "auto-edit",
     label: "Auto-edit",
-    description: "Edits workspace files, asks before commands and anything outside",
+    badge: "Edits workspace files, asks before commands and other tools",
   },
-  { value: "full", label: "Full access", description: "Runs every tool without asking" },
+  { value: "full", label: "Full access", badge: "Runs every tool without asking" },
 ] as const satisfies readonly {
   readonly value: ApprovalPolicy;
   readonly label: string;
-  readonly description: string;
+  readonly badge: string;
 }[];
 
 const reasonType = Type.Union([

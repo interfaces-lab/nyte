@@ -68,7 +68,7 @@ const matches = commands.filter((command) =>
           <Command.Item
             key={command.id}
             value={command.id}
-            leading={<Icon name={command.icon} size={16} />}
+            leading={<Icon name={command.icon} size="md" />}
             meta={<Kbd keys={command.keys} plain />}
             onClick={() => {
               setOpen(false);

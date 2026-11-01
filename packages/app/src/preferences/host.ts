@@ -1,10 +1,10 @@
 import { hashKey } from "@tanstack/react-query";
-import type { HostSettingKey, HostSettings, HostSettingsPatch } from "../bridge.ts";
+import type { HostSettingKey, HostSettings, HostSettingsPatch } from "../contract/bridge.ts";
 import { toast } from "@nyte-ai/ui/toast";
-import { errorMessage } from "../errors.ts";
-import { nyte } from "../nyte.ts";
-import { queryClient } from "../queries.ts";
-import { keys } from "../query-keys.ts";
+import { errorMessage } from "../contract/errors.ts";
+import { nyte } from "../contract/nyte.ts";
+import { queryClient } from "../data/query-client.ts";
+import { keys } from "../data/query-client.ts";
 import type { Setting } from "./store.ts";
 
 const HASH = hashKey(keys.hostSettings);
@@ -28,7 +28,7 @@ export function acceptHostSettings(settings: HostSettings): void {
   queryClient.setQueryData(keys.hostSettings, settings);
 }
 
-export async function changeHostSettings(patch: HostSettingsPatch): Promise<void> {
+async function changeHostSettings(patch: HostSettingsPatch): Promise<void> {
   const bridge = nyte.host.settings;
 
   if (bridge === undefined) return;

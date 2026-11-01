@@ -6,7 +6,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { input, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { control, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
@@ -19,11 +19,13 @@ import {
   Header,
   PersonLabel,
   Properties,
-  StatusGlyph,
+  StepLabel,
+  StepTrack,
   Tile,
   ago,
   checkSummary,
 } from "./parts.tsx";
+import { progress } from "./progress.ts";
 import { pane } from "./stack-view.tsx";
 
 const COMPACT = "@container stacks (max-width: 959px)";
@@ -119,7 +121,7 @@ const styles = create({
   replyInput: {
     flex: 1,
     minWidth: 0,
-    height: input.heightMd,
+    height: control.heightMd,
     borderWidth: 0,
     backgroundColor: "transparent",
     color: role.contentPrimary,
@@ -157,6 +159,7 @@ export function ItemView({
   const spent = item.sessions.reduce((sum, entry) => sum + entry.cost, 0);
   const number = item.number === null ? null : `#${String(item.number)}`;
   const finished = item.status === "merged" || item.status === "done";
+  const step = progress(item);
   const kept = item.findings.filter((finding) => finding.kept).length;
   const primary = item.ask?.answers.find((answer) => answer.primary);
   const added = item.files.reduce((sum, file) => sum + file.added, 0);
@@ -229,8 +232,9 @@ export function ItemView({
                   label: "Status",
                   value: (
                     <>
-                      <StatusGlyph status={item.status} />
-                      {item.now}
+                      <StepLabel progress={step} />
+                      {!finished && <StepTrack progress={step} />}
+                      {step.label !== item.now && <span {...props(styles.state)}>{item.now}</span>}
                     </>
                   ),
                 },
@@ -241,7 +245,7 @@ export function ItemView({
                       <span {...props(styles.quiet)}>Opens after review</span>
                     ) : (
                       <>
-                        <Icon name="pull-request" size={14} />
+                        <Icon name="pull-request" size="sm" />
                         {number}
                       </>
                     ),
@@ -252,7 +256,7 @@ export function ItemView({
                   label: session.lead ? `${session.name} (lead)` : session.name,
                   value: (
                     <>
-                      <Icon name={MODELS[session.model].icon} size={14} />
+                      <Icon name={MODELS[session.model].icon} size="sm" />
                       {MODELS[session.model].name}
                       <span {...props(styles.state)}>{session.state}</span>
                     </>

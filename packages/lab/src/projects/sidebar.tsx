@@ -11,9 +11,9 @@ import {
 } from "@dnd-kit/core";
 import { props } from "@stylexjs/stylex";
 import { useState, type ReactElement, type ReactNode } from "react";
-import { clientActionKeys, clientActions } from "@nyte-ai/app/client-actions.ts";
-import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
-import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
+import { clientActionKeys, clientActions } from "@nyte-ai/app/contract/client-actions.ts";
+import { sidebarStyles } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
+import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -31,19 +31,19 @@ export function StatusGlyph({ status }: { readonly status: Status | null }): Rea
     case null:
       return null;
     case "needs-you":
-      return <StatusDot mark="waiting" />;
+      return <TaskMark state="waiting" />;
     case "failing":
-      return <StatusDot mark="failed" />;
+      return <TaskMark state="failed" />;
     case "working":
-      return <StatusDot mark="working" />;
+      return <TaskMark state="working" />;
     case "watching":
-      return <Icon name="eye" size={14} label="Watching" />;
+      return <Icon name="eye" size="sm" label="Watching" />;
     case "ready":
-      return <Icon name="checkmark" size={14} label="Ready" />;
+      return <Icon name="checkmark" size="sm" label="Ready" />;
     case "idle":
-      return <Icon name="git-branch" size={14} label="Open" />;
+      return <Icon name="git-branch" size="sm" label="Open" />;
     case "merged":
-      return <Icon name="merged" size={14} label="Merged" />;
+      return <Icon name="merged" size="sm" label="Merged" />;
     default: {
       const _exhaustive: never = status;
 
@@ -79,7 +79,7 @@ function NavRow({
   return (
     <Row variant="nav" xstyle={sidebarStyles.navRow}>
       <Row.Leading xstyle={sidebarStyles.navLeading}>
-        <Icon name={icon} size={14} />
+        <Icon name={icon} size="sm" />
       </Row.Leading>
       <Row.Label>{label}</Row.Label>
       {keys !== undefined && (
@@ -143,7 +143,7 @@ function GroupRow({
           <Row.Leading xstyle={sidebarStyles.rowIcon}>
             <span {...props(sidebarStyles.workspaceGlyph)}>
               <span {...props(sidebarStyles.workspaceFolder)}>
-                <Icon name={glyph(expanded)} size={14} />
+                <Icon name={glyph(expanded)} size="sm" />
               </span>
               <span
                 {...props(
@@ -151,7 +151,7 @@ function GroupRow({
                   expanded && sidebarStyles.workspaceChevronOpen,
                 )}
               >
-                <Icon name="chevron-down" size={13} />
+                <Icon name="chevron-down" size="xs" />
               </span>
             </span>
           </Row.Leading>
@@ -341,7 +341,7 @@ export function ProjectsSidebar({
             <NavRow
               icon="settings"
               label="Settings"
-              trailing={<Icon name="chevron-right" size={14} />}
+              trailing={<Icon name="chevron-right" size="sm" />}
             />
           </div>
           <div {...props(sidebarStyles.scroll)}>

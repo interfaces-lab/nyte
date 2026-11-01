@@ -20,7 +20,7 @@
     text-rendering: optimizeLegibility;
   }
 
-  .doc :focus-visible:where(:not(.cloud-preview *)) {
+  .doc :focus-visible:where(:not(.cloud-preview *, .design-canvas *)) {
     outline: 1px solid;
     @apply outline-ring;
     outline-offset: 2px;

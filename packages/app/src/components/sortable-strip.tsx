@@ -2,8 +2,14 @@ import { DndContext, PointerSensor, useDraggable, useSensor, useSensors } from "
 import type { Announcements, PointerSensorOptions, PointerSensorProps } from "@dnd-kit/core";
 import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
-import { createContext, use, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode, RefObject } from "react";
+import { createContext, use, useLayoutEffect, useRef, useState } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactElement,
+  ReactNode,
+  RefObject,
+} from "react";
 import { motion } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
@@ -16,9 +22,21 @@ const styles = create({
     },
     transitionTimingFunction: motion.easeOut,
   },
-  dragging: { position: "relative", zIndex: 1, transitionDuration: "0s" },
+  dragging: { position: "relative", zIndex: 1, transitionDuration: "0s", willChange: "transform" },
   shift: (x: number) => ({ transform: `translateX(${x}px)` }),
 });
+
+export const MOVE_SHORTCUTS = "Alt+Shift+ArrowLeft Alt+Shift+ArrowRight";
+
+export function readMoveStep(event: ReactKeyboardEvent): -1 | 0 | 1 {
+  if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return 0;
+
+  if (event.key === "ArrowLeft") return -1;
+
+  return event.key === "ArrowRight" ? 1 : 0;
+}
+
+const LAND_MS = 100;
 
 const CONTROL = 'a[href], button, input, select, textarea, [role="button"]';
 
@@ -185,7 +203,32 @@ export function SortableList({
   const dragRef = useRef<Drag | undefined>(undefined);
   const stopFollowing = useRef<() => void>(() => undefined);
 
+  const landing = useRef<{ readonly id: string; readonly order: string; readonly left: number }>(
+    undefined,
+  );
+
+  const order = ids.join("\n");
+
   useMountEffect(() => () => stopFollowing.current());
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- FLIP measures the reordered layout before paint
+  useLayoutEffect(() => {
+    const pending = landing.current;
+
+    if (pending === undefined || pending.order !== order) return;
+    landing.current = undefined;
+    const element = items.get(pending.id);
+
+    if (element === undefined || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+      return;
+    const delta = pending.left - element.getBoundingClientRect().left;
+
+    if (delta === 0) return;
+    element.animate([{ transform: `translateX(${delta}px)` }, { transform: "none" }], {
+      duration: LAND_MS,
+      easing: "ease-out",
+    });
+  }, [items, order]);
 
   const settle = (next: Drag | undefined): void => {
     dragRef.current = next;
@@ -243,6 +286,7 @@ export function SortableList({
 
         if (started === undefined) return;
 
+        landing.current = undefined;
         settle(started);
         follow(list);
         onPick(id);
@@ -254,10 +298,14 @@ export function SortableList({
 
         if (ids.join("\n") !== current.order.join("\n")) return;
 
-        onReorder(
-          current.order.filter((id) => id !== current.id).toSpliced(current.target, 0, current.id),
-          current.id,
-        );
+        const next = current.order
+          .filter((id) => id !== current.id)
+          .toSpliced(current.target, 0, current.id);
+
+        const left = items.get(current.id)?.getBoundingClientRect().left;
+
+        if (left !== undefined) landing.current = { id: current.id, order: next.join("\n"), left };
+        onReorder(next, current.id);
       }}
       onDragCancel={finish}
     >

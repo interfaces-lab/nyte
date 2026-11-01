@@ -3,6 +3,7 @@ import { useRenderer } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, Match, on, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
+import { taskLabel } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import { keycap } from "../../lib/constants.ts";
 import { formatTiming } from "../../lib/format.ts";
@@ -12,9 +13,9 @@ import {
   statusMark,
   taskAgent,
   taskConfiguration,
-  taskLabel,
   taskStatus,
   taskTiming,
+  taskTitle,
   unfinishedTask,
 } from "../../lib/tasks.ts";
 import type { InspectorDialog, InspectorScroll } from "../../model/dialogs/tasks.ts";
@@ -202,7 +203,7 @@ function metadata(task: Task, now: number): string {
   const timing = taskTiming(task);
 
   return [
-    taskStatus(task),
+    taskLabel(taskStatus(task)),
     task.kind === "agent" ? taskConfiguration(task) : undefined,
     timing === null ? undefined : formatTiming(timing, now),
   ]
@@ -284,7 +285,7 @@ export function InspectorView(props: {
                 <span style={{ fg: theme()[mark().tone] }}>{mark().glyph}</span>
                 <span style={{ fg: theme().foreground }}>{` ${taskAgent(task())}`}</span>
                 <span style={{ fg: theme().muted }}> │ </span>
-                <span style={{ fg: theme().foreground }}>{taskLabel(task())}</span>
+                <span style={{ fg: theme().foreground }}>{taskTitle(task())}</span>
               </text>
               <Metadata task={task()} />
               <Switch>

@@ -1,0 +1,423 @@
+import {
+  backgroundLabel,
+  failureNotice,
+  sessionTitle,
+  taskLabel,
+} from "@nyte-ai/plugin/client/presentation";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
+import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
+import { Button } from "@nyte-ai/ui/button";
+import { Icon } from "@nyte-ai/ui/icon";
+import { Input } from "@nyte-ai/ui/input";
+import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import { Row } from "@nyte-ai/ui/row";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { PreviewCard } from "@nyte-ai/ui/preview-card";
+import { props } from "@stylexjs/stylex";
+import { useRef, useState } from "react";
+import type { MouseEvent, ReactElement } from "react";
+import type { GitHubRepository } from "@nyte-ai/sdk";
+import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
+import { formatTimeAgo } from "../lib/format.ts";
+import { draftPreviewText } from "../references/message-references.ts";
+import type { ChatDraft } from "../panes/session-view-state.ts";
+import { useSessionDraggable } from "../panes/session-dnd.tsx";
+import type { Chat, ChatDirectory } from "../chats/index.ts";
+import { useChat } from "../chats/index.ts";
+import type { OpenIntent } from "../tabs/model.ts";
+import { windowTabs } from "../tabs/window-tabs.ts";
+import { useDebouncedValue } from "../lib/use-debounced-value.ts";
+import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
+import { useNowMinute } from "../lib/use-now-minute.ts";
+import { sessionWatch, warmSession } from "../data/watches.ts";
+import { sidebarStyles as styles } from "./sidebar.stylex.ts";
+import { useChatWindow } from "../window/index.ts";
+import { TaskMark } from "../components/task-mark.tsx";
+
+const WARM_DELAY_MS = 50;
+
+/** Reads the minute clock itself so only the label re-renders each minute. */
+function TimeAgo({ timestamp }: { readonly timestamp: number }): string {
+  return formatTimeAgo(timestamp, useNowMinute());
+}
+
+function openIntent(event: MouseEvent): OpenIntent {
+  return event.button === 1 || ((event.metaKey || event.ctrlKey) && !event.shiftKey)
+    ? "background"
+    : "preview";
+}
+
+export function DraftRow({
+  draft,
+  selected,
+  rail,
+}: {
+  readonly draft: ChatDraft;
+  readonly selected: boolean;
+  readonly rail: RailRows;
+}): ReactElement {
+  const onOpen = (): void => rail.openDraft(draft.id);
+  const onDelete = (): void => rail.removeDraft(draft.id);
+  const title = draftPreviewText(useDebouncedValue(draft.composer.draft, 100));
+
+  const row = (
+    <Row
+      selected={selected}
+      revealActions
+      xstyle={[
+        styles.rowSurface,
+        styles.sessionRow,
+        styles.draftRow,
+        selected && styles.rowSelected,
+      ]}
+    >
+      {selected && <Row.Backdrop xstyle={styles.sessionSelection} />}
+      <Row.Primary
+        title={`Draft: ${title}`}
+        aria-current={selected ? "page" : undefined}
+        onClick={onOpen}
+      >
+        <Row.Leading xstyle={styles.rowIcon}>
+          <span role="img" aria-label="Draft" {...props(styles.draftDot)} />
+        </Row.Leading>
+        <Row.Label xstyle={styles.draftLabel}>{title}</Row.Label>
+        <Row.Meta xstyle={styles.rowMeta}>
+          <TimeAgo timestamp={draft.updatedAt} />
+        </Row.Meta>
+      </Row.Primary>
+      <Row.Actions
+        placement="overlay"
+        data-nyte-session-row-actions=""
+        xstyle={styles.rowActionsBesideMeta}
+      >
+        <Button
+          size="sm"
+          iconOnly
+          icon="trash"
+          aria-label={`Delete Draft: ${title}`}
+          onClick={onDelete}
+        />
+      </Row.Actions>
+    </Row>
+  );
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger render={row} />
+      <ContextMenuContent aria-label={`Options for draft: ${title}`}>
+        <MenuItem icon="trash" variant="danger" onClick={onDelete}>
+          Delete Draft
+        </MenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+export interface SessionPlace {
+  readonly workspace: WorkspaceId | null;
+  readonly path: string | null;
+}
+
+export interface RailRows {
+  readonly openWorkspace: WorkspaceId | null;
+  readonly activeSessionId: SessionId | undefined;
+  readonly unavailable: ReadonlySet<WorkspaceId>;
+  readonly repository: Pick<GitHubRepository, "owner" | "name"> | undefined;
+  readonly chats: ChatDirectory;
+  /** The window's unread answer, which leaves out chats the user is looking at. */
+  readonly unread: ReadonlySet<SessionId>;
+  readonly showUpdated: boolean;
+  readonly open: (sessionId: SessionId, intent: OpenIntent | "beside") => void;
+  readonly rename: (sessionId: SessionId, name: string) => void;
+  readonly pin: (session: SessionInfo) => void;
+  readonly markRead: (sessions: readonly SessionId[]) => void;
+  readonly archive: (session: SessionInfo) => void;
+  readonly remove: (sessionId: SessionId) => void;
+  readonly openDraft: (draftId: string) => void;
+  readonly removeDraft: (draftId: string) => void;
+}
+
+export function SessionRow({
+  session,
+  place,
+  rail,
+}: {
+  readonly session: SessionInfo;
+  readonly place: SessionPlace;
+  readonly rail: RailRows;
+}): ReactElement {
+  const chat = useChat(session.id);
+  const shown = chat.kind === "ready" ? chat.chat : undefined;
+  const unread = useChatWindow((snapshot) => snapshot.unread.has(session.id));
+  const mark = shown?.mark ?? "done";
+
+  return (
+    <SessionRowView
+      session={session}
+      place={place}
+      rail={rail}
+      mark={mark}
+      unread={unread}
+      ask={shown === undefined ? undefined : askLine(shown, mark)}
+    />
+  );
+}
+
+/** A chat's row drawn from its mark and ask line, which a settings preview passes itself. */
+export function SessionRowView({
+  session,
+  place,
+  rail,
+  mark,
+  unread,
+  ask,
+}: {
+  readonly session: SessionInfo;
+  readonly place: SessionPlace;
+  readonly rail: RailRows;
+  readonly mark: TaskState;
+  readonly unread: boolean;
+  readonly ask: string | undefined;
+}): ReactElement {
+  const selected = session.id === rail.activeSessionId;
+  const showUpdated = rail.showUpdated;
+  const draggable = place.workspace === rail.openWorkspace;
+  const unreachable = session.workspace !== null && rail.unavailable.has(session.workspace);
+  const onOpen = (intent: OpenIntent): void => rail.open(session.id, intent);
+  const onOpenBeside = (): void => rail.open(session.id, "beside");
+  const onRename = (name: string): void => rail.rename(session.id, name);
+  const onPin = (): void => rail.pin(session);
+  const onArchive = (): void => rail.archive(session);
+  const onDelete = (): void => rail.remove(session.id);
+  const title = sessionTitle(session);
+
+  const [draftName, setDraftName] = useState<string | undefined>();
+  const warming = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const { isDragging, listeners, setNodeRef } = useSessionDraggable(session.id, title, !draggable);
+
+  const cancelWarm = (): void => {
+    clearTimeout(warming.current);
+    warming.current = undefined;
+  };
+
+  const warm = (): void => {
+    cancelWarm();
+
+    if (!selected) warmSession(session.id);
+  };
+
+  useMountEffect(() => cancelWarm);
+
+  const commitRename = (): void => {
+    if (draftName === undefined) return;
+    const name = draftName.replaceAll(/\s+/g, " ").trim();
+    setDraftName(undefined);
+
+    if (name !== "" && name !== title) onRename(name);
+  };
+
+  if (draftName !== undefined) {
+    return (
+      <Row xstyle={[styles.rowSurface, styles.sessionRenameRow]}>
+        <Row.Leading xstyle={styles.rowIcon}>
+          <TaskMark state={mark} unread={unread} />
+        </Row.Leading>
+        <Row.Label>
+          <Input
+            aria-label={`Rename ${title}`}
+            autoFocus
+            xstyle={styles.sessionRenameInput}
+            value={draftName}
+            onFocus={(event) => event.currentTarget.select()}
+            onValueChange={setDraftName}
+            onBlur={commitRename}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") commitRename();
+
+              if (event.key === "Escape") setDraftName(undefined);
+            }}
+          />
+        </Row.Label>
+      </Row>
+    );
+  }
+
+  const menuItems = (
+    <>
+      <MenuItem icon={session.pinned ? "unpin" : "pin"} onClick={onPin}>
+        {session.pinned ? "Unpin Chat" : "Pin Chat"}
+      </MenuItem>
+      <MenuItem icon="pencil" onClick={() => setDraftName(title)}>
+        Rename Chat…
+      </MenuItem>
+      {unread && (
+        <MenuItem icon="eye" onClick={() => rail.markRead([session.id])}>
+          Mark as Read
+        </MenuItem>
+      )}
+      <MenuItem icon="split-right" onClick={onOpenBeside}>
+        Open Chat to the Side
+      </MenuItem>
+      <MenuItem icon="copy" onClick={() => void navigator.clipboard.writeText(title)}>
+        Copy Chat Title
+      </MenuItem>
+      <MenuItem icon={session.archived ? "unarchive" : "archive"} onClick={onArchive}>
+        {session.archived ? "Restore Chat" : "Archive Chat"}
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon="trash" variant="danger" onClick={onDelete}>
+        Delete Chat…
+      </MenuItem>
+    </>
+  );
+
+  const titleLine = (
+    <>
+      <Row.Label xstyle={[styles.sessionLabel, unread && styles.unreadLabel]}>{title}</Row.Label>
+      {showUpdated && (
+        <Row.Meta xstyle={styles.rowMeta}>
+          <TimeAgo timestamp={session.lastActivityAt} />
+        </Row.Meta>
+      )}
+    </>
+  );
+
+  const row = (
+    <Row
+      render={<div ref={setNodeRef} />}
+      selected={selected}
+      revealActions
+      xstyle={[
+        styles.rowSurface,
+        styles.sessionRow,
+        selected && styles.rowSelected,
+        isDragging && styles.rowDragging,
+        ask !== undefined && styles.sessionRowAsk,
+      ]}
+    >
+      {selected && <Row.Backdrop xstyle={styles.sessionSelection} />}
+      <Row.Primary
+        xstyle={unreachable && styles.sessionUnreachable}
+        aria-current={selected ? "page" : undefined}
+        onClick={(event) => onOpen(openIntent(event))}
+        onDoubleClick={() => setDraftName(title)}
+        onPointerEnter={() => {
+          cancelWarm();
+          warming.current = setTimeout(warm, WARM_DELAY_MS);
+        }}
+        onPointerLeave={cancelWarm}
+        onPointerDownCapture={warm}
+        onAuxClick={(event) => {
+          if (event.button === 1 && windowTabs.strip) onOpen("background");
+        }}
+        {...listeners}
+      >
+        <Row.Leading xstyle={[styles.rowIcon, ask !== undefined && styles.rowIconAsk]}>
+          <TaskMark state={mark} unread={unread} />
+        </Row.Leading>
+        {ask === undefined ? (
+          titleLine
+        ) : (
+          <Row.Body>
+            <span {...props(styles.sessionTitleLine)}>{titleLine}</span>
+            <Row.Description
+              xstyle={[mark === "failed" ? intent.danger : intent.warning, styles.sessionAsk]}
+            >
+              {ask}
+            </Row.Description>
+          </Row.Body>
+        )}
+      </Row.Primary>
+      <Row.Actions
+        placement="overlay"
+        data-nyte-session-row-actions=""
+        xstyle={[
+          showUpdated && styles.rowActionsBesideMeta,
+          ask !== undefined && styles.rowActionsAsk,
+        ]}
+      >
+        <Button
+          size="sm"
+          iconOnly
+          icon={session.pinned ? "unpin" : "pin"}
+          aria-label={`${session.pinned ? "Unpin" : "Pin"} ${title}`}
+          onClick={onPin}
+        />
+        <Button
+          size="sm"
+          iconOnly
+          aria-label={`${session.archived ? "Restore" : "Archive"} ${title}`}
+          onClick={onArchive}
+        >
+          <span {...props(styles.actionGlyphArchive)}>
+            <Icon name={session.archived ? "unarchive" : "archive"} size="xs" />
+          </span>
+        </Button>
+      </Row.Actions>
+    </Row>
+  );
+
+  return (
+    <PreviewCard>
+      <ContextMenu>
+        <ContextMenuTrigger render={<ChatCardTrigger render={row} />} />
+        <ContextMenuContent aria-label={`Options for ${title}`}>{menuItems}</ContextMenuContent>
+      </ContextMenu>
+      <ChatCardContent placement="row" label={title} sessions={[session.id]} />
+    </PreviewCard>
+  );
+}
+
+export function NeighbourWarm({
+  active,
+  neighbours,
+}: {
+  readonly active: SessionId;
+  readonly neighbours: readonly SessionId[];
+}): null {
+  useMountEffect(() => {
+    const opened = sessionWatch(active);
+    let leave: (() => void) | undefined;
+    let frame: number | undefined;
+    let idle: number | undefined;
+
+    const afterPaint = (): void => {
+      frame = requestAnimationFrame(() => {
+        idle = requestIdleCallback(() => {
+          for (const sessionId of neighbours) warmSession(sessionId);
+        });
+      });
+    };
+
+    if (opened.value === undefined)
+      leave = opened.subscribe(() => {
+        if (opened.value === undefined) return;
+        leave?.();
+        leave = undefined;
+        afterPaint();
+      });
+    else afterPaint();
+
+    return () => {
+      leave?.();
+
+      if (frame !== undefined) cancelAnimationFrame(frame);
+
+      if (idle !== undefined) cancelIdleCallback(idle);
+    };
+  });
+
+  return null;
+}
+
+function askLine(chat: Chat, mark: TaskState): string | undefined {
+  if (chat.status.kind === "waiting-for-approval") return taskLabel(mark);
+
+  if (mark === "waiting") return backgroundLabel(chat.background);
+
+  return mark === "failed" && chat.status.kind === "failed"
+    ? failureNotice(chat.status.failure).text
+    : undefined;
+}

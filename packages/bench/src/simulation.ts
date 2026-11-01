@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Models } from "@nyte-ai/ai/models";
 import type { Host, Plugin } from "@nyte-ai/core";
-import { openApprovals } from "@nyte-ai/plugin/approvals/schema";
+import { openApprovals, PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { asId } from "@nyte-ai/schema";
 import type { ReceiptId, SessionId, SessionInfo, SessionView } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -71,6 +71,7 @@ export function readCommand(
   return { kind: "invalid", reason: `${error?.instancePath ?? ""} ${error?.message ?? ""}`.trim() };
 }
 
+/** Opens a real host whose tool calls run unasked (`full`); a test of approvals applies its own policy. */
 export async function simulate(input: {
   readonly models: Models;
   readonly plugins?: readonly Plugin<"core">[];
@@ -100,6 +101,7 @@ export async function simulate(input: {
   };
 
   let running: Awaited<ReturnType<typeof boot>> | null = await boot();
+  await running.host.settings.apply(PERMISSIONS, "full");
   let port: number | null = null;
   const receipts = new Map<SessionId, { settled(): Promise<unknown> }>();
 

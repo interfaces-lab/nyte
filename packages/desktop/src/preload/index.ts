@@ -1,9 +1,9 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import { exposeClerkBridge } from "@clerk/electron/preload";
-import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
-import type { AccountBridge, AccountCommand } from "../account/protocol.ts";
+import { ACCOUNT_CHANNELS } from "../shared/account/protocol.ts";
+import type { AccountBridge, AccountCommand } from "../shared/account/protocol.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
-import type { AppMenuCommand } from "@nyte-ai/app/bridge.ts";
+import type { AppMenuCommand } from "@nyte-ai/app/contract/bridge.ts";
 import {
   BROWSER_BOUNDS_CHANNEL,
   BROWSER_FOCUS_CHANNEL,
@@ -13,7 +13,9 @@ import {
   HOST_PORT_CHANNEL,
   LAUNCH_WINDOWS_ARGUMENT,
   MACHINE_NAME_ARGUMENT,
+  TERMINAL_NOTIFICATION_CHANNEL,
   THEME_PREFERENCE_CHANNEL,
+  VIEWING_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ID_ARGUMENT,
   WINDOW_PAINTED_CHANNEL,
@@ -26,8 +28,12 @@ import type {
   CallReplyFor,
   DesktopBridge,
 } from "../shared/ipc.ts";
-import type { BrowserBoundsMessage, BrowserFocusMessage, HostEvent } from "@nyte-ai/app/bridge.ts";
-import { bridgeError } from "@nyte-ai/app/errors.ts";
+import type {
+  BrowserBoundsMessage,
+  BrowserFocusMessage,
+  HostEvent,
+} from "@nyte-ai/app/contract/bridge.ts";
+import { bridgeError } from "@nyte-ai/app/contract/errors.ts";
 
 exposeClerkBridge();
 
@@ -131,6 +137,7 @@ const bridge = {
       channel: none("host.updates.channel"),
       setChannel: object("host.updates.setChannel"),
     },
+    bundledCli: none("host.bundledCli"),
     server: {
       state: none("host.server.state"),
       connect: object("host.server.connect"),
@@ -177,6 +184,10 @@ const bridge = {
       setBounds: (message: BrowserBoundsMessage) =>
         ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
       setFocus: (message: BrowserFocusMessage) => ipcRenderer.send(BROWSER_FOCUS_CHANNEL, message),
+    },
+    attention: {
+      viewing: (session) => ipcRenderer.send(VIEWING_CHANNEL, session),
+      notify: (input) => ipcRenderer.send(TERMINAL_NOTIFICATION_CHANNEL, input),
     },
     onEvent(listener: (event: HostEvent) => void) {
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {

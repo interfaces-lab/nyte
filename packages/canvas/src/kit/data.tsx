@@ -22,8 +22,8 @@ const stat = create({
   label: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
   value: {
     color: role.contentPrimary,
-    fontSize: type.font2xl,
-    lineHeight: type.leadingLg,
+    fontSize: type.fontXl,
+    lineHeight: type.leadingXl,
     fontWeight: type.weightSemibold,
     letterSpacing: type.letterLg,
     fontVariantNumeric: "tabular-nums",

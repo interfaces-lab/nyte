@@ -11,7 +11,7 @@ import type {
 } from "@nyte-ai/sdk";
 import { alignedRows, ansiEnabled } from "./cli-style.ts";
 import { cliLoginDriver } from "./interaction.ts";
-import { exposureName, target } from "./model/mcp.ts";
+import { exposureName, serverStatus, target } from "./model/mcp.ts";
 import { addFolder } from "./run.ts";
 import { runLogin } from "./services/auth.ts";
 
@@ -58,8 +58,19 @@ export async function mcpCommand(input: {
 
     case "remove": {
       const { server, scope } = parseNamed("remove", rest, true);
+      const outcome = await (await workspace()).remove(server, scope);
 
-      return report(await (await workspace()).remove(server, scope), server, output, {
+      if (outcome.kind === "missing") {
+        output.error(
+          scope === "user"
+            ? `${server} is not in ~/.nyte/mcp.json. For this folder's .nyte/mcp.json, add --local.`
+            : `${server} is not in .nyte/mcp.json. For ~/.nyte/mcp.json, drop --local.`,
+        );
+
+        return 1;
+      }
+
+      return report(outcome, server, output, {
         updated: `Removed ${server} from ${scope === "user" ? "~/.nyte/mcp.json" : ".nyte/mcp.json"}.`,
       });
     }
@@ -256,12 +267,9 @@ function listLines(view: McpView): readonly string[] {
 }
 
 function stateText(server: McpServerView): string {
-  const { state } = server;
+  const text = serverStatus(server.state).text;
 
-  if (state.kind === "connected")
-    return `${String(state.tools.length)} ${state.tools.length === 1 ? "tool" : "tools"}, ${exposureName(server.exposure)}`;
-
-  return state.kind === "disabled" ? "off" : state.kind;
+  return server.state.kind === "connected" ? `${text}, ${exposureName(server.exposure)}` : text;
 }
 
 function parseNamed(

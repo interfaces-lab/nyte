@@ -1,4 +1,4 @@
-import { openHost } from "@nyte-ai/host";
+import { openHost } from "@nyte-ai/host/open";
 import { connect } from "./connect.ts";
 
 export type { OpenHostOptions } from "@nyte-ai/host";

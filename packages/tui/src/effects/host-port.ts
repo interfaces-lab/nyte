@@ -69,6 +69,8 @@ export function hostPort(
     listModels: () => host.models.list(),
     accounts: (provider) => host.models.accounts(provider ?? undefined),
     selectAccount: (provider, account) => host.models.selectAccount(provider, account),
+    renameAccount: (provider, account, label) =>
+      host.models.renameAccount(provider, account, label),
     usage: () => host.models.usage(),
     refreshModels: (provider) => host.models.refresh(provider),
     async login(provider, driver) {
@@ -459,6 +461,7 @@ export async function pluginsPort(
     plugins: tuiPlugins(),
     client: { name: "tui", frameworks: ["tui"] },
     session: () => current,
+    looking: () => new Set(current === null ? [] : [current.id]),
     notify: (input) => options.notify(input.title ?? "Nyte", input.message, input.sound === true),
     report: options.report,
   });

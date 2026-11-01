@@ -67,8 +67,8 @@ and a model credential from its
 section, then `run deploy`. Test from this checkout:
 
 1. Run `pnpm dev:desktop` from the repository root.
-2. Open Environments › Connections, enter the production domain and its `NYTE_TOKEN`, and
-   click **Connect**. The desktop checks authentication before saving the
+2. Open Settings › Server, click **Connect to Host…**, enter the production domain and its
+   `NYTE_TOKEN`, and click **Connect**. The desktop checks authentication before saving the
    connection in `~/.nyte/server.json`.
 3. Start a new chat and pick **Cloud** in its environment menu. Send a short
    message and confirm that an assistant response appears.
@@ -110,7 +110,7 @@ pnpm --dir packages/desktop exec vitest run src/main/host-server.test.ts
 
 ## Remote access
 
-Environments has two tabs that point opposite ways. **Connections** is
+Settings › Server has two groups that point opposite ways. **Remote host** is
 outbound: a deployed Nyte host whose chats carry a Cloud badge in the sidebar.
 **Remote access** is inbound: the desktop serves one of its own local stores over the
 v1 wire through `@nyte-ai/serve`, on a Node listener in the Electron main

@@ -24,13 +24,16 @@ import type { DisplayMode } from "../shell/display-mode";
 import { createItem } from "./delegate.ts";
 import type { Request } from "./delegate.ts";
 import { CHAT, droppedOn } from "./dnd.tsx";
+import { Home } from "./home.tsx";
+import type { Display } from "./home.tsx";
 import { ItemView } from "./item-view.tsx";
 import { LabControls } from "./lab-controls.tsx";
 import type { Pace } from "./lab-controls.tsx";
 import { SURFACES, YOU } from "./model.ts";
-import type { Answer, Chat, Item, PullRequest, Stack } from "./model.ts";
+import type { Answer, Chat, Item, PullRequest, Stack, Status } from "./model.ts";
 import { NewStack } from "./new-stack.tsx";
 import { StatusGlyph } from "./parts.tsx";
+import { finished } from "./progress.ts";
 import { TICK_MS, advance, land, revisionSteps, schedule } from "./script.ts";
 import { CHATS, ITEMS, OPEN_PULLS, STACKS } from "./seed.ts";
 import { PageScheme } from "./shots.tsx";
@@ -38,9 +41,11 @@ import { StacksSidebar } from "./sidebar.tsx";
 import { StackView } from "./stack-view.tsx";
 import { hands, propose } from "./staffing.ts";
 import { Titlebar } from "./titlebar.tsx";
+import { FocusMenu, SpendMenu } from "./titlebar-menus.tsx";
 
-/** Three places, one way through: a stack, an item in it, or the form that sets a stack up. */
+/** Home across every stack, one stack, an item in it, or the form that sets a stack up. */
 type Screen =
+  | { readonly kind: "home" }
   | { readonly kind: "stack"; readonly stack: string }
   | { readonly kind: "item"; readonly item: string }
   | { readonly kind: "new" }
@@ -58,6 +63,15 @@ interface Board {
   readonly clock: number;
   readonly made: number;
   readonly pace: Pace;
+  /** Each item's status when you last looked; a row whose status moved since gets a dot. */
+  readonly seen: Readonly<Record<string, Status>>;
+  /** The stack Home shows and toasts come from; null is all of them. */
+  readonly focus: string | null;
+  readonly display: Display;
+}
+
+function seenNow(items: readonly Item[]): Readonly<Record<string, Status>> {
+  return Object.fromEntries(items.map((item) => [item.id, item.status]));
 }
 
 const START: Board = {
@@ -65,18 +79,45 @@ const START: Board = {
   items: ITEMS,
   pulls: OPEN_PULLS,
   handed: {},
-  screen: { kind: "stack", stack: "polish" },
+  screen: { kind: "home" },
   fresh: null,
   sidebar: null,
   clock: 0,
   made: 0,
   pace: 1,
+  seen: seenNow(ITEMS),
+  focus: null,
+  display: { group: "lane", finished: true },
 };
 
-/** Each tick lands whatever is due and bills its stack a few cents for it. */
+/**
+ * Each tick lands whatever is due and bills its stack a few cents for it. An item waiting on
+ * another holds until that one finishes, then its lead starts it.
+ */
 function tick(board: Board): Board {
   const clock = board.clock + 1;
-  const items = board.items.map((item) => advance(item, clock));
+
+  const items = board.items.map((item) => {
+    if (item.after === null) return advance(item, clock);
+    const blocker = board.items.find((entry) => entry.id === item.after);
+
+    if (finished(item) || (blocker !== undefined && !finished(blocker))) return item;
+
+    return land(
+      { ...item, after: null },
+      {
+        wait: 0,
+        now: "Queued",
+        event: {
+          who: board.stacks.find((stack) => stack.id === item.stack)?.name ?? "The lead",
+          what: "started it",
+          text: `\u201c${blocker?.title ?? "The task before it"}\u201d finished, so this one can start.`,
+        },
+      },
+      clock,
+    );
+  });
+
   const moved = items.filter((item, index) => item !== board.items[index]);
 
   return {
@@ -146,6 +187,7 @@ const local = create({
 /**
  * The lab's whole Stacks product on fake data. A reply always goes to the lead, which passes it
  * on. A chat dropped on a stack joins it: its pull requests get watched, or the lead finishes it.
+ * Opening an item, and leaving it, counts as looking at it.
  */
 export function StacksPage(): ReactElement {
   const [board, setBoard] = useState(START);
@@ -196,7 +238,12 @@ export function StacksPage(): ReactElement {
     const waiting = board.items.filter((entry) => entry.status === "needs-you");
 
     waiting
-      .filter((entry) => !seen.current.has(entry.id) && entry.id !== item?.id)
+      .filter(
+        (entry) =>
+          !seen.current.has(entry.id) &&
+          entry.id !== item?.id &&
+          (board.focus === null || entry.stack === board.focus),
+      )
       .forEach((entry) =>
         toast.add({
           title: `${entry.number === null ? "" : `#${String(entry.number)} `}${entry.title}`,
@@ -214,15 +261,28 @@ export function StacksPage(): ReactElement {
         }),
       );
     seen.current = new Set(waiting.map((entry) => entry.id));
-  }, [board.items, item?.id]);
+  }, [board.items, board.focus, item?.id]);
 
   const go = (next: Screen): void =>
-    setBoard((current) => ({
-      ...current,
-      screen: next,
-      fresh: next.kind === "item" ? null : current.fresh,
-      sidebar: drawer ? null : current.sidebar,
-    }));
+    setBoard((current) => {
+      const looked = [current.screen, next].flatMap((entry) =>
+        entry.kind === "item" ? [entry.item] : [],
+      );
+
+      return {
+        ...current,
+        screen: next,
+        fresh: next.kind === "item" ? null : current.fresh,
+        sidebar: drawer ? null : current.sidebar,
+        seen: {
+          ...current.seen,
+          ...seenNow(current.items.filter((entry) => looked.includes(entry.id))),
+        },
+      };
+    });
+
+  const look = (items: readonly Item[]): void =>
+    setBoard((current) => ({ ...current, seen: { ...current.seen, ...seenNow(items) } }));
 
   const send = (target: string, request: Request): void =>
     setBoard((current) => {
@@ -247,6 +307,7 @@ export function StacksPage(): ReactElement {
             : current.pulls.filter((pull) => pull.number !== request.pull?.number),
         fresh: made.id,
         made: current.made + 1,
+        seen: { ...current.seen, [made.id]: made.status },
       };
     });
 
@@ -280,6 +341,24 @@ export function StacksPage(): ReactElement {
     update(id, (entry, current) => {
       const home = current.stacks.find((candidate) => candidate.id === entry.stack);
       const lead = home?.name ?? "The lead";
+      const answered = entry.ask?.reply;
+
+      if (answered !== undefined)
+        return schedule(
+          land(
+            entry,
+            {
+              wait: 0,
+              status: "working",
+              now: `${lead} is reading your reply`,
+              ask: null,
+              event: { who: "You", what: "replied", text: note, mine: true },
+            },
+            current.clock,
+          ),
+          answered,
+          current.clock,
+        );
 
       const heard = land(
         land(
@@ -383,11 +462,28 @@ export function StacksPage(): ReactElement {
   };
 
   const title =
-    screen.kind === "new"
-      ? "New Stack"
-      : item === undefined
-        ? (stack?.name ?? "Stacks")
-        : item.title;
+    screen.kind === "home"
+      ? "Home"
+      : screen.kind === "new"
+        ? "New Stack"
+        : item === undefined
+          ? (stack?.name ?? "Stacks")
+          : item.title;
+
+  const focused = board.stacks.filter((entry) => board.focus === null || entry.id === board.focus);
+
+  const inFocus = board.items.filter((entry) =>
+    focused.some((candidate) => candidate.id === entry.stack),
+  );
+
+  const changed = (items: readonly Item[]): number =>
+    items.filter((entry) => {
+      const before = board.seen[entry.id];
+
+      return before !== undefined && before !== entry.status;
+    }).length;
+
+  const context = { all: board.items, stacks: null, seen: board.seen, clock: board.clock };
 
   return (
     <PageScheme value={scheme}>
@@ -405,11 +501,19 @@ export function StacksPage(): ReactElement {
               id: "stack",
               title,
               tooltip: title,
+              sessions: [],
+              preview: false,
               glyph:
                 item === undefined ? (
                   <Icon
-                    name={screen.kind === "new" ? "plus" : (stack?.icon ?? "layers")}
-                    size={14}
+                    name={
+                      screen.kind === "home"
+                        ? "inbox-empty"
+                        : screen.kind === "new"
+                          ? "plus"
+                          : (stack?.icon ?? "layers")
+                    }
+                    size="sm"
                   />
                 ) : (
                   <StatusGlyph status={item.status} />
@@ -422,20 +526,32 @@ export function StacksPage(): ReactElement {
             onSidebar={() =>
               setBoard((current) => ({ ...current, sidebar: !(current.sidebar ?? !drawer) }))
             }
-            onClose={() => go({ kind: "stack", stack: stack?.id ?? "polish" })}
+            onClose={() =>
+              go(stack === undefined ? { kind: "home" } : { kind: "stack", stack: stack.id })
+            }
             trailing={
-              <LabControls
-                scheme={scheme}
-                pace={board.pace}
-                onScheme={setScheme}
-                onPace={(pace) => setBoard((current) => ({ ...current, pace }))}
-                onReset={() => {
-                  seen.current = new Set(
-                    ITEMS.filter((entry) => entry.status === "needs-you").map((entry) => entry.id),
-                  );
-                  setBoard(START);
-                }}
-              />
+              <>
+                <SpendMenu stacks={focused} onOpen={(id) => go({ kind: "stack", stack: id })} />
+                <FocusMenu
+                  stacks={board.stacks}
+                  focus={board.focus}
+                  onFocus={(focus) => setBoard((current) => ({ ...current, focus }))}
+                />
+                <LabControls
+                  scheme={scheme}
+                  pace={board.pace}
+                  onScheme={setScheme}
+                  onPace={(pace) => setBoard((current) => ({ ...current, pace }))}
+                  onReset={() => {
+                    seen.current = new Set(
+                      ITEMS.filter((entry) => entry.status === "needs-you").map(
+                        (entry) => entry.id,
+                      ),
+                    );
+                    setBoard(START);
+                  }}
+                />
+              </>
             }
           />
           <div {...props(shell.stage, local.stage)}>
@@ -459,16 +575,38 @@ export function StacksPage(): ReactElement {
                         candidate.stack === entry.id && candidate.status === "needs-you",
                     ).length,
                   }))}
-                  selected={screen.kind === "new" ? null : (stack?.id ?? null)}
+                  selected={
+                    screen.kind === "home"
+                      ? "home"
+                      : screen.kind === "new"
+                        ? null
+                        : (stack?.id ?? null)
+                  }
                   chats={CHATS}
                   handed={board.handed}
+                  onHome={() => go({ kind: "home" })}
                   onOpenStack={(id) => go({ kind: "stack", stack: id })}
                   onNewStack={() => go({ kind: "new" })}
                 />
               </div>
             )}
             <main {...props(shell.card, (!shown || drawer) && shell.cardSidebarHidden, local.card)}>
-              {screen.kind === "new" ? (
+              {screen.kind === "home" ? (
+                <Home
+                  stacks={focused}
+                  items={inFocus}
+                  pulls={board.pulls}
+                  focus={board.focus}
+                  context={context}
+                  fresh={board.fresh}
+                  display={board.display}
+                  changed={changed(inFocus)}
+                  onDisplay={(display) => setBoard((current) => ({ ...current, display }))}
+                  onSend={send}
+                  onOpen={(id) => go({ kind: "item", item: id })}
+                  onSeen={() => look(inFocus)}
+                />
+              ) : screen.kind === "new" ? (
                 <NewStack
                   count={board.stacks.length}
                   onCreate={(made) =>
@@ -503,11 +641,13 @@ export function StacksPage(): ReactElement {
                   items={board.items.filter((entry) => entry.stack === stack.id)}
                   pulls={board.pulls}
                   fresh={board.fresh}
-                  clock={board.clock}
+                  context={context}
+                  changed={changed(board.items.filter((entry) => entry.stack === stack.id))}
                   chats={board.handed}
-                  onSend={(request) => send(stack.id, request)}
+                  onSend={send}
                   onOpen={(id) => go({ kind: "item", item: id })}
                   onEdit={() => go({ kind: "edit", stack: stack.id })}
+                  onSeen={() => look(board.items.filter((entry) => entry.stack === stack.id))}
                 />
               ) : (
                 <ItemView
@@ -529,7 +669,7 @@ export function StacksPage(): ReactElement {
         <DragOverlay dropAnimation={null}>
           {carried === undefined ? null : (
             <div {...props(text.base, local.carried)}>
-              <Icon name="new-chat" size={14} />
+              <Icon name="new-chat" size="sm" />
               <span {...props(local.carriedLabel)}>{carried.title}</span>
             </div>
           )}

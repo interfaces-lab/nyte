@@ -5,12 +5,14 @@ import process from "node:process";
 import { isPart, tool } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Host, Plugin } from "@nyte-ai/core";
+import { PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import codemode from "@nyte-ai/plugin/core/codemode";
 import type { McpView } from "@nyte-ai/schema";
 import { afterEach, assert, expect, it, vi } from "vitest";
 import { createMcpHub, openHost } from "@nyte-ai/host";
 import { chatOnly, fakeModels, PLACES_SERVER, script, titleReply } from "../src/index.ts";
 import type { FakeModels, Reply, Request } from "../src/index.ts";
+import { getSystemMessageText } from "@nyte-ai/schema/model";
 
 const SEARCH = "mcp__places__search_places";
 
@@ -38,12 +40,12 @@ async function placesHome(
   return made;
 }
 
-function openPlaces(
+async function openPlaces(
   folder: string,
   fake: FakeModels,
   plugins: readonly Plugin<"core">[] = [],
 ): Promise<Host> {
-  return openHost({
+  const host = await openHost({
     store: memoryStore(),
     models: fake.models,
     plugins: [chatOnly, ...plugins],
@@ -51,6 +53,10 @@ function openPlaces(
     home: folder,
     mcp: createMcpHub({ home: folder }),
   });
+
+  await host.settings.apply(PERMISSIONS, "full");
+
+  return host;
 }
 
 function requestTools(request: Request | undefined): readonly string[] {
@@ -61,9 +67,8 @@ function requestTools(request: Request | undefined): readonly string[] {
 
 function systemPrompt(request: Request | undefined): string {
   const system = request?.context.messages[0];
-  const content = system?.role === "system" ? system.content : "";
 
-  return Array.isArray(content) ? content.map((part) => part.text).join("") : content;
+  return system?.role === "system" ? getSystemMessageText(system) : "";
 }
 
 function answering(...replies: readonly Reply[]): FakeModels {

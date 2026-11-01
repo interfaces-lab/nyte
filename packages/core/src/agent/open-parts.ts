@@ -36,10 +36,11 @@ export interface OpenPart {
   readonly thoughts: ThoughtSignature[];
 }
 
-/** The writes that settle a response's open parts on the head, each in its own commit; a part the stop fence already failed keeps its text. */
+/** The writes that settle a response's open parts on the head, each in its own commit; a part the stop fence already failed keeps its text. With `cut`, the parts are the text a failed attempt kept, marked so a transcript ends that response at them. */
 export async function settledParts(
   context: PartContext,
   opened: readonly OpenPart[],
+  cut = false,
 ): Promise<readonly RefUpdate[]> {
   const { kernel, session, head } = context;
 
@@ -75,7 +76,9 @@ export async function settledParts(
       record: { ...part.record, state, version },
       revision: part.ref.revision,
       logged: [{ head, kind: "part", part: entry.part, change: "updated", state, version }],
-      body: { kind: "part", part: entry.part },
+      body: cut
+        ? { kind: "part", part: entry.part, cut: true }
+        : { kind: "part", part: entry.part },
       at,
     });
 

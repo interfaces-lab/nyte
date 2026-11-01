@@ -3,8 +3,9 @@ import type { Json } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
-import { errorMessage } from "../errors.ts";
-import { connected, hostWatch } from "../sdk.tsx";
+import { errorMessage } from "../contract/errors.ts";
+import { connected } from "../data/connection.ts";
+import { hostWatch } from "../data/watches.ts";
 import type { Setting } from "./store.ts";
 
 export function pluginSetting<S extends TSchema>(id: string, schema: S): Setting<Static<S>> {
@@ -24,7 +25,8 @@ export function pluginSetting<S extends TSchema>(id: string, schema: S): Setting
   };
 }
 
-async function applyPluginSetting(id: string, value: Json): Promise<void> {
+/** Applies a plugin setting, settling once the host has; a refused value or failure toasts. */
+export async function applyPluginSetting(id: string, value: Json): Promise<void> {
   try {
     const outcome = await (await connected()).settings.apply(id, value);
 

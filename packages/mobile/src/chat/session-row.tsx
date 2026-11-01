@@ -21,7 +21,7 @@ function Meta({
   const run = liveRun(session);
 
   const clock =
-    mark === "working" || mark === "retry"
+    mark === "working" || mark === "retrying"
       ? run === undefined
         ? undefined
         : formatWholeDuration(now - run.startedAt)
@@ -47,11 +47,11 @@ function Status({ session }: { session: SessionInfo }) {
   const theme = useTheme();
   const mark = sessionMark(session);
 
-  if (mark === "working" || mark === "retry") {
+  if (mark === "working" || mark === "retrying") {
     return (
       <ActivityIndicator
         size="small"
-        color={mark === "retry" ? theme.warning : theme.accent}
+        color={mark === "retrying" ? theme.warning : theme.accent}
         style={{ transform: [{ scale: list.spinnerScale }] }}
       />
     );

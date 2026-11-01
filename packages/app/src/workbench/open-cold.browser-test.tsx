@@ -3,25 +3,22 @@ import { createMemoryHistory } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
-import { Deferred, publishDeferred, readDeferred } from "../deferred.tsx";
-import deferredUrls from "../deferred-urls.ts";
-import { createAppRouter } from "../router.tsx";
-import { runWindowCommand } from "../shell/window-commands.ts";
+import { Deferred, publishDeferred, readDeferred } from "../lib/deferred.tsx";
+import deferredUrls from "../lib/deferred-urls.ts";
+import { createAppRouter } from "../shell/routes.tsx";
+import { runWindowCommand } from "../commands/window-commands.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { ChangesPanel } from "./changes-panel.tsx";
-import {
-  useWorkbenchSnapshot,
-  workbenchController,
-  WORKBENCH_HOME_VIEW_KEY,
-} from "./controller.ts";
-import { FilesPanel } from "./files-panel.tsx";
-import { TerminalPanel } from "./terminal-panel.tsx";
+import { ChangesPanel } from "./changes/changes-panel.tsx";
+import { WORKBENCH_HOME_VIEW_KEY } from "./paths.ts";
+import { useWorkbenchSnapshot, workbench } from "./store.ts";
+import { FilesPanel } from "./files/files-panel.tsx";
+import { TerminalPanel } from "./terminal/terminal-panel.tsx";
 import {
   addTerminalToChat,
   clearTerminal,
   copyTerminal,
   focusTerminal,
-} from "./terminal-runtime.ts";
+} from "./terminal/terminal-runtime.ts";
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -83,23 +80,20 @@ export async function run(): Promise<string> {
   const root = createRoot(container);
 
   const terminals = (): number =>
-    workbenchController
-      .getView(WORKBENCH_HOME_VIEW_KEY)
-      .tabs.filter((tab) => tab.kind === "terminal").length;
+    workbench.getView(WORKBENCH_HOME_VIEW_KEY).tabs.filter((tab) => tab.kind === "terminal").length;
 
   try {
     flushSync(() => root.render(<TerminalSlots />));
     const router = createAppRouter({ history: createMemoryHistory({ initialEntries: ["/"] }) });
 
     check(runWindowCommand(router, "new-terminal"), "New Terminal did not run");
-    check(terminals() === 0, "The terminal opened before its panel could render");
+    check(terminals() === 1, "The terminal's tab waited for its panel's chunk");
 
     const shown = (): boolean => container.querySelector("[data-terminal]") !== null;
 
     for (let frame = 0; frame < 120 && !shown(); frame++) await nextFrame();
-    check(terminals() === 1, "The terminal never opened");
+    check(fallbackShown, "The terminal's panel never showed its fallback while its chunk loaded");
     check(shown(), "The terminal's panel never rendered");
-    check(!fallbackShown, "The terminal's panel suspended behind its fallback");
 
     return "passed";
   } finally {

@@ -44,13 +44,17 @@ test("the markdown journey", async ({ desktop }) => {
     await expect(boxes.last()).toBeDisabled();
   });
 
-  await test.step("a fenced code block has its source and a copy button", async () => {
+  await test.step("a fenced code block has its source and a copy button, a mermaid block draws a diagram", async () => {
     const log = messages(page);
-    const figure = log.getByRole("figure");
+    const figure = log.getByRole("figure").filter({ hasText: "export function greet" });
     await expect(figure.getByRole("code")).toContainText(
       "export function greet(name: string): string",
     );
     await expect(figure.getByRole("button", { name: "Copy ts code block" })).toBeVisible();
+    const diagram = log.getByRole("figure", { name: "Mermaid diagram" }).locator("svg");
+    await expect(diagram).toBeVisible();
+    await expect(diagram).toContainText("Draft");
+    await expect(diagram).toContainText("Ship");
   });
 
   await test.step("tables, blockquotes and rules render", async () => {

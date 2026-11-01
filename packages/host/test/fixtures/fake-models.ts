@@ -50,7 +50,11 @@ const model: Model<Api> = {
   maxTokens: 4_096,
 };
 
-export function fakeModels(input?: { readonly into?: MutableModels }): FakeModels {
+/** Fake models with one model, `test/model`; `compat` says how it reads a transcript (its system updates). */
+export function fakeModels(input?: {
+  readonly into?: MutableModels;
+  readonly compat?: Model<Api>["compat"];
+}): FakeModels {
   const queue: (Reply | ((request: Request) => Reply))[] = [];
   const requests: Request[] = [];
 
@@ -76,7 +80,7 @@ export function fakeModels(input?: { readonly into?: MutableModels }): FakeModel
         resolve: async () => ({ auth: { apiKey: "key" }, source: "test" }),
       },
     },
-    getModels: () => [model],
+    getModels: () => [input?.compat === undefined ? model : { ...model, compat: input.compat }],
     stream: (_, context) => respond(context, undefined),
     streamSimple: (_, context, options) => respond(context, options),
   });

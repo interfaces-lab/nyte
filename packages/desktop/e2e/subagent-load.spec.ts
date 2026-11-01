@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import type { Locator, Page } from "@playwright/test";
-import { SWARM_AGENTS } from "../src/main/fixtures/e2e-models.ts";
+import { SWARM_AGENTS } from "../src/host/fixtures/e2e-models.ts";
 import { expect, test } from "./fixtures.ts";
 import { readInputTrace } from "./input-trace.ts";
 import { chatPane, composer, messages, openNewChat, send } from "./ui.ts";
@@ -39,7 +39,7 @@ const STREAMING_PUBLICATIONS = 10;
 
 const MARKS = { start: "nyte:typing:start", end: "nyte:typing:end" } as const;
 
-const RUNNING_OR_DONE = /Thinking|Writing a response|Reading|Planning next moves|Completed/u;
+const RUNNING_OR_DONE = /Thinking|Writing a response|Reading|Planning next moves|Done/u;
 
 const TRACE_CATEGORIES = [
   "devtools.timeline",
@@ -257,7 +257,8 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
   });
 
   await test.step("typing with a child chat open: its output advances and both transcripts hold", async () => {
-    await groupRow.getByRole("button", { name: /^Survey part 1\b/u }).click();
+    await pill.click();
+    await chatPane(page).getByRole("button", { name: "Open Survey part 1", exact: true }).click();
     const expand = chatPane(page).getByRole("button", { name: "Open as full chat" });
     await expect(expand).toBeVisible();
     const tray = chatPane(page).locator("[data-slot='tray']");
@@ -409,12 +410,12 @@ test("typing stays responsive while five agents stream", async ({ desktop }, tes
 
   await test.step("every agent completes", async () => {
     await expect(
-      groupRow.getByText(`${String(SWARM_AGENTS)} agents completed`, { exact: true }),
+      groupRow.getByText(`${String(SWARM_AGENTS)} agents done`, { exact: true }),
     ).toBeVisible({
       timeout: 90_000,
     });
 
-    for (const row of agents) await expect(row).toContainText("Completed");
+    for (const row of agents) await expect(row).toContainText("Done");
   });
 
   await test.step("the draft, focus and caret survive the run", async () => {

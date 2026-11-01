@@ -1,7 +1,7 @@
 import type { Connection, SessionInfo } from "@nyte-ai/sdk";
 import { useState } from "react";
 import { sessionMark } from "@nyte-ai/plugin/client/presentation";
-import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
 import { useWatch } from "../connection/use-watch.ts";
@@ -19,18 +19,19 @@ type SessionListState =
       next: number | undefined;
     };
 
-export const statusLabels: Record<SessionMark, string> = {
+export const statusLabels: Record<TaskState, string> = {
   waiting: "Needs input",
-  retry: "Retrying",
+  retrying: "Retrying",
   working: "Working",
+  background: "Working in the background",
   failed: "Failed",
-  idle: "Ready",
+  done: "Ready",
 };
 
 export function inProgress(session: SessionInfo): boolean {
   const mark = sessionMark(session);
 
-  return mark === "working" || mark === "retry";
+  return mark === "working" || mark === "retrying";
 }
 
 export function needsAttention(session: SessionInfo): boolean {
@@ -52,7 +53,7 @@ export function hasFailed(session: SessionInfo): boolean {
 export function rowStatus(session: SessionInfo): string {
   const mark = sessionMark(session);
 
-  if (mark !== "idle") return statusLabels[mark];
+  if (mark !== "done") return statusLabels[mark];
 
   return hasRun(session) ? "Finished" : "New";
 }
@@ -75,17 +76,18 @@ export function formatActivity(at: number, now: number): string {
 }
 
 /** The color and fill pair a session mark paints with. */
-export function markTone(mark: SessionMark, theme: Theme) {
+export function markTone(mark: TaskState, theme: Theme) {
   switch (mark) {
     case "working":
+    case "background":
       return { color: theme.accent, fill: theme.fill };
-    case "retry":
+    case "retrying":
       return { color: theme.warning, fill: theme.warningFill };
     case "waiting":
       return { color: theme.accent, fill: theme.fill };
     case "failed":
       return { color: theme.danger, fill: theme.dangerFill };
-    case "idle":
+    case "done":
       return { color: theme.success, fill: theme.successFill };
   }
 }

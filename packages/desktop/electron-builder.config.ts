@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { sign } from "@electron/osx-sign";
 import { Arch } from "electron-builder";
 import type { AfterPackContext, Configuration, MacConfiguration } from "electron-builder";
-import { ACCOUNT_SCHEMES } from "./src/account/scheme.ts";
+import { ACCOUNT_SCHEMES } from "./src/shared/account/scheme.ts";
 import packageMetadata from "./package.json" with { type: "json" };
 
 const updateTest = process.env["NYTE_UPDATE_TEST"] === "1";

@@ -22,7 +22,8 @@ const styles = create({
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     transitionProperty: "opacity",
     transitionDuration: {
-      default: motion.durationFast,
+      default: motion.durationNormal,
+      "[data-ending-style]": motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOutQuint,
@@ -58,7 +59,8 @@ const styles = create({
     },
     transitionProperty: "opacity, transform",
     transitionDuration: {
-      default: motion.durationFast,
+      default: motion.durationNormal,
+      "[data-ending-style]": motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOutQuint,
@@ -288,7 +290,7 @@ function CommandInput({
   return (
     <Autocomplete.InputGroup data-slot="command-input-group" {...props(styles.inputGroup)}>
       <span aria-hidden="true" {...props(styles.inputIcon)}>
-        <Icon name="search" size={15} />
+        <Icon name="search" size="md" />
       </span>
       <Autocomplete.Input
         data-slot="command-input"

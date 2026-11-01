@@ -38,7 +38,7 @@ export function Composer(): ReactElement {
             <span {...props(styles.inlineActions)}>
               <button type="button" {...props(styles.inlineMenu)}>
                 Commit & Push
-                <Icon name="chevron-down" size={12} />
+                <Icon name="chevron-down" size="xs" />
               </button>
               <button
                 type="button"
@@ -46,7 +46,7 @@ export function Composer(): ReactElement {
                 disabled={!ready}
                 {...props(styles.send, ready && styles.sendReady)}
               >
-                <Icon name="arrow-up" size={14} />
+                <Icon name="arrow-up" size="sm" />
               </button>
             </span>
           }
@@ -81,7 +81,7 @@ export function QuietHeader(): ReactElement {
         <div {...props(styles.quietTitle)}>
           <button type="button" {...props(styles.plainTrigger)}>
             Uncommitted
-            <Icon name="chevron-down" size={12} xstyle={styles.chevron} />
+            <Icon name="chevron-down" size="xs" xstyle={styles.chevron} />
           </button>
           <span {...props(styles.hoverActions)}>
             <HeaderActions />
@@ -155,7 +155,7 @@ export function Sections(): ReactElement {
       {groups.map((group) => (
         <div key={group.title} {...props(styles.section)}>
           <div {...props(styles.sectionHead, defaultMarker())}>
-            <Icon name="chevron-down" size={12} xstyle={styles.chevron} />
+            <Icon name="chevron-down" size="xs" xstyle={styles.chevron} />
             <span {...props(styles.sectionTitle)}>{group.title}</span>
             <span {...props(styles.count)}>{group.files.length}</span>
             <span {...props(styles.hoverActions)}>
@@ -197,7 +197,7 @@ export function BranchFirst(): ReactElement {
     <>
       <div {...props(styles.header)}>
         <span {...props(styles.branchTitle)}>
-          <Icon name="git-branch" size={16} />
+          <Icon name="git-branch" size="md" />
           {BRANCH.name}
           <span {...props(styles.ahead)}>↑{BRANCH.ahead}</span>
         </span>
@@ -270,7 +270,7 @@ export function Tree(): ReactElement {
           <div key={group.dir}>
             {group.dir !== "" && (
               <div {...props(styles.folder)}>
-                <Icon name="folder-open" size={14} />
+                <Icon name="folder-open" size="sm" />
                 <span {...props(styles.folderName)}>{group.dir}</span>
               </div>
             )}
@@ -327,7 +327,7 @@ export function Collapsed(): ReactElement {
           </div>
         ) : (
           <button type="button" onClick={() => setOpen(true)} {...props(styles.ghostCommit)}>
-            <Icon name="pencil" size={14} />
+            <Icon name="pencil" size="sm" />
             Commit {FILES.length} files…
             <span {...props(styles.kbd)}>⌘↵</span>
           </button>
@@ -394,7 +394,7 @@ export function Compact(): ReactElement {
       <div {...props(styles.compactBar)}>
         <button type="button" {...props(styles.plainTrigger, styles.compactScope)}>
           Uncommitted
-          <Icon name="chevron-down" size={12} xstyle={styles.chevron} />
+          <Icon name="chevron-down" size="xs" xstyle={styles.chevron} />
         </button>
         <span {...props(styles.slash)}>/</span>
         <span {...props(styles.compactBranch)}>{BRANCH.name}</span>

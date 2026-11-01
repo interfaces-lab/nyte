@@ -7,8 +7,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { sidebarStyles as rail } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
-import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
+import { sidebarStyles as rail } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
+import { TaskMark } from "@nyte-ai/app/components/task-mark.tsx";
 import { shell, sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -132,7 +132,7 @@ function newTab(state: TabState): TabState {
     kind: "chat",
     title,
     icon: "new-chat",
-    mark: "idle",
+    mark: "done",
     unread: false,
   };
 
@@ -179,7 +179,7 @@ function inboxMark(needs: readonly Need[], design: NeedsDesign): Pick<ShellTab, 
   if (needs.some((need) => need.kind === "failed")) return { mark: "failed", unread: false };
 
   return {
-    mark: "idle",
+    mark: "done",
     unread: design.finished && needs.some((need) => need.kind === "finished"),
   };
 }
@@ -238,9 +238,9 @@ function OpenRow({
       >
         <Row.Leading xstyle={rail.rowIcon}>
           {tab.kind === "chat" ? (
-            <StatusDot mark={tab.mark} unread={tab.unread} />
+            <TaskMark state={tab.mark} unread={tab.unread} />
           ) : (
-            <Icon name={tab.icon} size={14} />
+            <Icon name={tab.icon} size="sm" />
           )}
         </Row.Leading>
         <Row.Label xstyle={rail.sessionLabel}>{tab.title}</Row.Label>
@@ -265,13 +265,13 @@ function Sidebar({
       <div {...props(rail.primaryActions)}>
         <Row variant="nav" xstyle={rail.navRow} onClick={onNew}>
           <Row.Leading xstyle={rail.navLeading}>
-            <Icon name="new-chat" size={14} />
+            <Icon name="new-chat" size="sm" />
           </Row.Leading>
           <Row.Label>New Chat</Row.Label>
         </Row>
         <Row variant="nav" xstyle={rail.navRow}>
           <Row.Leading xstyle={rail.navLeading}>
-            <Icon name="search" size={14} />
+            <Icon name="search" size="sm" />
           </Row.Leading>
           <Row.Label>Search</Row.Label>
         </Row>
@@ -594,7 +594,7 @@ export function TabsPage(): ReactElement {
                     render={
                       <Button size="sm" variant="ghost">
                         {SPACE}
-                        <Icon name="chevron-down" size={12} />
+                        <Icon name="chevron-down" size="xs" />
                       </Button>
                     }
                   />
@@ -640,8 +640,8 @@ export function TabsPage(): ReactElement {
                       key={tab.id}
                       icon={tab.icon}
                       leading={
-                        tab.mark !== "idle" || tab.unread ? (
-                          <StatusDot mark={tab.mark} unread={tab.unread} />
+                        tab.mark !== "done" || tab.unread ? (
+                          <TaskMark state={tab.mark} unread={tab.unread} />
                         ) : undefined
                       }
                       meta={tab.id === state.active ? "Current" : undefined}
@@ -778,7 +778,13 @@ const styles = create({
     padding: "48px 32px 96px",
   },
   header: { display: "flex", flexDirection: "column", gap: 4, maxWidth: 760 },
-  title: { margin: 0, fontSize: type.font2xl, fontWeight: 600, letterSpacing: type.letterLg },
+  title: {
+    margin: 0,
+    fontSize: type.fontXl,
+    lineHeight: type.leadingXl,
+    fontWeight: 600,
+    letterSpacing: type.letterLg,
+  },
   lede: { margin: 0, color: role.contentSecondary, fontSize: type.fontBase },
   toolbar: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16, rowGap: 10 },
   toolbarRule: { width: 1, alignSelf: "stretch", backgroundColor: role.borderSecondaryTranslucent },

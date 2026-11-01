@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { useId, useState, type ReactElement, type ReactNode } from "react";
-import { sidebarStyles as rail } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
+import { sidebarStyles as rail } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
 import { sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";

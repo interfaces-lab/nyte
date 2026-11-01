@@ -31,7 +31,6 @@ export function createServerHost(kernel: Kernel): ServerHost {
     onWake: (listener) => kernel.wakes.subscribe(listener),
     report: (row) => kernel.host.report(row),
     pluginRows: () => kernel.host.current().plugins,
-    loaded: (plugin) => kernel.plugins.host.includes(plugin),
     wire: {
       move: (session, head, position, options) => move(kernel, session, head, position, options),
       hold: (session, head, message) => leaseHold(kernel, session, head, message),

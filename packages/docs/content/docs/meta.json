@@ -2,6 +2,7 @@
   "pages": [
     "index",
     "remote-access",
+    "environment-variables",
     "---SDK---",
     "sdk/index",
     "build/composition",

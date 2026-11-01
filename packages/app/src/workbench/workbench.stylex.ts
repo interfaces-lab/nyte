@@ -1,7 +1,7 @@
 import { create } from "@stylexjs/stylex";
 import { layer, media, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
-import { appearance, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const workbenchStyles = create({
   root: {
@@ -190,7 +190,10 @@ export const workbenchStyles = create({
       width: 1,
       backgroundColor: "var(--_sash-rule)",
       transitionProperty: "background-color",
-      transitionDuration: { default: "100ms", "@media (prefers-reduced-motion: reduce)": "0s" },
+      transitionDuration: {
+        default: motion.durationFast,
+        "@media (prefers-reduced-motion: reduce)": "0s",
+      },
       transitionDelay: "var(--_sash-delay)",
     },
     cursor: "col-resize",
@@ -203,7 +206,7 @@ export const workbenchStyles = create({
     "--trees-bg-muted-override": role.bgHover,
     "--trees-fg-override": role.contentSecondary,
     "--trees-fg-muted-override": role.contentTertiary,
-    "--trees-accent-override": role.contentInteractiveTertiary,
+    "--trees-accent-override": role.contentAccent,
     "--trees-border-color-override": role.borderSecondaryTranslucent,
     "--trees-indent-guide-bg-override": role.borderSecondaryTranslucent,
     "--trees-selected-bg-override": role.bgInteractiveSecondaryTranslucent,

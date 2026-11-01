@@ -367,8 +367,13 @@ async function main(): Promise<PrintOutcome | undefined> {
     command === "mcp" ||
     command === "host"
   ) {
-    if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
-      if (invocationArgs.length !== 2) throw new Error(`Use nyte ${command} --help on its own.`);
+    const serverCommandStart = invocationArgs.indexOf("--");
+
+    if (
+      invocationArgs
+        .slice(1, serverCommandStart < 0 ? undefined : serverCommandStart)
+        .some((arg) => arg === "--help" || arg === "-h")
+    ) {
       console.log(renderCommandHelp(command));
 
       return undefined;

@@ -8,7 +8,7 @@
  */
 import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
-import { sidebarStyles as rail } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
+import { sidebarStyles as rail } from "@nyte-ai/app/sidebar/sidebar.stylex.ts";
 import { settingsStyles as shell } from "@nyte-ai/app/settings/settings.stylex.ts";
 import { shell as frame, sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { settingsPatterns } from "@nyte-ai/app/theme/settings-patterns.stylex.ts";
@@ -60,7 +60,7 @@ const GROUPS: readonly (readonly Page[])[] = [
     still("editor", "Editor", "file-text"),
     still("terminal", "Terminal", "console"),
     still("browser", "Browser", "globe"),
-    still("advanced", "Advanced", "code-brackets"),
+    still("developer", "Developer", "code-brackets"),
   ],
   [hub("providers"), hub("remote")],
 ].map((group) => group.filter((page) => page !== undefined));
@@ -107,7 +107,7 @@ export function HubsPage(): ReactElement {
                   onClick={() => setActive(page.id)}
                 >
                   <Row.Leading xstyle={rail.navLeading}>
-                    <Icon name={page.icon} size={14} />
+                    <Icon name={page.icon} size="sm" />
                   </Row.Leading>
                   <Row.Label>{page.title}</Row.Label>
                 </Row>

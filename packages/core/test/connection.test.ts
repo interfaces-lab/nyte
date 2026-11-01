@@ -28,6 +28,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
   const rows: Record<string, () => unknown> = {
     "models.accounts": () => sdk.models.accounts(),
     "models.selectAccount": () => sdk.models.selectAccount("p", "account"),
+    "models.renameAccount": () => sdk.models.renameAccount("p", "account", "Work"),
     "models.usage": () => sdk.models.usage(),
     "models.refresh": () => sdk.models.refresh(),
     "models.setDefault": () => sdk.models.setDefault({ provider: "p", id: "m" }),
@@ -56,6 +57,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "git.discard": () => git.api.discard([]),
     "git.commit": () => git.api.commit({ message: "no", files: "staged" }),
     "git.branch": () => git.api.branch({ name: "no", checkout: false }),
+    "git.checkout": () => git.api.checkout({ name: "no" }),
     "git.push": () => git.api.push(),
     "github.signIn": () => sdk.github.signIn(),
     "github.signOut": () => sdk.github.signOut(),
@@ -152,7 +154,7 @@ describe("connection gate (§52 rule 5)", () => {
       covered: false,
     });
 
-    expect(elevated).toHaveLength(39);
+    expect(elevated).toHaveLength(41);
     expect(await elevatedRows(participant, participant.workspace(at))).toEqual(denied);
     expect(await elevatedRows(invocation.sdk, invocation.workspace)).toEqual(denied);
   });

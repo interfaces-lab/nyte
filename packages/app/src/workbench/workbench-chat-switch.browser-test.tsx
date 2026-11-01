@@ -1,4 +1,4 @@
-import "../conversation/transcript-render-counter.ts";
+import "../chat/transcript/transcript-render-counter.ts";
 import "../../test/window-bridge.ts";
 import "./panels.deferred.tsx";
 import { CodeView } from "@pierre/diffs/react";
@@ -14,30 +14,32 @@ import type {
   ModelCatalogView,
   RunView,
   SessionView,
+  WorkspaceInfo,
 } from "@nyte-ai/sdk";
 import { SdkError } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
-import type { HostState } from "../nyte.ts";
-import { mentionFile } from "../conversation/message-references.ts";
-import { PaneControllerProvider } from "../layout/pane-context.tsx";
-import { PaneController } from "../layout/pane-controller.ts";
-import { SessionDndProvider } from "../layout/session-dnd.tsx";
-import { keys, queryClient } from "../queries.ts";
-import { installConnection } from "../sdk.tsx";
-import { SessionScreen } from "../screens/session-screen.tsx";
-import { createAppRouter } from "../router.tsx";
+import type { HostState } from "../contract/nyte.ts";
+import { mentionFile } from "../data/files.ts";
+import { PaneControllerProvider } from "../panes/pane-context.tsx";
+import { PaneController } from "../panes/pane-controller.ts";
+import { SessionDndProvider } from "../panes/session-dnd.tsx";
+import { keys, queryClient } from "../data/query-client.ts";
+import { installConnection } from "../data/connection.ts";
+import { SessionScreen } from "../panes/session-screen.tsx";
+import { createAppRouter } from "../shell/routes.tsx";
 import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import type { ViewStream } from "../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
-import { renderCount, resetRenders } from "../conversation/transcript-render-counter.ts";
-import { ChangesPanel } from "./changes-panel.tsx";
-import { ChangesToolbar } from "./changes-toolbar.tsx";
-import { workbenchController, workbenchViewKey } from "./controller.ts";
-import { TextFileEditor } from "./file-editor.tsx";
-import { fileActions } from "./file-store.ts";
-import { FilesPanel } from "./files-panel.tsx";
+import { renderCount, resetRenders } from "../chat/transcript/transcript-render-counter.ts";
+import { ChangesPanel } from "./changes/changes-panel.tsx";
+import { ChangesToolbar } from "./changes/changes-toolbar.tsx";
+import { workbenchViewKey } from "./paths.ts";
+import { workbench } from "./store.ts";
+import { TextFileEditor } from "./files/file-editor.tsx";
+import { fileActions } from "./files/file-store.ts";
+import { FilesPanel } from "./files/files-panel.tsx";
 import { Workbench } from "./workbench.tsx";
 
 const NAMES = ["alpha", "bravo", "charlie"] as const;
@@ -162,6 +164,7 @@ function chat(name: Name): Chat {
     usage: USAGE,
     execution: { kind: "live", run, phase: "responding", stopping: false },
     reportsHeld: false,
+    seenThrough: null,
     background: [],
     configuration: { selected: configuration, effective: configuration },
     context: { tokens: 0, window: 1_000, lastRequest: null },
@@ -193,7 +196,14 @@ const refuse = async (): Promise<never> => {
 };
 
 const files: FilesApi = {
-  read: async (path) => ({ kind: "text", path, contents: CONTENTS, version: asId("v1") }),
+  read: async (path) => ({
+    kind: "text",
+    path,
+    scope: "workspace",
+    mime: "text/plain",
+    contents: CONTENTS,
+    version: asId("v1"),
+  }),
   bytes: refuse,
   stat: refuse,
   write: refuse,
@@ -288,24 +298,36 @@ export async function run(): Promise<string> {
   queryClient.clear();
   queryClient.setQueryData(keys.host, host);
   queryClient.setQueryData(keys.modelCatalog("initial"), catalog);
-  queryClient.setQueryData(keys.mentionFiles, [FILE]);
+  queryClient.setQueryData(keys.workspaces, [
+    {
+      id: WORKSPACE.id,
+      target: { kind: "local", path: WORKSPACE.path },
+      identity: asId<"environment-identity">("fixture"),
+      availability: { kind: "available" },
+      projectResources: null,
+      trusted: true,
+      projectSources: [],
+      addedBy: asId<"principal">("tester"),
+      sessions: 0,
+      writers: [],
+      isolation: null,
+    },
+  ] satisfies readonly WorkspaceInfo[]);
+  queryClient.setQueryData(keys.mentionFiles(WORKSPACE.id), [FILE]);
   queryClient.setQueryData(keys.workspaceFile(FILE.path), {
     kind: "text",
     path: FILE.path,
+    scope: "workspace",
+    mime: "text/plain",
     contents: CONTENTS,
     version: asId<"file-version">("v1"),
   });
   const view = workbenchViewKey(WORKSPACE.path);
-  workbenchController.actions.openTab({
-    view,
-    tab: {
-      kind: "changes",
-      scope: { kind: "thread" },
-      selectedPath: null,
-      pathRevealRevision: 0,
-      scrollTop: 0,
-    },
-    activate: true,
+  workbench.dispatch(view, {
+    kind: "open-changes",
+    id: crypto.randomUUID(),
+    scope: { kind: "thread" },
+    path: null,
   });
   fileActions.open(view, FILE);
 

@@ -1,8 +1,18 @@
-import type { Execution, SessionInfo, ToolClass, TurnInfo } from "@nyte-ai/sdk";
-import { asId } from "@nyte-ai/schema";
+import type {
+  Execution,
+  SessionInfo,
+  SessionView,
+  ToolClass,
+  TurnInfo,
+  WorkspaceInfo,
+} from "@nyte-ai/sdk";
+import { asId, asSeq } from "@nyte-ai/schema";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
-import type { WatchSource } from "../src/sdk.tsx";
-import type { TurnMessages } from "../src/view-helpers.ts";
+import { describeChats } from "../src/chats/directory.ts";
+import type { ChatDirectory } from "../src/chats/directory.ts";
+import { mergeSessionRows } from "../src/data/session-rows.ts";
+import type { RowSources } from "../src/data/session-rows.ts";
+import type { TurnMessages } from "../src/chat/transcript/turns.ts";
 
 export const USAGE = {
   input: 1,
@@ -34,7 +44,14 @@ export function sessionRow(
     archived: false,
     activation: { kind: "active" },
     heads: [
-      { name: asId<"head">("main"), tip: { kind: "start" }, stack: null, execution, unread: false },
+      {
+        name: asId<"head">("main"),
+        tip: { kind: "start" },
+        stack: null,
+        execution,
+        unread: false,
+        background: { working: 0, waiting: 0 },
+      },
     ],
     createdAt: 1,
     lastActivityAt: 2,
@@ -42,12 +59,67 @@ export function sessionRow(
   };
 }
 
-export function listedChildren(
-  children: readonly SessionInfo[],
-): WatchSource<readonly SessionInfo[]> {
-  const state = { value: children, error: undefined };
+export function workspaceRow(
+  id: string,
+  path: string,
+  isolation: WorkspaceInfo["isolation"] = null,
+): WorkspaceInfo {
+  return {
+    id: asId<"workspace">(id),
+    target: { kind: "local", path },
+    identity: asId<"environment-identity">(id),
+    availability: { kind: "available" },
+    projectResources: null,
+    trusted: true,
+    projectSources: [],
+    addedBy: asId<"principal">("tester"),
+    sessions: 0,
+    writers: [],
+    isolation,
+  };
+}
 
-  return { subscribeByFrame: () => () => undefined, getState: () => state };
+export function chatsFor(
+  sessions: readonly SessionInfo[],
+  sources: Partial<RowSources> & { readonly workspaces?: readonly WorkspaceInfo[] } = {},
+  previous: ChatDirectory = new Map(),
+): ChatDirectory {
+  const rows = mergeSessionRows(
+    {
+      lists: [sessions],
+      roots: undefined,
+      views: new Map(),
+      project: (session) => session,
+      ...sources,
+    },
+    { rows: new Map(), hosted: new Map(), roots: undefined },
+  ).rows;
+
+  return describeChats(rows.values(), "workspaces" in sources ? sources.workspaces : [], previous);
+}
+
+export function sessionView(change: Partial<SessionView> = {}): SessionView {
+  return {
+    revision: asId<"revision">("r1"),
+    seq: asSeq(1),
+    activation: { kind: "active" },
+    messages: [],
+    queue: [],
+    leadingPrompt: null,
+    parts: [],
+    turns: [],
+    usage: USAGE,
+    execution: COMPLETED,
+    reportsHeld: false,
+    seenThrough: null,
+    background: [],
+    configuration: { selected: null, effective: null },
+    context: { tokens: 0, window: 1_000, lastRequest: null },
+    heads: [],
+    changes: [],
+    catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
+    ...change,
+  };
 }
 
 export function settledTool(id: string, toolClass: ToolClass, text = ""): ToolMessage {

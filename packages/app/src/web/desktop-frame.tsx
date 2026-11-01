@@ -41,7 +41,7 @@ export function DesktopFrame({
   return (
     <div {...props(styles.frame)}>
       <div {...props(text.sm, styles.bar)}>
-        <Icon name="laptop" size={14} />
+        <Icon name="laptop" size="sm" />
         <span {...props(styles.name)}>{name}</span>
         {actions}
       </div>

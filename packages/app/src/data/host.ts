@@ -1,0 +1,73 @@
+import { skipToken, useQuery } from "@tanstack/react-query";
+import { operationsDigest } from "@nyte-ai/sdk";
+import { keys } from "./query-client.ts";
+import type { HostState, UpdateState } from "../contract/bridge.ts";
+import { nyte } from "../contract/nyte.ts";
+import { hostWatch } from "./watches.ts";
+import { useWatchSelect } from "./watch-store.ts";
+import { queryClient } from "./query-client.ts";
+
+export const readHost = () => nyte.host.state();
+
+const OPENING_HOST_STATE: HostState = { workspace: undefined };
+
+export function useHostState() {
+  const { data } = useQuery({
+    queryKey: keys.host,
+    queryFn: skipToken,
+    initialData: OPENING_HOST_STATE,
+  });
+
+  return { data: data ?? OPENING_HOST_STATE };
+}
+
+export function useUpdateState() {
+  return useQuery({
+    queryKey: keys.updates,
+    queryFn: async (): Promise<UpdateState> => nyte.host.updates?.state() ?? { kind: "idle" },
+  });
+}
+
+export function setUpdateStateForDemo(state: UpdateState): void {
+  queryClient.setQueryData(keys.updates, state);
+}
+
+export function useServerState() {
+  return useQuery({
+    queryKey: keys.server,
+    queryFn: () => nyte.host.server.state(),
+  });
+}
+
+export function useRemoteAccessState(active: boolean) {
+  return useQuery({
+    queryKey: keys.remoteAccess,
+    queryFn: () => nyte.host.remote.state(),
+    enabled: active,
+    staleTime: 0,
+    refetchOnWindowFocus: "always",
+    refetchOnMount: "always",
+  });
+}
+
+export function useHostLink() {
+  return useWatchSelect(hostWatch("host"), (state) => state.value?.link);
+}
+
+export function useHostRelease(): { readonly version: string } | undefined {
+  const operations = useWatchSelect(hostWatch("host"), (state) => state.value?.operations);
+  const version = useWatchSelect(hostWatch("host"), (state) => state.value?.version);
+
+  const own = useQuery({
+    queryKey: keys.clientOperations,
+    queryFn: operationsDigest,
+  }).data;
+
+  return operations !== undefined &&
+    operations !== null &&
+    own !== undefined &&
+    operations !== own &&
+    version !== undefined
+    ? { version }
+    : undefined;
+}

@@ -475,6 +475,42 @@ class ModelsImpl implements MutableModels {
     this.refreshes.supersede(providerId);
   }
 
+  async renameAccount(
+    providerId: string,
+    accountId: string,
+    label: string,
+    options?: AuthOperationOptions,
+  ): Promise<void> {
+    const signal = operationSignal(options?.signal);
+    signal.throwIfAborted();
+    const name = label.trim();
+
+    if (name === "") throw new ModelsError("auth", "Enter an account name.");
+
+    if (!this.providers.has(providerId))
+      throw new ModelsError("provider", `Unknown provider: ${providerId}`);
+
+    await this.credentials.modify(
+      providerId,
+      async (current) => {
+        const account = current?.accounts.find((entry) => entry.id === accountId);
+
+        if (!current || !account)
+          throw new ModelsError("auth", `Unknown account for ${providerId}: ${accountId}`);
+
+        if (account.label === name) return undefined;
+
+        return {
+          ...current,
+          accounts: current.accounts.map((entry) =>
+            entry.id === accountId ? { ...entry, label: name } : entry,
+          ),
+        };
+      },
+      { signal },
+    );
+  }
+
   checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
     const signal = operationSignal(options?.signal);
 

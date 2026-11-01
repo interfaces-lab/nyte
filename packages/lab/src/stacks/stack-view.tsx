@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import { useEffectEvent, useState } from "react";
+import { useState } from "react";
 import type { ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -9,14 +9,16 @@ import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { Composer, editable } from "./composer.tsx";
+import { Briefing } from "./briefing.tsx";
+import { Composer } from "./composer.tsx";
 import type { Request } from "./delegate.ts";
 import { DropZone, useCarrying } from "./dnd.tsx";
-import { ItemList } from "./list.tsx";
-import { GROUPS, MODELS } from "./model.ts";
+import { ItemList, useCursor } from "./list.tsx";
+import type { Context } from "./list.tsx";
+import { MODELS } from "./model.ts";
 import type { Item, PullRequest, Stack } from "./model.ts";
 import { Header, Tile } from "./parts.tsx";
+import { LANES, arrange, finished, lane } from "./progress.ts";
 import { WATCHER } from "./staffing.ts";
 
 const NARROW = "@container stacks (max-width: 639px)";
@@ -37,16 +39,22 @@ export const pane = create({
   summary: { margin: 0, color: role.contentSecondary, textWrap: "pretty", maxWidth: 560 },
 });
 
-const styles = create({
+/** The one column Home and a stack's page share, centred in the card. */
+export const page = create({
   page: {
     display: "flex",
     flexDirection: "column",
     gap: { default: space.s8, [NARROW]: space.s6 },
-    maxWidth: 820,
+    boxSizing: "content-box",
+    maxWidth: 760,
+    marginInline: "auto",
     paddingInline: { default: space.s8, [NARROW]: space.s4 },
     paddingBlockStart: { default: space.s8, [NARROW]: space.s5 },
     paddingBlockEnd: 96,
   },
+});
+
+const styles = create({
   heroTop: { display: "flex", flexDirection: "column", gap: space.s4 },
   people: {
     display: "flex",
@@ -89,59 +97,31 @@ export function StackView({
   items,
   pulls,
   fresh,
-  clock,
+  context,
+  changed,
   chats,
   onSend,
   onOpen,
   onEdit,
+  onSeen,
 }: {
   readonly stack: Stack;
   readonly items: readonly Item[];
   readonly pulls: readonly PullRequest[];
   readonly fresh: string | null;
-  readonly clock: number;
+  readonly context: Context;
+  readonly changed: number;
   readonly chats: Readonly<Record<string, string>>;
-  readonly onSend: (request: Request) => void;
+  readonly onSend: (stack: string, request: Request) => void;
   readonly onOpen: (item: string) => void;
   readonly onEdit: () => void;
+  readonly onSeen: () => void;
 }): ReactElement {
-  const [cursor, setCursor] = useState<string | null>(null);
+  const [linked, setLinked] = useState<string | null>(null);
   const carrying = useCarrying();
-
-  const order = GROUPS.flatMap((group) =>
-    items.filter((item) => group.statuses.includes(item.status)),
-  );
-
-  const done = items.filter((item) => item.status === "merged" || item.status === "done").length;
-
-  const onKey = useEffectEvent((event: KeyboardEvent) => {
-    if (event.metaKey || event.ctrlKey || event.altKey || editable(event.target)) return;
-    const at = order.findIndex((item) => item.id === cursor);
-
-    if (event.key === "j" || event.key === "k") {
-      event.preventDefault();
-
-      const next =
-        order[Math.max(0, Math.min(order.length - 1, at + (event.key === "j" ? 1 : -1)))];
-
-      if (next !== undefined) setCursor(next.id);
-
-      return;
-    }
-
-    if (event.key === "Enter" && cursor !== null) {
-      event.preventDefault();
-      onOpen(cursor);
-    }
-  });
-
-  useMountEffect(() => {
-    const listener = (event: KeyboardEvent): void => onKey(event);
-
-    window.addEventListener("keydown", listener);
-
-    return () => window.removeEventListener("keydown", listener);
-  });
+  const order = arrange(items);
+  const cursor = useCursor(order, onOpen);
+  const done = items.filter(finished).length;
 
   return (
     <section aria-label={stack.name} {...props(pane.pane)}>
@@ -163,7 +143,7 @@ export function StackView({
         }
       />
       <div {...props(pane.scroller)}>
-        <div {...props(styles.page)}>
+        <div {...props(page.page)}>
           <div {...props(styles.heroTop)}>
             <Tile surface={stack} size="lg" />
             <div {...props(pane.hero)}>
@@ -172,11 +152,24 @@ export function StackView({
             </div>
             <People stack={stack} done={done} total={items.length} />
           </div>
-          <Composer stack={stack} pulls={pulls} onSend={onSend} />
+          <Briefing
+            items={items}
+            changed={changed}
+            onOpen={onOpen}
+            onLink={setLinked}
+            onSeen={onSeen}
+          />
+          <Composer
+            stacks={[stack]}
+            preferred={stack.id}
+            items={items}
+            pulls={pulls}
+            onSend={onSend}
+          />
           {carrying !== null && chats[carrying] !== stack.id && (
             <DropZone stack={stack.id} label="page">
               <div {...props(text.base, styles.drop)}>
-                <Icon name="layers" size={16} />
+                <Icon name="layers" size="md" />
                 Drop to hand it to {stack.name}
               </div>
             </DropZone>
@@ -188,14 +181,15 @@ export function StackView({
             </div>
           ) : (
             <ItemList
-              groups={GROUPS.map((group) => ({
-                id: group.id,
-                label: group.label,
-                items: items.filter((item) => group.statuses.includes(item.status)),
+              groups={LANES.map((entry) => ({
+                id: entry.id,
+                label: entry.label,
+                items: order.filter((item) => lane(item) === entry.id),
               }))}
-              clock={clock}
+              context={context}
               cursor={cursor}
               fresh={fresh}
+              linked={linked}
               onOpen={onOpen}
             />
           )}
@@ -276,7 +270,7 @@ function Who({
       <TooltipTrigger
         render={<span tabIndex={0} {...props(styles.person, lead && styles.personLead)} />}
       >
-        <Icon name={icon} size={12} />
+        <Icon name={icon} size="xs" />
         {name}
       </TooltipTrigger>
       <TooltipContent>{detail}</TooltipContent>

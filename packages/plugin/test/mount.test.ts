@@ -54,6 +54,7 @@ it("draws with the client's framework, reports run ends after the first list and
     plugins: [plugin],
     client: { name: "tui", frameworks: ["tui"] },
     session: () => session,
+    looking: () => new Set([session.id]),
     notify: () => undefined,
     report: () => undefined,
   });

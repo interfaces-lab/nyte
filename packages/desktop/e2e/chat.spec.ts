@@ -14,18 +14,18 @@ import {
 
 test.use({ chapter: "chat" });
 
-test("the five newest seeded chats are listed and Show 2 More reveals the rest", async ({
+test("the five newest seeded chats are listed and Show 3 More reveals the rest", async ({
   desktop,
 }) => {
   const { page } = desktop;
-  const oldest: readonly string[] = [FIXTURES.alpha, FIXTURES.beta];
+  const oldest: readonly string[] = [FIXTURES.alpha, FIXTURES.beta, FIXTURES.sidebar];
   const newest = Object.values(FIXTURES).filter((name) => !oldest.includes(name));
 
   for (const name of newest) await expect(chatRow(page, name)).toBeVisible();
 
   for (const name of oldest) await expect(chatRow(page, name)).toBeHidden();
 
-  await sidebar(page).getByRole("button", { name: "Show 2 More", exact: true }).click();
+  await sidebar(page).getByRole("button", { name: "Show 3 More", exact: true }).click();
 
   for (const name of oldest) await expect(chatRow(page, name)).toBeVisible();
 
@@ -43,6 +43,8 @@ test("a seeded chat shows both of its turns", async ({ desktop }) => {
     "Echo: Second beta turn",
   ]);
   await expect(log.getByRole("button", { name: "Edit Message" })).toHaveCount(2);
+  await expect(log.getByRole("button", { name: "Copy reply" })).toHaveCount(2);
+  await expect(log.getByText(/^Worked for /u)).toHaveCount(0);
   await expect(composer(page)).toHaveAttribute("data-placeholder", "Add a follow-up");
 });
 
@@ -78,7 +80,7 @@ test("a held response can be stopped", async ({ desktop }, testInfo) => {
   await expect(stop).toBeVisible();
   await expect(messages(page).getByRole("paragraph").last()).toContainText("Holding");
   await expect(
-    page.getByRole("tab", { selected: true }).getByRole("img", { name: "Running" }),
+    page.getByRole("tab", { selected: true }).getByRole("img", { name: "Working" }),
   ).toBeVisible();
   await stop.click();
   await expect(stop).toBeHidden();
@@ -147,7 +149,7 @@ test("a queued message waits in the queue until the response stops; a steer stay
   await field.press("ControlOrMeta+Enter");
   const queued = queue.getByRole("listitem").filter({ hasText: "Queued while holding" });
   await queued.hover();
-  await expect(queued.getByRole("button", { name: "Add to next response" })).toBeVisible();
+  await expect(queued.getByRole("button", { name: "Steer", exact: true })).toBeVisible();
   await expect(queued).toBeVisible();
   await expect(log.getByText("Queued while holding")).toHaveCount(0);
   await stop.press("Enter");
@@ -194,4 +196,21 @@ test("a thinking reply folds its thought behind a toggle", async ({ desktop }) =
   await expect(log.getByText("Weighing the options before answering.")).toBeVisible();
   await thought.click();
   await expect(log.getByText("Weighing the options before answering.")).toBeHidden();
+});
+
+test("a finished turn says how long it worked, and its reply copies and dates itself", async ({
+  desktop,
+}) => {
+  const { page, application } = desktop;
+  await openChat(page, FIXTURES.thinking);
+  const log = messages(page);
+  await expect(log.getByText(/^Worked for \d+s$/u)).toHaveCount(1);
+  await expect(log.getByText(/^(?:Just now|\d+(?:m|h|d|mo|y) ago)$/u)).toBeVisible();
+  const copy = log.getByRole("button", { name: "Copy reply" });
+  await copy.click();
+  await expect(copy).toHaveAttribute("data-copied");
+  expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toBe(
+    "Thought about it: the answer is 42.",
+  );
+  await expect(copy).not.toHaveAttribute("data-copied", { timeout: 4_000 });
 });

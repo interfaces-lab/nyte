@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SiteRouteImport } from './routes/_site'
+import { Route as DesignRouteRouteImport } from './routes/design/route'
 import { Route as DocsPreviewRouteImport } from './routes/docs-preview'
 import { Route as LlmsFullDottxtRouteImport } from './routes/llms-full[.]txt'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
@@ -20,17 +21,23 @@ import { Route as SiteLandingRouteImport } from './routes/_site/_landing'
 import { Route as SiteLegalRouteImport } from './routes/_site/_legal'
 import { Route as ApiSearchRouteImport } from './routes/api/search'
 import { Route as ApiSearchRecordsRouteImport } from './routes/api/search-records'
+import { Route as DesignIndexRouteImport } from './routes/design/index'
+import { Route as DesignSplatRouteImport } from './routes/design/$'
 import { Route as LlmsDotmdxSplatRouteImport } from './routes/llms[.]mdx/$'
 import { Route as OgSplatRouteImport } from './routes/og/$'
 import { Route as SiteLandingIndexRouteImport } from './routes/_site/_landing/index'
 import { Route as SiteLegalPrivacyRouteImport } from './routes/_site/_legal/privacy'
 import { Route as SiteLegalTermsRouteImport } from './routes/_site/_legal/terms'
-import { Route as SiteDesignSplatRouteImport } from './routes/_site/design/$'
 import { Route as SiteDesktopSignedInRouteImport } from './routes/_site/desktop/signed-in'
 import { Route as SiteDocsSplatRouteImport } from './routes/_site/docs/$'
 
 const SiteRoute = SiteRouteImport.update({
   id: '/_site',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DesignRouteRoute = DesignRouteRouteImport.update({
+  id: '/design',
+  path: '/design',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsPreviewRoute = DocsPreviewRouteImport.update({
@@ -81,6 +88,16 @@ const ApiSearchRecordsRoute = ApiSearchRecordsRouteImport.update({
   path: '/api/search-records',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DesignIndexRoute = DesignIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DesignRouteRoute,
+} as any)
+const DesignSplatRoute = DesignSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => DesignRouteRoute,
+} as any)
 const LlmsDotmdxSplatRoute = LlmsDotmdxSplatRouteImport.update({
   id: '/llms.mdx/$',
   path: '/llms.mdx/$',
@@ -106,11 +123,6 @@ const SiteLegalTermsRoute = SiteLegalTermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => SiteLegalRoute,
 } as any)
-const SiteDesignSplatRoute = SiteDesignSplatRouteImport.update({
-  id: '/design/$',
-  path: '/design/$',
-  getParentRoute: () => SiteRoute,
-} as any)
 const SiteDesktopSignedInRoute = SiteDesktopSignedInRouteImport.update({
   id: '/desktop/signed-in',
   path: '/desktop/signed-in',
@@ -123,6 +135,7 @@ const SiteDocsSplatRoute = SiteDocsSplatRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/design': typeof DesignRouteRouteWithChildren
   '/': typeof SiteLandingIndexRoute
   '/docs-preview': typeof DocsPreviewRoute
   '/llms-full.txt': typeof LlmsFullDottxtRoute
@@ -132,11 +145,12 @@ export interface FileRoutesByFullPath {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/search': typeof ApiSearchRoute
   '/api/search-records': typeof ApiSearchRecordsRoute
+  '/design/$': typeof DesignSplatRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
+  '/design/': typeof DesignIndexRoute
   '/privacy': typeof SiteLegalPrivacyRoute
   '/terms': typeof SiteLegalTermsRoute
-  '/design/$': typeof SiteDesignSplatRoute
   '/desktop/signed-in': typeof SiteDesktopSignedInRoute
   '/docs/$': typeof SiteDocsSplatRoute
 }
@@ -150,16 +164,18 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/search': typeof ApiSearchRoute
   '/api/search-records': typeof ApiSearchRecordsRoute
+  '/design/$': typeof DesignSplatRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
+  '/design': typeof DesignIndexRoute
   '/privacy': typeof SiteLegalPrivacyRoute
   '/terms': typeof SiteLegalTermsRoute
-  '/design/$': typeof SiteDesignSplatRoute
   '/desktop/signed-in': typeof SiteDesktopSignedInRoute
   '/docs/$': typeof SiteDocsSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/design': typeof DesignRouteRouteWithChildren
   '/_site': typeof SiteRouteWithChildren
   '/docs-preview': typeof DocsPreviewRoute
   '/llms-full.txt': typeof LlmsFullDottxtRoute
@@ -171,11 +187,12 @@ export interface FileRoutesById {
   '/_site/_legal': typeof SiteLegalRouteWithChildren
   '/api/search': typeof ApiSearchRoute
   '/api/search-records': typeof ApiSearchRecordsRoute
+  '/design/$': typeof DesignSplatRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
+  '/design/': typeof DesignIndexRoute
   '/_site/_legal/privacy': typeof SiteLegalPrivacyRoute
   '/_site/_legal/terms': typeof SiteLegalTermsRoute
-  '/_site/design/$': typeof SiteDesignSplatRoute
   '/_site/desktop/signed-in': typeof SiteDesktopSignedInRoute
   '/_site/docs/$': typeof SiteDocsSplatRoute
   '/_site/_landing/': typeof SiteLandingIndexRoute
@@ -183,6 +200,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/design'
     | '/'
     | '/docs-preview'
     | '/llms-full.txt'
@@ -192,11 +210,12 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/api/search'
     | '/api/search-records'
+    | '/design/$'
     | '/llms.mdx/$'
     | '/og/$'
+    | '/design/'
     | '/privacy'
     | '/terms'
-    | '/design/$'
     | '/desktop/signed-in'
     | '/docs/$'
   fileRoutesByTo: FileRoutesByTo
@@ -210,15 +229,17 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/api/search'
     | '/api/search-records'
+    | '/design/$'
     | '/llms.mdx/$'
     | '/og/$'
+    | '/design'
     | '/privacy'
     | '/terms'
-    | '/design/$'
     | '/desktop/signed-in'
     | '/docs/$'
   id:
     | '__root__'
+    | '/design'
     | '/_site'
     | '/docs-preview'
     | '/llms-full.txt'
@@ -230,17 +251,19 @@ export interface FileRouteTypes {
     | '/_site/_legal'
     | '/api/search'
     | '/api/search-records'
+    | '/design/$'
     | '/llms.mdx/$'
     | '/og/$'
+    | '/design/'
     | '/_site/_legal/privacy'
     | '/_site/_legal/terms'
-    | '/_site/design/$'
     | '/_site/desktop/signed-in'
     | '/_site/docs/$'
     | '/_site/_landing/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  DesignRouteRoute: typeof DesignRouteRouteWithChildren
   SiteRoute: typeof SiteRouteWithChildren
   DocsPreviewRoute: typeof DocsPreviewRoute
   LlmsFullDottxtRoute: typeof LlmsFullDottxtRoute
@@ -261,6 +284,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof SiteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/design': {
+      id: '/design'
+      path: '/design'
+      fullPath: '/design'
+      preLoaderRoute: typeof DesignRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs-preview': {
@@ -333,6 +363,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSearchRecordsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/design/': {
+      id: '/design/'
+      path: '/'
+      fullPath: '/design/'
+      preLoaderRoute: typeof DesignIndexRouteImport
+      parentRoute: typeof DesignRouteRoute
+    }
+    '/design/$': {
+      id: '/design/$'
+      path: '/$'
+      fullPath: '/design/$'
+      preLoaderRoute: typeof DesignSplatRouteImport
+      parentRoute: typeof DesignRouteRoute
+    }
     '/llms.mdx/$': {
       id: '/llms.mdx/$'
       path: '/llms.mdx/$'
@@ -368,13 +412,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SiteLegalTermsRouteImport
       parentRoute: typeof SiteLegalRoute
     }
-    '/_site/design/$': {
-      id: '/_site/design/$'
-      path: '/design/$'
-      fullPath: '/design/$'
-      preLoaderRoute: typeof SiteDesignSplatRouteImport
-      parentRoute: typeof SiteRoute
-    }
     '/_site/desktop/signed-in': {
       id: '/_site/desktop/signed-in'
       path: '/desktop/signed-in'
@@ -391,6 +428,20 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface DesignRouteRouteChildren {
+  DesignSplatRoute: typeof DesignSplatRoute
+  DesignIndexRoute: typeof DesignIndexRoute
+}
+
+const DesignRouteRouteChildren: DesignRouteRouteChildren = {
+  DesignSplatRoute: DesignSplatRoute,
+  DesignIndexRoute: DesignIndexRoute,
+}
+
+const DesignRouteRouteWithChildren = DesignRouteRoute._addFileChildren(
+  DesignRouteRouteChildren,
+)
 
 interface SiteLandingRouteChildren {
   SiteLandingIndexRoute: typeof SiteLandingIndexRoute
@@ -421,7 +472,6 @@ const SiteLegalRouteWithChildren = SiteLegalRoute._addFileChildren(
 interface SiteRouteChildren {
   SiteLandingRoute: typeof SiteLandingRouteWithChildren
   SiteLegalRoute: typeof SiteLegalRouteWithChildren
-  SiteDesignSplatRoute: typeof SiteDesignSplatRoute
   SiteDesktopSignedInRoute: typeof SiteDesktopSignedInRoute
   SiteDocsSplatRoute: typeof SiteDocsSplatRoute
 }
@@ -429,7 +479,6 @@ interface SiteRouteChildren {
 const SiteRouteChildren: SiteRouteChildren = {
   SiteLandingRoute: SiteLandingRouteWithChildren,
   SiteLegalRoute: SiteLegalRouteWithChildren,
-  SiteDesignSplatRoute: SiteDesignSplatRoute,
   SiteDesktopSignedInRoute: SiteDesktopSignedInRoute,
   SiteDocsSplatRoute: SiteDocsSplatRoute,
 }
@@ -437,6 +486,7 @@ const SiteRouteChildren: SiteRouteChildren = {
 const SiteRouteWithChildren = SiteRoute._addFileChildren(SiteRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
+  DesignRouteRoute: DesignRouteRouteWithChildren,
   SiteRoute: SiteRouteWithChildren,
   DocsPreviewRoute: DocsPreviewRoute,
   LlmsFullDottxtRoute: LlmsFullDottxtRoute,
