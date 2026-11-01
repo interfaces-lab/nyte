@@ -392,6 +392,8 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   element.addEventListener("copy", copy, true);
   element.addEventListener("paste", paste, true);
   terminal.attachCustomKeyEventHandler((event) => {
+    if (event.type === "keydown") terminalActions.acknowledge(id);
+
     if (event.ctrlKey && event.code === "Backquote") return true;
 
     if (addsToChat(event, nyte.platform === "darwin")) {

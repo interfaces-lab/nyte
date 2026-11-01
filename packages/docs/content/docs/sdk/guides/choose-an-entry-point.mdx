@@ -46,8 +46,8 @@ await host.close();
 await store.close();
 ```
 
-In a local workspace, the agent's tools run in that folder, and each command or file change asks
-first; `host.settings.apply("permissions", "full")` runs them without asking. The folder's own
+In a local workspace, the agent's tools run in that folder without asking by default.
+`host.settings.apply("permissions", "ask")` asks before commands and file changes. The folder's own
 instructions and plugins wait until you
 [trust the folder](/docs/build/composition#the-folder-it-works-in). For a host with no folder at all,
 pass `chatOnlyProvider()` from `@nyte-ai/host/providers` as in

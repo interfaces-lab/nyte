@@ -4,6 +4,7 @@ import {
   COMPOSER_PLACEHOLDER,
 } from "../lib/constants.ts";
 import { backgroundLabel } from "@nyte-ai/plugin/client/presentation";
+import { approvalPrompt } from "@nyte-ai/plugin/approvals/schema";
 import { readProgramStatus } from "../lib/program-status.ts";
 import type { ProgramStatus } from "../lib/program-status.ts";
 import { unfinishedTask } from "../lib/tasks.ts";
@@ -21,7 +22,7 @@ import { blockedReason, interactionsFor } from "./interactions.ts";
 import type { Interactions } from "./interactions.ts";
 import { queuedCount, sameQueueRow } from "./queue.ts";
 import type { QueueRow } from "./queue.ts";
-import { approvalPanel, currentApproval } from "./approval.ts";
+import { approvalHeading, approvalPanel, currentApproval } from "./approval.ts";
 import { currentQuestion, questionPanel, questionTitle } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
 import { followedSession, followedShells } from "./state.ts";
@@ -211,14 +212,7 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     tasksLine: tasksLine(state, question),
     notice: state.local.notice,
     failure: state.local.failures.at(-1) ?? null,
-    program: readProgramStatus(
-      {
-        busy: input.run.kind !== "idle",
-        execution,
-        question: question === null ? undefined : questionTitle(question),
-      },
-      state.local.watchedRun ?? undefined,
-    ),
+    program: blockedStatus(state, question) ?? readProgramStatus(execution, state.local.watchedRun),
     welcome:
       (blank !== null ||
         (view !== null && view.turns.length === 0 && promptMessages(view).length === 0)) &&
@@ -227,4 +221,32 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     selectionActive: state.facts.terminal.selection,
     fileRoot: state.facts.terminal.hyperlinks ? state.facts.workspace.cwd : null,
   };
+}
+
+/** What waits on the user, even behind a menu: a sign-in step, then an approval, then a question. */
+function blockedStatus(state: State, question: QuestionModel | null): ProgramStatus | null {
+  const auth = state.local.dialogs.findLast((dialog) => dialog.kind === "auth");
+
+  if (auth?.step.kind === "link")
+    return { state: "blocked", kind: "auth", msg: `Sign in to ${auth.name}` };
+
+  if (auth?.step.kind === "secret" || auth?.step.kind === "choose")
+    return { state: "blocked", kind: "auth", msg: auth.step.prompt };
+  const session = followedSession(state);
+
+  const approval = currentApproval(
+    session === null ? null : { id: session.id, view: session.view },
+    state.facts.tasks,
+  );
+
+  if (approval !== null)
+    return {
+      state: "blocked",
+      kind: "permission",
+      msg: `${approvalHeading(approval)} ${approvalPrompt(approval).detail}`,
+    };
+
+  return question === null
+    ? null
+    : { state: "blocked", kind: "question", msg: questionTitle(question) };
 }

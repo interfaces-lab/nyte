@@ -19,8 +19,9 @@ import { hostWatch } from "../../data/watches.ts";
 import { workspacePath as pathOfWorkspace } from "../../data/workspaces.ts";
 import type { WorkbenchTabId } from "../model.ts";
 import { persisted } from "../../lib/storage.ts";
-import { createNoticeReader } from "./terminal-notifications.ts";
+import { createTerminalReader } from "./terminal-output.ts";
 import type { OscNotice } from "./terminal-notifications.ts";
+import type { ProgramRecord } from "./terminal-program-status.ts";
 
 type ShellTerminalState =
   | { readonly kind: "starting" }
@@ -43,6 +44,7 @@ interface TerminalTabFields {
   readonly id: WorkbenchTabId;
   readonly title: string;
   readonly cwd: string;
+  readonly program: readonly ProgramRecord[];
 }
 
 interface ShellTerminalTab extends TerminalTabFields {
@@ -75,6 +77,7 @@ interface Feed {
   readonly job: Job;
   readonly workspace: WorkspaceId;
   readonly printed: string[];
+  readonly reader: ReturnType<typeof createTerminalReader>;
   length: number;
 }
 
@@ -137,6 +140,10 @@ function updateShell(id: WorkbenchTabId, state: ShellTerminalState): void {
 
 function updateStream(id: WorkbenchTabId, stream: TerminalStreamState): void {
   update(id, (tab) => (tab.kind === "job" ? { ...tab, stream } : tab));
+}
+
+function updateProgram(id: WorkbenchTabId, program: readonly ProgramRecord[]): void {
+  update(id, (tab) => (tab.program === program ? tab : { ...tab, program }));
 }
 
 function getSnapshot(): TerminalSnapshot {
@@ -204,11 +211,9 @@ function shellTab(id: WorkbenchTabId): ShellTerminalTab | undefined {
   return tab !== undefined && tab.kind === "shell" ? tab : undefined;
 }
 
-/** Follows a feed's output into its terminal; a shell's also posts its notifications, past the `history` its replay repeats. */
-async function follow(id: WorkbenchTabId, feed: Feed, history?: string): Promise<void> {
+async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
   const decoder = new TextDecoder();
   let replay = getTerminal(id)?.kind === "job";
-  const notices = history === undefined ? undefined : createNoticeReader(history);
 
   try {
     for await (const frame of feed.job.output()) {
@@ -225,11 +230,19 @@ async function follow(id: WorkbenchTabId, feed: Feed, history?: string): Promise
       if (frame.kind === "bytes") {
         const text = decoder.decode(frame.data, { stream: true });
         print(id, text);
+        const status = feed.reader.read(text);
+        updateProgram(id, status.records);
+        postNotices(id, status.notices);
 
-        if (notices !== undefined) postNotices(id, notices(text));
-      } else if (frame.kind === "gap") print(id, "\r\n\u001b[2m[output skipped]\u001b[0m\r\n");
-      else if (shellTab(id) !== undefined)
-        updateShell(id, { kind: "exited", exitCode: frame.code });
+        if (status.reply !== "") void terminalActions.write(id, status.reply);
+      } else if (frame.kind === "gap") {
+        updateProgram(id, feed.reader.gap());
+        print(id, "\r\n\u001b[2m[output skipped]\u001b[0m\r\n");
+      } else {
+        updateProgram(id, feed.reader.close());
+
+        if (shellTab(id) !== undefined) updateShell(id, { kind: "exited", exitCode: frame.code });
+      }
     }
   } catch (cause: unknown) {
     if (feeds.get(id) !== feed) return;
@@ -301,6 +314,7 @@ async function readHostView(connection: Connection): Promise<HostView> {
 async function reattach(
   connection: Connection,
   saved: { readonly workspace: WorkspaceId; readonly key: JobKey },
+  history: string,
 ): Promise<Feed | null> {
   const recovered = await connection
     .workspace(saved.workspace)
@@ -308,7 +322,13 @@ async function reattach(
     .catch(() => null);
 
   return recovered !== null && "id" in recovered
-    ? { job: recovered, workspace: saved.workspace, printed: [], length: 0 }
+    ? {
+        job: recovered,
+        workspace: saved.workspace,
+        printed: [],
+        reader: createTerminalReader({ kind: "shell", history }),
+        length: 0,
+      }
     : null;
 }
 
@@ -319,7 +339,13 @@ async function spawnShell(connection: Connection, workspacePath: string | null):
     .workspace(workspace)
     .jobs.start({ pty: { columns: 80, rows: 24 }, title: "Terminal" });
 
-  return { job, workspace, printed: [], length: 0 };
+  return {
+    job,
+    workspace,
+    printed: [],
+    reader: createTerminalReader({ kind: "shell", history: "" }),
+    length: 0,
+  };
 }
 
 async function findShellWorkspace(
@@ -367,6 +393,7 @@ function startShell(
       id,
       title: "Terminal",
       cwd: workspacePath ?? "",
+      program: [],
       kind: "shell",
       state: { kind: "starting" },
     }),
@@ -374,7 +401,7 @@ function startShell(
 
   const pending = (async () => {
     const connection = await connected();
-    const reattached = restore === null ? null : await reattach(connection, restore);
+    const reattached = restore === null ? null : await reattach(connection, restore, printed);
     const feed = reattached ?? (await spawnShell(connection, workspacePath));
 
     if (getTerminal(id) === undefined) {
@@ -389,7 +416,7 @@ function startShell(
     if (reattached === null && printed !== "")
       print(id, `${printed}\r\n\u001b[2m[restored, new shell]\u001b[0m\r\n`);
     updateShell(id, { kind: "running" });
-    void follow(id, feed, reattached === null ? "" : printed);
+    void follow(id, feed);
     const ahead = typedAhead.get(id) ?? [];
     typedAhead.delete(id);
 
@@ -426,7 +453,11 @@ export function reattachShells(
     const { key } = saved;
 
     const pending = (async () => {
-      const feed = await reattach(await connected(), { workspace: saved.workspace, key });
+      const feed = await reattach(
+        await connected(),
+        { workspace: saved.workspace, key },
+        saved.printed,
+      );
 
       if (feed === null) return;
 
@@ -441,12 +472,13 @@ export function reattachShells(
           id,
           title: "Terminal",
           cwd: workspacePath ?? "",
+          program: [],
           kind: "shell",
           state: { kind: "running" },
         }),
       );
       feeds.set(id, feed);
-      void follow(id, feed, saved.printed);
+      void follow(id, feed);
     })()
       .catch(() => undefined)
       .finally(() => creating.delete(id));
@@ -510,6 +542,7 @@ function followJob(tab: JobTerminalTab): void {
         job: connection.workspace(tab.workspace).job(tab.jobId),
         workspace: tab.workspace,
         printed: [...(previous?.printed ?? [])],
+        reader: createTerminalReader({ kind: "job" }),
         length: previous?.length ?? 0,
       };
 
@@ -594,6 +627,7 @@ export const terminalActions = {
       id,
       title: job.command,
       cwd: "",
+      program: [],
       kind: "job",
       workspace,
       jobId: job.id,
@@ -607,6 +641,11 @@ export const terminalActions = {
     followJob(tab);
   },
   syncJobs,
+  acknowledge(id: WorkbenchTabId): void {
+    const feed = feeds.get(id);
+
+    if (feed !== undefined) updateProgram(id, feed.reader.acknowledge());
+  },
   write(id: WorkbenchTabId, data: string): Promise<void> {
     const tab = getTerminal(id);
     const feed = feeds.get(id);
@@ -664,6 +703,8 @@ export const terminalActions = {
 
     updateShell(id, { kind: "failed", message });
     const feed = feeds.get(id);
+
+    if (feed !== undefined) updateProgram(id, feed.reader.close());
     feeds.delete(id);
     void feed?.job.stop().catch(() => undefined);
   },

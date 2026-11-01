@@ -7,6 +7,7 @@ import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { errorMessage } from "../contract/errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
+import { TaskMark } from "../components/task-mark.tsx";
 import {
   MOVE_SHORTCUTS,
   readMoveStep,
@@ -50,6 +51,7 @@ import { closeTab, endTerminal, launch } from "./commands.ts";
 import { readDeferred } from "../lib/deferred.tsx";
 import { useCanvasEditing } from "../canvas/canvas-activity.ts";
 import { useTerminalRuntime } from "./terminal/terminal-store.ts";
+import type { ProgramRecord } from "./terminal/terminal-program-status.ts";
 import { fileActions, useFileTabs } from "./files/file-store.ts";
 
 const TAB_CONTENT_FADE =
@@ -208,6 +210,35 @@ function ChatTabLabel({ sessionId }: { readonly sessionId: SessionId }): ReactEl
   return <>{chatTitle(chat.kind === "ready" ? chat.chat : undefined)}</>;
 }
 
+/** The record a tab shows: the most urgent state, the newest within it. */
+const PROGRAM_URGENCY = ["blocked", "error", "working", "done"] as const;
+
+const PROGRAM_LABELS = {
+  working: "Working",
+  done: "Done",
+  blocked: "Needs attention",
+  error: "Failed",
+  permission: "Needs approval",
+  question: "Needs an answer",
+  auth: "Sign in required",
+} as const;
+
+function describeProgram(program: ProgramRecord): string {
+  const label = PROGRAM_LABELS[program.kind ?? program.state];
+  const progress = program.progress === undefined ? "" : ` ${String(program.progress)}%`;
+
+  return [program.title ?? program.id, label + progress, program.msg]
+    .filter((part) => part !== undefined && part !== "")
+    .join(" · ");
+}
+
+const PROGRAM_MARKS = {
+  working: <TaskMark state="working" job />,
+  blocked: <TaskMark state="waiting" />,
+  done: <TaskMark state="done" unread />,
+  error: <TaskMark state="failed" />,
+} satisfies Record<ProgramRecord["state"], ReactElement>;
+
 export function WorkbenchTabStrip({
   viewKey,
   view,
@@ -332,8 +363,14 @@ export function WorkbenchTabStrip({
               const presentation = tabPresentation(tab, file, terminal);
               const label = presentation.label;
 
+              const program = PROGRAM_URGENCY.map((state) =>
+                terminal?.program.findLast((record) => record.state === state),
+              ).find((record) => record !== undefined);
+
               const agentTerminal = terminal !== undefined && terminal.kind === "job";
-              const running = agentTerminal && terminal.state.kind === "running";
+
+              const running =
+                program === undefined && agentTerminal && terminal.state.kind === "running";
 
               const trigger = (
                 <div
@@ -355,11 +392,14 @@ export function WorkbenchTabStrip({
                     variant="bare"
                     id={`${viewKey}-tab-${tab.id}`}
                     value={tab.id}
-                    title={
+                    title={[
                       agentTerminal
                         ? `${terminal.title} · Agent command · read-only`
-                        : (presentation.title ?? label)
-                    }
+                        : (presentation.title ?? label),
+                      program === undefined ? undefined : describeProgram(program),
+                    ]
+                      .filter((part) => part !== undefined)
+                      .join("\n")}
                     aria-label={
                       file === undefined
                         ? label
@@ -428,6 +468,7 @@ export function WorkbenchTabStrip({
                             <Loader />
                           </span>
                         )}
+                        {program !== undefined && PROGRAM_MARKS[program.state]}
                       </span>
                     )}
                   </Tabs.Tab>

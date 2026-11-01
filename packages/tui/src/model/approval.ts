@@ -35,6 +35,13 @@ export function currentApproval(
   return null;
 }
 
+/** The approval's question, naming the subagent that asks. */
+export function approvalHeading(approval: ApprovalModel): string {
+  const title = approvalPrompt(approval).title;
+
+  return approval.owner.kind === "head" ? title : `Subagent ${approval.owner.short}: ${title}`;
+}
+
 /** The panel for `approval`: its question as the heading, the command or path above the three answers, Deny highlighted until the user moves. */
 export function approvalPanel(
   approval: ApprovalModel | null,
@@ -50,10 +57,7 @@ export function approvalPanel(
       kind: "approval",
       session: approval.session,
       part: approval.part,
-      heading:
-        approval.owner.kind === "head"
-          ? prompt.title
-          : `Subagent ${approval.owner.short}: ${prompt.title}`,
+      heading: approvalHeading(approval),
     },
     title: prompt.detail,
     choices: {

@@ -170,11 +170,11 @@ it("runs workspace edits under auto-edit but asks for shell commands and edits o
   expect(ran.toSorted()).toEqual(["save /etc/hosts", "save src/a.ts", "shell ls"]);
 });
 
-it("never asks under full access", async () => {
+it("runs tools without asking by default", async () => {
   ran.length = 0;
   const fake = fakeModels();
   fake.reply(calls(["save", { path: "/etc/hosts" }], ["shell", { command: "rm -rf build" }]), done);
-  await using host = await started("full", fake);
+  await using host = await open(fake, plugins);
   const { session, receipt } = await host.sessions.start({ content: "Go." });
 
   expect((await receipt.settled()).kind).toBe("completed");
@@ -313,6 +313,9 @@ it("decides a call another runtime runs through api.approve, granting by the too
   const bash = { name: "Bash", class: { kind: "shell", command: "ls" } as const };
   const write = { name: "Write", class: { kind: "edit", path: "a.ts" } as const };
   const signal = new AbortController().signal;
+
+  expect(await api.approve(bash, signal)).toEqual({ kind: "allow" });
+  expect(await host.settings.apply(PERMISSIONS, "ask")).toEqual({ kind: "applied" });
 
   const deciding = api.approve(bash, signal);
   const [asked] = await waiting(session);

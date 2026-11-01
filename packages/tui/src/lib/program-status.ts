@@ -1,15 +1,13 @@
 import type { Execution, RunId } from "@nyte-ai/sdk";
 import { singleLine } from "./format.ts";
 
-interface Activity {
-  readonly busy: boolean;
-  readonly execution: Execution | undefined;
-  readonly question: string | undefined;
-}
-
 export type ProgramStatus =
   | { readonly state: "idle" | "working" | "done" }
-  | { readonly state: "blocked"; readonly kind: "question"; readonly msg: string }
+  | {
+      readonly state: "blocked";
+      readonly kind: "permission" | "question" | "auth";
+      readonly msg: string;
+    }
   | { readonly state: "error"; readonly msg: string };
 
 const OSC = "\u001B]7501;";
@@ -20,15 +18,17 @@ const MSG_MAX_BYTES = 2048;
 
 export const CLEARED = `${OSC}state=clear${ST}`;
 
-export function readProgramStatus(activity: Activity, live: RunId | undefined): ProgramStatus {
-  const { question, busy, execution } = activity;
+/** What a run reports while nothing waits on the user: `done` or `error` only for the run the user watched and hasn't dismissed. */
+export function readProgramStatus(
+  execution: Execution | undefined,
+  watched: RunId | null,
+): ProgramStatus {
+  if (execution === undefined) return { state: "idle" };
 
-  if (question !== undefined) return { state: "blocked", kind: "question", msg: question };
+  if (execution.kind !== "idle") return { state: "working" };
+  const last = execution.lastRun;
 
-  if (busy) return { state: "working" };
-  const last = execution?.kind === "idle" ? execution.lastRun : null;
-
-  if (last === null || last === undefined || last.id !== live) return { state: "idle" };
+  if (last === null || last.id !== watched) return { state: "idle" };
 
   if (last.end.kind === "failed") return { state: "error", msg: last.end.failure.message };
 

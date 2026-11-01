@@ -1,4 +1,12 @@
-import type { CommitId, MessageId, SessionId, SessionView, WorkspaceId } from "@nyte-ai/sdk";
+import type {
+  CommitId,
+  Execution,
+  MessageId,
+  RunId,
+  SessionId,
+  SessionView,
+  WorkspaceId,
+} from "@nyte-ai/sdk";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { shortId } from "../../lib/format.ts";
 import { completingCommands } from "../commands.ts";
@@ -177,11 +185,18 @@ function entered(next: State): State {
   });
 }
 
+/** A run that started and ended between two views is still watched, so its end shows. */
 function viewArrived(state: State, session: FollowedSession, view: SessionView, now: number): Step {
   const before = session.view;
   let next = withFacts(state, { chat: { ...session, view } });
 
-  if (view.execution.kind !== "idle") next = withLocal(next, { watchedRun: view.execution.run.id });
+  const latest = latestRun(view.execution);
+
+  if (
+    latest !== null &&
+    (view.execution.kind !== "idle" || (before !== null && latest !== latestRun(before.execution)))
+  )
+    next = withLocal(next, { watchedRun: latest });
   next = questionMoved(state, next);
   let step: Step = stay(next);
 
@@ -191,6 +206,10 @@ function viewArrived(state: State, session: FollowedSession, view: SessionView, 
   step = andThen(step, (current) => landHandback(current, now));
 
   return drawnTip(view) === drawnTip(before) ? step : andThen(step, see);
+}
+
+function latestRun(execution: Execution): RunId | null {
+  return execution.kind === "idle" ? (execution.lastRun?.id ?? null) : execution.run.id;
 }
 
 function drawnTip(view: SessionView | null): CommitId | null {

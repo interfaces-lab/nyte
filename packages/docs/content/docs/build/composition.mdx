@@ -980,9 +980,10 @@ if (added.kind === "added" || added.kind === "exists") {
 }
 ```
 
-The decision is saved for the folder and the folders below it. A host asks before every command
-and file change unless you apply another policy. The `server.ts` above applies `"full"` because
-this chat can't show approval requests. The desktop app and the terminal can.
+The decision is saved for the folder and the folders below it. Tool calls run without approval by
+default. Apply `host.settings.apply("permissions", "ask")` to ask before commands and file changes.
+The `server.ts` above explicitly applies `"full"` because this chat can't show approval requests.
+The desktop app and the terminal can.
 
 ## Before you deploy
 
