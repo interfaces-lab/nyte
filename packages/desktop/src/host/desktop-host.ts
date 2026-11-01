@@ -650,10 +650,14 @@ export class DesktopHost {
       .catch(() => null);
 
     if (info === null) return;
-    const workspace = (await host.workspaces.list()).find((entry) => entry.id === info.workspace);
+
+    const workspace = await host
+      .workspace(info.workspace)
+      .info()
+      .catch(() => null);
 
     if (
-      workspace === undefined ||
+      workspace === null ||
       workspace.availability.kind === "unavailable" ||
       workspace.target.kind !== "local" ||
       !("path" in workspace.target) ||
@@ -680,10 +684,7 @@ export class DesktopHost {
       return { kind: "failed", message: "This folder can't be opened here." };
 
     if (trust) await host.workspace(added.workspace).update({ projectResources: true });
-    const workspace = (await host.workspaces.list()).find((entry) => entry.id === added.workspace);
-
-    if (workspace === undefined)
-      return { kind: "failed", message: "The folder was forgotten while it was opened." };
+    const workspace = await host.workspace(added.workspace).info();
     const folder = "path" in workspace.target ? workspace.target.path : path;
     const selected = { id: workspace.id, path: folder, name: basename(folder) };
     this.#selections.set(window, selected);

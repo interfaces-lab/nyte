@@ -28,7 +28,7 @@ import { useHostState, useServerState } from "../data/host.ts";
 import { useRenameSession, useWorkspaceSessions } from "../data/sessions.ts";
 import { useSessionActions } from "../data/session-actions.ts";
 import { localSessions } from "../data/session-list.ts";
-import { chatFolderPath, useChats } from "../chats/index.ts";
+import { useChats } from "../chats/index.ts";
 import { chatWindow, unreadOnHost, useChatWindow } from "../window/index.ts";
 import type { SettingsSection } from "../settings/index.ts";
 import type { OpenIntent } from "../tabs/model.ts";
@@ -76,12 +76,8 @@ type SidebarConfirmation =
       readonly sessionIds: readonly SessionId[];
     };
 
-/** A folder that has not loaded yet is left to the window tabs, which open it once it arrives. */
-async function showSession(sessionId: SessionId, target: OpenIntent | "beside"): Promise<void> {
-  const folder = chatFolderPath(sessionId);
-
-  if (target !== "background" && folder !== undefined && !(await activateWorkspace(folder))) return;
-
+/** Shows the chat at once; the window tabs open its folder on the host after it. */
+function showSession(sessionId: SessionId, target: OpenIntent | "beside"): void {
   if (target !== "beside") {
     windowTabs.openChat(sessionId, target);
 
@@ -241,7 +237,7 @@ export function Sidebar(): ReactElement {
     chats,
     unread,
     showUpdated: view.show.includes("updated"),
-    open: (sessionId, target) => void showSession(sessionId, target),
+    open: showSession,
     rename: (sessionId, name) => renameSession.mutate({ sessionId, name }),
     pin: (session) => sessionActions.pin({ sessionId: session.id, pinned: !session.pinned }),
     markRead: chatWindow.markRead,

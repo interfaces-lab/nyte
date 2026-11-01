@@ -2,6 +2,7 @@ import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/sp
 import { IsCyclic } from "typebox";
 import type { StaticDecode, TProperties, TSchema } from "typebox";
 import { Compile } from "typebox/compile";
+import { Guard } from "typebox/guard";
 import type { Validator } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
 import { HasCodec, ParseError } from "typebox/value";
@@ -20,11 +21,19 @@ type Frozen<T> = [Json] extends [T]
 /** The value a TypeBox schema decodes to, read-only all the way down: every concept's TypeScript type is this of its schema. */
 export type Decoded<S extends TSchema> = Frozen<StaticDecode<S>>;
 
+/**
+ * A schema's named definitions, a cyclic type's or a JSON Schema's `$defs`, so a `$ref` to one
+ * resolves by name. Where `eval` is blocked (the desktop renderer) TypeBox interprets the schema,
+ * and without these it searches the whole schema for every `$ref` it follows.
+ */
 function definitions(schema: TSchema): TProperties {
-  if (!IsCyclic(schema)) return {};
+  const named = IsCyclic(schema) ? schema.$defs : "$defs" in schema ? schema.$defs : undefined;
+
+  if (!Guard.IsObject(named)) return {};
 
   return Object.fromEntries(
-    Object.entries(schema.$defs).flatMap(([name, definition]) => {
+    Object.entries(named).flatMap(([name, definition]) => {
+      if (!Guard.IsObject(definition)) return [];
       const plain = Object.fromEntries(Object.entries(definition).filter(([key]) => key !== "$id"));
 
       return [

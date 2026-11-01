@@ -27,7 +27,7 @@ test(
     console.info(`session switching: ${JSON.stringify(report)}`);
 
     expect(report.opening).toBeLessThan(2 * report.roundTrip);
-    expect(report.gapShown).toBe(true);
+    expect(report.gapShown).toBe(false);
     expect(report.switched).toEqual([]);
   },
 );

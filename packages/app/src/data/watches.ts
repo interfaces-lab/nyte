@@ -38,6 +38,13 @@ export const childrenWatch = watchFamily(
 
 const OPENING_TAIL = 40;
 
+/**
+ * The most a reopened view asks for: the opening tail and one page of history. A view reopened at
+ * the opening tail would drop the history it had loaded and show "Show Earlier Steps" until it
+ * paged that history in again.
+ */
+const REOPENING_TAIL = 240;
+
 const NO_TRANSCRIPTS: ReadonlySet<SessionId> = new Set();
 
 let shownTranscripts: () => ReadonlySet<SessionId> = () => NO_TRANSCRIPTS;
@@ -111,7 +118,12 @@ export const sessionWatch = watchFamily(
   (current, session: SessionId): AsyncIterable<LoadedSessionView> => {
     return {
       [Symbol.asyncIterator]() {
-        const views = pagedViews(current.session(session), { tail: OPENING_TAIL });
+        const known = sessionWatch(session).value?.messages.length ?? 0;
+
+        const views = pagedViews(current.session(session), {
+          tail: Math.min(Math.max(OPENING_TAIL, known), REOPENING_TAIL),
+        });
+
         const iterator = tracePaints(views, session, nextFrame)[Symbol.asyncIterator]();
         const activity = sessionActivityProjector();
 

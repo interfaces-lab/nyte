@@ -252,6 +252,41 @@ describe("parts", () => {
     expect(view.messages.map((message) => message.id)).toEqual([session.id]);
   });
 
+  it("checks a part's state once, however often a client asks what kind it is", async () => {
+    const { kernel, host } = await setup();
+    const { session } = await host.sessions.start({ content: "Hi." });
+
+    await session.parts.create(text, {
+      state: { markdown: "Hello.", signature: null },
+      placement: { kind: "transcript", role: "note" },
+    });
+
+    const view = await viewHead(kernel, { session: session.id, head: main, principal: LOCAL });
+    const message = view.messages[0];
+    assert(message?.kind === "part");
+    let reads = 0;
+
+    const counted = {
+      ...message,
+      state: {
+        get markdown() {
+          reads += 1;
+
+          return "Hello.";
+        },
+        signature: null,
+      },
+    };
+
+    expect(isPart(counted, text)).toBe(true);
+    const first = reads;
+
+    for (let render = 0; render < 3; render += 1) expect(isPart(counted, text)).toBe(true);
+
+    expect(first).toBeGreaterThan(0);
+    expect(reads).toBe(first);
+  });
+
   it("lands a transcript part outside a run as a commit on main in one set", async () => {
     const recorded = recording(await memoryStore().open());
     const { kernel, host } = await setup({ store: recorded.store });

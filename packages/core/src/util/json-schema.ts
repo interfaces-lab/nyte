@@ -29,12 +29,26 @@ export function convertJsonSchema(
 
 const outputs = new WeakMap<Schema<unknown>, (value: unknown) => boolean>();
 
+/**
+ * Remembers each object's answer, since values are never mutated: without `unsafe-eval` (the
+ * desktop renderer) TypeBox interprets the schema, and a cyclic `$ref` costs about a millisecond
+ * per tool part, which every transcript render paid again for every message.
+ */
 export function matchesOutput<T>(schema: Schema<T>, value: unknown): value is T {
   const known = outputs.get(schema);
 
   if (known !== undefined) return known(value);
   const validator = compile(convertJsonSchema(schema, "output"));
-  const matches = (value: unknown): boolean => validator.Check(value);
+  const checked = new WeakMap<object, boolean>();
+
+  const matches = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null) return validator.Check(value);
+    const answer = checked.get(value) ?? validator.Check(value);
+    checked.set(value, answer);
+
+    return answer;
+  };
+
   outputs.set(schema, matches);
 
   return matches(value);

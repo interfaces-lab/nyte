@@ -20,8 +20,10 @@ import {
   actOutcomeSchema,
   asId,
   asSeq,
+  compile,
   idSchema,
   isJson,
+  JsonValueSchema,
   pagedSchema,
   stopOutcomeSchema,
 } from "../src/index.ts";
@@ -141,6 +143,12 @@ describe("wire schemas", () => {
       expect(new Set(found).size).toBe(found.length);
     },
   );
+
+  it("compiles a JSON Schema with its named definitions, so a $ref resolves by name where eval is blocked", () => {
+    const json = JsonValueSchema["~standard"].jsonSchema.output({ target: "draft-2020-12" });
+
+    expect(Object.keys(compile(json).Context())).toEqual(expect.arrayContaining(["Json", "Root"]));
+  });
 
   it("types ids and seqs without codecs, so validating them runs no codec", async () => {
     const valid = await SessionIdSchema["~standard"].validate("s9");
