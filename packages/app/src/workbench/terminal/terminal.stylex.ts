@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const terminalStyles = create({
   root: {
@@ -22,14 +22,31 @@ export const terminalStyles = create({
     outlineStyle: "none",
     backgroundColor: role.bgBase,
   },
-  canvas: {
-    flex: 1,
-    minHeight: 0,
-    minWidth: 0,
+  canvas: { flex: 1, minHeight: 0, minWidth: 0, overflow: "clip" },
+  screen: {
+    "--_scrollbar-opacity": { default: "0", ":hover": "1" },
+    position: "relative",
+    boxSizing: "border-box",
+    width: "100%",
+    height: "100%",
     paddingBlock: space.s2,
     paddingInline: space.s1_5,
-    overflow: "clip",
+    overflow: "hidden",
+    caretColor: "transparent",
   },
+  scrollbar: {
+    position: "absolute",
+    insetBlock: 2,
+    insetInlineEnd: 2,
+    width: 6,
+    opacity: "var(--_scrollbar-opacity)",
+    transitionProperty: "opacity",
+    transitionDuration: motion.durationFast,
+    transitionTimingFunction: motion.easeOut,
+  },
+  scrollbarHeld: { opacity: 1 },
+  scrollbarEmpty: { display: "none" },
+  thumb: { borderRadius: 3, backgroundColor: role.scrollbarThumb },
   state: {
     display: "flex",
     alignItems: "center",

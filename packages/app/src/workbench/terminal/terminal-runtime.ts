@@ -19,6 +19,7 @@ import {
 } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 import { loadGhostty } from "./ghostty.ts";
+import { terminalStyles } from "./terminal.stylex.ts";
 
 interface CommandMark {
   readonly row: number;
@@ -211,11 +212,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   if (initialTab === undefined) return undefined;
   const commandOutput = initialTab.kind !== "shell";
   const element = document.createElement("div");
-  element.style.width = "100%";
-  element.style.height = "100%";
-  element.style.overflow = "hidden";
-  element.style.position = "relative";
-  element.style.caretColor = "transparent";
+  element.className = props(terminalStyles.screen).className ?? "";
 
   const themed = openThemedTerminal(
     engine,
@@ -225,12 +222,14 @@ async function createView(id: string): Promise<TerminalView | undefined> {
       smoothScrollDuration: 0,
       convertEol: commandOutput,
       disableStdin: commandOutput || !takesInput(initialTab),
+      scrollbar: false,
     },
     () => scheduleFit(),
   );
 
   const terminal = themed.terminal;
   const fit = themed.fit;
+  const scrollbar = mountScrollbar(terminal, element);
   terminal.pauseRendering();
 
   if (commandOutput) terminal.write("\u001b[?25l");
@@ -436,11 +435,13 @@ async function createView(id: string): Promise<TerminalView | undefined> {
       terminal.clearSelection();
       terminal.write("\u001bc\u001b[?25l");
       wake();
+      scrollbar.place();
       mirrorOutput();
     },
     write(value) {
       terminal.write(commandOutput ? value + "\u001b[?25l" : value);
       wake();
+      scrollbar.place();
 
       if (commandOutput) mirrorOutput();
     },
@@ -466,6 +467,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
       element.removeEventListener("copy", copy, true);
       element.removeEventListener("paste", paste, true);
       element.removeEventListener("focus", focusInput);
+      scrollbar.dispose();
       themed.dispose();
       element.remove();
       views.delete(id);
@@ -474,6 +476,91 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   scheduleFit();
 
   return view;
+}
+
+/**
+ * Draws `terminal`'s scrollbar along `element`'s padding edge, flush with the panel, in place of
+ * ghostty's, which it paints inside the canvas over the last column. A press on it is
+ * default-prevented so ghostty's selection and a program's mouse tracking never see it.
+ */
+function mountScrollbar(terminal: Terminal, element: HTMLElement) {
+  const bar = document.createElement("div");
+  const thumb = document.createElement("div");
+  bar.setAttribute("aria-hidden", "true");
+  thumb.className = props(terminalStyles.thumb).className ?? "";
+  bar.append(thumb);
+  element.append(bar);
+  let frame = 0;
+  let drag: { readonly y: number; readonly viewport: number } | undefined;
+
+  const render = (): void => {
+    frame = 0;
+    const scrollback = terminal.getScrollbackLength();
+
+    bar.className =
+      props(
+        terminalStyles.scrollbar,
+        drag !== undefined && terminalStyles.scrollbarHeld,
+        scrollback === 0 && terminalStyles.scrollbarEmpty,
+      ).className ?? "";
+
+    if (scrollback === 0) return;
+    const size = Math.max(24, (terminal.rows / (scrollback + terminal.rows)) * bar.clientHeight);
+    const offset = (bar.clientHeight - size) * (1 - terminal.getViewportY() / scrollback);
+    thumb.style.height = `${String(size)}px`;
+    thumb.style.transform = `translateY(${String(offset)}px)`;
+  };
+
+  const place = (): void => {
+    if (frame === 0) frame = requestAnimationFrame(render);
+  };
+
+  const scrollTo = (viewport: number): void => terminal.scrollToLine(Math.round(viewport));
+
+  const press = (event: PointerEvent): void => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const travel = bar.clientHeight - thumb.offsetHeight;
+
+    if (event.target !== thumb && travel > 0) {
+      const top = event.clientY - bar.getBoundingClientRect().top - thumb.offsetHeight / 2;
+      scrollTo((1 - top / travel) * terminal.getScrollbackLength());
+    }
+
+    drag = { y: event.clientY, viewport: terminal.getViewportY() };
+    bar.setPointerCapture(event.pointerId);
+    place();
+  };
+
+  const move = (event: PointerEvent): void => {
+    const travel = bar.clientHeight - thumb.offsetHeight;
+
+    if (drag === undefined || travel <= 0) return;
+    scrollTo(drag.viewport - ((event.clientY - drag.y) / travel) * terminal.getScrollbackLength());
+  };
+
+  const release = (): void => {
+    drag = undefined;
+    place();
+  };
+
+  bar.addEventListener("pointerdown", press);
+  bar.addEventListener("pointermove", move);
+  bar.addEventListener("pointerup", release);
+  bar.addEventListener("pointercancel", release);
+  const scrolled = terminal.onScroll(place);
+  const resized = terminal.onResize(place);
+  place();
+
+  return {
+    place,
+    dispose() {
+      cancelAnimationFrame(frame);
+      scrolled.dispose();
+      resized.dispose();
+      bar.remove();
+    },
+  };
 }
 
 export function mountTerminal(id: string, container: HTMLDivElement, visible: boolean): () => void {

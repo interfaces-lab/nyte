@@ -1,5 +1,5 @@
 diff --git a/dist/ghostty-web.js b/dist/ghostty-web.js
-index e5efac501b9ad1f2740c8b10a233c23d41c533ba..7c82cc6b7cf97e8ba65b23689a39a330429a1e56 100644
+index e5efac501b9ad1f2740c8b10a233c23d41c533ba..295c63042ccce9de9a13772efffe41b26d13c7e4 100644
 --- a/dist/ghostty-web.js
 +++ b/dist/ghostty-web.js
 @@ -1702,7 +1702,7 @@ class gA {
@@ -7,10 +7,19 @@ index e5efac501b9ad1f2740c8b10a233c23d41c533ba..7c82cc6b7cf97e8ba65b23689a39a330
      if (!I)
        throw new Error("Failed to get 2D rendering context");
 -    this.ctx = I, this.fontSize = g.fontSize ?? 15, this.fontFamily = g.fontFamily ?? "monospace", this.cursorStyle = g.cursorStyle ?? "block", this.cursorBlink = g.cursorBlink ?? !1, this.theme = { ...p, ...g.theme }, this.devicePixelRatio = g.devicePixelRatio, this.ghostty = g.ghostty, this.palette = [
-+    this.ctx = I, this.fontSize = g.fontSize ?? 15, this.fontFamily = g.fontFamily ?? "monospace", this.cursorStyle = g.cursorStyle ?? "block", this.cursorBlink = g.cursorBlink ?? !1, this.cursorWithoutFocus = g.cursorWithoutFocus ?? !1, this.theme = { ...p, ...g.theme }, this.devicePixelRatio = g.devicePixelRatio, this.ghostty = g.ghostty, this.palette = [
++    this.ctx = I, this.fontSize = g.fontSize ?? 15, this.fontFamily = g.fontFamily ?? "monospace", this.cursorStyle = g.cursorStyle ?? "block", this.cursorBlink = g.cursorBlink ?? !1, this.cursorWithoutFocus = g.cursorWithoutFocus ?? !1, this.scrollbar = g.scrollbar ?? !0, this.theme = { ...p, ...g.theme }, this.devicePixelRatio = g.devicePixelRatio, this.ghostty = g.ghostty, this.palette = [
        this.theme.black,
        this.theme.red,
        this.theme.green,
+@@ -1854,7 +1854,7 @@ class gA {
+         J = A.getLine(S);
+       J && this.renderLine(J, S, D.cols);
+     }
+-    G && this.renderCursor(E.x, E.y), C && Q > 0 && this.renderScrollbar(I, i, D.rows, Q), this.lastCursorPosition = { x: E.x, y: E.y }, this.lastCursorVisible = G, A.clearDirty();
++    G && this.renderCursor(E.x, E.y), C && Q > 0 && this.scrollbar && this.renderScrollbar(I, i, D.rows, Q), this.lastCursorPosition = { x: E.x, y: E.y }, this.lastCursorVisible = G, A.clearDirty();
+   }
+   /**
+    * Render a single line using two-pass approach:
 @@ -1978,7 +1978,7 @@ class gA {
      return Math.max(1, Math.ceil(this.deviceMetrics.ascent * 0.75 * 0.75 * 0.15));
    }
@@ -20,15 +29,25 @@ index e5efac501b9ad1f2740c8b10a233c23d41c533ba..7c82cc6b7cf97e8ba65b23689a39a330
      return g === 0 && A.visible && C && (!this.cursorBlink || this.cursorVisible);
    }
    /**
-@@ -2743,6 +2743,7 @@ class wA {
+@@ -2719,7 +2719,7 @@ class wA {
+         }
+       }
+     }, this.handleMouseDown = (I) => {
+-      if (!this.canvas || !this.renderer || !this.wasmTerm)
++      if (!this.canvas || !this.renderer || !this.wasmTerm || !this.options.scrollbar)
+         return;
+       const C = this.wasmTerm.getScrollbackLength();
+       if (C === 0)
+@@ -2743,6 +2743,8 @@ class wA {
        rows: A.rows ?? 24,
        cursorBlink: A.cursorBlink ?? !1,
        cursorStyle: A.cursorStyle ?? "block",
 +      cursorWithoutFocus: A.cursorWithoutFocus ?? !1,
++      scrollbar: A.scrollbar ?? !0,
        theme: A.theme ?? {},
        scrollback: A.scrollback ?? 1e4,
        fontSize: A.fontSize ?? 15,
-@@ -2776,7 +2777,7 @@ class wA {
+@@ -2776,7 +2778,7 @@ class wA {
            break;
          case "cursorBlink":
          case "cursorStyle":
@@ -37,11 +56,12 @@ index e5efac501b9ad1f2740c8b10a233c23d41c533ba..7c82cc6b7cf97e8ba65b23689a39a330
            break;
          case "theme":
            if (this.renderer) {
-@@ -2907,9 +2908,10 @@ class wA {
+@@ -2907,9 +2909,11 @@ class wA {
          fontFamily: this.options.fontFamily,
          cursorStyle: this.options.cursorStyle,
          cursorBlink: !1,
 +        cursorWithoutFocus: this.options.cursorWithoutFocus,
++        scrollbar: this.options.scrollbar,
          theme: this.options.theme,
          ghostty: this.ghostty
 -      }), this.renderer.setCursorBlink(this.isFocused && this.options.cursorBlink), this.renderer.resize(this.cols, this.rows), this.scheduleFontRemeasure();
@@ -49,7 +69,7 @@ index e5efac501b9ad1f2740c8b10a233c23d41c533ba..7c82cc6b7cf97e8ba65b23689a39a330
        const C = this.canvas, Q = this.renderer, E = this.wasmTerm, D = {
          hasMouseTracking: () => (E == null ? void 0 : E.hasMouseTracking()) ?? !1,
          hasSgrMouseMode: () => (E == null ? void 0 : E.getMode(1006, !1)) ?? !0,
-@@ -3247,7 +3249,7 @@ class wA {
+@@ -3247,7 +3251,7 @@ class wA {
     * Start the render loop
     */
    startRenderLoop() {
@@ -58,7 +78,7 @@ index e5efac501b9ad1f2740c8b10a233c23d41c533ba..7c82cc6b7cf97e8ba65b23689a39a330
        return;
      const A = () => {
        if (!this.isDisposed && this.isOpen) {
-@@ -3258,6 +3260,24 @@ class wA {
+@@ -3258,6 +3262,24 @@ class wA {
      };
      A();
    }
@@ -83,7 +103,7 @@ index e5efac501b9ad1f2740c8b10a233c23d41c533ba..7c82cc6b7cf97e8ba65b23689a39a330
    /**
     * Get a line from native WASM scrollback buffer
     * Implements IScrollbackProvider
-@@ -3280,7 +3300,7 @@ class wA {
+@@ -3280,7 +3302,7 @@ class wA {
    }
    setFocused(A) {
      var g;
@@ -92,11 +112,20 @@ index e5efac501b9ad1f2740c8b10a233c23d41c533ba..7c82cc6b7cf97e8ba65b23689a39a330
    }
    /**
     * Assert terminal is open (throw if not)
+@@ -3363,6 +3385,8 @@ class wA {
+    * Show scrollbar with fade-in and schedule auto-hide
+    */
+   showScrollbar() {
++    if (!this.options.scrollbar)
++      return;
+     this.scrollbarHideTimeout && (window.clearTimeout(this.scrollbarHideTimeout), this.scrollbarHideTimeout = void 0), this.scrollbarVisible ? this.scrollbarOpacity = 1 : (this.scrollbarVisible = !0, this.scrollbarOpacity = 0, this.fadeInScrollbar()), this.isDraggingScrollbar || (this.scrollbarHideTimeout = window.setTimeout(() => {
+       this.hideScrollbar();
+     }, this.SCROLLBAR_HIDE_DELAY_MS));
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index ba99f04dc989344654c14c433d5ebf7454691691..cb3157da1762ee3a4047eab8fbaef968a39c49a0 100644
+index ba99f04dc989344654c14c433d5ebf7454691691..400e1a2c6a0565a9cac84cc541277a39b8da2d4b 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -1042,6 +1042,10 @@ export declare interface ITerminalOptions {
+@@ -1042,6 +1042,14 @@ export declare interface ITerminalOptions {
      rows?: number;
      cursorBlink?: boolean;
      cursorStyle?: 'block' | 'underline' | 'bar';
@@ -104,10 +133,14 @@ index ba99f04dc989344654c14c433d5ebf7454691691..cb3157da1762ee3a4047eab8fbaef968
 +     * Draw and blink the cursor while the terminal doesn't have focus, for display-only terminals
 +     */
 +    cursorWithoutFocus?: boolean;
++    /**
++     * Draw the scrollbar and take clicks on it; false leaves the scrollbar to the embedding page
++     */
++    scrollbar?: boolean;
      theme?: ITheme;
      scrollback?: number;
      fontSize?: number;
-@@ -1448,6 +1452,10 @@ export declare interface RendererOptions {
+@@ -1448,6 +1456,14 @@ export declare interface RendererOptions {
      fontFamily?: string;
      cursorStyle?: 'block' | 'underline' | 'bar';
      cursorBlink?: boolean;
@@ -115,10 +148,14 @@ index ba99f04dc989344654c14c433d5ebf7454691691..cb3157da1762ee3a4047eab8fbaef968
 +     * Draw and blink the cursor while the terminal doesn't have focus, for display-only terminals
 +     */
 +    cursorWithoutFocus?: boolean;
++    /**
++     * Draw the scrollbar; false leaves it to the embedding page
++     */
++    scrollbar?: boolean;
      theme?: ITheme;
      devicePixelRatio?: number;
      ghostty?: Ghostty;
-@@ -1783,6 +1791,14 @@ export declare class Terminal implements ITerminalCore {
+@@ -1783,6 +1799,14 @@ export declare class Terminal implements ITerminalCore {
       * Resize terminal
       */
      resize(cols: number, rows: number): void;
