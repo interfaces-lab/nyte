@@ -2,10 +2,12 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "@tanstack/react-router";
-import { IconBarsTwo, IconCrossSmall } from "central-icons";
+import { glyphs } from "~/lib/glyphs";
 import { HrefLink } from "~/components/site/href-link";
 import { DocNav } from "~/components/site/sidebar";
 import { findPage, type NavSection } from "~/lib/docs";
+
+const { IconBarsTwo, IconCrossSmall } = glyphs;
 
 const subscribeToNothing = () => () => undefined;
 

@@ -11,7 +11,12 @@ packages.
 | `central-icons`        | `@central-icons-react/round-outlined-radius-2-stroke-1.5` |
 | `central-icons-filled` | `@central-icons-react/round-filled-radius-2-stroke-1.5`   |
 
-Installing Central Icons needs `CENTRAL_LICENSE_KEY`.
+Central Icons are licensed per user, so they are optional dependencies that install only with
+`CENTRAL_LICENSE_KEY`. Without the key, pnpm skips them and `Icon` draws the same names with
+[Lucide](https://lucide.dev) at stroke 1.5, and brand marks with
+[Simple Icons](https://simpleicons.org). `scripts/icons.mjs` picks the set on install and before
+each build; `NYTE_ICONS=central` or `NYTE_ICONS=lucide` overrides it. `pnpm icons:test` fails when
+a name has no Lucide glyph, so add one to `packages/ui/src/glyphs/lucide.ts` with every new name.
 
 ## Usage
 

@@ -11,5 +11,6 @@
       "@nyte-ai/ui/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/glyphs/central.tsx"]
 }

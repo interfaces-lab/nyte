@@ -4,8 +4,17 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
 import { fumadocsMdx } from "fumadocs-mdx/vite";
 import { nitro } from "nitro/vite";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defaultClientConditions, defaultServerConditions, defineConfig } from "vite";
+
+/** Pre-bundle the icon packages @nyte-ai/ui selected; scripts/icons.mjs writes the choice. */
+const uiIcons = readFileSync(
+  new URL("../ui/src/glyphs/selected.ts", import.meta.url),
+  "utf8",
+).includes('"./central')
+  ? ["@nyte-ai/ui > central-icons", "@nyte-ai/ui > central-icons-filled"]
+  : ["@nyte-ai/ui > lucide-react", "@nyte-ai/ui > simple-icons"];
 
 export default defineConfig({
   plugins: [
@@ -55,9 +64,8 @@ export default defineConfig({
       "use-render",
     ]
       .map((part) => `@nyte-ai/ui > @base-ui/react/${part}`)
+      .concat(uiIcons)
       .concat([
-        "@nyte-ai/ui > central-icons",
-        "@nyte-ai/ui > central-icons-filled",
         "@nyte-ai/ui > class-variance-authority",
         "@nyte-ai/ui > motion/react",
         "@nyte-ai/ui > @nivo/axes",

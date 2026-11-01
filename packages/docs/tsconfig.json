@@ -17,5 +17,5 @@
     }
   },
   "include": ["src", "content", "*.ts"],
-  "exclude": ["node_modules", ".output"]
+  "exclude": ["node_modules", ".output", "src/lib/icon-set/central.ts"]
 }

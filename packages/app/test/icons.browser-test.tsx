@@ -120,7 +120,7 @@ export function mount(): void {
               <Icon name={reference.name} size="md" />
             </span>
             <span data-reference>
-              <reference.outlined size={16} mode="raw" ariaHidden />
+              <reference.outlined size={16} />
             </span>
           </div>,
           ...("filled" in reference
@@ -130,7 +130,7 @@ export function mount(): void {
                     <Icon name={reference.name} variant="filled" size="md" />
                   </span>
                   <span data-reference>
-                    <reference.filled size={16} mode="raw" ariaHidden />
+                    <reference.filled size={16} />
                   </span>
                 </div>,
               ]

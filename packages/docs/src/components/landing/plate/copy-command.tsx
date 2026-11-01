@@ -1,5 +1,7 @@
-import { IconCheckmark1Small, IconClipboard } from "central-icons";
+import { glyphs } from "~/lib/glyphs";
 import { useRef, useState } from "react";
+
+const { IconCheckmark1Small, IconClipboard } = glyphs;
 
 export function CopyCommand({ command }: { command: string }) {
   const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");

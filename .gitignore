@@ -36,3 +36,8 @@ share/
 # copied into SDK tarballs by scripts/sdk-packages.mjs
 /packages/*/LICENSE
 /packages/*/THIRD-PARTY-NOTICES.md
+
+# written by scripts/icons.mjs: Central Icons when installed, Lucide otherwise
+/packages/ui/src/glyphs/selected.ts
+/packages/docs/src/lib/icon-set/selected.ts
+/packages/mobile/scripts/icon-set/selected.mjs

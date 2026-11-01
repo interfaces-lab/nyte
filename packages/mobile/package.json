@@ -25,7 +25,7 @@
     "submit": "eas submit --platform ios --profile production",
     "test": "vitest --run",
     "typecheck": "pnpm icons:sync && pnpm canvas:build && tsc --noEmit",
-    "icons:sync": "node scripts/sync-completion-icons.mjs"
+    "icons:sync": "node ../../scripts/icons.mjs && node scripts/sync-completion-icons.mjs"
   },
   "dependencies": {
     "@clerk/expo": "^4.13.1",
@@ -88,8 +88,11 @@
     "@types/semver": "^7.8.0",
     "babel-plugin-react-compiler": "^1.0.0",
     "babel-preset-expo": "^58.0.18",
-    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.19",
+    "lucide-react": "^1.61.0",
     "vitest": "^5.0.5"
+  },
+  "optionalDependencies": {
+    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.19"
   },
   "enriched-markdown": {
     "codeHighlightLanguages": [

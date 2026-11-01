@@ -1,11 +1,13 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
-import { IconArrowDown } from "central-icons";
+import { glyphs } from "~/lib/glyphs";
 import { Link } from "@tanstack/react-router";
 import { releasesUrl } from "~/lib/releases";
 import { useMacRelease } from "~/lib/site-data";
 import { CopyCommand } from "./copy-command";
 import { ScanMoon } from "./scan-moon";
+
+const { IconArrowDown } = glyphs;
 
 export function InstallCard() {
   const release = useMacRelease();

@@ -5,9 +5,11 @@ import { create } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Input } from "@nyte-ai/ui/input";
 import { liteClient } from "algoliasearch/lite";
-import { IconMagnifyingGlass } from "central-icons";
+import { glyphs } from "~/lib/glyphs";
 import { algoliaClient } from "fumadocs-core/search/client/algolia";
 import { splitHref } from "~/lib/href";
+
+const { IconMagnifyingGlass } = glyphs;
 
 const styles = create({
   popup: {

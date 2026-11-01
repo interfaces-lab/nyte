@@ -1,9 +1,11 @@
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { create } from "@stylexjs/stylex";
-import { IconCheckmark1Small, IconClipboard } from "central-icons";
+import { glyphs } from "~/lib/glyphs";
 import { createContext, use, useRef, useState, useSyncExternalStore } from "react";
 import type { ComponentProps, ReactNode } from "react";
+
+const { IconCheckmark1Small, IconClipboard } = glyphs;
 
 export type CodeFrameProps = ComponentProps<"pre"> & {
   title?: string;

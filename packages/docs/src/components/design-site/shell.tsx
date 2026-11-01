@@ -1,7 +1,7 @@
 import { FileTypeIconSprite } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Link } from "@tanstack/react-router";
-import { IconMagnifyingGlass } from "central-icons";
+import { glyphs } from "~/lib/glyphs";
 import { useState, type ReactNode } from "react";
 import { MobileMenu } from "~/components/site-nav/mobile-menu";
 import { SearchDialog, useSearchShortcut } from "~/components/site-nav/search";
@@ -10,6 +10,8 @@ import { designRoute, docsRoute, githubUrl } from "~/lib/shared";
 import { DesignWordmark } from "./mark";
 import { DesignNav } from "./nav";
 import { ThemeSwitch } from "./theme-switch";
+
+const { IconMagnifyingGlass } = glyphs;
 
 /**
  * design.nyte.sh's own frame, apart from the Nyte site's navbar: a rail with

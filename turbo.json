@@ -13,6 +13,25 @@
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [".output/**", "dist/**", "out/**"]
     },
+    "@nyte-ai/ui#build": {
+      "dependsOn": ["^build"],
+      "env": ["NYTE_ICONS"],
+      "passThroughEnv": ["CENTRAL_LICENSE_KEY"],
+      "inputs": ["$TURBO_DEFAULT$", "src/glyphs/selected.ts", "$TURBO_ROOT$/scripts/icons.mjs"],
+      "outputs": ["dist/**"]
+    },
+    "@nyte-ai/web#build": {
+      "dependsOn": ["^build"],
+      "env": ["NYTE_ICONS"],
+      "passThroughEnv": ["CENTRAL_LICENSE_KEY"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*",
+        "src/lib/icon-set/selected.ts",
+        "$TURBO_ROOT$/scripts/icons.mjs"
+      ],
+      "outputs": [".output/**", "dist/**"]
+    },
     "@nyte-ai/tui#build": {
       "dependsOn": ["^build"],
       "env": ["NYTE_CONNECT_ORIGIN", "NYTE_RELEASE_VERSION"],
