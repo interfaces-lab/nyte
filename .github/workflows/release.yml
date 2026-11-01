@@ -13,6 +13,9 @@ on:
       release_notes:
         type: string
         default: ""
+      skip_verify:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       bump:
