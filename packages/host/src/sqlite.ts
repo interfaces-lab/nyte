@@ -37,6 +37,7 @@ import {
   storedReader,
 } from "./store-rows.ts";
 import { sqliteWorkers } from "./sqlite-workers.ts";
+import { compactStore } from "./store-compaction.ts";
 import { sessionIndexChanges, sqlSessionIndex } from "./session-index.ts";
 
 const BUSY_TIMEOUT_MS = 5_000;
@@ -68,6 +69,7 @@ export function sqliteStore(
   let opening: Promise<StoreConnection> | null = null;
   let closing: Promise<void> | null = null;
   let workers: ReturnType<typeof sqliteWorkers> | null = null;
+  let compaction: { readonly stop: AbortController; readonly done: Promise<void> } | null = null;
 
   const open = async (): Promise<StoreConnection> => {
     let created: DatabaseSync | undefined;
@@ -97,6 +99,18 @@ export function sqliteStore(
     database = created;
     workers = "path" in input ? sqliteWorkers(created, input.path) : null;
 
+    if ("path" in input) {
+      const stop = new AbortController();
+
+      const done = compactStore(created, stop.signal, () => workers?.check()).catch(
+        (error: unknown) => {
+          if (!stop.signal.aborted) dev("sqlite", "compaction-failed", { message: String(error) });
+        },
+      );
+
+      compaction = { stop, done };
+    }
+
     return connect(created, workers);
   };
 
@@ -116,6 +130,9 @@ export function sqliteStore(
     close() {
       closing ??= (async () => {
         await opening?.catch(() => undefined);
+        compaction?.stop.abort();
+        await compaction?.done;
+        compaction = null;
         await workers?.close();
 
         if (database !== null) closeDatabase(database);
