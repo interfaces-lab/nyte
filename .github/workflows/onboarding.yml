@@ -1,0 +1,102 @@
+name: Onboarding
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: onboarding-${{ github.ref }}
+  cancel-in-progress: true
+
+# A newcomer's machine: no CENTRAL_LICENSE_KEY, no Turbo remote cache, no gh, no mise. Only
+# Node, which npx needs. `npx nyte-ai init --yes` must leave a checkout where the terminal
+# client and the desktop app start, a second run must change nothing, and the build must
+# hold no Central Icons code. The runner's checkout of the pull request stands in for the
+# clone or fork, so init finds ./nyte on a detached HEAD and leaves the code as it is.
+jobs:
+  first-run:
+    name: first run (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Raises GitHub's API rate limit for the gh and mise downloads; not a secret.
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: nyte
+      - name: Install Node, as a newcomer would from nodejs.org
+        uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Remove the runner's gh, so init installs and verifies its own
+        run: |
+          while command -v gh >/dev/null; do sudo rm -f "$(command -v gh)"; done
+          ! command -v mise
+          test -z "${CENTRAL_LICENSE_KEY:-}"
+
+      - name: npx nyte-ai init --yes
+        run: |
+          npm pack ./nyte/packages/cli --pack-destination "$RUNNER_TEMP" --silent
+          npx --yes "$RUNNER_TEMP"/nyte-ai-*.tgz init --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: A second run changes nothing
+        run: |
+          # Everything init can change: the checkout, the install, the build, the rc files.
+          snapshot() {
+            git -C nyte status --porcelain
+            node -e 'for (const f of process.argv.slice(1)) { try { console.log(f, require("fs").statSync(f).mtimeMs) } catch { console.log(f, "missing") } }' \
+              nyte/node_modules/.pnpm-workspace-state-v1.json nyte/packages/tui/dist/nyte ~/.bashrc ~/.zshrc ~/.local/bin/gh ~/.local/bin/mise
+          }
+          snapshot > "$RUNNER_TEMP/before.txt"
+          npx --yes "$RUNNER_TEMP"/nyte-ai-*.tgz init --check
+          npx --yes "$RUNNER_TEMP"/nyte-ai-*.tgz init --yes | tee "$RUNNER_TEMP/second.log"
+          grep -qx "nothing to do" "$RUNNER_TEMP/second.log"
+          snapshot > "$RUNNER_TEMP/after.txt"
+          diff "$RUNNER_TEMP/before.txt" "$RUNNER_TEMP/after.txt"
+
+      - name: Every icon name has a Lucide glyph
+        working-directory: nyte
+        run: mise exec -- pnpm icons:test
+
+      - name: Test dependencies for the smoke tests
+        run: |
+          git config --global user.email "ci@nyte.sh"
+          git config --global user.name "nyte-ci"
+          if [ "$RUNNER_OS" = Linux ]; then sudo apt-get install -y ripgrep xvfb; else command -v rg || brew install ripgrep; fi
+
+      - name: Terminal client smoke test
+        working-directory: nyte
+        run: mise exec -- pnpm --dir packages/tui exec bun test ./qa/binary.smoke.ts
+
+      - name: Desktop dev smoke test
+        working-directory: nyte
+        run: |
+          display=""
+          if [ "$RUNNER_OS" = Linux ]; then display="xvfb-run --auto-servernum"; fi
+          $display mise exec -- node scripts/smoke-desktop-dev.mjs
+
+      - name: The build holds no Central Icons code
+        working-directory: nyte
+        run: |
+          mise exec -- pnpm build:desktop
+          node scripts/check-no-central.mjs
+
+      - name: Keep init's log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: init-log-${{ matrix.os }}-${{ github.run_attempt }}
+          path: ~/.nyte/logs/init-*.log
+          if-no-files-found: ignore
