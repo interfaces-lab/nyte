@@ -2,12 +2,15 @@
 
 ## Setup
 
-From the repository root:
+On macOS or Ubuntu, with Node installed, run this in the folder that should hold the checkout:
 
 ```sh
-mise install
-pnpm install
+npx nyte-ai init
 ```
+
+It installs what's missing (Xcode Command Line Tools or Ubuntu packages, gh, mise), hands the GitHub login to `gh`, clones `interfaces-lab/nyte` into `./nyte` if you're in the org or forks it if you aren't, installs Node, pnpm and bun with mise, installs dependencies, and builds the terminal client once. It shows the whole plan and asks once first. Run it again at any time: it skips what's done and continues a run that failed. `npx nyte-ai init --check` prints the plan without changing anything.
+
+Without `CENTRAL_LICENSE_KEY`, Central Icons don't install and the apps draw Lucide icons instead; see [Icons](packages/docs/content/design/foundations/icons.mdx).
 
 Runtime versions live in [mise.toml](mise.toml); the pnpm version is pinned in [package.json](package.json). Use pnpm for workspace commands.
 

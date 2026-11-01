@@ -21,7 +21,8 @@ See the [user guide](packages/cli/docs/README.md).
 ## Development
 
 ```sh
-mise install && pnpm install
+npx nyte-ai init        # tools, the code in ./nyte, dependencies, a first build
+cd nyte && pnpm dev:tui
 pnpm format && pnpm lint && pnpm typecheck
 ```
 
