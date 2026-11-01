@@ -414,6 +414,7 @@ jobs:
 
   publish:
     needs: [version, draft]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
