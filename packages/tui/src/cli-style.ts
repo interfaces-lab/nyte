@@ -107,6 +107,7 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   { label: "nyte mcp <add|remove|list|login|logout>", detail: "manage MCP servers" },
   { label: "nyte host [--json]", detail: "serve your chats for --host-url to attach to" },
   { label: "nyte api <list|describe>", detail: "print the operations a host serves" },
+  { label: "nyte doctor [--json]", detail: "check this install and print what to fix" },
   { label: "nyte --version", detail: "print the installed version" },
   { label: "nyte -p [--json] [--quiet] [--resume] [prompt]", detail: "" },
 ];
@@ -150,7 +151,7 @@ export function renderHelp(color: boolean = ansiEnabled()): string {
 }
 
 export function renderCommandHelp(
-  command: "login" | "logout" | "update" | "status" | "account" | "mcp" | "host" | "api",
+  command: "login" | "logout" | "update" | "status" | "account" | "mcp" | "host" | "api" | "doctor",
 ): string {
   switch (command) {
     case "login":
@@ -226,6 +227,16 @@ export function renderCommandHelp(
         "login without a name needs an interactive terminal; over SSH, paste the URL the browser ends on.",
         "Examples: nyte mcp add docs --url https://example.com/mcp",
         "          nyte mcp add files -- npx -y @modelcontextprotocol/server-filesystem .",
+      ].join("\n");
+    case "doctor":
+      return [
+        "Usage: nyte doctor [--json]",
+        "Checks this install: the binary, PATH, updates, ~/.nyte, secret file modes, the host,",
+        "provider credentials, the terminal and recent crashes. Changes nothing, and opens no",
+        "secret file; it checks their modes with stat.",
+        "Every problem ends with the command that fixes it. Exits 1 when a check fails.",
+        "--json prints one object on stdout: version, target, checks and summary.",
+        "Example: nyte doctor",
       ].join("\n");
     case "api":
       return [

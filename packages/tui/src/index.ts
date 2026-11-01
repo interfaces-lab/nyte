@@ -2,6 +2,7 @@ import process from "node:process";
 import type { Connection, LoginMethod } from "@nyte-ai/sdk";
 import { accountCommand } from "./account-command.ts";
 import { apiCommand } from "./api-command.ts";
+import { doctorCommand } from "./doctor-command.ts";
 import { mcpCommand } from "./mcp-command.ts";
 import { loginProvider, logoutProvider } from "./services/auth.ts";
 import { availableModels } from "./lib/catalog.ts";
@@ -440,6 +441,18 @@ async function main(): Promise<PrintOutcome | undefined> {
 
   if (command === "host") {
     await hostCommand(invocationArgs.slice(1), untilInterrupted(), output);
+
+    return undefined;
+  }
+
+  if (command === "doctor") {
+    if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
+      console.log(renderCommandHelp("doctor"));
+
+      return undefined;
+    }
+
+    process.exitCode = await doctorCommand(invocationArgs.slice(1));
 
     return undefined;
   }
