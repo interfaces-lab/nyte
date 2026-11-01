@@ -294,6 +294,7 @@ describe("tool calls", () => {
     expect((await readCall(kernel, session.id, "k1")).acquisitions).toEqual({
       "acq:0": child,
       "acq:1": panel,
+      "acq:1:created": true,
     });
 
     const children = await host.sessions.list({

@@ -22,7 +22,13 @@ import type {
 } from "../contract/parts.ts";
 import { decodePartRecord } from "../contract/records.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
-import { openAction, recordAcquisition, reserveRerun, runAction } from "../engine/durable.ts";
+import {
+  openAction,
+  recordAcquisition,
+  recordedAcquisition,
+  reserveRerun,
+  runAction,
+} from "../engine/durable.ts";
 import type { ActionIntent } from "../engine/durable.ts";
 import { RESERVED_PART_KINDS } from "../engine/part-definitions.ts";
 import { commit } from "../fold/commit.ts";
@@ -53,6 +59,10 @@ type Performed =
 
 type PartUpdateOutcome = Awaited<ReturnType<Part<PartDefinition>["update"]>>;
 
+/**
+ * Inside a durable step, records that the part landed. Closing deletes the part's ref, so a
+ * replayed step reads that record instead of creating the closed part again.
+ */
 export async function createPart<K extends PartDefinition>(
   kernel: Kernel,
   context: ConnectionContext,
@@ -119,6 +129,12 @@ export async function createPart<K extends PartDefinition>(
   const transcript = input.placement.kind === "transcript";
   const run = transcript ? null : (from?.run ?? null);
   const name = partRef(session, id);
+
+  const landedBefore =
+    step !== null &&
+    (await recordedAcquisition(kernel.store, step, `${step.key}:created`)) !== null;
+
+  if (landedBefore) return partHandleFor(kernel, context, session, id, kind);
 
   await attempt(`Creating part ${id}`, async () => {
     const existing = await load(kernel.store, await kernel.store.refs.get(name), decodePartRecord);
@@ -237,6 +253,8 @@ export async function createPart<K extends PartDefinition>(
 
     return (await commit(kernel, updates)).kind === "set" ? undefined : STALE;
   });
+
+  if (step !== null) await recordAcquisition(kernel, step, `${step.key}:created`, true);
 
   return partHandleFor(kernel, context, session, id, kind);
 }
