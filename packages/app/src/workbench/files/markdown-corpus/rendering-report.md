@@ -56,7 +56,7 @@ I built canvas, app, desktop and the e2e desktop. Then I ran a scratch spec (del
 
 ## 3. The rendering model I propose
 
-**How VS Code decides (read from the Cursor bundle; nothing copied).**
+**How VS Code decides (read from its source; nothing copied).**
 - **Resolver:** an `EditorResolverService` picks an editor per resource from registered selectors, ranked builtin < default < option < exclusive, and the user can override with `workbench.editorAssociations`. `media-preview/package.json` registers `imagePreview.previewEditor` for `*.{jpg,jpe,jpeg,png,bmp,gif,ico,webp,avif,svg}`, audio for `*.{mp3,wav,ogg,oga}` and video for `*.{mp4,webm}`.
 - **Fallbacks:** anything unmatched goes to the text editor. If the text read fails as binary, `openAsBinary` hands the file to `workbench.editor.defaultBinaryEditor` or to `BinaryFileEditor` (`workbench.editors.files.binaryFileEditor`). That editor's action re-resolves with `override: PICK` + `setForceOpenAsText`.
 - **Terminal states:** missing and too-large are editors with actions, not spinners.

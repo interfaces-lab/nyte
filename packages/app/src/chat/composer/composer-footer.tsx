@@ -19,7 +19,7 @@ const styles = create({
     paddingBlockStart: space.s2,
     paddingBlockEnd: space.s0_5,
     paddingInline: space.s1,
-    // Glass's footer sits behind a 1 px transparent border, which makes the row 32 px tall.
+    // A 1 px transparent border on each edge makes the row 32 px tall.
     borderBlockWidth: space.px,
     borderBlockStyle: "solid",
     borderBlockColor: "transparent",

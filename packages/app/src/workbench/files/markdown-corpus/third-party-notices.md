@@ -599,29 +599,6 @@ wherever the gameplay is used: "Gameplay – youtube.com/@Naybr".
 
 License: every one is public domain or CC0. None requires attribution.
 
-## Design references
-
-These credits record design sources. They do not grant a license to the
-referenced products or imply endorsement.
-
-### Cursor
-
-- Product: https://cursor.com
-- Desktop design references include mention-preview folder rows, native
-  context menus and file-manager labels, transcript overscroll and edge
-  fades, collapsed-message previews, shell command and output presentation,
-  and Changes-panel shortcuts and default commit behavior in `packages/app`.
-- The mention-preview reference is the file and folder path presentation in
-  `/Applications/Cursor.app/Contents/Resources/app/out/vs/workbench/workbench.glass.main.js`.
-  Scroll and fade references include `--composer-messages-bottom-overscroll`,
-  `--cursor-spacing-8`, `.composer-fade-overlay`, and `UMs`.
-- Composer and read-only message behavior was studied in the workbench
-  modules `ComposerLexicalRenderer.js`, `ComposerRichTextInline.js`,
-  `promptInputRichText.js`, and `draftAgentRepositoryService.js`. Nyte uses
-  its own message model and workspace and draft visibility rules.
-- A Cursor iOS study informed the mobile interaction order and visual
-  hierarchy. Its iPad layouts were adapted to iPhone rather than copied.
-
 ## Appendix: Apache License 2.0
 
 This is the license for Pierre, Grok Build, and OpenAI Codex above. Section 4

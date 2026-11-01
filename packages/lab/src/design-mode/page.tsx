@@ -20,7 +20,7 @@ const PLACEMENTS = [
   { value: "chat", label: "In the Chat" },
 ] as const satisfies readonly { readonly value: Placement; readonly label: string }[];
 
-/** Cursor quotes this much of an element's text after its chip. */
+/** How much of an element's text a comment quotes after its chip. */
 const QUOTE_CHARS = 80;
 
 interface Message {
@@ -30,7 +30,7 @@ interface Message {
   readonly agent: string;
 }
 
-/** Comments join the chat composer, as Cursor's "Add to chat" does, and wait there; only Send sends. */
+/** Comments join the chat composer and wait there; only Send sends. */
 export function DesignModePage(): ReactElement {
   const [scheme, setScheme] = useState<DisplayMode>("light");
   const [placement, setPlacement] = useState<Placement>("page");
@@ -108,8 +108,8 @@ export function DesignModePage(): ReactElement {
             Point at something on a page and tell the agent what to change. Turn on Design Mode,
             click an element or drag an area, and write a comment. Return adds it to the chat
             composer; Send sends everything there. Each comment reaches the agent with the
-            element&apos;s facts, your words, and a screenshot of the spot. The flow is Cursor
-            3.28&apos;s design mode; the selection, label and comment field follow react-grab.
+            element&apos;s facts, your words, and a screenshot of the spot. The selection, label and
+            comment field follow react-grab.
           </p>
         </header>
 
@@ -230,11 +230,11 @@ export function DesignModePage(): ReactElement {
           <ul {...props(styles.list)}>
             <Note title="Where the overlay lives">
               Nyte&apos;s page is a native view painted above the app, so nothing in the app can
-              draw over it. Cursor draws its area box in workbench DOM over a webview; Nyte
-              can&apos;t. The canvas, the label, the comment field and the markers all go in a
-              closed shadow root inside the page, built by the page preload. Here the page is plain
-              DOM and the overlay sits over it, taking every pointer event as the in-page one would,
-              so links and buttons never fire while Design Mode is on.
+              draw over it, and the overlay has to live inside the page. The canvas, the label, the
+              comment field and the markers all go in a closed shadow root inside the page, built by
+              the page preload. Here the page is plain DOM and the overlay sits over it, taking
+              every pointer event as the in-page one would, so links and buttons never fire while
+              Design Mode is on.
             </Note>
             <Note title="Selection, after react-grab">
               Boxes are drawn on one canvas: 1 px strokes inset half a pixel, the element&apos;s own
@@ -271,19 +271,17 @@ export function DesignModePage(): ReactElement {
             <Note title="Writing the comment">
               On the page, the label grows into the field, as in react-grab: the tag stays on top, a
               hairline, then a 13 px field that grows to 95 px and a 16 px round button. Return, or
-              the button, adds the comment to the chat; nothing is sent from the page. That is
-              Cursor&apos;s ⌘L &quot;Add to chat&quot; made the only route; Cursor&apos;s own Return
-              sends at once unless &quot;Batch edits&quot; is on. Esc lets go. In the chat, a pick
-              skips the field and lands in the composer with the cursor, and you write there.
+              the button, adds the comment to the chat; nothing is sent from the page, so several
+              comments can go out together. Esc lets go. In the chat, a pick skips the field and
+              lands in the composer with the cursor, and you write there.
             </Note>
             <Note title="The composer is the queue">
-              Each comment is a line in the composer, written as Cursor writes it: the
-              element&apos;s chip, a quote of its first 80 characters of text, then what you asked
-              for. Several elements join with +; an area reads as a screenshot region; several
-              comments are numbered, matching the markers on the page. Remove a line and its marker
-              goes; click a marker to edit the line. Send sends them all, with whatever you typed
-              under them. Cursor writes the chips inline in a rich text editor; here they are rows
-              above a plain field.
+              Each comment is a line in the composer: the element&apos;s chip, a quote of its first
+              80 characters of text, then what you asked for. Several elements join with +; an area
+              reads as a screenshot region; several comments are numbered, matching the markers on
+              the page. Remove a line and its marker goes; click a marker to edit the line. Send
+              sends them all, with whatever you typed under them. Here the chips are rows above a
+              plain field, not inline in a rich text editor.
             </Note>
             <Note title="Surviving a reload">
               A comment holds each element as an anchor: the live node, and its facts from when it
@@ -292,9 +290,9 @@ export function DesignModePage(): ReactElement {
               selector that now lands on something else counts as gone. Comments whose elements are
               all gone stay in the queue without a marker, and the tray says how many weren&apos;t
               found. Sent anyway, they carry the facts from when they were written, marked as not on
-              the page now. An open comment on a lost element lets go, as Cursor&apos;s draft does.
-              Area comments always survive: their rectangle is in page coordinates. Try it: comment
-              on Accept All Cookies, close the banner, then reload.
+              the page now. An open comment on a lost element lets go. Area comments always survive:
+              their rectangle is in page coordinates. Try it: comment on Accept All Cookies, close
+              the banner, then reload.
             </Note>
             <Note title="What the agent reads">
               Each element becomes an excerpt with its label, a unique selector, visible text,
@@ -304,7 +302,7 @@ export function DesignModePage(): ReactElement {
               product attaches a capturePage crop.
             </Note>
             <Note title="Responsive mode">
-              Presets, rotate and Fit follow Cursor. In Nyte the frame would come from
+              Presets, rotate and Fit size the page frame. In Nyte that frame would come from
               webContents.enableDeviceEmulation, which VS Code uses because the CDP metrics override
               crashes Electron. Agent clicks then need scaling into the emulated viewport.
             </Note>
@@ -324,7 +322,7 @@ interface ChipSpec {
 }
 
 /**
- * One comment as Cursor writes it into the composer: the element's chip, then what you asked
+ * One comment as it reads in the composer: the element's chip, then what you asked
  * for. Several elements sit side by side, an area reads as a screenshot region, and several
  * comments carry the numbers of their markers on the page.
  */

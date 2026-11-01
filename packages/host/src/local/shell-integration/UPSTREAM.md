@@ -2,9 +2,8 @@
 
 The startup scripts in `zsh.ts` and `bash.ts` adapt portions of Visual Studio Code's shell integration
 scripts, `src/vs/workbench/contrib/terminal/common/scripts/` at tag `1.105.1`
-(https://github.com/microsoft/vscode/tree/1.105.1/src/vs/workbench/contrib/terminal/common/scripts),
-as shipped in Cursor 3.28.5 (`18b4e7e5fb7fc450d7797e36c596c31aedaf59f0`). They are
-Copyright (c) Microsoft Corporation and MIT licensed; see `LICENSE`.
+(https://github.com/microsoft/vscode/tree/1.105.1/src/vs/workbench/contrib/terminal/common/scripts).
+They are Copyright (c) Microsoft Corporation and MIT licensed; see `LICENSE`.
 
 Adapted:
 

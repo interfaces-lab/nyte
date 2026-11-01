@@ -259,7 +259,7 @@ test("the footer under the composer shows where the chat runs, and its branch me
     await expect(readout).toBeHidden();
   });
 
-  await test.step("the footer keeps Cursor's proportions in light and dark", async () => {
+  await test.step("the footer row is 32 px tall with 20 px segments in light and dark", async () => {
     const measured = await footer.evaluate((row) => ({
       row: row.getBoundingClientRect().height,
       segments: [...row.querySelectorAll("button")].map((button) => button.offsetHeight),

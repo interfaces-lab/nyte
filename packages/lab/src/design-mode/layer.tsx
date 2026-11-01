@@ -180,7 +180,7 @@ export function DesignLayer({
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- hoverAt reads only refs and a state setter, so the first render's copy stays correct
   }, [viewportRef, scrollerRef, rootRef]);
 
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- an element comment whose elements left the page lets go, as Cursor's does
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- an element comment whose elements left the page lets go
   useEffect(() => {
     const root = rootRef.current;
 
@@ -590,7 +590,7 @@ function Tag({ parts }: { readonly parts: LabelParts }): ReactElement {
 
 /**
  * The label grown into an input: the tag stays on top, a hairline, then the comment. Return,
- * or the button, adds it to the chat composer as Cursor's ⌘L does; nothing is sent from here.
+ * or the button, adds it to the chat composer; nothing is sent from here.
  */
 function CommentPanel({
   draft,

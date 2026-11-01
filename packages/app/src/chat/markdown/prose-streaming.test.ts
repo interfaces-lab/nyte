@@ -72,7 +72,7 @@ const Paced = Type.Object({
 const Reduced = Type.Object({ reduced: Type.Literal(true), catchUp: Burst, drain: Burst });
 
 test(
-  "a streamed answer paces like Cursor's coalescer and fades only new text in the tail block",
+  "a streamed answer reveals whole words and fades only new text in the tail block",
   { timeout: 120_000 },
   async () => {
     const output = await testRenderer(ENTRY, SETUP, { motion: "no-preference" });
