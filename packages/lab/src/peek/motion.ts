@@ -1,4 +1,4 @@
-import { useDialKit, type TransitionConfig } from "dialkit";
+import { useDials, type TransitionConfig } from "../shell/dials";
 import type { Transition } from "motion/react";
 
 export const TRIGGERS = ["click", "shift", "other-sites", "off"] as const;
@@ -54,7 +54,7 @@ function spring(response: number, dampingRatio: number) {
  * the trigger default are this board's guesses.
  */
 export function usePeekDials(): PeekDials {
-  const values = useDialKit("Peek", {
+  const values = useDials("Peek", {
     trigger: {
       type: "select",
       options: [

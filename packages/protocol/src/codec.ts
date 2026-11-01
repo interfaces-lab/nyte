@@ -88,13 +88,21 @@ export function answersBytes(name: OperationName): name is ByteName {
 export function decodeInput<N extends OperationName>(name: N, value: unknown): OperationInput<N> {
   const schema = rows[name].input;
   const input = validated(schema, value);
-  const unknown: Path[] = [];
+  const unknown: Unknown[] = [];
   collect(plan(schema), value, [], unknown);
 
   if (unknown.length > 0)
-    throw new SdkError("invalid", `${name} does not take ${unknown.map(pointer).join(", ")}.`, {
-      issues: unknown.map((path) => ({ severity: "error", path, message: "Unknown field." })),
-    });
+    throw new SdkError(
+      "invalid",
+      `${name} does not take ${unknown.map((field) => pointer(field.path)).join(", ")}${sharedTakes(unknown)}.`,
+      {
+        issues: unknown.map((field) => ({
+          severity: "error",
+          path: field.path,
+          message: `Unknown field; ${takesText(field.takes)}.`,
+        })),
+      },
+    );
 
   return input;
 }
@@ -249,7 +257,21 @@ function compilePlan(start: Node, scope: Definitions, memo: Map<Node, Plan>): Pl
   return composite;
 }
 
-function collect(plan: Plan, value: unknown, path: Path, found: Path[]): void {
+type Unknown = { readonly path: Path; readonly takes: readonly string[] };
+
+/** Names what the object takes only when every unknown field sits in it; otherwise each issue does. */
+function sharedTakes(unknown: readonly Unknown[]): string {
+  const parents = new Set(unknown.map((field) => pointer(field.path.slice(0, -1))));
+  const first = unknown[0];
+
+  return parents.size === 1 && first !== undefined ? `; ${takesText(first.takes)}` : "";
+}
+
+function takesText(takes: readonly string[]): string {
+  return takes.length === 0 ? "it takes no fields" : `it takes ${takes.join(", ")}`;
+}
+
+function collect(plan: Plan, value: unknown, path: Path, found: Unknown[]): void {
   if (plan.form === "inert") return;
 
   if (plan.form === "choice") {
@@ -275,7 +297,8 @@ function collect(plan: Plan, value: unknown, path: Path, found: Path[]): void {
   for (const [key, field] of Object.entries(value)) {
     const known = plan.properties?.get(key) ?? plan.rest;
 
-    if (known === null) found.push([...path, key]);
+    if (known === null)
+      found.push({ path: [...path, key], takes: [...(plan.properties?.keys() ?? [])] });
     else collect(known, field, [...path, key], found);
   }
 }

@@ -30,7 +30,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { valid } from "semver";
-import { fetchLatestRelease, REPO, supersedes, VERSION } from "./version.ts";
+import { fetchLatestRelease, releaseChannel, REPO, supersedes, VERSION } from "./version.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -47,8 +47,8 @@ export type UpdateProgress =
   | { readonly kind: "verified" };
 
 interface UpdateOptions {
-  /** Install this release instead of the newest one. A leading `v` is fine. */
-  readonly version?: string;
+  /** A release to install (a leading `v` is fine), or `stable` or `nightly` to switch to that channel's newest release. */
+  readonly target?: string;
   readonly report?: (event: UpdateProgress) => void;
   readonly fetchFn?: typeof globalThis.fetch;
   /** The binary to replace. Defaults to the running compiled binary. */
@@ -97,39 +97,59 @@ function installedBinaryPath(
 }
 
 type UpdateTarget =
-  | { readonly kind: "install"; readonly version: string; readonly explicit: boolean }
+  | { readonly kind: "install"; readonly version: string }
   | { readonly kind: "current"; readonly version: string }
   | { readonly kind: "failed"; readonly message: string };
 
-/** Decide what to install: an explicit version wins; otherwise the latest when it is newer. */
+/**
+ * Decide what to install. A version or a channel the user names is installed even when it is
+ * older, which is how a nightly returns to stable. Without one, only a newer release on this
+ * build's channel is: an automatic downgrade could leave a store a newer build migrated unreadable.
+ */
 async function resolveUpdateTarget(
-  options: Pick<UpdateOptions, "version" | "fetchFn">,
-  current: string = VERSION,
+  options: Pick<UpdateOptions, "target" | "fetchFn">,
 ): Promise<UpdateTarget> {
-  if (options.version !== undefined) {
-    const version = valid(options.version.trim().replace(/^v/u, ""));
+  const target = options.target?.trim();
+
+  if (target === "stable" || target === "nightly") {
+    const latest = await fetchLatestRelease(target, options.fetchFn);
+
+    if (latest === undefined) return unreadableReleases();
+
+    if (latest.version === VERSION) return { kind: "current", version: VERSION };
+
+    return { kind: "install", version: latest.version };
+  }
+
+  if (target !== undefined) {
+    const version = valid(target.replace(/^v/u, ""));
 
     if (version === null) {
-      return { kind: "failed", message: `"${options.version}" isn't a version like 0.2.0.` };
+      return {
+        kind: "failed",
+        message: `"${target}" isn't a version like 0.2.0, stable or nightly.`,
+      };
     }
 
-    if (version === current) return { kind: "current", version };
+    if (version === VERSION) return { kind: "current", version };
 
-    return { kind: "install", version, explicit: true };
+    return { kind: "install", version };
   }
 
-  const latest = await fetchLatestRelease(options.fetchFn);
+  const latest = await fetchLatestRelease(releaseChannel(VERSION), options.fetchFn);
 
-  if (latest === undefined) {
-    return {
-      kind: "failed",
-      message: `Couldn't read the latest release from https://github.com/${REPO}/releases.`,
-    };
-  }
+  if (latest === undefined) return unreadableReleases();
 
-  if (!supersedes(latest.version, current)) return { kind: "current", version: current };
+  if (!supersedes(latest.version, VERSION)) return { kind: "current", version: VERSION };
 
-  return { kind: "install", version: latest.version, explicit: false };
+  return { kind: "install", version: latest.version };
+}
+
+function unreadableReleases(): UpdateTarget {
+  return {
+    kind: "failed",
+    message: `Couldn't read the latest release from https://github.com/${REPO}/releases.`,
+  };
 }
 
 async function downloadTo(
@@ -320,7 +340,7 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
     };
   }
 
-  const target = await resolveUpdateTarget({ version: options.version, fetchFn });
+  const target = await resolveUpdateTarget({ target: options.target, fetchFn });
 
   if (target.kind !== "install") return target;
   const asset = releaseAssetName(target.version);
@@ -436,13 +456,18 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
   }
 }
 
+/** `nyte <version> is the latest nightly.`, or `release` on stable; shared with `nyte update --check`. */
+export function latestReleaseText(version: string): string {
+  return `nyte ${version} is the latest ${releaseChannel(version) === "nightly" ? "nightly" : "release"}.`;
+}
+
 /** One line per outcome, shared by `nyte update` and `/update`. */
 export function describeUpdateOutcome(outcome: UpdateOutcome): string {
   switch (outcome.kind) {
     case "updated":
       return `Updated nyte ${outcome.from} → ${outcome.to} at ${outcome.path}. Restart nyte to use it.`;
     case "current":
-      return `nyte ${outcome.version} is the latest release.`;
+      return latestReleaseText(outcome.version);
     case "unsupported":
       return outcome.reason;
     case "failed":

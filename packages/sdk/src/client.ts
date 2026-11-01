@@ -139,6 +139,9 @@ export function createClient(transport: Transport, context: ClientContext): Conn
       replace: (plugins, scope) => rows.call("plugins.replace", { plugins: files(plugins), scope }),
       check: (plugins) => rows.call("plugins.check", { plugins: files(plugins) }),
     },
+    operations: {
+      describe: (names) => rows.call("operations.describe", names === undefined ? {} : { names }),
+    },
     principals: {
       list: async () =>
         (await rows.call("principals.list", {})).map((view) => ({

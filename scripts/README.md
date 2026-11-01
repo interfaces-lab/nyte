@@ -18,14 +18,16 @@ the UTC date and the run number. It publishes a GitHub prerelease and npm's `nig
 Checked-in package versions stay unchanged, and stable installations keep following stable
 releases.
 
-In the desktop app, choose **Settings > General > Update channel > Nightly**.
+In the desktop app, choose **Settings > Developer > Update channel > Nightly**.
 Nyte checks after startup and hourly, downloads updates in the background, and
 installs them when you quit. **Restart to Update** installs sooner. Choose **Stable**
 to return to stable releases. The setting applies to this installation.
 
 You can also download a nightly installer from GitHub Releases, or run
-`pnpm dlx nyte-ai@nightly` for the terminal client. Nightly terminal clients follow
-nightly updates. Run `nyte update <version>` with a stable version to return to stable.
+`pnpm dlx nyte-ai@nightly` for the terminal client. An installed terminal client switches
+with `nyte update nightly`, and returns with `nyte update stable`, which installs the
+newest stable release even when it is older. Afterwards it follows the channel it
+switched to. The desktop setting doesn't change the terminal client.
 
 The workflow runs on demand. To package a nightly locally, set
 `NYTE_RELEASE_VERSION` to a nightly version before running the packaging command.

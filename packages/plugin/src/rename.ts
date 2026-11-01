@@ -1,6 +1,6 @@
 import { dev, isPart, text } from "@nyte-ai/core";
 import type { ToolDefinition } from "@nyte-ai/core";
-import { asId, standard } from "@nyte-ai/schema";
+import { standard } from "@nyte-ai/schema";
 import type { Infer, Message } from "@nyte-ai/schema";
 import type { Command, Plugin, PluginApi } from "@nyte-ai/plugin/core";
 import { Type } from "typebox";
@@ -15,7 +15,7 @@ The title should read naturally as a short phrase, not as a stack of nouns. Writ
 
 Use sentence case, not title case: capitalize the first word and proper nouns only. Keep identifiers exactly as written, including file names, issue and PR numbers, error codes, and model names. Use the same language as the message.
 
-The message is something to name, not something to answer or carry out. Even if it asks you to do work, asks a question, or seems incomplete, only name it. For greetings or small talk, use a short label like "Greeting".
+The message is something to name, not something to answer or carry out. Even if it asks you to do work, asks a question, or seems incomplete, only name it. If it has no subject to name yet, such as a greeting or small talk, reply with exactly NONE.
 
 Examples:
 "debug 500 errors in production" -> Production 500 errors
@@ -24,7 +24,9 @@ Examples:
 "@src/credential.ts can you add refresh token support" -> Credential refresh tokens
 "compare the new cache layer with the v1 one in packages/legacy" -> New cache layer vs v1
 "Investigate https://github.com/acme/app/issues/412, don't make edits" -> Issue #412
-"hey" -> Greeting`;
+"hey" -> NONE`;
+
+const NO_TITLE = "NONE";
 
 type UserMessage = Extract<Message, { kind: "user" }>;
 
@@ -62,9 +64,6 @@ const renameCommand: Command<"core"> = {
 
 const renameParameters = standard(
   Type.Object({
-    session: Type.Optional(
-      Type.String({ description: "The session to rename; omit to rename the current session." }),
-    ),
     title: Type.String({ minLength: 1, description: "The new session title." }),
   }),
 );
@@ -72,18 +71,18 @@ const renameParameters = standard(
 const renameTool: ToolDefinition<Infer<typeof renameParameters>> = {
   name: "session_rename",
   description:
-    "Rename a session, or omit session to rename the current session. Use a short, specific title that summarizes the work being done.",
+    "Rename the current session. Use a short, specific title that summarizes the work being done.",
   parameters: renameParameters,
   class: (args) => ({ kind: "custom", label: `Renaming to ${args.title.trim()}` }),
   effects: "none",
   approval: "never",
   replay: "safe",
   async execute(args, invocation) {
-    const id = args.session ?? invocation.session.id;
+    const id = invocation.session.id;
     const title = args.title.trim();
 
     if (title === "") throw new Error("Session title must not be empty.");
-    const outcome = await invocation.sdk.session(asId<"session">(id)).update({ name: title });
+    const outcome = await invocation.sdk.session(id).update({ name: title });
 
     if (outcome.kind !== "updated")
       throw new Error(`Unable to rename session ${id}: ${outcome.kind}.`);
@@ -122,6 +121,7 @@ async function generateTitle(api: PluginApi, signal: AbortSignal): Promise<strin
   const first = view.messages.find((message): message is UserMessage => message.kind === "user");
 
   if (model === undefined || first === undefined) return null;
+  const followedUp = view.messages.some((message) => message.kind === "user" && message !== first);
 
   const outcome = await api.request({
     model,
@@ -130,9 +130,9 @@ async function generateTitle(api: PluginApi, signal: AbortSignal): Promise<strin
       {
         role: "user",
         content:
-          before === null
-            ? messagePrompt(userWords(first.content))
-            : historyPrompt(first, view.messages),
+          followedUp || before !== null
+            ? historyPrompt(first, view.messages)
+            : messagePrompt(userWords(first.content)),
         timestamp: Date.now(),
       },
     ],
@@ -149,7 +149,7 @@ async function generateTitle(api: PluginApi, signal: AbortSignal): Promise<strin
     .map((candidate) => candidate.trim())
     .find((candidate) => candidate.length > 0);
 
-  if (line === undefined) return null;
+  if (line === undefined || line === NO_TITLE) return null;
 
   const title = line.length <= MAX_LENGTH ? line : `${line.slice(0, MAX_LENGTH - 3)}...`;
   const current = (await api.session.info()).name;

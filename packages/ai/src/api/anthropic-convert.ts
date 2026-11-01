@@ -429,6 +429,8 @@ export function convertTools(
       type: "object" as const,
       properties: IsProperties(parameters) ? parameters.properties : {},
       required: IsRequired(parameters) ? parameters.required : [],
+      ...("$defs" in parameters ? { $defs: parameters.$defs } : {}),
+      ...("definitions" in parameters ? { definitions: parameters.definitions } : {}),
     };
 
     const converted: BetaTool = {

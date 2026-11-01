@@ -144,7 +144,7 @@ export const sessionHandlers = {
       effects: [{ kind: "compact", session: followed.id, instructions: msg.instructions }],
     };
   },
-  update: (state, msg) => ({ state, effects: [{ kind: "self-update", version: msg.version }] }),
+  update: (state, msg) => ({ state, effects: [{ kind: "self-update", target: msg.target }] }),
   configure: (state, msg, now) => {
     const followed = state.facts.chat;
     const step = configure(state, msg.selection, now);

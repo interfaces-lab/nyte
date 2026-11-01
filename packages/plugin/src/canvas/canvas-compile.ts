@@ -383,9 +383,31 @@ function link(unit: Unit): string {
 }
 
 /**
- * Compiles a canvas, `source` as `main.tsx` plus the `files` it imports,
- * to the one module the shell imports. The caps default to the contract's;
- * a test narrows them.
+ * The relative specifiers a file imports at run time; type-only imports are stripped first.
+ *
+ * @category plugins
+ */
+export async function localImports(file: string, source: string): Promise<readonly string[]> {
+  await init();
+  const output = transform(source, {
+    transforms: file.endsWith(".tsx") ? ["typescript", "jsx"] : ["typescript"],
+    jsxRuntime: "automatic",
+    production: true,
+    filePath: file,
+  }).code;
+
+  return parse(output, file)[0]
+    .map((entry) => entry.n)
+    .filter(
+      (specifier): specifier is string =>
+        specifier !== undefined && (specifier.startsWith("./") || specifier.startsWith("../")),
+    );
+}
+
+/**
+ * Compiles a canvas, `source` as `main.tsx` (or `options.entry`) plus the
+ * `files` it imports, to the one module the shell imports. The caps default
+ * to the contract's; a test narrows them.
  *
  * @category plugins
  * @since 0.1.0
@@ -393,12 +415,13 @@ function link(unit: Unit): string {
 export async function compileCanvas(
   source: string,
   files: CanvasFiles = {},
-  limits: { readonly source?: number; readonly code?: number } = {},
+  options: { readonly source?: number; readonly code?: number; readonly entry?: string } = {},
 ): Promise<CompileOutcome> {
-  const sourceLimit = limits.source ?? CANVAS_SOURCE_LIMIT;
-  const codeLimit = limits.code ?? CANVAS_CODE_LIMIT;
+  const sourceLimit = options.source ?? CANVAS_SOURCE_LIMIT;
+  const codeLimit = options.code ?? CANVAS_CODE_LIMIT;
+  const entry = options.entry ?? CANVAS_ENTRY;
   const sources = [
-    [CANVAS_ENTRY, source],
+    [entry, source],
     ...Object.entries(files).map(([name, text]) => [name.replace(/^\.\//u, ""), text]),
   ];
   const bytes = sources.reduce((sum, [, text]) => sum + encoder.encode(text).byteLength, 0);
@@ -417,8 +440,8 @@ export async function compileCanvas(
           name,
           null,
           null,
-          name === CANVAS_ENTRY
-            ? `\`files\` cannot hold ${CANVAS_ENTRY}; that is \`source\`.`
+          name === entry
+            ? `\`files\` cannot hold ${entry}; that is \`source\`.`
             : "This file is named twice.",
         ),
       );
@@ -459,11 +482,11 @@ export async function compileCanvas(
             ),
           );
 
-  if (exported.get(CANVAS_ENTRY)?.includes("default") === false)
-    errors.push(at(CANVAS_ENTRY, null, null, "The module must `export default` a component."));
+  if (exported.get(entry)?.includes("default") === false)
+    errors.push(at(entry, null, null, "The module must `export default` a component."));
 
   if (errors.length > 0) return failed(errors);
-  const code = bundle(units, externals);
+  const code = bundle(units, externals, entry);
 
   if (encoder.encode(code).byteLength > codeLimit)
     return failed([
@@ -483,7 +506,7 @@ export async function compileCanvas(
  * a line of its own, then the linker, which runs each file once on first
  * `require`, and the entry's default export.
  */
-function bundle(units: readonly Unit[], imported: ReadonlySet<string>): string {
+function bundle(units: readonly Unit[], imported: ReadonlySet<string>, entry: string): string {
   const externals = [...EXTERNAL]
     .filter(([name]) => imported.has(name))
     .map(([name, external]) => `${JSON.stringify(name)}: ${external.value}`);
@@ -504,7 +527,7 @@ function bundle(units: readonly Unit[], imported: ReadonlySet<string>): string {
     ...body,
     "}; const __modules = new Map();",
     "function __require(name) { if (Object.hasOwn(__external, name)) return __external[name]; let found = __modules.get(name); if (found === undefined) { found = {}; __modules.set(name, found); __files[name](found, __require); } return found; }",
-    `export default __require(${JSON.stringify(CANVAS_ENTRY)}).default;`,
+    `export default __require(${JSON.stringify(entry)}).default;`,
     "",
   ].join("\n");
 }

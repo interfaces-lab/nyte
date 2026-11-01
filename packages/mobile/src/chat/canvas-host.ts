@@ -27,6 +27,7 @@ export function startupScript(theme: "light" | "dark"): string {
   return `window.${CANVAS_STARTUP_CONTEXT} = ${JSON.stringify(hostContextChangedNotification(mobileHostContext(theme)))}; true;`;
 }
 
+/** Drops `act`: the phone draws no part views. */
 export function shellEffect(data: string): CanvasEffect | undefined {
   let posted: unknown;
 
@@ -57,6 +58,8 @@ export function shellEffect(data: string): CanvasEffect | undefined {
       return { kind: "library", name: message.name };
     case "error":
       return { kind: "error", message: message.message };
+    case "act":
+      return undefined;
     default: {
       const exhaustive: never = message;
 

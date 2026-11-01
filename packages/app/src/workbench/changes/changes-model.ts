@@ -13,7 +13,7 @@ import { EMPTY_PATCH, patchStackSection } from "../../diff/stacked-diff.ts";
 import { changesScopeValue } from "../model.ts";
 import type { WorkbenchChangesScope } from "../model.ts";
 import { scopeFiles } from "./change-scopes.ts";
-import type { ChangesRepository, TurnChangeOption } from "./change-scopes.ts";
+import type { ChangesRepository, ChangeTotals, TurnChangeOption } from "./change-scopes.ts";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 
@@ -234,21 +234,28 @@ export function stackSections(
   snapshot: PatchSnapshot,
   source: { readonly key: string; readonly lineage: string } | undefined,
 ): readonly ChangesStackItem[] {
-  const statByPath = new Map((manifest?.files ?? []).map((change) => [change.path, change.stat]));
+  const statByPath = manifestStats(manifest);
 
   return rows.map((row): ChangesStackItem => {
     const found = findPatch(snapshot, source, row.path);
     const section = patchStackSection({ path: row.path, entry: found?.entry });
 
-    const stat: LineStat =
-      row.source === "recorded"
-        ? { kind: "text", added: row.added, removed: row.removed }
-        : ((found?.fresh === true ? entryStat(found.entry) : undefined) ??
-          statByPath.get(row.path) ??
-          UNKNOWN_STAT);
+    const stat =
+      (row.source !== "recorded" && found?.fresh === true ? entryStat(found.entry) : undefined) ??
+      rowStat(row, statByPath);
 
     return { ...section, stat };
   });
+}
+
+function manifestStats(manifest: ChangeSet | undefined): ReadonlyMap<string, LineStat> {
+  return new Map((manifest?.files ?? []).map((change) => [change.path, change.stat]));
+}
+
+function rowStat(row: ChangeRow, statByPath: ReadonlyMap<string, LineStat>): LineStat {
+  return row.source === "recorded"
+    ? { kind: "text", added: row.added, removed: row.removed }
+    : (statByPath.get(row.path) ?? UNKNOWN_STAT);
 }
 
 export function viewedStates(
@@ -292,22 +299,28 @@ export function sidebarFiles(
   });
 }
 
-/** Undefined while any file's stat is unknown. */
-export function scopeStats(
-  sections: readonly ChangesStackItem[],
-): { readonly added: number; readonly removed: number } | undefined {
-  return sections.reduce<{ added: number; removed: number } | undefined>(
-    (total, section) =>
-      total === undefined || section.stat.kind === "unknown"
-        ? undefined
-        : section.stat.kind === "binary"
+/** The scope's file count and line totals, the totals undefined while any row's stat is unknown. */
+export function changeTotals(
+  rows: readonly ChangeRow[],
+  manifest: ChangeSet | undefined,
+): ChangeTotals {
+  const statByPath = manifestStats(manifest);
+
+  return {
+    fileCount: rows.length,
+    stats: rows.reduce<{ added: number; removed: number } | undefined>(
+      (total, row) => {
+        const stat = rowStat(row, statByPath);
+
+        if (total === undefined || stat.kind === "unknown") return undefined;
+
+        return stat.kind === "binary"
           ? total
-          : {
-              added: total.added + section.stat.added,
-              removed: total.removed + section.stat.removed,
-            },
-    { added: 0, removed: 0 },
-  );
+          : { added: total.added + stat.added, removed: total.removed + stat.removed };
+      },
+      { added: 0, removed: 0 },
+    ),
+  };
 }
 
 export function preparationOrder(

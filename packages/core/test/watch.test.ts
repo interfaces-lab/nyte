@@ -42,6 +42,7 @@ async function createMemoryKernel(): Promise<Kernel> {
       catalog: asId("g1"),
       plugins: [],
       settings: [],
+      views: [],
       defaultWorkspace: null,
     }),
   });
@@ -456,6 +457,7 @@ describe("watch", () => {
       catalog: "g1",
       plugins: [],
       settings: [],
+      views: [],
       defaultWorkspace: null,
       authority,
     });

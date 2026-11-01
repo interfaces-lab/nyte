@@ -38,6 +38,7 @@ import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts"
 import { listen } from "./listen.ts";
 import { nodeImages } from "./images/node.ts";
 import { createMcpHub } from "./mcp/hub.ts";
+import { createViewCompiler } from "./plugins/views.ts";
 import { createPluginLoader } from "./plugins/loader.ts";
 import type { PluginImport } from "./plugins/loader.ts";
 import { defaultSecrets } from "./secrets.ts";
@@ -154,6 +155,7 @@ async function composeOpen(
     workspace,
     loadPlugins: (paths) => loader.load(paths),
     loadPluginDirectory: (dir) => loader.directory(dir),
+    compileView: createViewCompiler(),
     models,
     mcp: options.mcp ?? createMcpHub({ home }),
     github: options.github ?? (usesLocalProvider ? localGitHubAccount({ home }) : undefined),

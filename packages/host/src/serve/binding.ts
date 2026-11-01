@@ -554,6 +554,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
     "plugins.replace": ({ plugins, scope }) => connection.plugins.replace(plugins, scope),
     "plugins.check": ({ plugins }) => connection.plugins.check(plugins),
+    "operations.describe": ({ names }) => connection.operations.describe(names),
 
     "principals.list": async () =>
       (await connection.principals.list()).map((view) => ({

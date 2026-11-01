@@ -74,6 +74,7 @@ import {
   replacePlugins,
 } from "./extend/plugin-runtime.ts";
 import { bumpGeneration } from "./extend/registry.ts";
+import { publishViews } from "./extend/part-views.ts";
 import { reportUserPluginFailures, userPluginFolder } from "./extend/plugin-folders.ts";
 import { closeWatches, forgetScans, resourcesPlugin, watchHome } from "./extend/resources.ts";
 import { settingInfos } from "./extend/setting-layers.ts";
@@ -101,6 +102,9 @@ export type ComposeOptions = OpenOptions & {
 
   /** Loads a plugin folder file by file; with it the host loads `<home>/.nyte/plugins` beside `plugins` and a trusted workspace's `.nyte/plugins` in its chats. */
   readonly loadPluginDirectory?: PluginHost["directory"];
+
+  /** Without it the host publishes no part views. */
+  readonly compileView?: NonNullable<PluginHost["compileView"]>;
 
   readonly member?: Member;
 
@@ -221,6 +225,7 @@ export async function composeServer(
     kernel.host.update({ settings: await settingInfos(kernel, null) });
 
     if (options.loadPluginDirectory !== undefined) await watchHome(kernel);
+    await publishViews(kernel);
   } catch (error) {
     await release(kernel, null);
 
@@ -364,6 +369,7 @@ async function composeKernel(
       catalog: asId<"catalog-generation">(crypto.randomUUID()),
       plugins: [],
       settings: [],
+      views: [],
       defaultWorkspace: null,
     }),
     execution: options.execution,
@@ -379,6 +385,7 @@ async function composeKernel(
     poll: options.poll,
     loadPlugins: options.loadPlugins,
     loadPluginDirectory: options.loadPluginDirectory,
+    compileView: options.compileView,
   });
 
   kernel.host.update({ plugins: hostPluginRows(kernel) });
@@ -417,6 +424,7 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     readonly pluginSources?: PluginHost["sources"];
     readonly loadPlugins?: PluginHost["load"];
     readonly loadPluginDirectory?: PluginHost["directory"];
+    readonly compileView?: NonNullable<PluginHost["compileView"]>;
     readonly poll?: number;
     readonly models?: Models;
     readonly mcp?: McpHubFactory;
@@ -593,6 +601,7 @@ export function createKernel(input: KernelOptions): Kernel {
         input.loadPlugins ??
         (async () => unavailable("plugin files: this host has no plugin loader")),
       directory: input.loadPluginDirectory ?? (async () => ({ loaded: [], failed: [] })),
+      compileView: input.compileView ?? null,
     },
     handles: {
       connection: (context) =>

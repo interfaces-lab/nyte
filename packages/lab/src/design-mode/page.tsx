@@ -7,7 +7,6 @@ import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { DISPLAY_MODES, useDisplayMode, type DisplayMode } from "../shell/display-mode";
 import { agentText, labelParts, recordComment, splitLabel } from "./picker";
 import type { CommentRecord, Target } from "./picker";
 import { BrowserPanel } from "./browser";
@@ -32,7 +31,6 @@ interface Message {
 
 /** Comments join the chat composer and wait there; only Send sends. */
 export function DesignModePage(): ReactElement {
-  const [scheme, setScheme] = useState<DisplayMode>("light");
   const [placement, setPlacement] = useState<Placement>("page");
   const [active, setActive] = useState(false);
   const [comments, setComments] = useState<readonly QueuedComment[]>([]);
@@ -41,8 +39,6 @@ export function DesignModePage(): ReactElement {
   const rootRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const nextId = useRef(1);
-
-  useDisplayMode(scheme);
 
   const id = (): number => {
     nextId.current += 1;
@@ -114,23 +110,6 @@ export function DesignModePage(): ReactElement {
         </header>
 
         <div {...props(styles.toolbar)}>
-          <Choice label="Appearance">
-            <ToggleGroup
-              aria-label="Appearance"
-              value={[scheme]}
-              onValueChange={(values) => {
-                const next = DISPLAY_MODES.find((mode) => mode.value === values.at(-1));
-
-                if (next !== undefined) setScheme(next.value);
-              }}
-            >
-              {DISPLAY_MODES.map((mode) => (
-                <Toggle key={mode.value} value={mode.value} size="sm">
-                  {mode.label}
-                </Toggle>
-              ))}
-            </ToggleGroup>
-          </Choice>
           <Choice label="Write the comment">
             <ToggleGroup
               aria-label="Write the comment"
@@ -612,7 +591,7 @@ const styles = create({
     marginBlockStart: 1,
     borderRadius: "50%",
     backgroundColor: design.accent,
-    color: "white",
+    color: design.onAccent,
     fontSize: 10,
     fontWeight: type.weightSemibold,
     lineHeight: 1,

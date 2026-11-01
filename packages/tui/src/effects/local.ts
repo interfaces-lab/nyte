@@ -428,7 +428,7 @@ export async function selfUpdate(
   context: LocalHandlerContext,
 ): Promise<void> {
   const outcome = await selfUpdateBinary({
-    ...(effect.version === null ? {} : { version: effect.version }),
+    ...(effect.target === null ? {} : { target: effect.target }),
     report: (event) => {
       if (event.kind === "downloading")
         context.dispatch({ kind: "inform", tone: "info", text: `Downloading ${event.asset}…` });

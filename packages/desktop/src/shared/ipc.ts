@@ -30,6 +30,9 @@ export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
 
 export const WINDOW_ID_ARGUMENT = "--nyte-window";
 
+/** Given only to a window a tab was dragged out to: that tab as JSON. */
+export const INITIAL_TAB_ARGUMENT = "--nyte-initial-tab";
+
 /** Given only to a window opened while no other was: every window id worth keeping. */
 export const LAUNCH_WINDOWS_ARGUMENT = "--nyte-launch-windows";
 
@@ -46,6 +49,7 @@ export const MAIN_OPERATION_PATHS = [
   "host.confirmExternal",
   "host.revealPath",
   "host.openPluginsFolder",
+  "host.tearOffTab",
   "host.contextMenu",
   "host.browser.open",
   "host.browser.navigate",
@@ -137,6 +141,7 @@ export type DesktopBridge = {
         | "bundledCli"
         | "revealPath"
         | "openPluginsFolder"
+        | "tearOffTab"
         | "contextMenu"
         | "browser"
         | "attention"

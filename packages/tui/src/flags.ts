@@ -180,20 +180,24 @@ export function parseUpdateArgs(
   args: readonly string[],
 ):
   | { readonly kind: "check" }
-  | { readonly kind: "install"; readonly version?: string }
+  | { readonly kind: "install"; readonly target?: string }
   | { readonly kind: "models" } {
   if (args.length === 0) return { kind: "install" };
 
   if (args.length === 1 && args[0] === "--check") return { kind: "check" };
 
   if (args.length === 1 && args[0] === "--models") return { kind: "models" };
-  const version = args[0];
+  const target = args[0];
 
   if (
     args.length === 1 &&
-    version !== undefined &&
-    /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(version)
+    target !== undefined &&
+    (target === "stable" ||
+      target === "nightly" ||
+      /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(target))
   )
-    return { kind: "install", version };
-  throw new Error("Usage: nyte update [<version> | --check | --models]. Run `nyte update --help`.");
+    return { kind: "install", target };
+  throw new Error(
+    "Usage: nyte update [<version> | stable | nightly | --check | --models]. Run `nyte update --help`.",
+  );
 }

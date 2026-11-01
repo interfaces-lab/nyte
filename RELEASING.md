@@ -57,8 +57,8 @@ After you confirm, the script runs
 So `v<version>` names the commit whose package manifests say `<version>`. Versions with a `-` skip
 step 2: they build the commit the run started from, write the version into the manifests only at
 publish time, and tag that commit. They publish to the npm `next` dist-tag and as a GitHub
-prerelease. The rest publish to `latest`. `nyte update`, the desktop updater and npm `latest` follow
-stable releases only.
+prerelease. The rest publish to `latest`. npm `latest` follows stable releases only. `nyte update`
+and the desktop updater follow the installation's channel: stable unless it switched to nightly.
 
 Every step can run again. Step 2 reuses the commit the `v<version>` tag names, or else the
 `release: v<version> [skip ci]` commit on `main`, so a rerun never makes a second one.

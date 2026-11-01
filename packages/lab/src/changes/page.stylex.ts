@@ -4,7 +4,7 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const styles = create({
   page: {
-    minHeight: "100vh",
+    flexGrow: 1,
     paddingBlock: "48px 120px",
     paddingInline: 40,
     backgroundColor: role.bgChrome,

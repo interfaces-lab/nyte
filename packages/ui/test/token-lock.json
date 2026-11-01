@@ -773,6 +773,8 @@
       "--nyte-diff-line-height",
       "--nyte-diff-preview-max-height",
       "--nyte-pane-divider-gap",
+      "--nyte-pane-sash-hit-size",
+      "--nyte-pane-sash-hover-hit-size",
       "--nyte-pane-sash-size",
       "--nyte-prose-paragraph-gap",
       "--nyte-settings-card-gap",
@@ -1072,7 +1074,12 @@
       "turnGap"
     ],
     "app/src/theme/schema.stylex.ts diffView": ["lineHeight", "previewMaxHeight"],
-    "app/src/theme/schema.stylex.ts pane": ["dividerGap", "sashSize"],
+    "app/src/theme/schema.stylex.ts pane": [
+      "dividerGap",
+      "sashHitSize",
+      "sashHoverHitSize",
+      "sashSize"
+    ],
     "app/src/theme/schema.stylex.ts settings": [
       "cardGap",
       "contentGutter",

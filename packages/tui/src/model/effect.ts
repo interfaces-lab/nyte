@@ -111,7 +111,7 @@ export type Effect =
   | { readonly kind: "change-directory"; readonly session: SessionId; readonly path: string }
   | { readonly kind: "reload" }
   | { readonly kind: "compact"; readonly session: SessionId; readonly instructions: string | null }
-  | { readonly kind: "self-update"; readonly version: string | null }
+  | { readonly kind: "self-update"; readonly target: string | null }
   | { readonly kind: "login"; readonly provider: string | null; readonly dialog: DialogId }
   | { readonly kind: "logout"; readonly provider: string }
   | { readonly kind: "notify"; readonly title: string; readonly body: string }

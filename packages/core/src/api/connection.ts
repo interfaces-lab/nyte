@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/schema";
+import { describeOperations, SdkError } from "@nyte-ai/schema";
 import type {
   Capability,
   CredentialSource,
@@ -196,6 +196,7 @@ export function createConnection(
       authority,
     ),
     principals: gated("principals", createPrincipals(kernel), authority),
+    operations: { describe: async (names) => describeOperations(names) },
     github: gated("github", kernel.github ?? NO_GITHUB, authority),
     close,
     [Symbol.asyncDispose]: close,

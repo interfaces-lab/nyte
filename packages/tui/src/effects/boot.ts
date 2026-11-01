@@ -193,7 +193,7 @@ async function checkUpdate(autoUpdate: boolean, context: HandlerContext): Promis
     return;
   }
 
-  const outcome = await selfUpdate();
+  const outcome = await selfUpdate({ target: release.version });
 
   if (context.signal.aborted) return;
 

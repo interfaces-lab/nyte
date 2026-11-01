@@ -104,7 +104,7 @@ function builtin(name: BuiltinSlashName, argument: string): Intent | null {
     case "reload":
       return noArgument(name, argument, { kind: "reload" });
     case "update":
-      return { kind: "update", version: argument === "" ? null : argument };
+      return { kind: "update", target: argument === "" ? null : argument };
     case "skills":
       return noArgument(name, argument, {
         kind: "open",

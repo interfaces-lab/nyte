@@ -254,7 +254,7 @@ test("the sidebar journey", async ({ desktop }) => {
   const workspaces = sidebar(page).getByRole("region", { name: "Workspaces" });
   const pinned = sidebar(page).getByRole("region", { name: "Pinned" });
 
-  await test.step("a 256 px sidebar shows 24 px Pin and Archive beside the age", async () => {
+  await test.step("a 260 px sidebar shows 24 px Pin and Archive beside the age", async () => {
     await chooseGrouping(page, "Repository");
     await expect(workspace).toHaveAttribute("aria-expanded", "true");
 
@@ -262,7 +262,7 @@ test("the sidebar journey", async ({ desktop }) => {
       await page.evaluate(() =>
         getComputedStyle(document.documentElement).getPropertyValue("--nyte-sidebar-width").trim(),
       ),
-    ).toBe("256px");
+    ).toBe("260px");
 
     const row = chatRow(page, FIXTURES.long);
     const age = row.locator('[data-slot="row-meta"]');

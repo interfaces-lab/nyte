@@ -79,6 +79,7 @@ const hostView = (): HostView => ({
   catalog: catalog.generation,
   plugins: [],
   settings: [],
+  views: [],
   defaultWorkspace: null,
   authority: new Set(["participant", "owner"]),
 });

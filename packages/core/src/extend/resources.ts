@@ -19,6 +19,7 @@ import { kvRef } from "../store/refs.ts";
 import { readKv, requireSession } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
+import { publishViews } from "./part-views.ts";
 import { PLUGIN_FOLDER, reloadUserPlugins, samePlugins, sessionPlugins } from "./plugin-folders.ts";
 
 type Skill = Resources["skills"][number];
@@ -488,7 +489,10 @@ async function refreshRoot(
     (path) => path === PLUGIN_FOLDER || path.startsWith(`${PLUGIN_FOLDER}/`),
   );
 
-  if (key === HOME && plugins.length > 0) await reloadUserPlugins(kernel);
+  if (key === HOME && plugins.length > 0) {
+    await reloadUserPlugins(kernel);
+    await publishViews(kernel);
+  }
 
   if (key === HOME && plugins.length === paths.length) return;
 

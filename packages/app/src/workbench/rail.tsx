@@ -13,22 +13,31 @@ import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { formatTokens, formatUsd } from "../lib/format.ts";
 import { sessionWatch } from "../data/watches.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
-import { useVcsSnapshot } from "../data/vcs.ts";
+import { useVcsChanges, useVcsSnapshot } from "../data/vcs.ts";
 import { usePaneControllerSnapshot } from "../panes/pane-context.tsx";
 import { activeSelection } from "../panes/pane-layout.ts";
 import { showsSettingsSection } from "../settings/index.ts";
-import { branchReadout, changesSummary } from "./changes/change-scopes.ts";
+import { branchReadout, changesSummary, vcsRequestForScope } from "./changes/change-scopes.ts";
 import { ChangeStats } from "./changes/change-stats.tsx";
+import { changeTotals, workingRows } from "./changes/changes-model.ts";
+import { useChangesViewOptions } from "./changes/changes-view-options.ts";
 import { launch, openChanges } from "./commands.ts";
 import { useFileTabs } from "./files/file-store.ts";
 import { WORKBENCH_KINDS, workbenchLaunchers } from "./model.ts";
-import type { WorkbenchScope, WorkbenchViewKey, WorkbenchViewState } from "./model.ts";
+import type {
+  WorkbenchChangesScope,
+  WorkbenchScope,
+  WorkbenchViewKey,
+  WorkbenchViewState,
+} from "./model.ts";
 import { railModel, tabPresentation } from "./selectors.ts";
 import { workbench } from "./store.ts";
 import { useTerminalRuntime } from "./terminal/terminal-store.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const CONTEXT_WARNING_PERCENT = 80;
+
+const UNCOMMITTED: WorkbenchChangesScope = { kind: "uncommitted" };
 
 function StatusRow({
   icon,
@@ -211,7 +220,17 @@ function ChangesRow({
   readonly head: Repository;
   readonly onOpen: () => void;
 }): ReactElement {
-  const summary = changesSummary(head);
+  const options = useChangesViewOptions(head.root);
+  const rows = workingRows(head, UNCOMMITTED);
+
+  const manifest = useVcsChanges(
+    vcsRequestForScope(UNCOMMITTED),
+    options.ignoreWhitespace,
+    head.revision,
+    rows.length > 0,
+  );
+
+  const summary = changesSummary(changeTotals(rows, manifest.data));
 
   return (
     <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
@@ -310,10 +329,7 @@ export function Rail({
             <BranchRow head={head} actions={sessionId === undefined ? collapse : undefined} />
           )}
           {head !== undefined && rail.changes && (
-            <ChangesRow
-              head={head}
-              onOpen={() => openChanges(viewKey, { kind: "uncommitted" }, null)}
-            />
+            <ChangesRow head={head} onOpen={() => openChanges(viewKey, UNCOMMITTED, null)} />
           )}
         </section>
       )}

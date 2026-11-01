@@ -91,7 +91,7 @@ export const SLASH_COMMANDS = [
     kind: "action",
   },
   { name: "reload", description: "Reload plugins and skills", kind: "action" },
-  { name: "update", description: "Update nyte to the latest release", kind: "action" },
+  { name: "update", description: "Update nyte, or switch to stable or nightly", kind: "action" },
   { name: "skills", description: "Browse skills", kind: "action" },
 ] as const satisfies readonly BuiltinSlash[];
 

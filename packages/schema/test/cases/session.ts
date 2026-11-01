@@ -57,6 +57,7 @@ import {
 } from "../../src/index.ts";
 import {
   sample,
+  blob,
   session,
   head,
   run,
@@ -315,6 +316,7 @@ export const sessionCases = {
       catalog: generation,
       plugins: [{ id: "parts", source: "builtin", path: null, issues: [issue] }],
       settings: [settingInfo],
+      views: [{ kind: "acme/ping", plugin: "ping", runtime: 1, blob }],
       defaultWorkspace: null,
       authority: ["participant", "owner"],
       principal,

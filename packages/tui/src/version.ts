@@ -17,6 +17,13 @@ declare const NYTE_BUILT_VERSION: string | undefined;
 export const VERSION =
   typeof NYTE_BUILT_VERSION === "string" ? NYTE_BUILT_VERSION : packageMetadata.version;
 
+export type UpdateChannel = "stable" | "nightly";
+
+/** Nightly versions carry their channel; every other build, betas included, follows stable. */
+export function releaseChannel(version: string): UpdateChannel {
+  return prerelease(version)?.[0] === "nightly" ? "nightly" : "stable";
+}
+
 interface ReleaseInfo {
   /** Semver without the leading `v`. */
   readonly version: string;
@@ -40,12 +47,13 @@ function githubHeaders(): Record<"accept" | "User-Agent" | "X-GitHub-Api-Version
   };
 }
 
-/** The newest published release, or `undefined` when GitHub cannot be reached or answers oddly. */
+/** The newest published release on `channel`, or `undefined` when GitHub cannot be reached or answers oddly. */
 export async function fetchLatestRelease(
+  channel: UpdateChannel,
   fetchFn: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<ReleaseInfo | undefined> {
   try {
-    const nightly = prerelease(VERSION)?.[0] === "nightly";
+    const nightly = channel === "nightly";
 
     const response = await fetchFn(nightly ? NIGHTLY_RELEASES_URL : LATEST_RELEASE_URL, {
       headers: githubHeaders(),
@@ -65,9 +73,9 @@ export async function fetchLatestRelease(
       const version = valid(tag.trim().replace(/^v/u, ""));
 
       if (version === null) continue;
-      const channel = prerelease(version)?.[0];
+      const tagChannel = prerelease(version)?.[0];
 
-      if (nightly ? channel !== "nightly" : channel !== undefined) continue;
+      if (nightly ? tagChannel !== "nightly" : tagChannel !== undefined) continue;
 
       if (latest !== undefined && !supersedes(version, latest.version)) continue;
       const html = release["html_url"];
@@ -88,7 +96,7 @@ export async function fetchLatestRelease(
   }
 }
 
-/** A newer release than the running build, unless the user opted out of network checks. */
+/** A newer release on the running build's channel, unless the user opted out of network checks. */
 export async function checkForUpdate(
   fetchFn: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<ReleaseInfo | undefined> {
@@ -99,7 +107,7 @@ export async function checkForUpdate(
     return undefined;
   }
 
-  const latest = await fetchLatestRelease(fetchFn);
+  const latest = await fetchLatestRelease(releaseChannel(VERSION), fetchFn);
 
   if (latest === undefined || !supersedes(latest.version, VERSION)) return undefined;
 

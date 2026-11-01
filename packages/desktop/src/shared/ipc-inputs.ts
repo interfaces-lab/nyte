@@ -128,6 +128,13 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.confirmExternal": compile(strict({ url: Type.String() })),
   "host.revealPath": compile(strict({ path: nonEmpty })),
   "host.openPluginsFolder": compile(noInput),
+  "host.tearOffTab": compile(
+    strict({
+      tab: Type.String({ minLength: 2, maxLength: 16_384 }),
+      x: Type.Number(),
+      y: Type.Number(),
+    }),
+  ),
   "host.contextMenu": compile(
     strict({
       items: Type.Array(

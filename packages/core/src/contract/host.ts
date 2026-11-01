@@ -24,6 +24,7 @@ import type {
   ModelCatalogView,
   ModelListing,
   ModelRef,
+  OperationDescription,
   Owned,
   Paged,
   PluginCheckReport,
@@ -206,12 +207,18 @@ export interface Connection {
   readonly settings: SettingsApi;
   readonly plugins: PluginsApi<PluginFile>;
   readonly principals: PrincipalsApi;
+  readonly operations: OperationsApi;
   /** The serving machine's GitHub CLI login, shared by every workspace; signing in and out needs owner authority, and a host without one throws `SdkError("unavailable")`. */
   readonly github: GitHubAccountApi;
 
   close(): Promise<void>;
 
   [Symbol.asyncDispose](): Promise<void>;
+}
+
+export interface OperationsApi {
+  /** The connected host's own operations, so they match its version; a name it doesn't serve throws `SdkError("invalid")`. */
+  describe(names?: readonly string[]): Promise<readonly OperationDescription[]>;
 }
 
 export interface ModelsApi {
@@ -371,8 +378,12 @@ export interface Listener {
 
 export type HostViewFields = Pick<
   HostView,
-  "catalog" | "plugins" | "settings" | "defaultWorkspace"
+  "catalog" | "plugins" | "settings" | "views" | "defaultWorkspace"
 >;
+
+export type ViewBuild =
+  | { readonly kind: "compiled"; readonly code: string; readonly runtime: number }
+  | { readonly kind: "failed"; readonly message: string };
 
 export interface HostState {
   current(): HostViewFields;

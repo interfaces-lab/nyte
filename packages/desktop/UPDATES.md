@@ -2,7 +2,9 @@
 
 Every platform uses `electron-updater`: Squirrel.Mac on macOS, NSIS on Windows, and AppImage on Linux. Release archives and their `latest*.yml` metadata live in the public `interfaces-lab/nyte` GitHub releases, separate from the TUI tarballs.
 
-Packaged apps check 15 seconds after startup and every six hours. A found release downloads in the background, and the sidebar shows its progress. **Check for Updates…**, in the Nyte menu and the account menu, answers in a native dialog: Nyte is up to date, the check or download failed, or the new version is ready with **Restart to Update** and **Later**. If tasks or terminal commands are running, the dialog names them and defaults to **Later**.
+Packaged apps check 30 seconds after startup, then every six hours on the stable channel and every hour on nightly. A found release downloads in the background, and the sidebar shows its progress. **Check for Updates…**, in the Nyte menu and the account menu, answers in a native dialog: Nyte is up to date, the check or download failed, or the new version is ready with **Restart to Update** and **Later**. If tasks or terminal commands are running, the dialog names them and defaults to **Later**.
+
+**Settings > Developer > Update channel** picks stable or nightly for this installation and saves it in `updates.json` beside `updates.log`. Without a saved choice, a nightly build follows nightly and every other build follows stable. Changing the channel checks right away. Switching from a nightly to stable allows a downgrade, so the newest stable release installs even when it's older. A nightly update that is ready also installs when you quit. The channel doesn't change the `nyte` terminal client, which switches with `nyte update stable` or `nyte update nightly`.
 
 Before relaunch, Nyte gives its host up to 10 seconds to close sessions and terminals cleanly. Update lifecycle events go to `~/Library/Application Support/Nyte/updates.log` on macOS. This log contains event names, versions, and errors, not update request headers.
 

@@ -54,6 +54,20 @@ const runtimeLoadImports = ["node:module", "module"].map((name) => ({
   message: runtimeLoadMessage,
 }));
 
+/** The lab's shell owns the display mode, the document root and the dial panel; prototypes ask it. */
+const labShellImports = [
+  {
+    name: "dialkit",
+    message:
+      "Prototypes take dials from useDials in the lab's shell, which shows them in the inspector.",
+  },
+  {
+    name: "@nyte-ai/ui/appearance",
+    message:
+      "The lab's shell owns the display mode through the app's preferences; read it with useScheme.",
+  },
+];
+
 const reflectGlobal = {
   name: "Reflect",
   message:
@@ -110,6 +124,7 @@ export default defineConfig({
     // Effects sync outside systems; each direct one says which.
     "nyte-code/no-direct-effect": "error",
     "nyte-code/no-is-helper-names": "error",
+    "nyte-code/no-lab-imports": "error",
     "nyte-code/no-of-lookup-names": "error",
     "nyte-code/no-one-off-boolean-helpers": "error",
     "nyte-code/require-suppression-reason": "error",
@@ -419,6 +434,38 @@ export default defineConfig({
       rules: {
         "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
       },
+    },
+    {
+      /**
+       * Lab prototypes paint with tokens so the shell's appearance and token overrides reach them,
+       * and leave the root, the display mode and the dial panel to the shell.
+       */
+      files: ["packages/lab/src/**/*.{ts,tsx}"],
+      excludeFiles: ["packages/lab/src/shell/**"],
+      rules: {
+        "nyte-design/no-raw-colors": "error",
+        "eslint/no-restricted-imports": [
+          "error",
+          { paths: [...runtimeLoadImports, ...labShellImports], patterns: uiLibraryImports },
+        ],
+        "eslint/no-restricted-properties": [
+          "error",
+          {
+            object: "document",
+            property: "documentElement",
+            message:
+              "The lab's shell owns the document root. Override tokens from the inspector, or style the prototype's own element.",
+          },
+        ],
+      },
+    },
+    {
+      /**
+       * Not Nyte's surfaces: Design Mode's overlay paints into pages the app's tokens don't reach,
+       * and Peek's card shows Arc's measured fills.
+       */
+      files: ["packages/lab/src/design-mode/overlay.tsx", "packages/lab/src/peek/site.tsx"],
+      rules: { "nyte-design/no-raw-colors": "off" },
     },
     ...desktopProcessFolders.map(({ folder, forbidden }) => ({
       files: [`packages/desktop/src/${folder}/**`],

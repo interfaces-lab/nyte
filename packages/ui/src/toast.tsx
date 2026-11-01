@@ -30,8 +30,6 @@ const ENTER_TOP = "translateY(-150%)";
 
 const COPIED_MS = 1500;
 
-const ANCHORED = "@supports (position-anchor: --a)";
-
 /** Where the stack sits in the window. */
 export const TOAST_POSITIONS = [
   "top-left",
@@ -56,22 +54,6 @@ const styles = create({
     pointerEvents: "none",
     outline: "none",
     fontFamily: type.fontSans,
-  },
-  /**
-   * Bottom right, above the element named `toastSchema.anchor` where anchor positioning is
-   * supported. Without support or without that element, the anchor() fallbacks keep the inset.
-   */
-  viewportAnchored: {
-    positionAnchor: toastSchema.anchor,
-    insetInlineEnd: { default: space.s4, [ANCHORED]: `anchor(end, ${space.s4})` },
-    insetBlockEnd: {
-      default: space.s4,
-      [ANCHORED]: `calc(anchor(start, calc(${space.s4} - ${space.s2})) + ${space.s2})`,
-    },
-    width: {
-      default: "min(380px, calc(100vw - 32px))",
-      [ANCHORED]: "min(380px, calc(100vw - 32px), anchor-size(width, 100vw))",
-    },
   },
   viewportTop: { insetBlockStart: space.s4 },
   viewportBottom: { insetBlockEnd: space.s4 },
@@ -403,14 +385,10 @@ export function Toaster({
           data-slot="toast-viewport"
           {...props(
             styles.viewport,
-            position === "bottom-right"
-              ? styles.viewportAnchored
-              : [
-                  position.startsWith("top") ? styles.viewportTop : styles.viewportBottom,
-                  position.endsWith("left") && styles.viewportLeft,
-                  position.endsWith("right") && styles.viewportRight,
-                  position.endsWith("center") && styles.viewportCenter,
-                ],
+            position.startsWith("top") ? styles.viewportTop : styles.viewportBottom,
+            position.endsWith("left") && styles.viewportLeft,
+            position.endsWith("right") && styles.viewportRight,
+            position.endsWith("center") && styles.viewportCenter,
           )}
         >
           <ToastList position={position} />

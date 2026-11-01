@@ -54,6 +54,27 @@ export const operations = {
     "not base64!",
     Uint8Array.of(104, 105),
   ),
+  "operations.describe input": operation(
+    OPERATIONS["operations.describe"].input,
+    { names: ["head.send"] },
+    { names: "head.send" },
+  ),
+  "operations.describe output": operation(
+    OPERATIONS["operations.describe"].output,
+    [
+      {
+        name: "files.read",
+        summary: "Reads a file.",
+        kind: "query",
+        authority: "participant",
+        scope: "workspace",
+        capability: "files",
+        input: { type: "object" },
+        output: { type: "object" },
+      },
+    ],
+    [{ name: "files.read", summary: "Reads a file.", kind: "read" }],
+  ),
   "models.list input": operation(OPERATIONS["models.list"].input, {}, 1),
   "models.accounts input": operation(
     OPERATIONS["models.accounts"].input,

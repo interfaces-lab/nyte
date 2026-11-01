@@ -97,7 +97,7 @@ export type Intent =
   | { readonly kind: "change-directory"; readonly path: string }
   | { readonly kind: "reload" }
   | { readonly kind: "compact"; readonly instructions: string | null }
-  | { readonly kind: "update"; readonly version: string | null }
+  | { readonly kind: "update"; readonly target: string | null }
   | { readonly kind: "configure"; readonly selection: Partial<Selection> }
   | { readonly kind: "write-settings"; readonly patch: SettingsPatch }
   | { readonly kind: "review-trust" }

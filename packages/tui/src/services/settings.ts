@@ -58,9 +58,10 @@ function readSettings(path: string): FileRead {
   }
 }
 
+/** Project settings override global ones, except `autoUpdate` and `externalEditor`: the binary and the editor belong to the machine, so a project can't replace one or launch the other. */
 function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSettings {
   const resolved: ResolvedSettings = {
-    autoUpdate: project.autoUpdate ?? global.autoUpdate ?? false,
+    autoUpdate: global.autoUpdate ?? false,
     theme: project.theme ?? global.theme ?? "auto",
     copyOnSelect: project.copyOnSelect ?? global.copyOnSelect ?? process.platform !== "win32",
     scrollAcceleration: project.scrollAcceleration ?? global.scrollAcceleration ?? false,

@@ -40,7 +40,6 @@
     "./utils/text": "./src/utils/text.ts",
     "./utils/transcript": "./src/utils/transcript.ts",
     "./utils/uuid": "./src/utils/uuid.ts",
-    "./utils/validation": "./src/utils/validation.ts",
     "./auth/oauth/anthropic": "./src/auth/oauth/anthropic.ts"
   },
   "publishConfig": {
@@ -144,10 +143,6 @@
       "./utils/uuid": {
         "types": "./dist/src/utils/uuid.d.ts",
         "import": "./dist/src/utils/uuid.js"
-      },
-      "./utils/validation": {
-        "types": "./dist/src/utils/validation.d.ts",
-        "import": "./dist/src/utils/validation.js"
       },
       "./auth/oauth/anthropic": {
         "types": "./dist/src/auth/oauth/anthropic.d.ts",

@@ -20,6 +20,11 @@ export interface ChangeScopeStats {
   readonly removed: number;
 }
 
+export interface ChangeTotals {
+  readonly fileCount: number;
+  readonly stats: ChangeScopeStats | undefined;
+}
+
 export type ChangeScopeRead =
   | { readonly kind: "pending" }
   | { readonly kind: "files"; readonly fileCount: number }
@@ -281,11 +286,10 @@ export function branchReadout(snapshot: GitStatus | undefined): BranchReadout | 
   };
 }
 
-export function changesSummary(repository: Extract<GitStatus, { readonly kind: "repository" }>) {
-  const files = worktreeFiles(repository).length;
-  const changes = [...repository.staged, ...repository.unstaged];
-  const added = changes.reduce((sum, file) => sum + file.added, 0);
-  const removed = changes.reduce((sum, file) => sum + file.removed, 0);
+export function changesSummary(totals: ChangeTotals) {
+  const files = totals.fileCount;
+  const added = totals.stats?.added ?? 0;
+  const removed = totals.stats?.removed ?? 0;
 
   const label =
     files === 0

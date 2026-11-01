@@ -12,13 +12,17 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as DesignModeRouteImport } from './routes/design-mode'
-import { Route as HubsRouteImport } from './routes/hubs'
+import { Route as ModelsRouteImport } from './routes/models'
 import { Route as PeekRouteImport } from './routes/peek'
+import { Route as ServerRouteImport } from './routes/server'
 import { Route as StacksRouteImport } from './routes/stacks'
 import { Route as StacksV1RouteImport } from './routes/stacks-v1'
 import { Route as TabsRouteImport } from './routes/tabs'
+import { Route as CoreEndpointRouteImport } from './routes/core/endpoint'
 import { Route as ProjectsExportSplatRouteImport } from './routes/projects-export.$'
 import { Route as VideoSplatRouteImport } from './routes/video.$'
+import { Route as CoreMcpSplatRouteImport } from './routes/core/mcp.$'
+import { Route as CoreNyteSplatRouteImport } from './routes/core/nyte.$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -35,14 +39,19 @@ const DesignModeRoute = DesignModeRouteImport.update({
   path: '/design-mode',
   getParentRoute: () => rootRouteImport,
 } as any)
-const HubsRoute = HubsRouteImport.update({
-  id: '/hubs',
-  path: '/hubs',
+const ModelsRoute = ModelsRouteImport.update({
+  id: '/models',
+  path: '/models',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PeekRoute = PeekRouteImport.update({
   id: '/peek',
   path: '/peek',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServerRoute = ServerRouteImport.update({
+  id: '/server',
+  path: '/server',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StacksRoute = StacksRouteImport.update({
@@ -60,6 +69,11 @@ const TabsRoute = TabsRouteImport.update({
   path: '/tabs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CoreEndpointRoute = CoreEndpointRouteImport.update({
+  id: '/core/endpoint',
+  path: '/core/endpoint',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsExportSplatRoute = ProjectsExportSplatRouteImport.update({
   id: '/projects-export/$',
   path: '/projects-export/$',
@@ -70,43 +84,65 @@ const VideoSplatRoute = VideoSplatRouteImport.update({
   path: '/video/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CoreMcpSplatRoute = CoreMcpSplatRouteImport.update({
+  id: '/core/mcp/$',
+  path: '/core/mcp/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CoreNyteSplatRoute = CoreNyteSplatRouteImport.update({
+  id: '/core/nyte/$',
+  path: '/core/nyte/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
   '/design-mode': typeof DesignModeRoute
-  '/hubs': typeof HubsRoute
+  '/models': typeof ModelsRoute
   '/peek': typeof PeekRoute
+  '/server': typeof ServerRoute
   '/stacks': typeof StacksRoute
   '/stacks-v1': typeof StacksV1Route
   '/tabs': typeof TabsRoute
+  '/core/endpoint': typeof CoreEndpointRoute
   '/projects-export/$': typeof ProjectsExportSplatRoute
   '/video/$': typeof VideoSplatRoute
+  '/core/mcp/$': typeof CoreMcpSplatRoute
+  '/core/nyte/$': typeof CoreNyteSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
   '/design-mode': typeof DesignModeRoute
-  '/hubs': typeof HubsRoute
+  '/models': typeof ModelsRoute
   '/peek': typeof PeekRoute
+  '/server': typeof ServerRoute
   '/stacks': typeof StacksRoute
   '/stacks-v1': typeof StacksV1Route
   '/tabs': typeof TabsRoute
+  '/core/endpoint': typeof CoreEndpointRoute
   '/projects-export/$': typeof ProjectsExportSplatRoute
   '/video/$': typeof VideoSplatRoute
+  '/core/mcp/$': typeof CoreMcpSplatRoute
+  '/core/nyte/$': typeof CoreNyteSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
   '/design-mode': typeof DesignModeRoute
-  '/hubs': typeof HubsRoute
+  '/models': typeof ModelsRoute
   '/peek': typeof PeekRoute
+  '/server': typeof ServerRoute
   '/stacks': typeof StacksRoute
   '/stacks-v1': typeof StacksV1Route
   '/tabs': typeof TabsRoute
+  '/core/endpoint': typeof CoreEndpointRoute
   '/projects-export/$': typeof ProjectsExportSplatRoute
   '/video/$': typeof VideoSplatRoute
+  '/core/mcp/$': typeof CoreMcpSplatRoute
+  '/core/nyte/$': typeof CoreNyteSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -114,50 +150,66 @@ export interface FileRouteTypes {
     | '/'
     | '/changes'
     | '/design-mode'
-    | '/hubs'
+    | '/models'
     | '/peek'
+    | '/server'
     | '/stacks'
     | '/stacks-v1'
     | '/tabs'
+    | '/core/endpoint'
     | '/projects-export/$'
     | '/video/$'
+    | '/core/mcp/$'
+    | '/core/nyte/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/changes'
     | '/design-mode'
-    | '/hubs'
+    | '/models'
     | '/peek'
+    | '/server'
     | '/stacks'
     | '/stacks-v1'
     | '/tabs'
+    | '/core/endpoint'
     | '/projects-export/$'
     | '/video/$'
+    | '/core/mcp/$'
+    | '/core/nyte/$'
   id:
     | '__root__'
     | '/'
     | '/changes'
     | '/design-mode'
-    | '/hubs'
+    | '/models'
     | '/peek'
+    | '/server'
     | '/stacks'
     | '/stacks-v1'
     | '/tabs'
+    | '/core/endpoint'
     | '/projects-export/$'
     | '/video/$'
+    | '/core/mcp/$'
+    | '/core/nyte/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChangesRoute: typeof ChangesRoute
   DesignModeRoute: typeof DesignModeRoute
-  HubsRoute: typeof HubsRoute
+  ModelsRoute: typeof ModelsRoute
   PeekRoute: typeof PeekRoute
+  ServerRoute: typeof ServerRoute
   StacksRoute: typeof StacksRoute
   StacksV1Route: typeof StacksV1Route
   TabsRoute: typeof TabsRoute
+  CoreEndpointRoute: typeof CoreEndpointRoute
   ProjectsExportSplatRoute: typeof ProjectsExportSplatRoute
   VideoSplatRoute: typeof VideoSplatRoute
+  CoreMcpSplatRoute: typeof CoreMcpSplatRoute
+  CoreNyteSplatRoute: typeof CoreNyteSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -183,11 +235,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesignModeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/hubs': {
-      id: '/hubs'
-      path: '/hubs'
-      fullPath: '/hubs'
-      preLoaderRoute: typeof HubsRouteImport
+    '/models': {
+      id: '/models'
+      path: '/models'
+      fullPath: '/models'
+      preLoaderRoute: typeof ModelsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/peek': {
@@ -195,6 +247,13 @@ declare module '@tanstack/react-router' {
       path: '/peek'
       fullPath: '/peek'
       preLoaderRoute: typeof PeekRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/server': {
+      id: '/server'
+      path: '/server'
+      fullPath: '/server'
+      preLoaderRoute: typeof ServerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/stacks': {
@@ -218,6 +277,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TabsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/core/endpoint': {
+      id: '/core/endpoint'
+      path: '/core/endpoint'
+      fullPath: '/core/endpoint'
+      preLoaderRoute: typeof CoreEndpointRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects-export/$': {
       id: '/projects-export/$'
       path: '/projects-export/$'
@@ -232,6 +298,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VideoSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/core/mcp/$': {
+      id: '/core/mcp/$'
+      path: '/core/mcp/$'
+      fullPath: '/core/mcp/$'
+      preLoaderRoute: typeof CoreMcpSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/core/nyte/$': {
+      id: '/core/nyte/$'
+      path: '/core/nyte/$'
+      fullPath: '/core/nyte/$'
+      preLoaderRoute: typeof CoreNyteSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -239,13 +319,17 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChangesRoute: ChangesRoute,
   DesignModeRoute: DesignModeRoute,
-  HubsRoute: HubsRoute,
+  ModelsRoute: ModelsRoute,
   PeekRoute: PeekRoute,
+  ServerRoute: ServerRoute,
   StacksRoute: StacksRoute,
   StacksV1Route: StacksV1Route,
   TabsRoute: TabsRoute,
+  CoreEndpointRoute: CoreEndpointRoute,
   ProjectsExportSplatRoute: ProjectsExportSplatRoute,
   VideoSplatRoute: VideoSplatRoute,
+  CoreMcpSplatRoute: CoreMcpSplatRoute,
+  CoreNyteSplatRoute: CoreNyteSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

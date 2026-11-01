@@ -36,6 +36,13 @@ export interface PartDefinition<State = unknown, Actions extends ActionSchemas =
   readonly kind: string;
   readonly state: Schema<State>;
   readonly actions: Actions;
+  /**
+   * A TSX file, as `new URL("./ping.view.tsx", import.meta.url)`, whose default export is a
+   * component taking `{ state, act }`. It may import `react`, `nyte/canvas` and its own files, and
+   * this definition only with `import type`. Clients without a renderer for the kind draw it in
+   * the canvas shell; saving the file redraws it.
+   */
+  readonly view?: URL;
   fallback(state: State, context: { readonly id: PartId }): string;
   onAction?<A extends keyof Actions>(
     action: A,

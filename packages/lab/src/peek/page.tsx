@@ -1,5 +1,4 @@
 import { create, props } from "@stylexjs/stylex";
-import { DialRoot } from "dialkit";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
@@ -8,10 +7,8 @@ import { shell, sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { Toggle } from "@nyte-ai/ui/toggle";
-import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { DISPLAY_MODES, useDisplayMode, type DisplayMode } from "../shell/display-mode";
+import { useScheme } from "../shell/scheme";
 import { PeekCard, SPLIT_GAP, paneRect, rectStyle } from "./card";
 import type { Landing, Opened, Size } from "./card";
 import { usePeekDials, type Trigger } from "./motion";
@@ -33,7 +30,7 @@ interface Landed {
 }
 
 export function PeekPage(): ReactElement {
-  const [scheme, setScheme] = useState<DisplayMode>("light");
+  const scheme = useScheme();
   const [size, setSize] = useState<Size>();
   const [opened, setOpened] = useState<Opened>();
   const [landed, setLanded] = useState<Landed>();
@@ -50,8 +47,6 @@ export function PeekPage(): ReactElement {
 
   const split = landed?.landing === "split" || opened?.landing === "split";
   const receded = opened !== undefined && opened.landing !== "split";
-
-  useDisplayMode(scheme);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- the card's geometry follows the page area's size
   useEffect(() => {
@@ -199,29 +194,11 @@ export function PeekPage(): ReactElement {
             you can read it and get back without losing your place. Drag the card&apos;s top strip
             or scroll past the top of its page to put it away. Arc 1.170&apos;s geometry, corners
             and springs are read from its binary; tune them, and this board&apos;s guesses, in the
-            dial panel.
+            inspector.
           </p>
         </header>
 
         <div {...props(styles.toolbar)}>
-          <label {...props(styles.choice)}>
-            <span {...props(styles.choiceLabel)}>Appearance</span>
-            <ToggleGroup
-              aria-label="Appearance"
-              value={[scheme]}
-              onValueChange={(values) => {
-                const next = DISPLAY_MODES.find((mode) => mode.value === values.at(-1));
-
-                if (next !== undefined) setScheme(next.value);
-              }}
-            >
-              {DISPLAY_MODES.map((mode) => (
-                <Toggle key={mode.value} value={mode.value} size="sm">
-                  {mode.label}
-                </Toggle>
-              ))}
-            </ToggleGroup>
-          </label>
           <span role="status" {...props(styles.status)}>
             {status}
           </span>
@@ -420,7 +397,6 @@ export function PeekPage(): ReactElement {
           </ul>
         </section>
       </div>
-      <DialRoot position="bottom-right" defaultOpen={false} />
     </main>
   );
 }
@@ -522,7 +498,6 @@ const styles = create({
   },
   lede: { margin: 0, color: role.contentSecondary, fontSize: type.fontBase },
   toolbar: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16 },
-  choice: { display: "inline-flex", alignItems: "center", gap: 8 },
   choiceLabel: { color: role.contentTertiary, fontSize: type.fontSm, whiteSpace: "nowrap" },
   status: { color: role.contentSecondary, fontSize: type.fontSm },
   window: {

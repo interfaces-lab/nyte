@@ -14,6 +14,7 @@ import {
   CANVAS_GLOBAL,
   CANVAS_RUNTIME,
   CANVAS_STARTUP_CONTEXT,
+  actRequest,
   errorNotification,
   initializeRequest,
   initializedNotification,
@@ -28,18 +29,27 @@ import type {
   CanvasHostContext,
   CanvasLibrary,
   CanvasModule,
+  Json,
 } from "@nyte-ai/plugin/canvas/protocol";
 import { kit } from "../kit/index.ts";
 import { SchemeContext } from "../kit/scheme.ts";
 
 type Failure = { readonly phase: "load" | "render"; readonly message: string };
 
-type Loaded = { readonly title: string; readonly Canvas: ComponentType };
+/** A canvas gets neither. */
+type ViewProps = {
+  readonly state?: Json;
+  readonly act?: (action: string, input?: Json) => Promise<Json>;
+};
+
+type Loaded = { readonly title: string; readonly Canvas: ComponentType<ViewProps> };
 
 type State = {
   readonly scheme: "light" | "dark";
   readonly loaded: Loaded | null;
   readonly failure: Failure | null;
+  /** Undefined for a canvas. */
+  readonly part: Json | undefined;
 };
 
 const styles = create({
@@ -127,11 +137,25 @@ const container =
 
 const root = createRoot(container);
 
-let state: State = { scheme: "light", loaded: null, failure: null };
+let state: State = { scheme: "light", loaded: null, failure: null, part: undefined };
 
 let reportedHeight = 0;
 
 let links = 0;
+
+let acts = 0;
+
+const pending = new Map<string, (outcome: Json) => void>();
+
+function act(action: string, input: Json = {}): Promise<Json> {
+  acts += 1;
+  const id = `act-${String(acts)}`;
+  const answered = Promise.withResolvers<Json>();
+  pending.set(id, answered.resolve);
+  post(actRequest(id, action, input));
+
+  return answered.promise;
+}
 
 let moduleUrl: string | null = null;
 
@@ -212,7 +236,7 @@ function FailureNote({ failure }: { readonly failure: Failure }): ReactElement {
   );
 }
 
-function Shell({ scheme, loaded, failure }: State): ReactElement {
+function Shell({ scheme, loaded, failure, part }: State): ReactElement {
   return (
     <StrictMode>
       <SchemeContext.Provider value={scheme}>
@@ -228,7 +252,7 @@ function Shell({ scheme, loaded, failure }: State): ReactElement {
                 );
               }}
             >
-              <loaded.Canvas />
+              {part === undefined ? <loaded.Canvas /> : <loaded.Canvas state={part} act={act} />}
             </Boundary>
           ) : null}
         </TooltipProvider>
@@ -242,7 +266,7 @@ function paint(): void {
 }
 
 // oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- typeof narrows an imported default export only to Function, not ComponentType
-function exportsComponent(value: unknown): value is ComponentType {
+function exportsComponent(value: unknown): value is ComponentType<ViewProps> {
   return typeof value === "function";
 }
 
@@ -319,6 +343,16 @@ function receive(data: unknown): void {
       return;
     case "library-result":
       libraries.get(message.name)?.receive(message.source);
+
+      return;
+    case "part-state":
+      state = { ...state, part: message.state };
+      paint();
+
+      return;
+    case "act-result":
+      pending.get(String(message.id))?.(message.outcome);
+      pending.delete(String(message.id));
 
       return;
   }

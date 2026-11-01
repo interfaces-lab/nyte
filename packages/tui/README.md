@@ -115,8 +115,9 @@ show command-specific usage without starting the operation. Help must be used on
 Unknown, duplicate, and incompatible options fail before the operation starts.
 
 `nyte update`, `nyte update <version>`, and `nyte update --check` select latest install,
-versioned install, and check-only respectively. `nyte update --models` refreshes the hosted model
-catalog without updating Nyte. These choices are mutually exclusive. Update progress uses stderr;
+versioned install, and check-only respectively. `nyte update` follows the running build's
+channel; `nyte update stable` and `nyte update nightly` switch to that channel's newest release.
+`nyte update --models` refreshes the hosted model catalog without updating Nyte. These choices are mutually exclusive. Update progress uses stderr;
 results use stdout.
 `--json` is supported for print and status, not login, logout, or update.
 

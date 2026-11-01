@@ -12,6 +12,7 @@ export type {
   Login,
   ModelsApi,
   OpenOptions,
+  OperationsApi,
   PluginDirectory,
   PluginFile,
   PluginStorage,
@@ -20,6 +21,7 @@ export type {
   PrincipalsApi,
   RequestJournal,
   SettingsApi,
+  ViewBuild,
 } from "./contract/host.ts";
 
 export {

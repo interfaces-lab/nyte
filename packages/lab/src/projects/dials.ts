@@ -1,6 +1,4 @@
-import { useDialKit } from "dialkit";
-import { DISPLAY_MODES } from "../shell/display-mode";
-import type { DisplayMode } from "../shell/display-mode";
+import { useDials } from "../shell/dials.ts";
 import type { Matching } from "./contract.ts";
 import { DEFAULT_KNOBS } from "./world.ts";
 import type { Knobs, ModelId } from "./world.ts";
@@ -22,12 +20,10 @@ function findModel(value: string, fallback: ModelId): ModelId {
 export interface ProjectDials {
   readonly knobs: Knobs;
   readonly journey: boolean;
-  readonly scheme: DisplayMode;
 }
 
 export function useProjectDials(): ProjectDials {
-  const values = useDialKit("Stacks", {
-    scheme: { type: "select", options: [...DISPLAY_MODES], default: "light" },
+  const values = useDials("Stacks v1", {
     journey: true,
     models: {
       worker: { type: "select", options: [...MODELS], default: DEFAULT_KNOBS.worker },
@@ -52,7 +48,6 @@ export function useProjectDials(): ProjectDials {
 
   return {
     journey: values.journey,
-    scheme: DISPLAY_MODES.find((mode) => mode.value === values.scheme)?.value ?? "light",
     knobs: {
       worker: findModel(values.models.worker, DEFAULT_KNOBS.worker),
       reviewer: findModel(values.models.reviewer, DEFAULT_KNOBS.reviewer),

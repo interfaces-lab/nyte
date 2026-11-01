@@ -322,6 +322,7 @@ export function kernelOver(
       catalog: asId("g1"),
       plugins: [],
       settings: [],
+      views: [],
       defaultWorkspace: null,
     }),
     turn: {

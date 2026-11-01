@@ -11,6 +11,7 @@ import {
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
   HOST_PORT_CHANNEL,
+  INITIAL_TAB_ARGUMENT,
   LAUNCH_WINDOWS_ARGUMENT,
   MACHINE_NAME_ARGUMENT,
   TERMINAL_NOTIFICATION_CHANNEL,
@@ -96,6 +97,8 @@ if (windowId === undefined) throw new Error("The main process names every window
 
 const launchWindows = argumentValue(LAUNCH_WINDOWS_ARGUMENT);
 
+const initialTab = argumentValue(INITIAL_TAB_ARGUMENT);
+
 const bridge = {
   clientSurface: "desktop",
   platform: process.platform,
@@ -106,6 +109,7 @@ const bridge = {
       launchWindows === undefined
         ? undefined
         : { windowIds: launchWindows.split(",").filter((id) => id !== "") },
+    initialTab,
   },
   windowPainted: () => ipcRenderer.send(WINDOW_PAINTED_CHANNEL),
   ...(canvasShell === undefined ? {} : { canvasShell }),
@@ -167,6 +171,7 @@ const bridge = {
     confirmExternal: object("host.confirmExternal"),
     revealPath: object("host.revealPath"),
     openPluginsFolder: none("host.openPluginsFolder"),
+    tearOffTab: object("host.tearOffTab"),
     pathForFile: (file: File) => webUtils.getPathForFile(file),
     contextMenu: object("host.contextMenu"),
     browser: {

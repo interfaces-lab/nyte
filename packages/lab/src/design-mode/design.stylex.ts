@@ -6,7 +6,9 @@ import { defineConsts } from "@stylexjs/stylex";
  */
 export const design = defineConsts({
   accent: "#3884ff",
+  onAccent: "white",
   glow: "rgb(56 132 255 / 0.15)",
+  markerShadow: "0 2px 6px rgb(0 0 0 / 0.25)",
   labelShadow: "drop-shadow(0 2px 12px rgb(0 0 0 / 0.1))",
 });
 

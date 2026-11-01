@@ -60,6 +60,20 @@ export const PluginCheckReportType = Type.Object({
 
 export type PluginCheckReport = Decoded<typeof PluginCheckReportType>;
 
+/** `input` and `output` are draft 2020-12 JSON Schemas of the wire form. */
+export const OperationDescriptionType = Type.Object({
+  name: Type.String(),
+  summary: Type.String(),
+  kind: Type.Enum(["query", "watch", "command", "receipt", "stream"]),
+  authority: AuthorityType,
+  scope: Type.Enum(["host", "session", "workspace"]),
+  capability: Type.Optional(Type.Enum(["files", "git", "github", "browser"])),
+  input: JsonType,
+  output: JsonType,
+});
+
+export type OperationDescription = Decoded<typeof OperationDescriptionType>;
+
 export const PluginReplacementReportType = Type.Object({
   generation: idSchema<"catalog-generation">(),
   plugins: Type.Array(PluginLoadOutcomeType),

@@ -135,6 +135,7 @@ const host: HostView = {
   catalog: asId<"catalog-generation">("initial"),
   plugins: [],
   settings: [],
+  views: [],
   defaultWorkspace: null,
   authority: new Set(),
 };

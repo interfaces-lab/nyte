@@ -9,7 +9,7 @@ import {
 } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { create, props } from "@stylexjs/stylex";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -19,16 +19,14 @@ import { role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
 import { Toaster, toast } from "@nyte-ai/ui/toast";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { styles as shell } from "../projects/page.stylex";
-import { useDisplayMode } from "../shell/display-mode";
-import type { DisplayMode } from "../shell/display-mode";
+import { useDials } from "../shell/dials.ts";
+import type { DialConfig } from "../shell/dials.ts";
 import { createItem } from "./delegate.ts";
 import type { Request } from "./delegate.ts";
 import { CHAT, droppedOn } from "./dnd.tsx";
 import { Home } from "./home.tsx";
 import type { Display } from "./home.tsx";
 import { ItemView } from "./item-view.tsx";
-import { LabControls } from "./lab-controls.tsx";
-import type { Pace } from "./lab-controls.tsx";
 import { SURFACES, YOU } from "./model.ts";
 import type { Answer, Chat, Item, PullRequest, Stack, Status } from "./model.ts";
 import { NewStack } from "./new-stack.tsx";
@@ -36,7 +34,6 @@ import { StatusGlyph } from "./parts.tsx";
 import { finished } from "./progress.ts";
 import { TICK_MS, advance, land, revisionSteps, schedule } from "./script.ts";
 import { CHATS, ITEMS, OPEN_PULLS, STACKS } from "./seed.ts";
-import { PageScheme } from "./shots.tsx";
 import { StacksSidebar } from "./sidebar.tsx";
 import { StackView } from "./stack-view.tsx";
 import { hands, propose } from "./staffing.ts";
@@ -62,7 +59,6 @@ interface Board {
   readonly sidebar: boolean | null;
   readonly clock: number;
   readonly made: number;
-  readonly pace: Pace;
   /** Each item's status when you last looked; a row whose status moved since gets a dot. */
   readonly seen: Readonly<Record<string, Status>>;
   /** The stack Home shows and toasts come from; null is all of them. */
@@ -84,7 +80,6 @@ const START: Board = {
   sidebar: null,
   clock: 0,
   made: 0,
-  pace: 1,
   seen: seenNow(ITEMS),
   focus: null,
   display: { group: "lane", finished: true },
@@ -131,16 +126,25 @@ function tick(board: Board): Board {
   };
 }
 
-/** Below this the sidebar stops sharing the row and slides over the card instead. */
-const DRAWER_QUERY = "(max-width: 760px)";
+/** How fast the fake work moves (1× is a minute every 4 seconds), and a way back to the seed. */
+const PACE_DIALS = {
+  pace: {
+    type: "select",
+    options: [
+      { value: "0", label: "Paused" },
+      { value: "1", label: "1×" },
+      { value: "4", label: "4×" },
+    ],
+    default: "1",
+  },
+  startOver: { type: "action", label: "Start Over" },
+} satisfies DialConfig;
 
-function watchDrawer(onChange: () => void): () => void {
-  const query = window.matchMedia(DRAWER_QUERY);
-
-  query.addEventListener("change", onChange);
-
-  return () => query.removeEventListener("change", onChange);
-}
+/**
+ * At or below this width the sidebar stops sharing the row and slides over the card instead. It
+ * is the window's width in the app, and the lab's stage width here, which the side panels narrow.
+ */
+const DRAWER_WIDTH = 760;
 
 const local = create({
   stage: { position: "relative" },
@@ -191,14 +195,26 @@ const local = create({
  */
 export function StacksPage(): ReactElement {
   const [board, setBoard] = useState(START);
-  const [scheme, setScheme] = useState<DisplayMode>("light");
   const [carrying, setCarrying] = useState<string | null>(null);
 
-  const drawer = useSyncExternalStore(
-    watchDrawer,
-    () => window.matchMedia(DRAWER_QUERY).matches,
-    () => false,
-  );
+  const [drawer, setDrawer] = useState(false);
+  const windowRef = useRef<HTMLDivElement>(null);
+
+  useMountEffect(() => {
+    const element = windowRef.current;
+
+    if (element === null) return undefined;
+
+    const observer = new ResizeObserver((entries) => {
+      const width = entries.at(-1)?.contentRect.width;
+
+      if (width !== undefined) setDrawer(width <= DRAWER_WIDTH);
+    });
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -219,16 +235,25 @@ export function StacksPage(): ReactElement {
   const stack = board.stacks.find((entry) => entry.id === stackId);
   const carried = CHATS.find((chat) => chat.id === carrying);
 
-  useDisplayMode(scheme);
+  const startOver = (): void => {
+    seen.current = new Set(
+      ITEMS.filter((entry) => entry.status === "needs-you").map((entry) => entry.id),
+    );
+    setBoard(START);
+  };
+
+  const dials = useDials("Stacks", PACE_DIALS, (action) => {
+    if (action === "startOver") startOver();
+  });
+
+  const advanceClock = useEffectEvent((): void => {
+    const pace = Number(dials.pace);
+
+    setBoard((current) => Array.from({ length: pace }).reduce<Board>(tick, current));
+  });
 
   useMountEffect(() => {
-    const timer = window.setInterval(
-      () =>
-        setBoard((current) =>
-          Array.from({ length: current.pace }).reduce<Board>((next) => tick(next), current),
-        ),
-      TICK_MS,
-    );
+    const timer = window.setInterval(advanceClock, TICK_MS);
 
     return () => window.clearInterval(timer);
   });
@@ -486,7 +511,7 @@ export function StacksPage(): ReactElement {
   const context = { all: board.items, stacks: null, seen: board.seen, clock: board.clock };
 
   return (
-    <PageScheme value={scheme}>
+    <>
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
@@ -495,7 +520,7 @@ export function StacksPage(): ReactElement {
         onDragCancel={() => setCarrying(null)}
         onDragEnd={drop}
       >
-        <div {...props(shell.shell)}>
+        <div ref={windowRef} {...props(shell.shell)}>
           <Titlebar
             tab={{
               id: "stack",
@@ -536,20 +561,6 @@ export function StacksPage(): ReactElement {
                   stacks={board.stacks}
                   focus={board.focus}
                   onFocus={(focus) => setBoard((current) => ({ ...current, focus }))}
-                />
-                <LabControls
-                  scheme={scheme}
-                  pace={board.pace}
-                  onScheme={setScheme}
-                  onPace={(pace) => setBoard((current) => ({ ...current, pace }))}
-                  onReset={() => {
-                    seen.current = new Set(
-                      ITEMS.filter((entry) => entry.status === "needs-you").map(
-                        (entry) => entry.id,
-                      ),
-                    );
-                    setBoard(START);
-                  }}
                 />
               </>
             }
@@ -675,6 +686,6 @@ export function StacksPage(): ReactElement {
           )}
         </DragOverlay>
       </DndContext>
-    </PageScheme>
+    </>
   );
 }

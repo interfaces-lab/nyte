@@ -49,6 +49,7 @@ import type {
   PluginDirectory,
   PluginFile,
   PluginsApi,
+  ViewBuild,
 } from "./host.ts";
 import type { PartDefinition, PartDefinitions, PartTable } from "./parts.ts";
 import type {
@@ -191,6 +192,9 @@ export interface PluginHost {
 
   /** Loads the plugin files in `dir` one by one, so a bad file is reported without dropping the others; the same plugin object while none of a file's graph changed. */
   directory(dir: string): Promise<PluginDirectory>;
+
+  /** The same build while none of the view's files changed; null on a host that reads no files. */
+  readonly compileView: ((view: URL) => Promise<ViewBuild>) | null;
 }
 
 export interface SessionDirectory {
@@ -400,6 +404,8 @@ export interface PluginState {
     readonly refused: readonly PluginFailure[];
     readonly failing: readonly string[];
   };
+  /** So the next publish can withdraw the issues of views that now compile. */
+  viewFailures: readonly string[];
 }
 
 /** A file of a plugin folder that failed to load or that the host refused, with why. */

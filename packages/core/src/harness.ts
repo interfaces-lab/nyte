@@ -167,6 +167,7 @@ export async function setup(
       catalog: asId("g1"),
       plugins: [],
       settings: [],
+      views: [],
       defaultWorkspace: workspace,
     }),
     turn: turns.driver,

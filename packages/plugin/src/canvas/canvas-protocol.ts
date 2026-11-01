@@ -291,6 +291,13 @@ export type ShellMessage =
   | { readonly kind: "open-link"; readonly id: JsonRpcId; readonly url: string }
   /** Asked only by a shell with no base URL to load `libraries/<name>.js` from (the inline one in a WebView); the request's id is the name. */
   | { readonly kind: "library"; readonly name: CanvasLibrary }
+  /** Answered with `act-result`. */
+  | {
+      readonly kind: "act";
+      readonly id: JsonRpcId;
+      readonly action: string;
+      readonly input: Json;
+    }
   | {
       readonly kind: "error";
       readonly phase: "load" | "render";
@@ -310,7 +317,10 @@ export type HostMessage =
   | { readonly kind: "context-changed"; readonly context: Partial<CanvasHostContext> }
   | { readonly kind: "open-link-result"; readonly id: JsonRpcId; readonly isError: boolean }
   /** `source` is the library's self-contained ES module. */
-  | { readonly kind: "library-result"; readonly name: CanvasLibrary; readonly source: string };
+  | { readonly kind: "library-result"; readonly name: CanvasLibrary; readonly source: string }
+  /** Sent after `render` and on each state change. */
+  | { readonly kind: "part-state"; readonly state: Json }
+  | { readonly kind: "act-result"; readonly id: JsonRpcId; readonly outcome: Json };
 
 const INITIALIZE = "ui/initialize";
 
@@ -328,7 +338,17 @@ const HOST_CONTEXT_CHANGED = "ui/notifications/host-context-changed";
 
 const RENDER = "nyte/notifications/render";
 
-type Json = null | boolean | number | string | readonly Json[] | { readonly [key: string]: Json };
+const PART_STATE = "nyte/notifications/part-state";
+
+const ACT = "nyte/act";
+
+export type Json =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly Json[]
+  | { readonly [key: string]: Json };
 
 /** Returns the `ui/initialize` request the shell opens with. */
 export function initializeRequest(id: JsonRpcId, runtime: number): Json {
@@ -403,6 +423,18 @@ export function renderNotification(module: CanvasModule): Json {
   };
 }
 
+export function partStateNotification(state: Json): Json {
+  return { jsonrpc: "2.0", method: PART_STATE, params: { state } };
+}
+
+export function actRequest(id: JsonRpcId, action: string, input: Json): Json {
+  return { jsonrpc: "2.0", id, method: ACT, params: { action, input } };
+}
+
+export function actResult(id: JsonRpcId, outcome: Json): Json {
+  return { jsonrpc: "2.0", id, result: { outcome } };
+}
+
 export function hostContextChangedNotification(context: Partial<CanvasHostContext>): Json {
   return { jsonrpc: "2.0", method: HOST_CONTEXT_CHANGED, params: contextJson(context) };
 }
@@ -457,6 +489,15 @@ export function readShellMessage(data: unknown): ShellMessage | undefined {
     return name !== undefined && id === name ? { kind: "library", name } : undefined;
   }
 
+  if (method === ACT && id !== undefined) {
+    const action = params?.["action"];
+    const input = readJson(params?.["input"]);
+
+    return typeof action === "string" && action !== "" && input !== undefined
+      ? { kind: "act", id, action, input }
+      : undefined;
+  }
+
   if (method === LOG_MESSAGE) {
     const payload = record(params?.["data"]);
     const phase = payload?.["phase"];
@@ -484,6 +525,12 @@ export function readHostMessage(data: unknown): HostMessage | undefined {
   const { id, method, params, result } = message;
 
   if (method === undefined && id !== undefined && result !== undefined) {
+    if ("outcome" in result) {
+      const outcome = readJson(result["outcome"]);
+
+      return outcome === undefined ? undefined : { kind: "act-result", id, outcome };
+    }
+
     if ("source" in result) {
       const source = result["source"];
       const name = readCanvasLibrary(id);
@@ -531,6 +578,12 @@ export function readHostMessage(data: unknown): HostMessage | undefined {
     const context = readPartialContext(params);
 
     return context === undefined ? undefined : { kind: "context-changed", context };
+  }
+
+  if (method === PART_STATE) {
+    const state = readJson(params?.["state"]);
+
+    return state === undefined ? undefined : { kind: "part-state", state };
   }
 
   return undefined;
@@ -683,6 +736,25 @@ function envelope(data: unknown):
     params: record(message["params"]),
     result: record(message["result"]),
   };
+}
+
+function readJson(value: unknown): Json | undefined {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+
+  if (Array.isArray(value)) {
+    const items = value.map(readJson);
+    const json = items.filter((item): item is Json => item !== undefined);
+
+    return json.length === items.length ? json : undefined;
+  }
+
+  if (typeof value !== "object") return undefined;
+  const entries = Object.entries(value).map(([key, item]) => [key, readJson(item)] as const);
+  const json = entries.filter((entry): entry is readonly [string, Json] => entry[1] !== undefined);
+
+  return json.length === entries.length ? Object.fromEntries(json) : undefined;
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {

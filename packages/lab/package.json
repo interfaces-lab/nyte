@@ -38,6 +38,7 @@
     "typebox": "^1.4.2"
   },
   "devDependencies": {
+    "@earendil-works/pi-mcp": "^1.3.0",
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",

@@ -97,6 +97,7 @@ export function ComposerChipView({
                   size="2xs"
                   iconOnly
                   icon="x"
+                  xstyle={composerStyles.mentionChipRemoveButton}
                   aria-label={`Remove ${label}`}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={(event) => {

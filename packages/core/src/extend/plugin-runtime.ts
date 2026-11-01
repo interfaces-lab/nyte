@@ -40,6 +40,7 @@ import { callable } from "../util/callable.ts";
 import { dev } from "../util/dev-log.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
 import { activateSession } from "./activation.ts";
+import { publishViews } from "./part-views.ts";
 import { loadPlugins } from "./plugin-folders.ts";
 import { createHookDispatch, namesCoreHook } from "./hooks.ts";
 import { build, corePluginApi } from "./plugin-api.ts";
@@ -98,6 +99,7 @@ export function createPluginState(): PluginState {
     publishing: new Map(),
     secretKey: null,
     user: { plugins: [], refused: [], failing: [] },
+    viewFailures: [],
   };
 }
 
@@ -563,6 +565,7 @@ export async function replacePlugins(
 
   publishPlugins(kernel);
   await publishSettings(kernel);
+  await publishViews(kernel);
 
   const reported = outcomes.map((outcome, index): PluginLoadOutcome =>
     failed.length === 0 || checked[index]?.ok !== true

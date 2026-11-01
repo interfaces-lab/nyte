@@ -483,6 +483,7 @@ export const composerStyles = create({
     transitionDuration: motion.durationFast,
     transitionTimingFunction: motion.easeOut,
   },
+  mentionChipRemoveButton: { marginInlineEnd: 0 },
   clipboardPreview: {
     display: "block",
     maxWidth: clipboardPreview.maxWidth,

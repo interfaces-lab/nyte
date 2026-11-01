@@ -61,13 +61,9 @@ Next: preserve this relationship in the shared model type as a union of concrete
 
 Next: separate single-implementation and API-map construction so dispatch does not need structural guessing. Preserve custom-provider support and deferred operations during that change.
 
-### 4. Tool coercion needs one explicit schema contract
+### 4. Tool coercion — resolved
 
-[`validation.ts`](src/utils/validation.ts) maintains a handwritten JSON Schema subset, casts it to TypeBox schema types, and branches on a TypeBox symbol. A blanket replacement with `Value.Convert` would change behavior. The tests cover serialized-schema primitive coercion, unions, and optional non-nullable properties receiving `null`.
-
-[`ToolCall.arguments`](../schema/src/message.ts) is still `Record<string, any>`. [`agent-loop.ts`](../core/src/agent-loop.ts) validates before execution and after hook modifications, which is a boundary worth retaining.
-
-Next: distinguish unvalidated tool arguments from the selected tool's schema-derived arguments. Normalize accepted serialized schemas once. Test the existing coercion matrix before deleting the recursive compatibility walker. Do not replace it with a collection of one-line schema checks that merely hide the same algorithm.
+The tool-argument validator and its coercion walker had no production callers and are gone. Core validates tool arguments through each tool's Standard Schema, without coercion.
 
 ### 5. Some runtime probes are real boundary work
 

@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import { createContext, use, useState } from "react";
+import { useState } from "react";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { control, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -8,17 +8,14 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { intent } from "@nyte-ai/ui/surface-theme";
+import { useScheme } from "../shell/scheme.ts";
+import type { Scheme } from "../shell/scheme.ts";
 import type { ShotId } from "./model.ts";
 import { styles as parts } from "./parts.tsx";
 
 const SHOT_NARROW = "@container shot (max-width: 520px)";
 
 const SHOT_TINY = "@container shot (max-width: 360px)";
-
-type Scheme = "light" | "dark";
-
-/** The page's scheme; a shot starts there and can flip on its own. */
-export const PageScheme = createContext<Scheme>("light");
 
 const styles = create({
   shot: {
@@ -344,9 +341,9 @@ const SHOTS: Readonly<
   },
 };
 
-/** Before and after, side by side, in either scheme. */
+/** Before and after, side by side, starting in the lab's display mode and free to flip on its own. */
 export function Shot({ id }: { readonly id: ShotId }): ReactElement {
-  const page = use(PageScheme);
+  const page = useScheme();
   const [chosen, setChosen] = useState<Scheme | null>(null);
   const scheme = chosen ?? page;
   const shot = SHOTS[id];

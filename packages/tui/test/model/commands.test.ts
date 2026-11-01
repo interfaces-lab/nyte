@@ -100,8 +100,8 @@ describe("built-in commands", () => {
     ["pr", "", { kind: "open", dialog: { kind: "text", content: "pull-request" } }],
     ["pr", "status", { kind: "open", dialog: { kind: "text", content: "pull-request" } }],
     ["reload", "", { kind: "reload" }],
-    ["update", "", { kind: "update", version: null }],
-    ["update", "1.2.3", { kind: "update", version: "1.2.3" }],
+    ["update", "", { kind: "update", target: null }],
+    ["update", "1.2.3", { kind: "update", target: "1.2.3" }],
     ["skills", "", { kind: "open", dialog: { kind: "list", purpose: { kind: "skills" } } }],
   ] satisfies [string, string, Intent][])("/%s %s", (name, argument, intent) => {
     expect(run(name, argument)).toEqual(intent);

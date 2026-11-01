@@ -51,12 +51,12 @@ import type { WorkbenchChangesScope } from "../model.ts";
 import { nyte } from "../../contract/nyte.ts";
 import {
   changeRows,
+  changeTotals,
   changesEmptyState,
   patchIdentity,
   preparationOrder,
   resolveChangesScope,
   revertConfirmation,
-  scopeStats,
   sidebarFiles,
   stackSections,
   viewedDigest,
@@ -322,6 +322,7 @@ function ChangesPanelView({
   );
 
   const sections = useStackSections(rows, manifest.data, patchSnapshot, patchSource);
+  const totals = changeTotals(rows, manifest.data);
   const emptyState = changesEmptyState({ resolved, snapshot: snapshot.data, manifest, recorded });
   const viewedScopeId = `${optionsScopeId}\u0000${activeScopeValue}`;
 
@@ -481,8 +482,8 @@ function ChangesPanelView({
           ...(sessionOption === undefined ? [] : [sessionOption]),
           ...turnOptions.map(turnScopeOption),
         ])}
-        scopeStats={scopeStats(sections)}
-        scopeFileCount={rows.length}
+        scopeStats={totals.stats}
+        scopeFileCount={totals.fileCount}
         snapshot={snapshot.data}
         repository={repository}
         branch={branchReadout(snapshot.data)}

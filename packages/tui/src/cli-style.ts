@@ -106,6 +106,7 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   { label: "nyte account [status|unlink]", detail: "share this machine with your Nyte account" },
   { label: "nyte mcp <add|remove|list|login|logout>", detail: "manage MCP servers" },
   { label: "nyte host [--json]", detail: "serve your chats for --host-url to attach to" },
+  { label: "nyte api <list|describe>", detail: "print the operations a host serves" },
   { label: "nyte --version", detail: "print the installed version" },
   { label: "nyte -p [--json] [--quiet] [--resume] [prompt]", detail: "" },
 ];
@@ -149,7 +150,7 @@ export function renderHelp(color: boolean = ansiEnabled()): string {
 }
 
 export function renderCommandHelp(
-  command: "login" | "logout" | "update" | "status" | "account" | "mcp" | "host",
+  command: "login" | "logout" | "update" | "status" | "account" | "mcp" | "host" | "api",
 ): string {
   switch (command) {
     case "login":
@@ -170,11 +171,13 @@ export function renderCommandHelp(
       ].join("\n");
     case "update":
       return [
-        "Usage: nyte update [<version> | --check | --models]",
-        "Install the latest release or an explicit version; --check only checks for an update.",
+        "Usage: nyte update [<version> | stable | nightly | --check | --models]",
+        "Install the newest release on this build's channel, or an explicit version; --check only checks.",
+        "stable or nightly switches channel: it installs that channel's newest release, even an older one,",
+        "and later updates follow it.",
         "--models refreshes the model catalog without updating nyte.",
-        "A version, --check, and --models are mutually exclusive. Progress uses stderr; results use stdout.",
-        "Examples: nyte update | nyte update 0.0.2 | nyte update --check | nyte update --models",
+        "Choose one of a version, a channel, --check, or --models. Progress uses stderr; results use stdout.",
+        "Examples: nyte update | nyte update nightly | nyte update 0.0.2 | nyte update --check",
       ].join("\n");
     case "status":
       return [
@@ -223,6 +226,17 @@ export function renderCommandHelp(
         "login without a name needs an interactive terminal; over SSH, paste the URL the browser ends on.",
         "Examples: nyte mcp add docs --url https://example.com/mcp",
         "          nyte mcp add files -- npx -y @modelcontextprotocol/server-filesystem .",
+      ].join("\n");
+    case "api":
+      return [
+        "Usage: nyte api <command> [--json] [--host-url <url>]",
+        "  list                     print every operation with its summary",
+        "  describe <operation>     print one operation's access and input and output JSON Schemas",
+        "",
+        "Without --host-url it reads this build's operations, the ones this nyte serves; no host starts.",
+        "--host-url asks a running host instead, so the answer matches its version; the token is",
+        "read from NYTE_HOST_TOKEN. --json prints the descriptions, schemas included, as JSON.",
+        "Examples: nyte api list | nyte api describe head.send | nyte api list --json",
       ].join("\n");
     default: {
       const _exhaustive: never = command;

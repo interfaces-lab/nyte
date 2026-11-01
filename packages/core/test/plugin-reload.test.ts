@@ -62,6 +62,7 @@ async function controlled(attach: () => Promise<typeof env>) {
       catalog: asId("g1"),
       plugins: [],
       settings: [],
+      views: [],
       defaultWorkspace: workspace,
     }),
     turn: script().driver,

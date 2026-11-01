@@ -200,8 +200,7 @@ function PinnedRevision({ revision }: { readonly revision: CanvasRevision }): Re
   );
 }
 
-/** Reads a revision's compiled module from the blob its render stored. */
-async function readCode(blob: BlobId): Promise<CanvasState["code"]> {
+export async function readCode(blob: BlobId): Promise<CanvasState["code"]> {
   const reader = await connection().blob(blob);
   const decoder = new TextDecoder();
   let code = "";

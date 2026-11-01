@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { control, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { findElements } from "./picker";
 import type { Target } from "./picker";
 import { design } from "./design.stylex";
@@ -455,7 +455,7 @@ const styles = create({
     insetBlockStart: 0,
     insetInlineStart: 0,
     transformOrigin: "0 0",
-    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}, 0 8px 24px rgb(0 0 0 / 0.12)`,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}, ${shadow.shadowLg}`,
   },
   viewport: { position: "relative", width: "100%", height: "100%", overflow: "hidden" },
   scroller: { position: "absolute", inset: 0, overflow: "auto" },

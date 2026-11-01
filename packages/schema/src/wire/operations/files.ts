@@ -34,6 +34,7 @@ const QUERY_INPUT = wireObject({
 export const FILE_OPERATIONS = {
   "files.read": {
     ...FILES,
+    summary: "Reads a file as text or as a document with its version.",
     kind: "query",
     input: wireObject({
       ...PATH,
@@ -41,9 +42,16 @@ export const FILE_OPERATIONS = {
     }),
     output: FileDocumentSchema,
   },
-  "files.bytes": { ...FILES, kind: "stream", input: ON_PATH, output: BYTES },
+  "files.bytes": {
+    ...FILES,
+    summary: "Streams the bytes of a file.",
+    kind: "stream",
+    input: ON_PATH,
+    output: BYTES,
+  },
   "files.stat": {
     ...FILES,
+    summary: "Returns a path's kind, size and version, or null if nothing is there.",
     kind: "query",
     input: ON_PATH,
     output: wireSchema(
@@ -59,6 +67,7 @@ export const FILE_OPERATIONS = {
   },
   "files.write": {
     ...FILES,
+    summary: "Writes a file, optionally only if it still has the expected version.",
     kind: "command",
     input: wireObject({
       ...PATH,
@@ -73,6 +82,7 @@ export const FILE_OPERATIONS = {
   },
   "files.remove": {
     ...FILES,
+    summary: "Removes a file, optionally only if it still has the expected version.",
     kind: "command",
     input: wireObject({
       ...PATH,
@@ -82,6 +92,7 @@ export const FILE_OPERATIONS = {
   },
   "files.batch": {
     ...FILES,
+    summary: "Writes and removes several files together under one receipt.",
     kind: "receipt",
     recovery: "replay",
     input: wireObject({
@@ -107,12 +118,14 @@ export const FILE_OPERATIONS = {
   },
   "files.format": {
     ...FILES,
+    summary: "Returns the given contents formatted for the file at that path, without writing it.",
     kind: "query",
     input: wireObject({ ...PATH, contents: Type.String() }),
     output: FormatOutcomeSchema,
   },
   "files.scan": {
     ...FILES,
+    summary: "Streams the files and folders under a directory.",
     kind: "stream",
     input: wireObject({
       ...WORKSPACE,
@@ -123,18 +136,21 @@ export const FILE_OPERATIONS = {
   },
   "files.find": {
     ...FILES,
+    summary: "Lists the files whose paths best match a query, best first.",
     kind: "query",
     input: QUERY_INPUT,
     output: wireSchema(Type.Array(FileEntryViewType)),
   },
   "files.search": {
     ...FILES,
+    summary: "Streams matches for a text search across the workspace's files.",
     kind: "stream",
     input: wireObject({ ...WORKSPACE, ...SearchInputType.properties }),
     output: SearchFrameSchema,
   },
   "files.watch": {
     ...FILES,
+    summary: "Streams file changes in the workspace as they happen.",
     kind: "watch",
     input: wireObject({
       ...WORKSPACE,
@@ -142,5 +158,11 @@ export const FILE_OPERATIONS = {
     }),
     output: wireSchema(Type.Array(FileEventType)),
   },
-  "files.upload": { ...FILES, kind: "command", input: ON_WORKSPACE, output: BlobIdSchema },
+  "files.upload": {
+    ...FILES,
+    summary: "Uploads the request body and returns a blob id to use in a batch.",
+    kind: "command",
+    input: ON_WORKSPACE,
+    output: BlobIdSchema,
+  },
 } as const satisfies OperationRows;

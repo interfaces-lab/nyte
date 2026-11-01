@@ -38,3 +38,29 @@ nyte
   guide](https://github.com/interfaces-lab/nyte/blob/main/packages/cli/docs/README.md) covers
   commands and configuration.
 </small>
+
+## Updates [#updates]
+
+The desktop app and the terminal client update separately, and each follows its own channel:
+**stable** releases, or **nightly** builds of every change on `main`.
+
+The desktop app downloads updates in the background and installs them when you restart. To
+change its channel, open **Settings > Developer** and pick an **Update channel**.
+
+In a terminal, `nyte update` installs the newest release on the channel you're on. To switch
+channels:
+
+```sh
+nyte update nightly
+nyte update stable
+```
+
+Switching to stable installs the newest stable release, even when it's older than the
+nightly you had. To have `nyte` update itself when it starts, turn on **Auto-update** in
+`/settings`.
+
+<small>
+  Both apps keep your sessions in the same database, and a nightly can upgrade it to a format the
+  stable release can't read yet. Stable then refuses to open your sessions until the next stable
+  release, so keep both apps on nightly once either uses it.
+</small>

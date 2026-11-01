@@ -66,9 +66,16 @@ const NAMED_HEAD_INPUT = wireObject({
 });
 
 export const SESSION_OPERATIONS = {
-  "session.info": { ...PARTICIPANT, kind: "query", input: ON_SESSION, output: SessionInfoSchema },
+  "session.info": {
+    ...PARTICIPANT,
+    summary: "Reads a session's name, state and other details.",
+    kind: "query",
+    input: ON_SESSION,
+    output: SessionInfoSchema,
+  },
   "session.update": {
     ...PARTICIPANT,
+    summary: "Renames, pins, archives or moves a session to another workspace.",
     kind: "command",
     input: wireObject({
       ...SESSION,
@@ -83,12 +90,14 @@ export const SESSION_OPERATIONS = {
   },
   "session.remove": {
     ...PARTICIPANT,
+    summary: "Deletes a session.",
     kind: "command",
     input: ON_SESSION,
     output: RemoveSessionOutcomeSchema,
   },
   "session.stop": {
     ...PARTICIPANT,
+    summary: "Stops every run in a session and withdraws its queued messages.",
     kind: "command",
     input: ON_SESSION,
     output: wireObject({
@@ -98,6 +107,7 @@ export const SESSION_OPERATIONS = {
   },
   "session.command": {
     ...PARTICIPANT,
+    summary: "Runs a plugin command in a session with the text typed after it.",
     kind: "command",
     input: wireObject({
       ...SESSION,
@@ -108,12 +118,14 @@ export const SESSION_OPERATIONS = {
   },
   "session.completeCommand": {
     ...PARTICIPANT,
+    summary: "Returns suggestions for the text after a plugin command.",
     kind: "query",
     input: wireObject({ ...SESSION, name: Type.String(), prefix: Type.String() }),
     output: CommandCompletionsSchema,
   },
   "head.send": {
     ...PARTICIPANT,
+    summary: "Sends a message to a head and returns its receipt.",
     kind: "receipt",
     recovery: "replay",
     input: wireObject({
@@ -128,30 +140,35 @@ export const SESSION_OPERATIONS = {
   },
   "head.configure": {
     ...PARTICIPANT,
+    summary: "Changes a head's model, thinking level or other settings.",
     kind: "command",
     input: wireObject({ ...HEAD, patch: ConfigurationPatchType }),
     output: ConfigureOutcomeSchema,
   },
   "head.view": {
     ...PARTICIPANT,
+    summary: "Reads the current transcript and state of a head.",
     kind: "query",
     input: wireObject({ ...HEAD, options: Type.Optional(ViewOptionsType) }),
     output: SessionViewSchema,
   },
   "head.watch": {
     ...PARTICIPANT,
+    summary: "Streams the transcript and state of a head each time it changes.",
     kind: "watch",
     input: wireObject({ ...HEAD, options: Type.Optional(ViewOptionsType) }),
     output: ViewFrameSchema,
   },
   "head.see": {
     ...PARTICIPANT,
+    summary: "Marks a head as seen up to a commit.",
     kind: "command",
     input: wireObject({ ...HEAD, commit: idSchema<"commit">() }),
     output: NOTHING,
   },
   "head.history": {
     ...PARTICIPANT,
+    summary: "Returns older messages before a given message, with their turns.",
     kind: "query",
     input: wireObject({
       ...HEAD,
@@ -160,9 +177,16 @@ export const SESSION_OPERATIONS = {
     }),
     output: wireSchema(HistoryPageType),
   },
-  "head.tree": { ...PARTICIPANT, kind: "query", input: wireObject(HEAD), output: TreeViewSchema },
+  "head.tree": {
+    ...PARTICIPANT,
+    summary: "Returns the tree of messages and branches behind a head.",
+    kind: "query",
+    input: wireObject(HEAD),
+    output: TreeViewSchema,
+  },
   "head.move": {
     ...PARTICIPANT,
+    summary: "Moves a head to an earlier or other position in the chat.",
     kind: "receipt",
     recovery: "replay",
     input: wireObject({
@@ -175,6 +199,7 @@ export const SESSION_OPERATIONS = {
   },
   "head.compact": {
     ...PARTICIPANT,
+    summary: "Starts summarizing a head's transcript to free up context.",
     kind: "command",
     input: wireObject({
       ...HEAD,
@@ -190,6 +215,7 @@ export const SESSION_OPERATIONS = {
   },
   "head.revise": {
     ...PARTICIPANT,
+    summary: "Edits the content of a message that has not been sent yet.",
     kind: "command",
     input: wireObject({
       ...HEAD,
@@ -201,13 +227,21 @@ export const SESSION_OPERATIONS = {
   },
   "head.hold": {
     ...PARTICIPANT,
+    summary: "Holds a queued message so it is not sent while it is being edited.",
     kind: "command",
     input: ON_MESSAGE,
     output: wireSchema(HoldLeaseType),
   },
-  "head.release": { ...PARTICIPANT, kind: "command", input: ON_MESSAGE, output: NOTHING },
+  "head.release": {
+    ...PARTICIPANT,
+    summary: "Releases a held message so it can be sent.",
+    kind: "command",
+    input: ON_MESSAGE,
+    output: NOTHING,
+  },
   "heads.create": {
     ...PARTICIPANT,
+    summary: "Creates a named head, optionally from a given position.",
     kind: "command",
     input: wireObject({
       ...NAMED_HEAD,
@@ -217,25 +251,36 @@ export const SESSION_OPERATIONS = {
   },
   "heads.merge": {
     ...PARTICIPANT,
+    summary: "Merges a named head into main.",
     kind: "command",
     input: NAMED_HEAD_INPUT,
     output: MergeOutcomeSchema,
   },
   "heads.remove": {
     ...PARTICIPANT,
+    summary: "Deletes a named head.",
     kind: "command",
     input: NAMED_HEAD_INPUT,
     output: RemoveHeadOutcomeSchema,
   },
   "run.stop": {
     ...PARTICIPANT,
+    summary: "Stops a run.",
     kind: "command",
     input: ON_RUN,
     output: stopOutcomeSchema(RunEndType),
   },
-  "run.settled": { ...PARTICIPANT, kind: "query", wait: true, input: ON_RUN, output: RunEndSchema },
+  "run.settled": {
+    ...PARTICIPANT,
+    summary: "Waits until a run ends and returns how it ended.",
+    kind: "query",
+    wait: true,
+    input: ON_RUN,
+    output: RunEndSchema,
+  },
   "receipt.status": {
     ...PARTICIPANT,
+    summary: "Checks whether a receipt is pending, settled or missing.",
     kind: "query",
     input: ON_RECEIPT,
     output: wireSchema(
@@ -248,6 +293,7 @@ export const SESSION_OPERATIONS = {
   },
   "receipt.settled": {
     ...PARTICIPANT,
+    summary: "Waits until a receipt settles and returns its outcome.",
     kind: "query",
     wait: true,
     input: ON_RECEIPT,
@@ -255,12 +301,14 @@ export const SESSION_OPERATIONS = {
   },
   "receipt.stop": {
     ...PARTICIPANT,
+    summary: "Stops the work behind a receipt.",
     kind: "command",
     input: ON_RECEIPT,
     output: stopOutcomeSchema(JsonType),
   },
   "receipt.landed": {
     ...PARTICIPANT,
+    summary: "Waits until a sent message lands or fails and returns where it landed.",
     kind: "query",
     wait: true,
     input: ON_RECEIPT,
@@ -270,6 +318,7 @@ export const SESSION_OPERATIONS = {
   },
   "parts.create": {
     ...PARTICIPANT,
+    summary: "Creates a part in a session with its initial state and placement.",
     kind: "command",
     recovery: "replay",
     input: wireObject({
@@ -285,6 +334,7 @@ export const SESSION_OPERATIONS = {
   },
   "part.update": {
     ...PARTICIPANT,
+    summary: "Replaces a part's state.",
     kind: "command",
     input: wireObject({
       ...PART,
@@ -303,12 +353,14 @@ export const SESSION_OPERATIONS = {
   },
   "part.act": {
     ...PARTICIPANT,
+    summary: "Performs one of a part's actions with the given input.",
     kind: "command",
     input: wireObject({ ...PART, action: Type.String(), input: JsonType }),
     output: actOutcomeSchema(JsonType),
   },
   "part.answer": {
     ...PARTICIPANT,
+    summary: "Waits until a part is answered and returns the action that answered it.",
     kind: "query",
     wait: true,
     input: ON_PART,
@@ -316,9 +368,16 @@ export const SESSION_OPERATIONS = {
   },
   "part.watch": {
     ...PARTICIPANT,
+    summary: "Streams a part's view each time it changes.",
     kind: "watch",
     input: ON_PART,
     output: wireSchema(nullable(PartViewType)),
   },
-  "part.close": { ...PARTICIPANT, kind: "command", input: ON_PART, output: NOTHING },
+  "part.close": {
+    ...PARTICIPANT,
+    summary: "Closes a part.",
+    kind: "command",
+    input: ON_PART,
+    output: NOTHING,
+  },
 } as const satisfies OperationRows;

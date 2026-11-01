@@ -1,4 +1,5 @@
 import "./shell/host-stub";
+import "@nyte-ai/app/theme/boot.ts";
 import "@nyte-ai/app/theme/focus-modality.ts";
 import "@nyte-ai/app/chat/markdown/code.deferred.tsx";
 import { StartClient } from "@tanstack/react-start/client";

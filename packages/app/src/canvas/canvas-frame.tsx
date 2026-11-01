@@ -16,12 +16,14 @@ import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
 import {
   CANVAS_RUNTIME,
+  actResult,
   hostContextChangedNotification,
   openLinkResult,
+  partStateNotification,
   readShellMessage,
   renderNotification,
 } from "@nyte-ai/plugin/canvas/protocol";
-import type { CanvasHostContext, CanvasHostInfo } from "@nyte-ai/plugin/canvas/protocol";
+import type { CanvasHostContext, CanvasHostInfo, Json } from "@nyte-ai/plugin/canvas/protocol";
 import type { Plugin } from "@nyte-ai/plugin/client";
 import { followedTrace, startSpan } from "@nyte-ai/sdk";
 import type { EndSpan } from "@nyte-ai/sdk";
@@ -211,6 +213,11 @@ export type DrawnCanvas = Pick<
   "runtime" | "code" | "title" | "height" | "heights" | "error"
 >;
 
+export type ViewedPart = {
+  readonly state: Json;
+  act(action: string, input: Json): Promise<Json>;
+};
+
 /**
  * Draws one canvas at the height its shell reports, until then at the height
  * a preview measured at its width. `remembered` starts a remounted frame at
@@ -224,6 +231,7 @@ export function CanvasFrame({
   remembered = false,
   action,
   standIn,
+  part,
 }: {
   readonly state: DrawnCanvas;
   /** Records an error the shell hit on the part; absent for a revision that is no longer the part's module. */
@@ -232,6 +240,7 @@ export function CanvasFrame({
   /** Drawn over the frame's top corner. */
   readonly action?: ReactNode;
   readonly standIn?: ReactNode;
+  readonly part?: ViewedPart;
 }): ReactElement {
   const boxRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState<number>();
@@ -272,6 +281,7 @@ export function CanvasFrame({
           ) : (
             <CanvasShell
               state={state}
+              part={part}
               report={report}
               onResize={resize}
               onError={(message) => setError({ code: state.code, message })}
@@ -366,11 +376,13 @@ function TranscriptCanvas({
 /** The sandboxed iframe running one canvas; unmounting it ends the canvas's runtime. */
 function CanvasShell({
   state,
+  part,
   report,
   onResize,
   onError,
 }: {
   readonly state: DrawnCanvas;
+  readonly part: ViewedPart | undefined;
   readonly report: ((message: string) => void) | undefined;
   readonly onResize: (height: number) => void;
   readonly onError: (message: string) => void;
@@ -390,6 +402,16 @@ function CanvasShell({
   const resized = useEffectEvent(onResize);
   const failed = useEffectEvent(onError);
   const reportError = useEffectEvent((message: string) => report?.(message));
+  const partState = part?.state;
+  const runAction = useEffectEvent((id: string | number, action: string, input: Json) => {
+    void part
+      ?.act(action, input)
+      .catch((cause: unknown) => ({
+        kind: "failed",
+        message: cause instanceof Error ? cause.message : String(cause),
+      }))
+      .then((outcome) => post(frameRef.current, actResult(id, outcome)));
+  });
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- iframe shell messages, answered with the current module, theme and files
   useLayoutEffect(() => {
@@ -403,6 +425,7 @@ function CanvasShell({
         hostInfo: hostInfo(),
         hostContext: hostContext(theme),
         module: { runtime, code, title },
+        ...(partState === undefined ? {} : { part: partState }),
       })) {
         switch (effect.kind) {
           case "post":
@@ -424,6 +447,9 @@ function CanvasShell({
             break;
           }
 
+          case "act":
+            runAction(effect.id, effect.action, effect.input);
+            break;
           case "error": {
             const key = `${code}\n${effect.message}`;
             failed(effect.message);
@@ -441,13 +467,19 @@ function CanvasShell({
     window.addEventListener("message", receive);
 
     return () => window.removeEventListener("message", receive);
-  }, [theme, runtime, code, title, known, citable, opener]);
+  }, [theme, runtime, code, title, known, citable, opener, partState]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- posts changed code to the running iframe shell
   useLayoutEffect(() => {
     if (shell.current.initialized)
       post(frameRef.current, renderNotification({ runtime, code, title }));
   }, [runtime, code, title]);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- posts a part view's changed state to the running iframe shell
+  useLayoutEffect(() => {
+    if (shell.current.initialized && partState !== undefined)
+      post(frameRef.current, partStateNotification(partState));
+  }, [partState]);
 
   useMountEffect(() => {
     const ended = startSpan("canvas.paint", followedTrace(), { title });

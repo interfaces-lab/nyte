@@ -50,38 +50,56 @@ const ON_SERVER = wireObject({ ...WORKSPACE, server: Type.String() });
 export const WORKSPACE_OPERATIONS = {
   "workspace.info": {
     ...PARTICIPANT,
+    summary: "Reads the workspace's folder, trust and state.",
     kind: "query",
     input: ON_WORKSPACE,
     output: WorkspaceInfoSchema,
   },
   "workspace.watch": {
     ...PARTICIPANT,
+    summary: "Streams the workspace's info each time it changes.",
     kind: "watch",
     input: ON_WORKSPACE,
     output: WorkspaceInfoSchema,
   },
   "workspace.catalog": {
     ...PARTICIPANT,
+    summary: "Lists the commands and skills a new chat in the workspace would offer.",
     kind: "query",
     input: ON_WORKSPACE,
     output: wireSchema(WorkspaceCatalogViewType),
   },
   "workspace.command": {
     ...PARTICIPANT,
+    summary: "Runs a workspace command without a chat, with the text typed after it.",
     kind: "command",
     input: wireObject({ ...WORKSPACE, name: Type.String(), text: Type.String() }),
     output: WorkspaceCommandOutcomeSchema,
   },
   "workspace.completeCommand": {
     ...PARTICIPANT,
+    summary: "Returns completions for the text after a workspace command.",
     kind: "query",
     input: wireObject({ ...WORKSPACE, name: Type.String(), prefix: Type.String() }),
     output: CommandCompletionsSchema,
   },
-  "mcp.watch": { ...OWNER, kind: "watch", input: ON_WORKSPACE, output: McpViewSchema },
-  "mcp.reconnect": { ...OWNER, kind: "command", input: ON_SERVER, output: McpChangeSchema },
+  "mcp.watch": {
+    ...OWNER,
+    summary: "Streams the workspace's MCP servers and their state as they change.",
+    kind: "watch",
+    input: ON_WORKSPACE,
+    output: McpViewSchema,
+  },
+  "mcp.reconnect": {
+    ...OWNER,
+    summary: "Reconnects an MCP server, for one that failed or after fixing its credentials.",
+    kind: "command",
+    input: ON_SERVER,
+    output: McpChangeSchema,
+  },
   "mcp.setEnabled": {
     ...OWNER,
+    summary: "Turns an MCP server on or off in the mcp.json that defines it.",
     kind: "command",
     input: wireObject({
       ...WORKSPACE,
@@ -92,13 +110,21 @@ export const WORKSPACE_OPERATIONS = {
   },
   "mcp.login": {
     ...OWNER,
+    summary: "Starts an OAuth sign-in to an MCP server and returns its login id.",
     kind: "command",
     input: ON_SERVER,
     output: wireObject({ login: Type.String() }),
   },
-  "mcp.logout": { ...OWNER, kind: "command", input: ON_SERVER, output: McpChangeSchema },
+  "mcp.logout": {
+    ...OWNER,
+    summary: "Deletes an MCP server's stored OAuth credentials.",
+    kind: "command",
+    input: ON_SERVER,
+    output: McpChangeSchema,
+  },
   "mcp.add": {
     ...OWNER,
+    summary: "Adds or replaces an MCP server in the user or project mcp.json.",
     kind: "command",
     input: wireObject({
       ...WORKSPACE,
@@ -110,6 +136,7 @@ export const WORKSPACE_OPERATIONS = {
   },
   "mcp.remove": {
     ...OWNER,
+    summary: "Removes an MCP server from the user or project mcp.json.",
     kind: "command",
     input: wireObject({
       ...WORKSPACE,
@@ -120,6 +147,7 @@ export const WORKSPACE_OPERATIONS = {
   },
   "workspace.update": {
     ...OWNER,
+    summary: "Sets whether the workspace's folder trusts its project files.",
     kind: "command",
     input: wireObject({
       ...WORKSPACE,
@@ -127,15 +155,23 @@ export const WORKSPACE_OPERATIONS = {
     }),
     output: WORKSPACE_CHANGE,
   },
-  "workspace.reload": { ...OWNER, kind: "command", input: ON_WORKSPACE, output: WORKSPACE_CHANGE },
+  "workspace.reload": {
+    ...OWNER,
+    summary: "Reloads the workspace's project files and the plugins of its live sessions.",
+    kind: "command",
+    input: ON_WORKSPACE,
+    output: WORKSPACE_CHANGE,
+  },
   "workspace.changes": {
     ...PARTICIPANT,
+    summary: "Lists the files a run or session changed.",
     kind: "query",
     input: wireObject({ ...WORKSPACE, source: ChangeSourceType }),
     output: ChangeSetSchema,
   },
   "workspace.patches": {
     ...PARTICIPANT,
+    summary: "Streams the patches of the given files that a run or session changed.",
     kind: "stream",
     input: wireObject({
       ...WORKSPACE,
@@ -147,30 +183,35 @@ export const WORKSPACE_OPERATIONS = {
   },
   "workspace.files": {
     ...PARTICIPANT,
+    summary: "Checks whether the workspace offers file access.",
     kind: "query",
     input: ON_WORKSPACE,
     output: CapabilityWireSchema,
   },
   "workspace.git": {
     ...PARTICIPANT,
+    summary: "Checks whether the workspace offers git.",
     kind: "query",
     input: ON_WORKSPACE,
     output: CapabilityWireSchema,
   },
   "workspace.github": {
     ...PARTICIPANT,
+    summary: "Checks whether the workspace offers GitHub through gh.",
     kind: "query",
     input: ON_WORKSPACE,
     output: CapabilityWireSchema,
   },
   "workspace.browser": {
     ...PARTICIPANT,
+    summary: "Checks whether the workspace offers a browser.",
     kind: "query",
     input: ON_WORKSPACE,
     output: CapabilityWireSchema,
   },
   "jobs.start": {
     ...PARTICIPANT,
+    summary: "Starts a job running a command or shell, optionally in a terminal of a given size.",
     kind: "command",
     recovery: "replay",
     input: wireObject({
@@ -185,6 +226,7 @@ export const WORKSPACE_OPERATIONS = {
   },
   "jobs.recover": {
     ...PARTICIPANT,
+    summary: "Finds a job again by its key, or reports how it ended or that it is gone.",
     kind: "command",
     input: wireObject({ ...WORKSPACE, key: idSchema<"job-key">() }),
     output: wireSchema(
@@ -195,23 +237,38 @@ export const WORKSPACE_OPERATIONS = {
       ]),
     ),
   },
-  "jobs.list": { ...PARTICIPANT, kind: "query", input: ON_WORKSPACE, output: JOBS },
+  "jobs.list": {
+    ...PARTICIPANT,
+    summary: "Lists the workspace's jobs.",
+    kind: "query",
+    input: ON_WORKSPACE,
+    output: JOBS,
+  },
   "jobs.watch": {
     ...PARTICIPANT,
+    summary: "Streams the workspace's jobs as they change.",
     kind: "watch",
     input: ON_WORKSPACE,
     output: wireSchema(JobsChangeType),
   },
   "job.write": {
     ...PARTICIPANT,
+    summary: "Sends the request body to a job's input.",
     kind: "command",
     recovery: "never",
     input: ON_JOB,
     output: NOTHING,
   },
-  "job.output": { ...PARTICIPANT, kind: "stream", input: ON_JOB, output: OutputFrameSchema },
+  "job.output": {
+    ...PARTICIPANT,
+    summary: "Streams the bytes of a job's output.",
+    kind: "stream",
+    input: ON_JOB,
+    output: OutputFrameSchema,
+  },
   "job.resize": {
     ...PARTICIPANT,
+    summary: "Resizes a job's terminal.",
     kind: "command",
     input: wireObject({
       ...JOB,
@@ -225,12 +282,27 @@ export const WORKSPACE_OPERATIONS = {
       ]),
     ),
   },
-  "job.idle": { ...PARTICIPANT, kind: "query", input: ON_JOB, output: wireSchema(Type.Boolean()) },
+  "job.idle": {
+    ...PARTICIPANT,
+    summary:
+      "Checks whether a job's terminal has nothing running, such as a shell back at its prompt.",
+    kind: "query",
+    input: ON_JOB,
+    output: wireSchema(Type.Boolean()),
+  },
   "job.stop": {
     ...PARTICIPANT,
+    summary: "Stops a job.",
     kind: "command",
     input: ON_JOB,
     output: stopOutcomeSchema(JobEndType),
   },
-  "job.settled": { ...PARTICIPANT, kind: "query", wait: true, input: ON_JOB, output: JobEndSchema },
+  "job.settled": {
+    ...PARTICIPANT,
+    summary: "Waits until a job ends and returns how it ended.",
+    kind: "query",
+    wait: true,
+    input: ON_JOB,
+    output: JobEndSchema,
+  },
 } as const satisfies OperationRows;

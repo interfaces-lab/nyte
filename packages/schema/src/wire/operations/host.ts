@@ -3,6 +3,7 @@ import { ConfigurationPatchType, ConfigurationType } from "../../configuration.t
 import { HostViewWireSchema, SettingOutcomeSchema } from "../../connection.ts";
 import {
   AuthorityType,
+  OperationDescriptionType,
   PluginCheckReportSchema,
   PluginReplacementReportSchema,
   PrincipalViewWireType,
@@ -50,49 +51,72 @@ const ON_PROVIDER = wireObject(PROVIDER);
 export const HOST_OPERATIONS = {
   "connection.watch": {
     ...PARTICIPANT,
+    summary: "Streams the host's state, including its model catalog, each time it changes.",
     kind: "watch",
     input: NO_INPUT,
     output: HostViewWireSchema,
   },
   "connection.blob": {
     ...PARTICIPANT,
+    summary: "Streams the bytes of a stored blob, such as an image attached to a message.",
     kind: "stream",
     input: wireObject({ id: idSchema<"blob">() }),
     output: BYTES,
   },
-  "models.list": { ...PARTICIPANT, kind: "query", input: NO_INPUT, output: ModelCatalogViewSchema },
+  "operations.describe": {
+    ...PARTICIPANT,
+    summary:
+      "Describes the operations this host serves, or the ones named, with their access and wire JSON Schemas.",
+    kind: "query",
+    input: wireObject({ names: Type.Optional(Type.Array(Type.String())) }),
+    output: wireSchema(Type.Array(OperationDescriptionType)),
+  },
+  "models.list": {
+    ...PARTICIPANT,
+    summary:
+      "Lists saved models, the default selection and each provider's last known credentials.",
+    kind: "query",
+    input: NO_INPUT,
+    output: ModelCatalogViewSchema,
+  },
   "models.accounts": {
     ...OWNER,
+    summary: "Lists saved logins for one provider, or for every provider.",
     kind: "query",
     input: wireObject({ provider: Type.Optional(Type.String()) }),
     output: wireSchema(Type.Array(ModelAccountType)),
   },
   "models.selectAccount": {
     ...OWNER,
+    summary: "Makes a saved login the active one for a provider's future requests.",
     kind: "command",
     input: wireObject({ ...PROVIDER, account: Type.String() }),
     output: NOTHING,
   },
   "models.renameAccount": {
     ...OWNER,
+    summary: "Renames a saved login; the name must not be empty.",
     kind: "command",
     input: wireObject({ ...PROVIDER, account: Type.String(), label: Type.String() }),
     output: NOTHING,
   },
   "models.usage": {
     ...OWNER,
+    summary: "Returns each provider's usage, refreshing entries that have expired.",
     kind: "query",
     input: NO_INPUT,
     output: wireSchema(Type.Array(ProviderUsageType)),
   },
   "models.refresh": {
     ...OWNER,
+    summary: "Refreshes the model list and credentials for one provider, or for every provider.",
     kind: "command",
     input: wireObject({ provider: Type.Optional(Type.String()) }),
     output: NOTHING,
   },
   "models.setDefault": {
     ...OWNER,
+    summary: "Sets the model new chats use by default.",
     kind: "command",
     input: wireObject({ ref: ModelRefType }),
     output: wireSchema(
@@ -104,6 +128,7 @@ export const HOST_OPERATIONS = {
   },
   "models.setListing": {
     ...OWNER,
+    summary: "Shows, hides or favorites models in the model list.",
     kind: "command",
     input: wireObject({ refs: Type.Array(ModelRefType), listing: ModelListingType }),
     output: wireSchema(
@@ -115,6 +140,7 @@ export const HOST_OPERATIONS = {
   },
   "models.verify": {
     ...OWNER,
+    summary: "Checks that a provider's current credentials work.",
     kind: "command",
     input: ON_PROVIDER,
     output: wireSchema(
@@ -127,6 +153,7 @@ export const HOST_OPERATIONS = {
   },
   "models.login": {
     ...OWNER,
+    summary: "Starts signing in to a provider; follow it with `login.steps`.",
     kind: "command",
     input: wireObject({
       ...PROVIDER,
@@ -136,9 +163,16 @@ export const HOST_OPERATIONS = {
     }),
     output: NOTHING,
   },
-  "models.logout": { ...OWNER, kind: "command", input: ON_PROVIDER, output: NOTHING },
+  "models.logout": {
+    ...OWNER,
+    summary: "Removes a provider's active login and keeps its other saved accounts.",
+    kind: "command",
+    input: ON_PROVIDER,
+    output: NOTHING,
+  },
   "login.steps": {
     ...OWNER,
+    summary: "Streams the steps of a provider sign-in in progress until it is done or fails.",
     kind: "stream",
     input: ON_PROVIDER,
     output: wireSchema(
@@ -166,30 +200,35 @@ export const HOST_OPERATIONS = {
   },
   "login.answer": {
     ...OWNER,
+    summary: "Sends a code the user pasted to a provider sign-in in progress.",
     kind: "command",
     input: wireObject({ ...PROVIDER, code: Type.String() }),
     output: NOTHING,
   },
   "settings.apply": {
     ...OWNER,
+    summary: "Sets a setting to a new value and returns whether it was applied.",
     kind: "command",
     input: wireObject({ id: Type.String(), value: JsonType }),
     output: SettingOutcomeSchema,
   },
   "workspaces.list": {
     ...PARTICIPANT,
+    summary: "Lists the workspaces the host knows.",
     kind: "query",
     input: NO_INPUT,
     output: wireSchema(Type.Array(WorkspaceInfoType)),
   },
   "workspaces.inspect": {
     ...OWNER,
+    summary: "Reads a folder or other target before it is added as a workspace.",
     kind: "query",
     input: wireObject({ target: WorkspaceTargetType }),
     output: WorkspaceInspectionSchema,
   },
   "workspaces.add": {
     ...OWNER,
+    summary: "Adds a folder or other target as a workspace.",
     kind: "command",
     input: wireObject({
       target: WorkspaceTargetType,
@@ -204,18 +243,21 @@ export const HOST_OPERATIONS = {
   },
   "workspaces.forget": {
     ...OWNER,
+    summary: "Forgets a workspace unless a session still uses it.",
     kind: "command",
     input: wireObject({ id: idSchema<"workspace">() }),
     output: ForgetOutcomeSchema,
   },
   "workspaces.cleanWorktrees": {
     ...OWNER,
+    summary: "Removes leftover worktrees with no changes and returns how many it cleaned.",
     kind: "command",
     input: NO_INPUT,
     output: WorktreeCleanupSchema,
   },
   "sessions.watch": {
     ...PARTICIPANT,
+    summary: "Streams the host's sessions as they change.",
     kind: "watch",
     input: wireObject({
       parents: Type.Optional(ParentFilterType),
@@ -225,6 +267,7 @@ export const HOST_OPERATIONS = {
   },
   "sessions.start": {
     ...PARTICIPANT,
+    summary: "Starts a chat with its first message.",
     kind: "receipt",
     recovery: "replay",
     input: wireObject({
@@ -246,6 +289,7 @@ export const HOST_OPERATIONS = {
   },
   "sessions.list": {
     ...PARTICIPANT,
+    summary: "Lists the host's sessions one page at a time.",
     kind: "query",
     input: wireObject({
       parents: Type.Optional(ParentFilterType),
@@ -259,6 +303,7 @@ export const HOST_OPERATIONS = {
 export const MAINTENANCE_OPERATIONS = {
   "plugins.replace": {
     ...MAINTENANCE,
+    summary: "Replaces the loaded plugins, for the whole host or one session.",
     kind: "command",
     input: wireObject({
       plugins: Type.Array(PLUGIN_FILE),
@@ -268,18 +313,21 @@ export const MAINTENANCE_OPERATIONS = {
   },
   "plugins.check": {
     ...MAINTENANCE,
+    summary: "Loads plugin files and reports their problems without activating them.",
     kind: "query",
     input: wireObject({ plugins: Type.Array(PLUGIN_FILE) }),
     output: PluginCheckReportSchema,
   },
   "principals.list": {
     ...MAINTENANCE,
+    summary: "Lists the clients paired with this host.",
     kind: "query",
     input: NO_INPUT,
     output: wireSchema(Type.Array(PrincipalViewWireType)),
   },
   "principals.pair": {
     ...MAINTENANCE,
+    summary: "Creates a short-lived pairing code that grants a new client the given access.",
     kind: "command",
     input: wireObject({
       authority: Type.Array(AuthorityType),
@@ -292,6 +340,7 @@ export const MAINTENANCE_OPERATIONS = {
   },
   "principals.revoke": {
     ...MAINTENANCE,
+    summary: "Revokes a paired client's access.",
     kind: "command",
     input: wireObject({ id: idSchema<"principal">() }),
     output: NOTHING,

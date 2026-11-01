@@ -39,6 +39,14 @@ export const HostViewWireType = Type.Object({
     }),
   ),
   settings: Type.Array(SettingInfoType),
+  views: Type.Array(
+    Type.Object({
+      kind: Type.String(),
+      plugin: Type.String(),
+      runtime: Type.Integer({ minimum: 1 }),
+      blob: idSchema<"blob">(),
+    }),
+  ),
   /** The workspace a session created without one runs in (Home), or null when the host has none. */
   defaultWorkspace: nullable(idSchema<"workspace">()),
   authority: Type.Array(AuthorityType),

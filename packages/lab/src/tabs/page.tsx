@@ -21,7 +21,6 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
-import { DISPLAY_MODES, useDisplayMode, type DisplayMode } from "../shell/display-mode";
 import { CHATS, DRAFTS, INBOX, PAGES, SPACE, type ShellTab } from "./fixtures";
 import {
   NEEDS,
@@ -429,7 +428,6 @@ export function TabsPage(): ReactElement {
   const [needsDesign, setNeedsDesign] = useState(NEEDS_DEFAULT);
   const [running, setRunning] = useState<ReadonlySet<string>>(RUNNING);
   const runs = useRef(new Set<ReturnType<typeof setTimeout>>());
-  const [scheme, setScheme] = useState<DisplayMode>("dark");
   const [showSidebar, setShowSidebar] = useState(true);
   const stripRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -485,8 +483,6 @@ export function TabsPage(): ReactElement {
     setState((current) => ({ ...current, needs: NEEDS }));
     setRunning(RUNNING);
   };
-
-  useDisplayMode(scheme);
 
   useMountEffect(() => {
     const pending = runs.current;
@@ -551,7 +547,6 @@ export function TabsPage(): ReactElement {
             onChange={(inverse) => setDesign({ inverse })}
           />
           <span {...props(styles.toolbarRule)} />
-          <Choice label="Scheme" value={scheme} options={DISPLAY_MODES} onChange={setScheme} />
           <Flag label="Sidebar" checked={showSidebar} onChange={setShowSidebar} />
           <CopyConfig design={design} needs={needsDesign} />
         </div>

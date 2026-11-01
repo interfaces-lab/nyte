@@ -79,6 +79,7 @@ export function watchHost(
             catalog: fields.catalog,
             plugins: fields.plugins,
             settings: fields.settings,
+            views: fields.views,
             defaultWorkspace: fields.defaultWorkspace,
             authority: input.authority,
           },

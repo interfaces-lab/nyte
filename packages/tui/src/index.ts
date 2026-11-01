@@ -1,6 +1,7 @@
 import process from "node:process";
 import type { Connection, LoginMethod } from "@nyte-ai/sdk";
 import { accountCommand } from "./account-command.ts";
+import { apiCommand } from "./api-command.ts";
 import { mcpCommand } from "./mcp-command.ts";
 import { loginProvider, logoutProvider } from "./services/auth.ts";
 import { availableModels } from "./lib/catalog.ts";
@@ -19,7 +20,7 @@ import type { RunFlags } from "./flags.ts";
 import { cliLoginDriver } from "./interaction.ts";
 import type { UpdateProgress } from "./update.ts";
 import { VERSION, checkForUpdate } from "./version.ts";
-import { describeUpdateOutcome, selfUpdate } from "./update.ts";
+import { describeUpdateOutcome, latestReleaseText, selfUpdate } from "./update.ts";
 import { addFolder, flagConfiguration, targetSession, trustFolder } from "./run.ts";
 import { hostCommand } from "./host-command.ts";
 import { connectHost } from "./local-host.ts";
@@ -68,7 +69,10 @@ async function openHost(source: HostSource = { kind: "local" }): Promise<Connect
 
 /** `--host-url` attaches to that host with the token in `NYTE_HOST_TOKEN`, which leaves the environment so nothing this process starts inherits it. */
 function hostSource(flags: RunFlags): HostSource {
-  if (flags.hostUrl === undefined) return { kind: "local" };
+  return flags.hostUrl === undefined ? { kind: "local" } : attachedSource(flags.hostUrl);
+}
+
+function attachedSource(url: string): HostSource {
   const token = process.env["NYTE_HOST_TOKEN"];
   delete process.env["NYTE_HOST_TOKEN"];
 
@@ -77,7 +81,7 @@ function hostSource(flags: RunFlags): HostSource {
       "--host-url needs the host's token in NYTE_HOST_TOKEN; `nyte host` writes both to ~/.nyte/host.json.",
     );
 
-  return { kind: "attached", endpoint: { url: flags.hostUrl, token } };
+  return { kind: "attached", endpoint: { url, token } };
 }
 
 function parseAuthArgs(command: "login" | "logout", args: readonly string[]) {
@@ -202,15 +206,15 @@ async function update(args: readonly string[]): Promise<void> {
     const notice = await checkForUpdate();
     console.log(
       notice === undefined
-        ? `nyte ${VERSION} is the latest release.`
+        ? latestReleaseText(VERSION)
         : `Update available: ${notice.version}. Run: nyte update`,
     );
 
     return;
   }
 
-  const version = options.version;
-  console.error(`${bold("nyte", tty)} ${dim(`${VERSION} → ${version ?? "latest"}`, tty)}`);
+  const target = options.target;
+  console.error(`${bold("nyte", tty)} ${dim(`${VERSION} → ${target ?? "latest"}`, tty)}`);
 
   let progressOpen = false;
 
@@ -254,7 +258,7 @@ async function update(args: readonly string[]): Promise<void> {
     }
   };
 
-  const outcome = await selfUpdate(version === undefined ? { report } : { version, report });
+  const outcome = await selfUpdate(target === undefined ? { report } : { target, report });
   endProgress();
 
   const severity = updateSeverity(outcome);
@@ -365,7 +369,8 @@ async function main(): Promise<PrintOutcome | undefined> {
     command === "update" ||
     command === "account" ||
     command === "mcp" ||
-    command === "host"
+    command === "host" ||
+    command === "api"
   ) {
     const serverCommandStart = invocationArgs.indexOf("--");
 
@@ -417,6 +422,16 @@ async function main(): Promise<PrintOutcome | undefined> {
       args: invocationArgs.slice(1),
       connection: openHost,
       signal,
+      output,
+    });
+
+    return undefined;
+  }
+
+  if (command === "api") {
+    process.exitCode = await apiCommand({
+      args: invocationArgs.slice(1),
+      attach: (url) => openHost(attachedSource(url)),
       output,
     });
 

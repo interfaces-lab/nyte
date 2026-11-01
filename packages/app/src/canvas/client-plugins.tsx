@@ -1,4 +1,4 @@
-import { isValidElement } from "react";
+import { isValidElement, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
 import type { ClientPlugins } from "@nyte-ai/plugin/client/mount";
@@ -12,20 +12,42 @@ import { canvasRenderers } from "./canvas-frame.tsx";
 import { PartOrigin } from "../chat/transcript/part-origin.ts";
 import { RawPartView } from "../chat/transcript/raw-part.tsx";
 import { nyte } from "../contract/nyte.ts";
-import { connected, connection } from "../data/connection.ts";
+import { connected, connection, registries } from "../data/connection.ts";
 import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
+import { hostWatch } from "../data/watches.ts";
 import { chatWindow } from "../window/index.ts";
+import { PartView } from "./part-view.tsx";
 
 let mounting: Promise<ClientPlugins> | undefined;
 
+/** Undefined while a mount is in progress. */
 let mounted: ClientPlugins | undefined;
 
-export function watchClientPlugins(
-  session: () => SessionId | undefined,
-  focusMoved: (listener: () => void) => () => void,
-): () => void {
-  mounting ??= connected().then(async (current) => {
-    mounted = await mountClientPlugins({
+const listeners = new Set<() => void>();
+
+function settle(next: ClientPlugins | undefined): void {
+  mounted = next;
+
+  for (const listener of listeners) listener();
+}
+
+function subscribeMounted(listener: () => void): () => void {
+  listeners.add(listener);
+
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function readMounted(): ClientPlugins | undefined {
+  return mounted;
+}
+
+/** A mount replaced before it finished is disposed when it finishes. */
+function mount(session: () => SessionId | undefined): void {
+  const started = connected().then((current) =>
+    mountClientPlugins({
       connection: current,
       plugins: [
         ...(nyte.host.attention === undefined ? [notifications] : []),
@@ -47,17 +69,27 @@ export function watchClientPlugins(
           description: input.title === undefined ? undefined : input.message,
         }),
       report: (plugin, message) => toast.add({ type: "error", title: `${plugin}: ${message}` }),
-    });
+    }),
+  );
 
-    return mounted;
+  mounting = started;
+  void started.then((plugins) => {
+    if (mounting === started) settle(plugins);
+    else void plugins.dispose();
   });
+}
 
-  const plugins = mounting;
+/** Remounts when another connection replaces the installed one, so no plugin keeps a closed connection. */
+export function watchClientPlugins(
+  session: () => SessionId | undefined,
+  focusMoved: (listener: () => void) => () => void,
+): () => void {
+  if (mounting === undefined) mount(session);
 
   const feed = (): void => {
     const { listed, rows } = sessionRows();
 
-    if (listed) void plugins.then((mount) => mount.sessionsChanged([...rows.values()]));
+    if (listed) void mounting?.then((plugins) => plugins.sessionsChanged([...rows.values()]));
   };
 
   let focused: SessionId | undefined;
@@ -70,20 +102,34 @@ export function watchClientPlugins(
     focused = next;
 
     if (next !== undefined)
-      void plugins.then((mount) =>
-        mount.switched(
+      void mounting?.then((plugins) =>
+        plugins.switched(
           previous === undefined ? null : connection().session(previous),
           connection().session(next),
         ),
       );
   };
 
+  const remount = {
+    clear(): void {
+      const previous = mounted;
+      settle(undefined);
+      mount(session);
+      void previous?.dispose();
+      focused = undefined;
+      feed();
+      refocus();
+    },
+  };
+
+  registries.add(remount);
   feed();
   refocus();
   const stopDirectory = subscribeSessionRows(feed);
   const stopFocus = focusMoved(refocus);
 
   return () => {
+    registries.delete(remount);
     stopDirectory();
     stopFocus();
   };
@@ -117,12 +163,36 @@ export function drawPart(
   message: PartMessage,
   placement: Placement,
 ): ReactNode {
-  if (mounted === undefined) return null;
-  const drawn = mounted.draw(connection().session(sessionId), message, placement);
+  return <PluginPart sessionId={sessionId} message={message} placement={placement} />;
+}
 
-  return isValidElement(drawn) ? (
-    <PartOrigin value={{ sessionId, part: message.part }}>{drawn}</PartOrigin>
-  ) : (
-    <RawPartView message={message} />
+function PluginPart({
+  sessionId,
+  message,
+  placement,
+}: {
+  readonly sessionId: SessionId;
+  readonly message: PartMessage;
+  readonly placement: Placement;
+}): ReactNode {
+  const plugins = useSyncExternalStore(subscribeMounted, readMounted, readMounted);
+
+  const view = useWatchSelect(hostWatch("host"), (state) =>
+    state.value?.views.find((entry) => entry.kind === message.partKind),
   );
+
+  if (plugins === undefined) return null;
+  const drawn = plugins.draw(connection().session(sessionId), message, placement);
+  const origin = { sessionId, part: message.part };
+
+  if (isValidElement(drawn)) return <PartOrigin value={origin}>{drawn}</PartOrigin>;
+
+  if (view !== undefined)
+    return (
+      <PartOrigin value={origin}>
+        <PartView sessionId={sessionId} message={message} view={view} />
+      </PartOrigin>
+    );
+
+  return <RawPartView message={message} />;
 }

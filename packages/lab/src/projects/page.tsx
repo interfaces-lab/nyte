@@ -1,9 +1,7 @@
 import { props } from "@stylexjs/stylex";
-import { DialRoot } from "dialkit";
 import { useState, type ReactElement } from "react";
 import type { WindowTabItem } from "@nyte-ai/app/tabs/window-tab-strip.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
-import { useDisplayMode } from "../shell/display-mode";
 import { folderChats, laneChats, openAsks, stackable } from "./chats.ts";
 import type { Ask } from "./chats.ts";
 import { EXPORT_COMMAND, useEvidence } from "./data.ts";
@@ -80,7 +78,6 @@ function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
   const [shell, setShell] = useState(START);
   const [routines, setRoutines] = useState<readonly Routine[]>([]);
   const dials = useProjectDials();
-  useDisplayMode(dials.scheme);
   const all = scenarios(evidence, dials.knobs);
   const journey = all.find((scenario) => scenario.id === "drag");
   const step = journey?.steps[Math.min(shell.step, journey.steps.length - 1)];
@@ -251,7 +248,6 @@ function Board({ evidence }: { readonly evidence: Evidence }): ReactElement {
           />
         )}
       </div>
-      <DialRoot position="bottom-right" defaultOpen={false} />
     </div>
   );
 }

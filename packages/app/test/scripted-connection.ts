@@ -281,6 +281,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     settings: { apply: refuse },
     plugins: { replace: refuse, check: refuse },
     principals: { list: refuse, pair: refuse, revoke: refuse },
+    operations: { describe: refuse },
     github: { account: refuse, signIn: refuse, signOut: refuse, ...script.github },
     close: async () => undefined,
     [Symbol.asyncDispose]: async () => undefined,

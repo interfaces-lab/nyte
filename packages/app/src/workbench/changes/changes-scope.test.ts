@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import type { GitStatus } from "@nyte-ai/sdk";
+import type { ChangeSet, GitStatus } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { test } from "vitest";
 import { changesSummary, vcsRequestForScope } from "./change-scopes.ts";
+import { changeTotals, workingRows } from "./changes-model.ts";
 
 test("each scope requests the corresponding Git comparison", () => {
   assert.deepEqual(vcsRequestForScope({ kind: "uncommitted" }), { kind: "worktree" });
@@ -30,19 +31,35 @@ const clean: Repository = {
   conflicts: [],
 };
 
-test("the Changes rail row shows the working tree's line totals", () => {
+test("the Changes rail row totals the Uncommitted diff, untracked files included", () => {
   const edited: Repository = {
     ...clean,
     staged: [{ path: "a.ts", status: "modified", added: 10, removed: 2 }],
-    unstaged: [{ path: "b.ts", status: "modified", added: 2, removed: 1 }],
+    untracked: ["new.ts"],
   };
 
-  assert.deepEqual(changesSummary(edited), {
+  const manifest: ChangeSet = {
+    revision: asId<"git-revision">("r2"),
+    files: [
+      { path: "a.ts", status: "modified", stat: { kind: "text", added: 10, removed: 2 } },
+      { path: "new.ts", status: "untracked", stat: { kind: "text", added: 30, removed: 0 } },
+    ],
+  };
+
+  const summary = (repository: Repository, read: ChangeSet | undefined) =>
+    changesSummary(changeTotals(workingRows(repository, { kind: "uncommitted" }), read));
+
+  assert.deepEqual(summary(edited, manifest), {
     label: "Changes",
     changed: true,
-    added: 12,
-    removed: 3,
+    added: 40,
+    removed: 2,
   });
-  assert.equal(changesSummary({ ...clean, untracked: ["new.ts"] }).label, "1 changed file");
-  assert.equal(changesSummary(clean).label, "No changes");
+  assert.equal(summary(edited, undefined).label, "2 changed files");
+  assert.deepEqual(summary(clean, manifest), {
+    label: "No changes",
+    changed: false,
+    added: 0,
+    removed: 0,
+  });
 });

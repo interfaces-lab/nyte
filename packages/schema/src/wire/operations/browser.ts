@@ -23,6 +23,7 @@ const PAGES = wireSchema(Type.Array(PageInfoType));
 export const BROWSER_OPERATIONS = {
   "browser.open": {
     ...BROWSER,
+    summary: "Opens a page at a URL in the workspace's browser.",
     kind: "command",
     recovery: "replay",
     input: wireObject({
@@ -34,32 +35,84 @@ export const BROWSER_OPERATIONS = {
   },
   "browser.adopt": {
     ...BROWSER,
+    summary: "Takes control of a page that is already open in the workspace's browser.",
     kind: "command",
     input: wireObject({ ...WORKSPACE, id: idSchema<"page">() }),
     output: PageInfoSchema,
   },
-  "browser.list": { ...BROWSER, kind: "query", input: ON_WORKSPACE, output: PAGES },
-  "browser.watch": { ...BROWSER, kind: "watch", input: ON_WORKSPACE, output: PAGES },
-  "page.view": { ...BROWSER, kind: "query", input: ON_PAGE, output: PageViewSchema },
-  "page.watch": { ...BROWSER, kind: "watch", input: ON_PAGE, output: PageViewSchema },
+  "browser.list": {
+    ...BROWSER,
+    summary: "Lists the open pages in the workspace's browser.",
+    kind: "query",
+    input: ON_WORKSPACE,
+    output: PAGES,
+  },
+  "browser.watch": {
+    ...BROWSER,
+    summary: "Streams the workspace's open pages each time they change.",
+    kind: "watch",
+    input: ON_WORKSPACE,
+    output: PAGES,
+  },
+  "page.view": {
+    ...BROWSER,
+    summary: "Reads a page's URL, title and loading state.",
+    kind: "query",
+    input: ON_PAGE,
+    output: PageViewSchema,
+  },
+  "page.watch": {
+    ...BROWSER,
+    summary: "Streams a page's URL, title and loading state each time they change.",
+    kind: "watch",
+    input: ON_PAGE,
+    output: PageViewSchema,
+  },
   "page.snapshot": {
     ...BROWSER,
+    summary: "Returns a page's accessibility tree, or the subtree under one node.",
     kind: "query",
     input: wireObject({ ...PAGE, ref: Type.Optional(Type.String()) }),
     output: PageSnapshotSchema,
   },
   "page.navigate": {
     ...BROWSER,
+    summary: "Loads a URL in a page.",
     kind: "command",
     input: wireObject({ ...PAGE, url: Type.String() }),
     output: PageOutcomeSchema,
   },
-  "page.back": { ...BROWSER, kind: "command", input: ON_PAGE, output: PageOutcomeSchema },
-  "page.forward": { ...BROWSER, kind: "command", input: ON_PAGE, output: PageOutcomeSchema },
-  "page.reload": { ...BROWSER, kind: "command", input: ON_PAGE, output: PageOutcomeSchema },
-  "page.stopLoading": { ...BROWSER, kind: "command", input: ON_PAGE, output: PageOutcomeSchema },
+  "page.back": {
+    ...BROWSER,
+    summary: "Goes back one entry in a page's history.",
+    kind: "command",
+    input: ON_PAGE,
+    output: PageOutcomeSchema,
+  },
+  "page.forward": {
+    ...BROWSER,
+    summary: "Goes forward one entry in a page's history.",
+    kind: "command",
+    input: ON_PAGE,
+    output: PageOutcomeSchema,
+  },
+  "page.reload": {
+    ...BROWSER,
+    summary: "Reloads a page.",
+    kind: "command",
+    input: ON_PAGE,
+    output: PageOutcomeSchema,
+  },
+  "page.stopLoading": {
+    ...BROWSER,
+    summary: "Stops a page from loading.",
+    kind: "command",
+    input: ON_PAGE,
+    output: PageOutcomeSchema,
+  },
   "page.click": {
     ...BROWSER,
+    summary: "Clicks a node on a page.",
     kind: "command",
     recovery: "never",
     input: wireObject({
@@ -73,6 +126,7 @@ export const BROWSER_OPERATIONS = {
   },
   "page.type": {
     ...BROWSER,
+    summary: "Types text into a node on a page.",
     kind: "command",
     recovery: "never",
     input: wireObject({
@@ -87,6 +141,7 @@ export const BROWSER_OPERATIONS = {
   },
   "page.press": {
     ...BROWSER,
+    summary: "Presses a key or chord on a page or one of its nodes.",
     kind: "command",
     recovery: "never",
     input: wireObject({
@@ -98,6 +153,7 @@ export const BROWSER_OPERATIONS = {
   },
   "page.scroll": {
     ...BROWSER,
+    summary: "Scrolls a page or one of its nodes.",
     kind: "command",
     recovery: "never",
     input: wireObject({
@@ -110,6 +166,7 @@ export const BROWSER_OPERATIONS = {
   },
   "page.wait": {
     ...BROWSER,
+    summary: "Waits until a page loads, text appears or disappears, or a delay passes.",
     kind: "query",
     input: wireObject({
       ...PAGE,
@@ -123,6 +180,7 @@ export const BROWSER_OPERATIONS = {
   },
   "page.console": {
     ...BROWSER,
+    summary: "Reads a page's console messages and can clear them.",
     kind: "command",
     input: wireObject({
       ...PAGE,
@@ -131,9 +189,16 @@ export const BROWSER_OPERATIONS = {
     }),
     output: wireSchema(Type.Array(ConsoleEntryType)),
   },
-  "page.capture": { ...BROWSER, kind: "stream", input: ON_PAGE, output: BYTES },
+  "page.capture": {
+    ...BROWSER,
+    summary: "Streams the bytes of a screenshot of a page.",
+    kind: "stream",
+    input: ON_PAGE,
+    output: BYTES,
+  },
   "page.evaluate": {
     ...BROWSER,
+    summary: "Runs a JavaScript expression in a page and returns its value or error.",
     kind: "command",
     recovery: "never",
     input: wireObject({
@@ -148,5 +213,11 @@ export const BROWSER_OPERATIONS = {
       ]),
     ),
   },
-  "page.close": { ...BROWSER, kind: "command", input: ON_PAGE, output: NOTHING },
+  "page.close": {
+    ...BROWSER,
+    summary: "Closes a page.",
+    kind: "command",
+    input: ON_PAGE,
+    output: NOTHING,
+  },
 } as const satisfies OperationRows;
