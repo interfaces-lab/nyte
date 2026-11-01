@@ -87,6 +87,7 @@ startRendererStartup({
   mountShell,
   connect: () =>
     connectLocalHost().then((connection) => recordFirstFrame("local", connection.hostId)),
+  storeOpening: () => window.nyte.host.storeOpening(),
   showError: (retry) => {
     root.render(<StartupFailure message="Couldn’t open your workspace." onRetry={retry} />);
     requestAnimationFrame(() => window.nyte.windowPainted());

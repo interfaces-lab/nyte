@@ -131,6 +131,7 @@ const bridge = {
     pickWorkspace: none("host.pickWorkspace"),
     trustWorkspace: object("host.trustWorkspace"),
     closeWorkspace: none("host.closeWorkspace"),
+    storeOpening: none("host.storeOpening"),
     updates: {
       state: none("host.updates.state"),
       check: none("host.updates.check"),

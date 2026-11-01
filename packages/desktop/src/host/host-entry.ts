@@ -111,6 +111,7 @@ function open(options: HostProcessOptions): void {
     agent: remoteAgent(askAgent),
     preview,
     revoked: () => void host.close().finally(() => process.exit(REVOKED_EXIT)),
+    storeOpening: (opening) => post({ kind: "store", opening }),
   });
 
   const secrets = defaultSecrets(home);

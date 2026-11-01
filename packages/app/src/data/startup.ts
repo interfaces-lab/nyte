@@ -2,6 +2,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 type StartupConnection =
   | { readonly kind: "connecting" }
+  | { readonly kind: "migrating" }
   | { readonly kind: "connected" }
   | { readonly kind: "failed"; readonly retry: () => void };
 

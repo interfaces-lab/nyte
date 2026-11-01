@@ -403,6 +403,9 @@ export interface BrowserFocusMessage {
 
 export type UpdateChannel = "stable" | "nightly";
 
+/** The local store's first open: it started migrating data from an older release, or it is ready. */
+export type StoreOpening = "migrating" | "ready";
+
 export type UpdateState =
   | { readonly kind: "idle" }
   | { readonly kind: "downloading"; readonly version: string; readonly percent: number }

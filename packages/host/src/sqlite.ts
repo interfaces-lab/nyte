@@ -16,6 +16,7 @@ import {
   collectSessionEvents,
   migrateStore,
   objectId,
+  STORE_VERSION,
   replacedTargets,
   sessionIndexRef,
   parseSessionRef,
@@ -54,7 +55,15 @@ export function storePath(home: string): string {
   return process.env["NYTE_DB"] ?? join(home, ".nyte", "nyte.db");
 }
 
-export function sqliteStore(input: { readonly path: string } | { readonly memory: true }): Store {
+export function sqliteStore(
+  input:
+    | {
+        readonly path: string;
+        /** Called before a migration of existing data, which blocks this thread until it ends. */
+        readonly onMigrate?: () => void;
+      }
+    | { readonly memory: true },
+): Store {
   let database: DatabaseSync | null = null;
   let opening: Promise<StoreConnection> | null = null;
   let closing: Promise<void> | null = null;
@@ -73,7 +82,11 @@ export function sqliteStore(input: { readonly path: string } | { readonly memory
       created.exec("PRAGMA checkpoint_fullfsync = ON");
       created.exec("PRAGMA journal_size_limit = 33554432");
 
-      await migrateStore(sqliteTarget(created, "path" in input ? input.path : null));
+      const target = sqliteTarget(created, "path" in input ? input.path : null);
+      const stamp = await target.stamp();
+
+      if ("path" in input && !stamp.empty && stamp.version < STORE_VERSION) input.onMigrate?.();
+      await migrateStore(target);
       created.exec("PRAGMA optimize = 0x10012");
     } catch (error) {
       created?.close();

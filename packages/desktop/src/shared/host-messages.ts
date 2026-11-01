@@ -1,4 +1,4 @@
-import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
+import type { HostEvent, StoreOpening } from "@nyte-ai/app/contract/bridge.ts";
 import type {
   CanvasPreviewOutcome,
   CanvasPreviewRequest,
@@ -65,6 +65,7 @@ export type HostMessage =
   | { readonly kind: "alert"; readonly delivery: AttentionDelivery }
   | { readonly kind: "badge"; readonly count: number }
   | { readonly kind: "mark"; readonly name: string; readonly at: number }
+  | { readonly kind: "store"; readonly opening: StoreOpening }
   | RpcMessage<HostAsk, HostAnswer>
   | { readonly kind: "closed" };
 

@@ -1,6 +1,6 @@
 import { app, dialog, MessageChannelMain, utilityProcess } from "electron";
 import type { MessagePortMain, UtilityProcess } from "electron";
-import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
+import type { HostEvent, StoreOpening } from "@nyte-ai/app/contract/bridge.ts";
 import type { CallReply, CallRequest } from "../shared/ipc.ts";
 import type { AccountState } from "@nyte-ai/connect/host";
 import type { AttentionDelivery } from "../shared/attention.ts";
@@ -55,6 +55,9 @@ export class HostProcess {
   #crashes = 0;
   #restart: ReturnType<typeof setTimeout> | undefined;
   #closing = false;
+  /** The latest report, so a window opened after a migration ended doesn't show it. */
+  #store: StoreOpening | undefined;
+  readonly #storeReported = Promise.withResolvers<StoreOpening>();
 
   constructor(entry: string, options: HostProcessOptions, handlers: HostProcessHandlers) {
     this.#entry = entry;
@@ -107,6 +110,11 @@ export class HostProcess {
 
       throw cause;
     }
+  }
+
+  /** Settles once the store starts migrating or opens without a migration. */
+  async storeOpening(): Promise<StoreOpening> {
+    return this.#store ?? this.#storeReported.promise;
   }
 
   seal(plain: string): Promise<string> {
@@ -277,6 +285,11 @@ export class HostProcess {
         return;
       case "mark":
         performance.mark(message.name, { startTime: message.at - performance.timeOrigin });
+
+        return;
+      case "store":
+        this.#store = message.opening;
+        this.#storeReported.resolve(message.opening);
 
         return;
       case "ask":

@@ -57,6 +57,8 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   readonly shell?: () => string | null;
   readonly label?: string;
   readonly onRevoked?: () => void;
+  /** Called before the default store migrates existing data, which blocks this thread until it ends. */
+  readonly onStoreMigration?: () => void;
   /** How plugin files are imported fresh; Node's resolve hook (`nodePluginImport`) by default. A Bun host passes its own. */
   readonly pluginImport?: PluginImport;
 };
@@ -67,7 +69,7 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
 
   if (options.store !== undefined)
     return composeOpen(options, { home, workspace, store: options.store, owned: null });
-  const owned = await defaultStore(home);
+  const owned = await defaultStore(home, options.onStoreMigration);
 
   try {
     return await composeOpen(options, { home, workspace, store: owned, owned });
@@ -77,11 +79,11 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
   }
 }
 
-async function defaultStore(home: string): Promise<Store> {
+async function defaultStore(home: string, onMigrate?: () => void): Promise<Store> {
   const path = storePath(home);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
 
-  return sqliteStore({ path });
+  return sqliteStore({ path, onMigrate });
 }
 
 async function composeOpen(

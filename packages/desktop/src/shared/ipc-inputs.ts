@@ -85,6 +85,7 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.pickWorkspace": compile(noInput),
   "host.trustWorkspace": compile(strict({ path: nonEmpty })),
   "host.closeWorkspace": compile(noInput),
+  "host.storeOpening": compile(noInput),
   "host.updates.state": compile(noInput),
   "host.updates.check": compile(noInput),
   "host.updates.channel": compile(noInput),

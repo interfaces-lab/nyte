@@ -25,6 +25,7 @@ import type {
   SelectedWorkspace,
   ServerConnectionProblem,
   ServerState,
+  StoreOpening,
   TailnetAvailability,
 } from "@nyte-ai/app/contract/bridge.ts";
 import type {
@@ -72,6 +73,7 @@ export interface DesktopHostDependencies {
   readonly token?: string;
   readonly preview?: CanvasPreviewer;
   readonly revoked?: () => void;
+  readonly storeOpening?: (opening: StoreOpening) => void;
 }
 
 type HostCalls = { readonly [P in HostCallPath]: CallHandler<P> };
@@ -375,6 +377,7 @@ export class DesktopHost {
       home,
       label: "Nyte.app",
       onRevoked: this.#deps.revoked,
+      onStoreMigration: () => this.#deps.storeOpening?.("migrating"),
       workspace: { kind: "local", path: home },
       shell: () => this.#settings.terminalShell,
       images: nodeImages(imageRuntimeOptions()),
@@ -388,6 +391,7 @@ export class DesktopHost {
     });
 
     performance.mark("nyte:host-opened");
+    this.#deps.storeOpening?.("ready");
 
     const token = this.#deps.token ?? newToken();
 

@@ -11,13 +11,14 @@ import { SidebarPane } from "../sidebar/sidebar-pane.tsx";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
 import { Sidebar } from "../sidebar/sidebar.tsx";
 import { Button } from "@nyte-ai/ui/button";
+import { Loader } from "@nyte-ai/ui/loader";
 import { Titlebar } from "./titlebar.tsx";
 import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { useHostRelease } from "../data/host.ts";
 import { startupConnection } from "../data/startup.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { layer, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar } from "../theme/schema.stylex.ts";
 import { nyte } from "../contract/nyte.ts";
 import {
@@ -74,7 +75,42 @@ const styles = create({
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
   },
+  migration: {
+    position: "fixed",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: layer.dialogBackdrop,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space.s2,
+    backgroundColor: role.windowWash,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    WebkitAppRegion: "drag",
+  },
+  migrationDetail: { color: role.contentSecondary },
 });
+
+function StoreMigration(): ReactElement | null {
+  const connection = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
+
+  if (connection.kind !== "migrating") return null;
+
+  return (
+    <div role="status" {...props(styles.migration)}>
+      <Loader />
+      <span>Updating your chats</span>
+      <span {...props(styles.migrationDetail)}>
+        This runs once after an update and can take a minute.
+      </span>
+    </div>
+  );
+}
 
 function ConnectionFailure(): ReactElement | null {
   const connection = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
@@ -195,6 +231,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
         </SessionDndProvider>
       </div>
       <WorkspaceDialogHost />
+      <StoreMigration />
       {about !== undefined && (
         <AboutDialog
           info={about}

@@ -156,19 +156,21 @@ const CONTENT_WAIT_MS = 2_000;
 
 export async function windowContentReady(): Promise<void> {
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));
-  const failed = Promise.withResolvers<void>();
+  const noContent = Promise.withResolvers<void>();
 
   const check = (): void => {
-    if (startupConnection.read().kind === "failed") failed.resolve();
+    const kind = startupConnection.read().kind;
+
+    if (kind === "failed" || kind === "migrating") noContent.resolve();
   };
 
   const leave = startupConnection.subscribe(check);
-  const limit = setTimeout(failed.resolve, CONTENT_WAIT_MS);
+  const limit = setTimeout(noContent.resolve, CONTENT_WAIT_MS);
   check();
 
   try {
     await Promise.race([
-      failed.promise,
+      noContent.promise,
       Promise.all([
         queryClient.getQueryData(keys.firstFrameRoots) === undefined
           ? sessionsWatch("roots").first()

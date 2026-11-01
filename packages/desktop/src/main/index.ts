@@ -363,6 +363,7 @@ const mainCalls: CallTable = {
 
     return reply.value;
   },
+  "host.storeOpening": () => startedHost().storeOpening(),
   "host.updates.state": async () => updates?.state() ?? { kind: "idle" },
   "host.updates.check": async () => updates?.click(),
   "host.updates.channel": async () => {
