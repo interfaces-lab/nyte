@@ -4,6 +4,7 @@ import { accountCommand } from "./account-command.ts";
 import { apiCommand } from "./api-command.ts";
 import { doctorCommand } from "./doctor-command.ts";
 import { mcpCommand } from "./mcp-command.ts";
+import { TRIAGE_USAGE, triageCommand } from "./triage-command.ts";
 import { loginProvider, logoutProvider } from "./services/auth.ts";
 import { availableModels } from "./lib/catalog.ts";
 import {
@@ -453,6 +454,19 @@ async function main(): Promise<PrintOutcome | undefined> {
     }
 
     process.exitCode = await doctorCommand(invocationArgs.slice(1));
+
+    return undefined;
+  }
+
+  if (command === "triage") {
+    if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
+      console.log(TRIAGE_USAGE);
+
+      return undefined;
+    }
+
+    invocation.handoff();
+    process.exitCode = await triageCommand(invocationArgs.slice(1));
 
     return undefined;
   }

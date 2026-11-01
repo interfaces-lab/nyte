@@ -108,6 +108,7 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   { label: "nyte host [--json]", detail: "serve your chats for --host-url to attach to" },
   { label: "nyte api <list|describe>", detail: "print the operations a host serves" },
   { label: "nyte doctor [--json]", detail: "check this install and print what to fix" },
+  { label: "nyte triage [<problem>]", detail: "start an agent on doctor's report and logs" },
   { label: "nyte --version", detail: "print the installed version" },
   { label: "nyte -p [--json] [--quiet] [--resume] [prompt]", detail: "" },
 ];
