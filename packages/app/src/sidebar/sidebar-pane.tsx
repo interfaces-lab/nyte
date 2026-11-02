@@ -38,12 +38,13 @@ const styles = create({
     flexShrink: 0,
     overflow: "clip",
     transitionProperty: "width",
-    transitionDuration: "0s",
+    transitionDuration: sidebar.resizeDuration,
+    transitionTimingFunction: sidebar.resizeEasing,
   },
   seatHidden: {
     width: 0,
     pointerEvents: "none",
-    transitionDelay: sidebar.slideDuration,
+    transitionDelay: sidebar.resizeDelay,
   },
   seatFloating: { overflow: "visible" },
   rail: {
@@ -56,10 +57,10 @@ const styles = create({
     visibility: "visible",
     translate: "none",
     transitionProperty: "translate, visibility",
-    transitionDuration: sidebar.slideDuration,
+    transitionDuration: `${sidebar.slideDuration}, calc(${sidebar.slideDuration} + ${sidebar.resizeDuration})`,
     transitionTimingFunction: sidebar.slideEasing,
   },
-  railAway: { visibility: "hidden", translate: "-100%" },
+  railAway: { visibility: "hidden", translate: sidebar.slideOffset },
   railFloating: {
     position: "absolute",
     zIndex: layer.chrome,
