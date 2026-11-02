@@ -35,20 +35,20 @@ Session scope, shared by the session's heads:
 
 | Table | Row | Keyed by |
 | --- | --- | --- |
+| `messages` | `Message` | message id |
+| `turns` | `TurnInfo` | turn id |
 | `parts` | `PartView` | part id |
 | `changes` | `FileChange` | path |
-| `catalog` | one `CommandInfo`, `SettingInfo`, `SkillInfo`, `AgentInfo` or `ToolInfo` | `<kind>/<name>` |
+| `catalog` | `{ kind, entry }`, one command, setting, skill, agent or tool | `<kind>/<name>` |
 
 Session scope, per head:
 
 | Table | Row | Keyed by |
 | --- | --- | --- |
-| `heads` | `HeadState`: revision, execution, configuration, context, usage, reportsHeld, seenThrough, `queue: MessageId[]` | head name |
-| `messages` | `Message` | message id |
-| `turns` | `TurnInfo` | turn id |
-| `background` | `BackgroundItem` | item id |
+| `heads` | `HeadRow`: name, revision, execution, configuration, context, usage, reportsHeld, seenThrough, `queue: MessageId[]` | head name |
+| `background` | `{ head, item }` | `<head>/<kind>/<id>` |
 
-A head's messages, turns and background items are its own; a client that reads one head receives rows of that head only, and the session-level tables once per session.
+Branches share history, so a message or turn can sit on several heads' paths; each head's path is an order over the session's message rows.
 
 Rows that are per principal, such as `unread` and `seenThrough`, are projected for the principal the connection holds. The seq that stamps them is the seq of the `seen` event, which is in the log like any other.
 
@@ -95,7 +95,7 @@ One shape for everything the host pushes:
 
 | Kind | Scope | Carries |
 | --- | --- | --- |
-| `change` | any | `tables: { [table]: { upsert: Row[], drop: Id[] } }`, and for a head, `window: { head, order, leadingPrompt, turns }` when it moved |
+| `change` | any | `tables: { [table]: { upsert: Row[], drop: Id[] } }`, and `paths: { head, after, ids }[]`: each moved head's order is unchanged through `after`, then continues with `ids` (`after: null` replaces it) |
 | `live` | `session/<id>` | activation; the parts streaming, with the run each belongs to |
 | `status` | `host` | the host's version, uptime, listeners, tailnet state |
 | `perform` | `client/<id>` | `call`, the requesting client's id and principal, `action`, `input` |
