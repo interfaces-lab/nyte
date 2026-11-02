@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { createRequire } from "node:module";
-import { basename, resolve } from "node:path";
+import { basename, isAbsolute, resolve } from "node:path";
 import type { IPty, IPtyForkOptions } from "@lydell/node-pty";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { JobEnd, OutputFrame, RequestOptions } from "@nyte-ai/schema";
@@ -44,7 +44,7 @@ const DONE = { done: true, value: undefined } as const;
 
 let loaded: PtyModule | null | undefined;
 
-/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell()` read at each start, else `$SHELL`, else `/bin/sh`, as a login shell; §37h), a pty's environment carrying `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Nyte` without Electron's `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`, and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` (with `stdio: "protocol"`, stderr's frames tagged `stream: "stderr"` and the pipe paced like a pty, so a reader open from the start misses nothing) and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped, and `exit { code }` last; a merged pipe never stalls, and a pty or a protocol pipe pauses while its slowest open reader is 256 KiB behind, resuming once it is within 64 KiB. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` checks the OS process table for a login shell with no live child outside its own process group, whose id is the pty's pid (job control gives each command its own group, while prompt hooks such as starship or mise run as command substitutions in the shell's), with no live child at all while an integrated zsh or bash reports a running command line or background jobs, and not on the CPU while it reports a running command line; false for a pipe or explicit command and true once it ended; a pty's output never carries OSC 633 markers; `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s (on Windows, which has no signals, it ends a pipe's process tree at once with `taskkill /T /F`), and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
+/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell()` read at each start, else `$SHELL`, else `/bin/sh`, as a login shell; §37h, which starts without waiting for `processEnvironment()` when its path is absolute, since its startup files load the user's environment, while a bare name waits for the PATH that finds it), a pty's environment carrying `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Nyte` without Electron's `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`, and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` (with `stdio: "protocol"`, stderr's frames tagged `stream: "stderr"` and the pipe paced like a pty, so a reader open from the start misses nothing) and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped, and `exit { code }` last; a merged pipe never stalls, and a pty or a protocol pipe pauses while its slowest open reader is 256 KiB behind, resuming once it is within 64 KiB. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` checks the OS process table for a login shell with no live child outside its own process group, whose id is the pty's pid (job control gives each command its own group, while prompt hooks such as starship or mise run as command substitutions in the shell's), with no live child at all while an integrated zsh or bash reports a running command line or background jobs, and not on the CPU while it reports a running command line; false for a pipe or explicit command and true once it ended; a pty's output never carries OSC 633 markers; `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s (on Windows, which has no signals, it ends a pipe's process tree at once with `taskkill /T /F`), and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
 export function localExec(
   root: string,
   options?: {
@@ -68,10 +68,14 @@ export function localExec(
   return async (command, input) => {
     if (input?.signal?.aborted === true) throw new SdkError("unavailable", "aborted");
 
-    if (typeof command !== "string" && command.length === 0 && input?.pty === undefined)
+    const loginShell = typeof command !== "string" && command.length === 0;
+
+    if (loginShell && input?.pty === undefined)
       throw new SdkError("invalid", "An empty command runs only in a pty, as the login shell.");
     const cwd = input?.cwd === undefined ? root : resolve(root, input.cwd);
-    await processEnvironment();
+    const shell = options?.shell?.() ?? undefined;
+
+    if (!loginShell || !isAbsolute(shell ?? process.env.SHELL ?? "")) await processEnvironment();
     const env = { ...process.env, ...input?.env };
     const trace = readTraceparent(input?.env?.TRACEPARENT);
     const spawned = startSpan("pty.spawn", trace, { pty: input?.pty !== undefined });
@@ -96,12 +100,7 @@ export function localExec(
     const driver =
       input?.pty === undefined
         ? await pipe(command, { cwd, env, protocol: input?.stdio === "protocol" }, log, finish)
-        : await terminal(
-            command,
-            { cwd, env, size: input.pty, shell: options?.shell?.() ?? undefined, load },
-            log,
-            finish,
-          );
+        : await terminal(command, { cwd, env, size: input.pty, shell, load }, log, finish);
 
     spawned();
 
