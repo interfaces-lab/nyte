@@ -14,6 +14,7 @@ import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as DesignModeRouteImport } from './routes/design-mode'
 import { Route as ModelsRouteImport } from './routes/models'
 import { Route as PeekRouteImport } from './routes/peek'
+import { Route as ReviewRouteImport } from './routes/review'
 import { Route as ServerRouteImport } from './routes/server'
 import { Route as StacksRouteImport } from './routes/stacks'
 import { Route as StacksV1RouteImport } from './routes/stacks-v1'
@@ -47,6 +48,11 @@ const ModelsRoute = ModelsRouteImport.update({
 const PeekRoute = PeekRouteImport.update({
   id: '/peek',
   path: '/peek',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReviewRoute = ReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ServerRoute = ServerRouteImport.update({
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/design-mode': typeof DesignModeRoute
   '/models': typeof ModelsRoute
   '/peek': typeof PeekRoute
+  '/review': typeof ReviewRoute
   '/server': typeof ServerRoute
   '/stacks': typeof StacksRoute
   '/stacks-v1': typeof StacksV1Route
@@ -117,6 +124,7 @@ export interface FileRoutesByTo {
   '/design-mode': typeof DesignModeRoute
   '/models': typeof ModelsRoute
   '/peek': typeof PeekRoute
+  '/review': typeof ReviewRoute
   '/server': typeof ServerRoute
   '/stacks': typeof StacksRoute
   '/stacks-v1': typeof StacksV1Route
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/design-mode': typeof DesignModeRoute
   '/models': typeof ModelsRoute
   '/peek': typeof PeekRoute
+  '/review': typeof ReviewRoute
   '/server': typeof ServerRoute
   '/stacks': typeof StacksRoute
   '/stacks-v1': typeof StacksV1Route
@@ -152,6 +161,7 @@ export interface FileRouteTypes {
     | '/design-mode'
     | '/models'
     | '/peek'
+    | '/review'
     | '/server'
     | '/stacks'
     | '/stacks-v1'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
     | '/design-mode'
     | '/models'
     | '/peek'
+    | '/review'
     | '/server'
     | '/stacks'
     | '/stacks-v1'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '/design-mode'
     | '/models'
     | '/peek'
+    | '/review'
     | '/server'
     | '/stacks'
     | '/stacks-v1'
@@ -201,6 +213,7 @@ export interface RootRouteChildren {
   DesignModeRoute: typeof DesignModeRoute
   ModelsRoute: typeof ModelsRoute
   PeekRoute: typeof PeekRoute
+  ReviewRoute: typeof ReviewRoute
   ServerRoute: typeof ServerRoute
   StacksRoute: typeof StacksRoute
   StacksV1Route: typeof StacksV1Route
@@ -247,6 +260,13 @@ declare module '@tanstack/react-router' {
       path: '/peek'
       fullPath: '/peek'
       preLoaderRoute: typeof PeekRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/review': {
+      id: '/review'
+      path: '/review'
+      fullPath: '/review'
+      preLoaderRoute: typeof ReviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/server': {
@@ -321,6 +341,7 @@ const rootRouteChildren: RootRouteChildren = {
   DesignModeRoute: DesignModeRoute,
   ModelsRoute: ModelsRoute,
   PeekRoute: PeekRoute,
+  ReviewRoute: ReviewRoute,
   ServerRoute: ServerRoute,
   StacksRoute: StacksRoute,
   StacksV1Route: StacksV1Route,

@@ -1,0 +1,24 @@
+.gr-stage .ss-stage {
+  --ss-canvas: var(--nyte-bg-chrome);
+  --ss-chrome: var(--nyte-bg-chrome);
+  --ss-surface: var(--nyte-bg-base);
+  --ss-raised: var(--nyte-bg-elevated);
+  --ss-well: var(--nyte-bg-muted);
+  --ss-line: var(--nyte-border-primary-translucent);
+  --ss-line-faint: var(--nyte-border-secondary-translucent);
+  --ss-text-strong: var(--nyte-content-primary);
+  --ss-text: var(--nyte-content-secondary);
+  --ss-text-faint: var(--nyte-content-tertiary);
+  --ss-icon: var(--nyte-content-secondary);
+  --ss-icon-faint: var(--nyte-content-tertiary);
+  --ss-accent: var(--nyte-bg-interactive-strong);
+  --ss-accent-2: var(--nyte-bg-interactive-strong);
+  --ss-accent-soft: var(--nyte-bg-hover);
+  --ss-accent-text: var(--nyte-content-primary);
+  --ss-font: var(--nyte-font-family-sans);
+  --ss-mono: var(--nyte-font-family-mono);
+  --gr-muted: var(--nyte-bg-muted);
+  --gr-hover: var(--nyte-bg-hover);
+  --gr-button: var(--nyte-bg-interactive-secondary);
+  --gr-on-ink: var(--nyte-content-on-interactive-strong);
+}

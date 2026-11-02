@@ -1042,6 +1042,9 @@ importers:
       dialkit:
         specifier: ^2.0.2
         version: 2.0.2(motion@14.5.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(solid-js@1.9.17)
+      lucide-react:
+        specifier: ^1.61.0
+        version: 1.61.0(@types/react@19.3.0)(react@19.3.1)
       motion:
         specifier: ^14.5.0
         version: 14.5.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
