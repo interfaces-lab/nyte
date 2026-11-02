@@ -113,6 +113,8 @@ The **text channel** carries what a model is streaming: `{ part, run, version, a
 
 Keeping text off the event channel keeps the byte budget and the seqs honest: a slow consumer of a fast model does not lose a durable change.
 
+Both channels ride one WebSocket per connection, at `/.nyte/ws`. Every message is a JSON text frame tagged `{ "c": "e" }` or `{ "c": "t" }`. The host keeps one send queue per channel and always drains the event queue first; queued text for one part merges. A Node, React Native or Electron client sends its credential on the upgrade request; a browser, which cannot set headers on an upgrade, first trades its credential for a one-time ticket with `POST /.nyte/ws/ticket` and passes it as `?ticket=`. Request and response operations stay on plain HTTP as well, so a script can call one with `curl`. The new channel has no SSE form: every client Nyte ships can open a WebSocket, and a one-way stream cannot carry `client.reply`.
+
 ## Slow consumers
 
 The host never skips an event it has queued for a connection. A connection whose queued event bytes pass the host's `backlogBytes` closes with the reason `backlog`. The client reconnects and resumes. An event larger than `maxFrameBytes` closes the connection too, with `oversize`, because skipping it would leave a gap.
@@ -137,9 +139,9 @@ Every operation declares who may call it and from where:
 | --- | --- | --- |
 | `authority` | `participant`, `owner`, `maintenance` | what the principal needs |
 | `local` | absent or `true` | answered only on the local socket, never over the network or the tailnet: lifecycle, listeners, credentials, the tailnet's own controls |
-| `audience` | `client` or `mcp` | which kind of session may call it |
+| `mcp` | absent, `read` or `write` | the operation is an MCP tool; `read` ones are what a read-only grant may call |
 
-MCP sessions are a separate audience. An MCP session calls only operations declared for it, and every other route refuses an MCP session. MCP tools are built from the operations table, never declared by hand, so a tool and its operation cannot drift.
+MCP sessions are a separate audience. An MCP session calls only operations with `mcp` set, through `/mcp`, and every other route refuses its token. MCP tools are built from those rows of the operations table, never declared by hand, so a tool and its operation cannot drift.
 
 Principals come from the transport, never from what the client claims: the local socket's peer credentials, a paired device's key, or the tailnet's `WhoIs`. A tagged tailnet node is a machine, not a person.
 
@@ -169,4 +171,4 @@ The operations table keeps its shape: name, summary, kind, authority, scope, cap
 | `clients.read` | new: the clients table |
 | `host.hello` | new: the handshake described under Versions and Clients as principals |
 
-Every other operation keeps its declaration and gains `audience` and, where it applies, `local`.
+Every other operation keeps its declaration and gains `local` and `mcp` where they apply.
