@@ -185,7 +185,7 @@ async function generateModels() {
 
   const providers = groupByProvider(allModels);
   const sortedProviderIds = Object.keys(providers).sort();
-  const catalogDir = join(packageRoot, "catalog");
+  const catalogDir = join(packageRoot, "catalog.generated");
 
   rmSync(catalogDir, { recursive: true, force: true });
   mkdirSync(catalogDir, { recursive: true });

@@ -203,7 +203,7 @@ const browserSurfaces = new BrowserSurfaces({
   emit: emitHostEvent,
   filterListPath: app.isPackaged
     ? join(process.resourcesPath, "adblock.bin")
-    : join(app.getAppPath(), "resources", "adblock.bin"),
+    : join(app.getAppPath(), "resources", "adblock.generated.bin"),
   windowShown: (window) => windows.get(window.webContents.id)?.shown ?? false,
   pagePreload: join(import.meta.dirname, "../preload/browser-page.js"),
   forwardKey: ({ surface, window, contents, key }) => {

@@ -143,7 +143,7 @@ export default {
   files: ["out/**/*", "package.json", "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*"],
   asarUnpack: ["node_modules/@lydell/**/*", "node_modules/@anthropic-ai/claude-agent-sdk*/**/*"],
   extraResources: [
-    { from: "resources/adblock.bin", to: "adblock.bin" },
+    { from: "resources/adblock.generated.bin", to: "adblock.bin" },
     { from: "../app/dist", to: "app" },
     { from: "../canvas/dist/shell", to: "canvas" },
   ],

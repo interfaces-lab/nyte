@@ -9,7 +9,7 @@ import { done, fail, seconds } from "./terminal.ts";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const catalogDir = join(packageRoot, "catalog");
+const catalogDir = join(packageRoot, "catalog.generated");
 
 const repositoryRoot = join(packageRoot, "..", "..");
 
