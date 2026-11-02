@@ -104,7 +104,7 @@ export function createWaitRegistry(
     const { session, call, occurrence, target: slot } = entry;
     let past = false;
 
-    const written = await changeCall(kernel, session, call, async (current) => {
+    const written = await changeCall(kernel, { session, call, run: null }, async (current) => {
       if (
         current === null ||
         current.result !== null ||

@@ -392,13 +392,11 @@ export interface InstanceHost {
 }
 
 export interface PluginState {
-  /** The plugins `plugins.replace` assigned to a session in place of the host's, as asked: a file is loaded again at each activation, so a host-wide reload picks up its new code. */
   readonly assigned: Map<SessionId, readonly (Plugin<"core"> | PluginFile)[]>;
   readonly holds: Map<PartDefinition, { count: number; readonly dispose: Disposer }>;
   readonly settings: Set<(id: string, session: SessionId | null) => void>;
   readonly publishing: Map<SessionId, Promise<void>>;
   secretKey: Promise<CryptoKey> | null;
-  /** What the last load of `<home>/.nyte/plugins` gave: its plugins, taken by the host or not, which the next load compares against to tell whether anything changed; the files the host refused, with why; and the files the host view shows as failing, withdrawn by the next load that no longer fails them. */
   user: {
     readonly plugins: readonly Plugin<"core">[];
     readonly refused: readonly PluginFailure[];
@@ -529,8 +527,6 @@ export interface ExecutionState {
   >;
   timer: ReturnType<typeof setInterval> | null;
   closing: AbortController;
-  /** Aborted by a pause, ending the model streams in flight; a resume replaces it. */
   streams: AbortController;
-  /** Settles when the pause ends; null while the host is not paused. */
   paused: PromiseWithResolvers<void> | null;
 }

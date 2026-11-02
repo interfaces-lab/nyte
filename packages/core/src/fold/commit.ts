@@ -9,12 +9,18 @@ import type {
 } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import type { CallRecord, ReceiptRecord } from "../contract/records.ts";
-import { callRef, liveRef, receiptRef } from "../store/refs.ts";
+import { callRef, liveRef, receiptRef, runRef } from "../store/refs.ts";
 import { put, readCall, readRefExpectation } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { publishSet } from "./watch.ts";
 
 export type RunScope = { readonly session: SessionId; readonly run: RunId };
+
+export interface CallScope {
+  readonly session: SessionId;
+  readonly call: CallId;
+  readonly run: RunId | null;
+}
 
 export interface CallChange {
   readonly record: CallRecord;
@@ -90,19 +96,19 @@ async function publish(
 
 export function changeCall(
   kernel: Kernel,
-  session: SessionId,
-  call: CallId,
+  scope: CallScope,
   change: (current: CallRecord | null) => Promise<CallChange | null>,
 ): Promise<{
   readonly record: CallRecord | null;
   readonly wrote: boolean;
   readonly fenced: boolean;
 }> {
-  const name = callRef(session, call);
+  const name = callRef(scope.session, scope.call);
+  const queue = kernel.executionState.callQueue;
 
-  return kernel.executionState.callQueue.run(name, async () => {
+  const attempt = async () => {
     for (let tries = 0; tries < CALL_TRIES; tries += 1) {
-      const found = await readCall(kernel.store, session, call);
+      const found = await readCall(kernel.store, scope.session, scope.call);
       const next = await change(found?.record ?? null);
 
       if (next === null) return { record: found?.record ?? null, wrote: false, fenced: false };
@@ -130,6 +136,13 @@ export function changeCall(
         return { record: found?.record ?? null, wrote: false, fenced: true };
     }
 
-    throw new SdkError("stale", `Call ${call} lost to concurrent writes ${CALL_TRIES} times.`);
-  });
+    throw new SdkError(
+      "stale",
+      `Call ${scope.call} lost to concurrent writes ${CALL_TRIES} times.`,
+    );
+  };
+
+  return queue.run(name, () =>
+    scope.run === null ? attempt() : queue.run(runRef(scope.session, scope.run), attempt),
+  );
 }
