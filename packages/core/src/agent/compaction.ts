@@ -60,6 +60,7 @@ import {
 import type { Tip } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { check } from "../util/json-schema.ts";
+import { excerptText } from "../util/clip.ts";
 import { extractUserText } from "../util/text.ts";
 import { charge, complete, requestEvent, rideRef } from "./request.ts";
 import { ZERO_USAGE } from "../util/usage.ts";
@@ -103,8 +104,6 @@ const ORPHANED: Failure = {
   class: "runner",
   message: "The host stopped while this compaction ran.",
 };
-
-const RESULT_LIMIT = 2_000;
 
 const running = new WeakMap<Kernel, Set<PartId>>();
 
@@ -771,19 +770,11 @@ function transcriptText(messages: readonly Message[]): string {
           );
         case "toolResult":
           return [
-            `${message.toolName} ${message.isError ? "failed" : "returned"}: ${elideMiddle(contentText(message.content))}`,
+            `${message.toolName} ${message.isError ? "failed" : "returned"}: ${excerptText(contentText(message.content))}`,
           ];
       }
     })
     .join("\n\n");
-}
-
-/** Keeps a long tool result's start and its end, where a command prints its outcome, and marks what was cut between. */
-function elideMiddle(text: string): string {
-  if (text.length <= RESULT_LIMIT) return text;
-  const half = RESULT_LIMIT / 2;
-
-  return `${text.slice(0, half)}\n[… ${text.length - RESULT_LIMIT} characters omitted …]\n${text.slice(-half)}`;
 }
 
 function renderCompactionPart(kernel: Kernel, part: PartRecord): string {

@@ -284,7 +284,7 @@ describe("subagents", () => {
     await (await parent.send("What did it say?")).settled();
 
     expect(lastResult(fake.requests[3])).toBe(
-      `Subagent ${child.id} is idle.\n\nUser: Hello child.\n\nAssistant: Hi from the child.`,
+      `User: Hello child.\n\nAssistant: Hi from the child.\n\nSubagent ${child.id} is idle.`,
     );
   });
 

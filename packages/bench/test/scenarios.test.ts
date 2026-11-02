@@ -347,7 +347,7 @@ it("runs scenario D through gh when no CI server is configured", async () => {
     await expectFinished(turns, session, CI_ANSWER);
     expect(
       fake.requests.map(lastToolText).find((text) => text.includes("##[error]Process completed")),
-    ).toMatch(/^\[truncated: the first \d+ bytes of output are not shown\][^]*-1 !== 3/);
+    ).toMatch(/^\[… [\d,]+ characters cut\][^]*-1 !== 3/);
     expect(
       buildWaterfall(trace, [{ process: "host", spans: readSpans(trace) }]).rows.filter(
         (row) => row.name === "pty.spawn",

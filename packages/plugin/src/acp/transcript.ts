@@ -1,8 +1,7 @@
 import type { ContentBlock } from "@agentclientprotocol/sdk/unstable";
 import type { ImageContent, Message, TextContent, UserMessage } from "@nyte-ai/ai";
+import { excerptText } from "@nyte-ai/core";
 import { MIRROR_TOOL } from "./translate.ts";
-
-const RESULT_LIMIT = 2_000;
 
 function text(content: string | readonly (TextContent | ImageContent)[]): string {
   return typeof content === "string"
@@ -41,9 +40,7 @@ export function transcriptText(messages: readonly Message[]): string {
       if (message.role === "user") return [`User:\n${text(message.content)}`];
 
       if (message.role === "toolResult")
-        return [
-          `Tool result (${message.toolName}):\n${text(message.content).slice(0, RESULT_LIMIT)}`,
-        ];
+        return [`Tool result (${message.toolName}):\n${excerptText(text(message.content))}`];
 
       if (message.role !== "assistant" || message.stopReason === "error") return [];
 

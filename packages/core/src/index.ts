@@ -172,3 +172,5 @@ export { fitsActionOutput, fitsAnswer, fitsState } from "./api/part-schema.ts";
 export { callable } from "./util/callable.ts";
 
 export { lineDiff } from "./util/line-diff.ts";
+
+export { CLIP_CHARS, clipText, excerptText } from "./util/clip.ts";
