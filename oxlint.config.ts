@@ -84,9 +84,8 @@ export default defineConfig({
     "**/routeTree.gen.ts",
     "**/*.gen.*",
     "**/models.generated*",
-    // The lab's film is a creative sketch; it trades lint rules for iteration speed.
-    "packages/lab/video/**",
-    "packages/lab/remotion.config.ts",
+    // Local-only material, such as the lab's film and research notes.
+    "**/.local/**",
   ],
   plugins: ["react", "eslint", "typescript", "unicorn", "import", "oxc"],
   // The desktop design scale: enforced on StyleX sources, not wrapped in tokens.
