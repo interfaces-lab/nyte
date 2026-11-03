@@ -43,22 +43,26 @@ async function ensureHost(): Promise<LocalEndpoint> {
   if (running !== null) return { url: running.url, token: running.token };
   const command = selfCommand();
 
-  spawn(command[0], [...command.slice(1), "host", "--log"], {
+  const child = spawn(command[0], [...command.slice(1), "host", "--log"], {
     cwd: homedir(),
     detached: true,
     stdio: "ignore",
     env: Object.fromEntries(
       Object.entries(process.env).filter((entry) => entry[0] !== "NYTE_HOST_TOKEN"),
     ),
-  }).unref();
+  });
 
+  child.unref();
   const deadline = Date.now() + HOST_START_MS;
 
   while (Date.now() < deadline) {
+    const exited = child.exitCode !== null || child.signalCode !== null;
     await sleep(HOST_POLL_MS);
     const started = await findRunningHost(path);
 
     if (started !== null) return { url: started.url, token: started.token };
+
+    if (exited) throw new Error(`The Nyte host stopped while starting. See ${hostLogPath()}.`);
   }
 
   throw new Error(
