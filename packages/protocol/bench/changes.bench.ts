@@ -1,8 +1,9 @@
 import { changesSince } from "@nyte-ai/core";
-import { emptyFold, fold } from "@nyte-ai/core/testing";
+import { emptyFold, fold, project } from "@nyte-ai/core/testing";
 import { asId } from "@nyte-ai/schema";
-import type { SessionEvent } from "@nyte-ai/schema";
-import { recordLong } from "../test/sessions.ts";
+import type { SessionEvent, SessionView, ViewFrame } from "@nyte-ai/schema";
+import { viewFrames } from "../src/view-frames.ts";
+import { recordLong, recordSessions } from "../test/sessions.ts";
 import type { Recorded } from "../test/sessions.ts";
 
 const SIZES = [100, 1_000, 10_000];
@@ -11,31 +12,39 @@ const REPETITIONS = 200;
 
 const TURNS = 560;
 
-const KINDS = ["land", "tool settlement", "run phase"] as const;
+const PRINCIPAL = asId<"principal">("local");
+
+const KINDS = [
+  "land/commit",
+  "part created",
+  "part updated",
+  "call settled",
+  "run phase",
+  "input",
+] as const;
 
 type Kind = (typeof KINDS)[number];
 
-type Sample = {
-  readonly kind: Kind;
-  readonly event: number;
+type Weighed = {
+  readonly kind: Kind | null;
   readonly change: number;
-  readonly tables: string;
+  readonly frame: number;
 };
 
-const recorded = await recordLong(TURNS);
+const long = await recordLong(TURNS);
 
-if (recorded.events.length < (SIZES.at(-1) ?? 0) + REPETITIONS)
-  throw new Error(`The recorded session has only ${recorded.events.length} events.`);
+if (long.events.length < (SIZES.at(-1) ?? 0) + REPETITIONS)
+  throw new Error(`The recorded session has only ${long.events.length} events.`);
 
-for (const size of SIZES) measure(recorded, size);
+for (const size of SIZES) measure(long, size);
 
-const timings = SIZES.map((size) => ({ size, ...measure(recorded, size) }));
+const timings = SIZES.map((size) => ({ size, ...measure(long, size) }));
 
 const ratio = (timings.at(-1)?.median ?? 0) / timings[0].median;
 
 const scaled = ratio <= 2;
 
-console.log(`events recorded: ${recorded.events.length}\n`);
+console.log(`events recorded: ${long.events.length}\n`);
 
 console.log("prior events | median µs | p90 µs");
 
@@ -52,73 +61,69 @@ console.log(
   `${SIZES.at(-1)} / ${SIZES[0]}: ${ratio.toFixed(2)}× (gate 2×) ${scaled ? "pass" : "FAIL"}\n`,
 );
 
-console.log(
-  "kind            | count | event B | change B | limit B | gate | tables of the worst change, B",
+const logs = [...(await recordSessions()), long];
+
+const weighed = await Promise.all(
+  logs.map(async (log) => ({ name: log.name, steps: await weigh(log) })),
 );
 
-const sized = KINDS.map((kind) => {
-  const samples = timings.flatMap((timing) =>
-    timing.samples.filter((entry) => entry.kind === kind),
-  );
+const steps = weighed.flatMap((log) => log.steps);
 
-  const worst = samples.reduce<Sample | null>(
-    (found, entry) =>
-      found === null || entry.change - limit(entry.event) > found.change - limit(found.event)
-        ? entry
-        : found,
-    null,
-  );
+console.log("kind         | count | change B median | head.watch B median | gate");
 
-  const pass = worst !== null && worst.change <= limit(worst.event);
+const kinds = KINDS.map((kind) => {
+  const sampled = steps.filter((step) => step.kind === kind);
+  const change = median(sampled.map((step) => step.change));
+  const frame = median(sampled.map((step) => step.frame));
+  const pass = sampled.length > 0 && change <= frame;
 
   console.log(
     [
-      kind.padEnd(15),
-      String(samples.length).padStart(5),
-      String(worst?.event ?? 0).padStart(7),
-      String(worst?.change ?? 0).padStart(8),
-      String(Math.floor(limit(worst?.event ?? 0))).padStart(7),
-      (pass ? "pass" : "FAIL").padEnd(4),
-      worst?.tables ?? "",
+      kind.padEnd(12),
+      String(sampled.length).padStart(5),
+      String(change).padStart(15),
+      String(frame).padStart(19),
+      pass ? "pass" : "FAIL",
     ].join(" | "),
   );
 
   return pass;
 });
 
-if (!scaled || sized.includes(false)) process.exitCode = 1;
+console.log("\nlog     | events | change B total | head.watch B total | gate");
+
+const totals = weighed.map((log) => {
+  const change = sum(log.steps.map((step) => step.change));
+  const frame = sum(log.steps.map((step) => step.frame));
+  const pass = change <= frame;
+
+  console.log(
+    [
+      log.name.padEnd(7),
+      String(log.steps.length).padStart(6),
+      String(change).padStart(14),
+      String(frame).padStart(18),
+      pass ? "pass" : "FAIL",
+    ].join(" | "),
+  );
+
+  return pass;
+});
+
+if (!scaled || kinds.includes(false) || totals.includes(false)) process.exitCode = 1;
 
 function measure(log: Recorded, size: number) {
-  let state = emptyFold({ session: log.session, principal: asId("local") });
+  let state = emptyFold({ session: log.session, principal: PRINCIPAL });
 
   for (const event of log.events.slice(0, size)) state = fold(state, event);
   const times: number[] = [];
-  const samples: Sample[] = [];
 
   for (const event of log.events.slice(size, size + REPETITIONS)) {
     const seq = state.seq;
     const started = performance.now();
     state = fold(state, event);
-    const change = changesSince(state, seq);
-    const encoded = JSON.stringify(change);
+    JSON.stringify(changesSince(state, seq));
     times.push(performance.now() - started);
-
-    const kind = classify(event);
-
-    if (kind === null) continue;
-
-    samples.push({
-      kind,
-      event: byteLength(JSON.stringify(event)),
-      change: byteLength(encoded),
-      tables: Object.entries(change.tables)
-        .flatMap(([table, rows]) =>
-          rows.upsert.length + rows.drop.length === 0
-            ? []
-            : [`${table} ${byteLength(JSON.stringify(rows))}`],
-        )
-        .join(", "),
-    });
   }
 
   const sorted = times.toSorted((left, right) => left - right);
@@ -126,24 +131,65 @@ function measure(log: Recorded, size: number) {
   return {
     median: sorted[Math.floor(sorted.length / 2)] ?? 0,
     p90: sorted[Math.floor(sorted.length * 0.9)] ?? 0,
-    samples,
   };
 }
 
-function classify(event: SessionEvent): Kind | null {
-  if (event.kind === "commit" && event.body.kind === "user") return "land";
+async function weigh(log: Recorded): Promise<readonly Weighed[]> {
+  let state = emptyFold({ session: log.session, principal: PRINCIPAL });
 
-  if (event.kind === "call" && event.change === "settled") return "tool settlement";
+  const watches = log.heads.map((head) => {
+    const views = async function* (): AsyncGenerator<SessionView> {
+      for (let step = 0; step <= log.events.length; step += 1) yield project(state, head);
+    };
+
+    return viewFrames(views())[Symbol.asyncIterator]();
+  });
+
+  await framed(watches);
+  const steps: Weighed[] = [];
+
+  for (const event of log.events) {
+    const seq = state.seq;
+    state = fold(state, event);
+    const change = byteLength(JSON.stringify(changesSince(state, seq)));
+    steps.push({ kind: classify(event), change, frame: await framed(watches) });
+  }
+
+  return steps;
+}
+
+async function framed(watches: readonly AsyncIterator<ViewFrame>[]): Promise<number> {
+  const frames = await Promise.all(watches.map((watch) => watch.next()));
+
+  return sum(
+    frames.map((frame) => (frame.done === true ? 0 : byteLength(JSON.stringify(frame.value)))),
+  );
+}
+
+function classify(event: SessionEvent): Kind | null {
+  if (event.kind === "commit") return "land/commit";
+
+  if (event.kind === "input") return "input";
+
+  if (event.kind === "part" && event.change === "created") return "part created";
+
+  if (event.kind === "part" && event.change === "updated") return "part updated";
+
+  if (event.kind === "call" && event.change === "settled") return "call settled";
 
   return event.kind === "run" && event.change === "phase" ? "run phase" : null;
 }
 
-function byteLength(text: string): number {
-  return new TextEncoder().encode(text).length;
+function median(values: readonly number[]): number {
+  return values.toSorted((left, right) => left - right)[Math.floor(values.length / 2)] ?? 0;
 }
 
-function limit(event: number): number {
-  return event * 1.5 + 512;
+function sum(values: readonly number[]): number {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function byteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
 }
 
 function micro(milliseconds: number): string {

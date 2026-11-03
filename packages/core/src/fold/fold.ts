@@ -45,6 +45,7 @@ import {
   dropRow,
   emptyHead,
   emptyStamps,
+  hidesTurn,
   IDLE,
   liveRun,
   newPath,
@@ -495,8 +496,10 @@ function leave(draft: Draft, input: FoldInput): void {
   dropRow(draft, "messages", input.id);
 
   if (message?.turn === pendingTurn(input.id)) {
+    const info = draft.turns.get(message.turn)?.info;
     draft.turns.delete(message.turn);
-    dropRow(draft, "turns", message.turn);
+
+    if (info === undefined || !hidesTurn(info, message)) dropRow(draft, "turns", message.turn);
   }
 
   updateHead(draft, input.head, (head) => ({

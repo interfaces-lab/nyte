@@ -4,6 +4,7 @@ import type {
   HeadName,
   HeadRow,
   HeadSettingsRow,
+  HeadUsageRow,
   HeadWindow,
   Message,
   MessageId,
@@ -26,6 +27,7 @@ import {
   IDLE,
   newTouched,
   readQueueIds,
+  showsTurn,
 } from "./draft.ts";
 import { findLeadingPrompt, holdsReports, readSeenThrough } from "./project.ts";
 
@@ -39,6 +41,7 @@ const TABLES: readonly Table[] = [
   "catalog",
   "heads",
   "settings",
+  "usage",
   "background",
 ];
 
@@ -114,7 +117,11 @@ export function readWindow(
         upsert: [...new Set(placed.map((entry) => entry.message.turn))].flatMap((id) => {
           const info = state.turns.get(id)?.info;
 
-          return info !== undefined && (early.has(id) || sent("turns", id)) ? [info] : [];
+          return info !== undefined &&
+            showsTurn(state.messages, info) &&
+            (early.has(id) || sent("turns", id))
+            ? [info]
+            : [];
         }),
         drop: tables.turns.drop,
       },
@@ -122,6 +129,10 @@ export function readWindow(
       settings: {
         upsert: sent("settings", head) ? [readSettingsRow(state, head)] : [],
         drop: tables.settings.drop,
+      },
+      usage: {
+        upsert: sent("usage", head) ? [readUsageRow(state, head)] : [],
+        drop: tables.usage.drop,
       },
       background: {
         upsert: Array.from(backgroundRows(head, state.heads.get(head)?.background ?? [])).flatMap(
@@ -139,7 +150,7 @@ export function changesSince(state: FoldState, seq: Seq): SessionChange {
 
   return {
     seq: state.seq,
-    tables: readTables(state, touched),
+    tables: omitEmpty(readTables(state, touched)),
     paths: Array.from(touched.paths, ([head, position]) => readPathChange(state, head, position)),
   };
 }
@@ -205,8 +216,11 @@ function readSettingsRow(state: FoldState, name: HeadName): HeadSettingsRow {
     name,
     configuration: folded.configuration,
     context: folded.context,
-    usage: state[INDEX].paths.get(name)?.usage.at(-1) ?? ZERO_USAGE,
   };
+}
+
+function readUsageRow(state: FoldState, name: HeadName): HeadUsageRow {
+  return { name, usage: state[INDEX].paths.get(name)?.usage.at(-1) ?? ZERO_USAGE };
 }
 
 function readHead(state: FoldState, name: HeadName): FoldHead {
@@ -296,7 +310,11 @@ function readTables(state: FoldState, touched: Touched): TableChanges {
       "messages",
       () => (key) => state.messages.get(asId<"message">(key)),
     ),
-    turns: readTable(touched, "turns", () => (key) => state.turns.get(asId<"turn">(key))?.info),
+    turns: readTable(touched, "turns", () => (key) => {
+      const info = state.turns.get(asId<"turn">(key))?.info;
+
+      return info !== undefined && showsTurn(state.messages, info) ? info : undefined;
+    }),
     parts: readTable(touched, "parts", () => {
       const views = new Map<string, PartView>(state.partViews.map((view) => [view.id, view]));
 
@@ -322,6 +340,11 @@ function readTables(state: FoldState, touched: Touched): TableChanges {
 
       return state.heads.has(name) ? readSettingsRow(state, name) : undefined;
     }),
+    usage: readTable(touched, "usage", () => (key) => {
+      const name = asId<"head">(key);
+
+      return state.heads.has(name) ? readUsageRow(state, name) : undefined;
+    }),
     background: readTable(touched, "background", () => {
       const rows = new Map(
         Array.from(state.heads, ([name, head]) => [
@@ -332,6 +355,37 @@ function readTables(state: FoldState, touched: Touched): TableChanges {
       return (key) => rows.get(key);
     }),
   };
+}
+
+function omitEmpty(tables: TableChanges): SessionChange["tables"] {
+  const sparse: { -readonly [T in keyof TableChanges]?: TableChanges[T] } = {};
+
+  if (filled(tables.messages)) sparse.messages = tables.messages;
+
+  if (filled(tables.turns)) sparse.turns = tables.turns;
+
+  if (filled(tables.parts)) sparse.parts = tables.parts;
+
+  if (filled(tables.changes)) sparse.changes = tables.changes;
+
+  if (filled(tables.catalog)) sparse.catalog = tables.catalog;
+
+  if (filled(tables.heads)) sparse.heads = tables.heads;
+
+  if (filled(tables.settings)) sparse.settings = tables.settings;
+
+  if (filled(tables.usage)) sparse.usage = tables.usage;
+
+  if (filled(tables.background)) sparse.background = tables.background;
+
+  return sparse;
+}
+
+function filled(change: {
+  readonly upsert: readonly unknown[];
+  readonly drop: readonly string[];
+}): boolean {
+  return change.upsert.length + change.drop.length > 0;
 }
 
 function readTable<Row>(

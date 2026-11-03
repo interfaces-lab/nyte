@@ -3,7 +3,16 @@ import { INDEX } from "../contract/fold.ts";
 import type { Draft, FoldState, Path, Ring, Table } from "../contract/fold.ts";
 import { readPositionCommit, walkCommitPath } from "../store/session.ts";
 import { addUsage, ZERO_USAGE } from "../util/usage.ts";
-import { committed, reuse, setTurn, stale, toPartMessageId, touchPath, touchRow } from "./draft.ts";
+import {
+  committed,
+  reuse,
+  setTurn,
+  showsTurn,
+  stale,
+  toPartMessageId,
+  touchPath,
+  touchRow,
+} from "./draft.ts";
 
 const RING = 512;
 
@@ -79,6 +88,7 @@ const TABLES: readonly Table[] = [
   "catalog",
   "heads",
   "settings",
+  "usage",
   "background",
 ];
 
@@ -125,7 +135,7 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
     truncate(draft, name, path, start);
 
     for (const message of next.slice(start - kept)) {
-      if (!leaving.has(message.id)) place(draft, message);
+      if (!leaving.has(message.id)) place(draft, path, message);
       push(draft, name, path, message);
     }
 
@@ -203,7 +213,7 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
     const after = path.usage.at(-1) ?? ZERO_USAGE;
 
     if (before !== after && JSON.stringify(before) !== JSON.stringify(after))
-      touchRow(draft, "settings", name);
+      touchRow(draft, "usage", name);
   }
 
   return touched;
@@ -234,10 +244,16 @@ function sharedLength(
   return index < 0 ? length : index;
 }
 
-function place(draft: Draft, message: Message): void {
+function place(draft: Draft, path: Path, message: Message): void {
   touchRow(draft, "messages", message.id);
+  const info = draft.turns.get(message.turn)?.info;
 
-  if (draft.turns.has(message.turn)) touchRow(draft, "turns", message.turn);
+  if (
+    info !== undefined &&
+    path.messages.at(-1)?.turn !== message.turn &&
+    showsTurn(draft.messages, info)
+  )
+    touchRow(draft, "turns", message.turn);
 }
 
 function truncate(draft: Draft, head: HeadName, path: Path, length: number): void {

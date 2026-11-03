@@ -150,6 +150,7 @@ export type Table =
   | "catalog"
   | "heads"
   | "settings"
+  | "usage"
   | "background";
 
 export interface Touched {

@@ -5,6 +5,7 @@ import type {
   FileChange,
   HeadRow,
   HeadSettingsRow,
+  HeadUsageRow,
   HeadWindow,
   Message,
   MessageId,
@@ -12,7 +13,6 @@ import type {
   PathChange,
   Seq,
   SessionChange,
-  TableChanges,
   TurnInfo,
 } from "@nyte-ai/schema";
 
@@ -24,6 +24,7 @@ export interface SessionRows {
   readonly catalog: Map<string, CatalogRow>;
   readonly heads: Map<string, HeadRow>;
   readonly settings: Map<string, HeadSettingsRow>;
+  readonly usage: Map<string, HeadUsageRow>;
   readonly background: Map<string, BackgroundRow>;
 }
 
@@ -120,11 +121,12 @@ function emptyRows(): SessionRows {
     catalog: new Map(),
     heads: new Map(),
     settings: new Map(),
+    usage: new Map(),
     background: new Map(),
   };
 }
 
-function write(rows: SessionRows, tables: TableChanges): void {
+function write(rows: SessionRows, tables: SessionChange["tables"]): void {
   replace(rows.messages, tables.messages, (row) => row.id);
   replace(rows.turns, tables.turns, (row) => row.id);
   replace(rows.parts, tables.parts, (row) => row.id);
@@ -132,14 +134,17 @@ function write(rows: SessionRows, tables: TableChanges): void {
   replace(rows.catalog, tables.catalog, catalogRowKey);
   replace(rows.heads, tables.heads, (row) => row.name);
   replace(rows.settings, tables.settings, (row) => row.name);
+  replace(rows.usage, tables.usage, (row) => row.name);
   replace(rows.background, tables.background, backgroundRowKey);
 }
 
 function replace<Row>(
   rows: Map<string, Row>,
-  table: { readonly upsert: readonly Row[]; readonly drop: readonly string[] },
+  table: { readonly upsert: readonly Row[]; readonly drop: readonly string[] } | undefined,
   key: (row: Row) => string,
 ): void {
+  if (table === undefined) return;
+
   for (const row of table.upsert) rows.set(key(row), row);
 
   for (const id of table.drop) rows.delete(id);

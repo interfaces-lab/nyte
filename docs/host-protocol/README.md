@@ -46,10 +46,13 @@ Session scope, per head:
 | Table | Row | Keyed by |
 | --- | --- | --- |
 | `heads` | `HeadRow`: name, revision, execution, reportsHeld, seenThrough, `queue: MessageId[]` | head name |
-| `settings` | `HeadSettingsRow`: name, configuration, context, usage | head name |
+| `settings` | `HeadSettingsRow`: name, configuration, context | head name |
+| `usage` | `HeadUsageRow`: name, the usage of the head's completed runs | head name |
 | `background` | `{ head, item }` | `<head>/<kind>/<id>` |
 
-A head's facts are split by how often they change: `heads` moves with every run phase, `settings` only when the configuration, the context window or the completed usage moves, so a phase change resends the execution alone.
+A head's facts are split by how often they change: `heads` moves with every run phase, `usage` once per completed run, `settings` only when the configuration or the context window moves, so a phase change resends the execution alone and a run's end does not resend the configuration.
+
+A turn row is sent once a message on a head's path belongs to it. The turn a pending message holds until it lands is never a row, as `head.watch` never showed it either.
 
 Branches share history, so a message or turn can sit on several heads' paths; each head's path is an order over the session's message rows.
 
@@ -100,7 +103,7 @@ One shape for everything the host pushes:
 
 | Kind | Scope | Carries |
 | --- | --- | --- |
-| `change` | any | `tables: { [table]: { upsert: Row[], drop: Id[] } }`, and `paths: { head, after, ids }[]`: each moved head's order is unchanged through `after`, then continues with `ids` (`after: null` replaces it) |
+| `change` | any | `tables: { [table]: { upsert: Row[], drop: Id[] } }`, holding only the tables the change touched, and `paths: { head, after, ids }[]`: each moved head's order is unchanged through `after`, then continues with `ids` (`after: null` replaces it) |
 | `live` | `session/<id>` | activation; the parts streaming, with the run each belongs to |
 | `status` | `host` | the host's version, uptime, listeners, tailnet state |
 | `perform` | `client/<id>` | `call`, the requesting client's id and principal, `action`, `input` |

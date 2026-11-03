@@ -242,10 +242,16 @@ export const HeadSettingsRowType = Type.Object({
     effective: nullable(ConfigurationType),
   }),
   context: ContextViewType,
-  usage: UsageType,
 });
 
 export type HeadSettingsRow = Decoded<typeof HeadSettingsRowType>;
+
+export const HeadUsageRowType = Type.Object({
+  name: idSchema<"head">(),
+  usage: UsageType,
+});
+
+export type HeadUsageRow = Decoded<typeof HeadUsageRowType>;
 
 export const BackgroundRowType = Type.Object({
   head: idSchema<"head">(),
@@ -276,6 +282,7 @@ export const TableChangesType = Type.Object({
   catalog: tableChange(CatalogRowType),
   heads: tableChange(HeadRowType),
   settings: tableChange(HeadSettingsRowType),
+  usage: tableChange(HeadUsageRowType),
   background: tableChange(BackgroundRowType),
 });
 
@@ -291,7 +298,7 @@ export type PathChange = Decoded<typeof PathChangeType>;
 
 export const SessionChangeType = Type.Object({
   seq: SeqType,
-  tables: TableChangesType,
+  tables: Type.Partial(TableChangesType),
   paths: Type.Array(PathChangeType),
 });
 

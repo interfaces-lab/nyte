@@ -340,6 +340,12 @@ function differ(snapshot: SessionSnapshot, expected: HeadWindow, head: HeadName)
       true,
     ) ??
     rowsDiffer(
+      "usage",
+      new Map([...rows.usage].filter(([key]) => key === head)),
+      tables.usage.upsert.map((row) => [row.name, row]),
+      true,
+    ) ??
+    rowsDiffer(
       "background",
       new Map([...rows.background].filter(([key]) => key.startsWith(`${head}/`))),
       tables.background.upsert.map((row) => [backgroundRowKey(row), row]),

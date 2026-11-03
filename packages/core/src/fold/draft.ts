@@ -129,7 +129,14 @@ export function setMessage(draft: Draft, message: Message): void {
   draft.messages.set(message.id, unsign(message));
   touchRow(draft, "messages", message.id);
 
-  if (previous?.turn !== message.turn && draft.turns.has(message.turn))
+  const info = draft.turns.get(message.turn)?.info;
+
+  if (
+    info !== undefined &&
+    !hidesTurn(info, message) &&
+    previous !== undefined &&
+    (previous.turn !== message.turn || hidesTurn(info, previous))
+  )
     touchRow(draft, "turns", message.turn);
   const owner = draft.inputs.get(message.id)?.head;
   const head = owner === undefined ? undefined : draft.heads.get(owner);
@@ -145,8 +152,10 @@ export function setMessage(draft: Draft, message: Message): void {
   draft.swapped.add(message.id);
 
   if (previous.turn !== message.turn && previous.turn === pendingTurn(message.id)) {
+    const left = draft.turns.get(previous.turn)?.info;
     draft.turns.delete(previous.turn);
-    dropRow(draft, "turns", previous.turn);
+
+    if (left === undefined || !hidesTurn(left, previous)) dropRow(draft, "turns", previous.turn);
   }
 }
 
@@ -158,7 +167,22 @@ export function setTurn(draft: Draft, turn: FoldTurn): void {
 
   if (previous?.info === turn.info) return;
   draft.retitled.add(turn.info.id);
-  touchRow(draft, "turns", turn.info.id);
+
+  if ([...draft.paths.values()].some((path) => path.turnAt.has(turn.info.id)))
+    touchRow(draft, "turns", turn.info.id);
+}
+
+export function showsTurn(messages: ReadonlyMap<MessageId, Message>, info: TurnInfo): boolean {
+  return !hidesTurn(info, info.prompt === null ? undefined : messages.get(info.prompt));
+}
+
+export function hidesTurn(info: TurnInfo, prompt: Message | undefined): boolean {
+  return (
+    prompt?.kind === "user" &&
+    prompt.id === info.prompt &&
+    prompt.turn === info.id &&
+    prompt.status.kind !== "landed"
+  );
 }
 
 export function touchRow(draft: Draft, table: Table, key: string): void {
@@ -224,6 +248,8 @@ export function noteHead(
   )
     touchRow(draft, "settings", name);
 
+  if (current === undefined) touchRow(draft, "usage", name);
+
   if (current?.background !== next.background)
     diffRows(
       draft,
@@ -242,6 +268,7 @@ export function dropHead(draft: Draft, name: HeadName): void {
   if (head === undefined) return;
   dropRow(draft, "heads", name);
   dropRow(draft, "settings", name);
+  dropRow(draft, "usage", name);
 
   for (const key of backgroundRows(name, head.background).keys()) dropRow(draft, "background", key);
   touchPath(draft, name, 0);
@@ -256,6 +283,7 @@ export function emptyStamps(): Index["stamps"] {
     catalog: new Map(),
     heads: new Map(),
     settings: new Map(),
+    usage: new Map(),
     background: new Map(),
   };
 }
@@ -273,6 +301,7 @@ function tableSets(): Touched["upsert"] {
     catalog: new Set(),
     heads: new Set(),
     settings: new Set(),
+    usage: new Set(),
     background: new Set(),
   };
 }
