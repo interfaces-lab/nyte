@@ -19,12 +19,15 @@
     "./core/approvals": "./src/approvals/approvals.ts",
     "./core/acp": "./src/acp/index.ts",
     "./core/bash-description": "./src/bash-description.ts",
+    "./core/browser-client": "./src/browser-client.ts",
     "./core/browser-tools": "./src/browser-tools.ts",
     "./core/canvas": "./src/canvas/canvas.ts",
+    "./core/canvas-client": "./src/canvas/canvas-client.ts",
     "./core/canvas-compile": "./src/canvas/canvas-compile.ts",
     "./core/canvas-preview": "./src/canvas/canvas-preview.ts",
     "./core/claude-code-sdk": "./src/claude-code-sdk/index.ts",
     "./core/codemode": "./src/codemode.ts",
+    "./core/desktop-settings": "./src/desktop-settings.ts",
     "./core/codemode-runtime": "./src/codemode-runtime.ts",
     "./core/codemode-worker": "./src/codemode-worker.ts",
     "./core/openai-astra-context": "./src/openai-astra-context.ts",
@@ -66,6 +69,10 @@
         "types": "./dist/src/bash-description.d.ts",
         "import": "./dist/src/bash-description.js"
       },
+      "./core/browser-client": {
+        "types": "./dist/src/browser-client.d.ts",
+        "import": "./dist/src/browser-client.js"
+      },
       "./core/browser-tools": {
         "types": "./dist/src/browser-tools.d.ts",
         "import": "./dist/src/browser-tools.js"
@@ -73,6 +80,10 @@
       "./core/canvas": {
         "types": "./dist/src/canvas/canvas.d.ts",
         "import": "./dist/src/canvas/canvas.js"
+      },
+      "./core/canvas-client": {
+        "types": "./dist/src/canvas/canvas-client.d.ts",
+        "import": "./dist/src/canvas/canvas-client.js"
       },
       "./core/canvas-compile": {
         "types": "./dist/src/canvas/canvas-compile.d.ts",
@@ -97,6 +108,10 @@
       "./core/codemode-worker": {
         "types": "./dist/src/codemode-worker.d.ts",
         "import": "./dist/src/codemode-worker.js"
+      },
+      "./core/desktop-settings": {
+        "types": "./dist/src/desktop-settings.d.ts",
+        "import": "./dist/src/desktop-settings.js"
       },
       "./core/openai-astra-context": {
         "types": "./dist/src/openai-astra-context.d.ts",

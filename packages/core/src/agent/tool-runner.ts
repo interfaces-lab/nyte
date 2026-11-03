@@ -46,7 +46,7 @@ import { anotherChatLive, ownedChanges, readAttributedPaths } from "../env/sessi
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { startJob } from "../engine/jobs.ts";
 import { publishPatch } from "../engine/runs.ts";
-import { hiddenOwners, missingCapabilities } from "../engine/surface.ts";
+import { hiddenOwners, missingCapabilities, onlyNyteAppHas } from "../engine/surface.ts";
 import { loadedTools } from "./transcript.ts";
 import { toolSource } from "../extend/registry.ts";
 import { commit } from "../fold/commit.ts";
@@ -382,9 +382,7 @@ async function plan(
     return {
       kind: "settle",
       outcome: failed(
-        missing.length === 0
-          ? `No tool is named ${name}.`
-          : `${name} isn't available here: this chat uses ${missing.join(", ")}, which only Nyte.app has. Open Nyte.app to continue.`,
+        missing.length === 0 ? `No tool is named ${name}.` : onlyNyteAppHas(name, missing),
       ),
       args: where.args,
       class: custom,

@@ -321,6 +321,7 @@ export async function listenFetch(
       server,
       tailnet: options.tailnet,
       mcpServer: options.mcpServer,
+      execution: host.execution,
       signal: AbortSignal.any([generation.signal, controller.signal]),
       leave: () => land(flight),
     };
@@ -331,6 +332,7 @@ export async function listenFetch(
     local: options.local === true,
     tailnet: options.tailnet,
     mcpServer: options.mcpServer,
+    execution: host.execution,
     origins: options.origins,
     maxBodyBytes: options.maxBodyBytes,
     connection: (request) => {

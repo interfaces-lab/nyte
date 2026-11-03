@@ -68,6 +68,7 @@ export async function run() {
       reach: "cloudflare",
       address: ADDRESS,
       target: { kind: "home" },
+      tailnet: { state: "unavailable" },
       cloudflare: {
         kind: "configured",
         hostname: "nyte.example.test",

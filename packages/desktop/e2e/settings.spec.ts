@@ -129,7 +129,7 @@ test("the settings journey", async ({ desktop }) => {
     await openSettings(page, "Agent");
     await expect(page.getByRole("heading", { name: "New chats", level: 2 })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Default model" })).toHaveText(
-      "Scripted · E2E",
+      "Scripted · Anthropic",
     );
   });
 

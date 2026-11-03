@@ -6,15 +6,17 @@ import type { Models, Provider } from "@nyte-ai/ai";
 import { defaultProviderAuthContext } from "@nyte-ai/ai/auth/context";
 import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
-import { isJson } from "@nyte-ai/schema";
+import { isJson, SdkError } from "@nyte-ai/schema";
 import type { HostDescription, Json, ValidationIssue, WorkspaceTarget } from "@nyte-ai/schema";
 import { dev, processEnvironment } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
+import type { ServerHost } from "@nyte-ai/core/server";
 import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
 import approvals from "@nyte-ai/plugin/core/approvals";
 import { acpAgents } from "@nyte-ai/plugin/core/acp";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
+import type { ClientActions } from "@nyte-ai/plugin/core/browser-client";
 import browserTools from "@nyte-ai/plugin/core/browser-tools";
 import canvas from "@nyte-ai/plugin/core/canvas";
 import { claudeCodeSdk } from "@nyte-ai/plugin/core/claude-code-sdk";
@@ -41,6 +43,7 @@ import { createMcpHub } from "./mcp/hub.ts";
 import type { ClientMetadataFetch } from "./mcp-server/client-metadata.ts";
 import { openMcpServer } from "./mcp-server/server.ts";
 import { createViewCompiler } from "./plugins/views.ts";
+import { performOffered, sharedClients } from "./serve/clients.ts";
 import { createPluginLoader } from "./plugins/loader.ts";
 import type { PluginImport } from "./plugins/loader.ts";
 import { defaultSecrets } from "./secrets.ts";
@@ -66,6 +69,8 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   /** How plugin files are imported fresh; Node's resolve hook (`nodePluginImport`) by default. A Bun host passes its own. */
   readonly pluginImport?: PluginImport;
   readonly tailnet?: { readonly binary: string };
+  /** Plugins that act through the host's connected clients, called with how to ask the client that offers an action: Nyte.app's browser and canvas previews. */
+  readonly clientPlugins?: (actions: ClientActions) => readonly Plugin<"core">[];
   /** How the MCP authorization server fetches a client's metadata document; from public https addresses only by default. */
   readonly fetchClientMetadata?: ClientMetadataFetch;
 };
@@ -105,7 +110,21 @@ async function composeOpen(
   const { home, workspace, store, owned } = input;
   const secrets = options.secrets ?? defaultSecrets(home);
   const description = hostDescription();
-  const given = options.plugins ?? [];
+  let server: ServerHost | null = null;
+
+  const actions: ClientActions = {
+    offered: (action) =>
+      server !== null &&
+      sharedClients(server)
+        .rows()
+        .some((row) => row.actions.some((declared) => declared.name === action)),
+    perform: (action, input, timeoutMs) =>
+      server === null
+        ? Promise.reject(new SdkError("unavailable", "The host is still opening."))
+        : performOffered(server, { action, input, timeoutMs }),
+  };
+
+  const given = [...(options.plugins ?? []), ...(options.clientPlugins?.(actions) ?? [])];
   const usesLocalProvider = !given.some((plugin) => plugin.environment?.kind === "local");
 
   const claudeCode = claudeCodeSdk();
@@ -183,6 +202,8 @@ async function composeOpen(
 
     throw error;
   });
+
+  server = host.server;
 
   projectDirs = async () =>
     (await host.workspaces.list()).flatMap((entry) =>

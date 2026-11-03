@@ -2,6 +2,10 @@ import { homedir } from "node:os";
 import { parentPort } from "node:worker_threads";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { ConnectRuntime, hostShare, machineName } from "@nyte-ai/connect/host";
+import { TOKEN } from "@nyte-ai/core/server";
+import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
+import { desktopSettingsPlugin } from "@nyte-ai/plugin/core/desktop-settings";
+import type { Host } from "@nyte-ai/sdk";
 import { portConflict, probePort, Sharing } from "@nyte-ai/service";
 import { readConnectConfig } from "./connect-config.ts";
 import { openTerminalHost } from "./host.ts";
@@ -62,10 +66,21 @@ const revoked = (): void =>
     .then(() => report({ kind: "revoked" }));
 
 async function open(command: HostCommand): Promise<Opened> {
+  if (command.socket !== undefined) void completeShellEnvironment();
+  let shell: string | null = null;
+
   const host = await openTerminalHost({
     label: "nyte",
     onRevoked: revoked,
+    shell: () => shell,
+    plugins: command.socket === undefined ? [] : [desktopSettingsPlugin],
+    clients: command.socket !== undefined,
   });
+
+  if (command.socket !== undefined)
+    void followTerminalShell(host, (next) => {
+      shell = next;
+    });
 
   let sharing: Sharing | null = null;
 
@@ -91,7 +106,12 @@ async function open(command: HostCommand): Promise<Opened> {
     if (command.socket !== undefined)
       await host.listen({
         transport: { kind: "socket", path: command.socket },
-        auth: { kind: "token", token: command.token, authority: new Set(command.authority) },
+        auth: {
+          kind: "custom",
+          authorize: () => ({ principal: TOKEN, authority: new Set(command.authority) }),
+        },
+        execution: { kind: "admit-only" },
+        before: sharing.routes(command.token),
       });
 
     sharing.start();
@@ -113,6 +133,17 @@ async function open(command: HostCommand): Promise<Opened> {
       command.port === 0 ? undefined : portConflict(command.port, await probePort(command.port));
 
     throw conflict === undefined ? cause : new Error(conflict);
+  }
+}
+
+async function followTerminalShell(host: Host, apply: (shell: string | null) => void) {
+  try {
+    for await (const view of host.watch()) {
+      const value = view.settings.find((setting) => setting.id === "desktop.terminalShell")?.value;
+      apply(typeof value === "string" ? value : null);
+    }
+  } catch {
+    apply(null);
   }
 }
 

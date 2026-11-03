@@ -13,7 +13,7 @@ import type {
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-import { sanitizeLine } from "../../shared/browser-report.ts";
+import { sanitizeLine } from "@nyte-ai/plugin/core/browser-client";
 
 const REF_PREFIX = "s";
 

@@ -6,9 +6,12 @@ import { Value } from "typebox/value";
 import { dev } from "@nyte-ai/core";
 import { idSchema } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/schema";
+import { fakeModels } from "@nyte-ai/bench";
 import { sdk } from "@nyte-ai/sdk";
 import type { Host, SendReceipt } from "@nyte-ai/sdk";
-import { E2E_MODEL, e2eModels } from "../src/host/fixtures/e2e-models.ts";
+import { e2eAnswers } from "../src/host/fixtures/e2e-models.ts";
+import { E2E_MODEL } from "./host.ts";
+import { polishModel } from "./polish-fixture.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
@@ -71,6 +74,7 @@ async function fingerprint(): Promise<string> {
   const files = [
     join(import.meta.dirname, "baseline.ts"),
     join(REPO_ROOT, "packages/desktop/src/host/fixtures/e2e-models.ts"),
+    join(import.meta.dirname, "host.ts"),
     join(REPO_ROOT, "packages/host/src/sqlite.ts"),
     join(REPO_ROOT, "packages/host/src/store-rows.ts"),
     join(REPO_ROOT, "pnpm-lock.yaml"),
@@ -88,14 +92,17 @@ async function fingerprint(): Promise<string> {
   return hash.digest("hex").slice(0, 16);
 }
 
+/** Opens `home` in process over the scripted catalog, as the Anthropic model `nyte host` later reaches over HTTP, so the seeded chats name the model the e2e host serves. */
 function openOffline(home: string) {
   dev.off();
 
-  return sdk.open({
-    models: e2eModels().models,
-    home,
-    workspace: { kind: "local", path: home },
-  });
+  const models = fakeModels({
+    id: E2E_MODEL.provider,
+    models: [polishModel("http://127.0.0.1")],
+    fallback: e2eAnswers({ home, log: () => undefined }),
+  }).models;
+
+  return sdk.open({ models, home, workspace: { kind: "local", path: home } });
 }
 
 /** Reads through the desktop's token, so the desktop opens the chat with this read mark. */

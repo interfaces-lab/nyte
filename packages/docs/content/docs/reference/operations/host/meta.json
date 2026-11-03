@@ -1,1 +1,10 @@
-{ "title": "host", "pages": ["tailnet.status", "tailnet.configure", "tailnet.logout"] }
+{
+  "title": "host",
+  "pages": [
+    "tailnet.status",
+    "tailnet.configure",
+    "tailnet.logout",
+    "execution.pause",
+    "execution.resume"
+  ]
+}

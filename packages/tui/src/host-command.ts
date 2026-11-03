@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { alignedRows, ansiEnabled, statusGlyph } from "./cli-style.ts";
@@ -6,6 +7,8 @@ import { portConflict, probePort } from "@nyte-ai/service";
 import {
   findRunningHost,
   hostFilePath,
+  hostLogPath,
+  hostSocketPath,
   publishHost,
   readHostAddress,
   saveHostAddress,
@@ -24,18 +27,41 @@ export async function hostCommand(
   signal: AbortSignal,
   output: Output,
 ): Promise<void> {
-  if (args.length > 1 || args.some((arg) => arg !== "--json"))
-    throw new Error("Usage: nyte host [--json]. Run `nyte host --help`.");
+  if (new Set(args).size !== args.length || args.some((arg) => arg !== "--json" && arg !== "--log"))
+    throw new Error("Usage: nyte host [--json] [--log]. Run `nyte host --help`.");
 
-  const json = args[0] === "--json";
+  const json = args.includes("--json");
+
+  if (!args.includes("--log")) return serve(json, signal, output);
+  const log = hostLogPath();
+  await mkdir(dirname(log), { recursive: true, mode: 0o700 });
+
+  const logged = {
+    write: (text: string) => void appendFile(log, text, { mode: 0o600 }).catch(() => undefined),
+  };
+
+  try {
+    await serve(json, signal, logged);
+  } catch (cause) {
+    await appendFile(
+      log,
+      `${new Date().toISOString()} ${cause instanceof Error ? cause.message : String(cause)}\n`,
+      { mode: 0o600 },
+    );
+
+    throw cause;
+  }
+}
+
+async function serve(json: boolean, signal: AbortSignal, output: Output): Promise<void> {
   const path = hostFilePath();
+  const socket = process.platform === "win32" ? undefined : hostSocketPath();
   const running = await findRunningHost(path);
 
   if (running !== null) throw new Error(alreadyRunning(running, path));
   const addressPath = join(dirname(path), "host-address.json");
   const saved = await readHostAddress(addressPath);
   const token = saved?.token ?? randomBytes(32).toString("base64url");
-  const socket = process.platform === "win32" ? undefined : join(dirname(path), "host.sock");
   const conflict =
     saved === null ? undefined : portConflict(saved.port, await probePort(saved.port));
 

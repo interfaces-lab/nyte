@@ -97,7 +97,7 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.remote.state": compile(noInput),
   "host.remote.start": compile(
     strict({
-      reach: Type.Enum(["tailnet", "cloudflare"]),
+      reach: remotePlugin,
     }),
   ),
   "host.remote.stop": compile(noInput),
@@ -116,6 +116,8 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.remote.revoke": compile(
     strict({ plugin: remotePlugin, deviceId: Type.String({ minLength: 1, maxLength: 64 }) }),
   ),
+  "host.remote.configureTailnet": compile(strict({ enabled: Type.Boolean() })),
+  "host.remote.signOutTailnet": compile(noInput),
   "host.connect.state": compile(noInput),
   "host.connect.link": compile(noInput),
   "host.connect.cancel": compile(noInput),

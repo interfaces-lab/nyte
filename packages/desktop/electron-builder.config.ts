@@ -1,10 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sign } from "@electron/osx-sign";
 import { Arch } from "electron-builder";
 import type { AfterPackContext, Configuration, MacConfiguration } from "electron-builder";
 import { ACCOUNT_SCHEMES } from "./src/shared/account/scheme.ts";
+import {
+  bundledHostAgentJob,
+  DESKTOP_APP_IDS,
+  hostAgentPlist,
+} from "./src/shared/host-agent-job.ts";
 import packageMetadata from "./package.json" with { type: "json" };
 
 const updateTest = process.env["NYTE_UPDATE_TEST"] === "1";
@@ -14,6 +19,8 @@ const version = process.env["NYTE_RELEASE_VERSION"] ?? packageMetadata.version;
 const nightly = version.includes("-nightly.");
 
 const productName = updateTest ? "Nyte Update Test" : "Nyte";
+
+const appId = updateTest ? DESKTOP_APP_IDS.updateTest : DESKTOP_APP_IDS.production;
 
 const CLI = [
   { from: "../tui/dist/nyte", to: "nyte" },
@@ -98,6 +105,22 @@ async function verifyBundledCli(context: AfterPackContext): Promise<void> {
   }
 }
 
+async function bundleHostAgent(context: AfterPackContext): Promise<void> {
+  if (context.electronPlatformName !== "darwin") return;
+  const job = bundledHostAgentJob(appId);
+
+  const agents = join(
+    context.appOutDir,
+    `${context.packager.appInfo.productFilename}.app`,
+    "Contents",
+    "Library",
+    "LaunchAgents",
+  );
+
+  await mkdir(agents, { recursive: true });
+  await writeFile(join(agents, `${job.label}.plist`), hostAgentPlist(job));
+}
+
 const mac = {
   category: "public.app-category.developer-tools",
   icon: "build/icon.icns",
@@ -109,7 +132,11 @@ const mac = {
   forceCodeSigning: true,
   entitlements: "build/entitlements.mac.plist",
   entitlementsInherit: "build/entitlements.mac.plist",
-  extraResources: CLI,
+  extraResources: [
+    ...CLI,
+    { from: "resources/trayTemplate.png", to: "trayTemplate.png" },
+    { from: "resources/trayTemplate@2x.png", to: "trayTemplate@2x.png" },
+  ],
   sign: (options) =>
     sign({
       ...options,
@@ -127,7 +154,7 @@ const mac = {
 } satisfies MacConfiguration;
 
 export default {
-  appId: updateTest ? "ai.nyte.desktop.update-test" : "ai.nyte.desktop",
+  appId,
   productName,
   executableName: productName,
   extraMetadata: { name: productName, productName, version },
@@ -155,7 +182,10 @@ export default {
     { from: "../canvas/dist/shell", to: "canvas" },
   ],
   mac: updateTest ? { ...mac, notarize: false } : mac,
-  afterPack: verifyBundledCli,
+  afterPack: async (context) => {
+    await verifyBundledCli(context);
+    await bundleHostAgent(context);
+  },
   linux: {
     target: ["AppImage"],
     category: "Development",

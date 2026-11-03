@@ -341,6 +341,21 @@ export const HOST_OPERATIONS = {
     input: NO_INPUT,
     output: wireSchema(TailnetStatusType),
   },
+  "host.execution.pause": {
+    ...LOCAL_OWNER,
+    summary:
+      "Ends the host's model streams in flight and holds new requests until resumed, as while the machine sleeps; runs stay live.",
+    kind: "command",
+    input: NO_INPUT,
+    output: NOTHING,
+  },
+  "host.execution.resume": {
+    ...LOCAL_OWNER,
+    summary: "Lets the runs a pause held request again.",
+    kind: "command",
+    input: NO_INPUT,
+    output: NOTHING,
+  },
   "mcp.approve": {
     ...LOCAL_OWNER,
     summary:

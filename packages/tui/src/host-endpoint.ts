@@ -29,7 +29,19 @@ export type Published =
   | { readonly kind: "taken"; readonly by: RunningHost };
 
 export function hostFilePath(env: Readonly<Record<string, string | undefined>> = process.env) {
-  return join(env["NYTE_HOME"] ?? join(homedir(), ".nyte"), "host.json");
+  return join(hostStateDirectory(env), "host.json");
+}
+
+export function hostSocketPath(env: Readonly<Record<string, string | undefined>> = process.env) {
+  return join(hostStateDirectory(env), "host.sock");
+}
+
+export function hostLogPath(env: Readonly<Record<string, string | undefined>> = process.env) {
+  return join(hostStateDirectory(env), "logs", "host.log");
+}
+
+function hostStateDirectory(env: Readonly<Record<string, string | undefined>>): string {
+  return env["NYTE_HOME"] ?? join(homedir(), ".nyte");
 }
 
 /** The host `path` names when its process is alive and its URL answers; `null` when there is none or it is stale. */

@@ -32,7 +32,7 @@ test("host.usage reads a real completed chat and keeps external histories separa
   const made = await testDesktop();
 
   try {
-    const host = await made.host.host();
+    const host = made.served;
     made.fake.reply({
       content: [{ type: "text", text: "Done" }],
       usage: { input: 100, output: 20, cacheRead: 10, reasoning: 5 },

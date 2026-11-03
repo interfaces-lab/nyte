@@ -1,53 +1,44 @@
 import { expect, test } from "@playwright/test";
-import type { ElectronApplication } from "@playwright/test";
-import type { MessageBoxOptions } from "electron";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { collectErrors } from "@nyte-ai/app/e2e/errors";
+import { startE2eHost } from "./host.ts";
+import type { E2eHost } from "./host.ts";
 import { launchDesktop } from "./launch.ts";
-import { chatPane, composer, messages, openNewChat, send } from "./ui.ts";
+import { chatPane, chatRow, messages, openNewChat, send } from "./ui.ts";
 
 const HOST_GONE =
   /^Failed to load resource: net::ERR_(?:INCOMPLETE_CHUNKED_ENCODING|CONNECTION_REFUSED|CONNECTION_RESET|EMPTY_RESPONSE)$/u;
 
-async function hostPid(application: ElectronApplication): Promise<number | undefined> {
-  return application.evaluate(
-    ({ app }) => app.getAppMetrics().find((metric) => metric.name === "Nyte Host")?.pid,
-  );
-}
-
-async function nextHost(application: ElectronApplication, previous?: number): Promise<number> {
+async function nextHost(host: E2eHost, previous: number): Promise<number> {
   await expect
-    .poll(async () => {
-      const pid = await hostPid(application);
+    .poll(async () => (await host.pid()) ?? previous, { timeout: 30_000 })
+    .not.toBe(previous);
+  const pid = await host.pid();
 
-      return pid !== undefined && pid !== previous;
-    })
-    .toBe(true);
-
-  const pid = await hostPid(application);
-
-  if (pid === undefined) throw new Error("The Nyte Host stopped again.");
+  if (pid === null) throw new Error("The Nyte host stopped again.");
 
   return pid;
 }
 
-async function launch(cleanup: AsyncDisposableStack, name: string) {
+async function emptyHome(cleanup: AsyncDisposableStack, name: string) {
   const parent = await realpath(await mkdtemp(join(tmpdir(), `nyte-e2e-${name}-`)));
   cleanup.defer(() => rm(parent, { recursive: true, force: true }));
   const home = join(parent, "home");
   await mkdir(home, { mode: 0o700 });
-  const desktop = await launchDesktop({ home, parentDirectory: parent });
-  cleanup.defer(() => desktop.close());
 
-  return { ...desktop, errors: collectErrors(desktop.page) };
+  return { parent, home };
 }
 
-test("a killed host restarts on the same endpoint, and a message sent during the outage lands once", async () => {
+test("a killed host comes back under launchd, and a message sent during the outage lands once", async () => {
   await using cleanup = new AsyncDisposableStack();
-  const { application, page, errors } = await launch(cleanup, "host-restart");
+  const { parent, home } = await emptyHome(cleanup, "host-restart");
+  const desktop = await launchDesktop({ home, parentDirectory: parent });
+  cleanup.defer(() => desktop.close());
+  const { page, host } = desktop;
+  const errors = collectErrors(page);
 
   await openNewChat(page);
   await send(page, "Before the crash");
@@ -59,10 +50,12 @@ test("a killed host restarts on the same endpoint, and a message sent during the
     page.getByRole("tab", { selected: true }).getByRole("img", { name: "Working" }),
   ).toBeHidden();
 
-  const killed = await nextHost(application);
+  const killed = await host.pid();
+
+  if (killed === null) throw new Error("The Nyte host isn't running.");
   process.kill(killed, "SIGKILL");
   await send(page, "During the outage");
-  await nextHost(application, killed);
+  await nextHost(host, killed);
 
   await expect(messages(page).getByRole("paragraph")).toHaveText(
     ["Before the crash", "Echo: Before the crash", "During the outage", "Echo: During the outage"],
@@ -87,53 +80,42 @@ test("a killed host restarts on the same endpoint, and a message sent during the
   ).toEqual([]);
 });
 
-test("a host that crashes a fourth time running stops restarting, says so, and its Restart brings it back", async () => {
+test("quitting the app leaves its host running, and a relaunch reconnects to the same process", async () => {
   test.setTimeout(180_000);
   await using cleanup = new AsyncDisposableStack();
-  const { application, page, errors } = await launch(cleanup, "host-crash-loop");
+  const { parent, home } = await emptyHome(cleanup, "host-quit");
+  const host = await startE2eHost({ home, parentDirectory: parent, output: [] });
+  cleanup.defer(() => host.close());
+  const appData = join(parent, "app-data");
+  const before = await host.pid();
 
-  await page.waitForFunction(() => performance.getEntriesByName("nyte:sdk-connected").length > 0);
+  const first = await launchDesktop({ home, parentDirectory: parent, appData, host });
 
-  const shown = await application.evaluateHandle(({ dialog }) => {
-    const options: MessageBoxOptions[] = [];
-
-    Object.assign(dialog, {
-      showMessageBox: async (box: MessageBoxOptions) => {
-        options.push(box);
-
-        return { response: 0, checkboxChecked: false };
-      },
-    });
-
-    return options;
-  });
-
-  let pid = await nextHost(application);
-
-  for (const _restart of [1, 2, 3]) {
-    process.kill(pid, "SIGKILL");
-    pid = await nextHost(application, pid);
+  try {
+    await openNewChat(first.page);
+    await send(first.page, "Before the quit");
+    await expect(messages(first.page).getByRole("paragraph")).toHaveText([
+      "Before the quit",
+      "Echo: Before the quit",
+    ]);
+  } finally {
+    await first.close();
   }
 
-  process.kill(pid, "SIGKILL");
-  await expect.poll(() => shown.evaluate((options) => options.length)).toBe(1);
-  expect(
-    await shown.evaluate((options) =>
-      options.map((box) => ({ message: box.message, buttons: box.buttons })),
-    ),
-  ).toEqual([{ message: "Nyte Host keeps stopping", buttons: ["Restart Host", "Quit Nyte"] }]);
+  expect(await host.pid()).toBe(before);
 
-  await nextHost(application, pid);
-  await openNewChat(page);
-  await composer(page).fill("After the restart");
-  await composer(page).press("Enter");
-  await expect(messages(page).getByRole("paragraph")).toHaveText(
-    ["After the restart", "Echo: After the restart"],
-    { timeout: 30_000 },
-  );
+  const second = await launchDesktop({ home, parentDirectory: parent, appData, host });
+  cleanup.defer(() => second.close());
+  const errors = collectErrors(second.page);
+  await expect(chatRow(second.page, "Before the quit")).toBeVisible();
+  await openNewChat(second.page);
+  await send(second.page, "After the relaunch");
+  await expect(messages(second.page).getByRole("paragraph")).toHaveText([
+    "After the relaunch",
+    "Echo: After the relaunch",
+  ]);
+  expect(await host.pid()).toBe(before);
 
   expect(errors.pageErrors).toEqual([]);
-  expect(
-    errors.consoleErrors.filter((text) => !text.startsWith("DEV:") && !HOST_GONE.test(text)),
-  ).toEqual([]);
+  expect(errors.consoleErrors.filter((text) => !text.startsWith("DEV:"))).toEqual([]);
 });

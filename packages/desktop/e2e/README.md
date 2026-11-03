@@ -1,6 +1,6 @@
 # Desktop E2E
 
-Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwright.config.ts`. Its catalog is the offline `Scripted` model: `/hold` streams until stopped, `/error` refuses, `/think` answers with reasoning, `/markdown` answers a showcase, `/long <n>` answers n paragraphs, `/swarm` starts five agents that each stream notes and read a file for eight rounds before answering, anything else `Echo: <text>`. Each spec file is a chapter that launches one window over its own copy of a seeded home and walks one surface. `stores/` has its own `stores/playwright.config.ts`, so this config skips it.
+Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwright.config.ts`. Its catalog is the offline `Scripted` model: `/hold` streams until stopped, `/error` refuses, `/think` answers with reasoning, `/markdown` answers a showcase, `/long <n>` answers n paragraphs, `/swarm` starts five agents that each stream notes and read a file for eight rounds before answering, anything else `Echo: <text>`. Each launch starts its own host the way the app finds it in production: `nyte host` from `packages/tui/dist` as a launchd job with its own label, for the chapter's isolated `HOME`, signed in with a key to a local Anthropic endpoint that serves the scripted catalog. The app gets that label in `NYTE_DESKTOP_HOST_LABEL`, finds the job loaded and connects to its socket. Closing the launch boots the job out. Each spec file is a chapter that launches one window over its own copy of a seeded home and walks one surface. `stores/` has its own `stores/playwright.config.ts`, so this config skips it.
 
 ## Chapters
 
@@ -8,7 +8,7 @@ Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwrig
 | --- | --- |
 | `first-run.spec.ts` | An empty home: new chat, nothing listed |
 | `startup.spec.ts` | A relaunch with the host held: the last run's chats and model, a draft that sends once the host opens |
-| `host-restart.spec.ts` | The Nyte Host killed under a chat: it restarts, the window reconnects through a new port with the same token, a message sent during the outage lands once; a crash loop stops and offers Restart |
+| `host-restart.spec.ts` | The host killed under a chat: launchd restarts it, the window reconnects, a message sent during the outage lands once; quitting the app leaves the host running and a relaunch reconnects to the same process |
 | `navigation.spec.ts` | Tabs, the chat card, history, Chat actions, Customize, Search |
 | `panes.spec.ts` | Dragging chats onto pane edges and centers: the drop preview, splits and restacks, Escape cancelling, and the pane already open never remounting; the split sash, sidebar and workbench handles dragged with the mouse, clamped, reset and stepped from the keyboard; the ratio across a reload |
 | `settings.spec.ts` | Every settings page, the settings search, Back |
@@ -21,17 +21,18 @@ Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwrig
 | `subagent-load.spec.ts` | Only with `NYTE_PERF_DIR`: typing while five agents stream, a child chat open, and the agents row evicted/remounted. Gates keydown-to-paint p99 at 50 ms and maximum at 100 ms, whole-run render work p99 at 16.67 ms, and no renderer task over 50 ms after typing starts through completion. Saves trace, frame cadence, latency, row churn and work counts |
 | `workbench.spec.ts` | The panel, Files, Changes, Terminal, Browser tabs, Expand, closing tabs |
 | `browser.spec.ts` | The integrated browser against a local HTTP server |
-| `remote-access.spec.ts` | Pairing a Chromium page with the desktop over Remote access |
+| `remote-access.spec.ts` | Settings > Server reading the host's own Tailscale node |
 | `scenario-u.spec.ts` | Scenario U from the keyboard: skill, cold places MCP server, canvas, its link in the browser, an approved command, quit mid-answer, relaunch and resume; each hop's span against its budget |
 | `scenario-d.spec.ts` | Scenario D from the keyboard over a temp git repo and the CI MCP server: the skill's route, the 5 MiB log's tail, the canvas's file:line link in the editor and job link in the browser, a terminal rerun, commit and push, quit and resume with the frame compared, Changes from git and from the run's snapshots; each hop against its budget (`NYTE_WATERFALL_DIR` saves the waterfall) |
 
-The seeded home is built once by `baseline.ts` through `sdk.open` over the e2e catalog and cached under `e2e/.cache/<fingerprint>`. The fingerprint covers the baseline, the catalog, the store, core and the lockfile; a change to any of them rebuilds. Each chapter copies the cache into a temp `HOME`, so chapters never share state and run in any order. Closing a chapter's desktop fails if any process of its tree, the Nyte Host utility process or a child it spawned included, is still running 5 s after Electron quits.
+The seeded home is built once by `baseline.ts` through `sdk.open` over the e2e catalog and cached under `e2e/.cache/<fingerprint>`. The fingerprint covers the baseline, the catalog, the store, core and the lockfile; a change to any of them rebuilds. Each chapter copies the cache into a temp `HOME`, so chapters never share state and run in any order. Closing a chapter's desktop fails if any process of Electron's tree is still running 5 s after it quits, or if its host outlives the job's bootout. The host's log and the scripted catalog's `NYTE_E2E_*` lines join the launch's output.
 
 ## Prerequisites
 
 ```sh
 pnpm --dir packages/canvas build
 pnpm --dir packages/app build
+pnpm --dir packages/tui build             # dist/nyte and dist/nyte-tailnet; needs Go
 pnpm --dir packages/desktop build
 pnpm --dir packages/desktop build:e2e   # needs the regular build
 ```
@@ -39,7 +40,7 @@ pnpm --dir packages/desktop build:e2e   # needs the regular build
 ## Run
 
 ```sh
-pnpm e2e:desktop                       # builds the canvas shell, the app, the desktop and its e2e entry first
+pnpm e2e:desktop                       # builds the canvas shell, the app, the CLI, the desktop and its e2e entry first
 ```
 
 One chapter, against an existing build:

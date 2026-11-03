@@ -156,6 +156,8 @@ const bridge = {
       clear: object("host.remote.clear"),
       pair: object("host.remote.pair"),
       revoke: object("host.remote.revoke"),
+      configureTailnet: object("host.remote.configureTailnet"),
+      signOutTailnet: none("host.remote.signOutTailnet"),
     },
     connect: {
       state: none("host.connect.state"),
