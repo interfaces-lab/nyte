@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test, vi } from "vitest";
+import { socketTest } from "../fixtures/desktop-host.ts";
 import { BROKER_ROUTES } from "@nyte-ai/connect";
 import { PrivateJwk, keyThumbprint } from "@nyte-ai/connect/signing";
 import { Value } from "typebox/value";
@@ -19,7 +20,7 @@ import {
 
 afterEach(cleanUp);
 
-test("cancel, disable, and quit win over work still in flight", async () => {
+socketTest("cancel, disable, and quit win over work still in flight", async () => {
   const setup = await fixture();
   const desktop_ = await desktop(setup);
   const { broker, account } = setup;
@@ -82,7 +83,7 @@ test("cancel, disable, and quit win over work still in flight", async () => {
   assert.equal(account.closed, 1);
 });
 
-test("a tombstoned key from an abandoned link is replaced, not retried forever", async () => {
+socketTest("a tombstoned key from an abandoned link is replaced, not retried forever", async () => {
   const setup = await fixture();
   const { host } = await desktop(setup);
   const { broker } = setup;
@@ -106,7 +107,7 @@ test("a tombstoned key from an abandoned link is replaced, not retried forever",
   assert.notEqual(broker.env.thumbprint, [...broker.revokedKeys][0]);
 });
 
-test("a link another account began is not resumed under this one", async () => {
+socketTest("a link another account began is not resumed under this one", async () => {
   const setup = await fixture();
   const { host } = await desktop(setup);
   const { broker, account } = setup;
@@ -127,68 +128,75 @@ test("a link another account began is not resumed under this one", async () => {
   assert.notEqual(broker.env?.thumbprint, first.thumbprint);
 });
 
-test("pending unlinks are kept until the broker confirms them, and a full queue holds new links back", async () => {
-  const setup = await fixture();
-  const { host } = await desktop(setup);
-  const { broker, account } = setup;
-  broker.removalOffline = true;
-  const removed: string[] = [];
+socketTest(
+  "pending unlinks are kept until the broker confirms them, and a full queue holds new links back",
+  async () => {
+    const setup = await fixture();
+    const { host } = await desktop(setup);
+    const { broker, account } = setup;
+    broker.removalOffline = true;
+    const removed: string[] = [];
 
-  for (let round = 0; round < 8; round += 1) {
+    for (let round = 0; round < 8; round += 1) {
+      assert.equal((await host.call(1, "host.connect.link", undefined)).kind, "linked");
+      removed.push(broker.env?.id ?? "");
+      await host.call(1, "host.connect.unlink", undefined);
+    }
+
+    const pending = async (): Promise<readonly string[]> =>
+      JSON.parse(await stored(setup)).unlinks.map(
+        (entry: { environmentId: string }) => entry.environmentId,
+      );
+
+    assert.deepEqual(await pending(), removed);
+
+    const requests = account.requests;
+    const held = await host.call(1, "host.connect.link", undefined);
+    assert.ok(held.kind === "unlinked" && held.linking.kind === "failed");
+    assert.equal(account.requests, requests);
+    assert.deepEqual(await pending(), removed);
+
+    broker.removalOffline = false;
     assert.equal((await host.call(1, "host.connect.link", undefined)).kind, "linked");
-    removed.push(broker.env?.id ?? "");
-    await host.call(1, "host.connect.unlink", undefined);
-  }
+    assert.deepEqual(await pending(), []);
+  },
+  30_000,
+);
 
-  const pending = async (): Promise<readonly string[]> =>
-    JSON.parse(await stored(setup)).unlinks.map(
-      (entry: { environmentId: string }) => entry.environmentId,
-    );
+socketTest(
+  "a cancelled link keeps its key on disk, and a restart resumes the same environment with it",
+  async () => {
+    const setup = await fixture();
+    const first = await desktop(setup);
+    const { broker } = setup;
+    const gate = Promise.withResolvers<void>();
+    broker.linkGate = gate.promise;
+    const inFlight = first.host.call(1, "host.connect.link", undefined);
+    await vi.waitFor(() => {
+      assert.equal(broker.count(`POST ${BROKER_ROUTES.environments}`), 1);
+      assert.ok(broker.env, "the broker holds the link at its gate");
+    });
+    const pending = JSON.parse(await stored(setup)).linkKey;
+    assert.ok(Value.Check(PrivateJwk, pending.key));
+    assert.equal(await keyThumbprint(pending.key), broker.env?.thumbprint);
+    await first.host.call(1, "host.connect.cancel", undefined);
+    gate.resolve();
+    assert.equal((await inFlight).kind, "unlinked");
+    await first.host.close();
+    broker.linkGate = undefined;
+    const environment = broker.env?.id;
+    assert.deepEqual(JSON.parse(await stored(setup)).linkKey.key, pending.key);
 
-  assert.deepEqual(await pending(), removed);
+    const second = await desktop(setup);
+    assert.equal((await second.host.call(1, "host.connect.link", undefined)).kind, "linked");
+    assert.equal(broker.env?.id, environment);
+    const file = JSON.parse(await stored(setup));
+    assert.deepEqual(file.link.key, pending.key);
+    assert.equal(file.linkKey, null);
+  },
+);
 
-  const requests = account.requests;
-  const held = await host.call(1, "host.connect.link", undefined);
-  assert.ok(held.kind === "unlinked" && held.linking.kind === "failed");
-  assert.equal(account.requests, requests);
-  assert.deepEqual(await pending(), removed);
-
-  broker.removalOffline = false;
-  assert.equal((await host.call(1, "host.connect.link", undefined)).kind, "linked");
-  assert.deepEqual(await pending(), []);
-}, 30_000);
-
-test("a cancelled link keeps its key on disk, and a restart resumes the same environment with it", async () => {
-  const setup = await fixture();
-  const first = await desktop(setup);
-  const { broker } = setup;
-  const gate = Promise.withResolvers<void>();
-  broker.linkGate = gate.promise;
-  const inFlight = first.host.call(1, "host.connect.link", undefined);
-  await vi.waitFor(() => {
-    assert.equal(broker.count(`POST ${BROKER_ROUTES.environments}`), 1);
-    assert.ok(broker.env, "the broker holds the link at its gate");
-  });
-  const pending = JSON.parse(await stored(setup)).linkKey;
-  assert.ok(Value.Check(PrivateJwk, pending.key));
-  assert.equal(await keyThumbprint(pending.key), broker.env?.thumbprint);
-  await first.host.call(1, "host.connect.cancel", undefined);
-  gate.resolve();
-  assert.equal((await inFlight).kind, "unlinked");
-  await first.host.close();
-  broker.linkGate = undefined;
-  const environment = broker.env?.id;
-  assert.deepEqual(JSON.parse(await stored(setup)).linkKey.key, pending.key);
-
-  const second = await desktop(setup);
-  assert.equal((await second.host.call(1, "host.connect.link", undefined)).kind, "linked");
-  assert.equal(broker.env?.id, environment);
-  const file = JSON.parse(await stored(setup));
-  assert.deepEqual(file.link.key, pending.key);
-  assert.equal(file.linkKey, null);
-});
-
-test("nothing is linked without configuration", async () => {
+socketTest("nothing is linked without configuration", async () => {
   const setup = await fixture();
   const { host } = await desktop(setup, { config: undefined });
 
