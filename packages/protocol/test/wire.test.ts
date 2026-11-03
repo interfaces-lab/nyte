@@ -86,6 +86,8 @@ describe("errors", () => {
       stale: 409,
       internal: 500,
       unavailable: 503,
+      not_supported: 501,
+      timeout: 504,
     });
 
     for (const [code, status] of Object.entries(errorStatus)) expect(statusCode(status)).toBe(code);

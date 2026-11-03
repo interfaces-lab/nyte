@@ -65,6 +65,8 @@ its code. Every operation can fail these ways:
 | `stale`           | 409    | A write lost to concurrent writes, or a revision the call expected has moved                             |
 | `unavailable`     | 503    | The host, a provider or a capability can't serve the call now                                            |
 | `internal`        | 500    | The host failed. `correlation` names its log entry                                                       |
+| `not_supported`   | 501    | The client asked to act never declared the action                                                        |
+| `timeout`         | 504    | The client asked to act didn't answer in time                                                            |
 
 Each page lists the errors particular to its operation. Many operations answer an expected result
 as an outcome with a `kind` instead of failing, such as `busy` or `stale`; those are part of the

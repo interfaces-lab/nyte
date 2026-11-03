@@ -1,5 +1,5 @@
 {
-  "revision": 3,
+  "revision": 4,
   "operations": {
     "connection.watch": "38887a11ce30c305",
     "connection.blob": "d661f9695af8afc2",
@@ -32,6 +32,9 @@
     "events.subscribe": "f125591474a866d7",
     "events.unsubscribe": "9886bfb9ea3e0718",
     "text.open": "4da72834b86023c6",
+    "clients.read": "69cbc4f0c084e30b",
+    "client.perform": "3dccfe5a33927202",
+    "client.reply": "66fa0f9428b8908e",
     "session.info": "ff0ebc4090edfcd9",
     "session.update": "b904f8c923e7ced9",
     "session.remove": "64f951e2105ba114",

@@ -36,6 +36,18 @@ export const ClientInfoType = Type.Object({
 
 export type ClientInfo = Decoded<typeof ClientInfoType>;
 
+export const ClientRowType = Type.Object({
+  id: idSchema<"client">(),
+  principal: idSchema<"principal">(),
+  kind: ClientKindType,
+  name: Type.String(),
+  version: Type.String(),
+  actions: Type.Array(ActionDeclarationType),
+  since: Type.Number(),
+});
+
+export type ClientRow = Decoded<typeof ClientRowType>;
+
 export const HelloFrameType = Type.Object({
   c: Type.Literal("e"),
   type: Type.Literal("hello"),

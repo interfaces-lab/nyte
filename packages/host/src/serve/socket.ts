@@ -39,6 +39,8 @@ import {
 import type { RawData, WebSocket } from "ws";
 import type { TailnetControl } from "../tailnet.ts";
 import { bindConnection } from "./binding.ts";
+import { sharedClients } from "./clients.ts";
+import type { HostEvent, PerformEvent } from "./clients.ts";
 import { callBinding, UPLOADS } from "./handler.ts";
 
 export type SocketPeer = {
@@ -62,6 +64,8 @@ export type TextEntry = {
 
 type EventOut =
   | WelcomeFrame
+  | PerformEvent
+  | HostEvent
   | { readonly c: "e"; readonly type: "result"; readonly id: string; readonly output: Json }
   | { readonly c: "e"; readonly type: "error"; readonly id: string; readonly error: SdkErrorWire }
   | {
@@ -112,7 +116,13 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   });
 
   const flights = new Set<AbortController>();
-  let client: { readonly id: ClientId; readonly hello: HelloFrame } | null = null;
+  const clients = sharedClients(peer.server);
+
+  let client: {
+    readonly id: ClientId;
+    readonly membership: ReturnType<typeof clients.join>;
+  } | null = null;
+
   let closed = false;
   let missed = 0;
   let waiting = false;
@@ -246,13 +256,57 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       if (subscriptions.has(target.scope)) continue;
 
       if (target.kind === "session") await attachSession(target.scope, target.session);
-      else
-        subscriptions.set(target.scope, {
-          attachment: null,
-          sent: new Map(),
-          release: () => undefined,
-        });
+      else if (target.kind === "host") observeHost();
+      else listenAsClient();
     }
+  };
+
+  const observeHost = (): void => {
+    outbox.event({
+      c: "e",
+      type: "event",
+      scope: "host",
+      seq: null,
+      kind: "live",
+      clients: clients.rows(),
+    });
+    const stop = clients.observe((event) => outbox.event(event));
+    subscriptions.set("host", { attachment: null, sent: new Map(), release: stop });
+  };
+
+  const listenAsClient = (): void => {
+    const membership = client?.membership;
+
+    if (client === null || membership === undefined) return;
+    subscriptions.set(`client/${client.id}`, {
+      attachment: null,
+      sent: new Map(),
+      release: () => membership.listen(false),
+    });
+    membership.listen(true);
+  };
+
+  const askClient = async (input: Json): Promise<Json> => {
+    if (client === null) throw new SdkError("invalid", "Say hello first.");
+    const request = decodeInput("client.perform", input);
+
+    return clients.perform({ client: client.id, principal: peer.principal }, request);
+  };
+
+  const reply = (input: Json): void => {
+    if (client === null) throw new SdkError("invalid", "Say hello first.");
+    const answer = decodeInput("client.reply", input);
+
+    if ((answer.result === undefined) === (answer.error === undefined))
+      throw new SdkError("invalid", "A reply carries exactly one of result and error.");
+
+    clients.reply(
+      client.id,
+      answer.call,
+      answer.error === undefined
+        ? { kind: "result", result: answer.result ?? null }
+        : { kind: "error", code: answer.error.code, message: answer.error.message },
+    );
   };
 
   const unsubscribe = (scopes: readonly string[]): void => {
@@ -289,7 +343,21 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     }
 
     const id = asId<"client">(crypto.randomUUID());
-    client = { id, hello: value };
+
+    const membership = clients.join({
+      row: {
+        id,
+        principal: peer.principal,
+        kind: value.client.kind,
+        name: value.client.name,
+        version: value.client.version,
+        actions: value.client.actions,
+        since: Date.now(),
+      },
+      deliver: (event) => outbox.event(event),
+    });
+
+    client = { id, membership };
     outbox.event({
       c: "e",
       type: "welcome",
@@ -306,7 +374,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     flights.add(flight);
 
     try {
-      const output = await perform(frame.op, frame.input ?? {}, flight.signal);
+      const output = await dispatch(frame.op, frame.input ?? {}, flight.signal);
       outbox.event({ c: "e", type: "result", id: frame.id, output });
     } catch (error) {
       outbox.event({ c: "e", type: "error", id: frame.id, error: encodeError(asSdkError(error)) });
@@ -315,7 +383,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     }
   };
 
-  const perform = async (op: string, input: Json, signal: AbortSignal): Promise<Json> => {
+  const dispatch = async (op: string, input: Json, signal: AbortSignal): Promise<Json> => {
     if (!namesOperation(op) || !answersOnce(op))
       throw new SdkError("unknown", `No call answers ${op} on the socket.`);
 
@@ -336,6 +404,14 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     if (op === "events.unsubscribe") {
       unsubscribe(decodeInput(op, input).scopes);
+
+      return null;
+    }
+
+    if (op === "client.perform") return askClient(input);
+
+    if (op === "client.reply") {
+      reply(input);
 
       return null;
     }
@@ -415,6 +491,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     for (const subscription of subscriptions.values()) subscription.release();
     subscriptions.clear();
+    client?.membership.leave();
     peer.leave();
   });
 

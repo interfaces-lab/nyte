@@ -22,7 +22,7 @@ import { decodeError, decodeOutput, openSessionStore } from "@nyte-ai/protocol";
 import type { SessionStore } from "@nyte-ai/protocol";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { listen } from "../src/index.ts";
 import { fakeModels, open } from "./fixtures/fake-models.ts";
 import type { FakeModels } from "./fixtures/fake-models.ts";
@@ -38,6 +38,8 @@ const changes = compile(withJson(SessionChangeType));
 const cleanups: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
+
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
@@ -45,13 +47,36 @@ type Composed = Awaited<ReturnType<typeof open>>;
 
 type Client = Awaited<ReturnType<typeof connect>>;
 
-function hello(apiMinRevision = 1): Json {
+function hello(apiMinRevision = 1, actions: readonly string[] = [], name = "socket-test"): Json {
   return {
     c: "e",
     type: "hello",
     api_min_revision: apiMinRevision,
-    client: { kind: "other", name: "socket-test", version: "1", actions: [] },
+    client: {
+      kind: "other",
+      name,
+      version: "1",
+      actions: actions.map((action) => ({ name: action, summary: `Does ${action}.`, input: {} })),
+    },
   };
+}
+
+async function target(listener: Listener, actions: readonly string[] = ["open"]) {
+  const client = await connect(listener, hello(1, actions, "target"));
+  await client.call("events.subscribe", { scopes: [`client/${client.id}`] });
+
+  return client;
+}
+
+function performs(client: Client): readonly JsonSchema[] {
+  return client.frames.filter((frame) => frame.kind === "perform");
+}
+
+async function failureCode(pending: Promise<Json>): Promise<string | null> {
+  return pending.then(
+    () => null,
+    (error: Error) => ("code" in error && typeof error.code === "string" ? error.code : null),
+  );
 }
 
 async function compose(fake: FakeModels): Promise<Composed> {
@@ -80,14 +105,13 @@ function socketUrl(listener: Listener): string {
     : `ws+unix://${address}:/.nyte/ws`;
 }
 
-async function connect(listener: Listener, greeting: Json = hello()) {
+async function openSocket(listener: Listener, greeting: Json) {
   const socket = new WebSocket(socketUrl(listener), {
     headers: { Authorization: `Bearer ${TOKEN}` },
   });
 
   const frames: JsonSchema[] = [];
   const wakes = new Set<() => void>();
-  let calls = 0;
 
   const closed = new Promise<{ readonly code: number; readonly reason: string }>((done) => {
     socket.once("close", (code, reason) => done({ code, reason: reason.toString() }));
@@ -123,21 +147,45 @@ async function connect(listener: Listener, greeting: Json = hello()) {
     }
   };
 
-  const call = async (op: string, input: Json): Promise<Json> => {
-    calls += 1;
-    const id = String(calls);
-    socket.send(JSON.stringify({ c: "e", type: "call", id, op, input }));
+  return { socket, frames, until, closed };
+}
 
-    const answer = await until(
+async function connect(listener: Listener, greeting: Json = hello()) {
+  const opened = await openSocket(listener, greeting);
+  const until = opened.until;
+  let calls = 0;
+
+  const answered = (id: string): boolean =>
+    opened.frames.some(
       (frame) => frame.id === id && (frame.type === "result" || frame.type === "error"),
     );
 
-    if (answer.type === "error") throw decodeError(answer.error ?? null);
+  const start = (op: string, input: Json) => {
+    calls += 1;
+    const id = String(calls);
+    opened.socket.send(JSON.stringify({ c: "e", type: "call", id, op, input }));
 
-    return answer.output ?? null;
+    const settled = until(
+      (frame) => frame.id === id && (frame.type === "result" || frame.type === "error"),
+    ).then((answer) => {
+      if (answer.type === "error") throw decodeError(answer.error ?? null);
+
+      return answer.output ?? null;
+    });
+
+    settled.catch(() => undefined);
+
+    return { id, settled };
   };
 
-  return { socket, frames, until, call, closed };
+  const call = (op: string, input: Json): Promise<Json> => start(op, input).settled;
+
+  const welcome = await until((frame) => frame.type === "welcome");
+
+  const id = welcome.client_id;
+  assert(typeof id === "string");
+
+  return { ...opened, start, call, answered, id };
 }
 
 function readWindow(client: Client, session: SessionId, resume?: SessionStore) {
@@ -265,7 +313,7 @@ describe("the host's WebSocket", () => {
   it("closes 1008 with a reason that names the side to update when the revisions don't overlap", async () => {
     const host = await compose(fakeModels());
     const listener = await serve(host);
-    const client = await connect(listener, hello(API_REVISION + 1));
+    const client = await openSocket(listener, hello(API_REVISION + 1));
     const closed = await client.closed;
 
     expect(closed.code).toBe(1008);
@@ -299,6 +347,192 @@ describe("the host's WebSocket", () => {
     );
 
     expect(answers).toEqual(routes.map((entry) => ({ route: entry.route, code: entry.code })));
+  });
+});
+
+describe("clients as principals", () => {
+  it("lists connected clients and sends host subscribers the clients whole on each join and leave", async () => {
+    const listener = await serve(await compose(fakeModels()));
+    const observer = await connect(listener);
+    await observer.call("events.subscribe", { scopes: ["host"] });
+
+    const counts = (): number[] =>
+      observer.frames.flatMap((frame) =>
+        frame.kind === "live" && Array.isArray(frame.clients) ? [frame.clients.length] : [],
+      );
+
+    const joined = await connect(listener, hello(1, ["open"], "second"));
+    await observer.until(() => counts().at(-1) === 2);
+
+    const listed: unknown = await observer.call("clients.read", {});
+
+    expect(listed).toEqual([
+      expect.objectContaining({ id: observer.id, name: "socket-test" }),
+      {
+        id: joined.id,
+        principal: "token",
+        kind: "other",
+        name: "second",
+        version: "1",
+        actions: [{ name: "open", summary: "Does open.", input: {} }],
+        since: expect.any(Number),
+      },
+    ]);
+
+    joined.socket.terminate();
+    await observer.until(() => counts().at(-1) === 1);
+    expect(counts()).toEqual([1, 2, 1]);
+  });
+
+  it("refuses an action the client never declared with not_supported", async () => {
+    const listener = await serve(await compose(fakeModels()));
+    const asked = await target(listener);
+    const requester = await connect(listener);
+
+    expect(
+      await failureCode(
+        requester.call("client.perform", { client: asked.id, action: "close", input: {} }),
+      ),
+    ).toBe("not_supported");
+  });
+
+  it("delivers one request at a time in order with the client's own seq, and refuses past 16 waiting", async () => {
+    const listener = await serve(await compose(fakeModels()));
+    const observer = await connect(listener);
+    await observer.call("events.subscribe", { scopes: ["host"] });
+    const asked = await target(listener);
+    const requester = await connect(listener);
+
+    const asks = Array.from({ length: 18 }, (_, index) =>
+      requester.call("client.perform", { client: asked.id, action: "open", input: { index } }),
+    );
+
+    expect(await failureCode(asks[17] ?? Promise.resolve(null))).toBe("unavailable");
+    await asked.until((frame) => frame.kind === "perform");
+    await requester.call("clients.read", {});
+    expect(performs(asked)).toHaveLength(1);
+
+    for (const index of [0, 1]) {
+      const delivered = performs(asked)[index];
+      assert(delivered !== undefined);
+      expect(delivered).toMatchObject({
+        scope: `client/${asked.id}`,
+        seq: index + 1,
+        requester: { client: requester.id, principal: "token" },
+        action: "open",
+        input: { index },
+      });
+      await asked.call("client.reply", { call: delivered.call ?? null, result: { opened: index } });
+      expect(await asks[index]).toEqual({ opened: index });
+      await asked.until(() => performs(asked).length === index + 2);
+    }
+
+    await observer.until((frame) => frame.kind === "performed" && frame.outcome === "performed");
+    expect(observer.frames.find((frame) => frame.kind === "performed")).toEqual({
+      c: "e",
+      type: "event",
+      scope: "host",
+      seq: null,
+      kind: "performed",
+      call: expect.any(String),
+      target: asked.id,
+      outcome: "refused",
+    });
+    expect(
+      observer.frames.filter((frame) => frame.kind === "performed").map((frame) => frame.outcome),
+    ).toEqual(["refused", "performed", "performed"]);
+  });
+
+  it.each([
+    { timeoutMs: undefined, waits: 10_000 },
+    { timeoutMs: 5_000, waits: 5_000 },
+    { timeoutMs: 60_000, waits: 30_000 },
+  ])(
+    "times a request out after $waits ms when it asks for $timeoutMs, without telling the client",
+    async (entry) => {
+      const listener = await serve(await compose(fakeModels()));
+      const observer = await connect(listener);
+      await observer.call("events.subscribe", { scopes: ["host"] });
+      const asked = await target(listener);
+      const requester = await connect(listener);
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+      const request: JsonSchema = { client: asked.id, action: "open", input: {} };
+      const ask = requester.start(
+        "client.perform",
+        entry.timeoutMs === undefined ? request : { ...request, timeoutMs: entry.timeoutMs },
+      );
+
+      await asked.until((frame) => frame.kind === "perform");
+      vi.advanceTimersByTime(entry.waits - 1);
+      await requester.call("clients.read", {});
+      expect(requester.answered(ask.id)).toBe(false);
+
+      vi.advanceTimersByTime(1);
+      expect(await failureCode(ask.settled)).toBe("timeout");
+      await observer.until((frame) => frame.outcome === "timeout");
+
+      const late = performs(asked)[0];
+      assert(late !== undefined);
+      expect(
+        await failureCode(asked.call("client.reply", { call: late.call ?? null, result: null })),
+      ).toBe("unknown");
+      expect(asked.frames.filter((frame) => frame.type === "event")).toHaveLength(1);
+    },
+  );
+
+  it("counts a request's timeout from when it reaches the front of the queue", async () => {
+    const listener = await serve(await compose(fakeModels()));
+    const asked = await target(listener);
+    const requester = await connect(listener);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const ask = { client: asked.id, action: "open", input: {}, timeoutMs: 1_000 };
+    const first = requester.start("client.perform", ask);
+    const second = requester.start("client.perform", ask);
+
+    await asked.until((frame) => frame.kind === "perform");
+    vi.advanceTimersByTime(1_000);
+    expect(await failureCode(first.settled)).toBe("timeout");
+    await asked.until(() => performs(asked).length === 2);
+
+    vi.advanceTimersByTime(999);
+    await requester.call("clients.read", {});
+    expect(requester.answered(second.id)).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(await failureCode(second.settled)).toBe("timeout");
+  });
+
+  it("takes exactly one of result and error in a reply and answers unknown for a call it doesn't hold", async () => {
+    const listener = await serve(await compose(fakeModels()));
+    const observer = await connect(listener);
+    await observer.call("events.subscribe", { scopes: ["host"] });
+    const asked = await target(listener);
+    const requester = await connect(listener);
+    const ask = requester.call("client.perform", { client: asked.id, action: "open", input: {} });
+    const delivered = await asked.until((frame) => frame.kind === "perform");
+    const call = delivered.call ?? null;
+
+    const replies: readonly { readonly input: Json; readonly code: string }[] = [
+      {
+        input: { call, result: 1, error: { code: "internal", message: "Both." } },
+        code: "invalid",
+      },
+      { input: { call }, code: "invalid" },
+      { input: { call: "not-a-call", result: 1 }, code: "unknown" },
+    ];
+
+    expect(
+      await Promise.all(
+        replies.map(async (reply) => ({
+          input: reply.input,
+          code: await failureCode(asked.call("client.reply", reply.input)),
+        })),
+      ),
+    ).toEqual(replies);
+
+    await asked.call("client.reply", { call, error: { code: "denied", message: "Not now." } });
+    expect(await failureCode(ask)).toBe("denied");
+    await observer.until((frame) => frame.outcome === "failed");
   });
 });
 

@@ -153,11 +153,13 @@ export function classifyConnectFailure(cause: SdkError, address: string): Connec
     case "denied":
       return { kind: "refused" };
     case "unavailable":
+    case "timeout":
       return { kind: "silent", address };
     case "stale":
     case "unknown":
     case "invalid":
     case "internal":
+    case "not_supported":
       return { kind: "wrongServer", address };
     default: {
       const exhaustive: never = cause.code;

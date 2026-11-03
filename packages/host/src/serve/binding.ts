@@ -39,6 +39,7 @@ import type {
   OperationOutput,
 } from "@nyte-ai/protocol";
 import type { TailnetControl } from "../tailnet.ts";
+import { sharedClients } from "./clients.ts";
 
 /** Returns what a row's binding receives besides its input: the request's body (the bytes of `files.write`, `job.write` and `files.upload`) and the client's abort signal. */
 export type BindingRequest = {
@@ -277,6 +278,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "events.subscribe": async () => socketOnly("events.subscribe"),
     "events.unsubscribe": async () => socketOnly("events.unsubscribe"),
     "text.open": async () => socketOnly("text.open"),
+    "clients.read": async () => sharedClients(options.server).rows(),
+    "client.perform": async () => socketOnly("client.perform"),
+    "client.reply": async () => socketOnly("client.reply"),
     "host.tailnet.status": async () => tailnet().status(),
     "host.tailnet.configure": (input) => tailnet().configure(input),
     "host.tailnet.logout": () => tailnet().logout(),

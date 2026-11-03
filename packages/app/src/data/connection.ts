@@ -76,6 +76,7 @@ export function connectionProblem(cause: unknown): ConnectionProblem {
         message: "The server rejected this token. Update the connection token.",
       };
     case "unavailable":
+    case "timeout":
       return {
         kind: "network",
         message: "Cannot reach the server. Check your connection and try again.",
@@ -87,6 +88,7 @@ export function connectionProblem(cause: unknown): ConnectionProblem {
       };
     case "unknown":
     case "invalid":
+    case "not_supported":
       return {
         kind: "incompatible",
         message: "This server does not support this app's protocol. Check its URL and version.",

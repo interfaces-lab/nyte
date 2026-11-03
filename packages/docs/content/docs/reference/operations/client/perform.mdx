@@ -1,0 +1,160 @@
+---
+title: client.perform
+description: Asks a connected client to perform an action it declared and answers what it replied.
+---
+
+Asks a connected client to perform an action it declared in its hello, and answers with the
+`result` it replied. The host queues the request on the target's `client/<id>` scope and delivers
+it as `{ c: "e", type: "event", scope: "client/<id>", seq, kind: "perform", call, requester,
+action, input }`, filling in `requester` with the asking client's id and principal; `seq` counts the
+requests delivered to that client.
+
+Each client has one queue and answers one request at a time, in order. `timeoutMs` counts from when
+the request reaches the front of the queue; it defaults to 10,000 and is capped at 30,000. A request
+that times out fails with `timeout`; the target isn't told and may still act, and its late reply
+answers `unknown`. Connections subscribed to the `host` scope see
+`{ kind: "performed", scope: "host", seq: null, call, target, outcome }` with the outcome
+`performed`, `failed`, `timeout` or `refused`.
+
+## When to call it
+
+When one client needs another to act on its side: an agent asking the desktop app to open a
+session, a CLI asking a TUI to show something.
+
+## Access
+
+Any principal with `participant` authority, and only on the WebSocket, after the hello; over HTTP it
+answers `invalid`.
+
+## Example
+
+Input:
+
+```json
+{ "client": "6f1a4b3c-9e8d-4b7a-8c5d-3e2f0b7d2c4e", "action": "open", "input": { "session": "s1" } }
+```
+
+Output, what the target replied:
+
+```json
+{ "opened": true }
+```
+
+## Errors
+
+- `unknown` when no client with that id is connected.
+- `not_supported` when the client declared no such action.
+- `unavailable` when 16 requests already wait for the client, or it leaves before it answers.
+- `timeout` when the client doesn't answer in time.
+- Any code the target replied with in its `error`.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["client", "action", "input"],
+  "properties": {
+    "client": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string"
+    },
+    "input": {
+      "$ref": "Json"
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "$ref": "Json",
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

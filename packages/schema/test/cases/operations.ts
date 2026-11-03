@@ -324,6 +324,38 @@ export const operations = {
   "events.unsubscribe output": operation(OPERATIONS["events.unsubscribe"].output, null, {}),
   "text.open input": operation(OPERATIONS["text.open"].input, {}, null),
   "text.open output": operation(OPERATIONS["text.open"].output, null, {}),
+  "clients.read input": operation(OPERATIONS["clients.read"].input, {}, null),
+  "clients.read output": operation(
+    OPERATIONS["clients.read"].output,
+    [
+      {
+        id: "c1",
+        principal,
+        kind: "app",
+        name: "Nyte",
+        version: "0.1.0",
+        actions: [{ name: "open", summary: "Opens a session.", input: { type: "object" } }],
+        since: 1,
+      },
+    ],
+    [{ id: "c1", principal, kind: "phone", name: "Nyte", version: "0.1.0", actions: [], since: 1 }],
+  ),
+  "client.perform input": operation(
+    OPERATIONS["client.perform"].input,
+    { client: "c1", action: "open", input: { session }, timeoutMs: 5_000 },
+    { client: "c1", action: "open", input: {}, timeoutMs: 0 },
+  ),
+  "client.perform output": operation(
+    OPERATIONS["client.perform"].output,
+    { opened: true },
+    undefined,
+  ),
+  "client.reply input": operation(
+    OPERATIONS["client.reply"].input,
+    { call: "k1", error: { code: "not_supported", message: "No." } },
+    { call: "k1", error: { code: "nope", message: "No." } },
+  ),
+  "client.reply output": operation(OPERATIONS["client.reply"].output, null, {}),
   "head.history input": operation(
     OPERATIONS["head.history"].input,
     { ...headInput, before: message, limit: 20 },

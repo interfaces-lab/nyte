@@ -10,13 +10,13 @@ Every fact lives in one scope, and every scope has one seq.
 
 | Scope | Holds | Seq |
 | --- | --- | --- |
-| `host` | sessions, clients, the host's own status | advances once per change to a host-scope row |
+| `host` | sessions, the host's own status | advances once per change to a host-scope row |
 | `session/<id>` | one session's heads, messages, turns, parts, background items, file changes, catalog | the session's log seq, which already starts at 1 with no gaps |
 | `client/<id>` | the queue of actions asked of one client | advances once per request queued |
 
 A seq counts durable changes only. It never goes backwards, never skips, and survives the host's restart, because it is the position in the log the host folds. Two hosts never share a scope.
 
-Live facts have no seq: which process is driving a session, the text a model is streaming, a tool's progress, the tailnet's status. The host sends them whole on every attach and resume, so a client never has to reconcile them.
+Live facts have no seq: which process is driving a session, which clients are connected, the text a model is streaming, a tool's progress, the tailnet's status. The host sends them whole on every attach and resume, so a client never has to reconcile them.
 
 ## Tables and rows
 
@@ -27,7 +27,8 @@ Host scope:
 | Table | Row | Keyed by |
 | --- | --- | --- |
 | `sessions` | `SessionRow`: name, parent, call, workspace, pinned, archived, createdAt, lastActivityAt, `heads: HeadRow[]` | session id |
-| `clients` | `ClientRow`: principal, kind, name, version, `actions: ActionDeclaration[]`, since | client id |
+
+Connected clients are not a table. A client exists only while its connection is open, so its rows would carry seqs that no log holds and no resume could replay. They are a live fact of the host scope: `ClientRow` is id, principal, kind, name, version, `actions: ActionDeclaration[]`, since, and the host sends the whole list as `{ kind: "live", scope: "host", seq: null, clients }` on subscribe and on every join or leave. `clients.read` returns the same list.
 
 `HeadRow` is name, tip, stack, execution, unread, background counts. It lives only here. A head view carries no heads; the sessions table is the one owner of that fact.
 
@@ -104,7 +105,7 @@ One shape for everything the host pushes:
 | Kind | Scope | Carries |
 | --- | --- | --- |
 | `change` | any | `tables: { [table]: { upsert: Row[], drop: Id[] } }`, holding only the tables the change touched, and `paths: { head, after, ids }[]`: each moved head's order is unchanged through `after`, then continues with `ids` (`after: null` replaces it) |
-| `live` | `session/<id>` | activation; the parts streaming, with the run each belongs to |
+| `live` | `session/<id>`, `host` | a session's activation; the host's connected clients |
 | `status` | `host` | the host's version, uptime, listeners, tailnet state |
 | `perform` | `client/<id>` | `call`, the requesting client's id and principal, `action`, `input` |
 | `performed` | `host` | `call`, target, outcome: performed, refused, failed or timeout |
@@ -117,7 +118,7 @@ A connection has an event channel and a text channel.
 
 The **event channel** carries requests, their answers, and every event above. It is the channel the seqs are about: on one connection, events of one scope arrive in seq order with no gaps, or the connection closes.
 
-The **text channel** carries what a model is streaming: `{ part, run, version, append }` for text and `{ part, progress }` for a tool. None of it is durable, so none of it has a seq. When a client opens the text channel, the host sends the whole live suffix of every part streaming in the sessions the client subscribes to, then appends as they come. The host may merge queued appends for one part into a longer append; it never reorders them. A part's row in `parts` holds its text as of the last durable write, and its `version` tells the client where the live suffix starts.
+The **text channel** carries what a model is streaming: `{ part, run, version, text }` with a part's whole text, then `{ part, run, version, append }` for what it streams, and `{ part, progress }` for a tool. None of it is durable, so none of it has a seq. When a client opens the text channel, the host sends the whole live suffix of every part streaming in the sessions the client subscribes to, then appends as they come. The host may merge queued appends for one part into a longer append; it never reorders them. A part's row in `parts` holds its text as of the last durable write, and its `version` tells the client where the live suffix starts.
 
 Keeping text off the event channel keeps the byte budget and the seqs honest: a slow consumer of a fast model does not lose a durable change.
 
@@ -135,7 +136,7 @@ The host advertises both limits in its welcome.
 
 The host speaks a range of API revisions. A revision is an integer; every change to an operation, a row, or an event kind that an older client could not ignore bumps it.
 
-The client's hello carries `api_min_revision`, the oldest revision it can use. The welcome carries `api_revision`, the newest the two share, `api_min_revision`, the oldest the host serves, and `api_server_revision`, the host's own. A host and a client with no revision in common close the connection, and the close reason names the side to update.
+The client's hello carries `api_min_revision`, the oldest revision it can use, and may carry `api_revision`, the newest it speaks, so a host can tell a client too old for it. The welcome carries `api_revision`, the newest the two share, `api_min_revision`, the oldest the host serves, and `api_server_revision`, the host's own. A host and a client with no revision in common close the connection, and the close reason names the side to update.
 
 The operations table and the row and event schemas have a digest. CI records the digest next to the revision and fails when the digest moves without the revision, or an operation changes without its docs page.
 
@@ -155,7 +156,7 @@ Principals come from the transport, never from what the client claims: the local
 
 ## Clients as principals
 
-A client is a row in the host's `clients` table from its hello until its connection ends. The hello declares what it is (`app`, `tui`, `cli`, `agent`, `other`), its name and version, and the actions it offers: `{ name, summary, input }`.
+A client is in the host's live list of clients from its hello until its connection ends. The hello declares what it is (`app`, `tui`, `cli`, `agent`, `other`), its name and version, and the actions it offers: `{ name, summary, input }`.
 
 Another client asks it to act with `client.perform { client, action, input, timeoutMs }`. The host checks the action is declared, queues the request on the target's `client/<id>` scope, and delivers it as a `perform` event with the requester's id and principal filled in by the host. The target answers with `client.reply { call, result }` or `client.reply { call, error }`, exactly one of the two.
 
@@ -176,7 +177,8 @@ The operations table keeps its shape: name, summary, kind, authority, scope, cap
 | `events.subscribe` | new: `{ scopes: Scope[] }`, on the event channel |
 | `text.open` | new: opens the text channel for the connection's subscribed sessions |
 | `client.perform`, `client.reply` | new |
-| `clients.read` | new: the clients table |
-| `host.hello` | new: the handshake described under Versions and Clients as principals |
+| `clients.read` | new: the connected clients, the same list the host scope's `live` event carries |
+| `events.unsubscribe` | new: `{ scopes: Scope[] }` |
+| hello | not an operation: the socket's first frame, the handshake described under Versions and Clients as principals |
 
 Every other operation keeps its declaration and gains `local` and `mcp` where they apply.
