@@ -1,0 +1,318 @@
+---
+title: git.patches
+description: Streams the patches of the given files in a scope.
+---
+
+Streams the patches of the given paths in a scope. Each frame is a whole patch set keyed by path,
+and a new one follows when the revision moves. A text entry carries its unified diff, as `git diff`
+prints it, with added and removed counts; other entries are `binary`, `empty`, `too-large` (over
+1 MiB) or `failed`. Paths the scope doesn't report are left out.
+
+## When to call it
+
+To show the diffs of the files a user expands in a changes list.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `git` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "scope": { "kind": "unstaged" },
+  "paths": ["src/date.ts"]
+}
+```
+
+A frame:
+
+```json
+{
+  "revision": "c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3",
+  "entries": {
+    "src/date.ts": {
+      "path": "src/date.ts",
+      "status": "modified",
+      "digest": "5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a",
+      "kind": "text",
+      "added": 1,
+      "removed": 1,
+      "patch": "diff --git a/src/date.ts b/src/date.ts\n--- a/src/date.ts\n+++ b/src/date.ts\n@@ -1 +1 @@\n-export const today = () => new Date();\n+export const today = () => new Date(Date.now());\n",
+      "fresh": true
+    }
+  }
+}
+```
+
+## Errors
+
+- `unavailable` outside a repository, or when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `stream`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "scope", "paths"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "worktree"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "staged"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unstaged"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "commit"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "commit"
+            },
+            "commit": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "base"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "branch"
+            },
+            "base": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "ignoreWhitespace": {
+          "type": "boolean"
+        }
+      }
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["revision", "entries"],
+  "properties": {
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "entries": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "path",
+                "status",
+                "digest",
+                "fresh",
+                "kind",
+                "added",
+                "removed",
+                "patch"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "fresh": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "text"
+                },
+                "added": {
+                  "type": "number"
+                },
+                "removed": {
+                  "type": "number"
+                },
+                "patch": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["path", "status", "digest", "fresh", "kind"],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "fresh": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "binary"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["path", "status", "digest", "fresh", "kind"],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "fresh": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "empty"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["path", "status", "digest", "fresh", "kind", "limit"],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "fresh": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "too-large"
+                },
+                "limit": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["path", "status", "digest", "fresh", "kind", "reason"],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "fresh": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "failed"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

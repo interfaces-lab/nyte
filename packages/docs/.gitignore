@@ -1,9 +1,0 @@
-/node_modules
-.source
-/.output/
-/.tanstack/
-/.nitro/
-*.tsbuildinfo
-.DS_Store
-.vercel
-.env*

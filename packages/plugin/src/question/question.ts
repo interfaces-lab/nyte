@@ -1,15 +1,17 @@
 import { definePart, dev } from "@nyte-ai/core";
-import type { ActionContext, ActionOutput, ToolDefinition } from "@nyte-ai/core";
-import { SdkError } from "@nyte-ai/schema";
-import type { Awaitable, Infer } from "@nyte-ai/schema";
+import type { ActionContext, ActionOutput, Part, ToolDefinition } from "@nyte-ai/core";
+import { asId, SdkError } from "@nyte-ai/schema";
+import type { Awaitable, HeadName, Infer } from "@nyte-ai/schema";
 import {
+  QUESTION_TOOL,
   answerInput,
   question as questionContract,
   questionParameters,
-  questionOutput,
 } from "./schema.ts";
-import type { QuestionAnswers, QuestionInfo, QuestionState } from "./schema.ts";
+import type { QuestionAnswers, QuestionInfo, QuestionPhase, QuestionState } from "./schema.ts";
 import type { Plugin } from "@nyte-ai/plugin/core";
+
+const WAIT_MS = 60_000;
 
 type Actions = typeof questionContract.actions;
 
@@ -43,22 +45,91 @@ function normalizeAnswers(
   });
 }
 
+/** The answers for the model, one question a line, or as a one-line label under their headers. */
+function formatAnswers(
+  items: readonly QuestionInfo[],
+  answers: QuestionAnswers,
+  form: "prompt" | "label",
+): string {
+  return items
+    .map(
+      (item, index) =>
+        `${form === "prompt" ? item.question : item.header}: ${answers[index].join(", ") || "Unanswered"}`,
+    )
+    .join(form === "prompt" ? "\n" : " · ");
+}
+
+/**
+ * A late answer goes to its head as an attached answer, under a receipt fixed by the part: it
+ * rides into a live run at its next boundary or continues an idle head, never opening a turn as a
+ * prompt, and a retried or repeated submission replays it instead of landing twice.
+ */
 const handlers: Handlers = {
   async answer(input, context) {
-    let accepted = false;
+    let answered:
+      | { readonly asked: QuestionState["questions"]; readonly phase: QuestionPhase }
+      | undefined;
 
     const outcome = await context.part.update((current) => {
       const normalized = normalizeAnswers(current.questions, input.answers);
-      accepted =
-        current.answers === null || JSON.stringify(current.answers) === JSON.stringify(normalized);
+      const phase = current.phase;
 
-      return current.answers === null ? { ...current, answers: normalized } : current;
+      if (phase.kind === "skipped") throw new SdkError("invalid", "These questions were skipped.");
+
+      if (phase.kind === "answered") {
+        if (JSON.stringify(phase.answers) !== JSON.stringify(normalized))
+          throw new SdkError("invalid", "These questions were already answered.");
+        answered = { asked: current.questions, phase };
+
+        return current;
+      }
+
+      const next: QuestionPhase = {
+        kind: "answered",
+        answers: normalized,
+        head: phase.kind === "open" ? phase.head : null,
+      };
+
+      answered = { asked: current.questions, phase: next };
+
+      return { ...current, phase: next };
     });
 
     if (outcome.kind !== "updated")
       throw new Error(`The questions could not be answered: ${outcome.kind}.`);
 
-    if (!accepted) throw new SdkError("invalid", "These questions were already answered.");
+    if (answered?.phase.kind !== "answered" || answered.phase.head === null) return;
+
+    await context.api.sdk
+      .session(context.session)
+      .head(answered.phase.head)
+      .send(
+        `The user answered your earlier question:\n${formatAnswers(answered.asked, answered.phase.answers, "prompt")}`,
+        {
+          delivery: "attach",
+          source: {
+            kind: "answer",
+            part: context.part.id,
+            label: formatAnswers(answered.asked, answered.phase.answers, "label"),
+          },
+          id: asId<"receipt">(`question:${context.part.id}`),
+        },
+      );
+  },
+  async skip(_, context) {
+    const outcome = await context.part.update((current) => {
+      const phase = current.phase;
+
+      if (phase.kind === "answered")
+        throw new SdkError("invalid", "These questions were already answered.");
+
+      if (phase.kind === "skipped") return current;
+
+      return { ...current, phase: { kind: "skipped", late: phase.kind === "open" } };
+    });
+
+    if (outcome.kind !== "updated")
+      throw new Error(`The questions could not be skipped: ${outcome.kind}.`);
   },
 };
 
@@ -67,12 +138,11 @@ export const question = definePart({
   onAction: (action, input, context) => handlers[action](input, context),
 });
 
-const ask: ToolDefinition<Infer<typeof questionParameters>, Infer<typeof questionOutput>> = {
-  name: "question",
+const ask: ToolDefinition<Infer<typeof questionParameters>> = {
+  name: QUESTION_TOOL,
   description:
-    "Ask the user one or more questions and wait for their answers. Give each option a short label and a description. Use multiple when several choices may apply. The user can also write their own answer.",
+    "Ask the user one or more questions and wait up to a minute for their answers. Give each option a short label and a description. Use multiple when several choices may apply. The user can also write their own answer. If they don't answer in time, keep working; their answer arrives later as a message.",
   parameters: questionParameters,
-  output: questionOutput,
   class: (args) => ({
     kind: "custom",
     label: args.questions.map((item) => item.header).join(", "),
@@ -87,22 +157,36 @@ const ask: ToolDefinition<Infer<typeof questionParameters>, Infer<typeof questio
     }
 
     const part = await invocation.session.parts.create(question, {
-      state: { ...args, answers: null },
+      state: { call: invocation.call, questions: args.questions, phase: { kind: "asking" } },
       placement: { kind: "modal" },
     });
 
     dev("question", "asked", { call: invocation.call, part: part.id });
-    const outcome = await invocation.wait({ kind: "part", part: part.id });
+
+    const outcome = await invocation.wait({
+      kind: "part",
+      part: part.id,
+      deadline: invocation.now() + WAIT_MS,
+    });
 
     const checked =
       outcome.kind === "part" && outcome.answer?.action === "answer"
         ? await answerInput["~standard"].validate(outcome.answer.input)
         : undefined;
 
+    const deadline = outcome.kind === "deadline" ? await stopWaiting(part, invocation.head) : null;
+
     const reply =
-      checked !== undefined && checked.issues === undefined
-        ? normalizeAnswers(args.questions, checked.value.answers)
-        : null;
+      deadline?.kind === "answered" && deadline.head === null
+        ? deadline.answers
+        : checked !== undefined && checked.issues === undefined
+          ? normalizeAnswers(args.questions, checked.value.answers)
+          : null;
+
+    const unanswered =
+      deadline?.kind === "open"
+        ? "No answer yet. The question stays open, and the user's answer will arrive as a message."
+        : "The user did not answer.";
 
     return {
       content: [
@@ -110,23 +194,35 @@ const ask: ToolDefinition<Infer<typeof questionParameters>, Infer<typeof questio
           kind: "text",
           text:
             reply === null
-              ? "The user did not answer. Continue with your best judgment and say what you assumed."
-              : args.questions
-                  .map(
-                    (item, index) => `${item.question}: ${reply[index].join(", ") || "Unanswered"}`,
-                  )
-                  .join("\n"),
+              ? `${unanswered} Continue with your best judgment and say what you assumed.`
+              : formatAnswers(args.questions, reply, "prompt"),
         },
       ],
-      output: { answers: reply },
       parts: [part.id],
     };
   },
 };
 
 /**
+ * Stops waiting on a request the user hasn't touched, so a later answer goes to `head` as a
+ * message, and returns where the request stands. A replay finds it already open and keeps it so.
+ */
+async function stopWaiting(part: Part<typeof question>, head: HeadName): Promise<QuestionPhase> {
+  let phase: QuestionPhase = { kind: "open", head };
+
+  await part.update((current) => {
+    phase = current.phase.kind === "asking" ? { kind: "open", head } : current.phase;
+
+    return { ...current, phase };
+  });
+
+  return phase;
+}
+
+/**
  * Contributes the question tool and its grouped modal. The durable wait
- * resumes after one complete submission from any client.
+ * resumes after one complete submission or a skip from any client, or after
+ * a minute; an answer after that reaches the asking head as a message.
  *
  * @category plugins
  * @since 0.1.0

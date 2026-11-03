@@ -1,24 +1,34 @@
 import type {
+  Activation,
   Authority,
   BatchOutcome,
   Disposer,
   ExecutionCoverage,
   HeadName,
+  HeadWindow,
   HoldLease,
   HostId,
   HostView,
   JobId,
   JobView,
+  Json,
   MessageId,
   MoveOptions,
   MoveOutcome,
   Owned,
   PageId,
+  PartId,
   Position,
   PrincipalId,
   ReceiptId,
+  Resume,
   Revision,
+  RunId,
+  SessionChange,
   SessionId,
+  SessionsChange,
+  TailnetStatus,
+  WindowSpec,
   WorkspaceId,
 } from "@nyte-ai/schema";
 import type {
@@ -28,6 +38,7 @@ import type {
   Host,
   OpenOptions,
 } from "./host.ts";
+import type { ChangeCursor } from "./fold.ts";
 import type { PartDefinition } from "./parts.ts";
 import type { Receipt, SendReceipt } from "./session.ts";
 import type { BatchEntry, FilesApi, Page, PageTable } from "./workspace.ts";
@@ -46,6 +57,10 @@ export type Verdict = {
  */
 export interface ServerHost {
   readonly hostId: HostId;
+
+  readonly version: string;
+
+  readonly startedAt: number;
 
   /** How the kernel runs sessions: `run` drives its coverage in process, `admit-only` admits and leaves driving to a listener or another process, `dispatch` hands each wake to its dispatcher. */
   readonly execution: NonNullable<OpenOptions["execution"]>;
@@ -79,6 +94,8 @@ export interface ServerHost {
 
   /** Puts a plugin file's load row on the host view, replacing the row with its id. */
   report(row: HostView["plugins"][number]): void;
+
+  reportTailnet(status: TailnetStatus): void;
 
   /** The plugin rows the host view shows now. */
   pluginRows(): readonly HostView["plugins"][number][];
@@ -128,6 +145,39 @@ export interface WireHost {
 
   /** The part definition registered under `kind` in a session, once its plugins are loaded. */
   partDefinition(session: SessionId, kind: string): Promise<PartDefinition | undefined>;
+
+  attach(session: SessionId, principal: PrincipalId): SessionAttachment;
+
+  sessions(principal: PrincipalId): AsyncIterable<SessionsChange>;
+
+  activations(): ReadonlyMap<SessionId, Activation>;
+
+  onActivation(listener: () => void): Disposer;
+}
+
+export interface StreamingPart {
+  readonly part: PartId;
+  readonly run: RunId | null;
+  readonly version: number;
+  readonly markdown: string;
+}
+
+export interface PartProgress {
+  readonly part: PartId;
+  readonly run: RunId | null;
+  readonly progress: Json;
+}
+
+export interface SessionAttachment {
+  ready(): Promise<void>;
+  cursor(): ChangeCursor;
+  activation(): Activation;
+  read(head: HeadName, window: WindowSpec, resume: Resume | null): HeadWindow;
+  changesAfter(cursor: ChangeCursor): SessionChange;
+  streaming(): readonly StreamingPart[];
+  progress(): readonly PartProgress[];
+  subscribe(listener: () => void): Disposer;
+  release(): void;
 }
 
 /** A composed host and the server port in front of it. */

@@ -55,7 +55,6 @@ function view(
     background: [],
     configuration: { selected: null, effective: null },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -172,6 +171,8 @@ test("a reply with no work before it, or a turn still running, shows no work lin
   ]);
 });
 
+const COMPLETED_TURN = { kind: "ended", end: { kind: "completed", usage: USAGE } } as const;
+
 const thinking: Message = {
   id: asId<"message">("th"),
   turn,
@@ -185,21 +186,63 @@ const thinking: Message = {
   status: { kind: "settled", commit: asId<"commit">("th"), endedAt: 1 },
 };
 
-test("the live row stays while the turn works whatever its last group holds, and a settled group stops running", () => {
-  const rows = (messages: readonly Message[]) =>
-    rowsFor([endedTurn(messages, { id: turn, state: { kind: "working", activity: null } })], true);
+test("a turn's last step group stays active between its run's steps and leaves the live row blank, but not once its run waits, retries or ends", () => {
+  const working = { kind: "working", activity: null } as const;
+  const waiting = { kind: "waiting", on: { kind: "timer", until: 9 } } as const;
 
-  for (const messages of [[thinking], [thinking, work("r1", 1, 2)]]) {
-    expect(rows(messages).find((row) => row.kind === "live")).toMatchObject({ working: true });
-    expect(rows(messages).find((row) => row.kind === "step")).toMatchObject({ running: false });
+  const cases = [
+    { state: working, messages: [thinking], retrying: undefined, group: true, live: "grouped" },
+    {
+      state: working,
+      messages: [thinking, work("r1", 1, 2)],
+      retrying: undefined,
+      group: true,
+      live: "grouped",
+    },
+    {
+      state: working,
+      messages: [work("r1", 1, 2), reply("a1", 3)],
+      retrying: undefined,
+      group: false,
+      live: "planning",
+    },
+    { state: waiting, messages: [thinking], retrying: undefined, group: false, live: "planning" },
+    {
+      state: working,
+      messages: [thinking],
+      retrying: "Overloaded",
+      group: false,
+      live: "planning",
+    },
+    {
+      state: COMPLETED_TURN,
+      messages: [thinking],
+      retrying: undefined,
+      group: false,
+      live: "planning",
+    },
+  ] as const;
+
+  for (const entry of cases) {
+    const rows = transcriptRows({
+      loading: false,
+      failed: false,
+      turns: [endedTurn(entry.messages, { id: turn, state: entry.state })],
+      changes: [],
+      prompts: [],
+      running: true,
+      held: false,
+      retrying: entry.retrying,
+    });
+
+    expect({
+      group: rows.some((row) => row.kind === "step" && row.running),
+      live: rows.find((row) => row.kind === "live"),
+    }).toMatchObject({ group: entry.group, live: { state: entry.live } });
   }
-
-  expect(
-    rows([{ ...thinking, status: { kind: "live", run: null } }]).find((row) => row.kind === "step"),
-  ).toMatchObject({ running: true });
 });
 
-test("reasoning that settles while its run waits on the next response stops running", () => {
+test("reasoning that settles while its run waits on the next response keeps its group active", () => {
   const streaming = {
     ...view([prompt, { ...thinking, status: { kind: "live", run: null } }], null),
     turns: [
@@ -232,6 +275,6 @@ test("reasoning that settles while its run waits on the next response stops runn
     running: true,
   });
   expect(projector.row({ value: settled, error: undefined }, "step:th")).toMatchObject({
-    running: false,
+    running: true,
   });
 });

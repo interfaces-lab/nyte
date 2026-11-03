@@ -1,9 +1,5 @@
 import type { SessionId } from "@nyte-ai/sdk";
 
-export function sessionSurfaceId(sessionId: SessionId): string {
-  return `stage:session:${encodeURIComponent(sessionId)}`;
-}
-
 export type BrowserOwner =
   | { readonly kind: "home" }
   | { readonly kind: "project"; readonly path: string };

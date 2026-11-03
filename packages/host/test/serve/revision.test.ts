@@ -2,7 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import { LOCAL } from "@nyte-ai/core";
 import { headRef, memoryStore } from "@nyte-ai/core/store";
 import { describe, expect, it } from "vitest";
-import { createTransport } from "@nyte-ai/protocol";
+import { createTransport, decodeOutput } from "@nyte-ai/protocol";
 import { createServerHost, main, pollStore, setup } from "@nyte-ai/core/testing";
 import { createHandler } from "../../src/serve/handler.ts";
 
@@ -42,11 +42,19 @@ describe("head revisions across instances", () => {
       fetch: async (input, init) => handler(new Request(input, init)),
     });
 
-    const frames = transport
-      .frames("head.watch", { session: session.id, head: main })
-      [Symbol.asyncIterator]();
+    const window = decodeOutput(
+      "head.read",
+      await transport.invoke("head.read", {
+        session: session.id,
+        head: main,
+        window: { tail: 10 },
+      }),
+    );
 
-    const frame = await frames.next();
+    const info = decodeOutput(
+      "session.info",
+      await transport.invoke("session.info", { session: session.id }),
+    );
 
     const edited = await session.send("From A, edited.", {
       replace: sent.message,
@@ -54,15 +62,9 @@ describe("head revisions across instances", () => {
     });
 
     expect(view.revision).toBe(stored?.revision);
-    expect(frame.done !== true && frame.value).toMatchObject({
-      kind: "view",
-      view: {
-        revision: stored?.revision,
-        heads: [{ name: main, tip: { kind: "commit", id: stored?.target } }],
-      },
-    });
+    expect(window.tables.heads.upsert).toMatchObject([{ name: main, revision: stored?.revision }]);
+    expect(info.heads).toMatchObject([{ name: main, tip: { kind: "commit", id: stored?.target } }]);
     expect(edited.message).not.toBe(asId(""));
-    await frames.return?.();
     stopA();
     stopB();
     hold.release();

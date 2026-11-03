@@ -34,7 +34,7 @@ function child(view: SessionView, background: HeadInfo["background"]): Task {
     lastActivityAt: 0,
   };
 
-  return { kind: "agent", id: ID, info, view: { ...view, heads: [head(view, background)] } };
+  return { kind: "agent", id: ID, info, view };
 }
 
 const ended = buildView((v) => v.turn("c1", (t) => t.user("look around").text("Found it.")));

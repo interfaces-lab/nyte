@@ -1,0 +1,147 @@
+---
+title: job.stop
+description: Stops a job.
+---
+
+Stops a job and waits for it to end. On a local host the process gets SIGTERM (SIGHUP for a pty),
+then SIGKILL after 2 seconds. It answers `settled` with how the job ended, also when it had already
+ended, or `missing` when this host process no longer has it. A job stopped this way sends no
+report to its chat.
+
+## When to call it
+
+From a stop or kill control on a job, or when a terminal tab closes.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "job": "8a0c2e4f-6b1d-4f3a-9c5e-7b9d1f3a5c7e"
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "settled",
+  "outcome": { "kind": "exited", "code": null, "reason": "terminated" }
+}
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "job"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "job": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "requested"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "outcome"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "settled"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind", "code", "reason"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "exited"
+                },
+                "code": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reason": {
+                  "enum": ["exited", "terminated", "expired", "host-lost"]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "lost"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

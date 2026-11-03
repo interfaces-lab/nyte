@@ -45,6 +45,78 @@ export const PrincipalViewWireType = Type.Object({
 
 export type PrincipalViewWire = Decoded<typeof PrincipalViewWireType>;
 
+export const TailnetAccessType = Type.Enum(["owner", "tailnet"]);
+
+export const TailnetSettingsType = Type.Object({
+  enabled: Type.Boolean(),
+  hostname: Type.String({ pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" }),
+  tags: Type.Array(Type.String({ pattern: "^tag:[A-Za-z0-9][A-Za-z0-9-]*$" })),
+  access: TailnetAccessType,
+});
+
+export type TailnetSettings = Decoded<typeof TailnetSettingsType>;
+
+export const TailnetStatusType = Type.Object({
+  state: Type.Enum([
+    "disabled",
+    "starting",
+    "needs_login",
+    "needs_machine_approval",
+    "running",
+    "stopped",
+  ]),
+  authUrl: Type.Optional(Type.String()),
+  dnsName: Type.Optional(Type.String()),
+  https: Type.Enum(["pending", "available", "unavailable"]),
+  access: TailnetAccessType,
+  tags: Type.Array(Type.String()),
+  reason: Type.Optional(
+    Type.Enum([
+      "locked",
+      "protocol",
+      "version",
+      "hello_timeout",
+      "start_timeout",
+      "invalid_status",
+      "exited",
+    ]),
+  ),
+  holder: Type.Optional(Type.Number()),
+  detail: Type.Optional(Type.String()),
+  stderr: Type.Optional(Type.String()),
+});
+
+export type TailnetStatus = Decoded<typeof TailnetStatusType>;
+
+/** When a tool call waits for the user, the approvals plugin's `permissions` setting: `ask`, `auto-edit` or `full`, from most to least asking. */
+export const ApprovalPolicyType = Type.Union([
+  Type.Literal("ask"),
+  Type.Literal("auto-edit"),
+  Type.Literal("full"),
+]);
+
+/** What an MCP grant may do: call only `read` tools, or also `write` tools while the host's approval policy asks at least as much as `ceiling`. */
+export const McpAccessType = Type.Union([
+  Type.Object({ kind: Type.Literal("read-only") }),
+  Type.Object({ kind: Type.Literal("ceiling"), ceiling: ApprovalPolicyType }),
+]);
+
+export type McpAccess = Decoded<typeof McpAccessType>;
+
+/** The MCP grant a session was started through, and the approval policy its runs never exceed. */
+export const McpCeilingType = Type.Object({ grant: Type.String(), ceiling: ApprovalPolicyType });
+
+export type McpCeiling = Decoded<typeof McpCeilingType>;
+
+export const McpGrantViewType = Type.Object({
+  id: Type.String(),
+  client: Type.String(),
+  access: McpAccessType,
+  createdAt: Type.Number(),
+});
+
+export type McpGrantView = Decoded<typeof McpGrantViewType>;
+
 export const PluginLoadOutcomeType = Type.Object({
   kind: Type.Enum(["activated", "rejected", "kept-previous"]),
   id: Type.String(),
@@ -68,6 +140,7 @@ export const OperationDescriptionType = Type.Object({
   authority: AuthorityType,
   scope: Type.Enum(["host", "session", "workspace"]),
   capability: Type.Optional(Type.Enum(["files", "git", "github", "browser"])),
+  local: Type.Optional(Type.Literal(true)),
   input: JsonType,
   output: JsonType,
 });

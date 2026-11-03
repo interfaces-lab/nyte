@@ -23,9 +23,11 @@ In the web app, the bar above Nyte has **Switch Desktop** to pick another comput
 
 ## Connect without an account
 
-On the desktop, open **Settings > Server** and turn on **Serve over Tailscale**. It needs the Tailscale app running on the computer. Click **Pair…** next to the remote address. In the iOS app, tap **Connect with Tailscale**, then **Scan QR code**, or enter the address and token. The QR code contains the token, so treat it like a password. Each time you turn serving on, Nyte makes a new token, and turning it off ends it.
+On the desktop, open **Settings > Server** and turn on **Serve over Tailscale**. Nyte puts the computer on your tailnet as a device of its own, so the Tailscale app doesn't have to be installed. The first time, click **Sign In…** and sign in to Tailscale; if your tailnet approves new devices, an admin approves it in the Tailscale admin console. Once it runs, the page shows its address, `https://nyte.<your tailnet>.ts.net`. Devices on your tailnet signed in as you open that address, with no token. **Sign Out** takes the computer off the tailnet.
 
-**Cloudflare Tunnel** needs your own named tunnel and domain. Click **Set Up Tunnel…**, turn on **Serve over Cloudflare Tunnel**, then click **Pair…** to give each device its own code. The computer serves over Tailscale or Cloudflare Tunnel, one at a time.
+The page says when the node stopped and why: another Nyte host holds it, its version doesn't match Nyte's (reinstall Nyte), it didn't answer or connect in time, or it exited. Nyte restarts it unless reinstalling is the fix.
+
+**Cloudflare Tunnel** needs your own named tunnel and domain. Click **Set Up Tunnel…**, turn on **Serve over Cloudflare Tunnel**, then click **Pair…** to give each device its own code.
 
 ## Use another host
 
@@ -40,8 +42,8 @@ To list another Nyte host's chats in the sidebar, open **Settings > Server**, cl
 | **Unlink This Mac…**                        | The computer leaves the account and every device loses access. Link again to come back.                  |
 | **Revoke…** next to a device on the desktop | That device loses access right away, and the Nyte sign-in it used ends. It must sign in again to return. |
 | Sign out of Nyte on the device              | Disconnects the device and asks Nyte to remove its access.                                               |
-| Turn off **Serve over Tailscale**           | The address and token stop working.                                                                      |
-| **Stop Sharing…** next to **This Mac**      | Tailscale or Cloudflare Tunnel stops serving and Remote access turns off. Chats already running go on.   |
+| Turn off **Serve over Tailscale**           | The computer leaves the tailnet until you turn it back on. It stays signed in.                           |
+| **Stop Sharing…** next to **This Mac**      | Tailscale and Cloudflare Tunnel stop serving and Remote access turns off. Chats already running go on.   |
 
 ## Troubleshooting
 

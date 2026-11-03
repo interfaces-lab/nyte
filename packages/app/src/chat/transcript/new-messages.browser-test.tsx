@@ -11,13 +11,16 @@ import type { HostState } from "../../contract/nyte.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { installConnection } from "../../data/connection.ts";
 import { SessionScreen } from "../../panes/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import { windowTabs } from "../../tabs/window-tabs.ts";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
+import {
+  installScripted,
+  scriptedConnection,
+  viewStream,
+} from "../../../test/scripted-connection.ts";
 import type { ViewStream } from "../../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../../test/view-fixtures.ts";
 
@@ -95,7 +98,6 @@ function view(count: number, last?: string): SessionView {
     background: [],
     configuration: { selected: null, effective: null },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -122,7 +124,6 @@ function coldView(): SessionView {
   return {
     ...view(TURNS),
     seenThrough: coldSeen ? TURNS * 10 + 5 : SEEN_THROUGH,
-    heads: [coldHead()],
   };
 }
 
@@ -131,16 +132,28 @@ const coldFrames = viewStream(coldView());
 const coldOpened = Promise.withResolvers<void>();
 
 /** The cold chat's view sends nothing until the test lets its first frame through. */
+let coldShown = false;
+
 const coldStream: ViewStream = {
-  latest: coldFrames.latest,
+  latest: () => (coldShown ? coldFrames.latest() : undefined),
   push: coldFrames.push,
   watch: async function* () {
     await coldOpened.promise;
     yield* coldFrames.watch();
   },
+  subscribe(listener) {
+    const stop = coldFrames.subscribe(listener);
+
+    void coldOpened.promise.then(() => {
+      coldShown = true;
+      listener();
+    });
+
+    return stop;
+  },
 };
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: [
       sessionRow("new-messages", { name: "New messages" }),
@@ -159,7 +172,7 @@ installConnection(
             },
           }
         : {},
-  }).connection,
+  }),
 );
 
 const catalog = {

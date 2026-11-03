@@ -6,8 +6,10 @@ One name per concept. Code uses the **Term**; users see the **UI word** where it
 |---|---|---|---|
 | session | A conversation on a host: id, workspace, optional parent, heads. `schema/src/sessions.ts` | Chat | thread, conversation, timeline (in identifiers) |
 | head | A named pointer into a session's commit tree; `main` by default. | Branch | fork |
+| fork | A new top-level session that starts with another session's history through one commit; `Session.fork`. | Fork | branch, duplicate, copy |
 | turn | The work one prompt causes. `TurnInfo` in `schema/src/views.ts` | | |
 | prompt | The user message that opens a turn. | Message | landing, submitted |
+| answer | A late reply to a part's request, sent after the call that asked stopped waiting: an attached message with `source.kind: "answer"` that joins a live run or continues an idle one. | | prompt, message (for it) |
 | message | A view message: `kind: "user"` (a prompt) or `kind: "part"`. | | for transcript rows |
 | part | A typed piece of agent output: text, thinking, tool call, plugin part. | | |
 | step | Consecutive thinking and tool parts grouped in a turn. | | step entry |
@@ -19,6 +21,7 @@ One name per concept. Code uses the **Term**; users see the **UI word** where it
 | host | The process that runs the agent and stores sessions. | | for the selected folder or the Electron shell |
 | connection | A principal's authenticated handle on a host. | Server | link |
 | pane | One of two chat columns in a tab: `primary` or `secondary`. | | panel |
+| blank | A pane with no session (`PaneSelection` `kind: "blank"`); it holds one draft until sending starts a session. | New chat | new chat (in identifiers; that names the action) |
 | panel | A workbench surface: files, changes, terminal, browser. | | pane |
 | window tab / workbench tab | Always qualified. | Tab | bare `tab` |
 | composer | The input editor with its trays, chips and queue. | | input |

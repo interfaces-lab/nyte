@@ -1,0 +1,1659 @@
+---
+title: head.history
+description: Returns older messages before a given message, with their turns.
+---
+
+Returns up to `limit` messages before the message `before` on a head, with the turns they belong
+to, and the prompt of the earliest of those turns when it comes before them. A `before` the head
+doesn't hold, or a `limit` of zero or less, answers an empty page.
+
+## When to call it
+
+When the user scrolls above the window a view holds. Pass the id of the oldest message you have.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "before": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b",
+  "limit": 50
+}
+```
+
+Response, when nothing comes before:
+
+```json
+{ "messages": [], "leadingPrompt": null, "turns": [] }
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head", "before", "limit"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "before": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "number"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["messages", "leadingPrompt", "turns"],
+  "properties": {
+    "messages": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "turn",
+              "at",
+              "kind",
+              "content",
+              "source",
+              "delivery",
+              "status",
+              "siblings"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "turn": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "kind": {
+                "type": "string",
+                "const": "user"
+              },
+              "content": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": ["kind", "text"],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "text"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["kind", "blob", "mime", "name"],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "file"
+                            },
+                            "blob": {
+                              "type": "string"
+                            },
+                            "mime": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["kind", "path"],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "reference"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "blob": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["kind", "name", "location"],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "skill"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "location": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["kind", "source", "text"],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "excerpt"
+                            },
+                            "source": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "path", "side", "start", "end"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "diff"
+                                    },
+                                    "path": {
+                                      "type": "string"
+                                    },
+                                    "side": {
+                                      "enum": ["old", "new"]
+                                    },
+                                    "start": {
+                                      "type": "number"
+                                    },
+                                    "end": {
+                                      "type": "number"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "terminal"
+                                    },
+                                    "command": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "url", "selector"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "browser"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    },
+                                    "selector": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "session", "title"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "chat"
+                                    },
+                                    "session": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["kind"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "user"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "session", "end"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "child"
+                      },
+                      "session": {
+                        "type": "string"
+                      },
+                      "end": {
+                        "enum": ["completed", "stopped", "failed"]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "job"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "job"
+                      },
+                      "job": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "shell"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "label"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "action"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "command": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "part", "label"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "answer"
+                      },
+                      "part": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                ]
+              },
+              "delivery": {
+                "enum": ["steer", "queue", "attach"]
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["kind", "attempts", "retrying"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "unsent"
+                      },
+                      "attempts": {
+                        "type": "number"
+                      },
+                      "retrying": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": ["at", "reason"],
+                            "properties": {
+                              "at": {
+                                "type": "number"
+                              },
+                              "reason": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "schedule", "covered"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "pending"
+                      },
+                      "schedule": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": ["kind", "run"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "joined"
+                              },
+                              "run": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "reason"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "next-turn"
+                              },
+                              "reason": {
+                                "enum": ["requested", "idle", "run-ended"]
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "attached"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "deciding"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "covered": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "commit", "run", "replaced"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "landed"
+                      },
+                      "commit": {
+                        "type": "string"
+                      },
+                      "run": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "replaced": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": ["previous", "stopped"],
+                            "properties": {
+                              "previous": {
+                                "type": "string"
+                              },
+                              "stopped": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              "siblings": {
+                "type": "object",
+                "required": ["index", "count", "ids"],
+                "properties": {
+                  "index": {
+                    "type": "number"
+                  },
+                  "count": {
+                    "type": "number"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "turn",
+              "at",
+              "kind",
+              "part",
+              "partKind",
+              "role",
+              "state",
+              "version",
+              "status"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "turn": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "kind": {
+                "type": "string",
+                "const": "part"
+              },
+              "part": {
+                "type": "string"
+              },
+              "partKind": {
+                "type": "string"
+              },
+              "role": {
+                "enum": ["step", "answer", "note"]
+              },
+              "state": {},
+              "version": {
+                "type": "number"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["kind", "run"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "live"
+                      },
+                      "run": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "waiting": {
+                        "type": "string"
+                      },
+                      "answer": {
+                        "type": "object",
+                        "required": ["action", "input"],
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "input": {
+                            "$ref": "Json"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "run", "on"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "waiting"
+                      },
+                      "run": {
+                        "type": "string"
+                      },
+                      "on": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": ["kind", "session", "run"],
+                            "properties": {
+                              "deadline": {
+                                "type": "number"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "const": "run"
+                              },
+                              "session": {
+                                "type": "string"
+                              },
+                              "run": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "job"],
+                            "properties": {
+                              "deadline": {
+                                "type": "number"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "const": "job"
+                              },
+                              "job": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "part"],
+                            "properties": {
+                              "deadline": {
+                                "type": "number"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "const": "part"
+                              },
+                              "part": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "until"],
+                            "properties": {
+                              "deadline": {
+                                "type": "number"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "const": "timer"
+                              },
+                              "until": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "commit", "endedAt"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "settled"
+                      },
+                      "commit": {
+                        "type": "string"
+                      },
+                      "endedAt": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "run", "failure"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "failed"
+                      },
+                      "run": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "failure": {
+                        "type": "object",
+                        "required": ["class", "message"],
+                        "properties": {
+                          "class": {
+                            "enum": [
+                              "rate_limit",
+                              "auth",
+                              "quota",
+                              "context_window",
+                              "overloaded",
+                              "network",
+                              "aborted",
+                              "provider",
+                              "runner"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "retryAfterMs": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "leadingPrompt": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "turn",
+            "at",
+            "kind",
+            "content",
+            "source",
+            "delivery",
+            "status",
+            "siblings"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "turn": {
+              "type": "string"
+            },
+            "at": {
+              "type": "number"
+            },
+            "kind": {
+              "type": "string",
+              "const": "user"
+            },
+            "content": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "text"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "blob", "mime", "name"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "file"
+                          },
+                          "blob": {
+                            "type": "string"
+                          },
+                          "mime": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "path"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "reference"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "blob": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "name", "location"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "skill"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "location": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "source", "text"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "excerpt"
+                          },
+                          "source": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": ["kind", "path", "side", "start", "end"],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "diff"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "side": {
+                                    "enum": ["old", "new"]
+                                  },
+                                  "start": {
+                                    "type": "number"
+                                  },
+                                  "end": {
+                                    "type": "number"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind"],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "terminal"
+                                  },
+                                  "command": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "url", "selector"],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "browser"
+                                  },
+                                  "url": {
+                                    "type": "string"
+                                  },
+                                  "selector": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "session", "title"],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "chat"
+                                  },
+                                  "session": {
+                                    "type": "string"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "user"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "session", "end"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "child"
+                    },
+                    "session": {
+                      "type": "string"
+                    },
+                    "end": {
+                      "enum": ["completed", "stopped", "failed"]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "job"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "job"
+                    },
+                    "job": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "shell"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "label"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "action"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "command": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "part", "label"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "answer"
+                    },
+                    "part": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            },
+            "delivery": {
+              "enum": ["steer", "queue", "attach"]
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "attempts", "retrying"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "unsent"
+                    },
+                    "attempts": {
+                      "type": "number"
+                    },
+                    "retrying": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": ["at", "reason"],
+                          "properties": {
+                            "at": {
+                              "type": "number"
+                            },
+                            "reason": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "schedule", "covered"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "pending"
+                    },
+                    "schedule": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": ["kind", "run"],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "joined"
+                            },
+                            "run": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["kind", "reason"],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "next-turn"
+                            },
+                            "reason": {
+                              "enum": ["requested", "idle", "run-ended"]
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["kind"],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "attached"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["kind"],
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "deciding"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "covered": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "commit", "run", "replaced"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "landed"
+                    },
+                    "commit": {
+                      "type": "string"
+                    },
+                    "run": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "replaced": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": ["previous", "stopped"],
+                          "properties": {
+                            "previous": {
+                              "type": "string"
+                            },
+                            "stopped": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "siblings": {
+              "type": "object",
+              "required": ["index", "count", "ids"],
+              "properties": {
+                "index": {
+                  "type": "number"
+                },
+                "count": {
+                  "type": "number"
+                },
+                "ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "turns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "run",
+          "prompt",
+          "state",
+          "startedAt",
+          "endedAt",
+          "steps",
+          "thinkingOnly",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "activity"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "working"
+                  },
+                  "activity": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "on"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "waiting"
+                  },
+                  "on": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "session", "run"],
+                        "properties": {
+                          "deadline": {
+                            "type": "number"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "run"
+                          },
+                          "session": {
+                            "type": "string"
+                          },
+                          "run": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "job"],
+                        "properties": {
+                          "deadline": {
+                            "type": "number"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "job"
+                          },
+                          "job": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "part"],
+                        "properties": {
+                          "deadline": {
+                            "type": "number"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "part"
+                          },
+                          "part": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "until"],
+                        "properties": {
+                          "deadline": {
+                            "type": "number"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "const": "timer"
+                          },
+                          "until": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "end"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "ended"
+                  },
+                  "end": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "usage"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "completed"
+                          },
+                          "usage": {
+                            "type": "object",
+                            "required": [
+                              "input",
+                              "output",
+                              "cacheRead",
+                              "cacheWrite",
+                              "reasoning",
+                              "total",
+                              "cost"
+                            ],
+                            "properties": {
+                              "input": {
+                                "type": "number"
+                              },
+                              "output": {
+                                "type": "number"
+                              },
+                              "cacheRead": {
+                                "type": "number"
+                              },
+                              "cacheWrite": {
+                                "type": "number"
+                              },
+                              "reasoning": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "total": {
+                                "type": "number"
+                              },
+                              "cost": {
+                                "type": "object",
+                                "required": ["input", "output", "cacheRead", "cacheWrite", "total"],
+                                "properties": {
+                                  "input": {
+                                    "type": "number"
+                                  },
+                                  "output": {
+                                    "type": "number"
+                                  },
+                                  "cacheRead": {
+                                    "type": "number"
+                                  },
+                                  "cacheWrite": {
+                                    "type": "number"
+                                  },
+                                  "total": {
+                                    "type": "number"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "stopped"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "failure"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "failed"
+                          },
+                          "failure": {
+                            "type": "object",
+                            "required": ["class", "message"],
+                            "properties": {
+                              "class": {
+                                "enum": [
+                                  "rate_limit",
+                                  "auth",
+                                  "quota",
+                                  "context_window",
+                                  "overloaded",
+                                  "network",
+                                  "aborted",
+                                  "provider",
+                                  "runner"
+                                ]
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "retryAfterMs": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "endedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "steps": {
+            "type": "number"
+          },
+          "thinkingOnly": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": "object",
+            "required": ["byClass", "failed", "stopped", "added", "removed"],
+            "properties": {
+              "byClass": {
+                "type": "object",
+                "required": ["read", "list", "edit", "shell", "delegate", "custom"],
+                "properties": {
+                  "read": {
+                    "type": "object",
+                    "required": ["count", "paths"],
+                    "properties": {
+                      "count": {
+                        "type": "number"
+                      },
+                      "paths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "list": {
+                    "type": "object",
+                    "required": ["count", "paths"],
+                    "properties": {
+                      "count": {
+                        "type": "number"
+                      },
+                      "paths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "edit": {
+                    "type": "object",
+                    "required": ["count", "paths"],
+                    "properties": {
+                      "count": {
+                        "type": "number"
+                      },
+                      "paths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "shell": {
+                    "type": "object",
+                    "required": ["count", "paths"],
+                    "properties": {
+                      "count": {
+                        "type": "number"
+                      },
+                      "paths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "delegate": {
+                    "type": "object",
+                    "required": ["count", "paths"],
+                    "properties": {
+                      "count": {
+                        "type": "number"
+                      },
+                      "paths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "custom": {
+                    "type": "object",
+                    "required": ["count", "paths"],
+                    "properties": {
+                      "count": {
+                        "type": "number"
+                      },
+                      "paths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "failed": {
+                "type": "number"
+              },
+              "stopped": {
+                "type": "number"
+              },
+              "added": {
+                "type": "number"
+              },
+              "removed": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

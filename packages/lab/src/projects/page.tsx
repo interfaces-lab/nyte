@@ -45,7 +45,7 @@ function Missing({
           <>
             <p {...props(styles.lead)}>
               {error ??
-                "The page reads packages/lab/research_notes/projects/export, which the export writes."}
+                "The page reads packages/lab/.local/research_notes/projects/export, which the export writes."}
             </p>
             <pre {...props(styles.prompt)}>{EXPORT_COMMAND}</pre>
           </>

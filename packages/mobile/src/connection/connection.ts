@@ -177,6 +177,10 @@ export function describeHostError(cause: unknown, newerHost: boolean): string {
         : "The host couldn't complete the request.";
     case "internal":
       return "The host couldn't complete the request.";
+    case "not_supported":
+      return "The other device can't do that.";
+    case "timeout":
+      return "The other device didn't answer in time. Try again.";
     default: {
       const exhaustive: never = cause.code;
 

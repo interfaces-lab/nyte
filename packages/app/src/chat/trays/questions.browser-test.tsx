@@ -7,8 +7,7 @@ import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import { installConnection } from "../../data/connection.ts";
-import { scriptedConnection } from "../../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { COMPLETED, USAGE } from "../../../test/view-fixtures.ts";
 import { QuestionTray } from "./questions.tsx";
 import { QuestionDockContext, useQuestionDock } from "./questions-state.ts";
@@ -24,7 +23,7 @@ const field = {
 };
 
 const dock: QuestionDock = {
-  request: { part: asId("part-question"), questions: [field] },
+  request: { part: asId("part-question"), questions: [field], late: false },
   field,
   origin: undefined,
   current: 0,
@@ -72,7 +71,7 @@ const asked: SessionView = {
       id: asId<"part">("part-question"),
       partKind: "ask/question",
       placement: { kind: "modal" },
-      state: { questions: [field], answers: null },
+      state: { call: "call-question", questions: [field], phase: { kind: "asking" } },
       version: 1,
       status: { kind: "live", run: asId<"run">("run") },
       owner: "question",
@@ -86,29 +85,30 @@ const asked: SessionView = {
   background: [],
   configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
   context: { tokens: 0, window: 1_000, lastRequest: null },
-  heads: [],
   changes: [],
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 };
 
-installConnection(
+installScripted(
   scriptedConnection({
     views: new Map([[SESSION, [asked]]]),
     session: () => ({
       part: (part) => ({
         id: part,
         update: async () => ({ kind: "missing" }),
-        act: async () => ({ kind: "rejected", reason: REFUSED }),
+        act: async (action) => {
+          if (action === "skip") throw new Error(UNREACHABLE);
+
+          return { kind: "rejected", reason: REFUSED };
+        },
         answer: async () => null,
         watch: async function* () {
           yield* [];
         },
-        close: async () => {
-          throw new Error(UNREACHABLE);
-        },
+        close: async () => undefined,
       }),
     }),
-  }).connection,
+  }),
 );
 
 let shown: QuestionDock | undefined;

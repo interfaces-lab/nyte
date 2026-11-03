@@ -1,0 +1,353 @@
+---
+title: head.configure
+description: Changes a head's model, thinking level or other settings.
+---
+
+Changes a head's model, thinking level, agent or session settings. The patch names only what
+changes; `thinking: null` returns to the model's default level and `agent: null` clears the agent.
+The change applies from the
+next model request, including a run already going.
+
+It answers `configured` with the head's full configuration and revision, or, without changing
+anything, `unknown-model`, `unknown-agent`, or `invalid` with issues such as a thinking level the
+model doesn't accept or a setting that fails its schema.
+
+## When to call it
+
+From a model picker, a thinking level control, or a session settings panel. A model switch without
+a level lands on the new model's default level. From a person's client with `owner` authority, an
+accepted model also becomes the host's default and an accepted level its model's default.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "patch": { "model": { "provider": "anthropic", "id": "claude-sonnet-4-5" }, "thinking": "high" }
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "configured",
+  "selected": {
+    "kind": "exact",
+    "model": { "provider": "anthropic", "id": "claude-sonnet-4-5" },
+    "thinking": "high",
+    "agent": null,
+    "settings": {},
+    "settingsVersion": "f0e1d2c3b4a5968778695a4b3c2d1e0f1a2b3c4d5e6f708192a3b4c5d6e7f809"
+  },
+  "revision": "2b4d6f8a-0c1e-4a3b-9d5f-7e9a1c3b5d7f"
+}
+```
+
+## Errors
+
+- `unknown` when no session has the id, or the session has no such head.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head", "patch"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "patch": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "object",
+          "required": ["provider", "id"],
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "thinking": {
+          "anyOf": [
+            {
+              "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "agent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "settings": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "selected", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "configured"
+        },
+        "selected": {
+          "type": "object",
+          "required": ["kind", "model", "thinking", "agent", "settings", "settingsVersion"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "exact"
+            },
+            "model": {
+              "type": "object",
+              "required": ["provider", "id"],
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            },
+            "thinking": {
+              "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "settings": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "$ref": "Json"
+                }
+              }
+            },
+            "settingsVersion": {
+              "type": "string"
+            }
+          }
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "model"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unknown-model"
+        },
+        "model": {
+          "type": "object",
+          "required": ["provider", "id"],
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "agent"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unknown-agent"
+        },
+        "agent": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "issues"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "invalid"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "path", "message"],
+            "properties": {
+              "severity": {
+                "enum": ["error", "warning"]
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "message": {
+                "type": "string"
+              },
+              "source": {
+                "type": "object",
+                "required": ["plugin"],
+                "properties": {
+                  "plugin": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

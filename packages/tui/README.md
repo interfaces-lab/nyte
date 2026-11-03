@@ -1,7 +1,14 @@
 # TUI
 
-Nyte's terminal host uses core's SDK for sessions and jobs. Terminal rendering and keyboard
+Nyte's terminal client uses core's SDK for sessions and jobs. Terminal rendering and keyboard
 interaction live here; job execution, cancellation, and recovery live in core.
+
+`nyte`, `nyte -p` and the other commands attach to this machine's one host, the one
+`~/.nyte/host.json` names, whether the desktop app or `nyte host` started it. When none runs,
+`nyte` starts `nyte host --log` in the background and attaches to it; that host keeps running
+after `nyte` exits, so quitting the terminal leaves its runs and jobs going. A new chat still opens
+in the directory `nyte` started in. An already running host doesn't see API keys exported only
+in the current shell. `--host-url` attaches to another host instead.
 
 ## Minimal mode (POC)
 
@@ -239,8 +246,8 @@ tool output. Plugin consent and questions still follow child sessions.
 The desktop uses the same Tasks/Finished policy. Its Tasks control stays available when the
 background count disappears. Inspect conversation opens the child's full chat.
 
-Task metadata and output are durable, but processes are not. Closing the owning host interrupts
-live work. Recovery marks abandoned work `interrupted` and never reruns it. Core records
+Task metadata and output are durable, but processes are not. Quitting the terminal leaves them
+running on the host; stopping the host interrupts live work. Recovery marks abandoned work `interrupted` and never reruns it. Core records
 background completion separately from user messages; completion never enters the user queue.
 A result may join an active run, but never starts a new run on its own. When the chat is idle,
 it waits for your next message and remains available in Tasks. Compaction may continue an active

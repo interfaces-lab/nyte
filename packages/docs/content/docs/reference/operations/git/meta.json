@@ -1,0 +1,21 @@
+{
+  "title": "git",
+  "pages": [
+    "status",
+    "watch",
+    "changes",
+    "watch-changes",
+    "patches",
+    "contents",
+    "log",
+    "refs",
+    "blame",
+    "stage",
+    "unstage",
+    "discard",
+    "commit",
+    "branch",
+    "checkout",
+    "push"
+  ]
+}

@@ -1,0 +1,187 @@
+---
+title: workspace.changes
+description: Lists the files a run or session changed.
+---
+
+Lists the files a run or a session changed, from the workspace snapshots the host takes around
+runs. A run's changes run from its first snapshot to its last, or to the workspace as it is now
+while it runs. A session's run from its first run's first snapshot to its latest run's last.
+
+Each file has its path, status (`added`, `modified`, `deleted`, `renamed` and so on), line stats,
+and the path it was renamed from.
+
+## When to call it
+
+To show what an agent changed in a run or across a chat, apart from git. Read the patches with
+[`workspace.patches`](/docs/reference/operations/workspace/patches).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope; `source` names the run or session.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "source": { "kind": "session", "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f" }
+}
+```
+
+Response:
+
+```json
+{
+  "revision": "f2a4c6e8b0d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3",
+  "files": [
+    {
+      "path": "test/date.test.ts",
+      "status": "modified",
+      "stat": { "kind": "text", "added": 12, "removed": 3 }
+    }
+  ]
+}
+```
+
+## Errors
+
+- `unavailable` when the workspace takes no run snapshots, or no run of the session has
+  snapshotted it yet.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "source"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind", "run"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "run"
+            },
+            "run": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "session"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "session"
+            },
+            "session": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["revision", "files"],
+  "properties": {
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "status", "stat"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+          },
+          "stat": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "added", "removed"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  "added": {
+                    "type": "number"
+                  },
+                  "removed": {
+                    "type": "number"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "binary"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "unknown"
+                  }
+                }
+              }
+            ]
+          },
+          "from": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

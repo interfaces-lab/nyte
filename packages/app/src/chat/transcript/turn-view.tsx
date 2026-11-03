@@ -14,7 +14,12 @@ import type { ReactElement, ReactNode, RefObject } from "react";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { flushSync } from "react-dom";
 import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
-import { failureNotice, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
+import {
+  failureNotice,
+  showsAnswer,
+  showsThinking,
+  showsTool,
+} from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../../canvas/client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
@@ -31,6 +36,7 @@ import { usePluginCatalog } from "../../data/plugins.ts";
 import { Prose } from "../markdown/prose.tsx";
 import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { SubagentGroupView, SubagentReportLine } from "../tools/subagent-call.tsx";
+import { AnswerLine } from "./answer-line.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "../composer/composer-document.ts";
 import { ComposerFrame } from "../composer/composer-frame.tsx";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
@@ -628,6 +634,8 @@ function TurnPartView({
 
     if (source.kind === "child" || source.kind === "job")
       return <SubagentReportLine source={source} content={message.content} held={false} />;
+
+    if (showsAnswer(message)) return <AnswerLine message={message} held={false} />;
 
     return (
       <UserMessageView

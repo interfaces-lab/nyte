@@ -35,7 +35,7 @@ const desktopProcessImports = (...folders: readonly string[]) =>
   }));
 
 const desktopProcessFolders = [
-  { folder: "main", forbidden: ["host", "workers", "preload"] },
+  { folder: "main", forbidden: ["workers", "preload"] },
   { folder: "host", forbidden: ["main", "preload"] },
   { folder: "workers", forbidden: ["main", "host", "preload"] },
   { folder: "preload", forbidden: ["main", "host", "workers"] },
@@ -84,9 +84,8 @@ export default defineConfig({
     "**/routeTree.gen.ts",
     "**/*.gen.*",
     "**/models.generated*",
-    // The lab's film is a creative sketch; it trades lint rules for iteration speed.
-    "packages/lab/video/**",
-    "packages/lab/remotion.config.ts",
+    // Local-only material, such as the lab's film and research notes.
+    "**/.local/**",
   ],
   plugins: ["react", "eslint", "typescript", "unicorn", "import", "oxc"],
   // The desktop design scale: enforced on StyleX sources, not wrapped in tokens.

@@ -20,6 +20,7 @@ import type { JobRecord } from "../contract/records.ts";
 import { commit } from "../fold/commit.ts";
 import { JOBS, jobRef } from "../store/refs.ts";
 import { load, MAIN, put, readSession } from "../store/session.ts";
+import { clipText } from "../util/clip.ts";
 import { dev } from "../util/dev-log.ts";
 import { closable } from "../util/iterable.ts";
 import { followedTrace, traceparent } from "../util/trace.ts";
@@ -34,8 +35,6 @@ const SCROLLBACK_BYTES = 256 * 1024;
 const READER_BYTES = 64 * 1024;
 
 const ORPHAN_MS = 60_000;
-
-const REPORT_BYTES = 4096;
 
 const ENDED_KEPT = 32;
 
@@ -359,7 +358,7 @@ async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
     session: owner.session,
     head: owner.head,
     context: CORE_CONTEXT,
-    content: report(entry.view, end, entry.output.tail()),
+    content: report(entry.view, end, entry.output.text()),
     options: { source: { kind: "job", job: id }, delivery: "attach" },
   }).catch(() => undefined);
 }
@@ -809,6 +808,7 @@ function createOutput(shell: { orphaned(): void } | null): JobOutput {
 
       return cut || size > TAIL_BYTES ? text.replace(/^[^\n]*\n(?=[\s\S])/, "") : text;
     },
+    text: () => new TextDecoder().decode(last(size)),
   };
 }
 
@@ -824,7 +824,7 @@ function createJobBackgroundItem(entry: JobEntry): BackgroundItem | null {
   };
 }
 
-function report(view: JobView, end: JobEnd, tail: string): string {
+function report(view: JobView, end: JobEnd, output: string): string {
   const how =
     end.kind === "lost"
       ? "was lost with the host"
@@ -837,13 +837,7 @@ function report(view: JobView, end: JobEnd, tail: string): string {
       ? `Job ${view.title} ${how}.`
       : `Job ${view.title} (${view.command}) ${how}.`;
 
-  const room = REPORT_BYTES - new TextEncoder().encode(title).byteLength - 2;
-  const bytes = new TextEncoder().encode(tail.trim());
-
-  const kept =
-    bytes.byteLength <= room ? bytes : bytes.subarray(bytes.byteLength - Math.max(0, room));
-
-  const text = new TextDecoder().decode(kept);
+  const text = clipText(output.trim(), "tail");
 
   return text === "" ? title : `${title}\n\n${text}`;
 }

@@ -12,4 +12,6 @@ export type Declaration<Input, Output> = {
   readonly capability?: "files" | "git" | "github" | "browser";
   readonly recovery?: "replay" | "never";
   readonly wait?: true;
+  readonly local?: true;
+  readonly mcp?: "read" | "write";
 };

@@ -17,7 +17,10 @@ export const RunViewType = Type.Object({
   attempt: Type.Number(),
   origin: Type.Union([
     Type.Object({ kind: Type.Literal("input"), message: idSchema<"message">() }),
-    Type.Object({ kind: Type.Literal("continuation"), from: Type.Enum(["child", "job", "wake"]) }),
+    Type.Object({
+      kind: Type.Literal("continuation"),
+      from: Type.Enum(["child", "job", "answer", "wake"]),
+    }),
   ]),
 });
 

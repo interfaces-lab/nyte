@@ -1,0 +1,213 @@
+---
+title: github.state
+description: Reads the workspace's repository and the pull request for its branch, with checks.
+---
+
+Reads the GitHub repository the workspace's remotes name, and the pull request for its checked-out
+branch with the checks on its head commit, each `pending`, `passed`, `failed` or `skipped`. The pull
+request is `none` with no GitHub remote or a detached HEAD, and `unavailable` while the machine's
+`gh` has no account that can read it.
+
+## When to call it
+
+To show a branch's pull request and CI status next to its changes.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `github` capability.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response:
+
+```json
+{
+  "repository": {
+    "owner": "ada",
+    "name": "shop",
+    "remoteName": "origin",
+    "url": "https://github.com/ada/shop"
+  },
+  "pullRequest": {
+    "kind": "ready",
+    "pullRequest": {
+      "number": 42,
+      "title": "Fix the flaky date test",
+      "url": "https://github.com/ada/shop/pull/42",
+      "state": "OPEN",
+      "draft": false,
+      "headRefName": "fix-date-test",
+      "baseRefName": "main",
+      "checks": [{ "name": "test", "state": "passed" }]
+    }
+  }
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer GitHub.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `github`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["pullRequest"],
+  "properties": {
+    "repository": {
+      "type": "object",
+      "required": ["owner", "name", "remoteName", "url"],
+      "properties": {
+        "owner": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "remoteName": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "pullRequest": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "none"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unavailable"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "pullRequest"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "ready"
+            },
+            "pullRequest": {
+              "type": "object",
+              "required": [
+                "number",
+                "title",
+                "url",
+                "state",
+                "draft",
+                "headRefName",
+                "baseRefName",
+                "checks"
+              ],
+              "properties": {
+                "number": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "title": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "state": {
+                  "enum": ["OPEN", "CLOSED", "MERGED"]
+                },
+                "draft": {
+                  "type": "boolean"
+                },
+                "headRefName": {
+                  "type": "string"
+                },
+                "baseRefName": {
+                  "type": "string"
+                },
+                "checks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "state"],
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "enum": ["pending", "passed", "failed", "skipped"]
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "message"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "error"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+{/* generated:end */}

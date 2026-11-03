@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { css, html } from "react-strict-dom";
-import type { ActOutcome, PartId, SessionId, SessionView } from "@nyte-ai/sdk";
+import type { ActOutcome, PartId, SessionId } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import { spacing } from "../theme.ts";
 import type { AskedQuestion } from "../view-helpers.ts";
@@ -13,7 +14,7 @@ import { WaitingSelection } from "./waiting-selection.tsx";
 import { ToolActivitySheet, useActivitySheet } from "./tool-activity-sheet.tsx";
 
 type TimelineProps = {
-  state: SessionView;
+  state: HeadView;
   sessionId: SessionId;
   delegateNames: ReadonlyMap<SessionId, string>;
   question: AskedQuestion | undefined;

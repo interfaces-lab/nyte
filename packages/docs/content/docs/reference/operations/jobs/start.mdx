@@ -1,0 +1,254 @@
+---
+title: jobs.start
+description: Starts a job running a command or shell, optionally in a terminal of a given size.
+---
+
+Starts a job in the workspace: a `command` run through the platform shell, or, with `pty` and no
+command, the user's login shell in a terminal of that size. It answers the job's view with its
+`key`. A pty job gets a key that [`jobs.recover`](/docs/reference/operations/jobs/recover) finds it
+by later; a piped job's key is `null`.
+
+With `session`, the job belongs to that chat: it runs in the session's environment, and when it
+ends its output is reported to the chat. `title` names it in job lists; it defaults to the
+command, or `Shell`.
+
+## When to call it
+
+To open a terminal tab, or to run a command for the user outside a chat. Pass `id` to retry
+safely: the same id with the same input returns the same job.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "pty": { "columns": 120, "rows": 32 },
+  "id": "1f3a5c7e-9b2d-4f4a-8c6e-0b2d4f6a8c1e"
+}
+```
+
+Response:
+
+```json
+{
+  "id": "1f3a5c7e-9b2d-4f4a-8c6e-0b2d4f6a8c1e",
+  "command": "",
+  "title": "Shell",
+  "session": null,
+  "pty": { "columns": 120, "rows": 32, "shell": "login" },
+  "state": { "kind": "running" },
+  "startedAt": 1767240000000,
+  "endedAt": null,
+  "tail": "",
+  "foreground": false,
+  "key": "6b8d0f2a-4c1e-4a3b-9d5f-7e9a1c3b5d70"
+}
+```
+
+## Errors
+
+- `invalid` without a command or a pty: `A job without a pty needs a command.`
+- `invalid` when `session` is on another workspace: `Session <id> is not on workspace <id>.`
+- `invalid` when the id was used for different input: `Job <id> was started with another input.`
+- `unavailable` when the program can't start, or the platform can't run a pty.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: `replay`
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "command": {
+      "type": "string"
+    },
+    "session": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "pty": {
+      "type": "object",
+      "required": ["columns", "rows"],
+      "properties": {
+        "columns": {
+          "type": "number"
+        },
+        "rows": {
+          "type": "number"
+        }
+      }
+    },
+    "id": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": [
+    "id",
+    "command",
+    "title",
+    "session",
+    "pty",
+    "state",
+    "startedAt",
+    "endedAt",
+    "tail",
+    "foreground",
+    "key"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "command": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "session": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "pty": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["columns", "rows", "shell"],
+          "properties": {
+            "columns": {
+              "type": "number"
+            },
+            "rows": {
+              "type": "number"
+            },
+            "shell": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "state": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "running"
+            }
+          }
+        },
+        {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind", "code", "reason"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "exited"
+                },
+                "code": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reason": {
+                  "enum": ["exited", "terminated", "expired", "host-lost"]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "lost"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "startedAt": {
+      "type": "number"
+    },
+    "endedAt": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tail": {
+      "type": "string"
+    },
+    "foreground": {
+      "type": "boolean"
+    },
+    "key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}
+```
+
+{/* generated:end */}

@@ -1,0 +1,70 @@
+---
+title: principals.revoke
+description: Revokes a paired client's access.
+---
+
+Revokes a paired client's access. Its token stops working, and the host closes the connections it
+has open.
+
+## When to call it
+
+When the user removes a device from the paired list, or a device is lost.
+
+## Access
+
+Needs `maintenance` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{ "id": "c2a9e4f1-7b3d-4e5a-8c6f-1d0e9b8a7c6d" }
+```
+
+Response:
+
+```json
+null
+```
+
+An id that names no paired client answers the same and changes nothing.
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `maintenance`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

@@ -1,0 +1,158 @@
+---
+title: git.checkout
+description: Checks out a branch; fails while a run is live or when local changes would be lost.
+---
+
+Switches to an existing branch. It answers `busy` with the runs writing to the workspace while any
+are live, `rejected` with git's message when git refuses, such as over local changes it would
+overwrite, `stale`, or `applied`.
+
+## When to call it
+
+From a branch picker, after [`git.refs`](/docs/reference/operations/git/refs).
+
+## Access
+
+Needs `owner` authority. Workspace scope, with the `git` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "input": { "name": "main" }
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "rejected",
+  "reason": "error: Your local changes to the following files would be overwritten by checkout:\n\tsrc/date.ts"
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "input"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "input": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "expect": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "applied"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unchanged"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "runs"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "rejected"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

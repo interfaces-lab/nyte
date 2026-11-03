@@ -3,10 +3,14 @@ import { ConfigurationPatchType, ConfigurationType } from "../../configuration.t
 import { HostViewWireSchema, SettingOutcomeSchema } from "../../connection.ts";
 import {
   AuthorityType,
+  McpAccessType,
+  McpGrantViewType,
   OperationDescriptionType,
   PluginCheckReportSchema,
   PluginReplacementReportSchema,
   PrincipalViewWireType,
+  TailnetSettingsType,
+  TailnetStatusType,
 } from "../../host.ts";
 import { idSchema } from "../../ids.ts";
 import { JsonType } from "../../json.ts";
@@ -21,8 +25,7 @@ import {
 } from "../../models.ts";
 import { PromptOverrideType } from "../../plugins.ts";
 import { pagedSchema, ParentFilterType } from "../../primitives.ts";
-import { SessionInfoType } from "../../sessions.ts";
-import { SessionsFrameType } from "../../views.ts";
+import { SessionInfoType, SessionsReadType } from "../../sessions.ts";
 import {
   AddOutcomeSchema,
   ForgetOutcomeSchema,
@@ -39,6 +42,8 @@ const PARTICIPANT = { authority: "participant", scope: "host" } as const;
 const OWNER = { authority: "owner", scope: "host" } as const;
 
 const MAINTENANCE = { authority: "maintenance", scope: "host" } as const;
+
+const LOCAL_OWNER = { ...OWNER, local: true } as const;
 
 const PROVIDER = { provider: Type.String() };
 
@@ -214,6 +219,7 @@ export const HOST_OPERATIONS = {
   },
   "workspaces.list": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Lists the workspaces the host knows.",
     kind: "query",
     input: NO_INPUT,
@@ -255,18 +261,9 @@ export const HOST_OPERATIONS = {
     input: NO_INPUT,
     output: WorktreeCleanupSchema,
   },
-  "sessions.watch": {
-    ...PARTICIPANT,
-    summary: "Streams the host's sessions as they change.",
-    kind: "watch",
-    input: wireObject({
-      parents: Type.Optional(ParentFilterType),
-      limit: Type.Optional(Type.Number()),
-    }),
-    output: wireSchema(SessionsFrameType),
-  },
   "sessions.start": {
     ...PARTICIPANT,
+    mcp: "write",
     summary: "Starts a chat with its first message.",
     kind: "receipt",
     recovery: "replay",
@@ -279,6 +276,7 @@ export const HOST_OPERATIONS = {
       prompt: Type.Optional(PromptOverrideType),
       isolation: Type.Optional(Type.Literal("worktree")),
       contextFiles: Type.Optional(Type.Literal(false)),
+      side: Type.Optional(Type.Literal(true)),
       content: UserContentType,
     }),
     output: wireObject({
@@ -289,6 +287,7 @@ export const HOST_OPERATIONS = {
   },
   "sessions.list": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Lists the host's sessions one page at a time.",
     kind: "query",
     input: wireObject({
@@ -297,6 +296,84 @@ export const HOST_OPERATIONS = {
       limit: Type.Optional(Type.Number()),
     }),
     output: pagedSchema(SessionInfoType),
+  },
+  "sessions.read": {
+    ...PARTICIPANT,
+    summary:
+      "Reads the host's sessions table: the ids a filter selects and every row changed since a seq.",
+    kind: "query",
+    input: wireObject({
+      parents: Type.Optional(ParentFilterType),
+      limit: Type.Optional(Type.Number()),
+      resume: Type.Optional(Type.Object({ seq: Type.Number() })),
+    }),
+    output: wireSchema(SessionsReadType),
+  },
+  "host.tailnet.status": {
+    ...LOCAL_OWNER,
+    summary: "Returns the status of the host's embedded tailnet node.",
+    kind: "query",
+    input: NO_INPUT,
+    output: wireSchema(TailnetStatusType),
+  },
+  "host.tailnet.configure": {
+    ...LOCAL_OWNER,
+    summary:
+      "Saves the embedded tailnet node's settings and restarts it, signing in with the auth key when one is given; the key is passed to the node once and never saved.",
+    kind: "command",
+    input: wireObject({ ...TailnetSettingsType.properties, authKey: Type.Optional(Type.String()) }),
+    output: wireSchema(TailnetStatusType),
+  },
+  "host.tailnet.logout": {
+    ...LOCAL_OWNER,
+    summary: "Signs the embedded tailnet node out and turns it off.",
+    kind: "command",
+    input: NO_INPUT,
+    output: wireSchema(TailnetStatusType),
+  },
+  "host.execution.pause": {
+    ...LOCAL_OWNER,
+    summary:
+      "Ends the host's model streams in flight and holds new requests until resumed, as while the machine sleeps; runs stay live.",
+    kind: "command",
+    input: NO_INPUT,
+    output: NOTHING,
+  },
+  "host.execution.resume": {
+    ...LOCAL_OWNER,
+    summary: "Lets the runs a pause held request again.",
+    kind: "command",
+    input: NO_INPUT,
+    output: NOTHING,
+  },
+  "mcp.approve": {
+    ...LOCAL_OWNER,
+    summary:
+      "Approves the MCP sign-in waiting with this code, for read-only tools or for write tools under an approval policy ceiling.",
+    kind: "command",
+    input: wireObject({ code: Type.String(), access: McpAccessType }),
+    output: wireObject({ client: Type.String() }),
+  },
+  "mcp.deny": {
+    ...LOCAL_OWNER,
+    summary: "Refuses the MCP sign-in waiting with this code.",
+    kind: "command",
+    input: wireObject({ code: Type.String() }),
+    output: NOTHING,
+  },
+  "mcp.grants.list": {
+    ...LOCAL_OWNER,
+    summary: "Lists the MCP clients this host granted access to.",
+    kind: "query",
+    input: NO_INPUT,
+    output: wireSchema(Type.Array(McpGrantViewType)),
+  },
+  "mcp.grants.revoke": {
+    ...LOCAL_OWNER,
+    summary: "Revokes an MCP client's grant and every token issued under it.",
+    kind: "command",
+    input: wireObject({ id: Type.String() }),
+    output: NOTHING,
   },
 } as const satisfies OperationRows;
 

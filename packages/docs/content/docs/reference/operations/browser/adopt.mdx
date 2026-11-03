@@ -1,0 +1,91 @@
+---
+title: browser.adopt
+description: Takes control of a page that is already open in the workspace's browser.
+---
+
+Takes hold of a page that is already open in the workspace's browser, such as one an agent opened,
+and answers its info. The caller can then drive it with the `page.*` operations.
+
+## When to call it
+
+When the user wants to look at or control a page they didn't open, found with
+[`browser.list`](/docs/reference/operations/browser/list).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `browser` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "id": "page-7"
+}
+```
+
+Response:
+
+```json
+{ "id": "page-7", "url": "http://localhost:5173/", "title": "Shop", "holders": 2 }
+```
+
+## Errors
+
+- `unknown` when no open page has the id.
+- `unavailable` or `denied` when the workspace doesn't offer a browser.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `browser`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "id"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["id", "url", "title", "holders"],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "holders": {
+      "type": "number"
+    }
+  }
+}
+```
+
+{/* generated:end */}

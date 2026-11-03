@@ -1,0 +1,89 @@
+---
+title: principals.pair
+description: Creates a short-lived pairing code that grants a new client the given access.
+---
+
+Creates a one-time pairing code that grants a new client the given authority. The code lasts 10
+minutes. A client redeems it by sending `Authorization: Pairing <code>` on any request; the answer
+carries its device token in `X-Nyte-Credential`, and the code can't be used again.
+
+## When to call it
+
+When the user adds a device, such as a phone, to this host. Show the code, or a QR code holding
+it, on the host.
+
+## Access
+
+Needs `maintenance` authority. Host scope. The authority list must include `participant`; grant
+`owner` only to a device the owner trusts with logins, settings and git writes.
+
+## Example
+
+Request body:
+
+```json
+{ "authority": ["participant"], "label": "Ada's phone" }
+```
+
+Response:
+
+```json
+{ "code": "K7QM-W2XP", "expiresAt": 1767240600000 }
+```
+
+Without `label`, the device is labelled `Paired device`.
+
+## Errors
+
+- `invalid` when the authority doesn't include `participant`: `A pairing code needs participant
+authority.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `maintenance`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["authority"],
+  "properties": {
+    "authority": {
+      "type": "array",
+      "items": {
+        "enum": ["participant", "owner", "maintenance"]
+      }
+    },
+    "label": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["code", "expiresAt"],
+  "properties": {
+    "code": {
+      "type": "string"
+    },
+    "expiresAt": {
+      "type": "number"
+    }
+  }
+}
+```
+
+{/* generated:end */}

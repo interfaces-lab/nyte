@@ -66,6 +66,8 @@ async function pages() {
 
 /** Stops the dev command and the Electron it started; a group already gone throws, which is fine. */
 function stop() {
+  if (child.pid === undefined) return;
+
   try {
     process.kill(-child.pid, "SIGTERM");
   } catch {}

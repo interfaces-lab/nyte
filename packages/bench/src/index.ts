@@ -14,7 +14,14 @@ export { afterTool, afterUser, lastToolText, script } from "./script.ts";
 
 export type { Script, Step } from "./script.ts";
 
-export { CI_SERVER, GH_CLI, nodeShim, PLACES_SERVER, scenarioHome } from "./scenarios/home.ts";
+export {
+  CI_SERVER,
+  GH_CLI,
+  nodeShim,
+  PLACES_SERVER,
+  scenarioHome,
+  stopHomeProcesses,
+} from "./scenarios/home.ts";
 
 export type { FixtureServer, ScenarioHome } from "./scenarios/home.ts";
 

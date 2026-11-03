@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { Matches, useRouter } from "@tanstack/react-router";
-import { useEffectEvent, useSyncExternalStore } from "react";
+import { useEffectEvent, useRef, useSyncExternalStore } from "react";
 import { AboutDialog } from "./about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "../panes/open-workspace.tsx";
@@ -9,6 +9,7 @@ import { runWindowCommand, windowCommand } from "../commands/window-commands.ts"
 import { shellActions, useOverlays, useStagePage } from "../tabs/shell-state.ts";
 import { SidebarPane } from "../sidebar/sidebar-pane.tsx";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
+import { sidebarPush, useSidebarSwipe } from "../sidebar/sidebar-swipe.ts";
 import { Sidebar } from "../sidebar/sidebar.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Loader } from "@nyte-ai/ui/loader";
@@ -61,9 +62,10 @@ const styles = create({
     borderRadius: shell.cardRadius,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
     transitionProperty: "margin-inline-start",
-    transitionDuration: "0s",
+    transitionDuration: sidebar.resizeDuration,
+    transitionTimingFunction: sidebar.resizeEasing,
   },
-  cardSidebarHidden: { marginInlineStart: shell.cardInset, transitionDelay: sidebar.slideDuration },
+  cardSidebarHidden: { marginInlineStart: shell.cardInset, transitionDelay: sidebar.resizeDelay },
   connectionFailure: {
     display: "flex",
     alignItems: "center",
@@ -156,6 +158,8 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const shellRouter = useRouter();
   const page = useStagePage();
   const { about } = useOverlays();
+  const root = useRef<HTMLDivElement | null>(null);
+  const pushing = useSidebarSwipe(root);
   const sidebarCollapsed = useSidebar().state === "collapsed";
   const mac = nyte.platform === "darwin";
   const strip = windowTabs.strip;
@@ -210,7 +214,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   );
 
   return (
-    <div data-nyte-shell {...props(styles.shell)}>
+    <div ref={root} data-nyte-shell {...props(styles.shell, pushing && sidebarPush)}>
       <Titlebar />
       <div {...props(styles.stage)}>
         <SessionDndProvider>

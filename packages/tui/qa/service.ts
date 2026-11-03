@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { openHost } from "@nyte-ai/host";
-import { fakeModels, testModel } from "@nyte-ai/bench";
+import { fakeModels, stopHomeProcesses, testModel } from "@nyte-ai/bench";
 import type { Reply, Request } from "@nyte-ai/bench";
 import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
 import { normalizeContext } from "@nyte-ai/schema/model";
@@ -368,6 +368,7 @@ export async function serveForBinary(options: { readonly plugin: boolean }): Pro
     async [Symbol.asyncDispose]() {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      await stopHomeProcesses(home);
       await rm(root, { recursive: true, force: true });
     },
   };
@@ -409,6 +410,7 @@ export async function freshHome(): Promise<FreshHome> {
     nyteHome: join(home, ".nyte"),
     env: await homeEnv(root, home),
     async [Symbol.asyncDispose]() {
+      await stopHomeProcesses(home);
       await rm(root, { recursive: true, force: true });
     },
   };

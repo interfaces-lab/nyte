@@ -27,7 +27,7 @@
 - **Admission never starts a run.** `send` writes the inbox and a pending receipt. A run starts under the head lease, in the same `set` that lands its prompt. Wakes are hints; `repair`, `cover` and the presence sweep find owed work.
 - **Landing** moves inbox messages onto the head in one `set` expecting inbox and tip. A `deciding` first message blocks run starts.
 - **Steer only at boundaries:** run start and after a response's tool calls finish. `queue` never lands in a live run. `steer` becomes `queue` when the model can't take mid-run input.
-- **Continuations.** `attach` never starts a run, except a child or job report on an idle head whose last run completed.
+- **Continuations.** `attach` never starts a run, except a child or job report, or a late answer to a part, on an idle head whose last run completed.
 - **Idempotent IDs.** A reused receipt or session id with the same digest replays; a different digest throws. Ids created inside a durable call are recorded in `CallRecord.acquisitions`. Tool call ids are `${run}:${requests}:${providerId}`.
 - **Replace.** An inbox target is revised in place. A landed target rewinds the head, fences the live run and admits the new message in one `set`.
 - **Run fence.** Writes for a run fence on `live/<id>`. A stop sets `stopping`, deletes `live/<id>` and fails open parts in one `set`.

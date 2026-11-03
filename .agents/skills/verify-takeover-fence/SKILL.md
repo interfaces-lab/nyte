@@ -14,7 +14,7 @@ There are two separate checks. Neither replaces the other.
 From the repository root:
 
 ```sh
-python3 .agents/skills/verify-takeover-fence/run.py
+node .agents/skills/verify-takeover-fence/check.mjs
 pnpm --dir packages/host exec vitest run test/takeover-fence.test.ts
 ```
 
@@ -26,7 +26,7 @@ The first command checks the design in `TakeoverFence.tla`. Every run checks thr
 | `AppendProcessFence=FALSE` | `NoStalePublication` fails with a counterexample. |
 | `DeleteProcessOnClaim=FALSE` | `NoStalePublication` fails with a counterexample. |
 
-The two failures are model self-tests, not evidence about TypeScript. The runner never reads product code or derives model parameters from it. A surviving mutant, a failing baseline, a timeout or a tool error makes the command exit nonzero. The baseline currently explores 238 generated states, 131 distinct states, to depth 9. Each mutant produces a four-state counterexample. All three checks together took about 5.4 seconds with the jar cached.
+The two failures are model self-tests, not evidence about TypeScript. The runner never reads product code or derives model parameters from it. A surviving mutant, a failing baseline, a timeout or a tool error makes the command exit nonzero. The baseline currently explores 238 generated states, 131 distinct states, to depth 9. Each mutant produces a four-state counterexample. All three checks together take about a second once tla-ts is in the pnpm store.
 
 The second command checks the real implementation in `packages/host/test/takeover-fence.test.ts`. It composes two member-enabled hosts using `composeServer` and the existing fake-model fixtures over a real in-memory SQLite store. This reaches `openPresence` and B's `claimNow` through `host.execution.advance`. It seeds A's initial lease, not the takeover result.
 
@@ -50,7 +50,7 @@ Last confirmed product code at `d142cf6dd8cbddcda21866cd2a795dd33abdb475` on `ma
 | `packages/host/src/sqlite.ts:392-470`, `connect.refs.set` | Fence checks, expectations, ref changes and events share one `BEGIN IMMEDIATE` transaction. |
 | `packages/host/test/takeover-fence.test.ts`, `schedules`, `transactionGate`, parameterized behavior test | The implementation check and its controllable scheduler. |
 
-`run.py` prints the output of this command as a re-review notice:
+`check.mjs` prints the output of this command as a re-review notice:
 
 ```sh
 git log --oneline d142cf6dd8cbddcda21866cd2a795dd33abdb475..HEAD -- packages/core/src/compose.ts packages/core/src/engine/presence.ts packages/core/src/drive/execution.ts packages/core/src/fold/commit.ts packages/core/src/store/log.ts packages/core/src/store/refs.ts packages/host/src/sqlite.ts
@@ -94,6 +94,6 @@ A model mutant that passes means the design check lost sensitivity, not that the
 
 ## Tool setup
 
-The model command requires Python 3.9+, Java 17+ and curl. It downloads TLA+ tools 1.7.4 from the versioned GitHub URL in `run.py`, checks SHA-256 `936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88`, and caches the jar in `~/.cache/nyte-verify/tla2tools-1.7.4.jar`. The checksum pins bytes, not a publisher signature. Temporary TLC files stay outside the repository and are removed after each run.
+The model command needs Node and pnpm. It runs `tla-ts`, a TLA+ model checker in TypeScript, through `pnpm dlx` at the version pinned in `check.mjs`; no Java. The same model under TLC 1.7.4 explored the same 238 and 131 states. Temporary files stay outside the repository and are removed after each run.
 
-The network download has a 30-second limit and its subprocess a 35-second limit. History lookup has a 5-second limit; each TLC run has a 20-second limit and a 512 MB heap. These keep a normal complete invocation under two minutes. Exit 0 means all three design checks met their expected outcomes, 1 means an unexpected property result, and 2 means a tool failure. None of these exit codes claims to verify the TypeScript implementation. Run Vitest too.
+History lookup has a 5-second limit and each model run a 120-second limit. Exit 0 means all three design checks met their expected outcomes, 1 means an unexpected property result, and 2 means a tool failure. None of these exit codes claims to verify the TypeScript implementation. Run Vitest too.

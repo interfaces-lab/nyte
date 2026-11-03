@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterEach, test, vi } from "vitest";
+import { WebSocketServer } from "ws";
 import {
   RELAY_BODY_LIMIT_BYTES,
   RELAY_CHANNEL_LIMIT,
@@ -40,6 +41,7 @@ function pattern(offset: number, length: number): Buffer {
 
 interface Local {
   readonly port: number;
+  readonly sockets: string[];
   written: number;
   uploadGate: PromiseWithResolvers<void> | undefined;
   uploadsAborted: number;
@@ -78,7 +80,7 @@ async function localServer(): Promise<Local> {
         response.end();
 
         return;
-      case "/head.watch": {
+      case "/workspace.watch": {
         response.writeHead(200, { "content-type": "application/octet-stream" });
         let offset = 0;
 
@@ -103,7 +105,7 @@ async function localServer(): Promise<Local> {
         return;
       }
 
-      case "/sessions.watch":
+      case "/connection.watch":
         response.writeHead(200, { "content-type": "text/plain" });
         response.write("x");
         response.on("close", () => {
@@ -137,6 +139,17 @@ async function localServer(): Promise<Local> {
     }
   });
 
+  const upgrades = new WebSocketServer({ server });
+  upgrades.on("connection", (socket, request) => {
+    local.sockets.push(request.url ?? "");
+    socket.on("message", (data, isBinary) => {
+      const text = isBinary || !Buffer.isBuffer(data) ? "" : data.toString("utf8");
+
+      if (text === "refuse") socket.close(1008, "Update the client.");
+      else socket.send(`echo ${text}`);
+    });
+  });
+
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   cleanups.push(
     () =>
@@ -145,11 +158,16 @@ async function localServer(): Promise<Local> {
         server.close(() => resolve());
       }),
   );
+  cleanups.push(() => {
+    for (const client of upgrades.clients) client.terminate();
+    upgrades.close();
+  });
   const address = server.address();
   assert.ok(Value.Check(Type.Object({ port: Type.Number() }), address));
 
   const local: Local = {
     port: address.port,
+    sockets: [],
     written: 0,
     uploadGate: undefined,
     uploadsAborted: 0,
@@ -260,7 +278,7 @@ test("a response moves only as the relay grants credit, and the local server wai
   connection.start();
   await connected(connection);
 
-  const response = await relay.exchange({ method: "POST", path: "/head.watch" });
+  const response = await relay.exchange({ method: "POST", path: "/workspace.watch" });
   await vi.waitFor(() => assert.equal(relay.received, RELAY_WINDOW_BYTES));
   await sleep(300);
   assert.equal(relay.received, RELAY_WINDOW_BYTES);
@@ -331,7 +349,7 @@ test("a phone going away, dropped streams, or a lost socket ends the local excha
   await connected(connection);
 
   const hold = async (signal?: AbortSignal) => {
-    const response = await relay.exchange({ method: "POST", path: "/sessions.watch", signal });
+    const response = await relay.exchange({ method: "POST", path: "/connection.watch", signal });
     assert.ok(response.body);
     const reader = response.body.getReader();
     assert.equal(new TextDecoder().decode((await reader.read()).value), "x");
@@ -384,15 +402,15 @@ test("a frame that breaks the contract closes the socket, and it comes back with
       "a live channel id opened again",
       () => {
         const ch = randomId();
-        relay.send(openFrame("/sessions.watch", ch));
-        relay.send(openFrame("/sessions.watch", ch));
+        relay.send(openFrame("/connection.watch", ch));
+        relay.send(openFrame("/connection.watch", ch));
       },
     ],
     [
       "one channel past the limit",
       () => {
         for (let index = 0; index <= RELAY_CHANNEL_LIMIT; index += 1)
-          relay.send(openFrame("/sessions.watch"));
+          relay.send(openFrame("/connection.watch"));
       },
     ],
     [
@@ -408,7 +426,7 @@ test("a frame that breaks the contract closes the socket, and it comes back with
       "credit past the window",
       () => {
         const ch = randomId();
-        relay.send(openFrame("/sessions.watch", ch));
+        relay.send(openFrame("/connection.watch", ch));
         relay.send(JSON.stringify({ t: "end", ch }));
         relay.send(JSON.stringify({ t: "credit", ch, bytes: RELAY_WINDOW_BYTES }));
       },
@@ -549,4 +567,30 @@ test("a proof or dial that lands after a close or a newer dial opens nothing", a
   );
   assert.equal(relay.auths, 1);
   assert.deepEqual(relay.closes, []);
+});
+
+test("a socket channel dials the listener's socket with its ticket and carries text and close codes both ways", async () => {
+  const { local, relay, open } = await harness();
+  const connection = open();
+  connection.start();
+  await connected(connection);
+
+  const socket = relay.openSocket("/.nyte/ws?ticket=abc");
+  socket.send("hello");
+  assert.equal(await socket.next(), "echo hello");
+  assert.deepEqual(local.sockets, ["/.nyte/ws?ticket=abc"]);
+
+  const large = "y".repeat(RELAY_CHUNK_BYTES * 3 + 7);
+  socket.send(large);
+  assert.equal(await socket.next(), `echo ${large}`);
+
+  socket.send("refuse");
+  assert.deepEqual(await socket.closed.promise, { code: 1008, reason: "Update the client." });
+
+  const leaving = relay.openSocket("/.nyte/ws?ticket=def");
+  leaving.send("first");
+  assert.equal(await leaving.next(), "echo first");
+  leaving.close(4000, "Done");
+  await vi.waitFor(() => assert.equal(local.sockets.length, 2));
+  assert.deepEqual(relay.violations, []);
 });

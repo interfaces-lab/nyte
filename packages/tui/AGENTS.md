@@ -26,8 +26,11 @@ The boundaries test enforces:
 
 ## Hosts
 
-- Each command starts its own host on a worker thread over the shared `~/.nyte/nyte.db`, and talks to it only through `sdk.connect`.
-- `nyte host` serves one host and publishes `~/.nyte/host.json`. `--host-url` with `NYTE_HOST_TOKEN` attaches to it instead (`HostSource`). An attached TUI never starts a local host.
+- Every command is a client of the machine's one host. `connectHost` attaches to the host `~/.nyte/host.json` names (`findRunningHost`); with none, it starts `nyte host --log` detached in the home folder and waits for that file to name a live host, up to 20 s, then fails naming `hostLogPath()`. That host keeps running after the command exits, so quitting the TUI leaves its jobs and its runs going. Requests go through `sdk.connect`, and chats, the session list, streamed text and health through one `openHost` connection. The SDK's supervisor is the only reconnect; the TUI keeps none of its own.
+- Two commands that find no host each start one; `publishHost` keeps the first and the other exits "already running", and both attach to the one the file names. No other lock.
+- The TUI's working directory still picks a new chat's workspace (`addFolder`), whichever folder the host opened on. A running host doesn't see API keys exported only in the current shell.
+- `pnpm dev:tui` takes the same path: it attaches to whatever host runs, the installed one included, where `NYTE_DB` doesn't apply; with none, the host it starts runs this checkout on `NYTE_DB`, and every other client attaches to it until it stops.
+- `nyte host` serves one host (`serveHost`, shared with the desktop app's host) and publishes `~/.nyte/host.json`. It runs on Bun, which can't run `@lydell/node-pty`, so a pty `jobs.start` answers `unavailable`; terminals open on the desktop app's host, which runs on Electron's Node. It keeps its port and token across restarts, clean or not, so attached clients resume; a port another process holds gets a new one and a line on stderr. `--host-url` with `NYTE_HOST_TOKEN` attaches to a named host instead (`HostSource`), and never starts one.
 
 ## Theme tokens
 
@@ -47,6 +50,7 @@ The boundaries test enforces:
 - `bun test` runs in process: model tests over the view fixtures, effect tests over `fakeHost`/`fakePorts`, UI tests with `testRender`.
 - App tests use `startTui()`. Drive keys by command name with `press`, never by escape sequence.
 - The binary smoke test covers only what the compiled binary shows: startup, trust, exit codes, the resume text and `nyte host`.
+- A test home's teardown stops every process still running with that `HOME` (`stopHomeProcesses`), so the host a TUI started there doesn't outlive it.
 
 ## Verification
 

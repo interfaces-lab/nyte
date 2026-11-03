@@ -1,61 +1,64 @@
 import type { Execution, RunId } from "@nyte-ai/sdk";
 import { singleLine } from "./format.ts";
 
-export type ProgramStatus =
-  | { readonly state: "idle" | "working" | "done" }
+export type ProgramState =
+  | { readonly state: "idle" | "working" | "done" | "error"; readonly msg: string }
   | {
       readonly state: "blocked";
       readonly kind: "permission" | "question" | "auth";
       readonly msg: string;
-    }
-  | { readonly state: "error"; readonly msg: string };
+    };
+
+export type ProgramStatus = ProgramState & { readonly title: string | null };
 
 const OSC = "\u001B]7501;";
 
 const ST = "\u001B\\";
 
+const TITLE_MAX_BYTES = 192;
+
 const MSG_MAX_BYTES = 2048;
 
 export const CLEARED = `${OSC}state=clear${ST}`;
 
-/** What a run reports while nothing waits on the user: `done` or `error` only for the run the user watched and hasn't dismissed. */
 export function readProgramStatus(
   execution: Execution | undefined,
   watched: RunId | null,
-): ProgramStatus {
-  if (execution === undefined) return { state: "idle" };
+): ProgramState {
+  if (execution !== undefined && execution.kind !== "idle")
+    return { state: "working", msg: "Working" };
+  const last = execution?.lastRun ?? null;
 
-  if (execution.kind !== "idle") return { state: "working" };
-  const last = execution.lastRun;
+  if (last?.end.kind === "failed") return { state: "error", msg: last.end.failure.message };
 
-  if (last === null || last.id !== watched) return { state: "idle" };
+  if (last !== null && last.id === watched && last.end.kind === "completed")
+    return { state: "done", msg: "Finished" };
 
-  if (last.end.kind === "failed") return { state: "error", msg: last.end.failure.message };
-
-  return { state: last.end.kind === "completed" ? "done" : "idle" };
+  return { state: "idle", msg: "Ready" };
 }
 
 export function encode(status: ProgramStatus): string {
-  const pairs = [`state=${status.state}`, "app=nyte"];
+  const title = status.title === null ? undefined : base64Within(status.title, TITLE_MAX_BYTES);
+  const msg = base64Within(status.msg, MSG_MAX_BYTES);
 
-  if (status.state === "blocked") pairs.push(`kind=${status.kind}`);
-
-  if (status.state === "blocked" || status.state === "error") {
-    const msg = message(status.msg);
-
-    if (msg !== undefined) pairs.push(`msg=${msg}`);
-  }
+  const pairs = [
+    `state=${status.state}`,
+    ...(status.state === "blocked" ? [`kind=${status.kind}`] : []),
+    "app=nyte",
+    ...(title === undefined ? [] : [`title=${title}`]),
+    ...(msg === undefined ? [] : [`msg=${msg}`]),
+  ];
 
   return `${OSC}${pairs.join(":")}${ST}`;
 }
 
-function message(text: string): string | undefined {
+function base64Within(text: string, maxBytes: number): string | undefined {
   const clean = singleLine(text);
 
   if (clean === "") return undefined;
 
-  if (Buffer.byteLength(clean) <= MSG_MAX_BYTES) return Buffer.from(clean).toString("base64");
-  const budget = MSG_MAX_BYTES - Buffer.byteLength("…");
+  if (Buffer.byteLength(clean) <= maxBytes) return Buffer.from(clean).toString("base64");
+  const budget = maxBytes - Buffer.byteLength("…");
   let kept = "";
   let bytes = 0;
 

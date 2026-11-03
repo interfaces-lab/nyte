@@ -31,6 +31,7 @@ import type {
   SendOptions,
   SessionId,
   SessionInfo,
+  SessionsRead,
   SessionView,
   StopOutcome,
   TreeView,
@@ -141,13 +142,8 @@ export interface Session extends Head {
   part(id: PartId): Part<PartDefinition>;
 }
 
-/** The host's chats: watch and list them, and start one with its first message. */
+/** The host's chats: list them, and start one with its first message. */
 export interface Sessions {
-  watch(input?: {
-    readonly parents?: ParentFilter;
-    readonly limit?: number;
-  }): AsyncIterable<readonly SessionInfo[]>;
-
   /** Starts a chat with its first message. One commit creates the session and admits the message, so no session exists without one; until then a client holds a draft. A person's client's `configuration` is remembered as `Head.configure` remembers it. `id` is minted when absent and names the chat, its first message and its receipt. Pass it to key a draft or to retry: the same id and input return the same start. Other input under that id, or an id naming an existing chat, is refused as invalid. Resolves once the session's before_send hooks decided the message. A refusal, a failing hook, or a stop before the decision removes the session and throws. */
   start(input: {
     readonly id?: SessionId;
@@ -160,6 +156,8 @@ export interface Sessions {
     readonly isolation?: "worktree";
     /** `false` reads no context files (`AGENTS.md`, `CLAUDE.md` and the like) for the chat: not the user's, the ancestors' or the folder's own. The chat keeps it for good, across reloads, resumes and other hosts. */
     readonly contextFiles?: false;
+    /** `true` starts a side chat of `parent`: a chat a person keeps beside it. It never reports to the parent or shows as the parent's background work, and `SessionInfo.side` marks it. Without `parent` it is refused as invalid. */
+    readonly side?: true;
     readonly content: UserContent;
   }): Promise<{ readonly session: Session; readonly receipt: SendReceipt }>;
 
@@ -168,6 +166,12 @@ export interface Sessions {
     readonly cursor?: Cursor;
     readonly limit?: number;
   }): Promise<Paged<SessionInfo>>;
+
+  read(input?: {
+    readonly parents?: ParentFilter;
+    readonly limit?: number;
+    readonly resume?: { readonly seq: number };
+  }): Promise<SessionsRead>;
 }
 
 export interface Head {
@@ -185,23 +189,7 @@ export interface Head {
 
   view(options?: ViewOptions): Promise<SessionView>;
 
-  watch(options?: ViewOptions): AsyncIterable<SessionView>;
-
   see(commit: CommitId): Promise<void>;
-
-  /**
-   * Calls `listener` each time the head's view changes, and returns the unsubscribe. The first
-   * listener opens a `watch()`, and the last one to leave closes it. With `current`, it is the
-   * store React's `useSyncExternalStore`, Svelte, Vue and Solid read; both are stable, so keep the
-   * handle rather than calling `session.head(name)` on every render.
-   */
-  subscribe(listener: () => void): () => void;
-
-  /**
-   * The view the latest change delivered, or `undefined` before the first. It throws the watch's
-   * error once the watch fails, until a new first listener opens another.
-   */
-  current(): SessionView | undefined;
 
   /** The `limit` messages before `before`, older than the view's window, with the turns they belong to. */
   history(input: { readonly before: MessageId; readonly limit: number }): Promise<HistoryPage>;

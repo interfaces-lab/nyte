@@ -1,0 +1,11 @@
+{
+  "name": "@nyte-ai/tailnet",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "go test -count=1 ./...",
+    "clean": "rm -rf dist .cache"
+  }
+}

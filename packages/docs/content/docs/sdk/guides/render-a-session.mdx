@@ -7,36 +7,61 @@ The host folds a session's events into a `SessionView`: the messages in order, t
 to, what is running now, and the files that changed. Your client draws the view. It never replays
 events or merges streamed text itself.
 
-## Read it once, subscribe, or watch
+## Read it once, or follow its rows
 
 ```ts
 const view = await session.view({ tail: 100 });
 ```
 
-```ts
-const unsubscribe = session.subscribe(() => {
-  const view = session.current();
+`view` returns one snapshot. To keep a chat on screen current, open the host's rows with `openHost`
+from `@nyte-ai/sdk/client`. It holds one socket per host address, and each `head` store on it
+follows one head's rows:
 
-  if (view !== undefined) draw(view);
+```ts
+import { headView, openHost, streamText, withStreamedText } from "@nyte-ai/sdk/client";
+import type { StreamedText } from "@nyte-ai/sdk/client";
+
+const live = openHost(address, {
+  credentials: { kind: "token", token },
+  client: { kind: "other", name: "my-client", version: "1.0.0" },
+});
+
+const store = live.head(session.id, session.name, { tail: 100 });
+let texts: StreamedText = new Map();
+
+const show = () => {
+  const snapshot = store.snapshot();
+
+  if (snapshot !== null) draw(withStreamedText(headView(snapshot), texts));
+};
+
+const stopRows = store.subscribe(show);
+
+const stopText = live.text((update) => {
+  texts = streamText(texts, update);
+  show();
 });
 ```
 
-```ts
-for await (const view of session.watch({ tail: 100 })) draw(view);
-```
+`subscribe` and `snapshot` make the store the shape React's `useSyncExternalStore`, Svelte, Vue and
+Solid read; [Build an agent app](/docs/build/composition#add-the-files) shows each. `snapshot()` is
+`null` until the first read arrives. `headView` turns a snapshot into a view, the same shape
+`session.view()` returns without `seq`, and returns the same view for the same snapshot. Text a part
+is still streaming arrives on `live.text`; `streamText` keeps it and `withStreamedText` lays it over
+the view.
 
-`view` returns one snapshot. `subscribe` and `current` make the session a store, the shape React's
-`useSyncExternalStore`, Svelte, Vue and Solid read; [Build an agent app](/docs/build/composition#build-the-chat)
-shows each. The first listener opens a watch and the last one to leave closes it. `current()` is
-`undefined` until the first view arrives, and throws if the watch fails. Keep the handle you
-subscribe to, since `session.head(name)` returns a new one each call.
+A send still in the connection's journal is not a row yet. `session.view()` shows it as `unsent`;
+over a store, `unsentSends(connection, session.id, session.name)` does the same: `lay(view, seq)`
+adds it to the view, with `seq` from `store.freshness()` while the store is fresh, and `subscribe`
+calls you when the journal changes.
 
-`watch` yields a whole view on every change, not a patch, for scripts that read in a loop. When the
-connection drops, it picks up from where it stopped, so nothing is missed or repeated. If the stream
-can't recover, iteration throws.
+When the socket drops, the store marks itself stale (`store.freshness()`) and resumes from the last
+change it applied once the socket is back, so nothing is missed or repeated. Call `store.close()`
+when the chat leaves the screen, and `live.release()` when you are done with the host. In a browser,
+pass `socket: ticketSocket()`, since a page can't put headers on a WebSocket.
 
-`watchStore` from `@nyte-ai/sdk` gives any other watch the same store shape, such as a live session
-list: `watchStore(() => connection.sessions.watch())`.
+`live.directory({ parents: { kind: "roots" } })` is the same kind of store for a session list: its
+snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`.
 
 `tail` limits how many recent messages the view carries. The view always includes the turns those
 messages belong to.
@@ -147,18 +172,19 @@ if (oldest !== undefined) {
 }
 ```
 
-For a scrolling transcript, `pagedViews` does the bookkeeping. It wraps `watch` and keeps the pages
-you loaded at the front of every view it yields:
+For a scrolling transcript, `pagedViews` does the bookkeeping. It takes a source of views and
+`history`, and keeps the pages you loaded at the front of every view it yields:
 
 ```ts
 import { pagedViews } from "@nyte-ai/sdk";
 
-const views = pagedViews(session, { tail: 50 });
+// `views` is an AsyncIterable of the head's views, such as the head store's views above.
+const paged = pagedViews({ watch: () => views, history: (query) => session.history(query) });
 
-for await (const view of views) draw(view);
+for await (const view of paged) draw(view);
 
 // When the reader scrolls to the top:
-const loaded = await views.earlier(50);
+const loaded = await paged.earlier(50);
 ```
 
 `earlier` resolves with how many messages it added, and `0` once the first message of the chat is
@@ -166,19 +192,22 @@ showing. Iterate a `pagedViews` once.
 
 ## Mark a chat read
 
-Each entry in `view.heads` has `unread`, which stays `true` until the connection's principal has
-read up to that head's tip. Watching or viewing a head never marks it read, so a preloaded preview
-or a background watch leaves the chat unread. Your client marks it while the chat is on screen in
-a window that has focus, with the tip of the view it drew:
+Each entry in `SessionInfo.heads`, from `session.info()` or a directory row, has `unread`, which
+stays `true` until the connection's principal has read up to that head's tip. Reading or following
+a head never marks it read, so a preloaded preview or a background store leaves the chat unread.
+Your client marks it while the chat is on screen in a window that has focus, with the tip of the
+head it drew:
 
 ```ts
-const tip = view.heads.find((head) => head.name === session.name)?.tip;
+const tip = (await session.info()).heads.find((head) => head.name === session.name)?.tip;
 
 if (tip?.kind === "commit" && document.hasFocus()) await session.see(tip.id);
 ```
 
-Call `see` again each time you draw a newer view. A commit at or before the one already marked
-changes nothing, and the SDK skips a call for the commit it last sent for that head.
+Call `see` again each time you draw a newer tip. A commit at or before the one already marked
+changes nothing, and the SDK skips a call for the commit it last sent for that head. The view's
+`seenThrough` is the time of the commit the principal last saw, so a message whose `at` is after it
+arrived unseen.
 
 ## The rest of the view
 
@@ -195,6 +224,5 @@ changes nothing, and the SDK skips a call for the commit it last sent for that h
 | `background`    | Child sessions, jobs and browser pages, with whether each is still working |
 | `configuration` | The `selected` configuration and the `effective` one after defaults        |
 | `context`       | Tokens in the model's context and the size of its window                   |
-| `heads`         | Every head in the session, with whether it is `unread`                     |
 | `changes`       | Files the session changed in its workspace                                 |
 | `catalog`       | The commands, settings, skills, agents and tools this session can use      |

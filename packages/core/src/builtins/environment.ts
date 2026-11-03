@@ -5,16 +5,19 @@ import type { Plugin } from "../contract/plugin.ts";
 import type { ToolDefinition } from "../contract/tools.ts";
 import type { FilesApi } from "../contract/workspace.ts";
 import { attachFile } from "../env/attach.ts";
+import { CLIP_CHARS, clipText } from "../util/clip.ts";
 import { textDigest } from "../util/content.ts";
 import { lineDiff } from "../util/line-diff.ts";
 
 const READ_LINES = 2000;
 
-const READ_CHARS = 50 * 1024;
+/** Leaves room under `CLIP_CHARS` for the note on where to continue. */
+const READ_CHARS = CLIP_CHARS - 100;
+
+/** Long enough for the job tool to take in a job's scrollback, which is in memory. */
+const SCROLLBACK_MS = 100;
 
 const LIST_LIMIT = 500;
-
-const SHELL_BYTES = 32 * 1024;
 
 const PROGRESS_BYTES = 4 * 1024;
 
@@ -383,12 +386,17 @@ const job: ToolDefinition<Infer<typeof jobParameters>> = {
 
     if (found === undefined) return text(`This chat has no job ${args.id}.`);
 
-    if (args.action === "stop") await invocation.workspace.job(found.id).stop();
-    const view = args.action === "stop" ? ((await find()) ?? found) : found;
-    const tail = view.tail.trimEnd();
-    const state = describeJobState(view.state);
+    const handle = invocation.workspace.job(found.id);
 
-    return text(tail === "" ? `Job ${view.id} ${state}.` : `Job ${view.id} ${state}:\n${tail}`);
+    if (args.action === "stop") await handle.stop();
+    const view = args.action === "stop" ? ((await find()) ?? found) : found;
+    const shell = createShellOutput(() => undefined);
+    const frames = handle.output()[Symbol.asyncIterator]();
+
+    await shell.read(frames, AbortSignal.timeout(SCROLLBACK_MS));
+    await frames.return?.();
+
+    return text(shell.render(`[job ${view.id} ${describeJobState(view.state)}]`));
   },
 };
 
@@ -402,8 +410,14 @@ function describeJobState(state: JobView["state"]): string {
     : `ended (${state.reason}) with code ${state.code ?? "none"}`;
 }
 
+/**
+ * Keeps the last `CLIP_CHARS` bytes of output, at least `CLIP_CHARS` characters'
+ * worth, and counts the characters it drops. A gap drops what came before it,
+ * since the frames it skipped leave a hole the model can't see.
+ */
 function createShellOutput(progress: (tail: string) => void) {
   const chunks: Uint8Array[] = [];
+  const decoder = new TextDecoder();
   let kept = 0;
   let dropped = 0;
   let code: number | null = null;
@@ -440,14 +454,20 @@ function createShellOutput(progress: (tail: string) => void) {
         return true;
       }
 
-      if (frame.kind === "gap") continue;
+      if (frame.kind === "gap") {
+        dropped += decoder.decode(joinBytes(chunks.splice(0)), { stream: true }).length;
+        kept = 0;
+
+        continue;
+      }
+
       chunks.push(frame.data);
       kept += frame.data.byteLength;
 
-      while (kept - (chunks[0]?.byteLength ?? 0) >= SHELL_BYTES && chunks.length > 1) {
-        const first = chunks.shift();
-        kept -= first?.byteLength ?? 0;
-        dropped += first?.byteLength ?? 0;
+      while (kept - (chunks[0]?.byteLength ?? 0) >= CLIP_CHARS && chunks.length > 1) {
+        const first = chunks.shift() ?? new Uint8Array(0);
+        kept -= first.byteLength;
+        dropped += decoder.decode(first, { stream: true }).length;
       }
 
       if (timer !== undefined) continue;
@@ -473,16 +493,9 @@ function createShellOutput(progress: (tail: string) => void) {
     },
     code: () => code,
     render(status: string): string {
-      const joined = joinBytes(chunks);
-      const cut = Math.max(0, joined.byteLength - SHELL_BYTES);
-      const output = new TextDecoder().decode(joined.subarray(cut)).trimEnd();
+      const output = new TextDecoder().decode(joinBytes(chunks)).trimEnd();
 
-      const truncated =
-        dropped + cut > 0
-          ? [`[truncated: the first ${dropped + cut} bytes of output are not shown]`]
-          : [];
-
-      return [...truncated, ...(output === "" ? [] : [output]), status].join("\n");
+      return clipText(output === "" ? status : `${output}\n${status}`, "tail", { cut: dropped });
     },
   };
 }

@@ -249,23 +249,13 @@ test("the footer under the composer shows where the chat runs, and its branch me
     expect(await git("branch", "--show-current")).toBe("feature");
   });
 
-  await test.step("the context ring at the footer's end reads the context used on hover", async () => {
-    const ring = footer.getByRole("meter", { name: "Context" });
-    await expect(ring).toHaveAttribute("aria-valuetext", /^\d+% context used$/u);
-    const readout = page.getByText(/^\d+% context used\n[\d.,]+K? of [\d.,]+K? tokens$/u);
-    await ring.hover();
-    await expect(readout).toBeVisible();
-    await page.mouse.move(0, 0);
-    await expect(readout).toBeHidden();
-  });
-
-  await test.step("the footer row is 32 px tall with 20 px segments in light and dark", async () => {
+  await test.step("the footer row is 26 px tall with 20 px segments in light and dark", async () => {
     const measured = await footer.evaluate((row) => ({
       row: row.getBoundingClientRect().height,
       segments: [...row.querySelectorAll("button")].map((button) => button.offsetHeight),
     }));
 
-    expect(measured.row).toBe(32);
+    expect(measured.row).toBe(26);
     expect(measured.segments).toEqual([20, 20]);
 
     await page.evaluate(() => {

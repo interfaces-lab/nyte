@@ -1,0 +1,126 @@
+---
+title: mcp.approve
+description: Approves the MCP sign-in waiting with this code, for read-only tools or for write tools under an approval policy ceiling.
+---
+
+Approves an outside agent's MCP sign-in. The agent's sign-in page at `/oauth/authorize` shows the
+client's name, the access it asks for and a short code, and waits; this operation names that code
+and the access to grant. The page then redirects to the client with an authorization code, which
+the client trades at `/oauth/token` for a token that works only at `/mcp`.
+
+`read-only` lets the agent list and call the `read` tools. `ceiling` also opens the `write` tools,
+which start and steer sessions; a write tool fails while the host's `permissions` setting asks less
+than the ceiling, so work the agent starts never runs with more freedom than you chose.
+
+## When to call it
+
+When you just started a sign-in from an agent, such as `claude mcp login` or `codex mcp login`, and
+its page shows a code. Only approve a code you recognize.
+
+## Access
+
+Needs `owner` authority, and answers only on the host's local socket. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{ "code": "K7QM-W2XP", "access": { "kind": "ceiling", "ceiling": "ask" } }
+```
+
+Response:
+
+```json
+{ "client": "Claude Code" }
+```
+
+The code ignores case and hyphens. A sign-in waits 10 minutes; the authorization code lasts one
+minute.
+
+## Errors
+
+- `unknown` when no sign-in waits with that code: `No MCP sign-in is waiting with that code.`
+- `unavailable` when the host serves no MCP endpoint.
+- `denied` off the local socket.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["code", "access"],
+  "properties": {
+    "code": {
+      "type": "string"
+    },
+    "access": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "read-only"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "ceiling"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "ceiling"
+            },
+            "ceiling": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "ask"
+                },
+                {
+                  "type": "string",
+                  "const": "auto-edit"
+                },
+                {
+                  "type": "string",
+                  "const": "full"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["client"],
+  "properties": {
+    "client": {
+      "type": "string"
+    }
+  }
+}
+```
+
+{/* generated:end */}

@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
 import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode, Ref, RefObject } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
@@ -123,20 +123,35 @@ export function TrayIconAction({
 }
 
 function FocusSection({ within }: { readonly within: RefObject<HTMLDivElement | null> }): null {
-  useMountEffect(() => within.current?.closest("section")?.focus({ preventScroll: true }));
+  const focused = useRef(false);
+
+  useMountEffect(() => {
+    if (focused.current) return;
+    focused.current = true;
+    within.current?.closest("section")?.focus({ preventScroll: true });
+  });
 
   return null;
 }
 
 function TrayContent({
   focusKey,
+  onStranded,
   children,
 }: {
   readonly focusKey: string | undefined;
+  readonly onStranded: () => void;
   readonly children: ReactNode;
 }): ReactElement {
   const isPresent = useIsPresent();
   const ref = useRef<HTMLDivElement>(null);
+
+  const reappear = useEffectEvent(() => {
+    if (!isPresent) onStranded();
+  });
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- runs again when a hidden Activity shows the tray; an exit that started or was due while hidden never finishes
+  useLayoutEffect(() => reappear(), []);
 
   return (
     <div ref={ref} inert={!isPresent} {...props(trayParts.presence)}>
@@ -164,9 +179,10 @@ export function Tray({
   readonly children: ReactNode;
 }): ReactElement {
   const reducedMotion = useReducedMotion();
+  const [generation, setGeneration] = useState(0);
 
   return (
-    <AnimatePresence initial={false} mode="popLayout" anchorY="bottom">
+    <AnimatePresence key={generation} initial={false} mode="popLayout" anchorY="bottom">
       {open && (
         <motion.section
           ref={occludes}
@@ -191,7 +207,9 @@ export function Tray({
             onClose();
           }}
         >
-          <TrayContent focusKey={focusKey}>{children}</TrayContent>
+          <TrayContent focusKey={focusKey} onStranded={() => setGeneration(generation + 1)}>
+            {children}
+          </TrayContent>
         </motion.section>
       )}
     </AnimatePresence>

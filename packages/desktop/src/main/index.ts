@@ -12,7 +12,6 @@ import {
   shell,
 } from "electron";
 import { randomUUID } from "node:crypto";
-import { windowAt } from "./window-at.ts";
 import { macOSTrafficLightPosition } from "./traffic-lights.ts";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -24,7 +23,6 @@ import {
   HOST_PORT_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
-  INITIAL_TAB_ARGUMENT,
   LAUNCH_WINDOWS_ARGUMENT,
   MACHINE_NAME_ARGUMENT,
   MAIN_OPERATION_PATHS,
@@ -59,6 +57,9 @@ import type { CallRoute } from "../shared/ipc-call.ts";
 import { localFonts } from "./native/fonts.ts";
 import { registerAccount } from "./account/account.ts";
 import type { AccountSession } from "@nyte-ai/connect/host";
+import { ConnectRuntime } from "@nyte-ai/connect/host";
+import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
+import { defaultSecrets } from "@nyte-ai/host/secrets";
 import { AccountStore } from "./account/account-store.ts";
 import { accountScheme } from "../shared/account/scheme.ts";
 import { offscreenCanvasPreviewer } from "./canvas-preview.ts";
@@ -68,9 +69,14 @@ import { readConnectConfig } from "../shared/connect-config.ts";
 import type { ConnectConfig } from "../shared/connect-config.ts";
 import { adoptStagedCli, inspectBundledCli, installCli, stageCli } from "./native/cli.ts";
 import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
-import { answerAccount } from "../shared/host-account.ts";
-import { answerAgent } from "../shared/host-browser-agent.ts";
-import { HostProcess } from "./host-supervisor.ts";
+import { DESKTOP_APP_IDS } from "../shared/host-agent-job.ts";
+import { throwForRenderer } from "../host/desktop-host.ts";
+import type { DesktopHost } from "../host/desktop-host.ts";
+import { bridgeHostPort, startHostRuntime } from "./host-runtime.ts";
+import { createHostTray } from "./host-tray.ts";
+import type { HostTray } from "./host-tray.ts";
+import { clientActions } from "@nyte-ai/app/contract/client-actions.ts";
+import type { HostRuntime } from "./host-runtime.ts";
 import type { HostWindow } from "../shared/host-window.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
 import { LaunchStateStore } from "./launch-state.ts";
@@ -93,9 +99,11 @@ interface NyteWindow {
 
 const windows = new Map<HostWindow, NyteWindow>();
 
-let hostProcess: HostProcess | undefined;
+let desktopHost: DesktopHost | undefined;
 
-const hostStarted = Promise.withResolvers<HostProcess>();
+let hostRuntime: HostRuntime | undefined;
+
+let hostTray: HostTray | undefined;
 
 let account: AccountSession | undefined;
 
@@ -151,9 +159,9 @@ const launchState = new LaunchStateStore(join(app.getPath("userData"), "launch-s
 
 const home = updateTest ? app.getPath("userData") : homedir();
 
-const hostDelay = Number.parseInt(process.env["NYTE_DESKTOP_HOST_DELAY_MS"] ?? "", 10);
+const nyteHome = process.env["NYTE_HOME"] ?? join(home, ".nyte");
 
-const hostOpenDelayMs = app.isPackaged || Number.isNaN(hostDelay) ? undefined : hostDelay;
+const secrets = defaultSecrets(home);
 
 if (process.platform === "linux") app.commandLine.appendSwitch("gtk-version", "3");
 
@@ -203,7 +211,7 @@ const browserSurfaces = new BrowserSurfaces({
   emit: emitHostEvent,
   filterListPath: app.isPackaged
     ? join(process.resourcesPath, "adblock.bin")
-    : join(app.getAppPath(), "resources", "adblock.bin"),
+    : join(app.getAppPath(), "resources", "adblock.generated.bin"),
   windowShown: (window) => windows.get(window.webContents.id)?.shown ?? false,
   pagePreload: join(import.meta.dirname, "../preload/browser-page.js"),
   forwardKey: ({ surface, window, contents, key }) => {
@@ -295,10 +303,10 @@ function keepAwake(awake: boolean): void {
   awakeBlocker = undefined;
 }
 
-function startedHost(): HostProcess {
-  if (hostProcess === undefined) throw new Error("The host process starts when Electron is ready.");
+function startedHost(): DesktopHost {
+  if (desktopHost === undefined) throw new Error("The host connects when Electron is ready.");
 
-  return hostProcess;
+  return desktopHost;
 }
 
 async function confirmExternal(url: string, id: HostWindow) {
@@ -345,19 +353,11 @@ const mainCalls: CallTable = {
 
     if (picked === undefined) return { kind: "cancelled" };
 
-    const reply = await startedHost().call(window, {
-      path: "host.openWorkspace",
-      input: { path: picked },
-    });
-
-    if (!reply.ok) throw new ExpectedHostError(reply.error);
-
-    if (reply.path !== "host.openWorkspace")
-      throw new Error("The host answered another operation.");
-
-    return reply.value;
+    return startedHost()
+      .call(window, "host.openWorkspace", { path: picked })
+      .catch(throwForRenderer);
   },
-  "host.storeOpening": () => startedHost().storeOpening(),
+  "host.storeOpening": async () => "ready",
   "host.updates.state": async () => updates?.state() ?? { kind: "idle" },
   "host.updates.check": async () => updates?.click(),
   "host.updates.channel": async () => {
@@ -382,20 +382,6 @@ const mainCalls: CallTable = {
   "host.openExternal": async (_window, { url }) => void shell.openExternal(safeExternalUrl(url)),
   "host.confirmExternal": (window, { url }) => confirmExternal(safeExternalUrl(url), window),
   "host.revealPath": async (_window, { path }) => shell.showItemInFolder(path),
-  "host.tearOffTab": async (_window, { tab, x, y }) => {
-    const at = { x: Math.round(x), y: Math.round(y) };
-
-    if (
-      windowAt(
-        [...windows.values()].map((entry) => entry.window),
-        at,
-      )
-    )
-      return { kind: "inside" };
-    createWindow(randomUUID(), { tab, at });
-
-    return { kind: "opened" };
-  },
   "host.openPluginsFolder": async () => {
     const folder = join(home, ".nyte", "plugins");
     await mkdir(folder, { recursive: true });
@@ -421,6 +407,9 @@ const mainCalls: CallTable = {
 
 const mainRoute: CallRoute = (window, path, input) => callTable(mainCalls, window, path, input);
 
+const hostRoute: CallRoute = (window, path, input) =>
+  startedHost().call(window, path, input).catch(throwForRenderer);
+
 const mainPaths: ReadonlySet<string> = new Set(MAIN_OPERATION_PATHS);
 
 async function installStagedCli(staged: Promise<string>): Promise<void> {
@@ -435,43 +424,37 @@ async function installStagedCli(staged: Promise<string>): Promise<void> {
   }
 }
 
-function startHost(): HostProcess {
-  return new HostProcess(
-    join(import.meta.dirname, "host-entry.js"),
-    {
-      home,
-      version: app.getVersion(),
-      account: account === undefined ? null : account.state(),
-      openDelayMs: hostOpenDelayMs,
+function startHost(): DesktopHost {
+  const runtime = startHostRuntime({
+    appId: updateTest ? DESKTOP_APP_IDS.updateTest : DESKTOP_APP_IDS.production,
+    home,
+    nyteHome,
+    connect: new ConnectRuntime({
+      config: readConnectConfig(import.meta.env),
+      home: join(home, ".nyte"),
+      authorizer: account === undefined ? undefined : { kind: "session", account },
+      onChange: () => desktopHost?.remoteChanged(),
+    }),
+    usageWorker: new URL("./usage-worker.js", import.meta.url),
+    hostEntry: new URL("./nyte-host.js", import.meta.url),
+    agent: browserSurfaces.agent,
+    preview: (request, signal) => previewCanvas(request, signal),
+    previewSignal: () => previewsOpen.signal,
+    emitHostEvent,
+    keepAwake,
+    settingsChanged: (next) => {
+      settings = next;
+      browserSurfaces.settingsChanged();
     },
-    {
-      event: emitHostEvent,
-      awake: keepAwake,
-      settings: (next) => {
-        settings = next;
-        browserSurfaces.settingsChanged();
-      },
-      alert: (delivery) => alerts.agent(delivery),
-      badge: (count) => alerts.badge(count),
-      answer: async (request, signal) => {
-        if (request.kind === "agent")
-          return { kind: "agent", answer: await answerAgent(browserSurfaces.agent, request.call) };
+    alert: (delivery) => alerts.agent(delivery),
+    badge: (count) => alerts.badge(count),
+    linkChanged: () => hostTray?.refresh(),
+    registrationChanged: () => hostTray?.refresh(),
+  });
 
-        if (request.kind === "canvas-preview")
-          return {
-            kind: "canvas-preview",
-            outcome: await previewCanvas(
-              request.request,
-              AbortSignal.any([signal, previewsOpen.signal]),
-            ),
-          };
+  hostRuntime = runtime;
 
-        if (account === undefined) throw new Error("This build has no Nyte account.");
-
-        return { kind: "account", answer: await answerAccount(account, request.call, signal) };
-      },
-    },
-  );
+  return runtime.desktop;
 }
 
 function createAccount(config: ConnectConfig | undefined): AccountSession | undefined {
@@ -483,14 +466,12 @@ function createAccount(config: ConnectConfig | undefined): AccountSession | unde
         publishableKey: config.clerk.publishableKey,
         scheme: accountScheme({ packaged: app.isPackaged, updateTest }),
         window: (id) => (id === undefined ? currentWindow() : windows.get(id))?.window,
-        onChange: () => {
-          if (session !== undefined) hostProcess?.accountChanged(session.state());
-        },
+        onChange: () => desktopHost?.accountChanged(),
         store: new AccountStore({
           path: join(app.getPath("userData"), "account.json"),
           sealer: {
-            seal: async (plain) => (await hostStarted.promise).seal(plain),
-            open: async (sealed) => (await hostStarted.promise).open(sealed),
+            seal: (plain) => sealSecret(secrets, plain),
+            open: (sealed) => openSecret(secrets, sealed),
           },
         }),
       });
@@ -595,21 +576,14 @@ function registerIpc(): void {
   ipcMain.on(HOST_PORT_CHANNEL, (event, nonce: unknown) => {
     senderWindow(event);
 
-    if (typeof nonce !== "string") return;
-    void startedHost()
-      .openPort()
-      .then((port) => {
-        if (event.sender.isDestroyed()) port?.close();
-        else event.sender.postMessage(HOST_PORT_CHANNEL, nonce, port === undefined ? [] : [port]);
-      });
+    if (typeof nonce !== "string" || hostRuntime === undefined) return;
+    event.sender.postMessage(HOST_PORT_CHANNEL, nonce, [bridgeHostPort(hostRuntime.link)]);
   });
 
   ipcMain.handle(CALL_CHANNEL, async (event, request: CallRequest) => {
     senderWindow(event);
 
-    return mainPaths.has(request.path)
-      ? callIpc(mainRoute, event.sender.id, request)
-      : startedHost().call(event.sender.id, request);
+    return callIpc(mainPaths.has(request.path) ? mainRoute : hostRoute, event.sender.id, request);
   });
 }
 
@@ -647,27 +621,9 @@ function openingFrame(): OpeningFrame {
 
 const FIRST_FRAME_LIMIT_MS = 4_000;
 
-/** Where a torn-off window's top left sits from the pointer, so the pointer lands on its tab strip. */
-const TORN_GRAB = { x: 160, y: 20 } as const;
-
-/**
- * Each window keeps a lasting id, so its tabs and drafts reopen in it after a quit. A window a tab
- * was dragged out to opens under the pointer, showing that tab.
- */
-function createWindow(
-  windowId: string = randomUUID(),
-  torn?: { readonly tab: string; readonly at: { readonly x: number; readonly y: number } },
-): NyteWindow {
-  const opening = openingFrame();
-
-  const frame =
-    torn === undefined
-      ? opening
-      : {
-          ...opening,
-          bounds: { ...opening.bounds, x: torn.at.x - TORN_GRAB.x, y: torn.at.y - TORN_GRAB.y },
-        };
-
+/** Each window keeps a lasting id, so its tabs and drafts reopen in it after a quit. */
+function createWindow(windowId: string = randomUUID()): NyteWindow {
+  const frame = openingFrame();
   const kept = launchState.windows();
 
   if (!kept.includes(windowId)) launchState.setWindows([...kept, windowId]);
@@ -687,7 +643,6 @@ function createWindow(
         ...(windows.size === 0
           ? [`${LAUNCH_WINDOWS_ARGUMENT}=${launchState.windows().join(",")}`]
           : []),
-        ...(torn === undefined ? [] : [`${INITIAL_TAB_ARGUMENT}=${torn.tab}`]),
       ],
       contextIsolation: true,
       nodeIntegration: false,
@@ -727,7 +682,7 @@ function createWindow(
   });
 
   const releaseRendererWork = (): void => {
-    hostProcess?.release(id);
+    desktopHost?.releaseWindow(id);
     alerts.reloading(id);
   };
 
@@ -813,7 +768,7 @@ function createWindow(
     if (!quitting && windows.size > 0)
       launchState.setWindows(launchState.windows().filter((kept) => kept !== windowId));
     browserSurfaces.releaseWindow(id);
-    hostProcess?.release(id);
+    desktopHost?.releaseWindow(id);
     alerts.release(id);
 
     if (windows.size === 0) {
@@ -838,6 +793,22 @@ function restoreWindows(): NyteWindow {
   return first;
 }
 
+function showHostTray(): void {
+  if (process.platform !== "darwin" || hostRuntime === undefined) return;
+
+  hostTray = createHostTray({
+    agent: hostRuntime.agent,
+    link: hostRuntime.link,
+    launchState,
+    checkForUpdates: () => void updates?.click(),
+    openSettings: () => {
+      app.focus({ steal: true });
+      const window = currentWindow() ?? restoreWindows();
+      window.menuCommands.dispatch({ kind: "action", action: clientActions.settings.id });
+    },
+  });
+}
+
 let quitting = false;
 
 const SHUTDOWN_LIMIT_MS = 5_000;
@@ -848,7 +819,7 @@ let shutDown = false;
 
 function shutdown(): Promise<void> {
   shuttingDown ??= Promise.race([
-    Promise.allSettled([browserHistory.flush(), hostProcess?.close(SHUTDOWN_LIMIT_MS)]),
+    Promise.allSettled([browserHistory.flush(), hostRuntime?.close()]),
     new Promise((resolve) => setTimeout(resolve, SHUTDOWN_LIMIT_MS)),
   ]).then(() => {
     shutDown = true;
@@ -897,10 +868,9 @@ if (!hasSingleInstanceLock) {
 
     if (devDockIcon) app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
 
-    hostProcess = startHost();
-    hostStarted.resolve(hostProcess);
-    powerMonitor.on("suspend", () => hostProcess?.suspend());
-    powerMonitor.on("resume", () => hostProcess?.resume());
+    desktopHost = startHost();
+    powerMonitor.on("suspend", () => desktopHost?.suspend());
+    powerMonitor.on("resume", () => desktopHost?.resume());
 
     const menu = Menu.buildFromTemplate(
       applicationMenuTemplate({
@@ -939,7 +909,7 @@ if (!hasSingleInstanceLock) {
         publish: (state) => broadcast({ kind: "update_changed", state }),
         publishChannel: (channel) => broadcast({ kind: "update_channel_changed", channel }),
         item: updateItem,
-        activity: () => startedHost().activity(),
+        activity: () => startedHost().updateActivity(),
         beforeRelaunch: () => {
           quitting = true;
 
@@ -948,6 +918,7 @@ if (!hasSingleInstanceLock) {
       });
 
     updatesReady.resolve();
+    showHostTray();
     restoreWindows();
 
     const cli =
@@ -982,7 +953,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+    if (process.platform !== "darwin" && !launchState.menuBarOnly()) app.quit();
   });
 
   app.on("activate", () => {

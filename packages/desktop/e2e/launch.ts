@@ -7,6 +7,8 @@ import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { WINDOW_PAINTED_CHANNEL } from "../src/shared/ipc.ts";
+import { electronExecutable, startE2eHost } from "./host.ts";
+import type { E2eHost } from "./host.ts";
 import { inspectProcessTree, survivors } from "./process-tree.ts";
 
 const DESKTOP_ROOT = resolve(import.meta.dirname, "..");
@@ -15,7 +17,7 @@ const PACKAGES_ROOT = resolve(DESKTOP_ROOT, "..");
 
 const MAIN_ENTRY = resolve(DESKTOP_ROOT, "out-e2e/main/index.js");
 
-/** How long Electron has after `close()` to reap its helpers and the Nyte Host utility process. */
+/** How long Electron has after `close()` to reap its helpers. */
 const REAP_MS = 5_000;
 
 const KEPT_VARIABLES = new Set([
@@ -48,10 +50,14 @@ interface LaunchOptions {
   readonly downloadsDirectory?: string;
   /** The app-data folder to keep across launches, as a relaunch reuses its profile; default a new one removed on close. */
   readonly appData?: string;
-  /** Variables set over the kept ones, such as `NYTE_TRACE`. */
+  /** Variables set over the kept ones, such as `NYTE_TRACE`, for the app and its host. */
   readonly environment?: Readonly<Record<string, string>>;
-  /** Hold the host this long before it opens. */
+  /** The places server the scripted restaurant answers link to. */
+  readonly places?: string;
+  /** Hold the host this long after the app starts. */
   readonly hostDelayMs?: number;
+  /** A host already running for `home`, left running on close, as a quit leaves it; by default the launch starts one and stops it on close. */
+  readonly host?: E2eHost;
   /**
    * Typed into the focused element by main the moment the renderer reports its first frame,
    * long before Playwright could reach the window.
@@ -63,8 +69,10 @@ interface LaunchedDesktop {
   readonly application: ElectronApplication;
   readonly page: Page;
   readonly home: string;
+  readonly host: E2eHost;
+  /** The app's output, then its host's log and the scripted catalog's lines as they come. */
   readonly output: readonly string[];
-  /** Quits the app and throws if any process of its tree, the Nyte Host utility process included, outlives it. */
+  /** Quits the app, throws if any process of its tree outlives it, then stops its host. */
   close(): Promise<void>;
 }
 
@@ -82,25 +90,16 @@ async function assertBuilt(): Promise<void> {
   }
 }
 
-async function electronExecutable(): Promise<string> {
-  const electronRoot = join(DESKTOP_ROOT, "node_modules/electron");
-  const executable = await readFile(join(electronRoot, "path.txt"), "utf8");
-
-  return join(electronRoot, "dist", executable.trim());
-}
-
-function launchEnvironment(options: LaunchOptions) {
+function launchEnvironment(options: LaunchOptions, host: E2eHost) {
   const kept = Object.entries(process.env).filter(
     (entry): entry is [string, string] => entry[1] !== undefined && KEPT_VARIABLES.has(entry[0]),
   );
 
   return {
     ...Object.fromEntries(kept),
-    ...options.environment,
+    ...host.environment,
     HOME: options.home,
     USERPROFILE: options.home,
-    NYTE_DESKTOP_HOST_DELAY_MS:
-      options.hostDelayMs === undefined ? "" : String(options.hostDelayMs),
   };
 }
 
@@ -147,20 +146,43 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
   );
   await symlink(join(DESKTOP_ROOT, "resources"), join(root, "resources"), "junction");
 
-  const application = await _electron.launch({
-    executablePath: await electronExecutable(),
-    args: [
-      root,
-      "--use-mock-keychain",
-      "--password-store=basic",
-      ...(process.env.NYTE_E2E_60FPS === "1" ? ["--enable-features=ThrottleMainFrameTo60Hz"] : []),
-    ],
-    cwd: DESKTOP_ROOT,
-    env: launchEnvironment(options),
-    timeout: 30_000,
-  });
-
   const output: string[] = [];
+
+  const host =
+    options.host ??
+    (await startE2eHost({
+      home: options.home,
+      parentDirectory: options.parentDirectory,
+      places: options.places,
+      environment: options.environment,
+      output,
+    }));
+
+  const stopHost = (): Promise<void> =>
+    options.host === undefined ? host.close() : Promise.resolve();
+
+  if (options.hostDelayMs !== undefined) await host.hold(options.hostDelayMs);
+
+  const application = await _electron
+    .launch({
+      executablePath: await electronExecutable(),
+      args: [
+        root,
+        "--use-mock-keychain",
+        "--password-store=basic",
+        ...(process.env.NYTE_E2E_60FPS === "1"
+          ? ["--enable-features=ThrottleMainFrameTo60Hz"]
+          : []),
+      ],
+      cwd: DESKTOP_ROOT,
+      env: launchEnvironment(options, host),
+      timeout: 30_000,
+    })
+    .catch(async (cause: unknown) => {
+      await stopHost();
+      throw cause;
+    });
+
   const child = application.process();
 
   for (const stream of [child.stdout, child.stderr]) {
@@ -177,6 +199,7 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
     const tree = await inspectProcessTree(child.pid);
     await quit();
     const left = tree === null ? [] : await survivors(tree, REAP_MS);
+    await stopHost();
 
     if (left.length > 0)
       throw new Error(
@@ -188,9 +211,10 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
     const page = await application.firstWindow();
     await page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout: 30_000 });
 
-    return { application, page, home: options.home, output, close };
+    return { application, page, home: options.home, host, output, close };
   } catch (cause) {
     await quit();
+    await stopHost();
     throw cause;
   }
 }

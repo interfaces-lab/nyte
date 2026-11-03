@@ -6,7 +6,14 @@ import type {
   ProgressNotification,
   Tool,
 } from "@earendil-works/pi-mcp";
-import { attachFile, followedTrace, startSpan, traceparent } from "@nyte-ai/core";
+import {
+  attachFile,
+  CLIP_CHARS,
+  clipText,
+  followedTrace,
+  startSpan,
+  traceparent,
+} from "@nyte-ai/core";
 import type { ExecutionEnv, ToolDefinition, ToolNamespace } from "@nyte-ai/core";
 import { isJson, isJsonObject } from "@nyte-ai/schema";
 import type {
@@ -23,12 +30,6 @@ import type { McpServerEntry } from "./config.ts";
 type JsonObject = { readonly [key: string]: Json };
 
 const NAME_LIMIT = 64;
-
-/** The most result text a session stores and the model sees; the rest is kept as an attachment. */
-const RESULT_CHARS = 32_000;
-
-/** How much of a clipped result's head is kept; the tail keeps the rest of `RESULT_CHARS`. */
-const HEAD_CHARS = 8_000;
 
 /** The longest a call may run in all, however often its progress resets the per-request timeout. */
 const CALL_LIMIT_MS = 10 * 60_000;
@@ -255,9 +256,7 @@ function bridge(
       if (result.isError === true) {
         const text = resultText(result);
 
-        throw new Error(
-          text.length > RESULT_CHARS ? clip(text, "") : text || `${tool.name} failed.`,
-        );
+        throw new Error(clipText(text, "ends") || `${tool.name} failed.`);
       }
 
       const content = await readToolContent(result, invocation.env, tool.name);
@@ -267,7 +266,7 @@ function bridge(
       if (
         output === undefined ||
         !isJson(structured) ||
-        JSON.stringify(structured).length > RESULT_CHARS
+        JSON.stringify(structured).length > CLIP_CHARS
       )
         return { content };
 
@@ -290,8 +289,9 @@ function toolProgress(update: ProgressNotification): ToolProgress {
 }
 
 /**
- * The result's blocks as tool content. Text past `RESULT_CHARS` in all is
- * clipped (`clip`) and the whole text is attached once as a file.
+ * The result's blocks as tool content. Text past `CLIP_CHARS` in all keeps
+ * its head and its longer tail, which is where logs put the failure, and the
+ * whole text is attached once as a file.
  */
 async function readToolContent(
   result: CallToolResult,
@@ -308,7 +308,7 @@ async function readToolContent(
 
   const text = resultText(result);
 
-  if (text.length <= RESULT_CHARS) return content;
+  if (text.length <= CLIP_CHARS) return content;
   const name = `${tool}.txt`;
 
   const whole = await attachFile(env.files, once(new TextEncoder().encode(text)), {
@@ -319,7 +319,11 @@ async function readToolContent(
   return [
     {
       kind: "text",
-      text: clip(text, whole.kind === "file" ? `; the whole result is attached as ${name}` : ""),
+      text: clipText(
+        text,
+        "ends",
+        whole.kind === "file" ? { hint: `the whole result is attached as ${name}` } : {},
+      ),
     },
     whole,
     ...content.filter((_, index) => result.content[index]?.type === "image"),
@@ -333,13 +337,6 @@ function resultText(result: CallToolResult): string {
       block.type === "image" ? [] : [block.type === "text" ? block.text : JSON.stringify(block)],
     )
     .join("\n");
-}
-
-/** `text`'s head and its longer tail, which is where logs put the failure, around a marker ending in `note`. */
-function clip(text: string, note: string): string {
-  const elided = (text.length - RESULT_CHARS).toLocaleString("en-US");
-
-  return `${text.slice(0, HEAD_CHARS)}\n\n[${elided} characters cut from the middle${note}.]\n\n${text.slice(HEAD_CHARS - RESULT_CHARS)}`;
 }
 
 function passthrough(json: Tool["inputSchema"]): Schema<JsonObject> {

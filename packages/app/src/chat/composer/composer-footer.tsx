@@ -7,19 +7,16 @@ import { useChat } from "../../chats/index.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { BranchSegment } from "../../panes/branch-segment.tsx";
 import { EnvironmentMenu } from "../../panes/environment-menu.tsx";
-import { ContextRing } from "./composer-context.tsx";
 
 const styles = create({
   footer: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: space.s2,
     minWidth: 0,
-    paddingBlockStart: space.s2,
-    paddingBlockEnd: space.s0_5,
+    paddingBlock: space.s0_5,
     paddingInline: space.s1,
-    // A 1 px transparent border on each edge makes the row 32 px tall.
+    // A 1 px transparent border on each edge leaves 3 px around the 20 px segments.
     borderBlockWidth: space.px,
     borderBlockStyle: "solid",
     borderBlockColor: "transparent",
@@ -58,7 +55,6 @@ export function ComposerFooter({
         )}
         {nyte.clientSurface === "desktop" && <EnvironmentMenu active={active} size="xs" />}
       </div>
-      <ContextRing sessionId={sessionId} />
     </div>
   );
 }

@@ -14,8 +14,7 @@ export default defineConfig({
     "packages/ai/src/providers/snapshots/**",
     // Playwright writes these on --update-snapshots.
     "**/*-snapshots/**",
-    // The lab's film is a creative sketch, kept out of the workspace checks.
-    "packages/lab/video/**",
-    "packages/lab/remotion.config.ts",
+    // Local-only material, such as the lab's film and research notes.
+    "**/.local/**",
   ],
 });

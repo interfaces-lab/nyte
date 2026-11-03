@@ -1,4 +1,4 @@
-import { attachFile } from "@nyte-ai/core";
+import { attachFile, clipText } from "@nyte-ai/core";
 import { standard } from "@nyte-ai/schema";
 import type { BlobId } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -9,8 +9,6 @@ import type { Fetch } from "./body.ts";
 import { htmlToMarkdown, htmlToText } from "./html-markdown.ts";
 
 const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
-
-const INLINE_CHARS = 50 * 1024;
 
 const MAX_REDIRECTS = 10;
 
@@ -125,13 +123,7 @@ export function webFetch(fetch: Fetch): ToolDefinition<Static<typeof fetchParame
                 ? htmlToMarkdown(body)
                 : htmlToText(body);
 
-          return {
-            kind: "text",
-            text:
-              text.length > INLINE_CHARS
-                ? `${text.slice(0, INLINE_CHARS)}\n\n… Cut at ${INLINE_CHARS} of ${text.length} characters.`
-                : text,
-          };
+          return { kind: "text", text: clipText(text, "head") };
         } catch (error) {
           if (deadline.aborted && !invocation.signal.aborted)
             throw new Error(`${url.href} didn't answer within ${seconds} s.`, { cause: error });

@@ -1,0 +1,149 @@
+---
+title: page.evaluate
+description: Runs a JavaScript expression in a page and returns its value or error.
+---
+
+Runs a JavaScript expression in a page, or with the node `ref` as `this`, and answers `value` with
+its result as JSON, or `threw` with the error's message.
+
+## When to call it
+
+To read something the accessibility tree doesn't show, such as a value in page state. Don't resend
+after a lost answer: the expression may have side effects.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `browser` capability. The
+expression runs with the page's own privileges.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "page": "page-7",
+  "expression": "document.querySelectorAll('.cart-item').length"
+}
+```
+
+Response:
+
+```json
+{ "kind": "value", "value": 3 }
+```
+
+## Errors
+
+- `unknown` when no open page has the id.
+- `unavailable` or `denied` when the workspace doesn't offer a browser.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `browser`
+- Recovery: `never`
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "page", "expression"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "page": {
+      "type": "string"
+    },
+    "expression": {
+      "type": "string"
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "value"
+        },
+        "value": {
+          "$ref": "Json"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "threw"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

@@ -1,6 +1,11 @@
-import type { Message, SessionView } from "@nyte-ai/sdk";
-import { showsReport } from "@nyte-ai/plugin/client/presentation";
-import type { ReportMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
+import type { Message } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
+import { showsAnswer, showsReport } from "@nyte-ai/plugin/client/presentation";
+import type {
+  AnswerMessage,
+  ReportMessage,
+  UserMessage,
+} from "@nyte-ai/plugin/client/presentation";
 
 const UNLANDED = new WeakMap<readonly Message[], readonly UserMessage[]>();
 
@@ -18,12 +23,18 @@ function unlandedMessages(messages: readonly Message[]): readonly UserMessage[] 
   return unlanded;
 }
 
-export function promptMessages(view: SessionView): readonly UserMessage[] {
-  return unlandedMessages(view.messages).filter((message) => !showsReport(message));
+export function promptMessages(view: HeadView): readonly UserMessage[] {
+  return unlandedMessages(view.messages).filter(
+    (message) => !showsReport(message) && !showsAnswer(message),
+  );
 }
 
-export function pendingReports(view: SessionView): readonly ReportMessage[] {
+export function pendingReports(view: HeadView): readonly ReportMessage[] {
   return unlandedMessages(view.messages).filter(showsReport);
+}
+
+export function pendingAnswers(view: HeadView): readonly AnswerMessage[] {
+  return unlandedMessages(view.messages).filter(showsAnswer);
 }
 
 export function follow<T>(

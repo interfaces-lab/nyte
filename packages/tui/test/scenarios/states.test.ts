@@ -133,7 +133,11 @@ test("offline, then back: a message sent while the service is down waits as pend
 
   const url = String(first.address);
   const connection = await sdk.connect({ url, credentials: { kind: "token", token } });
-  await using tui = await startTui({ host: connection, size: { width: 80, height: 24 } });
+  await using tui = await startTui({
+    host: connection,
+    endpoint: { url, token },
+    size: { width: 80, height: 24 },
+  });
   await tui.ready();
   fixture.reply({ content: [{ type: "text", text: "first answer" }] });
   await tui.send("hello");

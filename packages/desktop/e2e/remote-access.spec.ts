@@ -1,117 +1,18 @@
-import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
-import type { Page } from "@playwright/test";
-import { collectErrors } from "@nyte-ai/app/e2e/errors";
-import { APP_ORIGINS } from "@nyte-ai/app/contract/origins.ts";
-import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
-import { chatRow, leaveSettings, openSettings, revealChat } from "./ui.ts";
+import { openSettings } from "./ui.ts";
 
 test.use({ chapter: "remote-access" });
 
-const CREATED = "Created in the browser";
-
-const WEB_ORIGIN = APP_ORIGINS[2];
-
-const DIST = join(import.meta.dirname, "../../app/dist");
-
-const TYPES = new Map([
-  [".html", "text/html; charset=utf-8"],
-  [".js", "text/javascript"],
-  [".css", "text/css"],
-  [".svg", "image/svg+xml"],
-  [".png", "image/png"],
-  [".woff2", "font/woff2"],
-  [".json", "application/json"],
-]);
-
-async function serveShell(page: Page): Promise<void> {
-  await page.route(`${WEB_ORIGIN}/**`, async (route) => {
-    const path = normalize(join(DIST, new URL(route.request().url()).pathname));
-    const file = path.startsWith(DIST) && extname(path) !== "" ? path : join(DIST, "index.html");
-
-    try {
-      await route.fulfill({
-        body: await readFile(file),
-        contentType: TYPES.get(extname(file)) ?? "application/octet-stream",
-      });
-    } catch {
-      await route.fulfill({ status: 404, body: "Not found" });
-    }
-  });
-}
-
-test("a browser paired through Settings > Server shares the desktop's chats until it stops", async ({
-  browser,
+test("Settings > Server reads the host's own Tailscale node, off until turned on", async ({
   desktop,
 }) => {
-  const context = await browser.newContext({ permissions: ["local-network-access"] });
-  await using cleanup = new AsyncDisposableStack();
-  cleanup.defer(() => context.close());
   const { page } = desktop;
   await openSettings(page, "Server");
 
+  await expect(page.getByText("Tailscale node", { exact: true })).toBeVisible();
+  await expect(page.getByText("Off", { exact: true })).toBeVisible();
   const serve = page.getByRole("switch", { name: "Serve over Tailscale" });
-  await serve.click();
-  await expect(serve).toBeChecked();
-  await expect(page.getByText("Shared over Tailscale")).toBeVisible();
-
-  await page.getByRole("button", { name: "Pair…", exact: true }).click();
-  const pair = page.getByRole("dialog", { name: "Pair a Device" });
-  await pair.getByRole("button", { name: "Reveal token" }).click();
-  const link = pair.locator('code[aria-label="Pairing link"]');
-  await expect(link).toHaveText(/^https:\/\/app\.nyte\.sh\/pair#host=.+&token=[\w-]+$/u);
-  const pairingUrl = new URL(await link.innerText());
-  await pair.getByRole("button", { name: "Done", exact: true }).click();
-  const fragment = new URLSearchParams(pairingUrl.hash.slice(1));
-  const host = fragment.get("host");
-  const token = fragment.get("token");
-  expect(host).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u);
-
-  const remote = await context.newPage();
-  const remoteErrors = collectErrors(remote);
-  await serveShell(remote);
-  await remote.goto(`${WEB_ORIGIN}/pair${pairingUrl.hash}`);
-  await expect(remote.getByRole("form", { name: "Message", exact: true })).toBeVisible();
-
-  for (const name of Object.values(FIXTURES)) await revealChat(remote, name);
-
-  const status = await remote.evaluate(
-    async (input) => {
-      const response = await fetch(`${input.host}/sessions.start`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${input.token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          name: input.name,
-          content: "Hi from the phone",
-        }),
-      });
-
-      return response.status;
-    },
-    { host, token, name: CREATED },
-  );
-
-  expect(status).toBe(200);
-  await leaveSettings(page);
-  await expect(chatRow(page, CREATED)).toBeVisible();
-
-  await openSettings(page, "Server");
-  await page.getByRole("button", { name: "Stop Sharing…", exact: true }).click();
-  const confirm = page.getByRole("alertdialog", { name: "Stop sharing this Mac?" });
-  await expect(confirm).toContainText("Devices connected over Tailscale are disconnected.");
-  await confirm.getByRole("button", { name: "Stop Sharing", exact: true }).click();
   await expect(serve).not.toBeChecked();
   await expect(serve).toBeEnabled();
-
-  await chatRow(remote, FIXTURES.alpha).click();
-  await expect(remote.getByRole("dialog", { name: "Couldn't open folder" })).toContainText(
-    "Failed to fetch",
-  );
-
-  expect(remoteErrors.pageErrors).toEqual([]);
+  await expect(page.getByText("Not shared", { exact: true })).toBeVisible();
 });

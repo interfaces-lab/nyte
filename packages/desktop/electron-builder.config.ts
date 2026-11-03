@@ -1,10 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sign } from "@electron/osx-sign";
 import { Arch } from "electron-builder";
 import type { AfterPackContext, Configuration, MacConfiguration } from "electron-builder";
 import { ACCOUNT_SCHEMES } from "./src/shared/account/scheme.ts";
+import {
+  bundledHostAgentJob,
+  DESKTOP_APP_IDS,
+  hostAgentPlist,
+} from "./src/shared/host-agent-job.ts";
 import packageMetadata from "./package.json" with { type: "json" };
 
 const updateTest = process.env["NYTE_UPDATE_TEST"] === "1";
@@ -15,8 +20,11 @@ const nightly = version.includes("-nightly.");
 
 const productName = updateTest ? "Nyte Update Test" : "Nyte";
 
+const appId = updateTest ? DESKTOP_APP_IDS.updateTest : DESKTOP_APP_IDS.production;
+
 const CLI = [
   { from: "../tui/dist/nyte", to: "nyte" },
+  { from: "../tui/dist/nyte-tailnet", to: "nyte-tailnet" },
   { from: "../tui/dist/nyte.version", to: "nyte.version" },
 ];
 
@@ -74,24 +82,47 @@ async function verifyBundledCli(context: AfterPackContext): Promise<void> {
   if (context.electronPlatformName === "win32") return;
   const arch = Arch[context.arch];
   const resources = context.packager.getResourcesDir(context.appOutDir);
-  const cli = join(resources, "nyte");
-  const images = nativeImages(await readFile(cli));
-  const wrong = images.filter((image) => image.arch !== arch);
-
-  if (images[0]?.offset !== 0) throw new Error(`The bundled ${cli} is not a native executable.`);
-
-  if (wrong.length > 0)
-    throw new Error(
-      `The bundled ${cli} must hold only ${arch} code, but has ${wrong.map((image) => `${image.arch} at byte ${String(image.offset)}`).join(", ")}.`,
-    );
   const version = context.packager.appInfo.version;
   const stated = (await readFile(join(resources, "nyte.version"), "utf8")).trim();
-  const reported = execFileSync(cli, ["--version"], { encoding: "utf8" }).trim();
 
-  if (stated !== version || reported !== version)
-    throw new Error(
-      `The bundled nyte is ${reported} and its nyte.version says ${stated}, but Nyte is ${version}.`,
-    );
+  for (const name of ["nyte", "nyte-tailnet"]) {
+    const cli = join(resources, name);
+    const images = nativeImages(await readFile(cli));
+    const wrong = images.filter((image) => image.arch !== arch);
+
+    if (images[0]?.offset !== 0) throw new Error(`The bundled ${cli} is not a native executable.`);
+
+    if (wrong.length > 0)
+      throw new Error(
+        `The bundled ${cli} must hold only ${arch} code, but has ${wrong.map((image) => `${image.arch} at byte ${String(image.offset)}`).join(", ")}.`,
+      );
+    const reported = execFileSync(cli, ["--version"], { encoding: "utf8" }).trim();
+
+    if (stated !== version || reported !== version)
+      throw new Error(
+        `The bundled ${name} is ${reported} and its nyte.version says ${stated}, but Nyte is ${version}.`,
+      );
+  }
+}
+
+async function bundleHostAgent(context: AfterPackContext): Promise<void> {
+  if (context.electronPlatformName !== "darwin") return;
+
+  const job = bundledHostAgentJob({
+    appId,
+    executable: context.packager.appInfo.productFilename,
+  });
+
+  const agents = join(
+    context.appOutDir,
+    `${context.packager.appInfo.productFilename}.app`,
+    "Contents",
+    "Library",
+    "LaunchAgents",
+  );
+
+  await mkdir(agents, { recursive: true });
+  await writeFile(join(agents, `${job.label}.plist`), hostAgentPlist(job));
 }
 
 const mac = {
@@ -105,22 +136,29 @@ const mac = {
   forceCodeSigning: true,
   entitlements: "build/entitlements.mac.plist",
   entitlementsInherit: "build/entitlements.mac.plist",
-  extraResources: CLI,
+  extraResources: [
+    ...CLI,
+    { from: "resources/trayTemplate.png", to: "trayTemplate.png" },
+    { from: "resources/trayTemplate@2x.png", to: "trayTemplate@2x.png" },
+  ],
   sign: (options) =>
     sign({
       ...options,
       optionsForFile: (file) => {
         const defaults = options.optionsForFile?.(file) ?? {};
 
-        return file === join(options.app, "Contents", "Resources", "nyte")
-          ? { ...defaults, entitlements: CLI_ENTITLEMENTS }
+        if (file === join(options.app, "Contents", "Resources", "nyte"))
+          return { ...defaults, entitlements: CLI_ENTITLEMENTS };
+
+        return file === join(options.app, "Contents", "Resources", "nyte-tailnet")
+          ? { ...defaults, entitlements: [] }
           : defaults;
       },
     }),
 } satisfies MacConfiguration;
 
 export default {
-  appId: updateTest ? "ai.nyte.desktop.update-test" : "ai.nyte.desktop",
+  appId,
   productName,
   executableName: productName,
   extraMetadata: { name: productName, productName, version },
@@ -143,12 +181,15 @@ export default {
   files: ["out/**/*", "package.json", "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*"],
   asarUnpack: ["node_modules/@lydell/**/*", "node_modules/@anthropic-ai/claude-agent-sdk*/**/*"],
   extraResources: [
-    { from: "resources/adblock.bin", to: "adblock.bin" },
+    { from: "resources/adblock.generated.bin", to: "adblock.bin" },
     { from: "../app/dist", to: "app" },
     { from: "../canvas/dist/shell", to: "canvas" },
   ],
   mac: updateTest ? { ...mac, notarize: false } : mac,
-  afterPack: verifyBundledCli,
+  afterPack: async (context) => {
+    await verifyBundledCli(context);
+    await bundleHostAgent(context);
+  },
   linux: {
     target: ["AppImage"],
     category: "Development",

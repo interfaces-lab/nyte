@@ -1,6 +1,6 @@
+# Expo's native output; .vercelignore has the same
 .expo/
+.voltra/
 /ios/
 /android/
-.voltra/
-build/
-dist/
+/build/

@@ -4,9 +4,10 @@ import type {
   MessageId,
   RunId,
   SessionId,
-  SessionView,
+  SessionInfo,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { shortId } from "../../lib/format.ts";
 import { completingCommands } from "../commands.ts";
@@ -66,18 +67,18 @@ export const factHandlers = {
     }));
   },
   view: followedOnly<MsgOf<"view">>((state, session, msg, now) =>
-    viewArrived(state, session, msg.view, now),
+    msg.view === session.view
+      ? stay(withFacts(state, { chat: { ...session, freshness: msg.freshness } }))
+      : viewArrived(state, { ...session, freshness: msg.freshness }, msg.view, now),
   ),
-  "watch-ended": followedOnly<MsgOf<"watch-ended">>((state, session, msg) =>
-    stay(
-      withFacts(state, {
-        chat: { ...session, watch: { kind: "failed", failure: msg.failure } },
-      }),
-    ),
-  ),
-  "session-info": followedOnly<MsgOf<"session-info">>((state, session, msg) =>
-    stay(withFacts(state, { chat: { ...session, info: msg.info } })),
-  ),
+  health: (state, msg) => stay(withFacts(state, { health: msg.health })),
+  "session-info": followedOnly<MsgOf<"session-info">>((state, session, msg) => {
+    const next = withFacts(state, { chat: { ...session, info: msg.info } });
+
+    return session.view === null || drawnTip(msg.info) === drawnTip(session.info)
+      ? stay(next)
+      : see(next);
+  }),
   selection: (state, msg) => {
     const { chat } = state.facts;
 
@@ -161,7 +162,7 @@ function opened(state: State, msg: Extract<Fact, { kind: "session-opened" }>): S
         id: msg.session,
         info: msg.info,
         view: null,
-        watch: { kind: "live" },
+        freshness: null,
         selection: msg.selection,
       },
       tasks: [],
@@ -186,17 +187,22 @@ function entered(next: State): State {
 }
 
 /** A run that started and ended between two views is still watched, so its end shows. */
-function viewArrived(state: State, session: FollowedSession, view: SessionView, now: number): Step {
+function viewArrived(state: State, session: FollowedSession, view: HeadView, now: number): Step {
   const before = session.view;
   let next = withFacts(state, { chat: { ...session, view } });
 
   const latest = latestRun(view.execution);
 
-  if (
-    latest !== null &&
-    (view.execution.kind !== "idle" || (before !== null && latest !== latestRun(before.execution)))
-  )
+  const ended =
+    before !== null &&
+    view.execution.kind === "idle" &&
+    (before.execution.kind !== "idle" || latest !== latestRun(before.execution));
+
+  if (latest !== null && view.execution.kind !== "idle")
     next = withLocal(next, { watchedRun: latest });
+
+  if (latest !== null && ended)
+    next = withLocal(next, { watchedRun: state.facts.focused ? null : latest });
   next = questionMoved(state, next);
   let step: Step = stay(next);
 
@@ -205,22 +211,22 @@ function viewArrived(state: State, session: FollowedSession, view: SessionView, 
   step = andThen(step, (current) => editLanded(current, now));
   step = andThen(step, (current) => landHandback(current, now));
 
-  return drawnTip(view) === drawnTip(before) ? step : andThen(step, see);
+  return before === null ? andThen(step, see) : step;
 }
 
 function latestRun(execution: Execution): RunId | null {
   return execution.kind === "idle" ? (execution.lastRun?.id ?? null) : execution.run.id;
 }
 
-function drawnTip(view: SessionView | null): CommitId | null {
-  const tip = view?.heads.find((head) => head.name === "main")?.tip;
+function drawnTip(info: SessionInfo): CommitId | null {
+  const tip = info.heads.find((head) => head.name === "main")?.tip;
 
   return tip?.kind === "commit" ? tip.id : null;
 }
 
 function see(state: State): Step {
   const session = followedSession(state);
-  const tip = drawnTip(session?.view ?? null);
+  const tip = session === null ? null : drawnTip(session.info);
 
   if (!state.facts.focused || session === null || tip === null) return stay(state);
 
@@ -229,7 +235,7 @@ function see(state: State): Step {
 
 function followedHead(
   state: State,
-): { readonly id: SessionId; readonly view: SessionView | null } | null {
+): { readonly id: SessionId; readonly view: HeadView | null } | null {
   const session = followedSession(state);
 
   return session === null ? null : { id: session.id, view: session.view };
@@ -330,7 +336,7 @@ function firstView(state: State, now: number): Step {
 }
 
 function unansweredRequest(
-  view: SessionView,
+  view: HeadView,
 ): { readonly message: MessageId; readonly commit: string } | null {
   const turn = view.turns.at(-1);
 
@@ -343,7 +349,7 @@ function unansweredRequest(
     : null;
 }
 
-function runEnded(before: SessionView | null, after: SessionView, next: State, now: number): Step {
+function runEnded(before: HeadView | null, after: HeadView, next: State, now: number): Step {
   const session = followedSession(next);
 
   if (

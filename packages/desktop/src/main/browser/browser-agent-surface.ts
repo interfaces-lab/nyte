@@ -1,7 +1,7 @@
 import type { WebContents } from "electron";
 import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
 import type { SessionId } from "@nyte-ai/sdk";
-import { sessionSurfaceId } from "../../shared/browser-agent.ts";
+import { sessionSurfaceId } from "@nyte-ai/plugin/core/browser-client";
 import type { BrowserAgent, BrowserHolder, BrowserOwner } from "../../shared/browser-agent.ts";
 import { webUrl } from "./browser-policy.ts";
 import {

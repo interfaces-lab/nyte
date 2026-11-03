@@ -37,8 +37,7 @@ import { send } from "./admission.ts";
 import { FENCED, stopRun } from "./fence.ts";
 import { waitFor } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
-
-const REPORT_LIMIT = 4096;
+import { clipText } from "../util/clip.ts";
 
 export async function newRun(
   store: StoreConnection,
@@ -279,16 +278,16 @@ async function deliverChildReport(
   const found = await readSession(kernel.store, child);
   const parent = found?.record.parent ?? null;
 
-  if (found === null || parent === null) return;
+  if (found === null || parent === null || found.record.side === true) return;
   const target = await readSession(kernel.store, parent);
 
   if (target === null) return;
   const origin = found.record.origin?.head ?? MAIN;
   const head = target.record.heads.some((entry) => entry.name === origin) ? origin : MAIN;
 
-  const answer = capped(
+  const answer = clipText(
     (await withFold(kernel, child, (state) => extractRunAnswer(state, run))).trim(),
-    REPORT_LIMIT,
+    "head",
   );
 
   await send(kernel, {
@@ -317,15 +316,4 @@ function extractRunAnswer(state: FoldState, run: RunId): string {
       })
       .at(-1) ?? ""
   );
-}
-
-function capped(text: string, limit: number): string {
-  const bytes = new TextEncoder().encode(text);
-
-  if (bytes.length <= limit) return text;
-  let end = limit;
-
-  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end -= 1;
-
-  return new TextDecoder().decode(bytes.subarray(0, end));
 }

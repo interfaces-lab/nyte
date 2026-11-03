@@ -1,7 +1,7 @@
 import { installBridge } from "@nyte-ai/app/contract/nyte.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { messagePortEnd, portFetch } from "../../shared/host-port.ts";
+import { hostPort, messagePortEnd } from "../../shared/host-port.ts";
 import type { PortEnd } from "../../shared/host-port.ts";
 import { HOST_PORT_CHANNEL } from "../../shared/ipc.ts";
 import type { DesktopBridge } from "../../shared/ipc.ts";
@@ -41,4 +41,9 @@ function openHostPort(): Promise<PortEnd> {
   return answered.promise;
 }
 
-installBridge({ ...window.nyte, host: { ...window.nyte.host, fetch: portFetch(openHostPort) } });
+const port = hostPort(openHostPort);
+
+installBridge({
+  ...window.nyte,
+  host: { ...window.nyte.host, fetch: port.fetch, socket: port.socket },
+});

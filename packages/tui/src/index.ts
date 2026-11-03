@@ -2,8 +2,11 @@ import process from "node:process";
 import type { Connection, LoginMethod } from "@nyte-ai/sdk";
 import { accountCommand } from "./account-command.ts";
 import { apiCommand } from "./api-command.ts";
+import { eventsCommand } from "./events-command.ts";
+import { connectHostSocket } from "./host-socket.ts";
 import { doctorCommand } from "./doctor-command.ts";
 import { mcpCommand } from "./mcp-command.ts";
+import { skillCommand } from "./skill-command.ts";
 import { TRIAGE_USAGE, triageCommand } from "./triage-command.ts";
 import { loginProvider, logoutProvider } from "./services/auth.ts";
 import { availableModels } from "./lib/catalog.ts";
@@ -26,6 +29,7 @@ import { describeUpdateOutcome, latestReleaseText, selfUpdate } from "./update.t
 import { addFolder, flagConfiguration, targetSession, trustFolder } from "./run.ts";
 import { hostCommand } from "./host-command.ts";
 import { connectHost } from "./local-host.ts";
+import { openLiveHost } from "./live-host.ts";
 import type { HostSource } from "./local-host.ts";
 import { onEnding } from "./lifecycle.ts";
 import { printRun } from "./print.ts";
@@ -303,7 +307,11 @@ async function status(): Promise<void> {
 
 async function print(flags: RunFlags, source: HostSource): Promise<PrintOutcome> {
   signal.throwIfAborted();
-  const host = await openHost(source);
+  const local = await connectHost(source);
+  invocation.defer(() => local.close());
+  const host = local.connection;
+  const live = openLiveHost(local.endpoint, "cli");
+  invocation.defer(() => live.release());
   signal.throwIfAborted();
 
   if (availableModels(await host.models.list()).length === 0)
@@ -343,7 +351,15 @@ async function print(flags: RunFlags, source: HostSource): Promise<PrintOutcome>
 
   invocation.sessionId = session.id;
 
-  return printRun({ session, receipt, json: flags.json, quiet: flags.quiet, output, signal });
+  return printRun({
+    session,
+    live,
+    receipt,
+    json: flags.json,
+    quiet: flags.quiet,
+    output,
+    signal,
+  });
 }
 
 async function main(): Promise<PrintOutcome | undefined> {
@@ -372,7 +388,9 @@ async function main(): Promise<PrintOutcome | undefined> {
     command === "account" ||
     command === "mcp" ||
     command === "host" ||
-    command === "api"
+    command === "api" ||
+    command === "events" ||
+    command === "skill"
   ) {
     const serverCommandStart = invocationArgs.indexOf("--");
 
@@ -434,6 +452,29 @@ async function main(): Promise<PrintOutcome | undefined> {
     process.exitCode = await apiCommand({
       args: invocationArgs.slice(1),
       attach: (url) => openHost(attachedSource(url)),
+      connect: (hostUrl) => connectHostSocket({ hostUrl, name: "nyte api" }),
+      stdin: () => readStdin(signal),
+      output,
+    });
+
+    return undefined;
+  }
+
+  if (command === "events") {
+    process.exitCode = await eventsCommand({
+      args: invocationArgs.slice(1),
+      connect: (hostUrl) => connectHostSocket({ hostUrl, name: "nyte events" }),
+      signal: untilInterrupted(),
+      output,
+    });
+
+    return undefined;
+  }
+
+  if (command === "skill") {
+    process.exitCode = await skillCommand({
+      args: invocationArgs.slice(1),
+      env: process.env,
       output,
     });
 
@@ -473,7 +514,7 @@ async function main(): Promise<PrintOutcome | undefined> {
 
   if (command === "service") {
     output.error(
-      "The Nyte service is gone: every nyte and Nyte.app opens your chats itself, so there is nothing to start or stop.\n",
+      "The Nyte service is gone: nyte and Nyte.app attach to this machine's host, and nyte starts `nyte host` when none runs, so there is nothing to start or stop.\n",
     );
 
     return undefined;

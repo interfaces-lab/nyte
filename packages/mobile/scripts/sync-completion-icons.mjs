@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { glyphs } from "./icon-set/selected.mjs";
+import { glyphs } from "./icon-set/selected.generated.mjs";
 
 const markup = Object.fromEntries(
   Object.entries(glyphs).map(([name, Glyph]) => [name, renderToStaticMarkup(createElement(Glyph))]),

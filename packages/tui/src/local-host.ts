@@ -1,14 +1,12 @@
-import { randomBytes } from "node:crypto";
+import { spawn } from "node:child_process";
+import { homedir } from "node:os";
+import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { sdk } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
 import type { LocalEndpoint } from "@nyte-ai/service";
-import { hostAnswers } from "./host-endpoint.ts";
-import { OWN_TOKEN_AUTHORITY, startHostThread } from "./hosting.ts";
-
-const RETRY_MS = 1_000;
-
-const MISSED_PROBES = 5;
+import { findRunningHost, hostFilePath, hostLogPath } from "@nyte-ai/service/host-endpoint";
+import { selfCommand } from "./compiled.ts";
 
 export type HostSource =
   | { readonly kind: "local" }
@@ -17,14 +15,17 @@ export type HostSource =
 export interface HostSession {
   readonly connection: Connection;
   readonly endpoint: LocalEndpoint;
-  readonly ended: Promise<Error>;
   close(): Promise<void>;
 }
 
-export function connectHost(source: HostSource): Promise<HostSession> {
+const HOST_START_MS = 20_000;
+
+const HOST_POLL_MS = 100;
+
+export async function connectHost(source: HostSource): Promise<HostSession> {
   switch (source.kind) {
     case "local":
-      return connectLocalHost();
+      return attachHost(await ensureHost());
     case "attached":
       return attachHost(source.endpoint);
     default: {
@@ -35,36 +36,38 @@ export function connectHost(source: HostSource): Promise<HostSession> {
   }
 }
 
-export async function connectLocalHost(): Promise<HostSession> {
-  const token = randomBytes(32).toString("base64url");
+async function ensureHost(): Promise<LocalEndpoint> {
+  const path = hostFilePath();
+  const running = await findRunningHost(path);
 
-  const thread = await startHostThread({
-    kind: "local",
-    port: 0,
-    token,
-    authority: OWN_TOKEN_AUTHORITY,
+  if (running !== null) return { url: running.url, token: running.token };
+  const command = selfCommand();
+
+  const child = spawn(command[0], [...command.slice(1), "host", "--log"], {
+    cwd: homedir(),
+    detached: true,
+    stdio: "ignore",
+    env: Object.fromEntries(
+      Object.entries(process.env).filter((entry) => entry[0] !== "NYTE_HOST_TOKEN"),
+    ),
   });
 
-  const connection = await sdk
-    .connect({ url: thread.address, credentials: { kind: "token", token } })
-    .catch(async (cause: unknown) => {
-      await thread.stop();
+  child.unref();
+  const deadline = Date.now() + HOST_START_MS;
 
-      throw cause;
-    });
+  while (Date.now() < deadline) {
+    const exited = child.exitCode !== null || child.signalCode !== null;
+    await sleep(HOST_POLL_MS);
+    const started = await findRunningHost(path);
 
-  return {
-    connection,
-    endpoint: { url: thread.address, token },
-    ended: thread.ended.then(
-      () => new Error("The host thread stopped."),
-      (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause))),
-    ),
-    async close() {
-      await connection.close().catch(() => undefined);
-      await thread.stop();
-    },
-  };
+    if (started !== null) return { url: started.url, token: started.token };
+
+    if (exited) throw new Error(`The Nyte host stopped while starting. See ${hostLogPath()}.`);
+  }
+
+  throw new Error(
+    `The Nyte host didn't start within ${String(HOST_START_MS / 1000)} s. See ${hostLogPath()}.`,
+  );
 }
 
 async function attachHost(endpoint: LocalEndpoint): Promise<HostSession> {
@@ -77,26 +80,11 @@ async function attachHost(endpoint: LocalEndpoint): Promise<HostSession> {
       );
     });
 
-  const watching = new AbortController();
-
   return {
     connection,
     endpoint,
-    ended: untilGone(endpoint.url, watching.signal),
     async close() {
-      watching.abort();
       await connection.close().catch(() => undefined);
     },
   };
-}
-
-async function untilGone(url: string, signal: AbortSignal): Promise<Error> {
-  for (let missed = 0; missed < MISSED_PROBES;) {
-    const waited = await sleep(RETRY_MS, true, { signal }).catch(() => false);
-
-    if (!waited) return new Promise<never>(() => undefined);
-    missed = (await hostAnswers(url)) ? 0 : missed + 1;
-  }
-
-  return new Error(`The Nyte host at ${url} stopped. Start \`nyte host\` again, then reopen nyte.`);
 }

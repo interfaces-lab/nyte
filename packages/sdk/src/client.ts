@@ -9,12 +9,10 @@ import type {
   PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
-import { dev, followTrace, holdMessage, traced, watchStore } from "@nyte-ai/core";
+import { dev, followTrace, holdMessage, traced } from "@nyte-ai/core";
 import type { Connection, Head, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
-import { sessionLists } from "@nyte-ai/protocol";
 import type { Transport } from "@nyte-ai/protocol";
-import { createHeadViews, watchHead, watchHost, withUnsent } from "./watch.ts";
-import type { HeadViews } from "./watch.ts";
+import { watchHost, withUnsent } from "./watch.ts";
 import { journalLoop } from "./journal.ts";
 import type { JournalLoop } from "./journal.ts";
 import { partHandle } from "./part.ts";
@@ -36,11 +34,12 @@ type ClientContext = {
 type Bound = {
   readonly rows: Rows;
   readonly journal: JournalLoop;
-  readonly views: HeadViews;
   readonly seen: Map<string, CommitId>;
 };
 
 const MAIN = asId<"head">("main");
+
+export const journals = new WeakMap<Connection, JournalLoop>();
 
 export function createClient(transport: Transport, context: ClientContext): Connection {
   const link = createLink();
@@ -49,7 +48,6 @@ export function createClient(transport: Transport, context: ClientContext): Conn
   const bound: Bound = {
     rows,
     journal: journalLoop(rows, context.journal),
-    views: createHeadViews(rows),
     seen: new Map(),
   };
 
@@ -62,12 +60,11 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     link.close("client");
   };
 
-  return {
+  const connection: Connection = {
     hostId: context.hostId,
     principal: context.principal,
     credential: context.credential,
     sessions: {
-      watch: (input) => sessionLists(rows.watch("sessions.watch", input ?? {})),
       async start(input) {
         const id = input.id ?? asId<"session">(crypto.randomUUID());
         followTrace(id, id);
@@ -82,6 +79,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
         };
       },
       list: (input) => rows.call("sessions.list", input ?? {}),
+      read: (input) => rows.call("sessions.read", input ?? {}),
     },
     workspaces: {
       list: () => rows.call("workspaces.list", {}),
@@ -157,6 +155,10 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     close,
     [Symbol.asyncDispose]: close,
   };
+
+  journals.set(connection, bound.journal);
+
+  return connection;
 }
 
 function sessionHandle(bound: Bound, session: SessionId): Session {
@@ -235,11 +237,10 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
     configure: (patch) => rows.call("head.configure", { session, head, patch }),
     async view(options) {
       const view = await rows.call("head.view", { session, head, options });
-      journal.landed(session, head, view);
+      journal.landed(session, head, view, view.seq);
 
       return withUnsent(view, journal.unsent(session, head));
     },
-    watch: (options) => watchHead(bound.views, journal, { session, head, options }),
     async see(commit) {
       const key = JSON.stringify([session, head]);
 
@@ -247,7 +248,6 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
       await rows.call("head.see", { session, head, commit });
       bound.seen.set(key, commit);
     },
-    ...watchStore(() => watchHead(bound.views, journal, { session, head })),
     history: (input) => rows.call("head.history", { session, head, ...input }),
     tree: () => rows.call("head.tree", { session, head }),
     async move(position, options) {

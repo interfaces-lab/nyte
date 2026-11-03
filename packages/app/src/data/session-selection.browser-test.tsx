@@ -8,8 +8,7 @@ import type { SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { queryClient } from "./query-client.ts";
 import { useSessionRow } from "./session-rows.ts";
-import { installConnection } from "./connection.ts";
-import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 import { renderCount, resetRenders } from "../chat/transcript/transcript-render-counter.ts";
 
@@ -25,13 +24,13 @@ function directory(shownName: string, otherName: string): readonly SessionInfo[]
 
 const sessions = viewStream(directory("Shown", "Other"));
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions,
     session: (id) => ({
       info: async () => sessionRow(id, { name: id === UNLISTED ? "Read from host" : null }),
     }),
-  }).connection,
+  }),
 );
 
 function ShownTitle(): ReactElement {

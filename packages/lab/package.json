@@ -8,10 +8,10 @@
     "dev": "vite dev",
     "build": "vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
-    "video": "remotion studio video/src/index.ts --public-dir video/public",
-    "video:voice": "node video/voice.ts",
-    "video:render": "remotion render video/src/index.ts nyte video/out/nyte.mp4 --public-dir video/public --crf=16",
-    "video:ending": "remotion render video/src/index.ts ending video/out/ending.mp4 --public-dir video/public --crf=16"
+    "video": "remotion studio .local/video/src/index.ts --public-dir .local/video/public",
+    "video:voice": "node .local/video/voice.ts",
+    "video:render": "remotion render .local/video/src/index.ts nyte .local/video/out/nyte.mp4 --public-dir .local/video/public --crf=16",
+    "video:ending": "remotion render .local/video/src/index.ts ending .local/video/out/ending.mp4 --public-dir .local/video/public --crf=16"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -31,6 +31,7 @@
     "@tanstack/react-start": "^1.169.3",
     "@xyflow/react": "^12.12.0",
     "dialkit": "^2.0.2",
+    "lucide-react": "^1.61.0",
     "motion": "^14.5.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

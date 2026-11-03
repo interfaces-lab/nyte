@@ -208,6 +208,8 @@ export interface JobOutput {
   gap(): void;
   end(code: number | null): void;
   tail(): string;
+  /** The whole scrollback. */
+  text(): string;
 }
 
 export interface JobTable {

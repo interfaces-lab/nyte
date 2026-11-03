@@ -1,6 +1,7 @@
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { PartIdSchema, SessionIdSchema } from "@nyte-ai/schema";
-import type { PartId, RunView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
+import type { PartId, RunView, SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import { mainHead } from "@nyte-ai/plugin/client/presentation";
 
 export function liveRun(session: SessionInfo): RunView | undefined {
@@ -29,7 +30,7 @@ export function parsePartId(raw: string | undefined): PartId | undefined {
 
 export type OpenQuestion = ReturnType<typeof openQuestions>[number];
 
-export function openQuestion(view: SessionView): OpenQuestion | undefined {
+export function openQuestion(view: HeadView): OpenQuestion | undefined {
   return openQuestions(view)[0];
 }
 

@@ -93,7 +93,7 @@ export async function runStep<T>(
 
   const { opening, run } = input;
 
-  const opened = await changeCall(kernel, session, call, async (current) => {
+  const opened = await changeCall(kernel, { session, call, run }, async (current) => {
     if (current !== null && current.kind !== "intent") {
       record = current;
 
@@ -119,7 +119,7 @@ export async function runStep<T>(
   };
 
   const settle = async (ended: StepEnd<T>) => {
-    const written = await changeCall(kernel, session, call, async (current) => {
+    const written = await changeCall(kernel, { session, call, run }, async (current) => {
       if (current === null || current.result !== null) return null;
       const settled = await input.settle(ended);
 
@@ -275,7 +275,7 @@ export async function runAction(
 }
 
 async function renewRerun(kernel: Kernel, session: SessionId, call: CallId): Promise<boolean> {
-  const renewed = await changeCall(kernel, session, call, async (current) =>
+  const renewed = await changeCall(kernel, { session, call, run: null }, async (current) =>
     current === null || current.result !== null || current.reran?.holder !== kernel.instance
       ? null
       : {
@@ -291,7 +291,7 @@ export async function reserveRerun(
   session: SessionId,
   call: CallId,
 ): Promise<boolean> {
-  const reserved = await changeCall(kernel, session, call, async (current) =>
+  const reserved = await changeCall(kernel, { session, call, run: null }, async (current) =>
     current === null ||
     current.result !== null ||
     current.waiting !== null ||
@@ -321,20 +321,23 @@ export async function openAction(
     readonly intent: ActionIntent;
   },
 ): Promise<void> {
-  await changeCall(kernel, input.session, input.call, async (current) =>
-    current === null
-      ? {
-          record: callRecord({
-            call: input.call,
-            kind: "action",
-            run: null,
-            head: null,
-            part: input.part,
-            intent: input.intent,
-            replay: "safe",
-          }),
-        }
-      : null,
+  await changeCall(
+    kernel,
+    { session: input.session, call: input.call, run: null },
+    async (current) =>
+      current === null
+        ? {
+            record: callRecord({
+              call: input.call,
+              kind: "action",
+              run: null,
+              head: null,
+              part: input.part,
+              intent: input.intent,
+              replay: "safe",
+            }),
+          }
+        : null,
   );
 }
 
@@ -344,7 +347,7 @@ export async function recordAcquisition(
   key: string,
   value: Json,
 ): Promise<Json> {
-  const written = await changeCall(kernel, step.session, step.call, async (current) =>
+  const written = await changeCall(kernel, { ...step, run: null }, async (current) =>
     current === null || Object.hasOwn(current.acquisitions, key)
       ? null
       : { record: { ...current, acquisitions: { ...current.acquisitions, [key]: value } } },
@@ -382,7 +385,7 @@ function createDurable(
     if (known !== undefined) return known;
     const value = await compute();
 
-    const written = await changeCall(kernel, place.session, place.call, async (current) =>
+    const written = await changeCall(kernel, place, async (current) =>
       current === null || Object.hasOwn(current.memos, name)
         ? null
         : { record: { ...current, memos: { ...current.memos, [name]: value } } },
@@ -403,7 +406,7 @@ function createDurable(
       if (outcome !== undefined) return outcome;
 
       if (place.signal.aborted) {
-        await changeCall(kernel, place.session, place.call, async (current) =>
+        await changeCall(kernel, place, async (current) =>
           current === null || current.waits.length !== index || current.waiting !== null
             ? null
             : { record: { ...current, waits: [...current.waits, STOPPED] } },
@@ -431,7 +434,7 @@ function createDurable(
       clock[index] = value;
 
       writes.push(
-        changeCall(kernel, place.session, place.call, async (current) =>
+        changeCall(kernel, place, async (current) =>
           current === null || current.clock.length !== index
             ? null
             : { record: { ...current, clock: [...current.clock, value] } },
@@ -462,7 +465,7 @@ async function takeAnswer(
 
   if (answer === null) return null;
 
-  const taken = await changeCall(kernel, place.session, place.call, async (current) =>
+  const taken = await changeCall(kernel, place, async (current) =>
     current === null ||
     current.result !== null ||
     current.waiting !== null ||
@@ -483,7 +486,7 @@ async function park(
   const partial = "targets" in target ? target.targets.map(() => null) : [];
   const on = waitingOn(target, partial);
 
-  const parked = await changeCall(kernel, place.session, place.call, async (current) => {
+  const parked = await changeCall(kernel, place, async (current) => {
     if (
       current === null ||
       current.result !== null ||

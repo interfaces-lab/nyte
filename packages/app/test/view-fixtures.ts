@@ -88,7 +88,6 @@ export function chatsFor(
     {
       lists: [sessions],
       roots: undefined,
-      views: new Map(),
       project: (session) => session,
       ...sources,
     },
@@ -115,7 +114,6 @@ export function sessionView(change: Partial<SessionView> = {}): SessionView {
     background: [],
     configuration: { selected: null, effective: null },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
     ...change,

@@ -1,0 +1,180 @@
+---
+title: login.steps
+description: Streams the steps of a provider sign-in in progress until it is done or fails.
+---
+
+Streams the steps of a sign-in started with [`models.login`](/docs/reference/operations/models/login)
+or [`mcp.login`](/docs/reference/operations/mcp/login), until it is `done` or `failed`. Reading the
+steps is what runs the sign-in.
+
+Steps are `open` with a URL (and a device `code` when the provider uses one), `paste` when the user
+must paste a code or key, `choose` with options, `waiting`, then `done` or `failed` with a reason.
+
+## When to call it
+
+Right after `models.login`, with the same `provider`. For an MCP server, pass the `login` id that
+`mcp.login` returned as `provider`. Answer a `paste` or `choose` step with
+[`login.answer`](/docs/reference/operations/login/answer). Closing the stream cancels the sign-in.
+
+## Access
+
+Needs `owner` authority. Host scope. Only the principal that started the sign-in can read it.
+
+## Example
+
+Request body:
+
+```json
+{ "provider": "anthropic" }
+```
+
+Frames:
+
+```json
+{ "kind": "open", "url": "https://claude.ai/oauth/authorize?code=true&client_id=abc" }
+```
+
+```json
+{ "kind": "paste", "message": "Paste the authorization code", "secret": false }
+```
+
+```json
+{ "kind": "done" }
+```
+
+## Errors
+
+- `unknown` when no sign-in for the provider is in progress: `No login for <provider> is in
+progress.`
+- `invalid` when the sign-in's steps are already streaming to another request.
+- `unknown` or `unavailable` for an MCP sign-in whose workspace isn't registered or whose host has
+  no MCP servers; these surface here, since `mcp.login` doesn't check.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `stream`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["provider"],
+  "properties": {
+    "provider": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "url"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "open"
+        },
+        "url": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message", "secret"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "paste"
+        },
+        "message": {
+          "type": "string"
+        },
+        "secret": {
+          "type": "boolean"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message", "options"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "choose"
+        },
+        "message": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label"],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "waiting"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "done"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "failed"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

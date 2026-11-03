@@ -146,6 +146,10 @@ if [ -d docs ]; then
 	cp -R docs "$docs_parent/"
 fi
 chmod 755 nyte
+if [ -f nyte-tailnet ]; then
+	chmod 755 nyte-tailnet
+	mv -f nyte-tailnet "${install_dir}/nyte-tailnet"
+fi
 mv -f nyte "${install_dir}/nyte"
 
 echo "Installed nyte ${tag#v} to ${install_dir}/nyte"

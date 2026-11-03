@@ -1,0 +1,74 @@
+---
+title: events.unsubscribe
+description: Stops sending the connection the events of the scopes named.
+---
+
+Stops sending the connection the events of the scopes named and releases what each held, such as a
+session's fold. A scope the connection never subscribed to is ignored. Closing the socket
+unsubscribes from everything.
+
+## When to call it
+
+When a screen stops showing a session, so the host stops folding it for this connection.
+
+## Access
+
+Any principal with `participant` authority, and only on the WebSocket; over HTTP it answers
+`invalid`.
+
+## Example
+
+Input:
+
+```json
+{ "scopes": ["session/0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f"] }
+```
+
+Output:
+
+```json
+null
+```
+
+## Errors
+
+- `invalid` over HTTP: `events.unsubscribe answers only on the host's WebSocket at /.nyte/ws.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["scopes"],
+  "properties": {
+    "scopes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(host|session/[^/]+|client/[^/]+)$"
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

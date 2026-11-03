@@ -1,7 +1,9 @@
 import { homedir } from "node:os";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
 import { asId, SdkError } from "@nyte-ai/schema";
+import { mapped } from "@nyte-ai/protocol";
 import { followTrace, pagedViews, traced, tracePaints } from "@nyte-ai/sdk/client";
+import type { HeadView, HostConnection } from "@nyte-ai/sdk/client";
 import type { Connection, MessageId, PagedViews, Session, WorkspaceId } from "@nyte-ai/sdk";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../lib/tasks.ts";
@@ -9,21 +11,40 @@ import { follow } from "../lib/view-helpers.ts";
 import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
 import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
 import { TaskIndex } from "../services/task-index.ts";
-import type { HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.ts";
+import {
+  chatSends,
+  chatViews,
+  healthUpdates,
+  openChat,
+  sessionLists,
+  whenOpen,
+} from "../live-host.ts";
+import type { ChatUpdate, HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.ts";
 
 export function hostPort(
   host: Connection,
+  live: HostConnection,
   folder: string | null,
   painted: () => Promise<void> = () => Promise.resolve(),
   starts: { readonly contextFiles?: false } = {},
 ): HostPort {
+  const workspaces = {
+    inspect: (target) => whenOpen(live, () => live.call("workspaces.inspect", { target })),
+    add: (target, options) =>
+      whenOpen(live, () => live.call("workspaces.add", { target, options })),
+  } satisfies Pick<Connection["workspaces"], "inspect" | "add">;
+
+  const sessions = {
+    list: (input) => whenOpen(live, () => live.call("sessions.list", input ?? {})),
+  } satisfies Pick<Connection["sessions"], "list">;
+
   return {
-    session: (id) => sessionPort(host, host.session(id), painted),
-    workspace: (id) => workspacePort(host, id),
+    session: (id) => sessionPort(host, live, host.session(id), painted),
+    workspace: (id) => workspacePort(host, live, id),
     async openFolder(path) {
       const opened = path ?? folder;
 
-      if (opened !== null) return addFolder(host, opened);
+      if (opened !== null) return addFolder({ workspaces }, opened);
 
       for await (const view of host.watch()) {
         if (view.defaultWorkspace !== null) return view.defaultWorkspace;
@@ -63,10 +84,11 @@ export function hostPort(
           : { kind: "started", message: asId<"message">(input.id) };
       }
     },
-    rootSessions: () => rootSessions(host),
+    rootSessions: () => rootSessions({ sessions }),
     catalog: () => host.watch(),
-    sessionInfos: () => host.sessions.watch({ parents: { kind: "all" } }),
-    listModels: () => host.models.list(),
+    sessionInfos: () => sessionLists(live, { parents: { kind: "all" } }),
+    health: () => healthUpdates(live),
+    listModels: () => whenOpen(live, () => live.call("models.list", {})),
     accounts: (provider) => host.models.accounts(provider ?? undefined),
     selectAccount: (provider, account) => host.models.selectAccount(provider, account),
     renameAccount: (provider, account, label) =>
@@ -105,8 +127,8 @@ export function hostPort(
       return { account, folder: state };
     },
     async trustInfo(workspace) {
-      const info = await host.workspace(workspace).info();
-      const inspected = await host.workspaces.inspect(info.target).catch(() => null);
+      const info = await whenOpen(live, () => live.call("workspace.info", { workspace }));
+      const inspected = await workspaces.inspect(info.target).catch(() => null);
 
       const path = "path" in info.target ? info.target.path : info.id;
 
@@ -175,7 +197,10 @@ export function hostPort(
                   if (closed) return;
 
                   const opened = new TaskIndex(info, {
-                    connection: host,
+                    children: sessionLists(live, {
+                      parents: { kind: "children", session: info.id },
+                    }),
+                    views: (child) => chatViews(live, openChat(live, child), null),
                     jobs: host.workspace(info.workspace).jobs.watch(),
                     onChange() {
                       latest = opened.tasks;
@@ -229,14 +254,14 @@ export function hostPort(
   };
 }
 
-function workspacePort(host: Connection, id: WorkspaceId): WorkspacePort {
+function workspacePort(host: Connection, live: HostConnection, id: WorkspaceId): WorkspacePort {
   return {
     id,
     catalog: () => host.workspace(id).catalog(),
     command: (name, text) => host.workspace(id).command(name, text),
     completeCommand: (name, prefix) => host.workspace(id).completeCommand(name, prefix),
     async cwd() {
-      const workspace = await host.workspace(id).info();
+      const workspace = await whenOpen(live, () => live.call("workspace.info", { workspace: id }));
 
       return workspace.target.kind === "local" && "path" in workspace.target
         ? workspace.target.path
@@ -253,50 +278,66 @@ function workspacePort(host: Connection, id: WorkspaceId): WorkspacePort {
         })(),
       );
     },
-    async mentions(signal) {
-      const files = await host.workspace(id).files();
-
-      if (files.kind !== "available") return [];
-      const found: string[] = [];
-
-      for await (const frame of files.api.scan({ ignored: "exclude" })) {
-        if (signal.aborted) return found;
-
-        if (frame.kind !== "entries") continue;
-
-        for (const entry of frame.entries) {
-          if (entry.kind === "symlink") continue;
-          found.push(entry.kind === "directory" ? `${entry.path}/` : entry.path);
-        }
-      }
-
-      return found;
-    },
+    mentions: (signal) => whenOpen(live, () => scanMentions(host, id, signal)),
   };
+}
+
+async function scanMentions(
+  host: Connection,
+  id: WorkspaceId,
+  signal: AbortSignal,
+): Promise<readonly string[]> {
+  const files = await host.workspace(id).files();
+
+  if (files.kind !== "available") return [];
+  const found: string[] = [];
+
+  for await (const frame of files.api.scan({ ignored: "exclude" })) {
+    if (signal.aborted) return found;
+
+    if (frame.kind !== "entries") continue;
+
+    for (const entry of frame.entries) {
+      if (entry.kind === "symlink") continue;
+      found.push(entry.kind === "directory" ? `${entry.path}/` : entry.path);
+    }
+  }
+
+  return found;
 }
 
 function sessionPort(
   host: Connection,
+  live: HostConnection,
   session: Session,
   painted: () => Promise<void>,
 ): SessionPort {
   const readReceipt = (message: MessageId) => session.receipt(asId(message));
+  const readInfo = () => whenOpen(live, () => live.call("session.info", { session: session.id }));
 
   const readWorkspace = async (): Promise<WorkspacePort> =>
-    workspacePort(host, (await session.info()).workspace);
+    workspacePort(host, live, (await readInfo()).workspace);
 
-  let views: PagedViews | null = null;
+  let views: PagedViews<HeadView> | null = null;
 
   return {
     id: session.id,
     watch() {
-      views = pagedViews(session);
+      const store = openChat(live, session.id);
 
-      return tracePaints(views, session.id, painted);
+      views = pagedViews({
+        watch: () => chatViews(live, store, chatSends(host, session.id)),
+        history: (query) => session.history(query),
+      });
+
+      return mapped(tracePaints(views, session.id, painted), (view): ChatUpdate => ({
+        view,
+        freshness: store.freshness(),
+      }));
     },
     earlier: (limit) => views?.earlier(limit) ?? Promise.resolve(0),
     see: (commit) => session.see(commit),
-    info: () => session.info(),
+    info: readInfo,
     async workspace() {
       const workspace = await readWorkspace();
 
@@ -444,6 +485,7 @@ function sessionPort(
 
 export async function pluginsPort(
   host: Connection,
+  live: HostConnection,
   options: {
     readonly notify: (title: string, body: string, sound: boolean) => void;
     readonly report: (plugin: string, message: string) => void;
@@ -467,7 +509,7 @@ export async function pluginsPort(
   });
 
   const stopDirectory = follow(
-    host.sessions.watch({ parents: { kind: "all" } }),
+    sessionLists(live, { parents: { kind: "all" } }),
     (sessions) => plugins.sessionsChanged(sessions),
     (cause) =>
       options.report("notifications", cause instanceof Error ? cause.message : String(cause)),

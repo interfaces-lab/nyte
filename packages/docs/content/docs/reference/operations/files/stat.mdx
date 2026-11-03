@@ -1,0 +1,101 @@
+---
+title: files.stat
+description: Returns a path's kind, size and version, or null if nothing is there.
+---
+
+Answers what is at a path: `file`, `directory` or `symlink`, with its size and version, and a
+symlink's `target`. It answers `null` when nothing is there. A symlink is described itself, not
+what it points to.
+
+## When to call it
+
+To check a path exists, or whether it changed since a version you hold, without reading it.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "src"
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "directory",
+  "size": 4096,
+  "version": "1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f"
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer files.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "size", "version"],
+      "properties": {
+        "kind": {
+          "enum": ["file", "directory", "symlink"]
+        },
+        "size": {
+          "type": "number"
+        },
+        "version": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "null"
+    }
+  ]
+}
+```
+
+{/* generated:end */}

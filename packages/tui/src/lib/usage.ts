@@ -1,4 +1,5 @@
-import type { ProviderUsage, SessionView, Usage } from "@nyte-ai/sdk";
+import type { ProviderUsage, Usage } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import type { TextLine } from "../model/dialogs/dialog.ts";
 import { GLYPHS } from "./constants.ts";
 import { formatTokens } from "./format.ts";
@@ -30,7 +31,7 @@ function breakdownLines(total: Usage): readonly string[] {
 }
 
 /** The usage panel: every provider account, and the chat's tokens; a blank chat (`view` null) has none yet. */
-export function usageCard(view: SessionView | null, accounts: readonly ProviderUsage[]): UsageCard {
+export function usageCard(view: HeadView | null, accounts: readonly ProviderUsage[]): UsageCard {
   const total = view?.usage;
 
   if (total === undefined || (total.total === 0 && total.cost.total === 0))

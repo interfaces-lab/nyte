@@ -5,7 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { createContext, useRef, useState } from "react";
 import { useWaitingDescendants } from "../../chats/index.ts";
 import { connection } from "../../data/connection.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { sameComposerDocument } from "../composer/composer-document.ts";
 import type { ComposerDocumentState } from "../composer/composer-document.ts";
@@ -34,15 +34,14 @@ interface RequestDraft {
   readonly fields: readonly FieldDraft[];
 }
 
+/** Sends the user's answers, or skips the request when `answers` is null. */
 export async function answerQuestion(
   sessionId: SessionId,
   question: OpenQuestion,
-  answers: QuestionAnswers,
+  answers: QuestionAnswers | null,
 ): Promise<void> {
-  const outcome = await connection()
-    .session(sessionId)
-    .part(question.part)
-    .act("answer", { answers });
+  const part = connection().session(sessionId).part(question.part);
+  const outcome = await (answers === null ? part.act("skip", {}) : part.act("answer", { answers }));
 
   switch (outcome.kind) {
     case "ok":
@@ -117,7 +116,7 @@ export interface QuestionDock {
 export const QuestionDockContext = createContext<QuestionDock | undefined>(undefined);
 
 export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined {
-  const parts = useWatchSelect(sessionWatch(sessionId), (state) => state.value?.parts);
+  const parts = useWatchSelect(chatStore(sessionId), (state) => state.value?.parts);
   const waiting = useWaitingDescendants(sessionId);
 
   const [stored, setStored] = useState<readonly RequestDraft[]>([]);
@@ -132,9 +131,7 @@ export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined 
       readonly request: OpenQuestion;
       readonly answers: QuestionAnswers | null;
     }) => {
-      if (submission.answers === null)
-        await connection().session(submission.sessionId).part(submission.request.part).close();
-      else await answerQuestion(submission.sessionId, submission.request, submission.answers);
+      await answerQuestion(submission.sessionId, submission.request, submission.answers);
 
       return { sessionId: submission.sessionId, part: submission.request.part };
     },

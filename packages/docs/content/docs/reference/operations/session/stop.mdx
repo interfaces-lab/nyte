@@ -1,0 +1,92 @@
+---
+title: session.stop
+description: Stops every run in a session and withdraws its queued messages.
+---
+
+Stops every live run in the session and withdraws every queued message on every head. It answers
+the runs it asked to stop and the messages it withdrew. A first message whose start is still being
+decided is withdrawn and the start abandoned.
+
+## When to call it
+
+From a "stop" button that should halt everything in a chat. To stop one run, use
+[`run.stop`](/docs/reference/operations/run/stop); to stop the work behind one message, use
+[`receipt.stop`](/docs/reference/operations/receipt/stop).
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{ "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f" }
+```
+
+Response:
+
+```json
+{
+  "stopped": ["4e2a6c8f-1b3d-4f5a-9c7e-0a2b4d6f8c1e"],
+  "withdrawn": ["7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b"]
+}
+```
+
+`stopped` lists runs the stop was requested for. They end shortly after; wait with
+[`run.settled`](/docs/reference/operations/run/settled) to know when.
+
+## Errors
+
+- `unknown` when no session has the id.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session"],
+  "properties": {
+    "session": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["stopped", "withdrawn"],
+  "properties": {
+    "stopped": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "withdrawn": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

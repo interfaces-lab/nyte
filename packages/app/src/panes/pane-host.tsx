@@ -3,9 +3,8 @@ import { keyOwner } from "../lib/focus-owner.ts";
 import { BlankConversation } from "../chat/composer/new-chat-composer.tsx";
 import { SessionConversation } from "../chat/session-conversation.tsx";
 import { props } from "@stylexjs/stylex";
-import { Activity, useRef, useState, useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 import type { ReactElement, RefObject } from "react";
-import type { SessionId } from "@nyte-ai/sdk";
 import { receiveChatExcerpts } from "../references/add-to-chat.ts";
 import type { ComposerEditorHandle } from "../chat/composer/composer-editor.tsx";
 import {
@@ -23,8 +22,6 @@ import {
   resolveClientAction,
 } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
-import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
-import { sessionWatch } from "../data/watches.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 function TypeToCompose({
@@ -105,14 +102,6 @@ function FocusComposer({
   return null;
 }
 
-function HoldSession({ sessionId }: { readonly sessionId: SessionId }): null {
-  useMountEffect(() => sessionWatch(sessionId).subscribe(() => undefined));
-
-  return null;
-}
-
-const HOT_SESSIONS = 3;
-
 type PanePosition =
   | { readonly kind: "single" }
   | { readonly kind: "leading"; readonly ratio: number }
@@ -138,24 +127,6 @@ export function PaneHost({
   );
 
   const shownSession = pane.selection.kind === "session" ? pane.selection.sessionId : undefined;
-  const [hotSessions, setHotSessions] = useState<readonly SessionId[]>([]);
-
-  const listedHot = useSyncExternalStore(subscribeSessionRows, () => {
-    const { listed, rows } = sessionRows();
-
-    return listed ? hotSessions.filter((id) => rows.has(id)).join(",") : undefined;
-  });
-
-  if (shownSession !== undefined && hotSessions[0] !== shownSession)
-    setHotSessions(
-      [shownSession, ...hotSessions.filter((id) => id !== shownSession)].slice(0, HOT_SESSIONS),
-    );
-  else if (listedHot !== undefined) {
-    const listed = listedHot.split(",");
-    const kept = hotSessions.filter((id) => id === shownSession || listed.includes(id));
-
-    if (kept.length !== hotSessions.length) setHotSessions(kept);
-  }
 
   const inputRef = useRef<ComposerEditorHandle | null>(null);
   const attachDropTarget = useSessionPaneDropTarget(pane.id);
@@ -187,22 +158,16 @@ export function PaneHost({
           <ReceiveExcerpts input={inputRef} />
         </>
       )}
-      {hotSessions.map((sessionId) => (
-        <HoldSession key={sessionId} sessionId={sessionId} />
-      ))}
-      {hotSessions.toSorted().map((sessionId) => (
-        <Activity key={sessionId} mode={sessionId === shownSession ? "visible" : "hidden"}>
-          <SessionConversation
-            presentation="full"
-            floatingMount={
-              sessionId === shownSession && activePane(layout).id === pane.id ? floatingMount : null
-            }
-            paneId={pane.id}
-            sessionId={sessionId}
-            inputRef={attachInput}
-          />
-        </Activity>
-      ))}
+      {shownSession !== undefined && (
+        <SessionConversation
+          key={shownSession}
+          presentation="full"
+          floatingMount={activePane(layout).id === pane.id ? floatingMount : null}
+          paneId={pane.id}
+          sessionId={shownSession}
+          inputRef={attachInput}
+        />
+      )}
       {shownSession === undefined && (
         <BlankConversation key={blankDraftId} paneId={pane.id} inputRef={attachInput} />
       )}

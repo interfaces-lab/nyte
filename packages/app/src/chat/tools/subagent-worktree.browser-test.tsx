@@ -12,9 +12,8 @@ import { SubagentCitation } from "./subagent-call.tsx";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
 import { sessionRow } from "../../../test/view-fixtures.ts";
-import { installConnection } from "../../data/connection.ts";
-import { sessionsWatch } from "../../data/watches.ts";
-import { scriptedConnection } from "../../../test/scripted-connection.ts";
+import { sessionList } from "../../data/directory.ts";
+import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 
 declare global {
   interface Window {
@@ -51,7 +50,7 @@ const child = sessionRow("fixer", {
   workspace: WORKTREE,
 });
 
-installConnection(scriptedConnection({ sessions: [child] }).connection);
+installScripted(scriptedConnection({ sessions: [child] }));
 
 function Stage(): ReactElement {
   return (
@@ -117,8 +116,8 @@ export async function run(): Promise<string> {
     }),
   ]);
 
-  const listing = sessionsWatch("all").subscribe(() => undefined);
-  await sessionsWatch("all").first();
+  const listing = sessionList("all").subscribe(() => undefined);
+  await sessionList("all").first();
 
   const root = createRoot(stage, {
     onUncaughtError: (error) => {

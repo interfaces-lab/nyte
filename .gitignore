@@ -1,43 +1,42 @@
+# Keep this block the same in .gitignore and .vercelignore.
+
+# Dependencies, builds and caches
 node_modules/
 dist/
-/bin/
-.nyte/
+out/
+out-e2e/
 .turbo/
-/packages/ai/catalog/
-
-.DS_Store
-.vercel
+.next/
+.output/
+.nitro/
+.source/
+.tanstack/
 .wrangler/
-.env*
-!/packages/app/.env.example
-
+.vercel
+.cache/
+*.tsbuildinfo
+*.log
+*.log.[0-9]*
+playwright-report/
+test-results/
 __pycache__/
 *.pyc
+.DS_Store
 
-# local session stores
+# Secrets
+.env*
+!.env.example
+.dev.vars*
+!.dev.vars.example
+
+# Nyte's own per-workspace folders
+.nyte/
 .uji/
-scratch/
-share/
 
-# scratch artifacts
-/output/
-/*.html
+# Anything personal or machine-specific lives in a .local folder
+.local/
 
-# Playwright e2e output
-/packages/app/e2e/test-results/
-/packages/app/e2e/playwright-report/
-/packages/desktop/e2e/test-results/
-/packages/desktop/e2e/playwright-report/
-/packages/desktop/e2e/.cache/
-
-/tmp
-.next
-
-# copied into SDK tarballs by scripts/sdk-packages.mjs
+# Written by scripts
+*.generated*
 /packages/*/LICENSE
 /packages/*/THIRD-PARTY-NOTICES.md
-
-# written by scripts/icons.mjs: Central Icons when installed, Lucide otherwise
-/packages/ui/src/glyphs/selected.ts
-/packages/docs/src/lib/icon-set/selected.ts
-/packages/mobile/scripts/icon-set/selected.mjs

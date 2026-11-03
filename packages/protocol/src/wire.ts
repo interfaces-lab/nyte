@@ -12,6 +12,8 @@ export const errorStatus = {
   stale: 409,
   internal: 500,
   unavailable: 503,
+  not_supported: 501,
+  timeout: 504,
 } as const satisfies Record<SdkErrorCode, number> satisfies Record<SdkErrorWire["code"], number>;
 
 /** Names the request header that carries an operation's JSON input when the body carries its bytes. */

@@ -1,0 +1,125 @@
+---
+title: workspace.files
+description: Checks whether the workspace offers file access.
+---
+
+Answers whether the workspace offers file access, without using it: `available`, `unsupported`
+with a reason when its environment has no files, `denied` when this principal can't use them, or
+`unavailable` with a reason and a `retry` hint of `allowed` or `manual` when they should exist but
+can't be reached now.
+
+## When to call it
+
+Before showing a file tree or editor for a workspace, so the client can explain why it is missing
+instead of failing on the first `files.*` call.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response:
+
+```json
+{ "kind": "available" }
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors). A workspace id the host doesn't have answers
+`unavailable` with `retry` `manual` rather than failing.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "available"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unsupported"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "denied"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "retry", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unavailable"
+        },
+        "retry": {
+          "enum": ["allowed", "manual"]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

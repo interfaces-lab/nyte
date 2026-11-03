@@ -1,0 +1,172 @@
+---
+title: heads.create
+description: Creates a named head, optionally from a given position.
+---
+
+Creates a named head stacked on main, starting at `from`, or at main's tip when `from` is absent.
+The new head copies main's prompt override. It answers `created` with the position it is based on,
+`exists` when the session already has a head with the name, or `missing-source` when `from` names
+a commit the session doesn't have.
+
+## When to call it
+
+To try another direction without losing the current one.
+[Branch a conversation](/docs/sdk/guides/branch-a-conversation) covers heads, merging and
+removing.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{ "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f", "name": "try-sqlite" }
+```
+
+Response:
+
+```json
+{
+  "kind": "created",
+  "basedOn": {
+    "kind": "commit",
+    "id": "a3f1c5e7b9d2f4a6c8e0b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3"
+  }
+}
+```
+
+## Errors
+
+- `unknown` when no session has the id.
+- `stale` when the write lost to concurrent writes several times in a row.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "name"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "start"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "id"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "commit"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "basedOn"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "created"
+        },
+        "basedOn": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "start"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "id"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "commit"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "exists"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing-source"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

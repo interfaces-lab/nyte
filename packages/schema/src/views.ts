@@ -16,7 +16,14 @@ import { PartStatusType, PartViewType } from "./parts.ts";
 import { BackgroundItemType, ExecutionType, RunEndType, WaitTargetType } from "./runs.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
-import { HeadInfoType, SessionCatalogViewType, SessionInfoType } from "./sessions.ts";
+import {
+  AgentInfoType,
+  CommandInfoType,
+  SessionCatalogViewType,
+  SettingInfoType,
+  SkillInfoType,
+  ToolInfoType,
+} from "./sessions.ts";
 import { nullable } from "./wire/nullable.ts";
 import { ActivationType } from "./workspaces.ts";
 
@@ -144,7 +151,6 @@ export const SessionViewType = Type.Object({
     effective: nullable(ConfigurationType),
   }),
   context: ContextViewType,
-  heads: Type.Array(HeadInfoType),
   changes: Type.Array(FileChangeType),
   catalog: SessionCatalogViewType,
   seenThrough: nullable(Type.Number()),
@@ -162,58 +168,125 @@ export const HistoryPageType = Type.Object({
 /** Messages before a view's window, with the turns they belong to and `leadingPrompt`, the prompt of the earliest of those turns when it is before `messages`, else null. */
 export type HistoryPage = Decoded<typeof HistoryPageType>;
 
-const VIEW = SessionViewType.properties;
-
-function viewSplice<T extends TSchema>(item: T) {
-  return Type.Object({ runs: Type.Array(Type.Number()), items: Type.Array(item) });
-}
-
-export const ViewAppendType = Type.Object({
-  at: Type.Number(),
-  append: Type.String(),
-  version: Type.Number(),
+export const HeadRowType = Type.Object({
+  name: idSchema<"head">(),
+  revision: nullable(idSchema<"revision">()),
+  execution: ExecutionType,
+  reportsHeld: Type.Boolean(),
+  seenThrough: nullable(Type.Number()),
+  queue: Type.Array(idSchema<"message">()),
 });
 
-/** Text a streaming part streamed since the previous frame: the message at `at` of the spliced messages, its `state.markdown` grown by `append`, now at `version`. */
-export type ViewAppend = Decoded<typeof ViewAppendType>;
+export type HeadRow = Decoded<typeof HeadRowType>;
 
-export const ViewFrameType = Type.Union([
-  Type.Object({ kind: Type.Literal("view"), view: SessionViewType }),
-  Type.Object({
-    kind: Type.Literal("delta"),
-    seq: SeqType,
-    revision: Type.Optional(VIEW.revision),
-    activation: Type.Optional(VIEW.activation),
-    messages: Type.Optional(viewSplice(MessageType)),
-    queue: Type.Optional(viewSplice(QueuedMessageType)),
-    appends: Type.Optional(Type.Array(ViewAppendType)),
-    leadingPrompt: Type.Optional(VIEW.leadingPrompt),
-    parts: Type.Optional(viewSplice(PartViewType)),
-    turns: Type.Optional(viewSplice(TurnInfoType)),
-    usage: Type.Optional(VIEW.usage),
-    execution: Type.Optional(VIEW.execution),
-    reportsHeld: Type.Optional(VIEW.reportsHeld),
-    background: Type.Optional(viewSplice(BackgroundItemType)),
-    configuration: Type.Optional(VIEW.configuration),
-    context: Type.Optional(VIEW.context),
-    heads: Type.Optional(viewSplice(HeadInfoType)),
-    changes: Type.Optional(viewSplice(FileChangeType)),
-    catalog: Type.Optional(VIEW.catalog),
-    seenThrough: Type.Optional(VIEW.seenThrough),
+export const HeadSettingsRowType = Type.Object({
+  name: idSchema<"head">(),
+  configuration: Type.Object({
+    selected: nullable(ConfigurationType),
+    effective: nullable(ConfigurationType),
   }),
+  context: ContextViewType,
+});
+
+export type HeadSettingsRow = Decoded<typeof HeadSettingsRowType>;
+
+export const HeadUsageRowType = Type.Object({
+  name: idSchema<"head">(),
+  usage: UsageType,
+});
+
+export type HeadUsageRow = Decoded<typeof HeadUsageRowType>;
+
+export const BackgroundRowType = Type.Object({
+  head: idSchema<"head">(),
+  item: BackgroundItemType,
+});
+
+export type BackgroundRow = Decoded<typeof BackgroundRowType>;
+
+export const CatalogRowType = Type.Union([
+  Type.Object({ kind: Type.Literal("commands"), entry: CommandInfoType }),
+  Type.Object({ kind: Type.Literal("settings"), entry: SettingInfoType }),
+  Type.Object({ kind: Type.Literal("skills"), entry: SkillInfoType }),
+  Type.Object({ kind: Type.Literal("agents"), entry: AgentInfoType }),
+  Type.Object({ kind: Type.Literal("tools"), entry: ToolInfoType }),
 ]);
 
-/** One frame of a head's watch on the wire: the whole view first, then each later view as what changed since the frame before it, an absent field unchanged; a null `leadingPrompt` or `seenThrough` clears it. */
-export type ViewFrame = Decoded<typeof ViewFrameType>;
+export type CatalogRow = Decoded<typeof CatalogRowType>;
 
-export const SessionsFrameType = Type.Object({
-  kind: Type.Enum(["list", "delta"]),
-  order: viewSplice(idSchema<"session">()),
-  items: Type.Array(SessionInfoType),
+function tableChange<T extends TSchema>(row: T) {
+  return Type.Object({ upsert: Type.Array(row), drop: Type.Array(Type.String()) });
+}
+
+export const TableChangesType = Type.Object({
+  messages: tableChange(MessageType),
+  turns: tableChange(TurnInfoType),
+  parts: tableChange(PartViewType),
+  changes: tableChange(FileChangeType),
+  catalog: tableChange(CatalogRowType),
+  heads: tableChange(HeadRowType),
+  settings: tableChange(HeadSettingsRowType),
+  usage: tableChange(HeadUsageRowType),
+  background: tableChange(BackgroundRowType),
 });
 
-/** One frame of `sessions.watch`: the list's session ids as the previous frame's ids spliced (a `list` splices from none and starts every stream), and the row of each id the splice takes; a row a client cannot read is left out. */
-export type SessionsFrame = Decoded<typeof SessionsFrameType>;
+export type TableChanges = Decoded<typeof TableChangesType>;
+
+export const PathChangeType = Type.Object({
+  head: idSchema<"head">(),
+  after: nullable(idSchema<"message">()),
+  ids: Type.Array(idSchema<"message">()),
+});
+
+export type PathChange = Decoded<typeof PathChangeType>;
+
+export const SessionChangeType = Type.Object({
+  seq: SeqType,
+  tables: Type.Partial(TableChangesType),
+  paths: Type.Array(PathChangeType),
+});
+
+export type SessionChange = Decoded<typeof SessionChangeType>;
+
+export const WindowSpecType = Type.Union([
+  Type.Object({ tail: Type.Number() }),
+  Type.Object({ from: idSchema<"message">() }),
+]);
+
+export type WindowSpec = Decoded<typeof WindowSpecType>;
+
+export const ResumeType = Type.Object({
+  seq: SeqType,
+  from: nullable(idSchema<"message">()),
+});
+
+export type Resume = Decoded<typeof ResumeType>;
+
+export const HeadWindowType = Type.Object({
+  seq: SeqType,
+  head: idSchema<"head">(),
+  order: Type.Array(idSchema<"message">()),
+  leadingPrompt: nullable(idSchema<"message">()),
+  complete: Type.Boolean(),
+  tables: TableChangesType,
+  live: Type.Object({ activation: ActivationType }),
+});
+
+export type HeadWindow = Decoded<typeof HeadWindowType>;
+
+export function catalogRowKey(row: CatalogRow): string {
+  switch (row.kind) {
+    case "settings":
+    case "agents":
+      return `${row.kind}/${row.entry.id}`;
+    default:
+      return `${row.kind}/${row.entry.name}`;
+  }
+}
+
+export function backgroundRowKey(row: BackgroundRow): string {
+  return `${row.head}/${row.item.kind}/${row.item.id}`;
+}
 
 export const ViewOptionsSchema: Schema<ViewOptions> = standard(ViewOptionsType);
 
@@ -226,8 +299,3 @@ export const TurnInfoSchema: Schema<TurnInfo> = standard(TurnInfoType);
 export const SessionViewSchema: Schema<SessionView> = standard(withJson(SessionViewType));
 
 export const HistoryPageSchema: Schema<HistoryPage> = standard(withJson(HistoryPageType));
-
-export const ViewFrameSchema: Schema<ViewFrame> = standard(withJson(ViewFrameType));
-
-/** One array of a view as the previous frame's array spliced: `runs` holds `[from, count]` pairs, each copying `count` items of the previous array from `from`, or with `from` -1 taking the next `count` of `items`. */
-export type ViewSplice<T> = { readonly runs: readonly number[]; readonly items: readonly T[] };

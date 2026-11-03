@@ -9,20 +9,31 @@ one more handle.
 
 ## Stream the answer
 
-`watch` yields the whole view as the answer grows. Print what's new in each text part of this run.
+The host serves its rows on a local listener, and `openHost` follows them: a head store for the
+chat's rows and `live.text` for the text a part streams. Print what's new in each text part of this
+run.
 
 ```ts title="stream.ts"
 import process from "node:process";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import { sdk } from "@nyte-ai/sdk";
-import type { Head, SendReceipt } from "@nyte-ai/sdk";
+import type { SendReceipt, Session } from "@nyte-ai/sdk";
+import { headView, openHost, streamText, withStreamedText } from "@nyte-ai/sdk/client";
+import type { HostConnection, StreamedText } from "@nyte-ai/sdk/client";
 
-export async function print(head: Head, receipt: SendReceipt) {
+export async function print(live: HostConnection, session: Session, receipt: SendReceipt) {
   const landed = await receipt.landed();
   const run = landed.kind === "landed" ? landed.run : null;
   const written = new Map<string, number>();
+  const store = live.head(session.id, session.name, { tail: 20 });
+  const done = Promise.withResolvers<void>();
+  let texts: StreamedText = new Map();
 
-  for await (const view of head.watch({ tail: 20 })) {
+  const show = () => {
+    const snapshot = store.snapshot();
+
+    if (snapshot === null) return;
+    const view = withStreamedText(headView(snapshot), texts);
     const turns = new Set(view.turns.filter((turn) => turn.run === run).map((turn) => turn.id));
 
     for (const message of view.messages) {
@@ -32,14 +43,40 @@ export async function print(head: Head, receipt: SendReceipt) {
       written.set(message.id, markdown.length);
     }
 
-    if (view.execution.kind === "idle" && view.execution.lastRun?.id === run) break;
-  }
+    if (view.execution.kind === "idle" && view.execution.lastRun?.id === run) done.resolve();
+  };
+
+  const stopRows = store.subscribe(show);
+
+  const stopText = live.text((update) => {
+    texts = streamText(texts, update);
+    show();
+  });
+
+  show();
+  await done.promise;
+  stopText();
+  stopRows();
+  store.close();
 }
 
 const host = await sdk.open({});
+const token = crypto.randomUUID();
+
+const listener = await host.listen({
+  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  auth: { kind: "token", token },
+});
+
+const live = openHost(listener.address ?? "", {
+  credentials: { kind: "token", token },
+  client: { kind: "other", name: "stream", version: "1.0.0" },
+});
+
 const { session, receipt } = await host.sessions.start({ content: "Explain this repository" });
 
-await print(session, receipt);
+await print(live, session, receipt);
+live.release();
 await host.close();
 ```
 
@@ -51,15 +88,28 @@ The first message starts the session. Every message after that is a `send`.
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { sdk } from "@nyte-ai/sdk";
+import { openHost } from "@nyte-ai/sdk/client";
 import { print } from "./stream";
 
 const host = await sdk.open({});
+const token = crypto.randomUUID();
+
+const listener = await host.listen({
+  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  auth: { kind: "token", token },
+});
+
+const live = openHost(listener.address ?? "", {
+  credentials: { kind: "token", token },
+  client: { kind: "other", name: "chat", version: "1.0.0" },
+});
+
 const prompt = createInterface({ input: process.stdin, output: process.stdout });
 
 let { session, receipt } = await host.sessions.start({ content: await prompt.question("> ") });
 
 while (true) {
-  await print(session, receipt);
+  await print(live, session, receipt);
   receipt = await session.send(await prompt.question("\n> "));
 }
 ```
@@ -67,15 +117,23 @@ while (true) {
 ```ts tab="stream.ts"
 import process from "node:process";
 import { isPart, text } from "@nyte-ai/plugin/core";
-import { sdk } from "@nyte-ai/sdk";
-import type { Head, SendReceipt } from "@nyte-ai/sdk";
+import type { SendReceipt, Session } from "@nyte-ai/sdk";
+import { headView, streamText, withStreamedText } from "@nyte-ai/sdk/client";
+import type { HostConnection, StreamedText } from "@nyte-ai/sdk/client";
 
-export async function print(head: Head, receipt: SendReceipt) {
+export async function print(live: HostConnection, session: Session, receipt: SendReceipt) {
   const landed = await receipt.landed();
   const run = landed.kind === "landed" ? landed.run : null;
   const written = new Map<string, number>();
+  const store = live.head(session.id, session.name, { tail: 20 });
+  const done = Promise.withResolvers<void>();
+  let texts: StreamedText = new Map();
 
-  for await (const view of head.watch({ tail: 20 })) {
+  const show = () => {
+    const snapshot = store.snapshot();
+
+    if (snapshot === null) return;
+    const view = withStreamedText(headView(snapshot), texts);
     const turns = new Set(view.turns.filter((turn) => turn.run === run).map((turn) => turn.id));
 
     for (const message of view.messages) {
@@ -85,15 +143,22 @@ export async function print(head: Head, receipt: SendReceipt) {
       written.set(message.id, markdown.length);
     }
 
-    if (view.execution.kind === "idle" && view.execution.lastRun?.id === run) break;
-  }
+    if (view.execution.kind === "idle" && view.execution.lastRun?.id === run) done.resolve();
+  };
+
+  const stopRows = store.subscribe(show);
+
+  const stopText = live.text((update) => {
+    texts = streamText(texts, update);
+    show();
+  });
+
+  show();
+  await done.promise;
+  stopText();
+  stopRows();
+  store.close();
 }
-
-const host = await sdk.open({});
-const { session, receipt } = await host.sessions.start({ content: "Explain this repository" });
-
-await print(session, receipt);
-await host.close();
 ```
 
 ## Give the agent a tool
@@ -193,12 +258,29 @@ const answers = await Promise.all(
 
 ```ts title="sessions.ts"
 import { sdk } from "@nyte-ai/sdk";
+import { openHost } from "@nyte-ai/sdk/client";
 
 const host = await sdk.open({});
+const token = crypto.randomUUID();
 
-for await (const sessions of host.sessions.watch({ limit: 20 })) {
-  console.table(sessions.map((info) => ({ name: info.name, id: info.id })));
-}
+const listener = await host.listen({
+  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  auth: { kind: "token", token },
+});
+
+const live = openHost(listener.address ?? "", {
+  credentials: { kind: "token", token },
+  client: { kind: "other", name: "sessions", version: "1.0.0" },
+});
+
+const sessions = live.directory({ limit: 20 });
+
+sessions.subscribe(() => {
+  const snapshot = sessions.snapshot();
+
+  if (snapshot === null) return;
+  console.table(snapshot.ids.map((id) => ({ name: snapshot.rows.get(id)?.name, id })));
+});
 ```
 
 ## Serve it and connect from anywhere

@@ -78,7 +78,7 @@ export function createChildTable(
   });
 
   const follow = (record: SessionRecord): Child | null => {
-    if (record.parent === null) return null;
+    if (record.parent === null || record.side === true) return null;
 
     const child = children.get(record.id) ?? {
       parent: record.parent,

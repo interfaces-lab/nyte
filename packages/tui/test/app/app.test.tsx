@@ -7,7 +7,7 @@ import { exitText } from "../../src/app/main.tsx";
 import type { Store } from "../../src/app/store.ts";
 import { COMPOSER_PLACEHOLDER } from "../../src/lib/constants.ts";
 import { TERMINAL_TITLE_BASE } from "../../src/lib/format.ts";
-import { CLEARED } from "../../src/lib/program-status.ts";
+import { CLEARED, encode } from "../../src/lib/program-status.ts";
 import { followedSession } from "../../src/model/state.ts";
 import { openTestHost } from "../fixture/host.ts";
 import { startTui } from "../harness/tui.ts";
@@ -238,4 +238,18 @@ test("a signal that destroys the renderer first still resets the terminal, and c
   expect(app.terminal.titles.at(-1)).toBe(TERMINAL_TITLE_BASE);
   expect(app.terminal.statuses.filter((status) => status === CLEARED)).toHaveLength(1);
   expect(await app.app.close()).toBeUndefined();
+});
+
+test("OSC 7501: a run starting reports working once however often the screen redraws", async () => {
+  await using app = await startTui();
+  await app.ready();
+  app.fixture.reply({ content: [{ type: "text", text: "Streaming a long answer" }], hold: true });
+  const before = app.terminal.statuses.length;
+
+  await app.send("go");
+  await app.frame((frame) => frame.includes("Streaming"));
+
+  expect(app.terminal.statuses.slice(before)).toEqual([
+    encode({ state: "working", title: null, msg: "Working" }),
+  ]);
 });

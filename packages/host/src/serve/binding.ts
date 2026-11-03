@@ -1,4 +1,4 @@
-import { isJson, SdkError } from "@nyte-ai/schema";
+import { isJson, SdkError, SOCKET_PATH } from "@nyte-ai/schema";
 import type {
   ByteReader,
   Capability,
@@ -30,7 +30,7 @@ import type {
   Receipt,
 } from "@nyte-ai/core";
 import type { ServerHost } from "@nyte-ai/core/server";
-import { mapped, sessionsFrames, viewFrames } from "@nyte-ai/protocol";
+import { mapped } from "@nyte-ai/protocol";
 import type {
   ByteName,
   CallName,
@@ -38,6 +38,9 @@ import type {
   OperationInput,
   OperationOutput,
 } from "@nyte-ai/protocol";
+import type { McpOwner } from "../mcp-server/grants.ts";
+import type { TailnetControl } from "../tailnet.ts";
+import { sharedClients } from "./clients.ts";
 
 /** Returns what a row's binding receives besides its input: the request's body (the bytes of `files.write`, `job.write` and `files.upload`) and the client's abort signal. */
 export type BindingRequest = {
@@ -86,9 +89,12 @@ type OutputBinding = {
 /** Returns the server side of the table for one connection: each row takes its decoded input and the request's body and abort signal, and answers its output, its frames, or a byte reader; setup failures (authority, capability, unknown ids) reject before any frame. */
 export type Binding = CallBinding & FrameBinding & ByteBinding & OutputBinding;
 
-/** Describes what a binding needs beyond the connection: the server port, for the rows that carry a wire-only id (§40o) and `parts.create`. */
+/** Describes what a binding needs beyond the connection: the server port, for the rows that carry a wire-only id (§40o) and `parts.create`, the tailnet node, for the `host.tailnet.*` rows, the MCP server, for the owner's `mcp.approve`, `mcp.deny` and `mcp.grants.*` rows, and the host's execution, for `host.execution.pause` and `host.execution.resume`. */
 export type BindingOptions = {
   readonly server: ServerHost;
+  readonly tailnet?: TailnetControl;
+  readonly mcpServer?: McpOwner;
+  readonly execution?: { pause(): void; resume(): void };
 };
 
 const LOGIN_LIFETIME = 10 * 60 * 1000;
@@ -125,6 +131,15 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
   const browser = async (id: WorkspaceId): Promise<BrowserApi> =>
     available(await workspace(id).browser(), "browser");
+
+  const tailnet = (): TailnetControl =>
+    options.tailnet ?? fail("unavailable", "This host runs no tailnet node.");
+
+  const mcpServer = (): McpOwner =>
+    options.mcpServer ?? fail("unavailable", "This host serves no MCP endpoint.");
+
+  const execution = (): NonNullable<BindingOptions["execution"]> =>
+    options.execution ?? fail("unavailable", "This listener can't pause the host.");
 
   const findLogin = (provider: string): Attempt =>
     logins.get(principalKey(principal, provider)) ??
@@ -262,13 +277,44 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "workspaces.forget": ({ id }) => connection.workspaces.forget(id),
     "workspaces.cleanWorktrees": () => connection.workspaces.cleanWorktrees(),
 
-    "sessions.watch": async (input) => sessionsFrames(connection.sessions.watch(input)),
     "sessions.start": async (input) => {
       const { session, receipt } = await connection.sessions.start(input);
 
       return { session: session.id, receipt: receipt.id, message: receipt.message };
     },
     "sessions.list": (input) => connection.sessions.list(input),
+    "events.subscribe": async () => socketOnly("events.subscribe"),
+    "events.unsubscribe": async () => socketOnly("events.unsubscribe"),
+    "text.open": async () => socketOnly("text.open"),
+    "clients.read": async () => sharedClients(options.server).rows(),
+    "client.perform": async () => socketOnly("client.perform"),
+    "client.reply": async () => socketOnly("client.reply"),
+    "sessions.read": (input) => connection.sessions.read(input),
+    "host.tailnet.status": async () => tailnet().status(),
+    "host.tailnet.configure": (input) => tailnet().configure(input),
+    "host.tailnet.logout": () => tailnet().logout(),
+    "host.execution.pause": async () => {
+      execution().pause();
+
+      return null;
+    },
+    "host.execution.resume": async () => {
+      execution().resume();
+
+      return null;
+    },
+    "mcp.approve": (input) => mcpServer().approve(input),
+    "mcp.deny": async (input) => {
+      await mcpServer().deny(input);
+
+      return null;
+    },
+    "mcp.grants.list": () => mcpServer().list(),
+    "mcp.grants.revoke": async (input) => {
+      await mcpServer().revoke(input);
+
+      return null;
+    },
 
     "session.info": ({ session: id }) => session(id).info(),
     "session.update": ({ session: id, patch }) => session(id).update(patch),
@@ -285,10 +331,17 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     },
     "head.configure": ({ session: id, head, patch }) => session(id).head(head).configure(patch),
     "head.view": ({ session: id, head, options }) => session(id).head(head).view(options),
-    "head.watch": async ({ session: id, head, options }) => {
+    "head.read": async ({ session: id, head, window, resume }) => {
       await session(id).info();
+      const attachment = wire.attach(id, principal);
 
-      return viewFrames(session(id).head(head).watch(options));
+      try {
+        await attachment.ready();
+
+        return attachment.read(head, window, resume ?? null);
+      } finally {
+        attachment.release();
+      }
     },
     "head.see": async ({ session: id, head, commit }) => {
       await session(id).head(head).see(commit);
@@ -364,11 +417,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       return answer === null
         ? null
         : { action: String(answer.action), input: toJson(answer.input) };
-    },
-    "part.watch": async ({ session: id, part }) => {
-      await session(id).info();
-
-      return session(id).part(part).watch();
     },
     "part.close": async ({ session: id, part }) => {
       await session(id).part(part).close();
@@ -649,6 +697,10 @@ function toJson(value: unknown): Json {
 
 function principalKey(principal: PrincipalId, name: string): string {
   return JSON.stringify([principal, name]);
+}
+
+function socketOnly(name: string): never {
+  return fail("invalid", `${name} answers only on the host's WebSocket at ${SOCKET_PATH}.`);
 }
 
 function fail(code: "unknown" | "invalid" | "denied" | "unavailable", message: string): never {

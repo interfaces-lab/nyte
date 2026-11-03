@@ -1,0 +1,146 @@
+---
+title: host.tailnet.configure
+description: Saves the embedded tailnet node's settings and restarts it, signing in with the auth key when one is given; the key is passed to the node once and never saved.
+---
+
+Saves the embedded tailnet node's settings and restarts the node with them. `enabled` turns it on
+or off, `hostname` names it on the tailnet, `tags` are advertised at its first enrollment, and
+`access` decides who it admits: `owner` admits only the Tailscale user who owns the node, `tailnet`
+anyone the tailnet's access rules let through. The node's owner gets `owner` authority in both
+modes; everyone else it admits gets `participant`.
+
+`authKey` signs the node in without a browser. The host hands it to the node once, over the node's
+standard input, and never writes it to disk. The answer is the status right after the restart,
+usually `starting`; poll [`host.tailnet.status`](/docs/reference/operations/host/tailnet.status)
+for `running`.
+
+## When to call it
+
+When the user turns the tailnet on or off or changes its settings.
+
+## Access
+
+Needs `owner` authority, and answers only on the host's local socket. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{ "enabled": true, "hostname": "studio", "tags": [], "access": "owner" }
+```
+
+Response:
+
+```json
+{ "state": "starting", "https": "pending", "access": "owner", "tags": [] }
+```
+
+## Errors
+
+- `denied` off the local socket: `host.tailnet.configure answers only on the host's local socket.`
+- `invalid` with tags in `owner` access: `A tagged node has no owner, so tags need access tailnet.`
+- `unavailable` when the host runs no tailnet node: `This host runs no tailnet node.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["enabled", "hostname", "tags", "access"],
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "hostname": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^tag:[A-Za-z0-9][A-Za-z0-9-]*$"
+      }
+    },
+    "access": {
+      "enum": ["owner", "tailnet"]
+    },
+    "authKey": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["state", "https", "access", "tags"],
+  "properties": {
+    "state": {
+      "enum": [
+        "disabled",
+        "starting",
+        "needs_login",
+        "needs_machine_approval",
+        "running",
+        "stopped"
+      ]
+    },
+    "authUrl": {
+      "type": "string"
+    },
+    "dnsName": {
+      "type": "string"
+    },
+    "https": {
+      "enum": ["pending", "available", "unavailable"]
+    },
+    "access": {
+      "enum": ["owner", "tailnet"]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reason": {
+      "enum": [
+        "locked",
+        "protocol",
+        "version",
+        "hello_timeout",
+        "start_timeout",
+        "invalid_status",
+        "exited"
+      ]
+    },
+    "holder": {
+      "type": "number"
+    },
+    "detail": {
+      "type": "string"
+    },
+    "stderr": {
+      "type": "string"
+    }
+  }
+}
+```
+
+{/* generated:end */}

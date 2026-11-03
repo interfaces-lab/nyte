@@ -1,4 +1,5 @@
-import type { SessionId, SessionView } from "@nyte-ai/sdk";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import type { QuestionAnswers, QuestionInfo } from "@nyte-ai/plugin/question/schema";
 import { shortId } from "../lib/format.ts";
@@ -8,6 +9,8 @@ import type { QuestionDraft, QuestionFieldDraft, QuestionLocal, QuestionRequest 
 
 export interface QuestionModel extends QuestionRequest {
   readonly questions: readonly QuestionInfo[];
+  /** The agent stopped waiting and carried on; an answer still reaches it. */
+  readonly late: boolean;
   readonly field: QuestionInfo;
   readonly index: number;
   readonly owner: { readonly kind: "head" } | { readonly kind: "child"; readonly short: string };
@@ -100,7 +103,7 @@ export function collectQuestionAnswers(draft: QuestionDraft): QuestionAnswers {
 }
 
 export function currentQuestion(
-  head: { readonly id: SessionId; readonly view: SessionView | null } | null,
+  head: { readonly id: SessionId; readonly view: HeadView | null } | null,
   tasks: readonly Task[],
   local: QuestionLocal,
 ): QuestionModel | null {
@@ -215,7 +218,7 @@ export function questionPanel(
     kind: "list",
     id: `question:${question.part}`,
     purpose: { kind: "question", session: question.session, part: question.part },
-    title: `${progress}${questionTitle(question)}`,
+    title: `${question.late ? "Agent continued · " : ""}${progress}${questionTitle(question)}`,
     choices: { kind: "ready", items: [...options, ...actions] },
     query: "",
     highlighted: local.highlighted,

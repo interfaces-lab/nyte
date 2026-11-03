@@ -1,0 +1,141 @@
+---
+title: session.command
+description: Runs a plugin command in a session with the text typed after it.
+---
+
+Runs a plugin command in the session with the text typed after it (`""` for none). It waits for the
+session's plugins to load first. The command either returns text (`ran` with its output, or `null`),
+or a prompt, which the host sends to the main head as a message (`sent` with its receipt).
+
+## When to call it
+
+When the user types a slash command a plugin declared, such as `/review src/app.ts`. The session's
+commands are in the `catalog` of its view.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "name": "review",
+  "text": "src/app.ts"
+}
+```
+
+Response:
+
+```json
+{ "kind": "sent", "receipt": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b" }
+```
+
+`unknown` answers that no command has the name; `failed` carries the message of a command that
+threw.
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors). A prompt the session's `before_send` hooks refuse
+fails as [`head.send`](/docs/reference/operations/head/send) does.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "name", "text"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "output"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "ran"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "receipt"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "sent"
+        },
+        "receipt": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unknown"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "failed"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

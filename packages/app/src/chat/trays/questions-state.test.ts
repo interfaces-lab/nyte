@@ -23,7 +23,8 @@ function part(id: string, change: Partial<PartView> = {}): PartView {
           ],
         },
       ],
-      answers: null,
+      call: "call-question",
+      phase: { kind: "asking" },
     },
     version: 1,
     status: { kind: "live", run: asId<"run">("run") },
@@ -49,7 +50,8 @@ test("every unanswered question part is waiting; answered, stopped, foreign and 
               options: [{ label: "Yes", description: "Proceed." }],
             },
           ],
-          answers: [["Yes"]],
+          call: "call-answered",
+          phase: { kind: "answered", answers: [["Yes"]], head: null },
         },
       }),
       part("stopped", {
@@ -67,6 +69,7 @@ test("every unanswered question part is waiting; answered, stopped, foreign and 
   assert.deepEqual(questions, [
     {
       part: asId<"part">("open"),
+      late: false,
       questions: [
         {
           header: "Pick",
@@ -85,7 +88,7 @@ test("every unanswered question part is waiting; answered, stopped, foreign and 
 test("all answers go to the question part in one action", async () => {
   const acted: { readonly action: string; readonly input: unknown }[] = [];
   const session = asId<"session">("chat");
-  const { connection } = scriptedConnection({
+  const { connection, live } = scriptedConnection({
     session: () => ({
       part: (id) => ({
         id,
@@ -103,7 +106,7 @@ test("all answers go to the question part in one action", async () => {
       }),
     }),
   });
-  installConnection(connection);
+  installConnection(connection, live);
   const [question] = openQuestions(view([part("open")]));
   assert.ok(question !== undefined);
 
@@ -112,7 +115,7 @@ test("all answers go to the question part in one action", async () => {
 });
 
 test("a question nobody waits on any more says so", async () => {
-  const { connection } = scriptedConnection({
+  const { connection, live } = scriptedConnection({
     session: () => ({
       part: (id) => ({
         id,
@@ -126,7 +129,7 @@ test("a question nobody waits on any more says so", async () => {
       }),
     }),
   });
-  installConnection(connection);
+  installConnection(connection, live);
   const [question] = openQuestions(view([part("open")]));
   assert.ok(question !== undefined);
 

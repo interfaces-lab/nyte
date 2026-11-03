@@ -11,13 +11,14 @@ import { errorMessage } from "../../contract/errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { useCatalog } from "../../data/catalog.ts";
-import { useHostLink } from "../../data/host.ts";
+import { useHostHealth } from "../../data/host.ts";
 import { useMentionFiles } from "../../data/files.ts";
 import { usePluginCatalog } from "../../data/plugins.ts";
 import { useSessionActions } from "../../data/session-actions.ts";
 import { useSessionActivity, useSessionChoice } from "../../data/sessions.ts";
 import { connection } from "../../data/connection.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
+import { useWatchSelect } from "../../data/watch-store.ts";
 import { nyte } from "../../contract/nyte.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../../panes/session-view-state.ts";
 import type { ComposerViewState } from "../../panes/session-view-state.ts";
@@ -156,7 +157,11 @@ export function Composer({
   const folder = useChatFolder();
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const mac = nyte.platform === "darwin";
-  const link = useHostLink();
+  const health = useHostHealth();
+
+  const staleSince = useWatchSelect(chatStore(sessionId), (state) =>
+    state.value?.freshness.kind === "stale" ? state.value.freshness.since : undefined,
+  );
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const questions = useQuestionDock(sessionId);
   const pluginCatalog = usePluginCatalog(sessionId);
@@ -260,7 +265,7 @@ export function Composer({
 
   const recall = (direction: RecallDirection): boolean => {
     const walk = recalled.current;
-    const history = walk?.history ?? loadedPrompts(sessionWatch(sessionId).value);
+    const history = walk?.history ?? loadedPrompts(chatStore(sessionId).value);
     const older = walk === undefined ? 0 : walk.position + 1;
 
     if (direction === "newer" || older < history.prompts.length || history.before === null)
@@ -698,16 +703,27 @@ export function Composer({
                   />
                 </div>
               )}
-              {link !== undefined && link.kind !== "connected" && (
+              {health !== undefined && health.kind !== "open" && (
                 <div
-                  role={link.kind === "closed" ? "alert" : "status"}
+                  role={health.kind === "blocked" ? "alert" : "status"}
                   {...props(composerStyles.queued)}
                 >
-                  <Icon name={link.kind === "closed" ? "warning" : "refresh"} />
+                  <Icon name={health.kind === "blocked" ? "warning" : "refresh"} />
                   <span {...props(composerStyles.queuedText)}>
-                    {link.kind === "closed"
+                    {health.kind === "blocked"
                       ? "Disconnected from the host."
                       : "Reconnecting to the host…"}
+                  </span>
+                </div>
+              )}
+              {staleSince !== undefined && (
+                <div role="status" {...props(composerStyles.queued)}>
+                  <Icon name="clock" />
+                  <span {...props(composerStyles.queuedText)}>
+                    {`Chat last updated at ${new Date(staleSince).toLocaleTimeString(undefined, {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}.`}
                   </span>
                 </div>
               )}

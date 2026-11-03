@@ -291,9 +291,7 @@ export type {
   WriteOutcome,
 } from "@nyte-ai/schema";
 
-export { dev, watchStore } from "@nyte-ai/core";
-
-export type { WatchStore } from "@nyte-ai/core";
+export { dev } from "@nyte-ai/core";
 
 export {
   clearSpans,

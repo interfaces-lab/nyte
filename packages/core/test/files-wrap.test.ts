@@ -425,10 +425,10 @@ describe("environment tools", () => {
       `watching\n[running in the background as job ${job.id}: you are told when it exits; the job tool reads its output or stops it]`,
     );
     expect(readText(await call("job", { id: job.id, action: "output" }))).toBe(
-      `Job ${job.id} is running:\nwatching`,
+      `watching\n[job ${job.id} is running]`,
     );
     expect(readText(await call("job", { id: job.id, action: "stop" }))).toBe(
-      `Job ${job.id} ended (terminated) with code none:\nwatching`,
+      `watching\n[job ${job.id} ended (terminated) with code none]`,
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
 

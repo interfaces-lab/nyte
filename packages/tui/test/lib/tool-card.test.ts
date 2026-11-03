@@ -7,7 +7,7 @@ import type { Task } from "../../src/lib/tasks.ts";
 import { shellCard, toolCard } from "../../src/lib/tool-card.ts";
 import type { ToolCardModel } from "../../src/lib/tool-card.ts";
 import type { ShellJob } from "../../src/model/state.ts";
-import { buildView } from "../fixture/view.ts";
+import { buildView, followed } from "../fixture/view.ts";
 import type { TurnBuilder } from "../fixture/view.ts";
 
 function findTool(name: string, spec: Parameters<TurnBuilder["tool"]>[1]): ToolMessage {
@@ -199,7 +199,7 @@ describe("toolCard", () => {
         pinned: false,
         archived: false,
         activation: { kind: "active" },
-        heads: [],
+        heads: followed(childView).info.heads,
         createdAt: 0,
         lastActivityAt: 0,
       },
@@ -222,6 +222,8 @@ describe("toolCard", () => {
       running: true,
     });
 
+    const working = buildView((v) => v.turn("c1", (t) => t.user("look around")).live());
+
     const task: Task = {
       kind: "agent",
       id: asId("child-1"),
@@ -234,11 +236,11 @@ describe("toolCard", () => {
         pinned: false,
         archived: false,
         activation: { kind: "active" },
-        heads: [],
+        heads: followed(working).info.heads,
         createdAt: 0,
         lastActivityAt: 0,
       },
-      view: buildView((v) => v.turn("c1", (t) => t.user("look around")).live()),
+      view: working,
     };
 
     expect(text(toolCard(create, [task], false))).toBe("● explorer  model · medium · worktree");

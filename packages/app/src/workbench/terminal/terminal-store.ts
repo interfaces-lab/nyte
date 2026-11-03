@@ -66,7 +66,7 @@ export type TerminalTab = ShellTerminalTab | JobTerminalTab;
 
 export interface TerminalOutput {
   reset(): void;
-  write(data: string): void;
+  write(data: Uint8Array): void;
   update(tab: TerminalTab): void;
   /** Whether the terminal is on screen, so its own notifications would only repeat it. */
   visible(): boolean;
@@ -99,17 +99,21 @@ const savedShell = Type.Object({
 
 const encoder = new TextEncoder();
 
+const GAP_TEXT = "\r\n\u001b[2m[output skipped]\u001b[0m\r\n";
+
+const GAP = encoder.encode("\u0018" + GAP_TEXT);
+
 let snapshot: TerminalSnapshot = { tabs: new Map() };
 
 const listeners = new Set<() => void>();
 
 const output = new Map<WorkbenchTabId, TerminalOutput>();
 
-const queued = new Map<WorkbenchTabId, string[]>();
+const queued = new Map<WorkbenchTabId, Uint8Array[]>();
 
 const feeds = new Map<WorkbenchTabId, Feed>();
 
-const typedAhead = new Map<WorkbenchTabId, string[]>();
+const typedAhead = new Map<WorkbenchTabId, Uint8Array[]>();
 
 const flushing = new Map<WorkbenchTabId, Promise<void>>();
 
@@ -189,10 +193,10 @@ export function attachTerminalOutput(id: WorkbenchTabId, sink: TerminalOutput): 
   queued.delete(id);
 }
 
-function print(id: WorkbenchTabId, data: string): void {
+function print(id: WorkbenchTabId, data: Uint8Array, text: string): void {
   const feed = feeds.get(id);
 
-  if (feed !== undefined) keep(feed, data);
+  if (feed !== undefined) keep(feed, text);
   const sink = output.get(id);
 
   if (sink !== undefined) sink.write(data);
@@ -212,7 +216,7 @@ function shellTab(id: WorkbenchTabId): ShellTerminalTab | undefined {
 }
 
 async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
-  const decoder = new TextDecoder();
+  let decoder = new TextDecoder();
   let replay = getTerminal(id)?.kind === "job";
 
   try {
@@ -229,15 +233,16 @@ async function follow(id: WorkbenchTabId, feed: Feed): Promise<void> {
 
       if (frame.kind === "bytes") {
         const text = decoder.decode(frame.data, { stream: true });
-        print(id, text);
+        print(id, frame.data, text);
         const status = feed.reader.read(text);
         updateProgram(id, status.records);
         postNotices(id, status.notices);
 
-        if (status.reply !== "") void terminalActions.write(id, status.reply);
+        if (status.reply !== "") void terminalActions.write(id, encoder.encode(status.reply));
       } else if (frame.kind === "gap") {
+        decoder = new TextDecoder();
         updateProgram(id, feed.reader.gap());
-        print(id, "\r\n\u001b[2m[output skipped]\u001b[0m\r\n");
+        print(id, GAP, GAP_TEXT);
       } else {
         updateProgram(id, feed.reader.close());
 
@@ -413,8 +418,11 @@ function startShell(
 
     feeds.set(id, feed);
 
-    if (reattached === null && printed !== "")
-      print(id, `${printed}\r\n\u001b[2m[restored, new shell]\u001b[0m\r\n`);
+    if (reattached === null && printed !== "") {
+      const restored = `${printed}\r\n\u001b[2m[restored, new shell]\u001b[0m\r\n`;
+      print(id, encoder.encode(restored), restored);
+    }
+
     updateShell(id, { kind: "running" });
     void follow(id, feed);
     const ahead = typedAhead.get(id) ?? [];
@@ -424,7 +432,7 @@ function startShell(
       flushing.set(
         id,
         feed.job
-          .write(encoder.encode(ahead.join("")))
+          .write(joinBytes(ahead))
           .catch((cause: unknown) => writeFailed(id, cause))
           .finally(() => flushing.delete(id)),
       );
@@ -646,7 +654,7 @@ export const terminalActions = {
 
     if (feed !== undefined) updateProgram(id, feed.reader.acknowledge());
   },
-  write(id: WorkbenchTabId, data: string): Promise<void> {
+  write(id: WorkbenchTabId, data: Uint8Array): Promise<void> {
     const tab = getTerminal(id);
     const feed = feeds.get(id);
 
@@ -662,9 +670,7 @@ export const terminalActions = {
     const ahead = flushing.get(id);
 
     const sent =
-      ahead === undefined
-        ? feed.job.write(encoder.encode(data))
-        : ahead.then(() => feed.job.write(encoder.encode(data)));
+      ahead === undefined ? feed.job.write(data) : ahead.then(() => feed.job.write(data));
 
     return sent.catch((cause: unknown) => writeFailed(id, cause));
   },
@@ -713,7 +719,7 @@ export const terminalActions = {
 
     if (tab?.kind !== "job" || tab.rendering.kind !== "failed") return;
     disposeOutput(id);
-    queued.set(id, [...(feeds.get(id)?.printed ?? [])]);
+    queued.set(id, [encoder.encode(terminalPrinted(id))]);
     update(id, (current) =>
       current.kind === "shell" ? current : { ...current, rendering: { kind: "ready" } },
     );
@@ -739,3 +745,14 @@ export const terminalActions = {
     await feed?.job.close();
   },
 };
+
+function joinBytes(chunks: readonly Uint8Array[]): Uint8Array {
+  const joined = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+  chunks.reduce((at, chunk) => {
+    joined.set(chunk, at);
+
+    return at + chunk.length;
+  }, 0);
+
+  return joined;
+}

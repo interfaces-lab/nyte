@@ -1,7 +1,8 @@
 import type { Connection } from "@nyte-ai/sdk";
 import { keys } from "./query-client.ts";
 import { nyte } from "../contract/nyte.ts";
-import { sessionsWatch, hostWatch } from "./watches.ts";
+import { hostWatch } from "./watches.ts";
+import { sessionList } from "./directory.ts";
 import { connectHost, currentConnection } from "./connection.ts";
 import { readHost } from "./host.ts";
 import { workspacesQuery } from "./workspaces.ts";
@@ -18,7 +19,11 @@ export function connectLocalHost(): Promise<Connection> {
   connecting ??= nyte.host
     .endpoint()
     .then((endpoint) =>
-      connectHost(endpoint, { remember: nyte.host.remember, fetch: nyte.host.fetch }),
+      connectHost(endpoint, {
+        remember: nyte.host.remember,
+        fetch: nyte.host.fetch,
+        socket: nyte.host.socket,
+      }),
     )
     .then((opened) => {
       performance.mark("nyte:sdk-connected");
@@ -36,7 +41,7 @@ export function connectLocalHost(): Promise<Connection> {
 /** Fills the host state, the folder list and the model catalog when the web app connects. */
 export async function loadLocalResources(): Promise<void> {
   const host = hostWatch("host");
-  const directory = sessionsWatch("roots");
+  const directory = sessionList("roots");
 
   const [state, workspaces, catalog] = await Promise.all([
     readHost(),

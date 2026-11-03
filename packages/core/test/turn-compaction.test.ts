@@ -192,7 +192,7 @@ describe("turn compaction", () => {
     const prompt = lastUserText(fake, 1);
 
     expect(prompt).toContain("echo returned: echo: BEGIN");
-    expect(prompt).toContain("characters omitted");
+    expect(prompt).toContain("characters cut from the middle");
     expect(prompt).toContain("xFINISHED");
   });
 

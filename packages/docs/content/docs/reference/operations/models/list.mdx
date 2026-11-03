@@ -1,0 +1,299 @@
+---
+title: models.list
+description: Lists saved models, the default selection and each provider's last known credentials.
+---
+
+Reads the model catalog: each provider with its models, login methods, limits, listings and last
+known credential state, plus the default model and the catalog generation. It reads what is saved
+and doesn't wait for a provider to answer.
+
+## When to call it
+
+To fill a model picker, and again whenever the `catalog` generation on
+[`connection.watch`](/docs/reference/operations/connection/watch) changes. A provider's `credential`
+is the last state the host knew: `unknown`, `missing`, `configured`, `verified` or `failed`.
+
+## Access
+
+Any principal with `participant` authority. Host scope. Changing the catalog takes `owner`.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response, with one provider and its models list emptied:
+
+```json
+{
+  "generation": "6d2f8a1c-3b5e-4f7a-9c1d-2e4b6a8c0f13",
+  "default": { "provider": "anthropic", "id": "claude-sonnet-4-5" },
+  "providers": [
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "credential": "configured",
+      "methods": [{ "kind": "oauth" }, { "kind": "key" }],
+      "limits": [],
+      "models": [],
+      "listings": {}
+    }
+  ]
+}
+```
+
+`default` is the model saved with `models.setDefault`. Without one, it is the first model of the
+first provider with working credentials, or `null`.
+
+## Errors
+
+- `unavailable` when the host was built without models: `models is not provided`.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["generation", "default", "providers"],
+  "properties": {
+    "generation": {
+      "type": "string"
+    },
+    "default": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["provider", "id"],
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "credential", "methods", "limits", "models", "listings"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "credential": {
+            "enum": ["unknown", "missing", "configured", "verified", "failed"]
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "oauth"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "key"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "limits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "used", "limit", "resetsAt"],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "used": {
+                  "type": "number"
+                },
+                "limit": {
+                  "type": "number"
+                },
+                "resetsAt": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "ref",
+                "name",
+                "reasoning",
+                "thinking",
+                "defaultThinking",
+                "fast",
+                "contextWindow",
+                "compactAt",
+                "maxOutput",
+                "input",
+                "capabilities",
+                "cost"
+              ],
+              "properties": {
+                "ref": {
+                  "type": "object",
+                  "required": ["provider", "id"],
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reasoning": {
+                  "type": "boolean"
+                },
+                "thinking": {
+                  "type": "array",
+                  "items": {
+                    "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+                  }
+                },
+                "defaultThinking": {
+                  "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+                },
+                "fast": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": ["provider", "id"],
+                      "properties": {
+                        "provider": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "contextWindow": {
+                  "type": "number"
+                },
+                "compactAt": {
+                  "type": "number"
+                },
+                "maxOutput": {
+                  "type": "number"
+                },
+                "input": {
+                  "type": "array",
+                  "items": {
+                    "enum": ["text", "image"]
+                  }
+                },
+                "capabilities": {
+                  "type": "object",
+                  "required": ["steer"],
+                  "properties": {
+                    "steer": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "cost": {
+                  "type": "object",
+                  "required": ["input", "output", "cacheRead", "cacheWrite"],
+                  "properties": {
+                    "input": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    },
+                    "cacheRead": {
+                      "type": "number"
+                    },
+                    "cacheWrite": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "listings": {
+            "type": "object",
+            "patternProperties": {
+              "^.*$": {
+                "enum": ["hidden", "favorite"]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

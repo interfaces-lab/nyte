@@ -107,7 +107,7 @@ it("lands a steer sent during the places call after the call settles, in the sam
   const { host } = simulation;
   const started = performance.now();
   const { trace, session, receipt } = await start(host, RESTAURANT_PROMPT);
-  const watched = watchViews(session);
+  const watched = await watchViews(simulation, session);
 
   await until(
     async () =>

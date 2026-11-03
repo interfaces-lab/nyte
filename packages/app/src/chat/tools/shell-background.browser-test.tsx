@@ -17,7 +17,7 @@ import { PaneController } from "../../panes/pane-controller.ts";
 import type { ToolCallDensity } from "../../preferences/index.ts";
 import { queryClient } from "../../data/query-client.ts";
 import { installConnection } from "../../data/connection.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, sessionRow, settledTool } from "../../../test/view-fixtures.ts";
@@ -92,7 +92,6 @@ function view(message: Message): SessionView {
     ],
     configuration: { selected: null, effective: null },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -104,7 +103,7 @@ const jobs = viewStream<readonly JobView[]>([job]);
 
 const acts: string[] = [];
 
-const scripted = scriptedConnection({
+const scriptedSet = scriptedConnection({
   sessions: [sessionRow(SESSION)],
   views: new Map([[SESSION, views]]),
   session: () => ({
@@ -123,19 +122,24 @@ const scripted = scriptedConnection({
       close: async () => undefined,
     }),
   }),
-}).connection;
-
-installConnection({
-  ...scripted,
-  workspace: (id) => {
-    const workspace = scripted.workspace(id);
-
-    return { ...workspace, jobs: { ...workspace.jobs, watch: () => jobs.watch() } };
-  },
 });
 
+const scripted = scriptedSet.connection;
+
+installConnection(
+  {
+    ...scripted,
+    workspace: (id) => {
+      const workspace = scripted.workspace(id);
+
+      return { ...workspace, jobs: { ...workspace.jobs, watch: () => jobs.watch() } };
+    },
+  },
+  scriptedSet.live,
+);
+
 function ShellStep({ density }: { readonly density: ToolCallDensity }): ReactElement | null {
-  const message = useWatchSelect(sessionWatch(SESSION), ({ value }) => value?.messages[0]);
+  const message = useWatchSelect(chatStore(SESSION), ({ value }) => value?.messages[0]);
 
   return message !== undefined && showsTool(message) ? (
     <ToolCallView message={message} cwd="/repo" density={density} />

@@ -17,7 +17,11 @@
       "dependsOn": ["^build"],
       "env": ["NYTE_ICONS"],
       "passThroughEnv": ["CENTRAL_LICENSE_KEY"],
-      "inputs": ["$TURBO_DEFAULT$", "src/glyphs/selected.ts", "$TURBO_ROOT$/scripts/icons.mjs"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "src/glyphs/selected.generated.ts",
+        "$TURBO_ROOT$/scripts/icons.mjs"
+      ],
       "outputs": ["dist/**"]
     },
     "@nyte-ai/web#build": {
@@ -27,7 +31,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         ".env*",
-        "src/lib/icon-set/selected.ts",
+        "src/lib/icon-set/selected.generated.ts",
         "$TURBO_ROOT$/scripts/icons.mjs"
       ],
       "outputs": [".output/**", "dist/**"]
@@ -35,11 +39,18 @@
     "@nyte-ai/tui#build": {
       "dependsOn": ["^build"],
       "env": ["NYTE_CONNECT_ORIGIN", "NYTE_RELEASE_VERSION"],
-      "outputs": ["dist/nyte", "dist/nyte.exe", "dist/nyte.version"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/tailnet/*.go",
+        "$TURBO_ROOT$/packages/tailnet/go.mod",
+        "$TURBO_ROOT$/packages/tailnet/go.sum",
+        "$TURBO_ROOT$/packages/tailnet/build.mjs"
+      ],
+      "outputs": ["dist/nyte", "dist/nyte.exe", "dist/nyte-tailnet", "dist/nyte.version"]
     },
     "@nyte-ai/desktop#build": {
       "dependsOn": ["^build"],
-      "env": ["NYTE_RELEASE_VERSION"],
+      "env": ["NYTE_CONNECT_ORIGIN", "NYTE_RELEASE_VERSION"],
       "outputs": ["out/**"]
     },
     "build:package": {

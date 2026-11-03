@@ -11,13 +11,9 @@ import type {
   ToolResult,
   WaitOutcome,
 } from "@nyte-ai/schema";
-import { isPart, text, tool } from "@nyte-ai/core";
+import { clipText, isPart, text, tool } from "@nyte-ai/core";
 import type { Session, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
 import type { Plugin } from "@nyte-ai/plugin/core";
-
-const ANSWER_LIMIT = 16_000;
-
-const TRANSCRIPT_LIMIT = 16_000;
 
 const SCHEDULED: Readonly<Record<Schedule["kind"], string>> = {
   joined: "it joins the work in progress",
@@ -141,7 +137,7 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
     const answer = await readSubagentReply(child, run, outcome);
     const worktree = await describeWorktree(invocation, child);
 
-    return reply(worktree === null ? answer : `${worktree}\n\n${answer}`);
+    return reply(clipText(worktree === null ? answer : `${worktree}\n\n${answer}`, "head"));
   },
 };
 
@@ -223,12 +219,15 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
       if (last === null) return reply(`Subagent ${child.id} has not worked on anything yet.`);
 
       return reply(
-        await readSubagentReply(child, last.id, {
-          kind: "run",
-          session: child.id,
-          run: last.id,
-          end: last.end,
-        }),
+        clipText(
+          await readSubagentReply(child, last.id, {
+            kind: "run",
+            session: child.id,
+            run: last.id,
+            end: last.end,
+          }),
+          "head",
+        ),
       );
     }
 
@@ -245,7 +244,7 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
           },
     );
 
-    return reply(await readSubagentReply(child, run, outcome));
+    return reply(clipText(await readSubagentReply(child, run, outcome), "head"));
   },
 };
 
@@ -268,15 +267,14 @@ const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
 
     const state = execution === "idle" ? "idle" : execution === "waiting" ? "waiting" : "working";
 
-    const transcript = fromEnd(
-      [...view.messages, ...view.queue].flatMap(renderTranscriptMessage).join("\n\n"),
-      TRANSCRIPT_LIMIT,
-    );
+    const transcript = [...view.messages, ...view.queue]
+      .flatMap(renderTranscriptMessage)
+      .join("\n\n");
 
     return reply(
       transcript === ""
         ? `Subagent ${child.id} is ${state} and has no messages yet.`
-        : `Subagent ${child.id} is ${state}.\n\n${transcript}`,
+        : clipText(`${transcript}\n\nSubagent ${child.id} is ${state}.`, "tail"),
     );
   },
 };
@@ -411,7 +409,7 @@ async function readSubagentReply(
       )
       .at(-1) ?? "";
 
-  return answer === "" ? header : `${header}\n\n${fromStart(answer, ANSWER_LIMIT)}`;
+  return answer === "" ? header : `${header}\n\n${answer}`;
 }
 
 function describeSubagentOutcome(outcome: WaitOutcome): string {
@@ -455,14 +453,4 @@ function renderTranscriptMessage(message: Message): readonly string[] {
   }
 
   return [];
-}
-
-function fromStart(content: string, limit: number): string {
-  return content.length > limit
-    ? `${content.slice(0, limit)}\n\n[… cut at ${limit} characters]`
-    : content;
-}
-
-function fromEnd(content: string, limit: number): string {
-  return content.length > limit ? `[… earlier messages cut]\n\n${content.slice(-limit)}` : content;
 }

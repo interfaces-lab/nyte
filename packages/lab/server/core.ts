@@ -4,7 +4,7 @@ import type { Host, Listener, Plugin } from "@nyte-ai/core";
 import { sdk } from "@nyte-ai/sdk";
 
 /** The lab's own Nyte home: its store, secret key, provider logins and `.nyte/mcp.json`. */
-export const LAB_HOME = join(process.cwd(), ".home");
+export const LAB_HOME = join(process.cwd(), ".local", "home");
 
 /** Core reads this checkout; the read-only plugin keeps it from changing anything. */
 const WORKSPACE = resolve(process.cwd(), "../..");

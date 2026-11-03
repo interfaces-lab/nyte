@@ -324,7 +324,7 @@ test("scenario D on the web without a CI server: the skill falls back to gh", as
       server.fake.requests
         .map(lastToolText)
         .find((text) => text.includes("##[error]Process completed")),
-    ).toMatch(/^\[truncated: the first \d+ bytes of output are not shown\][^]*-1 !== 3/u);
+    ).toMatch(/^\[… [\d,]+ characters cut\][^]*-1 !== 3/u);
     expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
   } finally {
     process.env.PATH = path;

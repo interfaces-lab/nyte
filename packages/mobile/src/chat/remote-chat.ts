@@ -19,7 +19,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
-import { useWatch } from "../connection/use-watch.ts";
+import {
+  healthMessage,
+  updatedLabel,
+  useChat,
+  useHealth,
+  useSessions,
+} from "../connection/live.ts";
 import { uploadDraft, type DraftContent } from "../media/attachments.ts";
 
 /** The host's answer to a message the SDK's journal holds: the message it became, or why the host refused it. */
@@ -83,17 +89,22 @@ async function configureModel(
  * on, and `steerNow` moves a queued one into the running response.
  */
 export function useRemoteChat(client: Connection, sessionId: SessionId, headName?: HeadName) {
-  const { newerHost } = useHost();
+  const { newerHost, live } = useHost();
   const session = client.session(sessionId);
   const head = headName === undefined ? session : session.head(headName);
 
-  const [watched] = useWatch(head);
+  const chat = useChat(live, client, sessionId, headName);
+  const health = useHealth(live);
   const info = useQuery({ queryKey: ["session-info", sessionId], queryFn: () => session.info() });
+  const parent = info.data?.parent ?? null;
 
-  const state =
-    watched.kind === "ready" ? watched.value : watched.kind === "failed" ? watched.last : undefined;
+  const listed = useSessions(live, {
+    parents: parent === null ? { kind: "roots" } : { kind: "children", session: parent },
+  });
 
-  const tip = state?.heads.find((entry) => entry.name === head.name)?.tip;
+  const state = chat?.view;
+  const row = listed?.sessions.find((candidate) => candidate.id === sessionId);
+  const tip = row?.heads.find((entry) => entry.name === head.name)?.tip;
 
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string>();
@@ -185,15 +196,15 @@ export function useRemoteChat(client: Connection, sessionId: SessionId, headName
   return {
     state,
     tip: tip?.kind === "commit" ? tip.id : undefined,
+    heads: row?.heads.map((entry) => entry.name) ?? [],
+    health: healthMessage(health),
+    updated: updatedLabel(chat?.freshness),
     see: (commit: CommitId) => head.see(commit),
     info: info.data,
     reloadInfo: info.refetch,
     configuration,
     sending,
-    error:
-      sendError ??
-      stopError ??
-      (watched.kind === "failed" ? describeHostError(watched.error, newerHost) : undefined),
+    error: sendError ?? stopError,
     send,
     withdraw,
     steerNow,

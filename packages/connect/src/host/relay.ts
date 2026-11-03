@@ -5,6 +5,7 @@ import {
   RELAY_BODY_LIMIT_BYTES,
   RELAY_CHANNEL_LIMIT,
   RELAY_CLOSE,
+  RELAY_MESSAGE_LIMIT_BYTES,
   RELAY_PING,
   RELAY_PING_INTERVAL_MS,
   RELAY_RETRY_MAX_MS,
@@ -12,9 +13,11 @@ import {
   RELAY_WINDOW_BYTES,
   decodeChunk,
   encodeChunks,
+  encodeMessage,
   hasNullBody,
   parseRelayFrame,
   relayResponseHeaders,
+  sendableCloseCode,
 } from "../relay.ts";
 import type { DesktopFrame, RelayFrame, RelayMethod } from "../relay.ts";
 import type { ConnectRelay } from "../view.ts";
@@ -65,6 +68,17 @@ interface Channel {
   responseEnded: boolean;
 }
 
+interface SocketChannel {
+  readonly id: string;
+  readonly local: WebSocket;
+  credit: number;
+  readonly outbox: { readonly data: string; readonly fin: boolean; readonly bytes: number }[];
+  outboxBytes: number;
+  readonly inbound: Uint8Array[];
+  inboundBytes: number;
+  readonly unopened: string[];
+}
+
 function copyHeaders(response: IncomingMessage): Headers {
   const headers = new Headers();
 
@@ -90,6 +104,7 @@ export class RelayConnection {
   private pingTimer: ReturnType<typeof setInterval> | undefined;
   private stopped = false;
   private readonly channels = new Map<string, Channel>();
+  private readonly sockets = new Map<string, SocketChannel>();
 
   constructor(options: RelayConnectionOptions) {
     this.options = options;
@@ -110,6 +125,8 @@ export class RelayConnection {
   /** End every relayed exchange; the socket stays. */
   dropStreams(): void {
     for (const channel of this.channels.values()) this.reset(channel);
+
+    for (const socket of this.sockets.values()) this.resetSocket(socket);
   }
 
   /** After sleep the socket is likely dead: dial again now. A replaced relay stays stopped. */
@@ -172,6 +189,9 @@ export class RelayConnection {
 
     for (const channel of this.channels.values()) channel.local.destroy();
     this.channels.clear();
+
+    for (const channel of this.sockets.values()) channel.local.close();
+    this.sockets.clear();
     socket?.close(code);
 
     return socket;
@@ -269,10 +289,23 @@ export class RelayConnection {
       return;
     }
 
-    if (frame.t === "open") {
-      if (this.channels.has(frame.ch) || this.channels.size >= RELAY_CHANNEL_LIMIT)
+    if (frame.t === "open" || frame.t === "socket") {
+      if (
+        this.channels.has(frame.ch) ||
+        this.sockets.has(frame.ch) ||
+        this.channels.size + this.sockets.size >= RELAY_CHANNEL_LIMIT
+      )
         this.drop(socket, RELAY_CLOSE.invalid);
-      else this.open(frame);
+      else if (frame.t === "open") this.open(frame);
+      else this.openSocket(frame);
+
+      return;
+    }
+
+    const bridged = this.sockets.get(frame.ch);
+
+    if (bridged !== undefined) {
+      if (!this.socketFrame(bridged, frame)) this.drop(socket, RELAY_CLOSE.invalid);
 
       return;
     }
@@ -281,7 +314,128 @@ export class RelayConnection {
 
     if (channel === undefined) return;
 
-    if (!this.channelFrame(channel, frame)) this.drop(socket, RELAY_CLOSE.invalid);
+    if (frame.t === "message" || frame.t === "close" || !this.channelFrame(channel, frame))
+      this.drop(socket, RELAY_CLOSE.invalid);
+  }
+
+  private openSocket(frame: Extract<RelayFrame, { t: "socket" }>): void {
+    const local = new WebSocket(`ws://127.0.0.1:${String(this.options.port)}${frame.path}`);
+
+    const channel: SocketChannel = {
+      id: frame.ch,
+      local,
+      credit: RELAY_WINDOW_BYTES,
+      outbox: [],
+      outboxBytes: 0,
+      inbound: [],
+      inboundBytes: 0,
+      unopened: [],
+    };
+
+    this.sockets.set(channel.id, channel);
+    local.addEventListener("open", () => {
+      for (const text of channel.unopened.splice(0)) local.send(text);
+    });
+    local.addEventListener("message", (event) => {
+      if (typeof event.data === "string") this.forward(channel, event.data);
+    });
+    local.addEventListener("close", (event) => {
+      if (this.sockets.get(channel.id) !== channel) return;
+      this.sockets.delete(channel.id);
+      this.send({
+        t: "close",
+        ch: channel.id,
+        code: event.code >= 1000 && event.code <= 4999 ? event.code : 1011,
+        reason: event.reason.slice(0, 123),
+      });
+    });
+  }
+
+  private socketFrame(
+    channel: SocketChannel,
+    frame: Exclude<RelayFrame, { t: "ready" | "pong" | "open" | "socket" }>,
+  ): boolean {
+    switch (frame.t) {
+      case "message": {
+        const bytes = decodeChunk(frame.data);
+
+        if (
+          bytes === undefined ||
+          channel.inboundBytes + bytes.byteLength > RELAY_MESSAGE_LIMIT_BYTES
+        )
+          return false;
+        channel.inbound.push(bytes);
+        channel.inboundBytes += bytes.byteLength;
+        this.send({ t: "credit", ch: channel.id, bytes: bytes.byteLength });
+
+        if (!frame.fin) return true;
+        const text = new TextDecoder().decode(Buffer.concat(channel.inbound.splice(0)));
+        channel.inboundBytes = 0;
+
+        if (channel.local.readyState === WebSocket.OPEN) channel.local.send(text);
+        else channel.unopened.push(text);
+
+        return true;
+      }
+
+      case "credit":
+        if (channel.credit + frame.bytes > RELAY_WINDOW_BYTES) return false;
+        channel.credit += frame.bytes;
+        this.pumpSocket(channel);
+
+        return true;
+      case "close":
+        this.sockets.delete(channel.id);
+        channel.local.close(sendableCloseCode(frame.code), frame.reason);
+
+        return true;
+      case "reset":
+        this.sockets.delete(channel.id);
+        channel.local.close();
+
+        return true;
+      case "data":
+      case "end":
+        return false;
+      default: {
+        const _exhaustive: never = frame;
+
+        return _exhaustive;
+      }
+    }
+  }
+
+  private forward(channel: SocketChannel, text: string): void {
+    for (const chunk of encodeMessage(text)) {
+      const bytes = decodeChunk(chunk.data)?.byteLength ?? 0;
+      channel.outbox.push({ ...chunk, bytes });
+      channel.outboxBytes += bytes;
+    }
+
+    if (channel.outboxBytes > RELAY_BODY_LIMIT_BYTES) {
+      this.resetSocket(channel);
+
+      return;
+    }
+
+    this.pumpSocket(channel);
+  }
+
+  private pumpSocket(channel: SocketChannel): void {
+    for (let next = channel.outbox[0]; next !== undefined; next = channel.outbox[0]) {
+      if (next.bytes > channel.credit) return;
+      channel.outbox.shift();
+      channel.outboxBytes -= next.bytes;
+      channel.credit -= next.bytes;
+      this.send({ t: "message", ch: channel.id, data: next.data, fin: next.fin });
+    }
+  }
+
+  private resetSocket(channel: SocketChannel): void {
+    if (this.sockets.get(channel.id) !== channel) return;
+    this.sockets.delete(channel.id);
+    channel.local.close();
+    this.send({ t: "reset", ch: channel.id });
   }
 
   private ping(socket: WebSocket): void {

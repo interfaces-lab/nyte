@@ -1,0 +1,155 @@
+---
+title: clients.read
+description: Lists the clients connected to the host's WebSocket and the actions each offers.
+---
+
+Lists the clients connected to the host's WebSocket now: each one's `id`, the `principal` its
+connection authenticated as, the `kind`, `name` and `version` its hello declared, the `actions` it
+offers, and `since`, when it said hello. A client is listed from its hello until its socket closes.
+
+Clients are a live fact with no seq. A connection subscribed to the `host` scope gets the whole list
+as `{ c: "e", type: "event", scope: "host", seq: null, kind: "live", clients }` when it subscribes
+and again on every join and leave, so it rarely needs this call.
+
+## When to call it
+
+To find a client to ask with [`client.perform`](/docs/reference/operations/client/perform), from a
+script or a connection that doesn't subscribe to the host scope.
+
+## Access
+
+Any principal with `participant` authority. Host scope. It answers over HTTP and on the WebSocket.
+
+## Example
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+[
+  {
+    "id": "6f1a4b3c-9e8d-4b7a-8c5d-3e2f0b7d2c4e",
+    "principal": "token",
+    "kind": "app",
+    "name": "Nyte",
+    "version": "0.0.24",
+    "actions": [{ "name": "open", "summary": "Opens a session.", "input": { "type": "object" } }],
+    "since": 1793668213225
+  }
+]
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "principal", "kind", "name", "version", "actions", "since"],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "principal": {
+        "type": "string"
+      },
+      "kind": {
+        "enum": ["app", "tui", "cli", "agent", "other"]
+      },
+      "name": {
+        "type": "string"
+      },
+      "version": {
+        "type": "string"
+      },
+      "actions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["name", "summary", "input"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "summary": {
+              "type": "string"
+            },
+            "input": {
+              "$ref": "Json"
+            }
+          }
+        }
+      },
+      "since": {
+        "type": "number"
+      }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

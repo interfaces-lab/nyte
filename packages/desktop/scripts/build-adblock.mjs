@@ -1,6 +1,6 @@
 /**
  * Fetches EasyList and EasyPrivacy and writes them as one serialized engine to
- * resources/adblock.bin. The app never fetches lists itself; this script is the
+ * resources/adblock.generated.bin. The app never fetches lists itself; this script is the
  * only place a network request happens, and it runs at build time.
  */
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -15,7 +15,7 @@ const LISTS = [
 
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
 
-const output = join(import.meta.dirname, "..", "resources", "adblock.bin");
+const output = join(import.meta.dirname, "..", "resources", "adblock.generated.bin");
 
 const force = process.argv.includes("--force");
 

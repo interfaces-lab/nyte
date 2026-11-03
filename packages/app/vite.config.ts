@@ -2,13 +2,7 @@ import { stylex } from "@nyte-ai/ui/stylex";
 import react from "@vitejs/plugin-react";
 import { defaultClientConditions, defineConfig } from "vite";
 import { deferredEntries } from "./src/lib/deferred-entries.ts";
-import {
-  canvasShell,
-  deferredChunks,
-  devConsole,
-  dropInlinedGhosttyWasm,
-  shareCentralIconBase,
-} from "./vite.ts";
+import { canvasShell, deferredChunks, devConsole, shareCentralIconBase } from "./vite.ts";
 
 /**
  * The browser build of the interface: `index.html` mounts `src/web/entry.tsx`.
@@ -20,7 +14,6 @@ export default defineConfig({
   plugins: [
     deferredChunks(deferredEntries),
     shareCentralIconBase(),
-    dropInlinedGhosttyWasm(),
     canvasShell(),
     devConsole(),
     stylex.vite({

@@ -1,0 +1,147 @@
+---
+title: github.signOut
+description: Signs the host machine out of GitHub, or cancels a sign-in still waiting for its code.
+---
+
+Ends a sign-in still waiting for its code; otherwise removes the GitHub CLI's github.com login. It
+answers the account state after.
+
+## When to call it
+
+From a "disconnect GitHub" button, or to cancel a sign-in.
+
+## Access
+
+Needs `owner` authority. Host scope: it signs out the whole machine.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+{ "kind": "signed_out" }
+```
+
+## Errors
+
+- `unavailable` when the host serves no GitHub login.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "cli_missing"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signed_out"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "deviceCode"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signing_in"
+        },
+        "deviceCode": {
+          "type": "object",
+          "required": ["userCode", "verificationUri"],
+          "properties": {
+            "userCode": {
+              "type": "string"
+            },
+            "verificationUri": {
+              "type": "string"
+            },
+            "expiresInSeconds": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "account"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "ready"
+        },
+        "account": {
+          "type": "object",
+          "required": ["login"],
+          "properties": {
+            "login": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "avatarUrl": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "error"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

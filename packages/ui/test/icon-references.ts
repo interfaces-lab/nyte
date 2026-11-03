@@ -2,7 +2,7 @@
  * The raw glyph behind every icon name, from the selected set, for tests that
  * check `Icon` draws its glyph unchanged.
  */
-import { FILLED_GLYPHS, GLYPHS } from "../src/glyphs/selected.ts";
+import { FILLED_GLYPHS, GLYPHS } from "../src/glyphs/selected.generated.ts";
 import {
   FILLED_ICON_NAMES,
   ICON_NAMES,

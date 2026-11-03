@@ -10,6 +10,7 @@ import type {
   ThinkingMessage,
   ToolMessage,
 } from "@nyte-ai/plugin/client/presentation";
+import { QUESTION_TOOL } from "@nyte-ai/plugin/question/schema";
 import { messageParts, referenceLabel } from "../../references/message-references.ts";
 
 export type StepMessage = ThinkingMessage | ToolMessage;
@@ -37,6 +38,8 @@ export function transcriptSlot(message: Message): TranscriptSlot {
 
       if (role === "task" || role === "create") return { kind: "agents", message };
     }
+
+    if (message.state.name === QUESTION_TOOL) return { kind: "part", message };
 
     return { kind: "step", message };
   }

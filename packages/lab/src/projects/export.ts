@@ -25,7 +25,8 @@ const STORE = join(HOME, ".nyte/nyte.db");
 
 const REPOSITORY = process.env["NYTE_REPOSITORY"] ?? join(HOME, "Developer/nyte");
 
-const OUT = process.argv[2] ?? join(import.meta.dirname, "../../research_notes/projects/export");
+const OUT =
+  process.argv[2] ?? join(import.meta.dirname, "../../.local/research_notes/projects/export");
 
 const RED_STACK_AT = Date.parse("2026-10-25T05:00:00Z");
 

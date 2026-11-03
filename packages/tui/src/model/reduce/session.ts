@@ -78,16 +78,6 @@ export const sessionHandlers = {
       effects: [{ kind: "follow", target: msg.session, announce: msg.announce }],
     }));
   },
-  "retry-watch": (state) => {
-    const followed = followedSession(state);
-
-    if (followed === null || followed.watch.kind === "live") return stay(state);
-
-    return {
-      state: withFacts(state, { chat: { ...followed, watch: { kind: "live" } } }),
-      effects: [{ kind: "follow", target: followed.id, announce: false }],
-    };
-  },
   "change-directory": (state, msg, now) => {
     const followed = state.facts.chat;
     const { pending } = state.local;

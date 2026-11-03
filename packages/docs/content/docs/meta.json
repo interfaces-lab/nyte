@@ -9,6 +9,8 @@
     "sdk/examples",
     "...sdk/guides",
     "---SDK reference---",
-    "...sdk/reference"
+    "...sdk/reference",
+    "---Host operations---",
+    "...reference/operations"
   ]
 }

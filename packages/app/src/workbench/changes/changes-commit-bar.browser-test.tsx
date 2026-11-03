@@ -111,15 +111,18 @@ const git: GitApi = {
 };
 
 function connect(): void {
-  const { connection } = scriptedConnection({});
+  const { connection, live } = scriptedConnection({});
 
-  installConnection({
-    ...connection,
-    workspace: (id) => ({
-      ...connection.workspace(id),
-      git: async () => ({ kind: "available", api: git }),
-    }),
-  });
+  installConnection(
+    {
+      ...connection,
+      workspace: (id) => ({
+        ...connection.workspace(id),
+        git: async () => ({ kind: "available", api: git }),
+      }),
+    },
+    live,
+  );
 }
 
 function seed(

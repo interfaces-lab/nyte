@@ -1,5 +1,7 @@
 import { createContext, use, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
+import { AppState } from "react-native";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import type { Connection as HostConnection } from "@nyte-ai/sdk";
 import Constants from "expo-constants";
 import { fetch } from "expo/fetch";
@@ -7,7 +9,8 @@ import { gt, valid } from "semver";
 import type { Connection, SavedConnection } from "./connection.ts";
 import type { ConnectFailure } from "./connect-copy.ts";
 import { connectionStore, hostVerifier } from "./host.ts";
-import { useWatch } from "./use-watch.ts";
+import { useHealth } from "./live.ts";
+import type { LiveHost } from "./live.ts";
 import { releaseCopy } from "../account/account-copy.ts";
 import { useAccount } from "../account/account-provider.tsx";
 import { RELEASE_TIMEOUT_MS, releaseOnHost } from "../account/revocation.ts";
@@ -18,6 +21,7 @@ type HostTarget = {
   saved: SavedConnection;
   connection: Connection;
   client: HostConnection;
+  live: LiveHost;
   scope: string;
   key: string;
 };
@@ -38,6 +42,7 @@ type HostConnectionState =
 
 export type HostSession = {
   readonly client: HostConnection;
+  readonly live: LiveHost;
   readonly connection: Connection;
   readonly saved: SavedConnection;
   readonly scope: string;
@@ -57,18 +62,26 @@ export function useHost(): ConnectedHost {
   return host;
 }
 
-/** Follows the host's view for its Nyte version, which changes when the Mac updates while the phone stays connected. */
+/** Reads the host's Nyte version each time its connection opens, since the Mac updating restarts it, and wakes the connection when the app comes forward. */
 export function HostProvider({ session, children }: { session: HostSession; children: ReactNode }) {
-  const [view] = useWatch(session.client);
+  const health = useHealth(session.live);
+  useMountEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") session.live.wake();
+    });
 
-  const version =
-    view.kind === "ready"
-      ? view.value.version
-      : view.kind === "failed"
-        ? view.last?.version
-        : undefined;
+    return () => subscription.remove();
+  });
 
-  const host = valid(version);
+  const opened = health.kind === "open" ? health.since : undefined;
+
+  const version = useQuery({
+    queryKey: ["host-version", session.scope, opened],
+    queryFn: opened === undefined ? skipToken : () => readVersion(session.client),
+    placeholderData: (previous) => previous,
+  });
+
+  const host = valid(version.data);
   const app = valid(Constants.expoConfig?.version);
   const newerHost = host !== null && app !== null && gt(host, app);
 
@@ -99,6 +112,7 @@ export function useHostConnection() {
           saved,
           connection: saved.connection,
           client: current.host.connection,
+          live: current.host.live,
           scope: current.host.scope,
           key: current.host.key,
         };
@@ -154,4 +168,10 @@ export function useHostConnection() {
                 : { kind: "loading" };
 
   return { host, disconnect };
+}
+
+async function readVersion(client: HostConnection): Promise<string | null> {
+  for await (const view of client.watch()) return view.version;
+
+  return null;
 }

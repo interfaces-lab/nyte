@@ -8,10 +8,6 @@ export type SessionActivity =
   | { readonly kind: "writing" }
   | { readonly kind: "idle" };
 
-export interface LoadedSessionView extends SessionView {
-  readonly activity: SessionActivity;
-}
-
 const IDLE = { kind: "idle" } as const;
 
 function readActivity(message: Message): SessionActivity | null {

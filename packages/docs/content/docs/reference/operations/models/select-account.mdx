@@ -1,0 +1,77 @@
+---
+title: models.selectAccount
+description: Makes a saved login the active one for a provider's future requests.
+---
+
+Makes a saved login the active one for a provider. Requests from then on use it. The host drops
+the provider's cached credential state and usage and checks the new account in the background.
+
+## When to call it
+
+When the user picks another account in an account switcher. List the accounts first with
+[`models.accounts`](/docs/reference/operations/models/accounts).
+
+## Access
+
+Needs `owner` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{ "provider": "anthropic", "account": "acct-2" }
+```
+
+Response:
+
+```json
+null
+```
+
+Selecting the account that is already active changes nothing and answers the same.
+
+## Errors
+
+- `internal` when the provider or the account is unknown. The models layer raises its own error
+  for these, which the host doesn't translate, so the message is the generic one and
+  `correlation` names the log entry.
+- `unavailable` when the host was built without models.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["provider", "account"],
+  "properties": {
+    "provider": {
+      "type": "string"
+    },
+    "account": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

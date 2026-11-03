@@ -46,7 +46,7 @@ import { anotherChatLive, ownedChanges, readAttributedPaths } from "../env/sessi
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { startJob } from "../engine/jobs.ts";
 import { publishPatch } from "../engine/runs.ts";
-import { hiddenOwners, missingCapabilities } from "../engine/surface.ts";
+import { hiddenOwners, missingCapabilities, onlyNyteAppHas } from "../engine/surface.ts";
 import { loadedTools } from "./transcript.ts";
 import { toolSource } from "../extend/registry.ts";
 import { commit } from "../fold/commit.ts";
@@ -65,6 +65,7 @@ import {
   requireSession,
   STALE,
 } from "../store/session.ts";
+import { CLIP_CHARS, clipText } from "../util/clip.ts";
 import { dev } from "../util/dev-log.ts";
 import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
@@ -381,9 +382,7 @@ async function plan(
     return {
       kind: "settle",
       outcome: failed(
-        missing.length === 0
-          ? `No tool is named ${name}.`
-          : `${name} isn't available here: this chat uses ${missing.join(", ")}, which only Nyte.app has. Open Nyte.app to continue.`,
+        missing.length === 0 ? `No tool is named ${name}.` : onlyNyteAppHas(name, missing),
       ),
       args: where.args,
       class: custom,
@@ -603,10 +602,12 @@ async function conclude(
 ): Promise<Settled> {
   const { session, head, run } = where;
 
-  const outcome = await where.runtime.hooks.transform(
-    "after_tool",
-    ended.kind === "done" ? ended.value : INTERRUPTED,
-    { session, head, run, principal: where.context.principal },
+  const outcome = clipOutcome(
+    await where.runtime.hooks.transform(
+      "after_tool",
+      ended.kind === "done" ? ended.value : INTERRUPTED,
+      { session, head, run, principal: where.context.principal },
+    ),
   );
 
   const snapshots =
@@ -643,6 +644,39 @@ async function conclude(
         );
 
   return { outcome, files, thread, snapshot: to, path, unattributed };
+}
+
+/**
+ * Holds the text a tool outcome puts in the model's context to `CLIP_CHARS`,
+ * whichever tool or hook made it. A tool that clips its own text to suit it
+ * stays under the limit and passes through.
+ */
+function clipOutcome(outcome: ToolOutcome): ToolOutcome {
+  if (outcome.kind === "failed") return { ...outcome, message: clipText(outcome.message, "ends") };
+
+  if (outcome.kind === "rejected") return { ...outcome, reason: clipText(outcome.reason, "ends") };
+
+  if (outcome.kind !== "ok") return outcome;
+
+  if (outcome.content.length === 0) {
+    const json = JSON.stringify(outcome.output);
+
+    return json.length <= CLIP_CHARS
+      ? outcome
+      : { ...outcome, content: [{ kind: "text", text: clipText(json, "head") }] };
+  }
+
+  const texts = outcome.content.flatMap((item) => (item.kind === "text" ? [item.text] : []));
+
+  if (texts.reduce((total, text) => total + text.length, 0) <= CLIP_CHARS) return outcome;
+
+  return {
+    ...outcome,
+    content: [
+      { kind: "text", text: clipText(texts.join("\n"), "ends") },
+      ...outcome.content.filter((item) => item.kind !== "text"),
+    ],
+  };
 }
 
 async function editedPath(

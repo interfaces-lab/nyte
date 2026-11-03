@@ -1,0 +1,116 @@
+---
+title: session.remove
+description: Deletes a session.
+---
+
+Deletes a session and its history. It answers `busy` with the live runs while any run is live, and
+`has-children` with the ids of its child sessions while it has any. Removing also stops the
+session's running jobs and closes the browser pages it held. A chat that ran in its own worktree
+removes the worktree, keeping the folder while it holds uncommitted changes and the branch once it
+has commits.
+
+## When to call it
+
+From a delete action. Stop the session with [`session.stop`](/docs/reference/operations/session/stop)
+and remove its children first.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{ "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f" }
+```
+
+Response:
+
+```json
+{ "kind": "has-children", "children": ["5e8a2c4f-9b1d-4e3a-8c6f-2d4b6a8c0e1f"] }
+```
+
+## Errors
+
+- `unknown` when no session has the id.
+- `stale` when the write lost to concurrent writes several times in a row.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session"],
+  "properties": {
+    "session": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "removed"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "runs"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "children"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "has-children"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

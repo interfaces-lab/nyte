@@ -255,7 +255,6 @@ test("chat preserves visible rows, the latest summary and message editing", asyn
   await openNewChat(page);
   await expect(page.getByRole("button", { name: "render-workspace", exact: true })).toBeVisible();
   await send(page, "/render-change");
-  await chatPane(page).getByRole("button", { name: "Allow once" }).click();
   await expect(chatPane(page).getByRole("button", { name: "Stop response" })).toBeHidden();
   await expect(card).toBeVisible();
   await expect(card.getByText("render-proof.txt", { exact: true })).toBeVisible();

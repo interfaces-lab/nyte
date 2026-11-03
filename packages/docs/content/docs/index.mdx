@@ -33,6 +33,10 @@ nyte login
 nyte
 ```
 
+`nyte` uses the same host as the desktop app, so the same chats show in both. Without the app, the
+first `nyte` starts the host in the background, and it keeps running after you quit. A host that's
+already running doesn't see an API key you export only in your shell; save it with `nyte login`.
+
 <small>
   Run `nyte -p "your prompt"` for a single answer without the interface. The [CLI
   guide](https://github.com/interfaces-lab/nyte/blob/main/packages/cli/docs/README.md) covers

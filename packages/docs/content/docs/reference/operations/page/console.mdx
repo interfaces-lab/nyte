@@ -1,0 +1,98 @@
+---
+title: page.console
+description: Reads a page's console messages and can clear them.
+---
+
+Reads a page's console messages, each with its level (`log`, `info`, `warn` or
+`error`), text and time. `limit` caps how many; `clear` empties the console after reading.
+
+## When to call it
+
+To check a page for errors after an action, such as when debugging a dev server.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `browser` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "page": "page-7",
+  "limit": 20,
+  "clear": true
+}
+```
+
+Response:
+
+```json
+[{ "level": "error", "text": "TypeError: cart is undefined", "at": 1767240000000 }]
+```
+
+## Errors
+
+- `unknown` when no open page has the id.
+- `unavailable` or `denied` when the workspace doesn't offer a browser.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `browser`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "page"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "page": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "number"
+    },
+    "clear": {
+      "type": "boolean"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["level", "text", "at"],
+    "properties": {
+      "level": {
+        "enum": ["log", "info", "warn", "error"]
+      },
+      "text": {
+        "type": "string"
+      },
+      "at": {
+        "type": "number"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

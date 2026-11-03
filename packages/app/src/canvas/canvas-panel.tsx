@@ -13,8 +13,8 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { formatTimeAgo } from "../lib/format.ts";
 import { CanvasFrame } from "./canvas-frame.tsx";
 import { connection } from "../data/connection.ts";
-import { partWatch } from "../data/watches.ts";
-import { useWatch } from "../data/watch-store.ts";
+import { chatStore } from "../data/chat-store.ts";
+import { useWatchSelect } from "../data/watch-store.ts";
 import { useCanvasEditing } from "./canvas-activity.ts";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 import { workbenchStyles } from "../workbench/workbench.stylex.ts";
@@ -81,17 +81,22 @@ export function CanvasPanel({
   readonly pinned: number | null;
   readonly onPin: (revision: number | null) => void;
 }): ReactElement {
-  const watched = useWatch(partWatch(sessionId, part));
+  const store = chatStore(sessionId);
+
+  const view = useWatchSelect(store, (state) =>
+    state.value === undefined
+      ? undefined
+      : (state.value.parts.find((candidate) => candidate.id === part) ?? null),
+  );
+
+  const error = useWatchSelect(store, (state) => state.error);
   const editing = useCanvasEditing(sessionId, part);
   const now = useNowMinute();
-  const view = watched.value;
 
   if (view === undefined)
     return (
       <section aria-label="Canvas" {...props(styles.panel)}>
-        {watched.error !== undefined && (
-          <p {...props(text.base, styles.message)}>{watched.error.message}</p>
-        )}
+        {error !== undefined && <p {...props(text.base, styles.message)}>{error.message}</p>}
       </section>
     );
 

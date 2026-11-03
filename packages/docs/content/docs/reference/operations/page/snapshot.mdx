@@ -1,0 +1,116 @@
+---
+title: page.snapshot
+description: Returns a page's accessibility tree, or the subtree under one node.
+---
+
+Returns a page's accessibility tree, or the subtree under the node `ref`, with its document
+revision. Each node has a `ref` to act on, a role, an accessible name, and whether it is editable.
+
+## When to call it
+
+Before acting on a page: [`page.click`](/docs/reference/operations/page/click),
+[`page.type`](/docs/reference/operations/page/type) and the other actions take a node's `ref`, and the
+snapshot's `revision` as `expect`.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `browser` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "page": "page-7"
+}
+```
+
+Response:
+
+```json
+{
+  "revision": "14",
+  "nodes": [
+    { "ref": "e12", "role": "button", "name": "Check out", "editable": false, "depth": 0 },
+    { "ref": "e15", "role": "textbox", "name": "Coupon code", "editable": true, "depth": 0 }
+  ]
+}
+```
+
+## Errors
+
+- `unknown` when no open page has the id.
+- `unavailable` or `denied` when the workspace doesn't offer a browser.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `browser`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "page"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "page": {
+      "type": "string"
+    },
+    "ref": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["revision", "nodes"],
+  "properties": {
+    "revision": {
+      "type": "string"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ref", "role", "name", "editable", "depth"],
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "editable": {
+            "type": "boolean"
+          },
+          "depth": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

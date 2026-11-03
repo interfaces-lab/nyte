@@ -1,32 +1,55 @@
+# Keep this block the same in .gitignore and .vercelignore.
+
+# Dependencies, builds and caches
+node_modules/
+dist/
+out/
+out-e2e/
+.turbo/
+.next/
+.output/
+.nitro/
+.source/
+.tanstack/
+.wrangler/
+.vercel
+.cache/
+*.tsbuildinfo
+*.log
+*.log.[0-9]*
+playwright-report/
+test-results/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Secrets
+.env*
+!.env.example
+.dev.vars*
+!.dev.vars.example
+
+# Nyte's own per-workspace folders
+.nyte/
+.uji/
+
+# Anything personal or machine-specific lives in a .local folder
+.local/
+
+# Written by scripts
+*.generated*
+/packages/*/LICENSE
+/packages/*/THIRD-PARTY-NOTICES.md
+
+# Not part of any deploy
 /.agents
 /.claude
 /.github
-/.nyte
 /.pnpm-store
-/bin
-/output
-/share
-/scratch
-/tmp
 
-**/node_modules
-**/.env*
-**/.next
-**/.source
-**/.turbo
-**/.nyte
-**/.vercel
-**/.wrangler
-**/dist
-**/out
-**/*.tsbuildinfo
-**/*.log
-**/.DS_Store
-**/playwright-report
-**/test-results
+# Expo's native output; packages/mobile/.gitignore has the same
 /packages/mobile/.expo
 /packages/mobile/.voltra
 /packages/mobile/ios
 /packages/mobile/android
 /packages/mobile/build
-/packages/lab/video

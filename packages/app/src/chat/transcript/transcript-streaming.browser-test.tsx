@@ -20,12 +20,15 @@ import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { PaneController } from "../../panes/pane-controller.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { installConnection } from "../../data/connection.ts";
 import { SessionScreen } from "../../panes/session-screen.tsx";
 import { SessionConversation } from "../session-conversation.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import "../../theme/tokens.stylex.ts";
-import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
+import {
+  installScripted,
+  scriptedConnection,
+  viewStream,
+} from "../../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow, settledTool } from "../../../test/view-fixtures.ts";
 import { lastCommit, renderCount, resetRenders } from "./transcript-render-counter.ts";
 import { TurnItemView } from "./turn-view.tsx";
@@ -133,7 +136,6 @@ const unchanged = {
   background: [],
   configuration: { selected: configuration, effective: configuration },
   context: { tokens: 0, window: 1_000, lastRequest: null },
-  heads: [],
   changes: [],
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 } as const satisfies Omit<SessionView, "messages">;
@@ -146,11 +148,11 @@ let liveText = "Streaming";
 
 const stream = viewStream(view(liveText));
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: [sessionRow("transcript-streaming", { name: "Streaming" })],
     views: new Map([[ID, stream]]),
-  }).connection,
+  }),
 );
 
 const catalog = {

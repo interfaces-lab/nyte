@@ -1,8 +1,10 @@
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import type { RunEnd, SendReceipt, Session, SessionId } from "@nyte-ai/sdk";
+import type { HostConnection } from "@nyte-ai/sdk/client";
 import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { sessionRecovery } from "./flags.ts";
 import { exitStatus } from "./lifecycle.ts";
+import { chatViews, openChat } from "./live-host.ts";
 import type { Ending } from "./lifecycle.ts";
 
 export interface PrintOutput {
@@ -12,6 +14,7 @@ export interface PrintOutput {
 
 interface PrintOptions {
   readonly session: Session;
+  readonly live: HostConnection;
   /** The prompt's receipt: its start or send already admitted it. */
   readonly receipt: SendReceipt;
   readonly json: boolean;
@@ -71,7 +74,9 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
     options.signal?.addEventListener("abort", () => resolve("cancelled"), { once: true });
   });
 
-  const views = session.watch()[Symbol.asyncIterator]();
+  const views = chatViews(options.live, openChat(options.live, session.id), null)[
+    Symbol.asyncIterator
+  ]();
   // oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- read through a call: inline, the early return keeps `signal.aborted` narrowed to false across the awaits
   const aborted = (): boolean => options.signal?.aborted === true;
 

@@ -10,7 +10,7 @@ import { defaultClientConditions, defaultServerConditions, defineConfig } from "
 
 /** Pre-bundle the icon packages @nyte-ai/ui selected; scripts/icons.mjs writes the choice. */
 const uiIcons = readFileSync(
-  new URL("../ui/src/glyphs/selected.ts", import.meta.url),
+  new URL("../ui/src/glyphs/selected.generated.ts", import.meta.url),
   "utf8",
 ).includes('"./central')
   ? ["@nyte-ai/ui > central-icons", "@nyte-ai/ui > central-icons-filled"]

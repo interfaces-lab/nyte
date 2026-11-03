@@ -3,78 +3,22 @@ import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button } from "@nyte-ai/ui/button";
-import { Toggle } from "@nyte-ai/ui/toggle";
 import { toast } from "@nyte-ai/ui/toast";
+import type { TailnetStatus } from "@nyte-ai/schema";
 import { errorMessage } from "../contract/errors.ts";
-import type { RemoteAccessState, RemoteReach } from "../contract/bridge.ts";
+import type { RemoteAccessState, RemoteReach, TailnetNode } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
 import { keys } from "../data/query-client.ts";
 import { useRemoteAccessState } from "../data/host.ts";
-import { SettingsDialog, SettingsDialogCard } from "../settings/dialog.tsx";
 import { SettingsRow, SettingsSection, SettingsSwitchRow } from "../settings/rows.tsx";
 import { props } from "@stylexjs/stylex";
 import { useConnectView } from "../account/connect-view.ts";
 import { FactRow } from "../components/connection-list.tsx";
 import { NyteConnection } from "./nyte-connection.tsx";
-import { PairingCode, pairingPayload } from "./pairing-code.tsx";
-import { CopyButton, ValueRow, shareStyles } from "./remote-share.tsx";
+import { CopyButton, shareStyles } from "./remote-share.tsx";
 import { CloudflareSection, TunnelPairButton } from "./remote-tunnel.tsx";
 
 type Serving = Extract<RemoteAccessState, { kind: "serving" }>;
-
-type TokenServing = Extract<Serving, { reach: "tailnet" }>;
-
-const HIDDEN = "••••••••••••••••";
-
-function TokenPairButton({ state }: { readonly state: TokenServing }): ReactElement {
-  const [open, setOpen] = useState(false);
-  const [revealed, setRevealed] = useState(false);
-
-  return (
-    <>
-      <Button variant="solid" tone="primary" onClick={() => setOpen(true)}>
-        Pair…
-      </Button>
-      <SettingsDialog
-        open={open}
-        title="Pair a Device"
-        description="In the Nyte iOS app, tap Connect with Tailscale, then Scan QR code. The code carries the token, so treat it like a password."
-        onOpenChange={(next) => {
-          setOpen(next);
-          setRevealed(false);
-        }}
-      >
-        <div {...props(shareStyles.pair)}>
-          <PairingCode
-            value={pairingPayload({ address: state.address, token: state.token })}
-            size={160}
-          />
-        </div>
-        <SettingsDialogCard>
-          <ValueRow title="Address" value={state.address}>
-            <CopyButton label="Address" value={state.address} />
-          </ValueRow>
-          <ValueRow title="Token" value={revealed ? state.token : HIDDEN}>
-            <Toggle
-              iconOnly
-              icon="eye"
-              aria-label={revealed ? "Hide token" : "Reveal token"}
-              pressed={revealed}
-              onPressedChange={setRevealed}
-            />
-            <CopyButton label="Token" value={state.token} />
-          </ValueRow>
-          <ValueRow
-            title="Pairing link"
-            value={revealed ? state.pairingUrl : state.pairingUrl.replace(state.token, HIDDEN)}
-          >
-            <CopyButton label="Pairing link" value={state.pairingUrl} />
-          </ValueRow>
-        </SettingsDialogCard>
-      </SettingsDialog>
-    </>
-  );
-}
 
 function AddressSection({ state }: { readonly state: Serving }): ReactElement {
   return (
@@ -82,9 +26,7 @@ function AddressSection({ state }: { readonly state: Serving }): ReactElement {
       <SettingsRow title="Remote address" description={state.address} controlWidth="wide">
         <span {...props(shareStyles.actions)}>
           <CopyButton label="Address" value={state.address} />
-          {state.reach === "tailnet" ? (
-            <TokenPairButton state={state} />
-          ) : state.cloudflare.kind === "configured" ? (
+          {state.cloudflare.kind === "configured" ? (
             <TunnelPairButton tunnel={state.cloudflare} />
           ) : null}
         </span>
@@ -93,19 +35,63 @@ function AddressSection({ state }: { readonly state: Serving }): ReactElement {
   );
 }
 
-function tailscaleDetail(state: RemoteAccessState): string | undefined {
-  if (state.kind === "serving")
-    return state.reach === "tailnet" ? "Running on this Mac" : undefined;
+function tailnetName(node: TailnetNode): string | undefined {
+  return node.state === "running" ? node.dnsName?.replace(/\.$/, "") : undefined;
+}
 
-  switch (state.tailnet.kind) {
-    case "missing":
-      return "Not installed on this Mac";
+function tailnetDetail(node: TailnetNode): string {
+  switch (node.state) {
     case "unavailable":
-      return "Not running. Start Tailscale, then turn this on.";
-    case "ready":
-      return `Running on this Mac as ${state.tailnet.name ?? state.tailnet.ip}`;
+      return "This Mac's Nyte host has no Tailscale node. Reinstall Nyte to get it back.";
+    case "disabled":
+      return "Off";
+    case "starting":
+      return "Starting…";
+    case "needs_login":
+      return node.authUrl === undefined
+        ? "Waiting for a Tailscale sign-in link…"
+        : `Sign in to Tailscale to add this Mac to your tailnet: ${node.authUrl}`;
+    case "needs_machine_approval":
+      return "Signed in. An admin of your tailnet has to approve this Mac in the Tailscale admin console.";
+    case "running": {
+      const name = tailnetName(node) ?? "this Mac";
+
+      return node.https === "available"
+        ? `Running at https://${name}`
+        : `Running as ${name}. Turn on HTTPS certificates in the Tailscale admin console to pair devices.`;
+    }
+
+    case "stopped":
+      return `Stopped. ${stoppedReason(node)}`;
     default: {
-      const _exhaustive: never = state.tailnet;
+      const _exhaustive: never = node;
+
+      return _exhaustive;
+    }
+  }
+}
+
+function stoppedReason(node: TailnetStatus): string {
+  switch (node.reason) {
+    case "locked":
+      return node.holder === undefined
+        ? "Another process on this Mac runs Nyte's Tailscale node."
+        : `Another process on this Mac (pid ${String(node.holder)}) runs Nyte's Tailscale node.`;
+    case "protocol":
+      return "This Nyte host and its Tailscale node don't speak the same protocol. Reinstall Nyte.";
+    case "version":
+      return "This Nyte host and its Tailscale node are different versions. Reinstall Nyte.";
+    case "hello_timeout":
+      return "The Tailscale node didn't answer in time. Nyte restarts it.";
+    case "start_timeout":
+      return "The Tailscale node didn't connect to your tailnet in time. Nyte restarts it.";
+    case "invalid_status":
+      return "The Tailscale node sent a status Nyte can't read. Nyte restarts it.";
+    case "exited":
+    case undefined:
+      return `${node.detail ?? "The Tailscale node exited."} Nyte restarts it.`;
+    default: {
+      const _exhaustive: never = node.reason;
 
       return _exhaustive;
     }
@@ -113,49 +99,61 @@ function tailscaleDetail(state: RemoteAccessState): string | undefined {
 }
 
 function TailscaleSection({
-  state,
-  serving,
+  node,
   pending,
-  onServe,
+  onEnabled,
+  onSignOut,
 }: {
-  readonly state: RemoteAccessState;
-  readonly serving: boolean;
+  readonly node: TailnetNode;
   readonly pending: boolean;
-  readonly onServe: (on: boolean) => void;
+  readonly onEnabled: (enabled: boolean) => void;
+  readonly onSignOut: () => void;
 }): ReactElement {
-  const detail = tailscaleDetail(state);
-  const blocked = state.kind === "serving" && state.reach !== "tailnet";
+  const enabled = node.state !== "disabled" && node.state !== "unavailable";
+  const name = tailnetName(node);
 
   return (
     <SettingsSection
       title="Tailscale"
-      note="Each time you turn it on, Nyte makes a new token. The pairing code carries it, so treat it like a password."
+      note="This Mac joins your tailnet as a device of its own. Devices of yours on the tailnet reach it there; no token leaves this Mac."
     >
-      {detail !== undefined && (
-        <FactRow
-          icon="devices"
-          tone={serving ? "on" : "neutral"}
-          title="Tailscale app"
-          detail={detail}
-        />
+      <FactRow
+        icon="devices"
+        tone={node.state === "running" ? "on" : "neutral"}
+        title="Tailscale node"
+        detail={tailnetDetail(node)}
+      >
+        {node.state === "needs_login" && node.authUrl !== undefined && (
+          <Button
+            variant="solid"
+            tone="primary"
+            onClick={() => {
+              if (node.authUrl !== undefined) void nyte.host.openExternal({ url: node.authUrl });
+            }}
+          >
+            Sign In…
+          </Button>
+        )}
+        {enabled && node.state !== "needs_login" && (
+          <Button variant="outline" disabled={pending} onClick={onSignOut}>
+            Sign Out
+          </Button>
+        )}
+      </FactRow>
+      {name !== undefined && node.state === "running" && node.https === "available" && (
+        <SettingsRow title="Remote address" description={`https://${name}`} controlWidth="wide">
+          <CopyButton label="Address" value={`https://${name}`} />
+        </SettingsRow>
       )}
       <SettingsSwitchRow
         title="Serve over Tailscale"
-        description={
-          blocked
-            ? "Turn off Serve over Cloudflare Tunnel first. This Mac serves over one of them at a time."
-            : "Uses Tailscale Serve on this Mac's own address"
-        }
-        checked={serving}
-        disabled={pending || blocked || (state.kind === "off" && state.tailnet.kind !== "ready")}
-        onCheckedChange={onServe}
+        description="Runs Nyte's own Tailscale node beside its host"
+        checked={enabled}
+        disabled={pending || node.state === "unavailable"}
+        onCheckedChange={onEnabled}
       />
     </SettingsSection>
   );
-}
-
-function reachLabel(reach: RemoteReach): string {
-  return reach === "tailnet" ? "Tailscale" : "Cloudflare Tunnel";
 }
 
 function sharedDetail(reaches: readonly string[], state: RemoteAccessState | undefined): string {
@@ -178,10 +176,10 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
 
   const start = useMutation({
     mutationFn: (reach: RemoteReach) => nyte.host.remote.start({ reach }),
-    onError: (cause, reach) =>
+    onError: (cause) =>
       toast.add({
         type: "error",
-        title: `Couldn't serve over ${reachLabel(reach)}: ${errorMessage(cause)}`,
+        title: `Couldn't serve over Cloudflare Tunnel: ${errorMessage(cause)}`,
         id: "remote-access",
       }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
@@ -198,14 +196,38 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
     onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
   });
 
+  const tailnet = useMutation({
+    mutationFn: (enabled: boolean) => nyte.host.remote.configureTailnet({ enabled }),
+    onError: (cause, enabled) =>
+      toast.add({
+        type: "error",
+        title: `Couldn't turn Tailscale ${enabled ? "on" : "off"}: ${errorMessage(cause)}`,
+        id: "remote-access",
+      }),
+    onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
+  });
+
+  const signOut = useMutation({
+    mutationFn: () => nyte.host.remote.signOutTailnet(),
+    onError: (cause) =>
+      toast.add({
+        type: "error",
+        title: `Couldn't sign out of Tailscale: ${errorMessage(cause)}`,
+        id: "remote-access",
+      }),
+    onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
+  });
+
   const state = remote.data;
   const serving = state?.kind === "serving" ? state : undefined;
   const accountShared = account?.kind === "linked" && account.enabled;
+  const tailnetShared = state?.tailnet.state === "running";
 
   const stopSharing = useMutation({
     mutationFn: async () => {
       await Promise.all([
         serving === undefined ? undefined : nyte.host.remote.stop(),
+        tailnetShared ? nyte.host.remote.configureTailnet({ enabled: false }) : undefined,
         accountShared ? nyte.host.connect.setEnabled({ enabled: false }) : undefined,
       ]);
     },
@@ -217,10 +239,16 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
       ]),
   });
 
-  const pending = start.isPending || stop.isPending || stopSharing.isPending;
+  const pending =
+    start.isPending ||
+    stop.isPending ||
+    stopSharing.isPending ||
+    tailnet.isPending ||
+    signOut.isPending;
 
   const reaches = [
-    serving === undefined ? undefined : reachLabel(serving.reach),
+    tailnetShared ? "Tailscale" : undefined,
+    serving === undefined ? undefined : "Cloudflare Tunnel",
     accountShared ? "your Nyte account" : undefined,
   ].filter((reach) => reach !== undefined);
 
@@ -263,15 +291,14 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
       {state !== undefined && (
         <>
           <TailscaleSection
-            state={state}
-            serving={servingOver("tailnet")}
+            node={state.tailnet}
             pending={pending}
-            onServe={serve("tailnet")}
+            onEnabled={(enabled) => tailnet.mutate(enabled)}
+            onSignOut={() => signOut.mutate()}
           />
           <CloudflareSection
             tunnel={state.cloudflare}
             serving={servingOver("cloudflare")}
-            blocked={serving !== undefined && serving.reach !== "cloudflare"}
             pending={pending}
             onServe={serve("cloudflare")}
           />

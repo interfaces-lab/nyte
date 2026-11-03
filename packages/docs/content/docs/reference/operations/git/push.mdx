@@ -1,0 +1,159 @@
+---
+title: git.push
+description: Pushes the current branch, optionally setting its upstream.
+---
+
+Pushes the current branch. With `setUpstream`, it pushes to `origin` and sets the branch's
+upstream. It answers `applied`, `unchanged` when every ref was already up to date, `stale`, or
+`rejected` with git's message, including for a detached HEAD.
+
+## When to call it
+
+From a push or "publish branch" action, and before
+[`github.createPullRequest`](/docs/reference/operations/github/create-pull-request).
+
+## Access
+
+Needs `owner` authority. Workspace scope, with the `git` capability. The push uses the host
+machine's git credentials.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "input": { "setUpstream": true }
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "applied",
+  "revision": "a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9"
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "setUpstream": {
+          "type": "boolean"
+        }
+      }
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "expect": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "applied"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unchanged"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "runs"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "rejected"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

@@ -18,7 +18,7 @@ Move accepted implementations into the owning package and document them in the d
 
 ## Core
 
-- `pnpm dev` opens core from this checkout on first use, from the Core dialog or a prototype that connects through the app's data layer. Its store, secret key, provider logins and MCP config live in the lab's git-ignored `.home`, apart from yours.
+- `pnpm dev` opens core from this checkout on first use, from the Core dialog or a prototype that connects through the app's data layer. Its store, secret key, provider logins and MCP config live in the lab's git-ignored `.local` home, apart from yours.
 - Core reads this checkout and rejects file edits and shell commands.
 - Sign in from the Core dialog, or set provider keys in the environment. Plugins that read your real home (Claude Code, ACP, the GitHub CLI) still see it.
 - HTTP MCP servers in the lab home's MCP config reach core's sessions, and a page calls them directly at `/core/mcp/<server>/<tool>`.

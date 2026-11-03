@@ -1,0 +1,262 @@
+---
+title: workspace.info
+description: Reads the workspace's folder, trust and state.
+---
+
+Reads one workspace: its target, identity, availability, whether its project files are trusted,
+the project sources it would load, who added it, how many sessions use it, the runs writing to it,
+and the worktree it isolates, if any.
+
+`projectResources` is the trust decision saved for the folder or a folder above it, or `null` when
+none was made; `trusted` is whether project files load now, which may come from the host's default
+when no decision was made.
+
+## When to call it
+
+To show a workspace's details, or to check a saved workspace id still exists.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope: the input names the workspace.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response:
+
+```json
+{
+  "id": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "target": { "kind": "local", "path": "/Users/ada/code/shop" },
+  "identity": "e3a1c9f04b7d2e6a8c5f1b3d9e7a2c4f6b8d0e1a3c5f7b9d2e4a6c8f0b1d3e5a",
+  "availability": { "kind": "available" },
+  "projectResources": null,
+  "trusted": false,
+  "projectSources": [".nyte/mcp.json"],
+  "addedBy": "local",
+  "sessions": 1,
+  "writers": ["4e2a6c8f-1b3d-4f5a-9c7e-0a2b4d6f8c1e"],
+  "isolation": null
+}
+```
+
+## Errors
+
+- `unknown` when no workspace has the id: `Workspace <id> is not registered.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": [
+    "id",
+    "target",
+    "identity",
+    "availability",
+    "projectResources",
+    "trusted",
+    "projectSources",
+    "addedBy",
+    "sessions",
+    "writers",
+    "isolation"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "target": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "local"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "locator"],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "locator": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ]
+    },
+    "identity": {
+      "type": "string"
+    },
+    "availability": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "available"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "reason"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unavailable"
+            },
+            "reason": {
+              "enum": ["unsupported", "unreachable"]
+            }
+          }
+        }
+      ]
+    },
+    "projectResources": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "trusted": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "projectSources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "addedBy": {
+      "type": "string"
+    },
+    "sessions": {
+      "type": "number"
+    },
+    "writers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "isolation": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind", "source", "session", "branch", "base"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "worktree"
+            },
+            "source": {
+              "type": "string"
+            },
+            "session": {
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "base": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

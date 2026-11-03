@@ -15,6 +15,7 @@ import { exitStatus, exitWithin, onEnding, watchTerminal } from "../lifecycle.ts
 import type { Ending } from "../lifecycle.ts";
 import { trustFolder } from "../run.ts";
 import { connectHost } from "../local-host.ts";
+import { openLiveHost } from "../live-host.ts";
 import type { HostSource } from "../local-host.ts";
 import type { FailureReport } from "../model/state.ts";
 import { firstFramePort } from "../services/first-frame.ts";
@@ -100,6 +101,7 @@ export async function runTui(flags: RunFlags, source: HostSource): Promise<numbe
 
     return {
       connection: local.connection,
+      live: openLiveHost(local.endpoint, "tui"),
       folder: cwd,
       contextFiles: flags.contextFiles,
     };
@@ -127,20 +129,11 @@ export async function runTui(flags: RunFlags, source: HostSource): Promise<numbe
 
   const unhook = installProcessHooks((origin, error) => app.report(origin, error));
 
-  const lost = connecting.then(
-    (local) => local.ended.then((error) => ({ error })),
-    () => new Promise<never>(() => undefined),
-  );
-
-  const ending = await Promise.race([
-    app.closing.then((status) => ({ status })),
-    signalled.promise.then((signal) => ({ status: exitStatus(signal) })),
-    lost,
+  const status = await Promise.race([
+    app.closing,
+    signalled.promise.then((signal) => exitStatus(signal)),
   ]);
 
-  const status = "status" in ending ? ending.status : 1;
-
-  if ("error" in ending) failures.push(`error: ${ending.error.message}`);
   stopEnding();
   exitWithin(status);
   const exit = app.exit();
@@ -150,6 +143,8 @@ export async function runTui(flags: RunFlags, source: HostSource): Promise<numbe
   if (startupError !== null) failures.unshift(`error: ${startupError}`);
 
   await cleanup("Host", async () => {
+    const link = await host.catch(() => null);
+    link?.live.release();
     const local = await connecting.catch(() => null);
     await local?.close();
   });

@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { createContext, use, type CSSProperties, type ReactElement, type ReactNode } from "react";
 
-import { FILLED_GLYPHS, GLYPHS } from "./glyphs/selected.ts";
+import { FILLED_GLYPHS, GLYPHS } from "./glyphs/selected.generated.ts";
 import type { FilledIconName, IconName } from "./icon-names.ts";
 import { mergeStyleProps } from "./style.ts";
 import { glyph } from "./styles/schema.stylex.ts";

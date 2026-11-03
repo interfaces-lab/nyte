@@ -1,8 +1,8 @@
 # @nyte-ai/desktop
 
-The Electron desktop client embeds the Nyte host. Main-process code lives in `src/main`, the preload bridge in `src/preload`, and the renderer entry in `src/renderer`. The React interface itself is [`@nyte-ai/app`](../renderer/README.md). Shared session behavior belongs in core.
+The Electron desktop client of the Nyte host. Main-process code lives in `src/main`, the preload bridge in `src/preload`, and the renderer entry in `src/renderer`. The React interface itself is [`@nyte-ai/app`](../renderer/README.md). Shared session behavior belongs in core.
 
-The host runs in the Nyte Host utility process, and a window reaches it over a MessagePort that main hands both sides, not over loopback HTTP. `src/shared/host-port.ts` carries each fetch the SDK makes as numbered exchanges with per-exchange flow control. A window has no per-origin connection cap, its uploads stream, and a host restart fails open requests as a dropped connection does, so the SDK reconnects through a new port.
+The host is the one `nyte host` serves (`serveHost` in `@nyte-ai/service`), run by launchd as a login agent, so it keeps running after the app quits. It runs on the app's own Node: the app's executable with `ELECTRON_RUN_AS_NODE=1` on `out/main/nyte-host.js`, which main's build bundles apart from main, so terminals open through the `@lydell/node-pty` the app ships (the Bun-compiled `nyte host` cannot load it and answers a pty start with `unavailable`). It starts in the home folder, its default workspace, and runs the bundled `nyte-tailnet` (`--tailnet <path>` in a development build). The packaged app registers `Contents/Library/LaunchAgents/ai.nyte.desktop.host.plist` through SMAppService, which finds the entry from the executable's resources; a development build writes `~/Library/LaunchAgents/ai.nyte.desktop.dev.host.plist` for its Electron and its own entry, with `packages/tui/dist/nyte-tailnet` as the sidecar, and bootstraps it. `pgrep -f nyte-host.js` finds the host. `NYTE_DESKTOP_HOST_LABEL` picks another label for a development build. The host serves `$NYTE_HOME/host.sock` (default `~/.nyte`, mode 0600), and main connects there. A window reaches the host over a MessagePort that main bridges to the socket, never learning its path or a token. `src/shared/host-port.ts` carries each fetch the SDK makes as numbered exchanges with per-exchange flow control. A window has no per-origin connection cap, its uploads stream, and a host restart fails open requests as a dropped connection does, so the SDK reconnects. Main is also the app's client on the host's event channel, a WebSocket on the same socket: it offers the host the agents' browser and canvas previews as client actions, which the host asks for with `client.perform`, and it pauses the host's runs while the Mac sleeps with `host.execution.pause`.
 
 ## Development
 
@@ -123,12 +123,13 @@ connected client's `workspace.select` does, and the row names what is being
 served. A project must be trusted first. The Cloud server is never a
 candidate; only local targets are served.
 
-Remote access has one of two reaches, picked when it starts. **Over Tailscale**
-binds `127.0.0.1` on an ephemeral port and serves it at `https://<this Mac>.ts.net`
-with `tailscale serve`, so a device signed into the same tailnet can reach it
-from any network and nothing off the tailnet can route to it; it needs the
-Tailscale CLI installed, the backend running, MagicDNS, and HTTPS certificates.
-**Over Cloudflare Tunnel** comes from a remote-access plugin, described below.
+**Over Tailscale** is the host's own tailnet node, not a reach of this listener:
+the host runs the bundled `nyte-tailnet`, and the Server page reads and sets
+it with `host.tailnet.status`, `host.tailnet.configure` and `host.tailnet.logout`
+over the local socket. The page shows the node's state: the sign-in link, the
+admin approval it waits for, its `https://<name>.ts.net` address once running,
+or why it stopped. **Over Cloudflare Tunnel** comes from a remote-access plugin,
+described below.
 
 The row shows a pairing link, `<address>/pair#host=…&token=…`, with **Copy
 link** and **Open**; opening it signs the web app in without a form. Host and

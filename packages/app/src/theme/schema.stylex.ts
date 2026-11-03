@@ -27,6 +27,8 @@ export const conversation = defineConsts({
   composerNewChatRadius: "var(--nyte-composer-new-chat-radius)",
   composerExpandedRadius: "var(--nyte-composer-expanded-radius)",
   composerFooterSegmentMaxWidth: "var(--nyte-composer-footer-segment-max-width)",
+  /** The anchor name a chat's composer dock takes, so what floats over the transcript can sit above it. */
+  composerDock: "--nyte-composer-dock",
 });
 
 export const tray = defineConsts({
@@ -45,6 +47,10 @@ export const sidebar = defineConsts({
   floatRadius: "var(--nyte-sidebar-float-radius)",
   slideDuration: "var(--nyte-sidebar-slide-duration)",
   slideEasing: "var(--nyte-sidebar-slide-easing)",
+  slideOffset: "var(--nyte-sidebar-slide-offset)",
+  resizeDuration: "var(--nyte-sidebar-resize-duration)",
+  resizeDelay: "var(--nyte-sidebar-resize-delay)",
+  resizeEasing: "var(--nyte-sidebar-resize-easing)",
   rowHeight: "var(--nyte-sidebar-row-height)",
   askRowHeight: "var(--nyte-sidebar-ask-row-height)",
   gutter: "var(--nyte-sidebar-gutter)",
