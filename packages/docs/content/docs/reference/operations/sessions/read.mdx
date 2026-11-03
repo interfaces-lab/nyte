@@ -13,8 +13,8 @@ To attach to the sessions table, or to catch up after a dropped connection. A fi
 `resume` and keeps the answer's `seq`. A resume sends that `seq` back: the client keeps its rows
 for the ids it already holds, replaces the ones in `rows`, drops the ones no longer in `ids`, and
 reads [`session.info`](/docs/reference/operations/session/info) for an id it holds no row for. Pass
-`parents` to filter as [`sessions.watch`](/docs/reference/operations/sessions/watch) does, and
-`limit` for the window (50 by default).
+`parents` to filter (`roots`, `children` of a session, or `all`), and `limit` for the window (50 by
+default).
 
 ## Access
 

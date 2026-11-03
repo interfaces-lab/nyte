@@ -9,9 +9,8 @@ as core's signatures do, and a test checks the two agree both ways. The host
 (`@nyte-ai/host`'s `createHandler`) serves the table: exactly `POST /<name>` (a
 prefix is the host's mount), gated by the row's authority, input decoded strictly (an unknown
 field is `invalid`), output encoded leniently, a watch as server-sent events
-(`head.watch` sends the head's view from the host's fold whole, then each later
-view as what changed, so a reconnect simply starts over from the current view),
-bytes as `application/octet-stream` (the reader's mime in `X-Nyte-Mime`, the
+(`connection.watch` sends the host's view each time it changes, so a reconnect
+simply starts over from the current view), bytes as `application/octet-stream` (the reader's mime in `X-Nyte-Mime`, the
 JSON input in `X-Nyte-Input` when bytes are the body), `job.output` as
 length-prefixed frames, and every failure as the encoded `SdkError` at its
 status; a watch or stream that fails mid-stream ends with an error frame

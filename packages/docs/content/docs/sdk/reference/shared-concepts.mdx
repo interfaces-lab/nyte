@@ -92,9 +92,10 @@ changes nothing. Read again and decide. Parts use the same idea with a number:
 
 ## Views are folded by the host
 
-The host turns a session's events into a `SessionView`. `watch()` yields a whole view each time, so
-a client never merges events or streamed text itself. After a reconnect, the stream starts again
-from the current view.
+The host turns a session's events into rows: messages, turns, parts and each head's state.
+`view()` reads them as one `SessionView`. `openHost` keeps them current over a socket, and
+`headView` turns a head store's snapshot into the same view, so a client never replays events
+itself. After a reconnect, the store resumes from the last change it applied.
 
 ## Capabilities are values
 
