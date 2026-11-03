@@ -11,7 +11,8 @@ import { deriveView } from "./view.ts";
 import { scenarios } from "./world.ts";
 import type { Scenario, Step } from "./world.ts";
 
-const RESEARCH = process.argv[3] ?? join(import.meta.dirname, "../../.local/research_notes/projects");
+const RESEARCH =
+  process.argv[3] ?? join(import.meta.dirname, "../../.local/research_notes/projects");
 
 const DIRECTORY = process.argv[2] ?? join(RESEARCH, "export");
 

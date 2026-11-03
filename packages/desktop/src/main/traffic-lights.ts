@@ -1,5 +1,5 @@
 /** The app's titlebar height; the window buttons center in it. */
-const TITLEBAR_HEIGHT = 40;
+const TITLEBAR_HEIGHT = 35;
 
 export function macOSTrafficLightPosition(zoomFactor: number): Electron.Point {
   const diameter = Number.parseFloat(process.getSystemVersion()) >= 25 ? 14 : 16;
