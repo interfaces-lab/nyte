@@ -1,4 +1,4 @@
-import { compile, isJsonObject } from "@nyte-ai/schema";
+import { isJsonObject } from "@nyte-ai/schema";
 import type {
   CommitId,
   Execution,
@@ -14,7 +14,6 @@ import type {
   Usage,
   ViewOptions,
 } from "@nyte-ai/schema";
-import { Type } from "typebox";
 import { INDEX } from "../contract/fold.ts";
 import type { FoldHead, FoldState, HeadPair, Path } from "../contract/fold.ts";
 import { text, thinking } from "../contract/parts.ts";
@@ -43,11 +42,7 @@ const windows = new WeakMap<Path, Map<number, readonly TurnInfo[]>>();
 
 const usages = new WeakMap<readonly TurnInfo[], Usage>();
 
-const unsigned = new WeakMap<Message, Message>();
-
 const SIGNED: ReadonlySet<string> = new Set([text.kind, thinking.kind]);
-
-const SIGNED_STATE = compile(Type.Object({ signature: Type.Unknown() }));
 
 export function project(state: FoldState, head: HeadName, options?: ViewOptions): SessionView {
   const folded = state.heads.get(head) ?? absentHead(state.heads, head);
@@ -220,23 +215,8 @@ function belongsInQueue(message: Message, execution: Execution): message is Queu
   );
 }
 
-/**
- * The message as views send it: a text or thinking part with its signature nulled, since only
- * provider requests read it, from the stored part. One copy per message, as view frames compare
- * messages by identity.
- */
 export function showMessage(message: Message): Message {
-  const state = message.kind === "part" && SIGNED.has(message.partKind) ? message.state : null;
-
-  if (message.kind !== "part" || !SIGNED_STATE.Check(state) || state.signature === null)
-    return message;
-  const known = unsigned.get(message);
-
-  if (known !== undefined) return known;
-  const shown = { ...message, state: { ...state, signature: null } };
-  unsigned.set(message, shown);
-
-  return shown;
+  return message;
 }
 
 /** The part's view as `part.watch` sends it: a text or thinking part with its signature nulled, as {@link showMessage} does. */

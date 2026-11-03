@@ -1,20 +1,36 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, compile } from "@nyte-ai/schema";
 import type {
+  BackgroundItem,
   CommitId,
   ContextView,
   Execution,
+  FileChange,
   HeadName,
   Message,
   MessageId,
   PartId,
   PartView,
+  SessionCatalogView,
   SessionView,
   TurnId,
   TurnInfo,
 } from "@nyte-ai/schema";
-import type { Draft, FoldHead, FoldRun, FoldTurn, Path } from "../contract/fold.ts";
+import { Type } from "typebox";
+import type {
+  Draft,
+  FoldHead,
+  FoldRun,
+  FoldTurn,
+  Index,
+  Path,
+  Table,
+  Touched,
+} from "../contract/fold.ts";
+import { text, thinking } from "../contract/parts.ts";
 import type { PartRecord } from "../contract/records.ts";
 import { NO_BACKGROUND, START } from "../store/session.ts";
+
+const SIGNED = compile(Type.Object({ signature: Type.Unknown() }));
 
 export const IDLE: Execution = { kind: "idle", lastRun: null };
 
@@ -69,7 +85,9 @@ export function updatePart(
     });
   const index = draft.partViews.findIndex((view) => view.id === id);
 
-  if (index >= 0) draft.partViews = draft.partViews.with(index, partView(next));
+  if (index < 0) return;
+  draft.partViews = draft.partViews.with(index, partView(next));
+  touchRow(draft, "parts", id);
 }
 
 export function committed(draft: Draft, id: CommitId): Message | undefined {
@@ -105,13 +123,23 @@ export function setMessage(draft: Draft, message: Message): void {
   const previous = draft.messages.get(message.id);
 
   if (previous === message) return;
-  draft.messages.set(message.id, message);
+  draft.messages.set(message.id, unsign(message));
+  touchRow(draft, "messages", message.id);
+
+  if (previous?.turn !== message.turn && draft.turns.has(message.turn))
+    touchRow(draft, "turns", message.turn);
+  const owner = draft.inputs.get(message.id)?.head;
+
+  if (owner !== undefined && draft.heads.has(owner) && (pending(previous) || pending(message)))
+    touchRow(draft, "heads", owner);
 
   if (previous === undefined) return;
   draft.swapped.add(message.id);
 
-  if (previous.turn !== message.turn && previous.turn === pendingTurn(message.id))
+  if (previous.turn !== message.turn && previous.turn === pendingTurn(message.id)) {
     draft.turns.delete(previous.turn);
+    dropRow(draft, "turns", previous.turn);
+  }
 }
 
 export function setTurn(draft: Draft, turn: FoldTurn): void {
@@ -120,7 +148,167 @@ export function setTurn(draft: Draft, turn: FoldTurn): void {
   if (previous === turn) return;
   draft.turns.set(turn.info.id, turn);
 
-  if (previous?.info !== turn.info) draft.retitled.add(turn.info.id);
+  if (previous?.info === turn.info) return;
+  draft.retitled.add(turn.info.id);
+  touchRow(draft, "turns", turn.info.id);
+}
+
+export function touchRow(draft: Draft, table: Table, key: string): void {
+  if (!draft.durable) return;
+  draft.stamps[table].set(key, draft.seq);
+  draft.touched.upsert[table].add(key);
+  draft.touched.drop[table].delete(key);
+}
+
+export function dropRow(draft: Draft, table: Table, key: string): void {
+  if (!draft.durable) return;
+  draft.stamps[table].set(key, draft.seq);
+  draft.touched.drop[table].add(key);
+  draft.touched.upsert[table].delete(key);
+}
+
+export function touchPath(draft: Draft, head: HeadName, position: number): void {
+  if (!draft.durable) return;
+  draft.touched.paths.set(head, Math.min(position, draft.touched.paths.get(head) ?? position));
+  const edits = draft.paths.get(head)?.edits;
+
+  if (edits === undefined) return;
+
+  while ((edits.at(-1)?.position ?? -1) >= position) edits.pop();
+
+  if (edits.at(-1)?.seq !== draft.seq) edits.push({ seq: draft.seq, position });
+}
+
+export function setChanges(draft: Draft, files: readonly FileChange[]): void {
+  diffRows(
+    draft,
+    "changes",
+    new Map(draft.changes.map((file) => [file.path, file])),
+    new Map(files.map((file) => [file.path, file])),
+  );
+  draft.changes = files;
+}
+
+export function setCatalog(draft: Draft, catalog: SessionCatalogView): void {
+  diffRows(draft, "catalog", catalogEntries(draft.catalog), catalogEntries(catalog));
+  draft.catalog = catalog;
+}
+
+export function noteHead(
+  draft: Draft,
+  name: HeadName,
+  current: FoldHead | undefined,
+  next: FoldHead,
+): void {
+  if (
+    current === undefined ||
+    current.info !== next.info ||
+    current.revision !== next.revision ||
+    current.configuration !== next.configuration ||
+    current.context !== next.context ||
+    current.pending !== next.pending
+  )
+    touchRow(draft, "heads", name);
+
+  if (current?.background !== next.background)
+    diffRows(
+      draft,
+      "background",
+      backgroundEntries(name, current?.background ?? []),
+      backgroundEntries(name, next.background),
+    );
+
+  if ((current?.info.execution.kind === "idle") !== (next.info.execution.kind === "idle"))
+    touchPath(draft, name, draft.paths.get(name)?.committed ?? 0);
+}
+
+export function dropHead(draft: Draft, name: HeadName): void {
+  const head = draft.heads.get(name);
+
+  if (head === undefined) return;
+  dropRow(draft, "heads", name);
+
+  for (const key of backgroundEntries(name, head.background).keys())
+    dropRow(draft, "background", key);
+  touchPath(draft, name, 0);
+}
+
+export function emptyStamps(): Index["stamps"] {
+  return {
+    messages: new Map(),
+    turns: new Map(),
+    parts: new Map(),
+    changes: new Map(),
+    catalog: new Map(),
+    heads: new Map(),
+    background: new Map(),
+  };
+}
+
+export function newTouched(): Touched {
+  return { upsert: tableSets(), drop: tableSets(), paths: new Map() };
+}
+
+function tableSets(): Touched["upsert"] {
+  return {
+    messages: new Set(),
+    turns: new Set(),
+    parts: new Set(),
+    changes: new Set(),
+    catalog: new Set(),
+    heads: new Set(),
+    background: new Set(),
+  };
+}
+
+function diffRows(
+  draft: Draft,
+  table: Table,
+  before: ReadonlyMap<string, unknown>,
+  after: ReadonlyMap<string, unknown>,
+): void {
+  for (const [key, row] of after) {
+    const old = before.get(key);
+
+    if (old === undefined || (old !== row && JSON.stringify(old) !== JSON.stringify(row)))
+      touchRow(draft, table, key);
+  }
+
+  for (const key of before.keys()) if (!after.has(key)) dropRow(draft, table, key);
+}
+
+function catalogEntries(catalog: SessionCatalogView): ReadonlyMap<string, unknown> {
+  return new Map<string, unknown>([
+    ...catalog.commands.map((entry) => [`commands/${entry.name}`, entry] as const),
+    ...catalog.settings.map((entry) => [`settings/${entry.id}`, entry] as const),
+    ...catalog.skills.map((entry) => [`skills/${entry.name}`, entry] as const),
+    ...catalog.agents.map((entry) => [`agents/${entry.id}`, entry] as const),
+    ...catalog.tools.map((entry) => [`tools/${entry.name}`, entry] as const),
+  ]);
+}
+
+function backgroundEntries(
+  head: HeadName,
+  items: readonly BackgroundItem[],
+): ReadonlyMap<string, BackgroundItem> {
+  return new Map(items.map((item) => [`${head}/${item.kind}/${item.id}`, item]));
+}
+
+function pending(message: Message | undefined): boolean {
+  return message?.kind === "user" && message.status.kind === "pending";
+}
+
+function unsign(message: Message): Message {
+  if (
+    message.kind !== "part" ||
+    (message.partKind !== text.kind && message.partKind !== thinking.kind)
+  )
+    return message;
+  const state = message.state;
+
+  if (!SIGNED.Check(state) || state.signature === null) return message;
+
+  return { ...message, state: { ...state, signature: null } };
 }
 
 export function openTurn(
@@ -155,7 +343,9 @@ export function updateHead(
   const current = draft.heads.get(name);
   const next = change(current ?? createHead(draft, name));
 
-  if (next !== current) draft.heads.set(name, next);
+  if (next === current) return;
+  draft.heads.set(name, next);
+  noteHead(draft, name, current, next);
 }
 
 export function dropFailed(draft: Draft, name: HeadName): void {
@@ -182,7 +372,16 @@ function createHead(draft: Draft, name: HeadName): FoldHead {
 }
 
 export function newPath(): Path {
-  return { messages: [], committed: 0, at: new Map(), turns: [], turnAt: new Map(), firstAt: [] };
+  return {
+    messages: [],
+    committed: 0,
+    at: new Map(),
+    turns: [],
+    turnAt: new Map(),
+    firstAt: [],
+    usage: [],
+    edits: [],
+  };
 }
 
 export function emptyHead(

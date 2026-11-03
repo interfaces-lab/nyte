@@ -50,7 +50,9 @@ import { decodeObject } from "../store/log.ts";
 import { STORE_VERSION } from "../store/migrations.ts";
 import { dev } from "../util/dev-log.ts";
 import { FOLD_CODE } from "./code.ts";
+import { emptyStamps } from "./draft.ts";
 import { EMPTY_CATALOG } from "./fold.ts";
+import { sumUsage } from "./paths.ts";
 
 const REPLAY_EVENTS = 1_024;
 
@@ -386,6 +388,8 @@ function decodeFoldCheckpoint(
       turns: [],
       turnAt: new Map(stored.turnAt),
       firstAt: [...stored.firstAt],
+      usage: [],
+      edits: [],
     };
 
     for (const id of stored.messages) {
@@ -402,6 +406,7 @@ function decodeFoldCheckpoint(
       path.turns.push(found.info);
     }
 
+    sumUsage(path, 0);
     paths.set(name, path);
   }
 
@@ -433,6 +438,8 @@ function decodeFoldCheckpoint(
     riders: new Set(body.riders),
     thinking: new Map(body.thinking),
     paths,
+    stamps: emptyStamps(),
+    ring: { steps: [], from: body.seq },
   };
 
   return {
@@ -441,6 +448,7 @@ function decodeFoldCheckpoint(
     principal,
     seen: new Map(body.seen.map(([seer, seen]) => [seer, new Map(seen)])),
     seq: body.seq,
+    base: body.seq,
     activation: { kind: "inactive" },
     catalog: EMPTY_CATALOG,
     changes: body.changes,
