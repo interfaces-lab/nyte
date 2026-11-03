@@ -1,9 +1,12 @@
-import { randomBytes } from "node:crypto";
+import { spawn } from "node:child_process";
+import { homedir } from "node:os";
+import process from "node:process";
+import { setTimeout as sleep } from "node:timers/promises";
 import { sdk } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
 import type { LocalEndpoint } from "@nyte-ai/service";
-import { OWN_TOKEN_AUTHORITY, startHostThread } from "@nyte-ai/service/host-thread";
-import { HOST_WORKER } from "./host-thread.ts";
+import { findRunningHost, hostFilePath, hostLogPath } from "@nyte-ai/service/host-endpoint";
+import { selfCommand } from "./compiled.ts";
 
 export type HostSource =
   | { readonly kind: "local" }
@@ -12,14 +15,17 @@ export type HostSource =
 export interface HostSession {
   readonly connection: Connection;
   readonly endpoint: LocalEndpoint;
-  readonly ended: Promise<Error>;
   close(): Promise<void>;
 }
 
-export function connectHost(source: HostSource): Promise<HostSession> {
+const HOST_START_MS = 20_000;
+
+const HOST_POLL_MS = 100;
+
+export async function connectHost(source: HostSource): Promise<HostSession> {
   switch (source.kind) {
     case "local":
-      return connectLocalHost();
+      return attachHost(await ensureHost());
     case "attached":
       return attachHost(source.endpoint);
     default: {
@@ -30,36 +36,34 @@ export function connectHost(source: HostSource): Promise<HostSession> {
   }
 }
 
-export async function connectLocalHost(): Promise<HostSession> {
-  const token = randomBytes(32).toString("base64url");
+async function ensureHost(): Promise<LocalEndpoint> {
+  const path = hostFilePath();
+  const running = await findRunningHost(path);
 
-  const thread = await startHostThread(HOST_WORKER, {
-    kind: "local",
-    port: 0,
-    token,
-    authority: OWN_TOKEN_AUTHORITY,
-  });
+  if (running !== null) return { url: running.url, token: running.token };
+  const command = selfCommand();
 
-  const connection = await sdk
-    .connect({ url: thread.address, credentials: { kind: "token", token } })
-    .catch(async (cause: unknown) => {
-      await thread.stop();
-
-      throw cause;
-    });
-
-  return {
-    connection,
-    endpoint: { url: thread.address, token },
-    ended: thread.ended.then(
-      () => new Error("The host thread stopped."),
-      (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause))),
+  spawn(command[0], [...command.slice(1), "host", "--log"], {
+    cwd: homedir(),
+    detached: true,
+    stdio: "ignore",
+    env: Object.fromEntries(
+      Object.entries(process.env).filter((entry) => entry[0] !== "NYTE_HOST_TOKEN"),
     ),
-    async close() {
-      await connection.close().catch(() => undefined);
-      await thread.stop();
-    },
-  };
+  }).unref();
+
+  const deadline = Date.now() + HOST_START_MS;
+
+  while (Date.now() < deadline) {
+    await sleep(HOST_POLL_MS);
+    const started = await findRunningHost(path);
+
+    if (started !== null) return { url: started.url, token: started.token };
+  }
+
+  throw new Error(
+    `The Nyte host didn't start within ${String(HOST_START_MS / 1000)} s. See ${hostLogPath()}.`,
+  );
 }
 
 async function attachHost(endpoint: LocalEndpoint): Promise<HostSession> {
@@ -75,7 +79,6 @@ async function attachHost(endpoint: LocalEndpoint): Promise<HostSession> {
   return {
     connection,
     endpoint,
-    ended: new Promise<never>(() => undefined),
     async close() {
       await connection.close().catch(() => undefined);
     },

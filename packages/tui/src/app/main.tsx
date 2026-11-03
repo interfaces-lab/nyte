@@ -129,20 +129,11 @@ export async function runTui(flags: RunFlags, source: HostSource): Promise<numbe
 
   const unhook = installProcessHooks((origin, error) => app.report(origin, error));
 
-  const lost = connecting.then(
-    (local) => local.ended.then((error) => ({ error })),
-    () => new Promise<never>(() => undefined),
-  );
-
-  const ending = await Promise.race([
-    app.closing.then((status) => ({ status })),
-    signalled.promise.then((signal) => ({ status: exitStatus(signal) })),
-    lost,
+  const status = await Promise.race([
+    app.closing,
+    signalled.promise.then((signal) => exitStatus(signal)),
   ]);
 
-  const status = "status" in ending ? ending.status : 1;
-
-  if ("error" in ending) failures.push(`error: ${ending.error.message}`);
   stopEnding();
   exitWithin(status);
   const exit = app.exit();
