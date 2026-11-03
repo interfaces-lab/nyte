@@ -5,7 +5,7 @@ import type { Task } from "../../src/lib/tasks.ts";
 import { deriveScreen } from "../../src/model/screen.ts";
 import { blockedBy } from "../../src/model/table-input.ts";
 import type { State } from "../../src/model/state.ts";
-import { followed, buildView } from "../fixture/view.ts";
+import { buildView, followed, FRESH } from "../fixture/view.ts";
 import { blank, CATALOG, model, play, ready, S1, typed } from "./support.ts";
 
 const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
@@ -286,12 +286,17 @@ describe("footer and status", () => {
         .idle({ run: "run-t1", end: "completed" }),
     );
 
-    const seen = play(ready(working), { kind: "view", session: S1, view: done }).state;
+    const seen = play(ready(working), {
+      kind: "view",
+      session: S1,
+      view: done,
+      freshness: FRESH,
+    }).state;
 
     expect(deriveScreen(seen, null).program).toMatchObject({ state: "idle" });
 
     const away = play(ready(working), { kind: "terminal-focus", focused: false }).state;
-    const finished = play(away, { kind: "view", session: S1, view: done }).state;
+    const finished = play(away, { kind: "view", session: S1, view: done, freshness: FRESH }).state;
 
     expect(deriveScreen(finished, null).program).toMatchObject({ state: "done" });
     expect(

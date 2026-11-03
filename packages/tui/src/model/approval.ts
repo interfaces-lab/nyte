@@ -1,4 +1,5 @@
-import type { SessionId, SessionView } from "@nyte-ai/sdk";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import { APPROVAL_ACTIONS, approvalPrompt, openApprovals } from "@nyte-ai/plugin/approvals/schema";
 import type { OpenApproval } from "@nyte-ai/plugin/approvals/schema";
 import { shortId } from "../lib/format.ts";
@@ -16,7 +17,7 @@ export interface ApprovalModel extends OpenApproval {
 }
 
 export function currentApproval(
-  head: { readonly id: SessionId; readonly view: SessionView | null } | null,
+  head: { readonly id: SessionId; readonly view: HeadView | null } | null,
   tasks: readonly Task[],
 ): ApprovalModel | null {
   const [own] = openApprovals(head?.view ?? undefined);

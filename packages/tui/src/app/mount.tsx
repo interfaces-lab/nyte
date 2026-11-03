@@ -1,4 +1,5 @@
 import type { Connection, SessionId } from "@nyte-ai/sdk";
+import type { HostConnection } from "@nyte-ai/sdk/client";
 import { CliRenderEvents, MouseButton, engine, maybeMakeRenderable } from "@opentui/core";
 import type { CliRenderer, Renderable } from "@opentui/core";
 import { RendererContext, _render, createComponent } from "@opentui/solid";
@@ -33,6 +34,7 @@ export type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
 
 export interface HostLink {
   readonly connection: Connection;
+  readonly live: HostConnection;
   readonly folder: string | null;
   readonly contextFiles?: false;
 }
@@ -387,7 +389,7 @@ async function openHost(
     : options.plugins(link, dispatch));
 
   return {
-    host: hostPort(link.connection, link.folder, () => nextFrame(options.renderer), {
+    host: hostPort(link.connection, link.live, link.folder, () => nextFrame(options.renderer), {
       contextFiles: link.contextFiles,
     }),
     plugins,
@@ -402,7 +404,7 @@ function terminalPlugins(
   ports: LocalPorts,
   dispatch: (msg: Msg) => void,
 ): Promise<ClientPlugins> {
-  return pluginsPort(link.connection, {
+  return pluginsPort(link.connection, link.live, {
     notify: (title, body, sound) => ports.terminal.notify(title, body, sound),
     report: (plugin, message) =>
       dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),

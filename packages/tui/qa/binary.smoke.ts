@@ -281,7 +281,7 @@ test("SIGHUP ends the TUI within 2 s with 129 and prints the resume command", as
   expect(pty.output()).toMatch(RESUME);
 }, 30_000);
 
-test("nyte host serves clients that attach with --host-url from an empty HOME, and an attached TUI says when it stops", async () => {
+test("nyte host serves clients that attach with --host-url from an empty HOME, and an attached TUI shows it reconnecting when it stops", async () => {
   await using service = await serveForBinary({ plugin: false });
   await using client = await freshHome();
   service.reply(
@@ -354,7 +354,8 @@ test("nyte host serves clients that attach with --host-url from an empty HOME, a
   host.kill("SIGTERM");
   expect(await host.exited).toBe(0);
   expect(existsSync(listening.endpoint)).toBe(false);
-  expect(await pty.exited()).toBe(1);
-  expect(pty.output()).toContain(`The Nyte host at ${listening.url} stopped.`);
+  await pty.waitFor((screen) => screen.text.includes("Reconnecting in"));
+  pty.signal("SIGTERM");
+  expect(await pty.exited()).toBe(143);
   expect(existsSync(join(client.nyteHome, "nyte.db"))).toBe(false);
 }, 60_000);

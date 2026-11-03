@@ -35,6 +35,12 @@ export async function findRunningHost(path: string): Promise<RunningHost | null>
   return (await hostAnswers(host.url)) ? host : null;
 }
 
+export async function findStaleHost(path: string): Promise<RunningHost | null> {
+  const host = await readHostFile(path);
+
+  return host === null || processAlive(host.pid) ? null : host;
+}
+
 /** Whether anything answers HTTP at `url` within a second. */
 export async function hostAnswers(url: string): Promise<boolean> {
   return fetch(new URL("/.nyte/describe", url), { signal: AbortSignal.timeout(1_000) }).then(

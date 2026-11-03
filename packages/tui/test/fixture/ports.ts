@@ -13,12 +13,14 @@ import type {
   WorkspaceCatalogView,
   WorkspaceCommandOutcome,
 } from "@nyte-ai/sdk";
+import type { Health } from "@nyte-ai/sdk/client";
 import { createHandle } from "../../src/effects/local-ports.ts";
 import type {
   FilesPort,
   FirstFramePort,
   HostPort,
   PluginsPort,
+  ChatUpdate,
   Ports,
   SessionPort,
   SettingsPort,
@@ -30,7 +32,7 @@ import type { Task } from "../../src/lib/tasks.ts";
 import type { DraftInsert } from "../../src/model/draft.ts";
 import type { Selection } from "../../src/model/state.ts";
 import { CATALOG, SETTINGS } from "./state.ts";
-import { CONFIGURATION } from "./view.ts";
+import { CONFIGURATION, FRESH } from "./view.ts";
 
 export interface FakeSession extends SessionPort {
   push(view: SessionView): void;
@@ -134,7 +136,7 @@ function buildSessionInfo(id: string): SessionInfo {
 }
 
 function fakeSession(id: string): FakeSession {
-  const views = queue<SessionView>();
+  const views = queue<ChatUpdate>();
   const tasks = queue<readonly Task[]>();
   let sent = 0;
 
@@ -158,7 +160,7 @@ function fakeSession(id: string): FakeSession {
     withdrawResult: "withdrawn",
     answerResult: true,
     commandResult: null,
-    push: (view) => views.push(view),
+    push: (view) => views.push({ view, freshness: FRESH }),
     end: (failure) => (failure === null ? views.close() : views.fail(new Error(failure))),
     pushTasks: (list) => tasks.push(list),
     watchTasks: () => tasks,
@@ -306,6 +308,7 @@ export function fakeHost(): FakeHost {
     },
     catalog: () => catalogs,
     sessionInfos: () => directory,
+    health: () => queue<Health>(),
     publishSessions: (list) => directory.push(list),
     publishCatalog(next) {
       catalog = next;

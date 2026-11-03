@@ -1,15 +1,17 @@
-import type { Connection, JobView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
+import type { JobView, SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import type { Task } from "../lib/tasks.ts";
 import { follow } from "../lib/view-helpers.ts";
 
 interface Child {
   info: SessionInfo;
-  view: SessionView | undefined;
+  view: HeadView | undefined;
   stop: () => void;
 }
 
 interface TaskIndexOptions {
-  readonly connection: Connection;
+  readonly children: AsyncIterable<readonly SessionInfo[]>;
+  readonly views: (child: SessionId) => AsyncIterable<HeadView>;
   /** The session's workspace's job list after each change. */
   readonly jobs: AsyncIterable<readonly JobView[]>;
   readonly onChange: () => void;
@@ -24,14 +26,9 @@ export class TaskIndex {
 
   constructor(session: SessionInfo, options: TaskIndexOptions) {
     this.options = options;
-    const { connection } = options;
 
     this.stops.push(
-      follow(
-        connection.sessions.watch({ parents: { kind: "children", session: session.id } }),
-        (children) => this.syncChildren(children),
-        options.onError,
-      ),
+      follow(options.children, (children) => this.syncChildren(children), options.onError),
       follow(
         options.jobs,
         (jobs) => {
@@ -85,7 +82,7 @@ export class TaskIndex {
 
       this.children.set(info.id, entry);
       entry.stop = follow(
-        this.options.connection.session(info.id).watch(),
+        this.options.views(info.id),
         (view) => {
           entry.view = view;
           this.options.onChange();

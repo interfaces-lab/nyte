@@ -1,14 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { setTimeout as sleep } from "node:timers/promises";
 import { sdk } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
 import type { LocalEndpoint } from "@nyte-ai/service";
-import { hostAnswers } from "./host-endpoint.ts";
 import { OWN_TOKEN_AUTHORITY, startHostThread } from "./hosting.ts";
-
-const RETRY_MS = 1_000;
-
-const MISSED_PROBES = 5;
 
 export type HostSource =
   | { readonly kind: "local" }
@@ -77,26 +71,12 @@ async function attachHost(endpoint: LocalEndpoint): Promise<HostSession> {
       );
     });
 
-  const watching = new AbortController();
-
   return {
     connection,
     endpoint,
-    ended: untilGone(endpoint.url, watching.signal),
+    ended: new Promise<never>(() => undefined),
     async close() {
-      watching.abort();
       await connection.close().catch(() => undefined);
     },
   };
-}
-
-async function untilGone(url: string, signal: AbortSignal): Promise<Error> {
-  for (let missed = 0; missed < MISSED_PROBES;) {
-    const waited = await sleep(RETRY_MS, true, { signal }).catch(() => false);
-
-    if (!waited) return new Promise<never>(() => undefined);
-    missed = (await hostAnswers(url)) ? 0 : missed + 1;
-  }
-
-  return new Error(`The Nyte host at ${url} stopped. Start \`nyte host\` again, then reopen nyte.`);
 }

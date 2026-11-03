@@ -1,4 +1,5 @@
-import type { Execution, JobView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
+import type { Execution, JobView, SessionId, SessionInfo } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import {
   jobTaskState,
   sessionMark,
@@ -18,7 +19,7 @@ export type Task =
       readonly kind: "agent";
       readonly id: SessionId;
       readonly info: SessionInfo;
-      readonly view: SessionView | undefined;
+      readonly view: HeadView | undefined;
     }
   | { readonly kind: "job"; readonly id: string; readonly job: JobView };
 
@@ -73,9 +74,9 @@ function agentExecution(task: Extract<Task, { kind: "agent" }>): Execution | und
   return task.view?.execution ?? task.info.heads.find((head) => head.name === "main")?.execution;
 }
 
-/** Matches the child's chat row in every client. The open view's heads replace the listed ones whole, never merged. */
+/** Matches the child's chat row in every client. */
 export function taskStatus(task: Task): TaskState {
-  return task.kind === "agent" ? sessionMark(task.view ?? task.info) : jobTaskState(task.job.state);
+  return task.kind === "agent" ? sessionMark(task.info) : jobTaskState(task.job.state);
 }
 
 export function canStopTask(task: Task): boolean {
@@ -134,7 +135,7 @@ export function taskConfiguration(task: Extract<Task, { kind: "agent" }>): strin
     : `${effective.model.id} · ${effective.thinking}`;
 }
 
-function taskPrompt(view: SessionView): string | undefined {
+function taskPrompt(view: HeadView): string | undefined {
   const user = view.messages.find((message) => message.kind === "user");
 
   return user?.kind === "user" ? oneLine(userText(user.content)) : undefined;
@@ -160,7 +161,7 @@ interface TaskStep {
   readonly text: string;
 }
 
-function taskSteps(view: SessionView): TaskStep[] {
+function taskSteps(view: HeadView): TaskStep[] {
   const steps: TaskStep[] = [];
 
   for (const message of view.messages) {

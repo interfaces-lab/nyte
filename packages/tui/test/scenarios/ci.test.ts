@@ -13,7 +13,7 @@ import {
 import { clearSpans, enableTracing } from "@nyte-ai/sdk/client";
 import { shellPort } from "../../src/effects/local-ports.ts";
 import { followedSession } from "../../src/model/state.ts";
-import { startTui } from "../harness/tui.ts";
+import { simulationEndpoint, startTui } from "../harness/tui.ts";
 import type { Tui } from "../harness/tui.ts";
 import {
   framedCells,
@@ -59,6 +59,7 @@ test("scenario D from the keyboard: CI MCP log tail, canvas, test, fix, rerun, t
 
   await using tui = await startTui({
     host: scenario.host,
+    endpoint: await simulationEndpoint(scenario),
     size: SIZE,
     local: { shell: shellPort(), cwd: repo.root },
   });
@@ -132,6 +133,7 @@ test("scenario D from the keyboard: CI MCP log tail, canvas, test, fix, rerun, t
 
   await using resumed = await startTui({
     host: scenario.host,
+    endpoint: await simulationEndpoint(scenario),
     size: SIZE,
     local: { shell: shellPort(), cwd: repo.root },
     target: { kind: "session", id: session },

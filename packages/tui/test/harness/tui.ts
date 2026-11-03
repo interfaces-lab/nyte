@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import type { Connection } from "@nyte-ai/sdk";
+import type { Simulation } from "@nyte-ai/bench";
+import type { LocalEndpoint } from "@nyte-ai/service";
 import { CodeRenderable } from "@opentui/core";
 import type { Renderable } from "@opentui/core";
 import { createTestRenderer, ManualClock, TestRecorder } from "@opentui/core/testing";
@@ -20,6 +22,7 @@ import { watchTerminal } from "../../src/lifecycle.ts";
 import type { Selection } from "../../src/model/state.ts";
 import { keyStrokes } from "../../src/lib/constants.ts";
 import type { ChatCommand } from "../../src/lib/constants.ts";
+import { openLiveHost } from "../../src/live-host.ts";
 import { openTestHost } from "../fixture/host.ts";
 import type { TestHost } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
@@ -34,6 +37,7 @@ export interface TuiOptions {
   readonly renderer?: Omit<TestRendererOptions, "width" | "height" | "clock" | "kittyKeyboard">;
   readonly fixture?: TestHost;
   readonly host?: Connection;
+  readonly endpoint?: LocalEndpoint;
   readonly opened?: boolean;
   readonly target?: BootOptions["target"];
   readonly typed?: string;
@@ -96,11 +100,14 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
   const unwatchTerminal = watchTerminal(setup.renderer.stdin, [], () => hungUp.abort());
   const connection = options.host ?? fixture.host;
 
+  const live =
+    options.endpoint === undefined ? fixture.live : openLiveHost(options.endpoint, "tui");
+
   const mounting: AppOptions = {
     renderer: setup.renderer,
     keymap: createKeymap(setup.renderer),
     hungUp: hungUp.signal,
-    host: opening.promise.then(() => ({ connection, folder: null })),
+    host: opening.promise.then(() => ({ connection, live, folder: null })),
     ...(options.host === undefined
       ? {
           plugins: async () => ({
@@ -162,6 +169,8 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
       await app.close();
       unwatchTerminal();
       await setup.dispose();
+
+      if (live !== fixture.live) live.release();
 
       if (options.fixture === undefined) await fixture.close();
       rmSync(home, { recursive: true, force: true });
@@ -273,4 +282,22 @@ export function shownAt(
   shows: (frame: string) => boolean,
 ): number | undefined {
   return tui.recorder.recordedFrames.find((recorded) => shows(recorded.frame))?.timestamp;
+}
+
+const endpoints = new WeakMap<Simulation, Promise<LocalEndpoint>>();
+
+export function simulationEndpoint(simulation: Simulation): Promise<LocalEndpoint> {
+  const known = endpoints.get(simulation);
+
+  if (known !== undefined) return known;
+
+  const listening = simulation.drive({ kind: "listen" }).then((outcome) => {
+    if (outcome.kind !== "listening") throw new Error(`Expected listening, got ${outcome.kind}.`);
+
+    return { url: outcome.url, token: outcome.token };
+  });
+
+  endpoints.set(simulation, listening);
+
+  return listening;
 }
