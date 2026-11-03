@@ -50,7 +50,7 @@
     },
     "@nyte-ai/desktop#build": {
       "dependsOn": ["^build"],
-      "env": ["NYTE_RELEASE_VERSION"],
+      "env": ["NYTE_CONNECT_ORIGIN", "NYTE_RELEASE_VERSION"],
       "outputs": ["out/**"]
     },
     "build:package": {

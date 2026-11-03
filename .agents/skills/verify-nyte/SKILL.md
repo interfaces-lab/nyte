@@ -34,7 +34,7 @@ If another task replaces build outputs or changes source during verification, re
 boundary. Use a pinned artifact for comparisons and rebuild once the source is stable.
 
 Desktop uses an offline scripted provider, a temporary HOME and an Electron profile created by
-`packages/desktop/e2e/launch.ts`, and each launch's own `nyte host` launchd job started by
+`packages/desktop/e2e/launch.ts`, and each launch's own host launchd job (`nyte-host.js` on Electron's Node) started by
 `packages/desktop/e2e/host.ts`. Build the five outputs in this order, then run one chapter.
 All commands below run from the repository root.
 

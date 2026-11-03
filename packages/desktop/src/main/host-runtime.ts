@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { app, dialog, MessageChannelMain, shell } from "electron";
 import type { MessagePortMain } from "electron";
 import type { ConnectRuntime } from "@nyte-ai/connect/host";
@@ -35,6 +36,8 @@ export type HostRuntimeOptions = Pick<
   readonly nyteHome: string;
   readonly connect: ConnectRuntime;
   readonly usageWorker: URL;
+  /** The host script main's bundle carries, which the app's executable runs as Node. */
+  readonly hostEntry: URL;
   readonly agent: BrowserAgent;
   readonly preview: CanvasPreviewer;
   previewSignal(): AbortSignal;
@@ -48,8 +51,9 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
     home: options.home,
     nyteHome: options.nyteHome,
     packaged: app.isPackaged,
-    resources: process.resourcesPath,
     appPath: app.getAppPath(),
+    executable: process.execPath,
+    entry: fileURLToPath(options.hostEntry),
     label: app.isPackaged ? undefined : process.env["NYTE_DESKTOP_HOST_LABEL"],
   });
 

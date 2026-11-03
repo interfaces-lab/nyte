@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { HostDescriptionType, isJsonObject } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Compile } from "typebox/compile";
-import { findRunningHost, hostFilePath } from "./host-endpoint.ts";
+import { findRunningHost, hostFilePath } from "@nyte-ai/service/host-endpoint";
 import { toJson } from "./json.ts";
 import type { JsonObject } from "./json.ts";
 import { VERSION } from "./version.ts";

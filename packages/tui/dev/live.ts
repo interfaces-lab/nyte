@@ -4,8 +4,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { findRunningHost, hostFilePath } from "../src/host-endpoint.ts";
-import type { RunningHost } from "../src/host-endpoint.ts";
+import { findRunningHost, hostFilePath } from "@nyte-ai/service/host-endpoint";
+import type { RunningHost } from "@nyte-ai/service/host-endpoint";
 import { onEnding } from "../src/lifecycle.ts";
 
 const TUI = fileURLToPath(new URL("..", import.meta.url));

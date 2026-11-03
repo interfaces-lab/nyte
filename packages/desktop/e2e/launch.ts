@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { WINDOW_PAINTED_CHANNEL } from "../src/shared/ipc.ts";
-import { startE2eHost } from "./host.ts";
+import { electronExecutable, startE2eHost } from "./host.ts";
 import type { E2eHost } from "./host.ts";
 import { inspectProcessTree, survivors } from "./process-tree.ts";
 
@@ -81,7 +81,6 @@ async function assertBuilt(): Promise<void> {
     [MAIN_ENTRY, "pnpm --dir packages/desktop build:e2e"],
     [resolve(DESKTOP_ROOT, "out/renderer/index.html"), "pnpm --dir packages/desktop build"],
     [resolve(PACKAGES_ROOT, "app/dist/index.html"), "pnpm --dir packages/app build"],
-    [resolve(PACKAGES_ROOT, "tui/dist/nyte"), "pnpm --dir packages/tui build"],
   ] as const;
 
   for (const [path, command] of required) {
@@ -89,13 +88,6 @@ async function assertBuilt(): Promise<void> {
       throw new Error(`Missing ${path}. Run ${command} first.`);
     });
   }
-}
-
-async function electronExecutable(): Promise<string> {
-  const electronRoot = join(DESKTOP_ROOT, "node_modules/electron");
-  const executable = await readFile(join(electronRoot, "path.txt"), "utf8");
-
-  return join(electronRoot, "dist", executable.trim());
 }
 
 function launchEnvironment(options: LaunchOptions, host: E2eHost) {

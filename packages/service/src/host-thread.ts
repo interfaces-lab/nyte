@@ -4,7 +4,6 @@ import { AuthorityType } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
-import { compiled } from "./compiled.ts";
 
 const PortType = Type.Integer({ minimum: 0, maximum: 65_535 });
 
@@ -15,6 +14,8 @@ const HostCommandType = Type.Object({
   /** What `token` grants on the listener; `maintenance` only for a token this process minted for itself. */
   authority: Type.Array(AuthorityType),
   socket: Type.Optional(Type.String()),
+  /** The `nyte-tailnet` sidecar the host runs; default the one beside the process's executable. */
+  tailnet: Type.Optional(Type.String()),
   /** The folder the host registers as its default workspace; the process's working directory without one. */
   workspace: Type.Optional(Type.String()),
 });
@@ -45,6 +46,9 @@ export const hostMessages = Compile(HostMessageType);
 
 const hostReports = Compile(HostReportType);
 
+/** The module a host thread runs: one that calls `serveHostThread` with its runtime. */
+export type HostWorkerEntry = string | URL;
+
 interface HostThread {
   readonly address: string;
   readonly ended: Promise<void>;
@@ -57,10 +61,13 @@ interface Running {
   readonly closed: Promise<void>;
 }
 
-function launch(command: HostCommand, revoked: () => void, failed: (cause: Error) => void) {
-  const worker = new Worker(
-    compiled ? "./tui/src/host-worker.ts" : new URL("./host-worker.ts", import.meta.url),
-  );
+function launch(
+  entry: HostWorkerEntry,
+  command: HostCommand,
+  revoked: () => void,
+  failed: (cause: Error) => void,
+) {
+  const worker = new Worker(entry);
 
   const listening = Promise.withResolvers<string>();
   const closed = Promise.withResolvers<void>();
@@ -78,7 +85,7 @@ function launch(command: HostCommand, revoked: () => void, failed: (cause: Error
 
   worker.on("message", (report) => {
     if (!hostReports.Check(report)) {
-      fail(new Error("The host thread sent a message the CLI does not know."));
+      fail(new Error("The host thread sent a message its process does not know."));
       void worker.terminate();
 
       return;
@@ -123,7 +130,11 @@ function launch(command: HostCommand, revoked: () => void, failed: (cause: Error
   }));
 }
 
-export async function startHostThread(command: HostCommand): Promise<HostThread> {
+/** Serves `command` on a worker thread running `entry`, reopening it on the same port when the host is revoked. */
+export async function startHostThread(
+  entry: HostWorkerEntry,
+  command: HostCommand,
+): Promise<HostThread> {
   const ended = Promise.withResolvers<void>();
   ended.promise.catch(() => undefined);
   let stopping = false;
@@ -137,7 +148,7 @@ export async function startHostThread(command: HostCommand): Promise<HostThread>
     if (stopping) return;
     const port = Number(new URL(current.address).port);
 
-    void launch({ ...command, port }, reopen, failed).then(
+    void launch(entry, { ...command, port }, reopen, failed).then(
       (running) => {
         current = running;
 
@@ -147,7 +158,7 @@ export async function startHostThread(command: HostCommand): Promise<HostThread>
     );
   };
 
-  current = await launch(command, reopen, failed);
+  current = await launch(entry, command, reopen, failed);
 
   return {
     address: current.address,
