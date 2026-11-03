@@ -22,6 +22,17 @@ const USER_PREVIEW_BLEED_TOP = 2;
 
 const USER_PREVIEW_FADE = `calc(${type.leadingLg} * ${(USER_MESSAGE_PREVIEW_LINES % 1) + 1} + ${USER_PROMPT_PADDING_BLOCK}px)`;
 
+/** The changes card's box, read by both its styles and the height the turn's summary row reserves for it. */
+const CHANGES_BORDER = 1;
+
+const CHANGES_PADDING_BLOCK = space.s2;
+
+const CHANGES_GAP = space.s0_5;
+
+const CHANGES_LEADING = type.leadingBase;
+
+const CHANGES_REVIEW_BLEED = space.s0_5;
+
 export const messageStyles = create({
   end: {
     position: "relative",
@@ -118,19 +129,22 @@ export const turnStyles = create({
     boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
-    gap: space.s0_5,
+    gap: CHANGES_GAP,
     width: "100%",
-    paddingBlock: space.s2,
+    paddingBlock: CHANGES_PADDING_BLOCK,
     paddingInline: space.s3,
-    borderWidth: 1,
+    borderWidth: CHANGES_BORDER,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
     borderRadius: radius.card,
     backgroundColor: role.bgElevated,
     color: role.contentPrimary,
+    fontSize: type.fontBase,
+    lineHeight: CHANGES_LEADING,
+    letterSpacing: type.letterBase,
   },
   changesFooter: (files: number) => ({
-    minHeight: `calc(2px + 2 * ${space.s2} + max(${type.leadingLg}, ${control.heightSm} - 2 * ${space.s0_5}) + ${String(files)} * (${space.s0_5} + ${row.heightMd}))`,
+    minHeight: `calc(2 * ${String(CHANGES_BORDER)}px + 2 * ${CHANGES_PADDING_BLOCK} + max(${CHANGES_LEADING}, ${control.heightSm} - 2 * ${CHANGES_REVIEW_BLEED}) + ${String(files)} * (${CHANGES_GAP} + ${row.heightMd}))`,
   }),
   changesHeader: {
     display: "flex",
@@ -141,11 +155,11 @@ export const turnStyles = create({
     flex: 1,
     minWidth: 0,
   },
-  changesReview: { marginBlock: `calc(${space.s0_5} * -1)` },
+  changesReview: { marginBlock: `calc(${CHANGES_REVIEW_BLEED} * -1)` },
   changesList: {
     display: "flex",
     flexDirection: "column",
-    gap: space.s0_5,
+    gap: CHANGES_GAP,
     margin: 0,
     padding: 0,
     listStyle: "none",

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
 import { Button } from "@nyte-ai/ui/button";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { row } from "@nyte-ai/ui/styles/schema.stylex";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { applyFocusModality, applyTransparency } from "../src/theme/appearance.ts";
 import "../src/theme/tokens.stylex.ts";
@@ -13,6 +14,7 @@ const app = create({
   override: { backgroundColor: "rgb(1, 2, 3)", color: "rgb(4, 5, 6)", paddingInline: 13 },
   radius: { borderRadius: 3 },
   line: { fontSize: type.fontBase, lineHeight: type.leadingBase },
+  row: { height: row.heightMd },
   focus: { outlineColor: appearance.focusRing },
 });
 
@@ -117,6 +119,7 @@ export async function run(): Promise<string> {
             Text
           </p>
           <div id="scope" {...props(surfaceTheme.custom)} />
+          <div id="row" {...props(app.row)} />
         </>,
       ),
     );
@@ -260,6 +263,13 @@ export async function run(): Promise<string> {
 
       if (!Number.isInteger(Number.parseFloat(computed.lineHeight)))
         failures.push(`${size}px base: line-height ${computed.lineHeight} is not a whole pixel`);
+
+      const rowHeight = getComputedStyle(element("row")).height;
+
+      if (Number.parseFloat(computed.lineHeight) > Number.parseFloat(rowHeight))
+        failures.push(
+          `${size}px base: type.leadingBase ${computed.lineHeight} outgrows row.heightMd ${rowHeight}`,
+        );
     }
 
     html.style.removeProperty("--nyte-font-size-base");
