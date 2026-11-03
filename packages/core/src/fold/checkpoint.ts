@@ -58,6 +58,8 @@ const REPLAY_EVENTS = 1_024;
 
 const REPLAY_BYTES = 1_048_576;
 
+const SETTLE_DELAY = 1_000;
+
 const head = idSchema<"head">();
 
 const message = idSchema<"message">();
@@ -171,7 +173,7 @@ const validator = compile(
 export interface FoldCheckpointing {
   /** The fold the session's checkpoint holds as `principal` sees it, or null to fold the log from its start. */
   restore(principal: PrincipalId): Promise<FoldState | null>;
-  /** Offers the fold for a checkpoint on a later tick, written when no head runs, nothing streams and the replay budget is spent; offers made while one is written wait for it and run once. */
+  /** Offers the fold for a checkpoint about a second later, written when no head runs, nothing streams and the replay budget is spent; offers made while one is written wait for it and run once. */
   settle(): void;
 }
 
@@ -263,7 +265,7 @@ export function foldCheckpointing(
 
       if (writing) return;
       writing = true;
-      const timer = setTimeout(() => void drain(), 0);
+      const timer = setTimeout(() => void drain(), SETTLE_DELAY);
 
       if (typeof timer === "object") timer.unref();
     },

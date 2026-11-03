@@ -3,7 +3,7 @@ import { Worker } from "node:worker_threads";
 import { dev } from "@nyte-ai/core";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { Value } from "typebox/value";
+import { Compile } from "typebox/compile";
 
 type Role = "reader" | "checkpoint";
 
@@ -14,17 +14,19 @@ const rowSchema = Type.Record(
 
 type Row = Static<typeof rowSchema>;
 
-const replySchema = Type.Union([
-  Type.Object({ ready: Type.Literal(true) }),
-  Type.Object({ id: Type.Integer(), rows: Type.Array(rowSchema), executionMs: Type.Number() }),
-  Type.Object({
-    id: Type.Integer(),
-    error: Type.String(),
-    code: Type.Optional(Type.String()),
-    errcode: Type.Optional(Type.Number()),
-    errstr: Type.Optional(Type.String()),
-  }),
-]);
+const replies = Compile(
+  Type.Union([
+    Type.Object({ ready: Type.Literal(true) }),
+    Type.Object({ id: Type.Integer(), rows: Type.Array(rowSchema), executionMs: Type.Number() }),
+    Type.Object({
+      id: Type.Integer(),
+      error: Type.String(),
+      code: Type.Optional(Type.String()),
+      errcode: Type.Optional(Type.Number()),
+      errstr: Type.Optional(Type.String()),
+    }),
+  ]),
+);
 
 const source = String.raw`
 const { parentPort, workerData } = require("node:worker_threads");
@@ -118,7 +120,7 @@ class SqliteWorker {
     };
 
     worker.on("message", (reply: unknown) => {
-      if (!Value.Check(replySchema, reply)) {
+      if (!replies.Check(reply)) {
         void this.stop(new Error("Malformed SQLite worker reply"), true);
 
         return;

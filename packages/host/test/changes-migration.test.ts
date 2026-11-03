@@ -90,10 +90,12 @@ it("shows a 0.0.18 chat's whole changed-files list after the store migrates", as
 
   await withHost(path, async (host) => {
     expect((await host.session(session).view()).changes).toEqual([file("a", 2), file("c", 1)]);
-    await vi.waitFor(() =>
-      expect(
-        query(path, "SELECT session FROM fold_checkpoints WHERE session = ?", session),
-      ).toHaveLength(1),
+    await vi.waitFor(
+      () =>
+        expect(
+          query(path, "SELECT session FROM fold_checkpoints WHERE session = ?", session),
+        ).toHaveLength(1),
+      { timeout: 5_000 },
     );
   });
 
