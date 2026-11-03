@@ -39,7 +39,7 @@ export type SocketClosed = { readonly code: number; readonly reason: string };
 export type SocketEvent = EventFrame & JsonSchema;
 
 export interface HostSocket {
-  readonly welcome: WelcomeFrame;
+  readonly welcome: Promise<WelcomeFrame>;
   readonly closed: Promise<SocketClosed>;
   call(op: string, input: Json): Promise<Json>;
   onEvent(listener: (event: SocketEvent) => void): () => void;
@@ -130,10 +130,8 @@ export async function openHostSocket(input: {
     }),
   );
 
-  const welcome = await greeted.promise;
-
   return {
-    welcome,
+    welcome: greeted.promise,
     closed: ended.promise,
     call(op, value) {
       calls += 1;

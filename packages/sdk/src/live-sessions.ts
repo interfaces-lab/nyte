@@ -54,12 +54,14 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
     reading = true;
 
     try {
-      await subscribe();
+      const subscribing = subscribe();
 
       const answer = await request(attached, "sessions.read", {
         ...window,
         resume: store === null ? undefined : { seq: store.seq },
       });
+
+      await subscribing;
 
       if (socket !== attached) return;
 

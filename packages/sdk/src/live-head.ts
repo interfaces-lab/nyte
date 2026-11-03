@@ -76,7 +76,7 @@ export function openHeadStore(
     reading = true;
 
     try {
-      await subscribe();
+      const subscribing = subscribe();
       const resume = held?.store;
 
       const window = await request(live, "head.read", {
@@ -88,6 +88,8 @@ export function openHeadStore(
             ? undefined
             : { seq: resume.seq, from: resume.snapshot().order[0] ?? null },
       });
+
+      await subscribing;
 
       if (socket !== live) return;
 
