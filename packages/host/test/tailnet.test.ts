@@ -1,11 +1,17 @@
-import { chmod, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
+import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { Type } from "typebox";
 import { memoryStore } from "@nyte-ai/core/store";
+import { compile } from "@nyte-ai/schema";
 import type { Host } from "@nyte-ai/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { openHost } from "../src/index.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
@@ -24,7 +30,7 @@ if (args.includes("--logout")) {
   process.exit(0);
 }
 
-log({ pid: process.pid, args, key: args.includes("--auth-key-fd") ? readFileSync(0, "utf8") : null });
+log({ pid: process.pid, args, key: args.includes("--auth-key-fd") ? readFileSync(3, "utf8") : null });
 
 const access = value("--access");
 const tags = args.flatMap((arg, index) => (args[index - 1] === "--tag" ? [arg] : []));
@@ -36,7 +42,7 @@ process.on("SIGTERM", () => {
   say({ state: "stopped", https: "pending" });
   process.exit(0);
 });
-setInterval(() => undefined, 1000);
+process.stdin.on("end", () => process.exit(0)).resume();
 `;
 
 type Run = {
@@ -168,7 +174,7 @@ const stateIs = (state: string) => (answer: Answer) =>
   answer.body.state === state;
 
 describe.skipIf(process.platform === "win32")("the embedded tailnet node", () => {
-  it("saves its settings without the auth key, hands the key over stdin once, and starts again from the saved settings", async () => {
+  it("saves its settings without the auth key, hands the key over fd 3 once, and starts again from the saved settings", async () => {
     const { home, binary } = await setup();
     const first = await open(home, binary);
     const socket = await localSocket(first, home);
@@ -207,7 +213,7 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
     });
     expect(saved).not.toContain("tskey");
     expect((await runs(home))[0]).toMatchObject({ key: "tskey-secret" });
-    expect((await runs(home))[0]?.args).toEqual(expect.arrayContaining(["--auth-key-fd", "0"]));
+    expect((await runs(home))[0]?.args).toEqual(expect.arrayContaining(["--auth-key-fd", "3"]));
     expect((await runs(home))[0]?.args?.join(" ")).not.toContain("tskey");
 
     await first.close();
@@ -319,5 +325,105 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
 
     expect(restarted).toHaveLength(2);
     expect(restarted[1]?.pid).not.toBe(crashed);
+  });
+});
+
+const PARENT = `
+import { memoryStore } from "@nyte-ai/core/store";
+import { openHost } from "./src/index.ts";
+import { chatOnly, fakeModels } from "./test/fixtures/fake-models.ts";
+
+const host = await openHost({
+  store: memoryStore(),
+  models: fakeModels().models,
+  plugins: [chatOnly],
+  workspace: { kind: "chat-only", locator: null },
+  home: process.argv[1],
+  tailnet: { binary: process.argv[2] },
+});
+
+for await (const view of host.watch()) if (view.tailnet?.state === "needs_login") break;
+process.stdout.write("needs_login\\n");
+setInterval(() => undefined, 1000);
+`;
+
+const lockCheck = compile(Type.Object({ pid: Type.Number(), instance: Type.String() }));
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function lockHolder(home: string): Promise<number | null> {
+  const text = await readFile(join(home, ".nyte", "tailnet", "nyte-tailnet.lock"), "utf8").catch(
+    () => "{}",
+  );
+
+  const held: unknown = JSON.parse(text);
+
+  return lockCheck.Check(held) && alive(held.pid) ? held.pid : null;
+}
+
+describe.skipIf(process.platform === "win32")("the nyte-tailnet binary", () => {
+  let folder = "";
+  let binary = "";
+
+  afterAll(() => rm(folder, { recursive: true, force: true }));
+
+  beforeAll(async () => {
+    folder = await realpath(await mkdtemp(join(tmpdir(), "nyte-tailnet-bin-")));
+    binary = join(folder, "nyte-tailnet");
+    await promisify(execFile)("go", ["build", "-o", binary, "."], {
+      cwd: fileURLToPath(new URL("../../tailnet/", import.meta.url)),
+    });
+  }, 300_000);
+
+  it("stops within a second once the host holding it is killed", async () => {
+    const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-tailnet-")));
+    cleanups.push(() => rm(home, { recursive: true, force: true }));
+    await mkdir(join(home, ".nyte"), { recursive: true });
+    await writeFile(
+      join(home, ".nyte", "tailnet.json"),
+      JSON.stringify({ enabled: true, hostname: "nyte", tags: [], access: "owner" }),
+    );
+
+    const parent = spawn(
+      process.execPath,
+      ["--input-type=module", "--eval", PARENT, home, binary],
+      {
+        cwd: fileURLToPath(new URL("../", import.meta.url)),
+        env: {
+          ...process.env,
+          TS_CONTROL_URL: "http://127.0.0.1:9",
+          TS_NO_LOGS_NO_SUPPORT: "true",
+        },
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+
+    cleanups.push(async () => {
+      parent.kill("SIGKILL");
+    });
+
+    await new Promise<void>((ready, failed) => {
+      createInterface({ input: parent.stdout }).once("line", () => ready());
+      parent.once("exit", (code) => failed(new Error(`The host exited with ${String(code)}.`)));
+    });
+    const sidecar = await lockHolder(home);
+
+    expect(sidecar).not.toBe(parent.pid);
+    parent.kill("SIGKILL");
+    const killed = performance.now();
+    await until(
+      async () => sidecar !== null && alive(sidecar),
+      (running) => !running,
+    );
+
+    expect(performance.now() - killed).toBeLessThan(1_500);
   });
 });
