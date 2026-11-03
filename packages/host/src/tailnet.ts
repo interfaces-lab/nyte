@@ -19,6 +19,7 @@ import { readErrorCode } from "./local/tree.ts";
 
 export interface TailnetControl {
   status(): TailnetStatus;
+  subscribe(listener: (status: TailnetStatus) => void): () => void;
   configure(input: OperationInput<"host.tailnet.configure">): Promise<TailnetStatus>;
   logout(): Promise<TailnetStatus>;
   close(): Promise<void>;
@@ -74,10 +75,13 @@ export async function openTailnet(options: {
   let failures = 0;
   let route: { close(): Promise<void> } | null = null;
   let closed = false;
+  const listeners = new Set<(status: TailnetStatus) => void>();
 
   const publish = (status: TailnetStatus): void => {
     current = status;
     server.reportTailnet(status);
+
+    for (const listener of listeners) listener(status);
   };
 
   const authorize = (request: Request): Verdict | { readonly deny: "unauthorized" } => {
@@ -226,6 +230,14 @@ export async function openTailnet(options: {
 
   return {
     status: () => current,
+
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => {
+        listeners.delete(listener);
+      };
+    },
 
     configure: (input) =>
       changes.run(async () => {

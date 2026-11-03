@@ -14,10 +14,20 @@ to the session's rows arrives as
 activation changes. A change that touched no row sends nothing, so a client's seq can lag the
 session's; that only makes a later resume send a little more.
 
+Subscribing to `host` follows the sessions table as
+[`sessions.read`](/docs/reference/operations/sessions/read) selects it with no filter: the newest 50
+sessions of every parent, described for the connection's principal. Each change arrives as
+`{ scope: "host", seq, kind: "change", tables: { sessions: { upsert, drop } } }`, where `drop` names
+a session that was removed or left that window. Three live facts arrive whole on subscribe and on
+every change: `{ kind: "live", clients }`, `{ kind: "live", activations }`, each session's
+activation by id, and `{ kind: "status", version, startedAt, listeners, tailnet }`, where
+`listeners` are the addresses the host listens on and `tailnet` is the embedded node's status, or
+null without one or for a principal without `owner` authority.
+
 The answer comes after the subscription is registered. Subscribe first, then read with
 [`head.read`](/docs/reference/operations/head/read): every change after the read's seq reaches the
-connection, and an event at or below it is already in the answer. Subscribing to a scope twice is a
-no-op.
+connection, and an event at or below it is already in the answer. The same holds for `host` and
+`sessions.read`. Subscribing to a scope twice is a no-op.
 
 ## When to call it
 

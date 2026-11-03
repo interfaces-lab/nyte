@@ -26,6 +26,7 @@ import type {
   Seq,
   SessionChange,
   SessionId,
+  SessionsRead,
   TailnetStatus,
   WindowSpec,
   WorkspaceId,
@@ -55,6 +56,10 @@ export type Verdict = {
  */
 export interface ServerHost {
   readonly hostId: HostId;
+
+  readonly version: string;
+
+  readonly startedAt: number;
 
   /** How the kernel runs sessions: `run` drives its coverage in process, `admit-only` admits and leaves driving to a listener or another process, `dispatch` hands each wake to its dispatcher. */
   readonly execution: NonNullable<OpenOptions["execution"]>;
@@ -141,6 +146,12 @@ export interface WireHost {
   partDefinition(session: SessionId, kind: string): Promise<PartDefinition | undefined>;
 
   attach(session: SessionId, principal: PrincipalId): SessionAttachment;
+
+  sessions(principal: PrincipalId): AsyncIterable<SessionsRead>;
+
+  activations(): ReadonlyMap<SessionId, Activation>;
+
+  onActivation(listener: () => void): Disposer;
 }
 
 export interface StreamingPart {

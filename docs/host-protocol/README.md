@@ -105,7 +105,7 @@ One shape for everything the host pushes:
 | Kind | Scope | Carries |
 | --- | --- | --- |
 | `change` | any | `tables: { [table]: { upsert: Row[], drop: Id[] } }`, holding only the tables the change touched, and `paths: { head, after, ids }[]`: each moved head's order is unchanged through `after`, then continues with `ids` (`after: null` replaces it) |
-| `live` | `session/<id>`, `host` | a session's activation; the host's connected clients |
+| `live` | `session/<id>`, `host` | a session's activation; the host's connected clients and every session's activation |
 | `status` | `host` | the host's version, uptime, listeners, tailnet state |
 | `perform` | `client/<id>` | `call`, the requesting client's id and principal, `action`, `input` |
 | `performed` | `host` | `call`, target, outcome: performed, refused, failed or timeout |

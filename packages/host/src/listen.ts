@@ -13,6 +13,7 @@ import { asSdkError, encodeError, errorStatus } from "@nyte-ai/protocol";
 import { WebSocketServer } from "ws";
 import { listenFetch } from "./listen-fetch.ts";
 import { readErrorCode } from "./local/tree.ts";
+import { sharedListeners } from "./serve/listeners.ts";
 import { serveSession } from "./serve/socket.ts";
 import type { SocketPeer } from "./serve/socket.ts";
 import type { TailnetControl } from "./tailnet.ts";
@@ -48,6 +49,8 @@ export async function listen(host: ServedHost, options: HostListenOptions): Prom
     );
   });
 
+  const unlist = sharedListeners(host.server).add(served.address);
+
   const disconnectClients = (): void => {
     inner.disconnectClients();
     served.disconnect();
@@ -57,6 +60,7 @@ export async function listen(host: ServedHost, options: HostListenOptions): Prom
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
+      unlist();
       disconnectClients();
       await inner.close();
       await served.close();
