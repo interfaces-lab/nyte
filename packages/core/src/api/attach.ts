@@ -3,7 +3,7 @@ import type { PrincipalId, SessionId } from "@nyte-ai/schema";
 import { INDEX } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { PartProgress, SessionAttachment, StreamingPart } from "../contract/server.ts";
-import { changesSince, readWindow } from "../fold/window.ts";
+import { changesAfter, readWindow } from "../fold/window.ts";
 
 export function attachSession(
   kernel: Pick<Kernel, "folds">,
@@ -14,11 +14,14 @@ export function attachSession(
 
   return {
     ready: () => hold.ready(),
-    seq: () => hold.state().seq,
-    amended: () => hold.state()[INDEX].ring.amended,
+    cursor() {
+      const state = hold.state();
+
+      return { seq: state.seq, mark: state[INDEX].ring.mark };
+    },
     activation: () => hold.state().activation,
     read: (head, window, resume) => readWindow(hold.state(), head, window, resume),
-    changesSince: (seq) => changesSince(hold.state(), seq),
+    changesAfter: (cursor) => changesAfter(hold.state(), cursor),
     streaming: () =>
       Array.from(hold.state().parts.values()).flatMap((part): StreamingPart[] => {
         const state = part.state;

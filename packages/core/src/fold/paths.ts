@@ -52,37 +52,19 @@ export function finish(state: FoldState, draft: Draft): FoldState {
 }
 
 function record(ring: Ring, draft: Draft): void {
-  const last = ring.steps.at(-1);
+  const touched = draft.touched;
 
-  if (last?.seq !== draft.seq) {
-    ring.steps.push({ seq: draft.seq, ...draft.touched });
-    const evicted = ring.steps.length > RING ? ring.steps.shift() : undefined;
-
-    if (evicted !== undefined) ring.from = evicted.seq;
-
+  if (
+    ring.steps.at(-1)?.seq === draft.seq &&
+    touched.paths.size === 0 &&
+    TABLES.every((table) => touched.upsert[table].size + touched.drop[table].size === 0)
+  )
     return;
-  }
+  ring.mark += 1;
+  ring.steps.push({ seq: draft.seq, mark: ring.mark, ...touched });
+  const evicted = ring.steps.length > RING ? ring.steps.shift() : undefined;
 
-  let amended = draft.touched.paths.size > 0;
-
-  for (const table of TABLES) {
-    for (const key of draft.touched.upsert[table]) {
-      last.upsert[table].add(key);
-      last.drop[table].delete(key);
-      amended = true;
-    }
-
-    for (const key of draft.touched.drop[table]) {
-      last.drop[table].add(key);
-      last.upsert[table].delete(key);
-      amended = true;
-    }
-  }
-
-  for (const [head, position] of draft.touched.paths)
-    last.paths.set(head, Math.min(position, last.paths.get(head) ?? position));
-
-  if (amended) ring.amended += 1;
+  if (evicted !== undefined) ring.from = evicted.seq;
 }
 
 const TABLES: readonly Table[] = [

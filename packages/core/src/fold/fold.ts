@@ -106,7 +106,7 @@ export function emptyFold(input: {
     thinking: new Map(),
     paths: new Map(),
     stamps: emptyStamps(),
-    ring: { steps: [], from: asSeq(0), amended: 0 },
+    ring: { steps: [], from: asSeq(0), mark: 0 },
   };
 
   return {

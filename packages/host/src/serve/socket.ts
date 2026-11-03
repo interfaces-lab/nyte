@@ -12,7 +12,6 @@ import {
   SdkError,
   SOCKET_LIMITS,
   asId,
-  asSeq,
   withJson,
 } from "@nyte-ai/schema";
 import type {
@@ -269,8 +268,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       return;
     }
 
-    let sent = attachment.seq();
-    let amended = attachment.amended();
+    let cursor = attachment.cursor();
     let activation = JSON.stringify(attachment.activation());
 
     const live = (): void =>
@@ -284,12 +282,11 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       });
 
     const changed = (): void => {
-      const advanced = attachment.seq() > sent;
+      const reached = attachment.cursor();
 
-      if (advanced || attachment.amended() !== amended) {
-        const change = attachment.changesSince(advanced ? sent : asSeq(sent - 1));
-        sent = change.seq;
-        amended = attachment.amended();
+      if (reached.mark !== cursor.mark) {
+        const change = attachment.changesAfter(cursor);
+        cursor = reached;
 
         if (Object.keys(change.tables).length > 0 || change.paths.length > 0)
           outbox.event({

@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, asSeq } from "@nyte-ai/schema";
 import type {
   CatalogRow,
   Execution,
@@ -21,7 +21,15 @@ import type {
   WindowSpec,
 } from "@nyte-ai/schema";
 import { INDEX } from "../contract/fold.ts";
-import type { FoldHead, FoldState, Path, Table, Touched } from "../contract/fold.ts";
+import type {
+  ChangeCursor,
+  FoldHead,
+  FoldState,
+  Path,
+  Step,
+  Table,
+  Touched,
+} from "../contract/fold.ts";
 import { ZERO_USAGE } from "../util/usage.ts";
 import {
   backgroundRows,
@@ -190,8 +198,22 @@ export function readView(state: FoldState, head: HeadName, options?: ViewOptions
 }
 
 export function changesSince(state: FoldState, seq: Seq): SessionChange {
-  const touched = collect(state, seq);
+  return readChange(state, collect(state, seq));
+}
 
+export function changesAfter(state: FoldState, cursor: ChangeCursor): SessionChange {
+  const steps = state[INDEX].ring.steps;
+
+  if ((steps[0]?.mark ?? 0) > cursor.mark + 1)
+    return changesSince(state, asSeq(Math.max(0, cursor.seq - 1)));
+  let first = steps.length;
+
+  while (first > 0 && steps[first - 1].mark > cursor.mark) first -= 1;
+
+  return readChange(state, merge(steps.slice(first)));
+}
+
+function readChange(state: FoldState, touched: Touched): SessionChange {
   return {
     seq: state.seq,
     tables: omitEmpty(readTables(state, touched)),
@@ -293,7 +315,6 @@ function readPathChange(state: FoldState, head: HeadName, position: number): Pat
 
 function collect(state: FoldState, seq: Seq): Touched {
   const index = state[INDEX];
-  const touched = newTouched();
 
   if (seq < index.ring.from) return scan(state, seq);
   const steps = index.ring.steps;
@@ -301,7 +322,13 @@ function collect(state: FoldState, seq: Seq): Touched {
 
   while (first > 0 && steps[first - 1].seq > seq) first -= 1;
 
-  for (const step of steps.slice(first)) {
+  return merge(steps.slice(first));
+}
+
+function merge(steps: readonly Step[]): Touched {
+  const touched = newTouched();
+
+  for (const step of steps) {
     for (const table of TABLES) {
       for (const key of step.upsert[table]) touched.upsert[table].add(key);
 

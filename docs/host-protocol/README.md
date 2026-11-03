@@ -110,7 +110,7 @@ One shape for everything the host pushes:
 | `perform` | `client/<id>` | `call`, the requesting client's id and principal, `action`, `input` |
 | `performed` | `host` | `call`, target, outcome: performed, refused, failed or timeout |
 
-One log event produces one `change` event at that seq, carrying every row it touched across tables. A client applies a `change` by replacing each upserted row and deleting each dropped id. No field-level patching, no splicing by position.
+One log event produces one `change` event at that seq, carrying every row it touched across tables. A bus event the log never holds, a child's, job's or page's state or the catalog, produces a `change` at the seq it joined, carrying only the rows it touched, never the rows its seq already sent. A client applies a `change` by replacing each upserted row and deleting each dropped id. No field-level patching, no splicing by position.
 
 ## Two channels
 
