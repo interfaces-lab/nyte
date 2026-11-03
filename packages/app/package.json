@@ -33,6 +33,7 @@
     "./settings/editor.tsx": "./src/settings/editor.tsx",
     "./settings/general.tsx": "./src/settings/general.tsx",
     "./settings/models-settings.tsx": "./src/settings/models-settings.tsx",
+    "./settings/pages.ts": "./src/settings/pages.ts",
     "./settings/rows.tsx": "./src/settings/rows.tsx",
     "./settings/settings.stylex.ts": "./src/settings/settings.stylex.ts",
     "./settings/terminal.tsx": "./src/settings/terminal.tsx",
