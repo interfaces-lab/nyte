@@ -38,6 +38,7 @@ import type {
   OperationInput,
   OperationOutput,
 } from "@nyte-ai/protocol";
+import type { McpOwner } from "../mcp-server/grants.ts";
 import type { TailnetControl } from "../tailnet.ts";
 import { sharedClients } from "./clients.ts";
 
@@ -88,10 +89,11 @@ type OutputBinding = {
 /** Returns the server side of the table for one connection: each row takes its decoded input and the request's body and abort signal, and answers its output, its frames, or a byte reader; setup failures (authority, capability, unknown ids) reject before any frame. */
 export type Binding = CallBinding & FrameBinding & ByteBinding & OutputBinding;
 
-/** Describes what a binding needs beyond the connection: the server port, for the rows that carry a wire-only id (§40o) and `parts.create`, and the tailnet node, for the `host.tailnet.*` rows. */
+/** Describes what a binding needs beyond the connection: the server port, for the rows that carry a wire-only id (§40o) and `parts.create`, the tailnet node, for the `host.tailnet.*` rows, and the MCP server, for the owner's `mcp.approve`, `mcp.deny` and `mcp.grants.*` rows. */
 export type BindingOptions = {
   readonly server: ServerHost;
   readonly tailnet?: TailnetControl;
+  readonly mcpServer?: McpOwner;
 };
 
 const LOGIN_LIFETIME = 10 * 60 * 1000;
@@ -131,6 +133,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
   const tailnet = (): TailnetControl =>
     options.tailnet ?? fail("unavailable", "This host runs no tailnet node.");
+
+  const mcpServer = (): McpOwner =>
+    options.mcpServer ?? fail("unavailable", "This host serves no MCP endpoint.");
 
   const findLogin = (provider: string): Attempt =>
     logins.get(principalKey(principal, provider)) ??
@@ -285,6 +290,18 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "host.tailnet.status": async () => tailnet().status(),
     "host.tailnet.configure": (input) => tailnet().configure(input),
     "host.tailnet.logout": () => tailnet().logout(),
+    "mcp.approve": (input) => mcpServer().approve(input),
+    "mcp.deny": async (input) => {
+      await mcpServer().deny(input);
+
+      return null;
+    },
+    "mcp.grants.list": () => mcpServer().list(),
+    "mcp.grants.revoke": async (input) => {
+      await mcpServer().revoke(input);
+
+      return null;
+    },
 
     "session.info": ({ session: id }) => session(id).info(),
     "session.update": ({ session: id, patch }) => session(id).update(patch),

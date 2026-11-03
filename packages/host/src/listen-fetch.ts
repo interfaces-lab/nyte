@@ -13,6 +13,8 @@ import {
   errorStatus,
   operationsDigest,
 } from "@nyte-ai/protocol";
+import type { McpServer } from "./mcp-server/server.ts";
+import { MCP_TOKEN_PREFIX } from "./mcp-server/token.ts";
 import { allowsOrigin, createHandler } from "./serve/handler.ts";
 import type { HandlerOptions } from "./serve/handler.ts";
 import type { SocketPeer } from "./serve/socket.ts";
@@ -51,6 +53,7 @@ export async function listenFetch(
     readonly transport: { readonly kind: "fetch" };
     readonly local?: boolean;
     readonly tailnet?: TailnetControl;
+    readonly mcpServer?: McpServer;
   },
 ): Promise<SocketListener> {
   const { auth } = options;
@@ -227,6 +230,9 @@ export async function listenFetch(
 
     const token = /^Bearer\s+(\S+)\s*$/i.exec(header)?.[1];
 
+    if (token?.startsWith(MCP_TOKEN_PREFIX) === true)
+      throw new SdkError("denied", "An MCP token answers only at /mcp.");
+
     if (token !== undefined) {
       if (await isListenerToken(token))
         return { principal: TOKEN, authority: listenerAuthority, token };
@@ -323,6 +329,7 @@ export async function listenFetch(
     server,
     local: options.local === true,
     tailnet: options.tailnet,
+    mcpServer: options.mcpServer,
     origins: options.origins,
     maxBodyBytes: options.maxBodyBytes,
     connection: (request) => {
@@ -378,6 +385,10 @@ export async function listenFetch(
 
       return json(await options.describe(), cors(request));
     }
+
+    const mcp = await options.mcpServer?.serve(request);
+
+    if (mcp !== undefined && mcp !== null) return mcp;
 
     const controller = new AbortController();
 

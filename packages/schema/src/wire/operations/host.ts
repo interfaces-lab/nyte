@@ -3,6 +3,8 @@ import { ConfigurationPatchType, ConfigurationType } from "../../configuration.t
 import { HostViewWireSchema, SettingOutcomeSchema } from "../../connection.ts";
 import {
   AuthorityType,
+  McpAccessType,
+  McpGrantViewType,
   OperationDescriptionType,
   PluginCheckReportSchema,
   PluginReplacementReportSchema,
@@ -338,6 +340,35 @@ export const HOST_OPERATIONS = {
     kind: "command",
     input: NO_INPUT,
     output: wireSchema(TailnetStatusType),
+  },
+  "mcp.approve": {
+    ...LOCAL_OWNER,
+    summary:
+      "Approves the MCP sign-in waiting with this code, for read-only tools or for write tools under an approval policy ceiling.",
+    kind: "command",
+    input: wireObject({ code: Type.String(), access: McpAccessType }),
+    output: wireObject({ client: Type.String() }),
+  },
+  "mcp.deny": {
+    ...LOCAL_OWNER,
+    summary: "Refuses the MCP sign-in waiting with this code.",
+    kind: "command",
+    input: wireObject({ code: Type.String() }),
+    output: NOTHING,
+  },
+  "mcp.grants.list": {
+    ...LOCAL_OWNER,
+    summary: "Lists the MCP clients this host granted access to.",
+    kind: "query",
+    input: NO_INPUT,
+    output: wireSchema(Type.Array(McpGrantViewType)),
+  },
+  "mcp.grants.revoke": {
+    ...LOCAL_OWNER,
+    summary: "Revokes an MCP client's grant and every token issued under it.",
+    kind: "command",
+    input: wireObject({ id: Type.String() }),
+    output: NOTHING,
   },
 } as const satisfies OperationRows;
 

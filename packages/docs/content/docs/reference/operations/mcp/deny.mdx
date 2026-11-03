@@ -1,0 +1,70 @@
+---
+title: mcp.deny
+description: Refuses the MCP sign-in waiting with this code.
+---
+
+Refuses an outside agent's MCP sign-in. The sign-in page redirects to the client with
+`error=access_denied`.
+
+## When to call it
+
+When a sign-in page shows a code you did not start, or for an agent you don't want on this host.
+
+## Access
+
+Needs `owner` authority, and answers only on the host's local socket. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{ "code": "K7QM-W2XP" }
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `unknown` when no sign-in waits with that code: `No MCP sign-in is waiting with that code.`
+- `unavailable` when the host serves no MCP endpoint.
+- `denied` off the local socket.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["code"],
+  "properties": {
+    "code": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

@@ -1,4 +1,16 @@
 {
   "title": "mcp",
-  "pages": ["watch", "reconnect", "set-enabled", "login", "logout", "add", "remove"]
+  "pages": [
+    "approve",
+    "deny",
+    "grants.list",
+    "grants.revoke",
+    "watch",
+    "reconnect",
+    "set-enabled",
+    "login",
+    "logout",
+    "add",
+    "remove"
+  ]
 }

@@ -969,4 +969,20 @@ export const operations = {
     { state: "disabled", https: "unavailable", access: "owner", tags: [] },
     { state: "disabled" },
   ),
+  "mcp.approve input": operation(
+    OPERATIONS["mcp.approve"].input,
+    { code: "ABCD-EFGH", access: { kind: "ceiling", ceiling: "auto-edit" } },
+    { code: "ABCD-EFGH", access: { kind: "ceiling", ceiling: "yolo" } },
+  ),
+  "mcp.approve output": operation(OPERATIONS["mcp.approve"].output, { client: "Claude" }, {}),
+  "mcp.deny input": operation(OPERATIONS["mcp.deny"].input, { code: "ABCD-EFGH" }, {}),
+  "mcp.deny output": operation(OPERATIONS["mcp.deny"].output, null, true),
+  "mcp.grants.list input": operation(OPERATIONS["mcp.grants.list"].input, {}, null),
+  "mcp.grants.list output": operation(
+    OPERATIONS["mcp.grants.list"].output,
+    [{ id: "g1", client: "Codex", access: { kind: "read-only" }, createdAt: 1 }],
+    [{ id: "g1", client: "Codex", access: { kind: "write" }, createdAt: 1 }],
+  ),
+  "mcp.grants.revoke input": operation(OPERATIONS["mcp.grants.revoke"].input, { id: "g1" }, {}),
+  "mcp.grants.revoke output": operation(OPERATIONS["mcp.grants.revoke"].output, null, true),
 } satisfies Record<string, Case>;

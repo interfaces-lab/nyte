@@ -38,6 +38,7 @@ import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts"
 import { listen } from "./listen.ts";
 import { nodeImages } from "./images/node.ts";
 import { createMcpHub } from "./mcp/hub.ts";
+import { openMcpServer } from "./mcp-server/server.ts";
 import { createViewCompiler } from "./plugins/views.ts";
 import { createPluginLoader } from "./plugins/loader.ts";
 import type { PluginImport } from "./plugins/loader.ts";
@@ -205,10 +206,13 @@ async function composeOpen(
       ? undefined
       : await openTailnet({ host, home, binary: options.tailnet.binary });
 
+  const mcpServer = openMcpServer({ server: host.server, home, version: description.version });
+
   const attach = async (listenOptions: ListenOptions): Promise<Listener> => {
     const listener = await listen(host, {
       describe: () => description,
       tailnet,
+      mcpServer,
       ...listenOptions,
       identity: listenOptions.identity ?? (await (identity ??= identitySigner(host.hostId, home))),
     });
