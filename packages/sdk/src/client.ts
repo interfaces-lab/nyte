@@ -9,12 +9,10 @@ import type {
   PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
-import { dev, followTrace, holdMessage, traced, watchStore } from "@nyte-ai/core";
+import { dev, followTrace, holdMessage, traced } from "@nyte-ai/core";
 import type { Connection, Head, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
-import { sessionLists } from "@nyte-ai/protocol";
 import type { Transport } from "@nyte-ai/protocol";
-import { createHeadViews, watchHead, watchHost, withUnsent } from "./watch.ts";
-import type { HeadViews } from "./watch.ts";
+import { watchHost, withUnsent } from "./watch.ts";
 import { journalLoop } from "./journal.ts";
 import type { JournalLoop } from "./journal.ts";
 import { partHandle } from "./part.ts";
@@ -36,7 +34,6 @@ type ClientContext = {
 type Bound = {
   readonly rows: Rows;
   readonly journal: JournalLoop;
-  readonly views: HeadViews;
   readonly seen: Map<string, CommitId>;
 };
 
@@ -51,7 +48,6 @@ export function createClient(transport: Transport, context: ClientContext): Conn
   const bound: Bound = {
     rows,
     journal: journalLoop(rows, context.journal),
-    views: createHeadViews(rows),
     seen: new Map(),
   };
 
@@ -69,7 +65,6 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     principal: context.principal,
     credential: context.credential,
     sessions: {
-      watch: (input) => sessionLists(rows.watch("sessions.watch", input ?? {})),
       async start(input) {
         const id = input.id ?? asId<"session">(crypto.randomUUID());
         followTrace(id, id);
@@ -246,7 +241,6 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
 
       return withUnsent(view, journal.unsent(session, head));
     },
-    watch: (options) => watchHead(bound.views, journal, { session, head, options }),
     async see(commit) {
       const key = JSON.stringify([session, head]);
 
@@ -254,7 +248,6 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
       await rows.call("head.see", { session, head, commit });
       bound.seen.set(key, commit);
     },
-    ...watchStore(() => watchHead(bound.views, journal, { session, head })),
     history: (input) => rows.call("head.history", { session, head, ...input }),
     tree: () => rows.call("head.tree", { session, head }),
     async move(position, options) {

@@ -1,12 +1,19 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, HeadName, SessionView } from "@nyte-ai/schema";
 import { isPart, text } from "@nyte-ai/core";
+import type { Session } from "@nyte-ai/core";
 import { emptyFold, fold, project } from "@nyte-ai/core/testing";
+import { listen } from "@nyte-ai/host";
 import { afterEach, assert, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
+import { headView } from "../src/head-view.ts";
+import type { HeadView } from "../src/head-view.ts";
 import { pagedViews } from "../src/history.ts";
+import { openHost } from "../src/host-connection.ts";
 import { createSendJournal } from "../src/journal.ts";
+import { pushed } from "../src/watch.ts";
 import { BASE, TOKEN_SECRET, served } from "./served.ts";
+import type { Served } from "./served.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
 
@@ -14,8 +21,46 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-function users(view: SessionView) {
+function users(view: Pick<SessionView, "messages">) {
   return view.messages.flatMap((message) => (message.kind === "user" ? [message.content] : []));
+}
+
+async function rowViews(host: Served, session: Session, tail: number) {
+  const listener = await listen(host.host, {
+    transport: { kind: "http" },
+    auth: { kind: "token", token: TOKEN_SECRET },
+  });
+
+  cleanups.push(() => listener.close());
+
+  const live = openHost(listener.address ?? "", {
+    credentials: { kind: "token", token: TOKEN_SECRET },
+    client: { kind: "other", name: "history-test", version: "1" },
+  });
+
+  cleanups.push(async () => live.release());
+
+  return pagedViews<HeadView>({
+    watch: () =>
+      pushed<HeadView>((sink) => {
+        const store = live.head(session.id, session.name, { tail });
+
+        const emit = (): void => {
+          const snapshot = store.snapshot();
+
+          if (snapshot !== null) sink.next(headView(snapshot));
+        };
+
+        const stop = store.subscribe(emit);
+        emit();
+
+        return () => {
+          stop();
+          store.close();
+        };
+      }),
+    history: (query) => session.history(query),
+  });
 }
 
 it("pages a head's older messages and their turns into its views and keeps them while new ones slide the window", async () => {
@@ -41,10 +86,10 @@ it("pages a head's older messages and their turns into its views and keeps them 
   for (const text of ["Second.", "Third."])
     await (await session.send(text, { delivery: "queue" })).settled();
 
-  const views = pagedViews(session, { tail: 3 });
+  const views = await rowViews(host, session, 3);
   const iterator = views[Symbol.asyncIterator]();
 
-  const next = async (done: (view: SessionView) => boolean): Promise<SessionView> => {
+  const next = async (done: (view: HeadView) => boolean): Promise<HeadView> => {
     for (;;) {
       const step = await iterator.next();
       assert(step.done !== true);
@@ -76,7 +121,7 @@ it("pages a head's older messages and their turns into its views and keeps them 
       slid.messages.flatMap((message) => (message.kind === "user" ? [message.id] : [])),
     );
 
-    const quiet = (view: SessionView): boolean =>
+    const quiet = (view: HeadView): boolean =>
       view.execution.kind === "idle" && view.turns.every((turn) => turn.state.kind === "ended");
 
     const settled = quiet(slid) ? slid : await next(quiet);
@@ -116,10 +161,10 @@ it("pages a turn cut after its prompt with the prompt alongside, every message o
   await receipt.settled();
   await (await session.send("Second.", { delivery: "queue" })).settled();
 
-  const views = pagedViews(session, { tail: 4 });
+  const views = await rowViews(host, session, 4);
   const iterator = views[Symbol.asyncIterator]();
 
-  const next = async (done: (view: SessionView) => boolean): Promise<SessionView> => {
+  const next = async (done: (view: HeadView) => boolean): Promise<HeadView> => {
     for (;;) {
       const step = await iterator.next();
       assert(step.done !== true);
@@ -128,7 +173,7 @@ it("pages a turn cut after its prompt with the prompt alongside, every message o
     }
   };
 
-  const shown = (view: SessionView) => ({
+  const shown = (view: HeadView) => ({
     lead: view.leadingPrompt === null ? null : label(view.leadingPrompt),
     messages: view.messages.map(label),
   });

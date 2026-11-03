@@ -4,11 +4,21 @@ import { join } from "node:path";
 import process from "node:process";
 import { isPart, readSpans, tool } from "@nyte-ai/core";
 import type { Host, Session, SpanName } from "@nyte-ai/core";
-import { asId, isJsonObject } from "@nyte-ai/schema";
-import type { Json, Message, SessionView, ToolPartState } from "@nyte-ai/schema";
+import { decodeOutput, encodeInput, openHostSocket, openSessionStore } from "@nyte-ai/protocol";
+import type { SessionStore } from "@nyte-ai/protocol";
+import {
+  asId,
+  compile,
+  isJsonObject,
+  SessionChangeType,
+  SOCKET_PATH,
+  withJson,
+} from "@nyte-ai/schema";
+import type { Json, Message, SessionChange, SessionView, ToolPartState } from "@nyte-ai/schema";
 import { assert, expect } from "vitest";
+import WebSocket from "ws";
 import { buildWaterfall, formatWaterfall } from "../../src/index.ts";
-import type { SpanSource, Waterfall, WaterfallRow } from "../../src/index.ts";
+import type { Simulation, SpanSource, Waterfall, WaterfallRow } from "../../src/index.ts";
 
 const folders: string[] = [];
 
@@ -86,36 +96,104 @@ export function settledTool(messages: readonly Message[], name: string) {
   return state;
 }
 
+type Shown = Pick<SessionView, "messages"> & { readonly seq: number };
+
 export interface Watched {
-  readonly views: SessionView[];
-  close(seq: number): Promise<void>;
+  readonly views: readonly Shown[];
+  close(final: Pick<SessionView, "messages">): Promise<void>;
 }
 
-export function watchViews(session: Session): Watched {
-  const views: SessionView[] = [];
-  const stop = new AbortController();
+const changes = compile(withJson(SessionChangeType));
 
-  const done = (async () => {
-    for await (const view of session.watch()) {
-      views.push(view);
+export async function watchViews(simulation: Simulation, session: Session): Promise<Watched> {
+  const listening = await simulation.drive({ kind: "listen" });
 
-      if (stop.signal.aborted) return;
+  assert(listening.kind === "listening");
+  const url = new URL(SOCKET_PATH, listening.url);
+  url.protocol = "ws:";
+
+  const socket = await openHostSocket({
+    socket: new WebSocket(url.href, { headers: { Authorization: `Bearer ${listening.token}` } }),
+    client: { kind: "other", name: "perturbation", version: "0.0.0", actions: [] },
+  });
+
+  const scope = `session/${session.id}`;
+  const views: Shown[] = [];
+  const pending: SessionChange[] = [];
+  let store: SessionStore | null = null;
+
+  const show = (current: SessionStore): void => {
+    const snapshot = current.snapshot();
+
+    views.push({
+      seq: current.seq,
+      messages: snapshot.order.flatMap((id) => {
+        const message = snapshot.rows.messages.get(id);
+
+        return message === undefined ? [] : [message];
+      }),
+    });
+  };
+
+  const read = async (): Promise<void> => {
+    store = null;
+
+    const window = decodeOutput(
+      "head.read",
+      await socket.call(
+        "head.read",
+        encodeInput("head.read", {
+          session: session.id,
+          head: session.name,
+          window: { tail: 200 },
+        }),
+      ),
+    );
+
+    const opened = openSessionStore(window);
+    store = opened;
+
+    for (const change of pending.splice(0)) opened.apply(change);
+    show(opened);
+  };
+
+  socket.onEvent((event) => {
+    if (event.scope !== scope || event.kind !== "change" || !changes.Check(event)) return;
+
+    if (store === null) {
+      pending.push(event);
+
+      return;
     }
-  })();
+
+    store.apply(event);
+
+    if (store.stale) void read();
+    else show(store);
+  });
+
+  await socket.call("events.subscribe", { scopes: [scope] });
+  await read();
 
   return {
     views,
-    async close(seq) {
-      await until(() => (Number(views.at(-1)?.seq ?? -1) >= seq ? true : undefined));
-      stop.abort();
-      await Promise.race([done, new Promise((resolve) => setTimeout(resolve, 50))]);
+    async close(final) {
+      const shown = JSON.stringify(projection(final));
+
+      await until(
+        () =>
+          JSON.stringify(projection(views.at(-1) ?? { messages: [] })) === shown ? true : undefined,
+        10_000,
+        "the client's view to match the host's",
+      );
+      socket.close();
     },
   };
 }
 
 export async function expectSettledViews(session: Session, watched: Watched): Promise<SessionView> {
   const final = await session.view();
-  await watched.close(Number(final.seq));
+  await watched.close(final);
 
   let seq = -1;
   const versions = new Map<string, number>();
@@ -138,10 +216,6 @@ export async function expectSettledViews(session: Session, watched: Watched): Pr
     }
   }
 
-  const last = watched.views.at(-1);
-
-  assert(last !== undefined);
-  expect(projection(last)).toEqual(projection(final));
   expect(final.execution.kind).toBe("idle");
   expect(
     final.turns.flatMap((turn) => (turn.run === null ? [] : [turn.state.kind])),
@@ -155,7 +229,7 @@ export async function expectSettledViews(session: Session, watched: Watched): Pr
   return final;
 }
 
-function projection(view: SessionView) {
+function projection(view: Pick<SessionView, "messages">) {
   return view.messages.map((message) =>
     message.kind === "part"
       ? { id: message.id, kind: message.partKind, version: message.version }

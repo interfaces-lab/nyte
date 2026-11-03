@@ -149,7 +149,6 @@ export function activationSession(
 
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
   return {
-    watch: (input) => watchSessions(kernel, context.principal, input),
     async start(input) {
       const id = await start(kernel, context, input);
 

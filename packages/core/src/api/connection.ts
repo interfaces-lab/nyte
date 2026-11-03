@@ -15,7 +15,6 @@ import type {
   PluginFile,
 } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
-import type { Head, Session } from "../contract/session.ts";
 import type { GitHubAccountApi, Workspace } from "../contract/workspace.ts";
 import { advance, cover, repair } from "../drive/execution.ts";
 import { pause, resume } from "../drive/pause.ts";
@@ -29,7 +28,7 @@ import {
   runWorkspaceCommand,
 } from "../extend/workspace-commands.ts";
 import { inspect } from "../store/inspect.ts";
-import { forwarded, watchStore } from "../util/iterable.ts";
+import { forwarded } from "../util/iterable.ts";
 import { watchHost } from "./host.ts";
 import { createSessions, sessionHandle } from "./session.ts";
 
@@ -83,24 +82,6 @@ export function createConnection(
           return { done: true, value: undefined };
         },
       };
-    },
-  });
-
-  const head = (handle: Head): Head => ({
-    ...handle,
-    watch: (options) => track(handle.watch(options)),
-    ...watchStore(() => track(handle.watch())),
-  });
-
-  const session = (handle: Session): Session => ({
-    ...handle,
-    watch: (options) => track(handle.watch(options)),
-    ...watchStore(() => track(handle.watch())),
-    head: (name) => head(handle.head(name)),
-    part: (id) => {
-      const part = handle.part(id);
-
-      return { ...part, watch: () => track(part.watch()) };
     },
   });
 
@@ -158,17 +139,12 @@ export function createConnection(
     principal: context.principal,
     credential: context.credential,
     sessions: {
-      watch: (input) => track(sessions.watch(input)),
-      async start(input) {
-        const started = await sessions.start(input);
-
-        return { ...started, session: session(started.session) };
-      },
+      start: (input) => sessions.start(input),
       list: (input) => sessions.list(input),
       read: (input) => sessions.read(input),
     },
     workspaces: gated("workspaces", createWorkspaces(kernel, context), authority),
-    session: (id) => session(sessionHandle(kernel, context, id)),
+    session: (id) => sessionHandle(kernel, context, id),
     workspace,
     watch: () =>
       track(watchHost(kernel, { principal: context.principal, authority: context.authority })),

@@ -146,12 +146,6 @@ function connect(ids: readonly SessionId[]): void {
   const scripted = scriptedConnection({
     sessions: ids.map((id) => sessionRow(id)),
     models: { list: async () => hostCatalog },
-    session: () => ({
-      watch: async function* () {
-        yield* [];
-        throw new Error("No view in this fixture.");
-      },
-    }),
   });
 
   installConnection(

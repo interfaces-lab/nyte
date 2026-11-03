@@ -93,7 +93,7 @@ it("delegates scenario D's log reading to a subagent that calls the CI server, a
   const { host } = simulation;
   const started = performance.now();
   const { trace, session: parent, receipt } = await start(host, CI_PROMPT);
-  const watched = watchViews(parent);
+  const watched = await watchViews(simulation, parent);
 
   const waiting = await until(
     async () => {
@@ -202,7 +202,7 @@ it("stops a waiting subagent's run when the user stops the parent", async () => 
   const { host } = simulation;
   const started = performance.now();
   const { trace, session: parent, receipt } = await start(host, CI_PROMPT);
-  const watched = watchViews(parent);
+  const watched = await watchViews(simulation, parent);
 
   const child = await until(
     async () => {

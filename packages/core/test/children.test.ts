@@ -2,6 +2,7 @@ import { asId, standard } from "@nyte-ai/schema";
 import type { BackgroundItem, HeadName, Json, RunId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
+import { attachSession } from "../src/api/attach.ts";
 import { runStep } from "../src/engine/durable.ts";
 import { pollStore } from "../src/fold/watch.ts";
 import { main, setup, until } from "../src/harness.ts";
@@ -152,10 +153,10 @@ describe("child background items", () => {
     (await there.script.started(1)).finish();
     await step;
     const parent = here.host.session(started.id);
-    const views = parent.watch()[Symbol.asyncIterator]();
+    const attached = attachSession(here.kernel, started.id, here.host.principal);
 
     try {
-      await views.next();
+      await attached.ready();
 
       expect(await childState(parent, child.id, "done")).toBe("done");
       await child.send("Ask me.");
@@ -166,7 +167,7 @@ describe("child background items", () => {
       expect(await childState(parent, child.id, "waiting")).toBe("waiting");
     } finally {
       unpoll();
-      await views.return?.();
+      attached.release();
     }
   });
 
@@ -204,10 +205,10 @@ describe("child background items", () => {
       await step;
     }
 
-    const views = parent.watch()[Symbol.asyncIterator]();
+    const attached = attachSession(kernel, parent.id, host.principal);
 
     try {
-      await views.next();
+      await attached.ready();
       await kernel.folds.refresh();
       reads.objects = 0;
       reads.lists = 0;
@@ -216,7 +217,7 @@ describe("child background items", () => {
       expect(reads).toEqual({ objects: 0, lists: 0 });
       expect(kernel.children.background(parent.id)).toHaveLength(3);
     } finally {
-      await views.return?.();
+      attached.release();
     }
   });
 
@@ -249,10 +250,10 @@ describe("child background items", () => {
     const first = host.execution.advance({ session: child.id, head: main });
     (await turns.started(1)).finish();
     await first;
-    const views = parent.watch()[Symbol.asyncIterator]();
+    const attached = attachSession(kernel, parent.id, host.principal);
 
     try {
-      await views.next();
+      await attached.ready();
       await kernel.folds.refresh();
       await child.send("Again.");
       held = `sessions/${child.id}/runs/`;
@@ -274,7 +275,7 @@ describe("child background items", () => {
       await second;
     } finally {
       release.resolve();
-      await views.return?.();
+      attached.release();
     }
   });
 });

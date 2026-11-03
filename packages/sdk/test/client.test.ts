@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { asId, SdkError } from "@nyte-ai/schema";
-import type { SessionView } from "@nyte-ai/schema";
+import type { WorkspaceId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { CHANNEL_PATH, encodeError, STREAM_HEADER } from "@nyte-ai/protocol";
@@ -15,7 +15,7 @@ import { cleanups, client, closeOpened, open, settledChat, text, users } from ".
 afterEach(closeOpened);
 
 describe("client", () => {
-  it("starts a session with its first message, settles, and folds a head.watch view equal to the host's after each step", async () => {
+  it("starts a session with its first message, settles, and reads a head.view equal to the host's after each step", async () => {
     const host = await open();
     const connection = await client(host);
     host.fake.reply(text("Hello."), text("Again."));
@@ -24,18 +24,6 @@ describe("client", () => {
       name: "triage",
       content: "Hi.",
     });
-
-    const watching = session.watch()[Symbol.asyncIterator]();
-
-    const converged = async (): Promise<SessionView> => {
-      for (;;) {
-        const next = await watching.next();
-        assert(next.done !== true);
-
-        if (JSON.stringify(next.value) === JSON.stringify(await host.view(session.id)))
-          return next.value;
-      }
-    };
 
     expect(receipt.id).toBe(asId<"receipt">(session.id));
     expect(receipt.message).toBe(asId<"message">(session.id));
@@ -46,39 +34,31 @@ describe("client", () => {
       outcome: { kind: "completed" },
     });
 
-    const first = await converged();
+    const first = await session.view();
 
     expect(first).toEqual(await host.view(session.id));
     expect(users(first)).toEqual(["Hi."]);
 
     await (await session.send("More.", { delivery: "queue" })).settled();
-    const second = await converged();
+    const second = await session.view();
 
     expect(users(second)).toEqual(["Hi.", "More."]);
-    expect(second.revision).toBe((await host.view(session.id)).revision);
-    expect(await session.view()).toEqual(await host.view(session.id));
-    await watching.return?.();
+    expect(second).toEqual(await host.view(session.id));
   });
 
-  it("carries the read mark in a watch's views once the principal sees the tip", async () => {
+  it("carries the read mark in a head's view once the principal sees the tip", async () => {
     const host = await open();
     const connection = await client(host);
     const session = await settledChat(host, connection);
-    const watching = session.watch()[Symbol.asyncIterator]();
-    const opened = await watching.next();
-    assert(opened.done !== true);
-    const tip = opened.value.heads[0]?.tip;
+    const tip = (await session.info()).heads[0]?.tip;
     assert(tip?.kind === "commit");
 
-    expect(opened.value.seenThrough).toBeNull();
+    expect((await session.view()).seenThrough).toBeNull();
     await session.see(tip.id);
-    const seen = await watching.next();
-    assert(seen.done !== true);
-    const latest = Math.max(...seen.value.messages.map((message) => message.at));
+    const seen = await session.view();
+    const latest = Math.max(...seen.messages.map((message) => message.at));
 
-    expect(seen.value.seenThrough).toBeGreaterThanOrEqual(latest);
-    expect((await session.view()).seenThrough).toBe(seen.value.seenThrough);
-    await watching.return?.();
+    expect(seen.seenThrough).toBeGreaterThanOrEqual(latest);
   });
 
   it("retries a start whose answer the link lost under the same id, starting one chat", async () => {
@@ -321,7 +301,7 @@ describe("client", () => {
     let injected = false;
 
     host.intercept(async (request, next) => {
-      if (readOperation(request) === "sessions.watch")
+      if (readOperation(request) === "workspace.watch")
         streamId = request.headers.get(STREAM_HEADER);
       const response = await next(request);
 
@@ -350,9 +330,10 @@ describe("client", () => {
     });
 
     const connection = await client(host);
-    const first = await until(connection.sessions.watch(), () => true);
+    const workspace = await readWorkspace(connection);
+    const first = await until(connection.workspace(workspace).watch(), () => true);
 
-    expect(Array.isArray(first)).toBe(true);
+    expect(first.id).toBe(workspace);
     expect(lines.some((line) => line.startsWith("DEV:sdk frame skipped"))).toBe(true);
   });
 
@@ -362,12 +343,13 @@ describe("client", () => {
     let opens = 0;
 
     host.intercept(async (request, next) =>
-      readOperation(request) === "sessions.watch" && ++opens > 1
+      readOperation(request) === "workspace.watch" && ++opens > 1
         ? Response.json(encodeError(new SdkError("unauthenticated", "Revoked.")), { status: 401 })
         : next(request),
     );
 
-    const watching = connection.sessions.watch()[Symbol.asyncIterator]();
+    const workspace = await readWorkspace(connection);
+    const watching = connection.workspace(workspace).watch()[Symbol.asyncIterator]();
     await watching.next();
     host.listener.disconnectClients();
 
@@ -425,7 +407,8 @@ describe("client", () => {
     });
 
     cleanups.push(() => connection.close());
-    const watching = connection.sessions.watch()[Symbol.asyncIterator]();
+    const workspace = await readWorkspace(connection);
+    const watching = connection.workspace(workspace).watch()[Symbol.asyncIterator]();
     await watching.next();
     broken = true;
     host.listener.disconnectClients();
@@ -521,8 +504,8 @@ describe("client", () => {
   it("ends every stream and fails requests unavailable once closed", async () => {
     const host = await open();
     const connection = await client(host);
-    const { session } = await connection.sessions.start({ content: "Hi." });
-    const watching = session.watch()[Symbol.asyncIterator]();
+    const workspace = await readWorkspace(connection);
+    const watching = connection.workspace(workspace).watch()[Symbol.asyncIterator]();
     await watching.next();
     const pending = watching.next();
     await connection.close();
@@ -531,3 +514,10 @@ describe("client", () => {
     await expect(connection.sessions.list()).rejects.toMatchObject({ code: "unavailable" });
   });
 });
+
+async function readWorkspace(connection: Connection): Promise<WorkspaceId> {
+  const workspace = (await connection.workspaces.list())[0];
+  assert(workspace !== undefined);
+
+  return workspace.id;
+}

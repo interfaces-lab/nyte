@@ -101,7 +101,7 @@ it("rejects a terminal command the user denies: the model is told, nothing runs,
 
   const started = performance.now();
   const { trace, session, receipt } = await start(host, CI_PROMPT);
-  const watched = watchViews(session);
+  const watched = await watchViews(simulation, session);
 
   const modal = await until(
     async () => {

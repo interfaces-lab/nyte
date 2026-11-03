@@ -32,7 +32,6 @@ import {
 import type { ActionIntent } from "../engine/durable.ts";
 import { RESERVED_PART_KINDS } from "../engine/part-definitions.ts";
 import { commit } from "../fold/commit.ts";
-import { watchPart } from "../fold/view.ts";
 import { release, settle, storedAnswer } from "../store/parts.ts";
 import { headRef, partRef } from "../store/refs.ts";
 import {
@@ -425,7 +424,6 @@ function partHandleFor<K extends PartDefinition>(
 
       return settled !== null && fitsAnswer(kind, settled) ? settled : null;
     },
-    watch: () => watchPart(kernel, { session, part: id, principal: context.principal }),
     async close() {
       const closed = await attempt(`Closing part ${id}`, async () => {
         const found = await load(kernel.store, await kernel.store.refs.get(name), decodePartRecord);

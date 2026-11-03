@@ -219,31 +219,6 @@ installScripted(
       if (entry === undefined) return {};
 
       return {
-        watch: async function* (options) {
-          fetches.push(`${entry.name}:watch`);
-          await roundTrip();
-
-          const initial = entry.view(entry.live);
-
-          const start = Math.max(
-            0,
-            initial.messages.length - (options?.tail ?? initial.messages.length),
-          );
-
-          const first = initial.turns.findIndex(
-            (turn) => turn.id === initial.messages[start]?.turn,
-          );
-
-          const turns = initial.turns.slice(Math.max(0, first));
-
-          for await (const view of entry.stream.watch())
-            yield {
-              ...view,
-              messages: view.messages.slice(start),
-              leadingPrompt: leadingPrompt(view, start),
-              turns,
-            };
-        },
         history: async ({ before, limit }) => {
           fetches.push(`${entry.name}:history`);
           await roundTrip();

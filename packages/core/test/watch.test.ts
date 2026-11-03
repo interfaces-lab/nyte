@@ -8,7 +8,7 @@ import type {
   PrincipalId,
   RefUpdate,
   SessionId,
-  SessionView,
+  SessionInfo,
 } from "@nyte-ai/schema";
 import { assert, describe, expect, it, vi } from "vitest";
 import { createHostState, watchHost } from "../src/api/host.ts";
@@ -186,8 +186,8 @@ async function land(
   return id;
 }
 
-function shownTip(view: SessionView): CommitId | null {
-  const tip = view.heads[0]?.tip;
+function shownTip(info: SessionInfo): CommitId | null {
+  const tip = info.heads[0]?.tip;
 
   return tip?.kind === "commit" ? tip.id : null;
 }
@@ -213,7 +213,7 @@ describe("watch", () => {
     expect((times[1] ?? 0) - (times[0] ?? 0)).toBeGreaterThanOrEqual(25);
   });
 
-  it("leaves a watched head unread until the principal sees its tip, and never moves the mark back", async () => {
+  it("leaves a head unread until the principal sees its tip, and never moves the mark back", async () => {
     const fake = fakeModels();
     fake.reply(
       { content: [{ type: "text", text: "First." }] },
@@ -222,41 +222,25 @@ describe("watch", () => {
     await using host = await open(fake);
     const { session, receipt } = await host.sessions.start({ content: "Hi." });
     await receipt.settled();
-    const views = session.watch()[Symbol.asyncIterator]();
-
-    const shown = async (accept: (view: SessionView) => boolean): Promise<SessionView> => {
-      for (;;) {
-        const next = await views.next();
-        assert(!next.done);
-
-        if (accept(next.value)) return next.value;
-      }
-    };
-
-    const before = await shown((view) => view.execution.kind === "idle");
+    const before = await session.info();
     const older = shownTip(before);
 
     expect(before.heads[0]?.unread).toBe(true);
     await (await session.send("Again.")).settled();
 
-    const after = await shown((view) => view.execution.kind === "idle" && shownTip(view) !== older);
-
-    expect(after.heads[0]?.unread).toBe(true);
-    await views.return?.();
-    expect((await session.view()).heads[0]?.unread).toBe(true);
-    expect((await session.info()).heads[0]?.unread).toBe(true);
-
+    const after = await session.info();
     const tip = shownTip(after);
+
+    expect(tip).not.toBe(older);
+    expect(after.heads[0]?.unread).toBe(true);
     assert(older !== null && tip !== null);
     await session.see(tip);
 
-    expect((await session.view()).heads[0]?.unread).toBe(false);
     expect((await session.info()).heads[0]?.unread).toBe(false);
     expect((await sessionInfo(host.kernel, session.id, ada))?.heads[0]?.unread).toBe(true);
 
     await session.see(older);
 
-    expect((await session.view()).heads[0]?.unread).toBe(false);
     expect((await session.info()).heads[0]?.unread).toBe(false);
   });
 
@@ -270,7 +254,7 @@ describe("watch", () => {
     const { session, receipt } = await host.sessions.start({ content: "Hi." });
     await receipt.settled();
     const opened = await session.view();
-    const tip = shownTip(opened);
+    const tip = shownTip(await session.info());
 
     expect(opened.seenThrough).toBeNull();
     assert(tip !== null);
@@ -282,14 +266,12 @@ describe("watch", () => {
     expect(opened.messages.map((message) => message.at <= seen)).toEqual([true, true]);
     await new Promise((resolve) => setTimeout(resolve, 2));
     await (await session.send("Again.")).settled();
-    const views = session.watch()[Symbol.asyncIterator]();
-    const current = await views.next();
-    assert(!current.done);
-    const again = current.value.messages.at(-2);
+    const current = await session.view();
+    const again = current.messages.at(-2);
     assert(again?.kind === "user" && again.status.kind === "landed");
 
-    expect(current.value.seenThrough).toBe(seen);
-    expect(current.value.messages.map((message) => message.at > seen)).toEqual([
+    expect(current.seenThrough).toBe(seen);
+    expect(current.messages.map((message) => message.at > seen)).toEqual([
       false,
       false,
       true,
@@ -297,13 +279,11 @@ describe("watch", () => {
     ]);
 
     await session.see(again.status.commit);
-    const moved = await views.next();
-    assert(!moved.done);
+    const moved = await session.view();
 
-    expect(moved.value.heads[0]?.unread).toBe(true);
-    expect(moved.value.seenThrough).toBeGreaterThanOrEqual(again.at);
-    expect(moved.value.seenThrough).toBeLessThanOrEqual(current.value.messages.at(-1)?.at ?? 0);
-    await views.return?.();
+    expect((await session.info()).heads[0]?.unread).toBe(true);
+    expect(moved.seenThrough).toBeGreaterThanOrEqual(again.at);
+    expect(moved.seenThrough).toBeLessThanOrEqual(current.messages.at(-1)?.at ?? 0);
   });
 
   it("shares one fold between watchers of the same session and principal", async () => {
