@@ -18,6 +18,12 @@ export type RunningHost = Static<typeof RunningHostType>;
 
 const runningHosts = Compile(RunningHostType);
 
+const HostAddressType = Type.Object({ port: Type.Integer(), token: Type.String() });
+
+export type HostAddress = Static<typeof HostAddressType>;
+
+const hostAddresses = Compile(HostAddressType);
+
 export type Published =
   | { readonly kind: "published" }
   | { readonly kind: "taken"; readonly by: RunningHost };
@@ -33,12 +39,6 @@ export async function findRunningHost(path: string): Promise<RunningHost | null>
   if (host === null || !processAlive(host.pid)) return null;
 
   return (await hostAnswers(host.url)) ? host : null;
-}
-
-export async function findStaleHost(path: string): Promise<RunningHost | null> {
-  const host = await readHostFile(path);
-
-  return host === null || processAlive(host.pid) ? null : host;
 }
 
 /** Whether anything answers HTTP at `url` within a second. */
@@ -74,24 +74,38 @@ export async function publishHost(path: string, host: RunningHost): Promise<Publ
   }
 }
 
+export async function readHostAddress(path: string): Promise<HostAddress | null> {
+  const parsed = await readJson(path);
+
+  return hostAddresses.Check(parsed) ? parsed : null;
+}
+
+export async function saveHostAddress(path: string, address: HostAddress): Promise<void> {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await writeFile(path, `${JSON.stringify(address)}\n`, { mode: 0o600 });
+}
+
 /** Removes `path` if it still names process `pid`. */
 export async function withdrawHost(path: string, pid: number): Promise<void> {
   if ((await readHostFile(path))?.pid === pid) await rm(path, { force: true });
 }
 
 async function readHostFile(path: string): Promise<RunningHost | null> {
+  const parsed = await readJson(path);
+
+  return runningHosts.Check(parsed) ? parsed : null;
+}
+
+async function readJson(path: string): Promise<unknown> {
   const text = await readFile(path, "utf8").catch(() => null);
 
   if (text === null) return null;
-  let parsed: unknown;
 
   try {
-    parsed = JSON.parse(text);
+    return JSON.parse(text);
   } catch {
     return null;
   }
-
-  return runningHosts.Check(parsed) ? parsed : null;
 }
 
 function processAlive(pid: number): boolean {
