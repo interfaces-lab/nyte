@@ -1,6 +1,8 @@
-# Machine server
+# Proposal: machine server
 
-Nyte runs in three tiers on a machine: one server, the hosts it supervises, and the clients that use them.
+Parked. This is outside the host protocol work, which is about the data path between core, host and clients. It is written down so the terminal question has an answer when it comes back.
+
+Nyte would run in three tiers on a machine: one server, the hosts it supervises, and the clients that use them.
 
 ```
 clients: desktop app, TUI, phone, CLI, MCP agents
