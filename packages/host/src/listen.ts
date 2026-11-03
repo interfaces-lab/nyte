@@ -13,7 +13,7 @@ import { asSdkError, encodeError, errorStatus } from "@nyte-ai/protocol";
 import { WebSocketServer } from "ws";
 import { listenFetch } from "./listen-fetch.ts";
 import { readErrorCode } from "./local/tree.ts";
-import type { McpServer } from "./mcp-server/server.ts";
+import type { McpService } from "./mcp-server/server.ts";
 import { sharedListeners } from "./serve/listeners.ts";
 import { serveSession } from "./serve/socket.ts";
 import type { SocketPeer } from "./serve/socket.ts";
@@ -21,7 +21,7 @@ import type { TailnetControl } from "./tailnet.ts";
 
 export type HostListenOptions = ListenOptions & {
   readonly tailnet?: TailnetControl;
-  readonly mcpServer?: McpServer;
+  readonly mcpServer?: McpService;
 };
 
 /** Serves a composed host, the `Host.listen` `openHost` attaches: everything but the socket is `listenFetch`'s, and the `fetch` transport answers with it directly. The `http` transport binds `node:http` on `hostname` (default 127.0.0.1) and `port` (default 0); the `socket` transport binds a unix socket at `path`, owner-only, replacing a stale one, and is the one route that answers `local` operations. Both stream each request body in and each response body out chunk by chunk, with a client gone aborting its request; a failed bind throws `SdkError("unavailable")` after releasing the execution. `disconnectClients()` also destroys every open Node response, and `close()` closes the socket once. */

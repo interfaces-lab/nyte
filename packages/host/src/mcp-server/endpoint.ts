@@ -1,4 +1,19 @@
-import { Type } from "typebox";
+import {
+  createMcpHandler,
+  hostHeaderValidationResponse,
+  localhostAllowedHostnames,
+  localhostAllowedOrigins,
+  McpServer,
+  OAuthError,
+  OAuthErrorCode,
+  originValidationResponse,
+  requireBearerAuth,
+} from "@modelcontextprotocol/server";
+import type {
+  AuthInfo,
+  CallToolResult,
+  StandardSchemaWithJSON,
+} from "@modelcontextprotocol/server";
 import {
   ApprovalPolicyType,
   asId,
@@ -32,7 +47,7 @@ type Tool = {
   readonly operation: CallName;
   readonly access: "read" | "write";
   readonly description: string;
-  readonly inputSchema: Json;
+  readonly inputSchema: JsonSchema;
 };
 
 type Bound = {
@@ -40,14 +55,6 @@ type Bound = {
   readonly binding: CallBinding;
   dispose(): void;
 };
-
-type Message = {
-  readonly id: string | number | null;
-  readonly method: string;
-  readonly params: JsonSchema;
-};
-
-const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 const PARTICIPANT: ReadonlySet<Authority> = new Set<Authority>(["participant"]);
 
@@ -57,21 +64,18 @@ const policyCheck = compile(ApprovalPolicyType);
 
 const POLICIES = ApprovalPolicyType.anyOf.map((literal) => literal.const);
 
-const messageCheck = compile(
-  Type.Object({
-    jsonrpc: Type.Literal("2.0"),
-    id: Type.Optional(Type.Union([Type.String(), Type.Number(), Type.Null()])),
-    method: Type.String(),
-    params: Type.Optional(Type.Unknown()),
-  }),
-);
+const INSTRUCTIONS =
+  "Tools read and steer the sessions on this Nyte host. Each tool is one host operation.";
 
 /** Every marked row the wire answers once, as an MCP tool: its name with `.` as `_`, its summary and its wire input JSON Schema. */
 const TOOLS: readonly Tool[] = describeOperations().flatMap((description) => {
   const name = description.name;
   const access = rows[name]?.mcp;
+  const input = description.input;
 
   if (access === undefined || !namesOperation(name) || !answersOnce(name)) return [];
+
+  if (!isJsonObject(input)) return [];
 
   return [
     {
@@ -79,18 +83,19 @@ const TOOLS: readonly Tool[] = describeOperations().flatMap((description) => {
       operation: name,
       access,
       description: description.summary,
-      inputSchema: description.input,
+      inputSchema: input,
     },
   ];
 });
 
-/** Serves `/mcp` over streamable HTTP (MCP 2025-06-18) without sessions: a bearer token the grants issued for this URL, then one JSON-RPC request per POST, answered with JSON; GET and DELETE answer 405. A tool call runs its operation as the grant's principal, `mcp:<grant>`, with participant authority. */
+/** Serves `/mcp` through the MCP SDK's `createMcpHandler`: 2026-07-28 requests per request, and 2025-era requests through its stateless fallback. Host and Origin are checked first, then the bearer token, which must be one the grants issued for this URL; the per-request server lists only the tools the grant may call. A tool call runs its operation as the grant's principal, `mcp:<grant>`, with participant authority. */
 export function createMcpEndpoint(options: {
   readonly server: ServerHost;
   readonly grants: McpGrants;
   readonly version: string;
-}): { serve(request: Request): Promise<Response> } {
+}): { serve(request: Request, origins: readonly string[]): Promise<Response> } {
   const bound = new Map<string, Bound>();
+  const callers = new WeakMap<AuthInfo, McpGrant>();
 
   const forget = (grant: string): void => {
     const known = bound.get(grant);
@@ -133,21 +138,18 @@ export function createMcpEndpoint(options: {
 
   const call = async (
     grant: McpGrant,
-    params: JsonSchema,
+    tool: Tool,
+    value: Json,
     signal: AbortSignal,
-  ): Promise<Json | null> => {
-    const tool = TOOLS.find((candidate) => candidate.name === params.name);
-
-    if (tool === undefined || !allows(grant, tool)) return null;
+  ): Promise<CallToolResult> => {
     const started = Date.now();
-    const value = params.arguments ?? {};
 
     const result = await run(bind(grant), grant, tool, value, signal).then(
-      (output): Json => ({
+      (output): CallToolResult => ({
         content: [{ type: "text", text: JSON.stringify(output) }],
         structuredContent: isJsonObject(output) ? output : { result: output },
       }),
-      (error: unknown): Json => ({
+      (error: unknown): CallToolResult => ({
         content: [{ type: "text", text: asSdkError(error).message }],
         isError: true,
       }),
@@ -157,86 +159,104 @@ export function createMcpEndpoint(options: {
       tool: tool.name,
       grant: grant.id,
       client: grant.client,
-      error: isJsonObject(result) && result.isError === true,
+      error: result.isError === true,
       ms: Date.now() - started,
     });
 
     return result;
   };
 
-  const answer = async (grant: McpGrant, message: Message, signal: AbortSignal): Promise<Json> => {
-    if (message.method === "initialize") {
-      const asked = message.params.protocolVersion;
+  const build = (grant: McpGrant | undefined): McpServer => {
+    const server = new McpServer(
+      { name: "nyte", title: "Nyte host", version: options.version },
+      { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
+    );
 
-      return reply(message.id, {
-        protocolVersion:
-          typeof asked === "string" && VERSIONS.includes(asked) ? asked : VERSIONS[0],
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "nyte", title: "Nyte host", version: options.version },
-        instructions:
-          "Tools read and steer the sessions on this Nyte host. Each tool is one host operation.",
-      });
-    }
+    if (grant === undefined) return server;
 
-    if (message.method === "ping") return reply(message.id, {});
+    const tools = TOOLS.filter(
+      (candidate) => candidate.access === "read" || grant.access.kind === "ceiling",
+    );
 
-    if (message.method === "tools/list")
-      return reply(message.id, {
-        tools: TOOLS.filter((tool) => allows(grant, tool)).map((tool) => ({
-          name: tool.name,
+    for (const tool of tools)
+      server.registerTool(
+        tool.name,
+        {
           description: tool.description,
-          inputSchema: tool.inputSchema,
+          inputSchema: toolSchema(tool),
           annotations: { readOnlyHint: tool.access === "read" },
-        })),
-      });
+        },
+        (value, context) => call(grant, tool, value, context.mcpReq.signal),
+      );
 
-    if (message.method === "tools/call") {
-      const result = await call(grant, message.params, signal);
-
-      if (result === null)
-        return failure(
-          message.id,
-          -32602,
-          `No tool named ${JSON.stringify(message.params.name ?? null)} is open to this grant.`,
-        );
-
-      return reply(message.id, result);
-    }
-
-    return failure(message.id, -32601, `This server does not answer ${message.method}.`);
+    return server;
   };
 
-  const serve = async (request: Request): Promise<Response> => {
-    if (request.method !== "POST")
-      return new Response(null, { status: 405, headers: { Allow: "POST" } });
+  const handler = createMcpHandler((context) =>
+    build(context.authInfo === undefined ? undefined : callers.get(context.authInfo)),
+  );
+
+  const serve = async (request: Request, origins: readonly string[]): Promise<Response> => {
     const url = new URL(request.url);
-    const header = request.headers.get("Authorization") ?? "";
-    const token = /^Bearer\s+(\S+)\s*$/i.exec(header)?.[1];
-
-    const grant =
-      token === undefined ? null : await options.grants.authenticate(token, mcpResource(url));
-
-    if (grant === null) return challenge(url, token !== undefined);
-    const value = readJson(await request.text());
-
-    if (value === undefined) return json(400, failure(null, -32700, "The body is not JSON."));
-
-    if (!messageCheck.Check(value))
-      return json(400, failure(null, -32600, "Send one JSON-RPC 2.0 message."));
-
-    if (value.id === undefined) return new Response(null, { status: 202 });
-    const params = isJson(value.params) ? value.params : {};
-
-    if (!isJsonObject(params))
-      return json(400, failure(value.id, -32602, "The params are not a JSON object."));
-
-    return json(
-      200,
-      await answer(grant, { id: value.id, method: value.method, params }, request.signal),
+    const allowed = origins.flatMap((origin) =>
+      URL.canParse(origin) ? [new URL(origin).hostname] : [],
     );
+
+    const rejected =
+      hostHeaderValidationResponse(request, [...localhostAllowedHostnames(), ...allowed]) ??
+      originValidationResponse(request, [...localhostAllowedOrigins(), ...allowed]);
+
+    if (rejected !== undefined) return rejected;
+    const resource = mcpResource(url);
+    const found: { grant?: McpGrant } = {};
+
+    const gate = requireBearerAuth({
+      verifier: {
+        verifyAccessToken: async (token) => {
+          const grant = await options.grants.authenticate(token, resource);
+
+          if (grant === null)
+            throw new OAuthError(
+              OAuthErrorCode.InvalidToken,
+              "The token is unknown, revoked or expired.",
+            );
+          found.grant = grant;
+
+          return {
+            token,
+            clientId: grant.client,
+            scopes: grant.access.kind === "read-only" ? ["read"] : ["read", "write"],
+            expiresAt: Math.floor(grant.expiresAt / 1000),
+            resource: new URL(grant.resource),
+          };
+        },
+      },
+      expectedResource: new URL(resource),
+      resourceMetadataUrl: resourceMetadataUrl(url),
+    });
+
+    const authInfo = await gate(request);
+
+    if (authInfo instanceof Response) return authInfo;
+
+    if (found.grant !== undefined) callers.set(authInfo, found.grant);
+
+    return handler.fetch(request, { authInfo });
   };
 
   return { serve };
+}
+
+function toolSchema(tool: Tool): StandardSchemaWithJSON<Json, Json> {
+  return {
+    "~standard": {
+      version: 1,
+      vendor: "nyte",
+      validate: (value) =>
+        isJson(value) ? { value } : { issues: [{ message: "The arguments are not JSON." }] },
+      jsonSchema: { input: () => tool.inputSchema, output: () => tool.inputSchema },
+    },
+  };
 }
 
 async function run(
@@ -282,45 +302,4 @@ async function hostPolicy(connection: Connection) {
   const value = first.value.settings.find((setting) => setting.id === PERMISSIONS)?.value;
 
   return policyCheck.Check(value) ? value : ("full" as const);
-}
-
-function allows(grant: McpGrant, tool: Tool): boolean {
-  return tool.access === "read" || grant.access.kind === "ceiling";
-}
-
-function challenge(url: URL, given: boolean): Response {
-  const error = given ? ', error="invalid_token"' : "";
-
-  return new Response(JSON.stringify({ error: given ? "invalid_token" : "unauthorized" }), {
-    status: 401,
-    headers: {
-      "Content-Type": "application/json",
-      "WWW-Authenticate": `Bearer resource_metadata="${resourceMetadataUrl(url)}"${error}`,
-    },
-  });
-}
-
-function readJson(text: string): Json | undefined {
-  try {
-    const value: unknown = JSON.parse(text);
-
-    return isJson(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function reply(id: string | number | null, result: Json): Json {
-  return { jsonrpc: "2.0", id, result };
-}
-
-function failure(id: string | number | null, code: number, message: string): Json {
-  return { jsonrpc: "2.0", id, error: { code, message } };
-}
-
-function json(status: number, value: Json): Response {
-  return new Response(JSON.stringify(value), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
 }

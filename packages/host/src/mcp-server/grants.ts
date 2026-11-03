@@ -41,6 +41,7 @@ export type McpGrant = {
   readonly client: string;
   readonly access: McpAccess;
   readonly resource: string;
+  readonly expiresAt: number;
 };
 
 export type McpTokens = {
@@ -318,6 +319,7 @@ export function openMcpGrants(path: string): McpGrants {
         client: entry[1].client.name,
         access: entry[1].access,
         resource: entry[1].resource,
+        expiresAt: entry[1].accessToken.expiresAt,
       };
     },
 

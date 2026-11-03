@@ -13,7 +13,7 @@ import {
   errorStatus,
   operationsDigest,
 } from "@nyte-ai/protocol";
-import type { McpServer } from "./mcp-server/server.ts";
+import type { McpService } from "./mcp-server/server.ts";
 import { MCP_TOKEN_PREFIX } from "./mcp-server/token.ts";
 import { allowsOrigin, createHandler } from "./serve/handler.ts";
 import type { HandlerOptions } from "./serve/handler.ts";
@@ -53,7 +53,7 @@ export async function listenFetch(
     readonly transport: { readonly kind: "fetch" };
     readonly local?: boolean;
     readonly tailnet?: TailnetControl;
-    readonly mcpServer?: McpServer;
+    readonly mcpServer?: McpService;
   },
 ): Promise<SocketListener> {
   const { auth } = options;
@@ -386,7 +386,7 @@ export async function listenFetch(
       return json(await options.describe(), cors(request));
     }
 
-    const mcp = await options.mcpServer?.serve(request);
+    const mcp = await options.mcpServer?.serve(request, options.origins ?? []);
 
     if (mcp !== undefined && mcp !== null) return mcp;
 

@@ -196,13 +196,30 @@ async function signIn(
   return { access: tokens.access_token, refresh: tokens.refresh_token, client };
 }
 
-function rpc(listener: Listener, token: string, method: string, params: unknown = {}) {
-  return post(
+async function rpc(
+  listener: Listener,
+  token: string,
+  method: string,
+  params: unknown = {},
+): Promise<Response> {
+  const response = await post(
     listener,
     "/mcp",
     { jsonrpc: "2.0", id: 1, method, params },
-    { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      Host: "127.0.0.1:4100",
+    },
   );
+  const text = await response.text();
+  const frame = text.split("\n").findLast((line) => line.startsWith("data: "));
+
+  return new Response(frame === undefined ? text : frame.slice("data: ".length), {
+    status: response.status,
+    headers: response.headers,
+  });
 }
 
 describe.skipIf(process.platform === "win32")("the MCP server", () => {
@@ -226,22 +243,26 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
       token_endpoint_auth_methods_supported: ["none"],
     });
 
-    const bare = await post(opened.http, "/mcp", {}, { "Content-Type": "application/json" });
+    const local = { "Content-Type": "application/json", Host: "127.0.0.1:4100" };
+    const bare = await post(opened.http, "/mcp", {}, local);
 
     expect(bare.status).toBe(401);
-    expect(bare.headers.get("WWW-Authenticate")).toBe(
-      `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource"`,
+    expect(bare.headers.get("WWW-Authenticate")).toContain(
+      `resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource"`,
     );
-    expect((await get(opened.http, "/mcp")).status).toBe(405);
 
     const listener = await post(
       opened.http,
       "/mcp",
       {},
-      { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+      { ...local, Authorization: `Bearer ${TOKEN}` },
     );
 
     expect(listener.status).toBe(401);
+
+    const rebound = await post(opened.http, "/mcp", {}, { ...local, Host: "attacker.example" });
+
+    expect(rebound.status).toBe(403);
   });
 
   it("registers public clients only", async () => {
@@ -310,6 +331,13 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
     expect(remote.status).toBe(403);
 
     const tokens = await signIn(opened, { kind: "ceiling", ceiling: "full" });
+    const opening = await opened.http.fetch(
+      new Request(`${ORIGIN}/mcp`, {
+        headers: { Authorization: `Bearer ${tokens.access}`, Host: "127.0.0.1:4100" },
+      }),
+    );
+
+    expect(opening.status).toBe(405);
     const initialized = await rpc(opened.http, tokens.access, "initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
@@ -358,6 +386,41 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
         access: { kind: "ceiling", ceiling: "full" },
       }),
     ]);
+  });
+
+  it("answers a 2026-07-28 request with the grant's tools", async () => {
+    const opened = await open();
+    const tokens = await signIn(opened, { kind: "read-only" });
+    const response = await post(
+      opened.http,
+      "/mcp",
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientInfo": { name: "test", version: "1" },
+            "io.modelcontextprotocol/clientCapabilities": {},
+          },
+        },
+      },
+      {
+        Authorization: `Bearer ${tokens.access}`,
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Host: "127.0.0.1:4100",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/list",
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const listed = await read(response, TOOL_LIST);
+
+    expect(listed.result.tools.map((tool) => tool.name)).toContain("sessions_list");
+    expect(listed.result.tools.map((tool) => tool.name)).not.toContain("sessions_start");
   });
 
   it("keeps a read-only grant to read tools", async () => {
