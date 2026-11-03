@@ -143,6 +143,7 @@ export async function openTailnet(options: {
       (request) => listener.fetch(withoutCredentials(request)),
       "https",
       (request) => listener.admit(withoutCredentials(request)),
+      "network",
     ).catch(async (error: unknown) => {
       await listener.close();
 

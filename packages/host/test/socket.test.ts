@@ -541,6 +541,44 @@ describe("the host's WebSocket", () => {
 
     expect(answers).toEqual(routes.map((entry) => ({ route: entry.route, code: entry.code })));
   });
+
+  it("negotiates permessage-deflate only with a peer that addressed the host off loopback", async () => {
+    const host = await compose(fakeModels());
+    const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-socket-")));
+    cleanups.push(() => rm(home, { recursive: true, force: true }));
+    const tcp = await serve(host);
+    const unix = await serve(host, join(home, "host.sock"));
+
+    const routes = [
+      { route: "loopback", listener: tcp, headers: {}, extensions: "" },
+      { route: "unix", listener: unix, headers: {}, extensions: "" },
+      {
+        route: "named",
+        listener: tcp,
+        headers: { Host: "nyte.example.ts.net" },
+        extensions: "permessage-deflate",
+      },
+    ];
+
+    const negotiated = await Promise.all(
+      routes.map(async (entry) => {
+        const socket = new WebSocket(socketUrl(entry.listener), {
+          headers: { Authorization: `Bearer ${TOKEN}`, ...entry.headers },
+        });
+
+        cleanups.push(async () => {
+          socket.terminate();
+        });
+        await once(socket, "open");
+
+        return { route: entry.route, extensions: socket.extensions };
+      }),
+    );
+
+    expect(negotiated).toEqual(
+      routes.map((entry) => ({ route: entry.route, extensions: entry.extensions })),
+    );
+  });
 });
 
 describe("the host scope", () => {

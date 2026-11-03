@@ -42,8 +42,8 @@ export async function listen(host: ServedHost, options: HostListenOptions): Prom
 
   const served = await (
     transport.kind === "socket"
-      ? serveSocket(transport.path, fetch, "http", admit)
-      : serveNode(fetch, "http", (server) => listenPort(server, transport), admit)
+      ? serveSocket(transport.path, fetch, "http", admit, "local")
+      : serveNode(fetch, "http", (server) => listenPort(server, transport), admit, crossesNetwork)
   ).catch(async (error: unknown) => {
     await inner.close();
 
@@ -95,6 +95,7 @@ export function serveSocket(
   fetch: (request: Request) => Promise<Response>,
   scheme: "http" | "https",
   admit: Admit,
+  reach: "local" | "network",
 ): Promise<Served> {
   return serveNode(
     fetch,
@@ -105,6 +106,7 @@ export function serveSocket(
       return { address: path, origin: `${scheme}://localhost` };
     },
     admit,
+    () => reach === "network",
   );
 }
 
@@ -113,12 +115,24 @@ async function serveNode(
   scheme: "http" | "https",
   start: (server: Server) => Promise<{ readonly address: string; readonly origin: string }>,
   admit: Admit,
+  deflates: (incoming: IncomingMessage) => boolean,
 ): Promise<Served> {
   const responses = new Set<ServerResponse>();
-  const sockets = new WebSocketServer({
+  const plain = new WebSocketServer({
     noServer: true,
     maxPayload: SOCKET_LIMITS.maxFrameBytes,
   });
+
+  const deflating = new WebSocketServer({
+    noServer: true,
+    maxPayload: SOCKET_LIMITS.maxFrameBytes,
+    perMessageDeflate: {},
+  });
+
+  const terminate = (): void => {
+    for (const opened of [...plain.clients, ...deflating.clients]) opened.terminate();
+  };
+
   let origin = "";
 
   const server = createServer({ noDelay: true }, (incoming, outgoing) => {
@@ -135,7 +149,9 @@ async function serveNode(
         return;
       }
 
-      sockets.handleUpgrade(incoming, socket, head, (opened) => serveSession(opened, peer));
+      (deflates(incoming) ? deflating : plain).handleUpgrade(incoming, socket, head, (opened) =>
+        serveSession(opened, peer),
+      );
     });
   });
 
@@ -146,17 +162,33 @@ async function serveNode(
     address: started.address,
     disconnect() {
       for (const response of responses) response.destroy();
-
-      for (const opened of sockets.clients) opened.terminate();
+      terminate();
     },
     close: () =>
       new Promise<void>((done) => {
-        for (const opened of sockets.clients) opened.terminate();
-        sockets.close();
+        terminate();
+        plain.close();
+        deflating.close();
         server.close(() => done());
         server.closeAllConnections();
       }),
   };
+}
+
+function crossesNetwork(incoming: IncomingMessage): boolean {
+  const host = URL.parse(`http://${incoming.headers.host ?? "localhost"}`)?.hostname ?? "";
+
+  return !namesLoopback(incoming.socket.remoteAddress ?? "") || !namesLoopback(host);
+}
+
+function namesLoopback(address: string): boolean {
+  return (
+    address === "localhost" ||
+    address === "::1" ||
+    address === "[::1]" ||
+    address.startsWith("127.") ||
+    address.startsWith("::ffff:127.")
+  );
 }
 
 async function upgrade(
