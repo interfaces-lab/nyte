@@ -76,6 +76,7 @@ export async function createTerminal(engine: Engine, options: TerminalOptions): 
     hasSelection: () => live().hasSelection(),
     selectionText: () => live().selectionText(),
     selectionTop: () => live().selectionTop(),
+    hyperlink: (col, row) => live().hyperlink(col, row),
     markCursorLine: () => live().markCursorLine(),
     dispose: () => {
       session?.dispose();
@@ -305,6 +306,7 @@ async function openSession(engine: Engine, options: TerminalOptions): Promise<Te
     hasSelection: selection.active,
     selectionText: selection.text,
     selectionTop: selection.top,
+    hyperlink: frames.hyperlink,
     markCursorLine: selection.markCursorLine,
     dispose: () => {
       selection.dispose();

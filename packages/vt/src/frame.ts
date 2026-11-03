@@ -6,6 +6,7 @@ import {
   RenderStateData,
   RenderStateDirty,
   Result,
+  ScreenRowData,
   RowCellsData,
   RowData,
   SgrUnderline,
@@ -55,6 +56,7 @@ const underlines = new Map<number, Underline>([
 interface Frames {
   readonly frame: (full: boolean, live: boolean) => Frame;
   readonly capture: () => void;
+  readonly hyperlink: (x: number, y: number) => string | null;
   readonly dispose: () => void;
 }
 
@@ -83,6 +85,9 @@ export function createFrames(context: Context): Frames {
   const point = memory.allocate(layout.point.size);
   const gridRef = memory.allocate(layout.gridRef.size);
   const graphemes = memory.growable(64);
+  const rowValue = memory.allocate(8);
+  const uri = memory.growable(256);
+  const decoder = new TextDecoder();
 
   const readRgb = (view: DataView, pointer: number): Rgb =>
     (view.getUint8(pointer + layout.rgb.r) << 16) |
@@ -175,7 +180,13 @@ export function createFrames(context: Context): Frames {
 
     if (selected !== Result.SUCCESS && selected !== Result.NO_VALUE)
       check(selected, "row selection");
+    check(native.ghostty_render_state_row_get(iterator, RowData.RAW, rowValue), "raw row");
+    check(
+      native.ghostty_row_get(memory.view().getBigUint64(rowValue, true), ScreenRowData.WRAP, out),
+      "row wrap",
+    );
     const view = memory.view();
+    const wrapped = view.getUint8(out) !== 0;
     const pointer = view.getUint32(cellsView + layout.cellsView.pointer, true);
     const count = view.getUint32(cellsView + layout.cellsView.length, true);
     const raw = new DataView(memory.copy(pointer, count * layout.cell.size).buffer);
@@ -183,6 +194,7 @@ export function createFrames(context: Context): Frames {
 
     return {
       y,
+      wrapped,
       selection:
         selected === Result.SUCCESS
           ? [
@@ -240,21 +252,24 @@ export function createFrames(context: Context): Frames {
     };
   };
 
-  const viewportCellWide = (x: number, y: number) => {
+  const selectViewportCell = (x: number, y: number) => {
     const view = memory.view();
 
     view.setInt32(point + layout.point.tag, PointTag.VIEWPORT, true);
     view.setUint16(point + layout.point.x, x, true);
     view.setUint32(point + layout.point.y, y, true);
 
-    if (
+    return (
       native.ghostty_terminal_grid_ref(
         context.terminal,
         point,
         memory.sized(gridRef, layout.gridRef),
-      ) !== Result.SUCCESS
-    )
-      return false;
+      ) === Result.SUCCESS
+    );
+  };
+
+  const viewportCellWide = (x: number, y: number) => {
+    if (!selectViewportCell(x, y)) return false;
     check(native.ghostty_grid_ref_cell(gridRef, out), "cursor cell");
     const after = memory.view();
 
@@ -262,6 +277,23 @@ export function createFrames(context: Context): Frames {
       bits(after.getUint32(out, true), after.getUint32(out + 4, true), layout.cell.wide) ===
       CellWide.WIDE
     );
+  };
+
+  const hyperlink = (x: number, y: number): string | null => {
+    if (!selectViewportCell(x, y)) return null;
+    const sized = native.ghostty_grid_ref_hyperlink_uri(gridRef, 0, 0, out);
+
+    if (sized !== Result.OUT_OF_SPACE) {
+      check(sized, "hyperlink length");
+
+      return null;
+    }
+
+    const length = memory.view().getUint32(out, true);
+    const buffer = uri.reserve(length);
+    check(native.ghostty_grid_ref_hyperlink_uri(gridRef, buffer, length, out), "hyperlink");
+
+    return decoder.decode(memory.copy(buffer, length));
   };
 
   const allRows = (palette: readonly Rgb[]) => {
@@ -288,6 +320,7 @@ export function createFrames(context: Context): Frames {
 
   return {
     capture,
+    hyperlink,
     frame: (full, live) => {
       if (live) capture();
       check(native.ghostty_render_state_get(state, RenderStateData.DIRTY, out), "dirty state");

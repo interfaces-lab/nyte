@@ -58,6 +58,8 @@ export interface Row {
   readonly y: number;
   readonly cells: readonly Cell[];
   readonly selection: readonly [start: number, end: number] | null;
+  /** The terminal soft-wrapped this row's line onto the next row. */
+  readonly wrapped: boolean;
 }
 
 export interface Cursor {
@@ -158,6 +160,8 @@ export interface Terminal {
   hasSelection(): boolean;
   selectionText(): string;
   selectionTop(): number | null;
+  /** The OSC 8 hyperlink URI of the cell at viewport column `col`, row `row`, or null. */
+  hyperlink(col: number, row: number): string | null;
   markCursorLine(): Mark | null;
   dispose(): void;
 }

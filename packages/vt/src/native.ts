@@ -15,6 +15,7 @@ const functions = [
   "ghostty_terminal_select_all",
   "ghostty_terminal_selection_format_buf",
   "ghostty_grid_ref_cell",
+  "ghostty_grid_ref_hyperlink_uri",
   "ghostty_tracked_grid_ref_point",
   "ghostty_render_state_new",
   "ghostty_render_state_update",
@@ -40,6 +41,9 @@ const functions = [
   "ghostty_selection_gesture_event_set",
   "ghostty_selection_gesture_event",
 ] as const;
+
+/** Take a 64-bit `GhosttyRow` by value, which JavaScript passes as a bigint. */
+const rowReaders = ["ghostty_row_get"] as const;
 
 const procedures = [
   "ghostty_wasm_free",
@@ -79,6 +83,12 @@ const procedures = [
 export type Native = {
   readonly [Name in (typeof functions)[number]]: (...args: number[]) => number;
 } & {
+  readonly [Name in (typeof rowReaders)[number]]: (
+    row: bigint,
+    data: number,
+    out: number,
+  ) => number;
+} & {
   readonly [Name in (typeof procedures)[number]]: (...args: number[]) => void;
 } & {
   readonly memory: WebAssembly.Memory;
@@ -91,7 +101,7 @@ export function checkExports(module: WebAssembly.Module) {
   );
 
   const required = [
-    ...[...functions, ...procedures].map((name) => [name, "function"] as const),
+    ...[...functions, ...rowReaders, ...procedures].map((name) => [name, "function"] as const),
     ["memory", "memory"] as const,
     ["__indirect_function_table", "table"] as const,
   ];
@@ -106,7 +116,9 @@ export function requireNative(
   exports: WebAssembly.Exports,
 ): asserts exports is WebAssembly.Exports & Native {
   const complete =
-    [...functions, ...procedures].every((name) => exports[name] instanceof Function) &&
+    [...functions, ...rowReaders, ...procedures].every(
+      (name) => exports[name] instanceof Function,
+    ) &&
     exports.memory instanceof WebAssembly.Memory &&
     exports.__indirect_function_table instanceof WebAssembly.Table;
 

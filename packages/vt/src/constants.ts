@@ -51,7 +51,9 @@ export const RenderStateDirty = { FULL: 2 } as const;
 
 export const CursorVisualStyle = { BAR: 0, BLOCK: 1, UNDERLINE: 2, BLOCK_HOLLOW: 3 } as const;
 
-export const RowData = { CELLS: 3, SELECTION: 4, CELLS_RAW: 5 } as const;
+export const RowData = { RAW: 2, CELLS: 3, SELECTION: 4, CELLS_RAW: 5 } as const;
+
+export const ScreenRowData = { WRAP: 1 } as const;
 
 export const RowCellsData = { STYLE: 2, GRAPHEMES_LEN: 3, GRAPHEMES_BUF: 4 } as const;
 
@@ -131,6 +133,7 @@ export const manifestEnums = {
   GhosttyRenderStateDirty: RenderStateDirty,
   GhosttyRenderStateCursorVisualStyle: CursorVisualStyle,
   GhosttyRenderStateRowData: RowData,
+  GhosttyRowData: ScreenRowData,
   GhosttyRenderStateRowCellsData: RowCellsData,
   GhosttyCellContentTag: CellContentTag,
   GhosttyCellWide: CellWide,

@@ -98,6 +98,37 @@ describe("terminal", () => {
     expect(row?.cells[2]?.text).toBe("r");
   });
 
+  test("reads an OSC 8 hyperlink's URI from each of its cells and nothing from plain text", async () => {
+    const session = await openTerminal();
+    const url = "https://ghostty.org/docs?q=é";
+
+    session.write(`ab\u001b]8;;${url}\u001b\\link\u001b]8;;\u001b\\cd`);
+
+    expect(Array.from({ length: 8 }, (_, col) => session.terminal.hyperlink(col, 0))).toEqual([
+      null,
+      null,
+      url,
+      url,
+      url,
+      url,
+      null,
+      null,
+    ]);
+  });
+
+  test("marks the rows the terminal soft-wrapped, not the ones a newline ended", async () => {
+    const session = await openTerminal({ cols: 10, rows: 4 });
+
+    session.write("0123456789abcdefghij-wrapped\r\nshort");
+
+    expect(session.terminal.frame(true).rows.map((row) => row.wrapped)).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+  });
+
   test("newline mode returns the carriage on line feed", async () => {
     const session = await openTerminal({ cols: 20, rows: 3, newlineMode: true });
 
