@@ -74,6 +74,35 @@ export const TailnetStatusType = Type.Object({
 
 export type TailnetStatus = Decoded<typeof TailnetStatusType>;
 
+/** When a tool call waits for the user, the approvals plugin's `permissions` setting: `ask`, `auto-edit` or `full`, from most to least asking. */
+export const ApprovalPolicyType = Type.Union([
+  Type.Literal("ask"),
+  Type.Literal("auto-edit"),
+  Type.Literal("full"),
+]);
+
+/** What an MCP grant may do: call only `read` tools, or also `write` tools while the host's approval policy asks at least as much as `ceiling`. */
+export const McpAccessType = Type.Union([
+  Type.Object({ kind: Type.Literal("read-only") }),
+  Type.Object({ kind: Type.Literal("ceiling"), ceiling: ApprovalPolicyType }),
+]);
+
+export type McpAccess = Decoded<typeof McpAccessType>;
+
+/** The MCP grant a session was started through, and the approval policy its runs never exceed. */
+export const McpCeilingType = Type.Object({ grant: Type.String(), ceiling: ApprovalPolicyType });
+
+export type McpCeiling = Decoded<typeof McpCeilingType>;
+
+export const McpGrantViewType = Type.Object({
+  id: Type.String(),
+  client: Type.String(),
+  access: McpAccessType,
+  createdAt: Type.Number(),
+});
+
+export type McpGrantView = Decoded<typeof McpGrantViewType>;
+
 export const PluginLoadOutcomeType = Type.Object({
   kind: Type.Enum(["activated", "rejected", "kept-previous"]),
   id: Type.String(),

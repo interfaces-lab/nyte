@@ -71,6 +71,7 @@ const NAMED_HEAD_INPUT = wireObject({
 export const SESSION_OPERATIONS = {
   "session.info": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Reads a session's name, state and other details.",
     kind: "query",
     input: ON_SESSION,
@@ -100,6 +101,7 @@ export const SESSION_OPERATIONS = {
   },
   "session.stop": {
     ...PARTICIPANT,
+    mcp: "write",
     summary: "Stops every run in a session and withdraws its queued messages.",
     kind: "command",
     input: ON_SESSION,
@@ -128,6 +130,7 @@ export const SESSION_OPERATIONS = {
   },
   "head.send": {
     ...PARTICIPANT,
+    mcp: "write",
     summary: "Sends a message to a head and returns its receipt.",
     kind: "receipt",
     recovery: "replay",
@@ -150,6 +153,7 @@ export const SESSION_OPERATIONS = {
   },
   "head.view": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Reads the current transcript and state of a head.",
     kind: "query",
     input: wireObject({ ...HEAD, options: Type.Optional(ViewOptionsType) }),
@@ -183,6 +187,7 @@ export const SESSION_OPERATIONS = {
   },
   "head.history": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Returns older messages before a given message, with their turns.",
     kind: "query",
     input: wireObject({
@@ -230,6 +235,7 @@ export const SESSION_OPERATIONS = {
   },
   "head.revise": {
     ...PARTICIPANT,
+    mcp: "write",
     summary: "Edits the content of a message that has not been sent yet.",
     kind: "command",
     input: wireObject({

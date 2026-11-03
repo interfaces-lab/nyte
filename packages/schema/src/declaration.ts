@@ -13,4 +13,5 @@ export type Declaration<Input, Output> = {
   readonly recovery?: "replay" | "never";
   readonly wait?: true;
   readonly local?: true;
+  readonly mcp?: "read" | "write";
 };

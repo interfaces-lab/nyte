@@ -19,6 +19,7 @@ import type {
   IntegrityReport,
   JournalEntry,
   Json,
+  McpCeiling,
   LoginMethod,
   ModelAccount,
   ModelCatalogView,
@@ -65,6 +66,8 @@ export interface ConnectionContext {
   readonly principal: PrincipalId;
   readonly authority: ReadonlySet<Authority>;
   readonly credential: CredentialSource;
+  /** The MCP grant this connection acts for: the sessions it starts record it and keep their approvals at its ceiling. */
+  readonly mcp?: McpCeiling;
 
   readonly origin: {
     readonly session: SessionId;
