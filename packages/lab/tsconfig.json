@@ -9,5 +9,6 @@
     "types": ["vite/client", "node"],
     "customConditions": ["nyte-source"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/review"]
 }
