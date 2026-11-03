@@ -316,6 +316,40 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
     },
     "principal": {
       "type": "string"
+    },
+    "tailnet": {
+      "type": "object",
+      "required": ["state", "https", "access", "tags"],
+      "properties": {
+        "state": {
+          "enum": [
+            "disabled",
+            "starting",
+            "needs_login",
+            "needs_machine_approval",
+            "running",
+            "stopped"
+          ]
+        },
+        "authUrl": {
+          "type": "string"
+        },
+        "dnsName": {
+          "type": "string"
+        },
+        "https": {
+          "enum": ["pending", "available", "unavailable"]
+        },
+        "access": {
+          "enum": ["owner", "tailnet"]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "$defs": {

@@ -100,6 +100,10 @@ Response, with the input and output schemas shortened:
       "capability": {
         "enum": ["files", "git", "github", "browser"]
       },
+      "local": {
+        "type": "boolean",
+        "const": true
+      },
       "input": {
         "$ref": "Json"
       },

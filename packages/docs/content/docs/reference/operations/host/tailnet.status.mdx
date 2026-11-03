@@ -1,0 +1,106 @@
+---
+title: host.tailnet.status
+description: Returns the status of the host's embedded tailnet node.
+---
+
+Returns the status of the host's embedded tailnet node: its `state`, the sign-in `authUrl` while
+it waits for a login, its `dnsName` once it runs, whether `https` certificates are available, and
+the `access` and `tags` it runs with. A host with the node turned off answers `state: "disabled"`.
+
+## When to call it
+
+To show the node's state in a settings screen, or to poll for `running` after
+[`host.tailnet.configure`](/docs/reference/operations/host/tailnet.configure). A client that
+already watches [`connection.watch`](/docs/reference/operations/connection/watch) reads the same
+status from its `tailnet` field as it changes.
+
+## Access
+
+Needs `owner` authority, and answers only on the host's local socket: never over the network or
+the tailnet. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+{
+  "state": "running",
+  "dnsName": "nyte.example.ts.net",
+  "https": "available",
+  "access": "owner",
+  "tags": []
+}
+```
+
+## Errors
+
+- `denied` off the local socket: `host.tailnet.status answers only on the host's local socket.`
+- `unavailable` when the host runs no tailnet node: `This host runs no tailnet node.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["state", "https", "access", "tags"],
+  "properties": {
+    "state": {
+      "enum": [
+        "disabled",
+        "starting",
+        "needs_login",
+        "needs_machine_approval",
+        "running",
+        "stopped"
+      ]
+    },
+    "authUrl": {
+      "type": "string"
+    },
+    "dnsName": {
+      "type": "string"
+    },
+    "https": {
+      "enum": ["pending", "available", "unavailable"]
+    },
+    "access": {
+      "enum": ["owner", "tailnet"]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

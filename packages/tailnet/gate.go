@@ -25,6 +25,7 @@ type principal struct {
 	LoginName string   `json:"loginName"`
 	Node      string   `json:"node"`
 	Tags      []string `json:"tags"`
+	Owner     bool     `json:"owner"`
 }
 
 type owner struct {
@@ -107,7 +108,7 @@ func (g *gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	encoded, err := encodePrincipal(found.who)
+	encoded, err := encodePrincipal(found.who, g.owns(found.who))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal", "This host can't describe the caller.")
 		return
@@ -117,16 +118,16 @@ func (g *gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *gate) admits(who *apitype.WhoIsResponse) bool {
-	if g.access == "tailnet" {
-		return true
-	}
+	return g.access == "tailnet" || g.owns(who)
+}
 
+func (g *gate) owns(who *apitype.WhoIsResponse) bool {
 	self := g.owner.Load()
 
 	return self != nil && !self.tagged && !who.Node.IsTagged() && who.Node.User == self.user
 }
 
-func describe(who *apitype.WhoIsResponse) principal {
+func describe(who *apitype.WhoIsResponse, owner bool) principal {
 	tags := who.Node.Tags
 	if tags == nil {
 		tags = []string{}
@@ -138,11 +139,12 @@ func describe(who *apitype.WhoIsResponse) principal {
 		LoginName: who.UserProfile.LoginName,
 		Node:      string(who.Node.StableID),
 		Tags:      tags,
+		Owner:     owner,
 	}
 }
 
-func encodePrincipal(who *apitype.WhoIsResponse) (string, error) {
-	data, err := json.Marshal(describe(who))
+func encodePrincipal(who *apitype.WhoIsResponse, owner bool) (string, error) {
+	data, err := json.Marshal(describe(who, owner))
 	if err != nil {
 		return "", err
 	}

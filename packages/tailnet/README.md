@@ -29,7 +29,7 @@ nyte-tailnet --dir <state> --logout
 
 The node serves HTTPS with `ListenTLS("tcp", ":443")` once it is running, after fetching its certificate; the tailnet needs MagicDNS and HTTPS certificates on.
 
-For every connection the sidecar asks `LocalClient.WhoIs` who is calling and builds the principal `{ kind: "tailscale", userId, loginName, node, tags }` (`node` is the caller's stable node ID). A caller the access mode refuses gets `403` with `{ "code": "denied", "message": "..." }`, the host's own error shape. An admitted request, WebSocket upgrades included, is proxied to `--socket` with the principal, as base64url JSON, in `X-Nyte-Tailnet-Principal`; a value the caller sent there is replaced. The host trusts that header only on the socket it gave the sidecar.
+For every connection the sidecar asks `LocalClient.WhoIs` who is calling and builds the principal `{ kind: "tailscale", userId, loginName, node, tags, owner }` (`node` is the caller's stable node ID; `owner` is true when the caller is the untagged Tailscale user who owns this untagged node). A caller the access mode refuses gets `403` with `{ "code": "denied", "message": "..." }`, the host's own error shape. An admitted request, WebSocket upgrades included, is proxied to `--socket` with the principal, as base64url JSON, in `X-Nyte-Tailnet-Principal`; a value the caller sent there is replaced. The host trusts that header only on the socket it gave the sidecar.
 
 Status goes to stdout, one JSON line per change:
 

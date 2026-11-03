@@ -144,13 +144,14 @@ async function runs(home: string): Promise<readonly Run[]> {
     .map((line): Run => JSON.parse(line));
 }
 
-function principalHeader(userId: string) {
+function principalHeader(userId: string, owner: boolean) {
   const principal = {
     kind: "tailscale",
     userId,
     loginName: "ada@example.com",
     node: "n1",
     tags: [],
+    owner,
   };
 
   return {
@@ -260,7 +261,7 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
 
     const tailnet = join(home, ".nyte", "tailnet.sock");
 
-    const owner = principalHeader("7");
+    const owner = principalHeader("7", true);
 
     const overTailnet = await post(tailnet, "host.tailnet.status", {}, owner);
 
@@ -280,6 +281,13 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
       principal: "tailscale:user:7",
       authority: ["participant", "owner"],
       tailnet: { state: "running", access: "owner" },
+    });
+
+    const member = await post(tailnet, "connection.watch", {}, principalHeader("8", false));
+
+    expect(member.body).toMatchObject({
+      principal: "tailscale:user:8",
+      authority: ["participant"],
     });
     expect((await post(tailnet, "models.list", {}, {})).status).toBe(401);
   });

@@ -93,7 +93,7 @@ func TestSidecarAdmitsByWhoIs(t *testing.T) {
 		return nil
 	})
 
-	if seen := host.last(t); !reflect.DeepEqual(seen, principalFor(phoneNode, ownedNode.User)) {
+	if seen := host.last(t); !reflect.DeepEqual(seen, principalFor(phoneNode, ownedNode.User, true)) {
 		t.Fatalf("the owner reached the host as %+v", seen)
 	}
 
@@ -114,7 +114,7 @@ func TestSidecarAdmitsByWhoIs(t *testing.T) {
 		return nil
 	})
 
-	if seen := host.last(t); !reflect.DeepEqual(seen, principalFor(strangerNode, strangerNode.User)) {
+	if seen := host.last(t); !reflect.DeepEqual(seen, principalFor(strangerNode, strangerNode.User, false)) {
 		t.Fatalf("another user reached the host as %+v", seen)
 	}
 
@@ -126,8 +126,8 @@ func TestSidecarAdmitsByWhoIs(t *testing.T) {
 		return nil
 	})
 
-	if seen := host.last(t); !reflect.DeepEqual(seen, principalFor(phoneNode, ownedNode.User)) {
-		t.Fatalf("the owner reached the open host as %+v", seen)
+	if seen := host.last(t); !reflect.DeepEqual(seen, principalFor(phoneNode, ownedNode.User, false)) {
+		t.Fatalf("the owner of another node reached the open host as %+v", seen)
 	}
 
 	echo := upgrade(t, ctx, stranger, openAddress)
@@ -227,7 +227,7 @@ func findNode(t *testing.T, control *testcontrol.Server, hostname string) *tailc
 	return nil
 }
 
-func principalFor(node *tailcfg.Node, user tailcfg.UserID) principal {
+func principalFor(node *tailcfg.Node, user tailcfg.UserID, owner bool) principal {
 	tags := node.Tags
 	if tags == nil {
 		tags = []string{}
@@ -238,6 +238,7 @@ func principalFor(node *tailcfg.Node, user tailcfg.UserID) principal {
 		LoginName: fmt.Sprintf("user-%d@fake-control.example.net", user),
 		Node:      string(node.StableID),
 		Tags:      tags,
+		Owner:     owner,
 	}
 }
 

@@ -153,6 +153,7 @@ function digestRow(operation: Operation): string {
     row.capability ?? null,
     row.recovery ?? null,
     row.wait ?? null,
+    row.local ?? null,
     row.input["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
     row.output["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
   ];

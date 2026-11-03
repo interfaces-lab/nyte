@@ -52,6 +52,7 @@ const principalCheck = compile(
     loginName: Type.String(),
     node: Type.String(),
     tags: Type.Array(Type.String()),
+    owner: Type.Boolean(),
   }),
 );
 
@@ -90,7 +91,7 @@ export async function openTailnet(options: {
           ? `tailscale:node:${principal.node}`
           : `tailscale:user:${principal.userId}`,
       ),
-      authority: settings.access === "owner" ? TOKEN_AUTHORITY : PARTICIPANT,
+      authority: principal.owner ? TOKEN_AUTHORITY : PARTICIPANT,
     };
   };
 
