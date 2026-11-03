@@ -143,6 +143,13 @@ export function removedRoots(removed: readonly SessionId[]): Statement | null {
       };
 }
 
+export function lockStamped(changed: readonly SessionId[]): Statement {
+  return {
+    text: `SELECT session FROM session_index WHERE session IN (${marks(changed)}) OR session IN (SELECT parent FROM session_index WHERE session IN (${marks(changed)})) ORDER BY session FOR UPDATE`,
+    values: [...changed, ...changed],
+  };
+}
+
 export function stampRows(next: number, changed: readonly SessionId[], removed: Rows): Statement {
   const orphaned = removed.flatMap((row) => {
     const parent = parseText(row.parent);

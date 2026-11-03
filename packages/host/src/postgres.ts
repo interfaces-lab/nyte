@@ -40,6 +40,7 @@ import {
   storedReader,
 } from "./store-rows.ts";
 import {
+  lockStamped,
   postgresSessionIndexQuery,
   READ_HOST_SEQ,
   removedRoots,
@@ -408,6 +409,11 @@ async function publish(
       directory.changed.length === 0
         ? 0
         : parseNumber((await client.query(`${READ_HOST_SEQ} FOR UPDATE`)).rows[0]?.seq ?? 0);
+
+    if (directory.changed.length > 0) {
+      const locked = lockStamped(directory.changed);
+      await client.query(postgresSessionIndexQuery(locked.text), locked.values);
+    }
 
     const { rows } =
       names.length === 0

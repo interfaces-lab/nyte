@@ -156,6 +156,7 @@ function digestRow(operation: Operation): string {
     row.local ?? null,
     row.input["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
     row.output["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
+    ...(row.mcp === undefined ? [] : [row.mcp]),
   ];
 
   return createHash("sha256").update(JSON.stringify(fields)).digest("hex").slice(0, 16);

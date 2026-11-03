@@ -5,7 +5,7 @@ const rows: { readonly [name: string]: Declaration<unknown, unknown> } = OPERATI
 
 const encoder = new TextEncoder();
 
-/** Returns the operations table's SHA-256 digest, the first 16 hex digits: it hashes each row's name, kind, access, locality and wire schemas in table order, so two builds whose tables differ in any operation or schema get different digests. */
+/** Returns the operations table's SHA-256 digest, the first 16 hex digits: it hashes each row's name, kind, access, locality, MCP access and wire schemas in table order, so two builds whose tables differ in any operation or schema get different digests. */
 export async function operationsDigest(): Promise<string> {
   const table = Object.entries(rows).map(([name, row]) => [
     name,
@@ -16,6 +16,7 @@ export async function operationsDigest(): Promise<string> {
     row.recovery ?? null,
     row.wait ?? null,
     row.local ?? null,
+    row.mcp ?? null,
     row.input["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
     row.output["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
   ]);

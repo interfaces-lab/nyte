@@ -34,6 +34,7 @@ const QUERY_INPUT = wireObject({
 export const FILE_OPERATIONS = {
   "files.read": {
     ...FILES,
+    mcp: "read",
     summary: "Reads a file as text or as a document with its version.",
     kind: "query",
     input: wireObject({
@@ -51,6 +52,7 @@ export const FILE_OPERATIONS = {
   },
   "files.stat": {
     ...FILES,
+    mcp: "read",
     summary: "Returns a path's kind, size and version, or null if nothing is there.",
     kind: "query",
     input: ON_PATH,
@@ -136,6 +138,7 @@ export const FILE_OPERATIONS = {
   },
   "files.find": {
     ...FILES,
+    mcp: "read",
     summary: "Lists the files whose paths best match a query, best first.",
     kind: "query",
     input: QUERY_INPUT,
