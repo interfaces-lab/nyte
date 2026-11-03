@@ -389,6 +389,11 @@ function connect(
     "SELECT COUNT(*) AS events, COALESCE(SUM(LENGTH(CAST(event AS BLOB))), 0) AS bytes FROM log WHERE session = ? AND seq > ?",
   );
 
+  const putCatalog = database.prepare(
+    "INSERT INTO catalogs (id, body) VALUES (?, ?) ON CONFLICT (id) DO NOTHING",
+  );
+
+  const getCatalog = database.prepare("SELECT body FROM catalogs WHERE id = ?");
   const readVersion = database.prepare("SELECT version FROM store_meta WHERE id = 1");
   const readDataVersion = database.prepare("PRAGMA data_version");
 
@@ -413,6 +418,17 @@ function connect(
       async (text, values) =>
         (await workers?.read(text, values)) ?? database.prepare(text).all(...values),
     ),
+    catalogs: {
+      async putIfAbsent(id, body) {
+        write(database, putCatalog, id, body);
+        workers?.check();
+      },
+      async get(id) {
+        const [row] = await read(getCatalog, id);
+
+        return parseText(row?.body);
+      },
+    },
     objects: {
       async put(object) {
         const id = await objectId(object);

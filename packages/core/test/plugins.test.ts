@@ -385,7 +385,7 @@ describe("plugin api", () => {
     const events: SessionCatalogView[] = [];
 
     kernel.bus.subscribeAll((_session, event) => {
-      if (event.kind === "catalog") events.push(event.catalog);
+      if (event.kind === "catalog" && "catalog" in event) events.push(event.catalog);
     });
 
     kernel.plugins.host = [

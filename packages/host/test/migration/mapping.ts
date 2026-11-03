@@ -266,6 +266,13 @@ export const MAPPING = [
       "session_index gains `seq`: each root takes its place counted from the end of the directory's order, so the least recently active (then greatest id) is 1, and the new host_seq table holds their count",
     covers: ["from 26"],
   },
+  {
+    version: 28,
+    step: "2026-11-03-session-catalogs",
+    target: "tables",
+    change: "creates catalogs",
+    covers: ["from 27"],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {

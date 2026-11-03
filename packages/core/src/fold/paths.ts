@@ -33,6 +33,7 @@ export function finish(state: FoldState, draft: Draft): FoldState {
     base: state.base,
     activation: draft.activation,
     catalog: draft.catalog,
+    catalogId: draft.catalogId,
     changes: draft.changes,
     heads: draft.heads,
     headInfos: reuse(

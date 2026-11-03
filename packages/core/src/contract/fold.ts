@@ -2,6 +2,7 @@ import type {
   Activation,
   BackgroundItem,
   CallId,
+  CatalogId,
   CommitId,
   ContextView,
   Delivery,
@@ -47,6 +48,7 @@ export interface FoldState {
   readonly base: Seq;
   readonly activation: Activation;
   readonly catalog: SessionCatalogView;
+  readonly catalogId: CatalogId | null;
 
   readonly changes: readonly FileChange[];
   readonly heads: ReadonlyMap<HeadName, FoldHead>;
@@ -193,6 +195,7 @@ export interface Draft extends Index {
   seq: Seq;
   activation: Activation;
   catalog: SessionCatalogView;
+  catalogId: CatalogId | null;
   changes: readonly FileChange[];
   partViews: readonly PartView[];
 

@@ -42,6 +42,10 @@ export function promptRef(id: SessionId, head: HeadName): string {
   return `sessions/${id}/prompts/${head}`;
 }
 
+export function catalogRef(id: SessionId): string {
+  return `sessions/${id}/catalog`;
+}
+
 export function inboxRef(id: SessionId, head: HeadName): string {
   return `sessions/${id}/inbox/${head}`;
 }

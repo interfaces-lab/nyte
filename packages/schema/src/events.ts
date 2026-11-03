@@ -211,6 +211,7 @@ function durableEvent<Common extends TProperties>(common: Common) {
     Type.Object({ ...common, kind: Type.Literal("session"), info: SessionInfoType }),
     Type.Object({ ...common, kind: Type.Literal("activation"), activation: ActivationType }),
     Type.Object({ ...common, kind: Type.Literal("catalog"), catalog: SessionCatalogViewType }),
+    Type.Object({ ...common, kind: Type.Literal("catalog"), id: idSchema<"catalog">() }),
   ]);
 }
 

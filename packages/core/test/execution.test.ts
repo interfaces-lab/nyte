@@ -327,7 +327,8 @@ describe("execution", () => {
 
     for await (const event of inspect.events({ after: asSeq(0) })) kinds.push(event.kind);
 
-    expect(kinds).toEqual([
+    expect(kinds).toContain("catalog");
+    expect(kinds.filter((kind) => kind !== "catalog")).toEqual([
       "session",
       "configured",
       "input",

@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import {
   decodeCallRecord,
+  decodeCatalogRecord,
   decodeCommitRecord,
   decodeHostIdentity,
   decodeInboxRecord,
@@ -46,6 +47,7 @@ const decoders = new Map<Json, { readonly kind: string; readonly decode: Decode 
     principals: decodePrincipalRecord,
     identity: decodeHostIdentity,
     prompt: decodePromptRecord,
+    catalog: decodeCatalogRecord,
   } satisfies Record<Exclude<RecordKind, "kv">, Decode>).map(([kind, decode]) => [
     kind,
     { kind, decode },

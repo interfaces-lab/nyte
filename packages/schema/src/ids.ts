@@ -53,6 +53,8 @@ export type Revision = Id<"revision">;
 
 export type CatalogGeneration = Id<"catalog-generation">;
 
+export type CatalogId = Id<"catalog">;
+
 export type Cursor = Id<"cursor">;
 
 export type Seq = number & { readonly __brand: "seq" };

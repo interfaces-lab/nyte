@@ -1,6 +1,7 @@
 import { asId, asSeq, isJsonObject } from "@nyte-ai/schema";
 import type {
   BlobId,
+  CatalogId,
   ObjectId,
   ParentFilter,
   Ref,
@@ -36,6 +37,7 @@ export function memoryStore(): Store {
     { readonly seq: Seq; readonly at: number; readonly text: string }[]
   >();
   const checkpoints = new Map<SessionId, FoldCheckpoint>();
+  const catalogs = new Map<CatalogId, string>();
   const encoder = new TextEncoder();
   const seqs = new Map<SessionId, number>();
   let minted = 0;
@@ -158,6 +160,12 @@ export function memoryStore(): Store {
           })
           .sort((left, right) => byCodePoint(left.name, right.name));
       },
+    },
+    catalogs: {
+      async putIfAbsent(id, body) {
+        if (!catalogs.has(id)) catalogs.set(id, body);
+      },
+      get: async (id) => catalogs.get(id) ?? null,
     },
     objects: {
       async put(object) {

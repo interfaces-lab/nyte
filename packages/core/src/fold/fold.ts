@@ -118,6 +118,7 @@ export function emptyFold(input: {
     base: asSeq(0),
     activation: INACTIVE,
     catalog: EMPTY_CATALOG,
+    catalogId: null,
     changes: [],
     heads: index.heads,
     headInfos: [],
@@ -153,6 +154,7 @@ function open(state: FoldState, durable: boolean): Draft {
     seq: state.seq,
     activation: state.activation,
     catalog: state.catalog,
+    catalogId: state.catalogId,
     changes: state.changes,
     partViews: state.partViews,
     walk: new Set(),
@@ -211,7 +213,10 @@ function apply(draft: Draft, event: SessionEvent): void {
 
       return;
     case "catalog":
-      return setCatalog(draft, event.catalog);
+      if ("catalog" in event) return setCatalog(draft, event.catalog);
+      draft.catalogId = event.id;
+
+      return;
   }
 }
 

@@ -222,6 +222,15 @@ function connect(storage: DurableObjectSql): StoreConnection {
 
   return {
     sessions: sqlSessionIndex(async (text, values) => rows(text, ...values)),
+    catalogs: {
+      async putIfAbsent(id, body) {
+        fits(encoder.encode(body).byteLength, `Catalog ${id}`);
+        rows("INSERT INTO catalogs (id, body) VALUES (?, ?) ON CONFLICT (id) DO NOTHING", id, body);
+      },
+      async get(id) {
+        return parseText(rows("SELECT body FROM catalogs WHERE id = ?", id)[0]?.body);
+      },
+    },
     objects: {
       async put(object) {
         const id = await objectId(object);

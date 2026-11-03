@@ -14,6 +14,7 @@ import type {
 } from "@nyte-ai/schema";
 import { CORE_CONTEXT } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
+import { decodeCatalogRecord } from "../contract/records.ts";
 import type {
   CoreRegistries,
   CoreRegistry,
@@ -33,7 +34,10 @@ import type {
   SettingsRegistry,
 } from "../contract/plugin.ts";
 import { sendNow } from "../engine/admission.ts";
-import { MAIN } from "../store/session.ts";
+import { commit } from "../fold/commit.ts";
+import { encodeCatalog } from "../store/catalogs.ts";
+import { catalogRef } from "../store/refs.ts";
+import { attempt, load, MAIN, put, readRefExpectation, STALE } from "../store/session.ts";
 import { callable } from "../util/callable.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
 import { stepPluginApi } from "./plugin-api.ts";
@@ -389,12 +393,11 @@ export function publishCatalog(kernel: Kernel, session: SessionId): Promise<void
     .then(async () => {
       const catalog = await sessionCatalog(kernel, session);
 
-      if (
-        catalog === null ||
-        JSON.stringify(catalog) === JSON.stringify(kernel.sessions.catalog(session))
-      )
-        return;
-      kernel.sessions.setCatalog(session, catalog);
+      if (catalog === null) return;
+
+      if (JSON.stringify(catalog) !== JSON.stringify(kernel.sessions.catalog(session)))
+        kernel.sessions.setCatalog(session, catalog);
+      await recordCatalog(kernel, session, catalog);
     });
 
   queues.set(session, next);
@@ -406,6 +409,33 @@ export function publishCatalog(kernel: Kernel, session: SessionId): Promise<void
     .catch(() => undefined);
 
   return next;
+}
+
+async function recordCatalog(
+  kernel: Kernel,
+  session: SessionId,
+  catalog: SessionCatalogView,
+): Promise<void> {
+  const encoded = await encodeCatalog(catalog);
+  const name = catalogRef(session);
+
+  await attempt(`Recording the catalog of ${session}`, async () => {
+    const ref = await kernel.store.refs.get(name);
+
+    if ((await load(kernel.store, ref, decodeCatalogRecord))?.record.id === encoded.id) return true;
+    await kernel.store.catalogs.putIfAbsent(encoded.id, encoded.body);
+
+    const outcome = await commit(kernel, [
+      {
+        name,
+        target: await put(kernel.store, "catalog", { id: encoded.id }),
+        expect: readRefExpectation(ref),
+        events: [{ head: null, kind: "catalog", id: encoded.id }],
+      },
+    ]);
+
+    return outcome.kind === "set" ? true : STALE;
+  });
 }
 
 export function bumpGeneration(kernel: Kernel): CatalogGeneration {

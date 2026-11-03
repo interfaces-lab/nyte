@@ -765,6 +765,15 @@ const refTargetIndex: SchemaStep = {
   },
 };
 
+const sessionCatalogs: SchemaStep = {
+  kind: "schema",
+  name: "2026-11-03-session-catalogs",
+  sql: {
+    sqlite: ["CREATE TABLE IF NOT EXISTS catalogs (id TEXT PRIMARY KEY, body TEXT NOT NULL)"],
+    postgres: ["CREATE TABLE IF NOT EXISTS catalogs (id TEXT PRIMARY KEY, body TEXT NOT NULL)"],
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -793,6 +802,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   headBackground,
   escapedWaitIndex,
   sessionSeqs,
+  sessionCatalogs,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

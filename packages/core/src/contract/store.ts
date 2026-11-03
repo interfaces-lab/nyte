@@ -1,6 +1,7 @@
 import type {
   BlobId,
   ByteReader,
+  CatalogId,
   Json,
   ObjectId,
   ParentFilter,
@@ -23,6 +24,7 @@ export interface StoreConnection {
   readonly refs: RefStore;
   /** Current session roots and outstanding work, updated atomically with refs. */
   readonly sessions: SessionIndex;
+  readonly catalogs: CatalogStore;
   /** A mark that moves whenever a connection other than this one commits: equal marks mean nothing else wrote in between. Absent where nothing else can write, or where the store cannot tell, so every read and poll goes to the store. */
   commitMark?(): Promise<number>;
   /** Each session's latest fold checkpoint. Absent where the store keeps none, so every cold fold reads its session's log from the start. */
@@ -75,6 +77,11 @@ export interface SessionIndex {
     readonly kind: "receipt" | "call";
     readonly sessions?: readonly SessionId[];
   }): Promise<readonly Ref[]>;
+}
+
+export interface CatalogStore {
+  putIfAbsent(id: CatalogId, body: string): Promise<void>;
+  get(id: CatalogId): Promise<string | null>;
 }
 
 export interface ObjectStore {

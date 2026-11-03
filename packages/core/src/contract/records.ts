@@ -78,6 +78,10 @@ const PromptRecordType = record({
 
 export type PromptRecord = Static<typeof PromptRecordType>;
 
+const CatalogRecordType = record({ id: idSchema<"catalog">() });
+
+export type CatalogRecord = Static<typeof CatalogRecordType>;
+
 const SessionRecordType = record({
   id: idSchema<"session">(),
   name: nullable(Type.String()),
@@ -341,7 +345,8 @@ export type RecordKind =
   | "kv"
   | "principals"
   | "identity"
-  | "prompt";
+  | "prompt"
+  | "catalog";
 
 export const STORED_RECORD_TYPES = {
   session: SessionRecordType,
@@ -360,6 +365,7 @@ export const STORED_RECORD_TYPES = {
   principals: PrincipalRecordType,
   identity: HostIdentityType,
   prompt: PromptRecordType,
+  catalog: CatalogRecordType,
 } satisfies Record<Exclude<RecordKind, "kv">, TSchema>;
 
 type Decode<T> = (object: Json | null) => T | null;
@@ -405,6 +411,8 @@ export const decodeJobRecord: Decode<JobRecord> = decoder("job", JobRecordType);
 export const decodeHostIdentity: Decode<HostIdentity> = decoder("identity", HostIdentityType);
 
 export const decodePromptRecord: Decode<PromptRecord> = decoder("prompt", PromptRecordType);
+
+export const decodeCatalogRecord: Decode<CatalogRecord> = decoder("catalog", CatalogRecordType);
 
 export function decodeKvValue(object: Json | null): Json | undefined {
   return isJsonObject(object) && object.kind === "kv" ? object.body : undefined;

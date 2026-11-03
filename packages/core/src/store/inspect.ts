@@ -32,6 +32,7 @@ const RECORDS: ReadonlyMap<string, string> = new Map([
   ["leases", "lease"],
   ["calls", "call"],
   ["changes", "changes"],
+  ["catalog", "catalog"],
 ]);
 
 type Issue = IntegrityReport["issues"][number];

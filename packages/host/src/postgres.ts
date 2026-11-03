@@ -286,6 +286,19 @@ function connect(pool: PostgresPool): StoreConnection {
     sessions: sqlSessionIndex(
       async (text, values) => (await query(postgresSessionIndexQuery(text), values)).rows,
     ),
+    catalogs: {
+      async putIfAbsent(id, body) {
+        await query("INSERT INTO catalogs (id, body) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [
+          id,
+          body,
+        ]);
+      },
+      async get(id) {
+        const { rows } = await query("SELECT body FROM catalogs WHERE id = $1", [id]);
+
+        return parseText(rows[0]?.body);
+      },
+    },
     objects: {
       async put(object) {
         const id = await objectId(object);
