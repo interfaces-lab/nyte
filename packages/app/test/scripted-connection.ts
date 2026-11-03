@@ -17,6 +17,9 @@ import type {
   WorkspaceInfo,
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
+import type { HostConnection } from "@nyte-ai/sdk/client";
+import { constant, scriptedLive } from "./scripted-live.ts";
+import { installConnection } from "../src/data/connection.ts";
 
 export interface ConnectionScript {
   readonly views?: ReadonlyMap<SessionId, readonly SessionView[] | ViewStream>;
@@ -44,11 +47,13 @@ export interface ViewStream<T = SessionView> {
   readonly latest: () => T | undefined;
   readonly push: (value: T) => void;
   readonly watch: () => AsyncIterable<T>;
+  readonly subscribe: (listener: () => void) => () => void;
 }
 
 export function viewStream<T = SessionView>(first: T): ViewStream<T> {
   let latest = first;
   const waiting = new Set<(view: T) => void>();
+  const listeners = new Set<() => void>();
 
   return {
     latest: () => latest,
@@ -56,6 +61,15 @@ export function viewStream<T = SessionView>(first: T): ViewStream<T> {
       latest = view;
 
       for (const wake of Array.from(waiting)) wake(view);
+
+      for (const listener of Array.from(listeners)) listener();
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+
+      return () => {
+        listeners.delete(listener);
+      };
     },
     watch: async function* () {
       let shown = latest;
@@ -98,6 +112,7 @@ async function* replay<T>(values: readonly T[]): AsyncIterable<T> {
 /** A session's handle also stands for its heads, so `head()` returns what the script changes on it. */
 export function scriptedConnection(script: ConnectionScript = {}): {
   readonly connection: Connection;
+  readonly live: HostConnection;
   readonly sent: readonly ScriptedSend[];
 } {
   const sent: ScriptedSend[] = [];
@@ -288,5 +303,27 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     [Symbol.asyncDispose]: async () => undefined,
   };
 
-  return { connection, sent };
+  const live = scriptedLive({
+    views(id) {
+      const scripted = script.views?.get(id);
+
+      if (scripted === undefined) return undefined;
+
+      if ("watch" in scripted) return scripted;
+      const last = scripted.at(-1);
+
+      return last === undefined ? undefined : constant(last);
+    },
+    sessions: "watch" in listed ? listed : constant(rows),
+    children: (parent) => script.children?.get(parent) ?? [],
+  });
+
+  return { connection, live, sent };
+}
+
+export function installScripted(scripted: {
+  readonly connection: Connection;
+  readonly live: HostConnection;
+}): void {
+  installConnection(scripted.connection, scripted.live);
 }

@@ -10,6 +10,7 @@ import {
 import { OPERATIONS } from "@nyte-ai/schema";
 import {
   PUBLIC_RELAY_BEARER,
+  PUBLIC_RELAY_METHODS,
   RELAY_CHUNK_BYTES,
   RELAY_FRAME_CHARS,
   RELAY_OPERATIONS,
@@ -23,6 +24,7 @@ import {
   RelayPath,
   decodeChunk,
   encodeChunks,
+  encodeMessage,
   parseDesktopFrame,
   parseRelayFrame,
   publicRelayTarget,
@@ -91,19 +93,35 @@ describe("public relay targets", () => {
     });
   });
 
-  it("asks a bearer of every target but the discovery routes", () => {
+  it("carries the host's socket: the ticket as an operation, a ticketed upgrade as a socket", () => {
+    expect(target("/.nyte/ws/ticket")).toEqual({
+      kind: "api",
+      environmentId,
+      path: "/.nyte/ws/ticket",
+    });
+    expect(target("/.nyte/ws?ticket=0b5c6a7e-1f2d-4e3c-9a8b-7c6d5e4f3a2b")).toEqual({
+      kind: "socket",
+      environmentId,
+      path: "/.nyte/ws?ticket=0b5c6a7e-1f2d-4e3c-9a8b-7c6d5e4f3a2b",
+    });
+    expect(PUBLIC_RELAY_METHODS.socket).toEqual(["GET"]);
+  });
+
+  it("asks a bearer of every target but the discovery routes and the ticketed socket", () => {
     const bearers = [
       "/sessions.list",
       "/.nyte/identity?nonce=n1",
       "/.nyte/describe",
       "/_nyte/connect/device",
+      "/.nyte/ws/ticket",
+      "/.nyte/ws?ticket=t1",
     ].map((path) => {
       const found = target(path);
 
       return found === undefined ? undefined : PUBLIC_RELAY_BEARER[found.kind];
     });
 
-    expect(bearers).toEqual(["active", "none", "none", "reserved-or-active"]);
+    expect(bearers).toEqual(["active", "none", "none", "reserved-or-active", "active", "none"]);
   });
 
   it.each([
@@ -120,6 +138,11 @@ describe("public relay targets", () => {
     "/.nyte/describe?x=1",
     "/.nyte/identity/",
     "/.nyte/other",
+    "/.nyte/ws",
+    "/.nyte/ws?ticket=",
+    "/.nyte/ws?ticket=a&b=c",
+    "/.nyte/ws?token=abc",
+    "/.nyte/ws/ticket?x=1",
     "/nyte/identity",
     "/",
     "",
@@ -189,8 +212,15 @@ describe("frames", () => {
       },
       { t: "end", ch },
       { t: "credit", ch, bytes: RELAY_WINDOW_BYTES },
+      { t: "message", ch, data: "e30", fin: true },
+      { t: "close", ch, code: 1008, reason: "Update the client." },
     ])
       expect(parseDesktopFrame(JSON.stringify(frame))).toEqual(frame);
+
+    const socket = { t: "socket", ch, path: "/.nyte/ws?ticket=t1" };
+
+    expect(parseRelayFrame(JSON.stringify(socket))).toEqual(socket);
+    expect(parseDesktopFrame(JSON.stringify(socket))).toBeUndefined();
   });
 
   it.each([
@@ -204,6 +234,8 @@ describe("frames", () => {
     ["a short channel id", { t: "end", ch: "abc" }],
     ["credit past a window", { t: "credit", ch, bytes: RELAY_WINDOW_BYTES + 1 }],
     ["an extra field", { t: "end", ch, extra: true }],
+    ["a message without fin", { t: "message", ch, data: "e30" }],
+    ["a close code below the range", { t: "close", ch, code: 999, reason: "" }],
   ])("refuses %s from a desktop", (_, frame) => {
     expect(parseDesktopFrame(JSON.stringify(frame))).toBeUndefined();
   });
@@ -212,6 +244,18 @@ describe("frames", () => {
     expect(parseDesktopFrame(new ArrayBuffer(4))).toBeUndefined();
     expect(parseDesktopFrame(`{"t":"ping"}${" ".repeat(RELAY_FRAME_CHARS)}`)).toBeUndefined();
     expect(parseRelayFrame("{")).toBeUndefined();
+  });
+
+  it("splits a message into chunks marked fin only on the last, joining back to its text", () => {
+    const text = `{"t":"${"é".repeat(RELAY_CHUNK_BYTES)}"}`;
+    const chunks = encodeMessage(text);
+
+    expect(chunks.map((chunk) => chunk.fin)).toEqual([false, false, true]);
+    expect(
+      new TextDecoder().decode(
+        Uint8Array.from(chunks.flatMap((chunk) => [...(decodeChunk(chunk.data) ?? [])])),
+      ),
+    ).toBe(text);
   });
 
   it("splits bytes into chunks that decode back", () => {

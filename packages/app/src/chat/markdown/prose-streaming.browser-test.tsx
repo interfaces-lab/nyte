@@ -13,11 +13,14 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import "../../theme/tokens.stylex.ts";
-import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
+import {
+  installScripted,
+  scriptedConnection,
+  viewStream,
+} from "../../../test/scripted-connection.ts";
 import type { ViewStream } from "../../../test/scripted-connection.ts";
 import { USAGE } from "../../../test/view-fixtures.ts";
-import { installConnection } from "../../data/connection.ts";
-import { paceTranscripts, sessionWatch } from "../../data/watches.ts";
+import { chatStore, paceTranscripts } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { renderCount, resetRenders } from "../transcript/transcript-render-counter.ts";
 import { Prose } from "./prose.tsx";
@@ -87,7 +90,7 @@ const base = {
 
 const streams = new Map<SessionId, ViewStream>();
 
-installConnection(scriptedConnection({ views: streams }).connection);
+installScripted(scriptedConnection({ views: streams }));
 let shown: ReadonlySet<SessionId> = new Set();
 
 paceTranscripts(() => shown);
@@ -112,7 +115,7 @@ function answerView(session: SessionId, markdown: string, live: boolean): Sessio
 }
 
 function Answer({ session }: { readonly session: SessionId }): ReactElement | null {
-  const answer = useWatchSelect(sessionWatch(session), (state) =>
+  const answer = useWatchSelect(chatStore(session), (state) =>
     state.value?.messages.findLast(showsText),
   );
 
@@ -148,10 +151,10 @@ function drawer(root: Root): Draw {
       chats += 1;
       const id = asId<"session">(`chat-${String(chats)}`);
       streams.set(id, viewStream(answerView(id, markdown, streaming)));
-      current = { id, release: sessionWatch(id).subscribe(() => undefined) };
-      await sessionWatch(id).first();
+      current = { id, release: chatStore(id).subscribe(() => undefined) };
+      await chatStore(id).first();
     } else {
-      const arrived = sessionWatch(current.id).next();
+      const arrived = chatStore(current.id).next();
       streams.get(current.id)?.push(answerView(current.id, markdown, streaming));
       await arrived;
     }

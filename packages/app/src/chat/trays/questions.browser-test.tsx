@@ -7,8 +7,7 @@ import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import { installConnection } from "../../data/connection.ts";
-import { scriptedConnection } from "../../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { COMPLETED, USAGE } from "../../../test/view-fixtures.ts";
 import { QuestionTray } from "./questions.tsx";
 import { QuestionDockContext, useQuestionDock } from "./questions-state.ts";
@@ -91,7 +90,7 @@ const asked: SessionView = {
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 };
 
-installConnection(
+installScripted(
   scriptedConnection({
     views: new Map([[SESSION, [asked]]]),
     session: () => ({
@@ -108,7 +107,7 @@ installConnection(
         },
       }),
     }),
-  }).connection,
+  }),
 );
 
 let shown: QuestionDock | undefined;

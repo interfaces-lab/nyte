@@ -24,7 +24,7 @@ import {
 } from "../contract/client-actions.ts";
 import { nyte } from "../contract/nyte.ts";
 import { sessionRows, subscribeSessionRows } from "../data/session-rows.ts";
-import { sessionWatch } from "../data/watches.ts";
+import { chatStore } from "../data/chat-store.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 function TypeToCompose({
@@ -106,7 +106,7 @@ function FocusComposer({
 }
 
 function HoldSession({ sessionId }: { readonly sessionId: SessionId }): null {
-  useMountEffect(() => sessionWatch(sessionId).subscribe(() => undefined));
+  useMountEffect(() => chatStore(sessionId).subscribe(() => undefined));
 
   return null;
 }

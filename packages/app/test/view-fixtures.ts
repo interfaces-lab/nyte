@@ -88,7 +88,6 @@ export function chatsFor(
     {
       lists: [sessions],
       roots: undefined,
-      views: new Map(),
       project: (session) => session,
       ...sources,
     },

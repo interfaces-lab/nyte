@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../../theme/schema.stylex.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { activityStyles } from "./activity.stylex.ts";
 import { usePlanningTime } from "./planning-time.ts";
@@ -28,7 +28,7 @@ export function LiveTurn({ working }: { working: boolean }): ReactElement | null
 
 function PlanningLine(): ReactElement {
   const sessionId = useTranscriptScope()?.sessionId;
-  const store = sessionId === undefined ? undefined : sessionWatch(sessionId);
+  const store = sessionId === undefined ? undefined : chatStore(sessionId);
   const planning = useWatchSelect(
     store,
     (state) => state.value?.execution.kind === "live" && state.value.activity.kind === "idle",

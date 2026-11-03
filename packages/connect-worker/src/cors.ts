@@ -57,6 +57,7 @@ export function withBrowserCors(input: {
   const origin = request.headers.get("origin");
 
   if (
+    response.status === 101 ||
     origin === null ||
     !origins.includes(origin) ||
     request.headers.has(PROOF_HEADER) ||

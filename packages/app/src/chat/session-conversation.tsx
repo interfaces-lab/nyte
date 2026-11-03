@@ -7,7 +7,8 @@ import { props } from "@stylexjs/stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useDeferredValue, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { Activation, Revision, SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
+import type { Activation, Revision, SessionId, UserContent } from "@nyte-ai/sdk";
+import type { ChatView } from "../data/chat-store.ts";
 import { Composer } from "./composer/composer.tsx";
 import type { ComposerEditorHandle } from "./composer/composer-editor.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./transcript/turn-view.tsx";
@@ -25,7 +26,7 @@ import type { PaneId } from "../panes/pane-layout.ts";
 import { useCatalog } from "../data/catalog.ts";
 import { useRenameSession, useSessionChoice } from "../data/sessions.ts";
 import { useSessionActions } from "../data/session-actions.ts";
-import { loadEarlierMessages, sessionWatch } from "../data/watches.ts";
+import { chatStore, loadEarlierMessages } from "../data/chat-store.ts";
 import { connection } from "../data/connection.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import type { WatchStore } from "../data/watch-store.ts";
@@ -119,10 +120,7 @@ async function applyMessageEdit({
   }
 }
 
-async function awaitCurrentView(
-  sessionId: SessionId,
-  store: WatchStore<SessionView>,
-): Promise<void> {
+async function awaitCurrentView(sessionId: SessionId, store: WatchStore<ChatView>): Promise<void> {
   const { seq } = await connection().session(sessionId).view({ tail: 0 });
 
   for (;;) {
@@ -302,7 +300,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
     inputRef?.(handle);
   };
 
-  const store = sessionWatch(sessionId);
+  const store = chatStore(sessionId);
   const [projector] = useState(transcriptProjector);
   const ready = useWatchSelect(store, (state) => state.value !== undefined);
   const failed = useWatchSelect(store, (state) => state.error !== undefined);

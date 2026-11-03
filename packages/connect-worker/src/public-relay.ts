@@ -13,7 +13,7 @@ import { allow } from "./context.ts";
 import type { Context } from "./context.ts";
 import { Refusal } from "./http.ts";
 import { errorName } from "./log.ts";
-import { connectRequest, forwardRequest, resetRelay } from "./relay-stub.ts";
+import { connectRequest, forwardRequest, resetRelay, socketRequest } from "./relay-stub.ts";
 import { findRelayDevice } from "./store/environments.ts";
 
 const BEARER = /^Bearer (\S+)$/u;
@@ -41,6 +41,7 @@ async function admit(
       readonly deviceId: string | undefined;
       readonly path: string;
       readonly method: "GET" | "POST" | "DELETE";
+      readonly socket: boolean;
     }
 > {
   const refused = (code: RelayRefusalCode, headers?: Record<string, string>) =>
@@ -72,6 +73,7 @@ async function admit(
           deviceId: undefined,
           path: target.path,
           method,
+          socket: target.kind === "socket",
         }
       : refused("closed");
   const token = BEARER.exec(request.headers.get("authorization") ?? "")?.[1];
@@ -98,6 +100,7 @@ async function admit(
     deviceId: device.id,
     path: target.path,
     method,
+    socket: false,
   };
 }
 
@@ -150,6 +153,13 @@ export async function relayPublic(context: Context, request: Request): Promise<R
   const { environmentId } = admission;
   const channel = randomId();
   const stub = context.relay(environmentId);
+
+  if (admission.socket) {
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return refuse("not_found");
+
+    return stub.fetch(socketRequest({ environmentId, channel, path: admission.path }));
+  }
+
   let reset = false;
   const resetChannel = () => {
     if (reset) return;

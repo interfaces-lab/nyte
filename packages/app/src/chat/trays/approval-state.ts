@@ -4,7 +4,7 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { useMutation } from "@tanstack/react-query";
 import { useWaitingDescendants } from "../../chats/index.ts";
 import { connection } from "../../data/connection.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 
 export interface ApprovalRequest {
@@ -14,7 +14,7 @@ export interface ApprovalRequest {
 }
 
 export function useApprovalRequest(sessionId: SessionId): ApprovalRequest | undefined {
-  const parts = useWatchSelect(sessionWatch(sessionId), (state) => state.value?.parts);
+  const parts = useWatchSelect(chatStore(sessionId), (state) => state.value?.parts);
   const waiting = useWaitingDescendants(sessionId);
   const [own] = openApprovals({ parts: parts ?? [] });
 

@@ -4,12 +4,11 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { enableTracing } from "@nyte-ai/sdk";
 import type { SessionInfo } from "@nyte-ai/sdk";
-import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 import { liveRun } from "../panes/session-screen-render.fixtures.ts";
 import { keys, queryClient } from "../data/query-client.ts";
-import { installConnection } from "../data/connection.ts";
-import { sessionsWatch } from "../data/watches.ts";
+import { sessionList } from "../data/directory.ts";
 import { useCommitCount } from "../lib/work-counts.ts";
 import { chatTitle, useChat, useChats } from "./index.ts";
 
@@ -38,11 +37,11 @@ const started = sessionRow("started", { name: "Just started" });
 
 const source = viewStream<readonly SessionInfo[]>([rootA, rootB, middle, active, idle]);
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: source,
     session: (id) => (id === started.id ? { info: async () => started } : {}),
-  }).connection,
+  }),
 );
 
 enableTracing();
@@ -82,7 +81,7 @@ function painted(): Promise<void> {
 }
 
 export async function run(): Promise<string> {
-  const store = sessionsWatch("all");
+  const store = sessionList("all");
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);

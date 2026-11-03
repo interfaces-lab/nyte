@@ -9,10 +9,10 @@ import { SubagentCallView } from "./subagent-call.tsx";
 import { transcriptRows } from "../transcript/transcript-rows.ts";
 import { TranscriptProvider } from "../transcript/transcript.tsx";
 import { TurnItemView } from "../transcript/turn-view.tsx";
-import { scriptedConnection } from "../../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { endedTurn, sessionRow, sessionView, settledTool } from "../../../test/view-fixtures.ts";
-import { installConnection } from "../../data/connection.ts";
-import { sessionsWatch, sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
+import { sessionList } from "../../data/directory.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { PaneController } from "../../panes/pane-controller.ts";
 
@@ -76,7 +76,7 @@ function Parent({ children }: { readonly children: ReactNode }): ReactNode {
 }
 
 test("a create call finds its child in the parent's background by the call that started it", async () => {
-  installConnection(
+  installScripted(
     scriptedConnection({
       sessions: [childSession],
       views: new Map([
@@ -97,14 +97,14 @@ test("a create call finds its child in the parent's background by the call that 
           ],
         ],
       ]),
-    }).connection,
+    }),
   );
   const leave = [
-    sessionsWatch("all").subscribe(() => undefined),
-    sessionWatch(parent).subscribe(() => undefined),
+    sessionList("all").subscribe(() => undefined),
+    chatStore(parent).subscribe(() => undefined),
   ];
-  await sessionsWatch("all").first();
-  await sessionWatch(parent).first();
+  await sessionList("all").first();
+  await chatStore(parent).first();
 
   const html = renderToStaticMarkup(
     <Parent>
@@ -149,7 +149,7 @@ test("a child whose chat still reads as running shows how the parent's backgroun
     },
   );
 
-  installConnection(
+  installScripted(
     scriptedConnection({
       sessions: [lagging],
       views: new Map([
@@ -170,16 +170,16 @@ test("a child whose chat still reads as running shows how the parent's backgroun
           ],
         ],
       ]),
-    }).connection,
+    }),
   );
 
   const leave = [
-    sessionsWatch("all").subscribe(() => undefined),
-    sessionWatch(parent).subscribe(() => undefined),
+    sessionList("all").subscribe(() => undefined),
+    chatStore(parent).subscribe(() => undefined),
   ];
 
-  await sessionsWatch("all").first();
-  await sessionWatch(parent).first();
+  await sessionList("all").first();
+  await chatStore(parent).first();
 
   const html = renderToStaticMarkup(
     <Parent>

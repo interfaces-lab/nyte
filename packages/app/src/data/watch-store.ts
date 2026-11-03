@@ -1,8 +1,9 @@
 import type { Connection } from "@nyte-ai/sdk";
+import type { HostConnection } from "@nyte-ai/sdk/client";
 import { useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { countWork } from "../lib/work-counts.ts";
-import { connected, registries } from "./connection.ts";
+import { connected, liveConnected, registries } from "./connection.ts";
 
 export interface WatchState<T> {
   readonly value: T | undefined;
@@ -241,6 +242,19 @@ const RETAINED_WATCHES = 16;
 export function watchFamily<K extends string, T>(
   open: (connection: Connection, key: K) => AsyncIterable<T>,
 ) {
+  return storeFamily(connected, open);
+}
+
+export function liveFamily<K extends string, T>(
+  open: (live: HostConnection, key: K) => AsyncIterable<T>,
+) {
+  return storeFamily(liveConnected, open);
+}
+
+function storeFamily<C, K extends string, T>(
+  connect: () => Promise<C>,
+  open: (connection: C, key: K) => AsyncIterable<T>,
+) {
   const stores = new Map<K, WatchStore<T>>();
 
   const prune = (): void => {
@@ -264,7 +278,7 @@ export function watchFamily<K extends string, T>(
     if (existing !== undefined) return existing;
 
     const store: WatchStore<T> = new WatchStore(
-      async () => open(await connected(), key),
+      async () => open(await connect(), key),
       () => {
         if (stores.get(key) === store) {
           stores.delete(key);
@@ -279,6 +293,78 @@ export function watchFamily<K extends string, T>(
     prune();
 
     return store;
+  };
+}
+
+export interface Opened<T> {
+  read(): T | null;
+  close(): void;
+}
+
+export function liveValues<T>(open: (changed: () => void) => Opened<T>): AsyncIterable<T> {
+  return {
+    [Symbol.asyncIterator]() {
+      let dirty = true;
+      let closed = false;
+      let last: T | null = null;
+      let wake: (() => void) | null = null;
+
+      const resume = (): void => {
+        const waiting = wake;
+        wake = null;
+        waiting?.();
+      };
+
+      const opened = open(() => {
+        dirty = true;
+        resume();
+      });
+
+      const readOrClose = (): T | null => {
+        try {
+          return opened.read();
+        } catch (cause) {
+          closed = true;
+          opened.close();
+          throw cause;
+        }
+      };
+
+      return {
+        async next(): Promise<IteratorResult<T>> {
+          for (;;) {
+            if (closed) return { done: true, value: undefined };
+
+            if (dirty) {
+              dirty = false;
+              const value = readOrClose();
+
+              if (value !== null && value !== last) {
+                last = value;
+
+                return { done: false, value };
+              }
+
+              continue;
+            }
+
+            await new Promise<void>((resolve) => {
+              wake = resolve;
+            });
+          }
+        },
+        async return(): Promise<IteratorResult<T>> {
+          if (!closed) {
+            closed = true;
+            opened.close();
+          }
+
+          resume();
+
+          return { done: true, value: undefined };
+        },
+      };
+    },
   };
 }
 

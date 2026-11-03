@@ -5,9 +5,8 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { asId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
-import { scriptedConnection } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
-import { installConnection } from "../data/connection.ts";
 import { queryClient } from "../data/query-client.ts";
 import { createAppRouter } from "../shell/routes.tsx";
 import { tabPlace, tabPlaces } from "./model.ts";
@@ -24,11 +23,11 @@ const DELETED = asId<"session">("deleted");
 
 const others = Array.from({ length: 50 }, (_, index) => sessionRow(`other-${String(index)}`));
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: [...others, sessionRow("archived", { archived: true })],
     session: (id) => (id === quiet.id ? { info: async () => quiet } : {}),
-  }).connection,
+  }),
 );
 
 function Sync(): null {

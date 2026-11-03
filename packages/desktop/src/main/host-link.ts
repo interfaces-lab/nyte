@@ -1,7 +1,8 @@
 import { operationsDigest, sdk } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk/client";
 import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
-import { socketFetch } from "./host-socket.ts";
+import type { SocketLike } from "../shared/host-port.ts";
+import { socketDial, socketFetch } from "./host-socket.ts";
 
 export type HostLinkState =
   | { readonly kind: "connecting" }
@@ -16,12 +17,14 @@ const RETRY_MS = [250, 500, 1_000, 2_000] as const;
 
 export class HostLink {
   readonly fetch: (request: Request) => Promise<Response>;
+  readonly dial: (path: string) => SocketLike;
   readonly #changed: (state: HostLinkState) => void;
   readonly #stop = new AbortController();
   #state: HostLinkState = { kind: "connecting" };
 
   constructor(socket: string, changed: (state: HostLinkState) => void) {
     this.fetch = socketFetch(socket);
+    this.dial = socketDial(socket);
     this.#changed = changed;
   }
 

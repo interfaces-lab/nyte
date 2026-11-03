@@ -7,8 +7,7 @@ import { createRoot } from "react-dom/client";
 import type { Execution, Message } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { queryClient } from "../../data/query-client.ts";
-import { installConnection } from "../../data/connection.ts";
-import { scriptedConnection } from "../../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { SubagentCitation } from "../tools/subagent-call.tsx";
 import { transcriptRows, type TurnItemRow } from "./transcript-rows.ts";
 import { TurnItemView } from "./turn-view.tsx";
@@ -119,7 +118,7 @@ const working = sessionRow("working", { name: "Map the core", parent: asId("pare
 
 const finished = sessionRow("finished", { name: "Map the app", parent: asId("parent") }, COMPLETED);
 
-installConnection(scriptedConnection({ sessions: [working, finished] }).connection);
+installScripted(scriptedConnection({ sessions: [working, finished] }));
 
 function Completion({ row }: { row: TurnItemRow | undefined }): ReactElement | null {
   if (row === undefined) return null;

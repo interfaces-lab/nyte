@@ -7,7 +7,6 @@ import { createRoot } from "react-dom/client";
 import type { ModelCatalogView, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { HostState } from "../../contract/nyte.ts";
-import { installConnection } from "../../data/connection.ts";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
@@ -15,7 +14,7 @@ import { SessionScreen } from "../../panes/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import { tabPlace } from "../../tabs/model.ts";
 import { windowTabs } from "../../tabs/window-tabs.ts";
-import { scriptedConnection } from "../../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { sessionRow, sessionView } from "../../../test/view-fixtures.ts";
 
 const first = sessionRow("preview-first", { name: "First" });
@@ -28,7 +27,7 @@ const refuse = async (): Promise<never> => {
   throw new Error("Not scripted.");
 };
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: [first, second],
     views: new Map([
@@ -49,7 +48,7 @@ installConnection(
         };
       },
     }),
-  }).connection,
+  }),
 );
 
 let renderFailure: unknown;

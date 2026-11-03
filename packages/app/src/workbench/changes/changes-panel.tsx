@@ -19,7 +19,7 @@ import {
 } from "../../data/vcs.ts";
 import { useSessionRow } from "../../data/session-rows.ts";
 import { conversationTurns } from "../../chat/transcript/turns.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { usePaneControllerSnapshot } from "../../panes/pane-context.tsx";
 import { activeSelection } from "../../panes/pane-layout.ts";
@@ -585,7 +585,7 @@ function ChangesPanelView({
 function SessionChangesPanel(
   props: ChangesPanelProps & { readonly sessionId: SessionId },
 ): ReactElement {
-  const store = sessionWatch(props.sessionId);
+  const store = chatStore(props.sessionId);
 
   const turnOptions = useWatchSelect(
     store,

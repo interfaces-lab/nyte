@@ -1,8 +1,24 @@
 import { request as httpRequest } from "node:http";
 import type { IncomingMessage, OutgoingHttpHeaders } from "node:http";
+import { SOCKET_LIMITS } from "@nyte-ai/schema";
+import type { SocketLike } from "../shared/host-port.ts";
+import WebSocket from "ws";
 
 export function socketFetch(path: string): (request: Request) => Promise<Response> {
   return (request) => send(path, request);
+}
+
+/** Opens a WebSocket to the host's socket. A `ws` socket throws an `error` event nobody listens for, which crashes main while the host is down, so the error is dropped: the `close` that follows it tells the window. */
+export function socketDial(path: string): (target: string) => SocketLike {
+  return (target) => {
+    const socket = new WebSocket(`ws+unix://${path}:${target}`, {
+      maxPayload: SOCKET_LIMITS.maxFrameBytes,
+    });
+
+    socket.on("error", () => undefined);
+
+    return socket;
+  };
 }
 
 async function send(path: string, request: Request): Promise<Response> {

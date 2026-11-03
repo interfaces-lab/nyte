@@ -120,7 +120,7 @@ async function readAsDesktop(host: Host, session: SessionId): Promise<void> {
 
   try {
     const chat = reader.session(session);
-    const tip = (await chat.view()).heads.find((head) => head.name === "main")?.tip;
+    const tip = (await chat.info()).heads.find((head) => head.name === "main")?.tip;
 
     if (tip?.kind !== "commit") throw new Error(`Chat ${session} has no tip to read`);
     await chat.see(tip.id);

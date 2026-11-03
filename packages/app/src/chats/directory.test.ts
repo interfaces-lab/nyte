@@ -57,25 +57,6 @@ test("each chat takes one title rule, its parent, and the status of its main hea
   expect(chats.get(named.id)).toMatchObject({ title: "Release", status: { kind: "stopped" } });
 });
 
-test("an open view's heads replace the listed ones as a unit, and closing it hands back the list", () => {
-  const listed = sessionRow("open");
-  const views = new Map([[listed.id, { heads: heads(LIVE, true) }]]);
-  const open = chatsFor([listed], { views });
-
-  expect(open.get(listed.id)).toMatchObject({
-    status: { kind: "working" },
-    unreadTip: { head: main, commit: tip },
-  });
-  expect(chatsFor([listed], {}, open).get(listed.id)).toMatchObject({
-    status: { kind: "completed" },
-    unreadTip: null,
-  });
-
-  const headless = new Map([[listed.id, { heads: [] }]]);
-
-  expect(chatsFor([listed], { views: headless }).get(listed.id)?.status.kind).toBe("idle");
-});
-
 test("a chat reads as its own run ended whatever its subagents do, and carries its background counts", () => {
   const root = sessionRow("root", { heads: heads(FAILED, false, { working: 1, waiting: 0 }) });
 

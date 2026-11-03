@@ -119,7 +119,8 @@ function mouse(target: EventTarget, type: string, x: number, y: number): void {
 export async function run(): Promise<string> {
   const id = "add-to-chat-terminal";
   const shell = shellJob();
-  const scripted = scriptedConnection({}).connection;
+  const scriptedSet = scriptedConnection({});
+  const scripted = scriptedSet.connection;
   const workspace = asId<"workspace">("terminal-workspace");
 
   const connection: Connection = {
@@ -140,7 +141,7 @@ export async function run(): Promise<string> {
     `nyte.terminal.${id}`,
     JSON.stringify({ workspace, key: "shell", printed: "" }),
   );
-  installConnection(connection);
+  installConnection(connection, scriptedSet.live);
 
   const container = document.createElement("div");
   container.style.cssText = "display:flex;flex-direction:column;height:480px;width:720px";

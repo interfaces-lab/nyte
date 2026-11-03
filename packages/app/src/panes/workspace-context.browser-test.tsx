@@ -15,7 +15,7 @@ import { useVcsLog } from "../data/vcs.ts";
 import { WorkspaceContext } from "./workspace-context.tsx";
 import "../theme/global.css";
 import "../theme/tokens.stylex.ts";
-import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 
 function folder(
@@ -100,7 +100,7 @@ function rows(menu: Element): readonly string[] {
 async function checkMenu(): Promise<string> {
   queryClient.clear();
   queryClient.setQueryData(keys.host, { workspace: undefined });
-  installConnection(scriptedConnection({ workspaces, sessions }).connection);
+  installScripted(scriptedConnection({ workspaces, sessions }));
   const container = document.createElement("div");
   container.style.cssText = "position:fixed;left:0;bottom:0;padding:16px";
   document.body.style.cssText = "margin:0";
@@ -303,15 +303,18 @@ async function checkBranches(): Promise<string> {
   queryClient.setQueryData(keys.host, {
     workspace: { id: asId<"workspace">("nyte"), path: "/u/dev/nyte", name: "nyte" },
   });
-  const { connection } = scriptedConnection({ workspaces, sessions, git });
+  const { connection, live } = scriptedConnection({ workspaces, sessions, git });
 
-  installConnection({
-    ...connection,
-    workspace: (id) => ({
-      ...connection.workspace(id),
-      files: async () => ({ kind: "available", api: files }),
-    }),
-  });
+  installConnection(
+    {
+      ...connection,
+      workspace: (id) => ({
+        ...connection.workspace(id),
+        files: async () => ({ kind: "available", api: files }),
+      }),
+    },
+    live,
+  );
   const container = document.createElement("div");
   container.style.cssText = "position:fixed;left:0;bottom:0;padding:16px";
   document.body.append(container);
@@ -398,7 +401,7 @@ async function checkPinnedHistory(): Promise<string> {
     ["7b3e5d2a1f", "topic"],
   ]);
 
-  installConnection(
+  installScripted(
     scriptedConnection({
       workspaces,
       sessions,
@@ -421,7 +424,7 @@ async function checkPinnedHistory(): Promise<string> {
           };
         },
       },
-    }).connection,
+    }),
   );
   const container = document.createElement("div");
   document.body.append(container);

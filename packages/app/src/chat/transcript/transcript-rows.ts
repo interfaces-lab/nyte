@@ -7,6 +7,7 @@ import type {
 } from "@nyte-ai/plugin/client/presentation";
 import type { ToolCallDensity } from "../../preferences/index.ts";
 import type { WatchStore } from "../../data/watch-store.ts";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import { CHANGES_VISIBLE_FILES } from "../../diff/change-tree.ts";
 import { conversationTurns } from "./turns.ts";
 import type { TurnMessages } from "./turns.ts";
@@ -84,7 +85,7 @@ function present<T extends UserMessage>(messages: readonly T[]): readonly T[] {
   return messages.length === 0 ? NO_USERS : messages;
 }
 
-function runState(view: SessionView | undefined) {
+function runState(view: ProjectedView | undefined) {
   const execution = view?.execution;
 
   return {
@@ -102,7 +103,7 @@ function readWorking(running: boolean, held: boolean, prompts: readonly UserMess
   );
 }
 
-export function conversationMessages(view: SessionView | undefined) {
+export function conversationMessages(view: ProjectedView | undefined) {
   const { running } = runState(view);
   const held = view?.reportsHeld ?? false;
   const turns = new Set(view?.turns.map((turn) => turn.id));
@@ -358,7 +359,9 @@ export function transcriptRows({
   return rows;
 }
 
-type SessionState = ReturnType<WatchStore<SessionView>["getState"]>;
+type ProjectedView = HeadView & { readonly seq: number };
+
+type SessionState = ReturnType<WatchStore<ProjectedView>["getState"]>;
 
 type ConversationMessages = ReturnType<typeof conversationMessages>;
 
