@@ -152,6 +152,12 @@ Every operation declares who may call it and from where:
 
 MCP sessions are a separate audience. An MCP session calls only operations with `mcp` set, through `/mcp`, and every other route refuses its token. MCP tools are built from those rows of the operations table, never declared by hand, so a tool and its operation cannot drift.
 
+### Outside agents
+
+The host serves MCP at `/mcp` at protocol revision 2026-07-28, and answers 2025-era clients per request through the same endpoint. It is an OAuth 2.1 resource server and its own authorization server: protected resource metadata (RFC 9728), authorization server metadata (RFC 8414) advertising `client_id_metadata_document_supported` and `authorization_response_iss_parameter_supported`, PKCE S256, `resource` on authorize and token (RFC 8707), and `iss` on the authorization response (RFC 9207). A client registers by metadata document, an https `client_id` the host fetches and checks; dynamic registration (RFC 7591) stays as the deprecated fallback and requires `application_type`. The scopes are `nyte:read` and `nyte:write`.
+
+The owner consents on the local socket, never through the browser page: the authorize page shows a code and waits until `mcp.approve` or `mcp.deny` answers it. A grant is read-only or carries a ceiling, one of the host's approval modes. A read-only grant sees only `mcp: read` tools. A session a grant starts records the grant and its ceiling, its runs ask for approval under the stricter of the host's setting and that ceiling, and the grant's write tools reach only the sessions it started. `mcp.grants.list` and `mcp.grants.revoke` are local and owner-only.
+
 Principals come from the transport, never from what the client claims: the local socket's peer credentials, a paired device's key, or the tailnet's `WhoIs`. A tagged tailnet node is a machine, not a person.
 
 ## Clients as principals
