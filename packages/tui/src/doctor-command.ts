@@ -156,7 +156,7 @@ async function checkSecrets(): Promise<DoctorCheck> {
   );
 }
 
-/** Starts a host on the real store, asks it for the model catalog, and closes it. */
+/** Attaches to the machine's host, starting it when none runs, and asks it for the model catalog. */
 async function checkHostAndProviders(): Promise<readonly DoctorCheck[]> {
   const started = Date.now();
   let host;
@@ -175,7 +175,7 @@ async function checkHostAndProviders(): Promise<readonly DoctorCheck[]> {
     ];
 
     return [
-      ok("host", `started on ${tilde(join(nyteHome(), "nyte.db"))}, answered in ${seconds}s`),
+      ok("host", `${host.endpoint.url}, answered in ${seconds}s`),
       providers.length > 0
         ? ok("providers", providers.join(", "))
         : { id: "providers", status: "fail", detail: "none has a credential", fix: "nyte login" },
@@ -185,7 +185,7 @@ async function checkHostAndProviders(): Promise<readonly DoctorCheck[]> {
       {
         id: "host",
         status: "fail",
-        detail: `couldn't start: ${errorMessage(cause)}`,
+        detail: `couldn't reach: ${errorMessage(cause)}`,
         fix: "nyte triage",
       },
       { id: "providers", status: "warn", detail: "unknown without a host" },

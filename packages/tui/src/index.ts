@@ -514,7 +514,7 @@ async function main(): Promise<PrintOutcome | undefined> {
 
   if (command === "service") {
     output.error(
-      "The Nyte service is gone: every nyte and Nyte.app opens your chats itself, so there is nothing to start or stop.\n",
+      "The Nyte service is gone: nyte and Nyte.app attach to this machine's host, and nyte starts `nyte host` when none runs, so there is nothing to start or stop.\n",
     );
 
     return undefined;
