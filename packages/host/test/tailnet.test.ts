@@ -204,7 +204,7 @@ function warnings(): readonly string[] {
   const seen: string[] = [];
 
   const listener = (warning: Error) => {
-    if ("code" in warning && warning.code === "NYTE_TAILNET") seen.push(warning.message);
+    seen.push(warning.message);
   };
 
   process.on("warning", listener);
@@ -214,6 +214,9 @@ function warnings(): readonly string[] {
 
   return seen;
 }
+
+const sidecarLog = (home: string) =>
+  readFile(join(home, ".nyte", "tailnet", "sidecar.log"), "utf8").catch(() => "");
 
 const statusCheck = compile(TailnetStatusType);
 
@@ -458,20 +461,22 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
     const { home, binary } = await setup("garbage");
     const host = await open(home, binary);
     const socket = await localSocket(host, home);
-    const logged = warnings();
     await enable(socket);
 
     expect((await until(() => status(socket), stateIs("stopped"))).body).toMatchObject({
       reason: "invalid_status",
     });
-    expect(logged.find((line) => line.includes('"sideways"'))).toBeDefined();
+    await until(
+      () => sidecarLog(home),
+      (log) => log.includes('"sideways"'),
+    );
     await until(
       () => runs(home),
       (found) => found.length === 2,
     );
   });
 
-  it("logs the node's stderr and attaches its last 4 KiB to the stopped status", async () => {
+  it("logs the node's stderr to sidecar.log, not process warnings, and attaches its last 4 KiB to the stopped status", async () => {
     const { home, binary } = await setup("crash");
     const host = await open(home, binary);
     const socket = await localSocket(host, home);
@@ -484,7 +489,16 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
       reason: "exited",
       detail: "nyte-tailnet exited with code 3.",
     });
-    expect(logged).toEqual(expect.arrayContaining(["boom", "last words"]));
+
+    const log = await until(
+      () => sidecarLog(home),
+      (text) => text.includes("last words"),
+    );
+
+    expect(log).toContain("boom\n");
+    expect(
+      logged.filter((message) => message.includes("boom") || message.includes("last words")),
+    ).toEqual([]);
 
     const tail = readStderr(stopped);
 
