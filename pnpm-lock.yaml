@@ -414,6 +414,9 @@ importers:
       '@nyte-ai/plugin':
         specifier: workspace:*
         version: link:../plugin
+      '@nyte-ai/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema
@@ -424,9 +427,6 @@ importers:
       '@nyte-ai/connect':
         specifier: workspace:*
         version: link:../connect
-      '@nyte-ai/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5

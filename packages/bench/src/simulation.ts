@@ -4,14 +4,28 @@ import { join } from "node:path";
 import type { Models } from "@nyte-ai/ai/models";
 import type { Host, Plugin } from "@nyte-ai/core";
 import { openApprovals, PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
-import { asId } from "@nyte-ai/schema";
-import type { ReceiptId, SessionId, SessionInfo, SessionView } from "@nyte-ai/schema";
+import type { OpenApproval } from "@nyte-ai/plugin/approvals/schema";
+import { decodeOutput, encodeInput, openHostSocket, openSessionStore } from "@nyte-ai/protocol";
+import type { SessionStore } from "@nyte-ai/protocol";
+import { asId, compile, SessionChangeType, SOCKET_PATH, withJson } from "@nyte-ai/schema";
+import type {
+  HeadName,
+  ReceiptId,
+  SessionChange,
+  SessionId,
+  SessionInfo,
+  SessionView,
+} from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { openHost, sqliteStore } from "@nyte-ai/host";
 
 const SessionIdSchema = Type.String({ minLength: 1 });
+
+const TAIL = 200;
+
+const changes = compile(withJson(SessionChangeType));
 
 const CommandSchema = Type.Union([
   Type.Object({
@@ -103,6 +117,7 @@ export async function simulate(input: {
   let running: Awaited<ReturnType<typeof boot>> | null = await boot();
   await running.host.settings.apply(PERMISSIONS, "full");
   let port: number | null = null;
+  let address: string | null = null;
   const receipts = new Map<SessionId, { settled(): Promise<unknown> }>();
 
   const current = (): Host => {
@@ -112,6 +127,8 @@ export async function simulate(input: {
   };
 
   const listen = async (): Promise<string> => {
+    if (address !== null) return address;
+
     const listener = await current().listen({
       transport: { kind: "http", hostname: "127.0.0.1", port: port ?? 0 },
       auth: { kind: "token", token },
@@ -119,6 +136,7 @@ export async function simulate(input: {
 
     if (listener.address === null) throw new Error("The simulated host has no address.");
     port = Number(new URL(listener.address).port);
+    address = listener.address;
 
     return listener.address;
   };
@@ -126,6 +144,7 @@ export async function simulate(input: {
   const stop = async (): Promise<void> => {
     const stopping = running;
     running = null;
+    address = null;
     receipts.clear();
 
     if (stopping === null) return;
@@ -159,17 +178,10 @@ export async function simulate(input: {
 
       case "approve": {
         const session = current().session(asId<"session">(command.session));
+        const open = await waitForApproval(await listen(), token, session.id, session.name);
+        await session.part(open.part).act(command.decision, {});
 
-        for await (const view of session.watch()) {
-          const [open] = openApprovals(view);
-
-          if (open === undefined) continue;
-          await session.part(open.part).act(command.decision, {});
-
-          return { kind: "approved", tool: open.tool };
-        }
-
-        throw new Error("The session's watch ended before an approval opened.");
+        return { kind: "approved", tool: open.tool };
       }
 
       case "interrupt": {
@@ -225,4 +237,69 @@ export async function simulate(input: {
     drive,
     [Symbol.asyncDispose]: dispose,
   };
+}
+
+async function waitForApproval(
+  address: string,
+  token: string,
+  session: SessionId,
+  head: HeadName,
+): Promise<OpenApproval> {
+  const url = new URL(SOCKET_PATH, address);
+  url.protocol = "ws:";
+
+  const socket = await openHostSocket({
+    socket: new WebSocket(url.href, { headers: { Authorization: `Bearer ${token}` } }),
+    client: { kind: "other", name: "simulation", version: "0.0.0", actions: [] },
+  });
+
+  const scope = `session/${session}`;
+  const found = Promise.withResolvers<OpenApproval>();
+  found.promise.catch(() => undefined);
+  const pending: SessionChange[] = [];
+  let store: SessionStore | null = null;
+
+  const check = (current: SessionStore): void => {
+    const [open] = openApprovals({ parts: Array.from(current.snapshot().rows.parts.values()) });
+
+    if (open !== undefined) found.resolve(open);
+  };
+
+  socket.onEvent((event) => {
+    if (event.scope !== scope || event.kind !== "change" || !changes.Check(event)) return;
+
+    if (store === null) {
+      pending.push(event);
+
+      return;
+    }
+
+    store.apply(event);
+    check(store);
+  });
+  void socket.closed.then(() =>
+    found.reject(new Error("The host connection closed before an approval opened.")),
+  );
+
+  try {
+    await socket.call("events.subscribe", { scopes: [scope] });
+
+    const window = decodeOutput(
+      "head.read",
+      await socket.call(
+        "head.read",
+        encodeInput("head.read", { session, head, window: { tail: TAIL } }),
+      ),
+    );
+
+    const opened = openSessionStore(window);
+    store = opened;
+
+    for (const change of pending.splice(0)) opened.apply(change);
+    check(opened);
+
+    return await found.promise;
+  } finally {
+    socket.close();
+  }
 }
