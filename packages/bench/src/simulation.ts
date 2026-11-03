@@ -19,6 +19,7 @@ import type {
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
+import WebSocket from "ws";
 import { openHost, sqliteStore } from "@nyte-ai/host";
 
 const SessionIdSchema = Type.String({ minLength: 1 });
