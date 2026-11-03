@@ -6,10 +6,9 @@ import {
   withJson,
 } from "@nyte-ai/schema";
 import type { Activation, Json, SessionId, SessionInfo, SessionsChange } from "@nyte-ai/schema";
-import { dev } from "@nyte-ai/core";
-import { openDirectoryStore } from "@nyte-ai/protocol";
+import { asSdkError, openDirectoryStore } from "@nyte-ai/protocol";
 import type { DirectoryStore, HostSocket, OperationInput, SocketEvent } from "@nyte-ai/protocol";
-import { keepRows, listenerSet, request, sameJson } from "./live.ts";
+import { freshnessCell, keepRows, listenerSet, readRetries, request, sameJson } from "./live.ts";
 import type { Freshness, Join, Live } from "./live.ts";
 
 export type SessionsWindow = Omit<OperationInput<"sessions.read">, "resume">;
@@ -34,7 +33,9 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
   let store: DirectoryStore | null = null;
   let live: ReadonlyMap<string, Activation> = new Map();
   let snapshot: SessionsSnapshot | null = null;
-  let freshness: Freshness = { kind: "stale", since: Date.now() };
+  const freshness = freshnessCell();
+  const retries = readRetries();
+  let subscribe: () => Promise<void> = async () => undefined;
   let socket: HostSocket | null = null;
   let stop: (() => void) | null = null;
   let pending: SessionsChange[] = [];
@@ -42,20 +43,18 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
 
   const settle = (current: DirectoryStore): void => {
     const next = rebuild(current, live, snapshot);
-    const moved = freshness.kind === "stale" || freshness.seq !== current.seq;
+    const moved = freshness.fresh(current.seq);
 
     if (next === snapshot && !moved) return;
     snapshot = next;
-
-    if (moved) freshness = { kind: "fresh", seq: current.seq };
     listeners.notify();
   };
 
-  const read = async (attached: HostSocket, subscribed: Promise<void>): Promise<void> => {
+  const read = async (attached: HostSocket): Promise<void> => {
     reading = true;
 
     try {
-      await subscribed;
+      await subscribe();
 
       const answer = await request(attached, "sessions.read", {
         ...window,
@@ -68,12 +67,16 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
       else store.resume(answer);
 
       reading = false;
+      retries.reset();
 
       for (const change of pending.splice(0)) store.apply(change);
       settle(store);
     } catch (error) {
-      dev("sdk", "sessions read failed", {
-        error: error instanceof Error ? error.message : String(error),
+      if (socket !== attached) return;
+
+      if (freshness.stale(asSdkError(error))) listeners.notify();
+      retries.failed(() => {
+        if (socket === attached) void read(attached);
       });
     }
   };
@@ -102,11 +105,12 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
   };
 
   const leave = join("host", {
-    attach(attached, subscribed) {
+    attach(attached, subscribing) {
       socket = attached;
+      subscribe = subscribing;
       pending = [];
       stop = attached.onEvent(receive);
-      void read(attached, subscribed);
+      void read(attached);
     },
     detach() {
       stop?.();
@@ -114,19 +118,19 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
       socket = null;
       pending = [];
       reading = false;
+      retries.reset();
 
-      if (freshness.kind === "stale") return;
-      freshness = { kind: "stale", since: Date.now() };
-      listeners.notify();
+      if (freshness.stale(null)) listeners.notify();
     },
   });
 
   return {
     subscribe: listeners.subscribe,
     snapshot: () => snapshot,
-    freshness: () => freshness,
+    freshness: freshness.current,
     close() {
       leave();
+      retries.reset();
       listeners.clear();
     },
   };

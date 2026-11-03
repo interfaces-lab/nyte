@@ -266,6 +266,35 @@ describe("a head store", () => {
   });
 });
 
+describe("a failed read", () => {
+  it("leaves the store stale with the read's error and retries it while the socket stays open", async () => {
+    const served = await serve();
+    const session = await startSession(served);
+    let failed = false;
+
+    const connection = attach(served.listener, (request) => {
+      const socket = global(request);
+      const send = socket.send.bind(socket);
+
+      return Object.assign(socket, {
+        send(data: string) {
+          const breaks = !failed && data.includes('"op":"head.read"');
+          failed ||= breaks;
+          send(breaks ? data.replace(`"tail":${TAIL}`, '"tail":"many"') : data);
+        },
+      });
+    });
+
+    const store = watched(connection, session);
+
+    await vi.waitFor(() =>
+      expect(store.freshness()).toMatchObject({ kind: "stale", error: { code: "invalid" } }),
+    );
+    expect(connection.health.snapshot().kind).toBe("open");
+    await matchesRead(connection, store, session);
+  });
+});
+
 describe("a sessions store", () => {
   it("resumes the host's session rows after a drop and ends equal to a fresh sessions.read", async () => {
     const served = await serve();

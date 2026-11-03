@@ -28,7 +28,7 @@ import { openSessions } from "./live-sessions.ts";
 import type { SessionsStore, SessionsWindow } from "./live-sessions.ts";
 import { openHeadStore } from "./live-head.ts";
 import type { HeadStore } from "./live-head.ts";
-import { listenerSet, request } from "./live.ts";
+import { listenerSet, request, retryDelay } from "./live.ts";
 import type { Attachment, Live } from "./live.ts";
 
 export type Health =
@@ -101,10 +101,6 @@ type Joined = { readonly scope: string; readonly attachment: Attachment };
 type Waiter = { resolve(socket: HostSocket): void; reject(error: SdkError): void };
 
 type Offered = { readonly action: ActionDeclaration; readonly handler: ActionHandler };
-
-const RETRY_BASE_MS = 1_000;
-
-const RETRY_MAX_MS = 30_000;
 
 const STABLE_MS = 30_000;
 
@@ -268,7 +264,8 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
       void subscribe(socket, scope);
     }
 
-    for (const entry of joined) entry.attachment.attach(socket, subscribe(socket, entry.scope));
+    for (const entry of joined)
+      entry.attachment.attach(socket, () => subscribe(socket, entry.scope));
 
     if (texts.size > 0) openText(socket);
   };
@@ -321,8 +318,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
 
   const schedule = (error: SdkError): void => {
     attempt += 1;
-    const ceiling = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt);
-    const delay = ceiling / 2 + (Math.random() * ceiling) / 2;
+    const delay = retryDelay(attempt);
     show({ kind: "retrying", attempt, at: Date.now() + delay, error });
     retryTimer = setTimeout(() => void connect(), delay);
   };
@@ -352,7 +348,9 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     joined.add(entry);
     scopes.set(scope, (scopes.get(scope) ?? 0) + 1);
 
-    if (current !== null) attachment.attach(current, subscribe(current, scope));
+    const attached = current;
+
+    if (attached !== null) attachment.attach(attached, () => subscribe(attached, scope));
 
     return () => {
       if (!joined.delete(entry)) return;
