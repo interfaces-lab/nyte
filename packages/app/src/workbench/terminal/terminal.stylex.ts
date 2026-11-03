@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
 import { media, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const terminalStyles = create({
   root: {
@@ -33,6 +33,31 @@ export const terminalStyles = create({
     paddingInline: space.s1_5,
     overflow: "hidden",
     caretColor: "transparent",
+    outlineStyle: "none",
+  },
+  /** The padded screen's content box, which the canvas fills and pointer positions measure from. */
+  stage: { position: "relative", width: "100%", height: "100%" },
+  /** Off-screen until an IME composes, when it shows the preedit text at the cursor. */
+  input: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: 0,
+    borderWidth: 0,
+    outlineStyle: "none",
+    resize: "none",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    opacity: 0,
+    pointerEvents: "none",
+    caretColor: "transparent",
+    fontFamily: type.fontMono,
+    fontSize: type.fontCode,
+    color: role.contentPrimary,
+    backgroundColor: role.bgBase,
   },
   scrollbar: {
     position: "absolute",

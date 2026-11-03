@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { collectErrors } from "../utils/errors.ts";
 import { pair } from "../utils/pairing.ts";
@@ -65,5 +68,31 @@ test("a paired browser opens a terminal on the host's Home folder", async ({ pag
     await expect(dialog).toHaveCount(0);
   });
 
+  expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
+});
+
+test("Shift+Enter reaches a program that asked for the Kitty keyboard protocol", async ({
+  page,
+}) => {
+  await using cleanup = new AsyncDisposableStack();
+  const errors = collectErrors(page);
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "nyte-e2e-terminal-keys-")));
+  cleanup.defer(() => rm(directory, { recursive: true, force: true }));
+  const received = join(directory, "keys");
+  await pair(page);
+
+  await page
+    .getByRole("navigation", { name: "Workbench navigation" })
+    .getByRole("button", { name: "Terminal", exact: true })
+    .click();
+  const terminal = page.getByRole("tabpanel").getByRole("region", { name: "Terminal" });
+  await terminal.getByRole("textbox", { name: "Terminal input" }).focus();
+  await page.keyboard.type(
+    `stty raw -echo; printf '\\033[>1u\\033]0;Kitty keys\\007'; head -c 7 > ${JSON.stringify(received)}; printf '\\033[<u'; stty sane; exit\r`,
+  );
+  await expect(page.getByRole("tab", { name: "Kitty keys", exact: true })).toBeVisible();
+  await page.keyboard.press("Shift+Enter");
+  await expect(terminal.getByRole("status")).toHaveText(/Shell exited/u);
+  expect(await readFile(received, "utf8")).toBe("\u001b[13;2u");
   expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
 });

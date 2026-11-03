@@ -1,16 +1,10 @@
-import { FitAddon, Terminal } from "ghostty-web";
-import type { Ghostty, ITerminalOptions, ITheme } from "ghostty-web";
+import type { Cursor, Mark } from "@nyte-ai/vt";
 import { serial } from "@nyte-ai/schema/serial";
 import { toast } from "@nyte-ai/ui/toast";
-import { preferences } from "../../preferences/index.ts";
-import { addToChat, addsToChat } from "../../references/add-to-chat.ts";
+import { props } from "@stylexjs/stylex";
+import { addToChat } from "../../references/add-to-chat.ts";
 import type { ExcerptReference } from "../../references/message-references.ts";
 import { errorMessage } from "../../contract/errors.ts";
-import { nyte } from "../../contract/nyte.ts";
-import { props } from "@stylexjs/stylex";
-import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import type { Tint } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   attachTerminalOutput,
   getTerminal,
@@ -19,503 +13,342 @@ import {
 } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 import { loadGhostty } from "./ghostty.ts";
+import { attachInput } from "./terminal-input.ts";
+import { attachPointer } from "./terminal-pointer.ts";
+import { openTerminalSurface } from "./terminal-surface.ts";
+import type { TerminalSurface } from "./terminal-surface.ts";
 import { terminalStyles } from "./terminal.stylex.ts";
-
-interface CommandMark {
-  readonly row: number;
-  readonly line: string;
-}
 
 interface TerminalView {
   readonly element: HTMLDivElement;
-  readonly terminal: Terminal;
-  readonly commands: CommandMark[];
-  fit(): void;
-  show(): void;
-  hide(): void;
-  wake(): void;
+  readonly surface: TerminalSurface;
+  readonly marks: Mark[];
+  attach(container: HTMLDivElement): void;
+  detach(): void;
+  focus(): void;
+  clear(): void;
+  redraw(): void;
 }
 
 const views = new Map<string, TerminalView>();
 
+const pending = new Map<string, Promise<TerminalView | undefined>>();
+
 const selectionListeners = new Map<string, Set<() => void>>();
+
+const encoder = new TextEncoder();
+
+const KEPT_MARKS = 200;
+
+/** Command output mirrors into its textarea for screen readers at most this often. */
+const MIRROR_MS = 250;
 
 function notifySelection(id: string): void {
   for (const listener of selectionListeners.get(id) ?? []) listener();
 }
 
-function terminalAppearance() {
-  const probe = document.createElement("span");
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = 1;
-  const context = canvas.getContext("2d");
-
-  if (context === null) throw new Error("Canvas rendering is unavailable");
-  document.documentElement.append(probe);
-
-  const resolve = (value: string, scope?: Tint): string => {
-    probe.className = scope === undefined ? "" : (props(surfaceTheme[scope]).className ?? "");
-    probe.style.color = value;
-
-    return getComputedStyle(probe).color;
-  };
-
-  const background = resolve(role.bgBase);
-
-  const color = (value: string, scope?: Tint): string => {
-    context.clearRect(0, 0, 1, 1);
-    context.fillStyle = background;
-    context.fillRect(0, 0, 1, 1);
-    context.fillStyle = resolve(value, scope);
-    context.fillRect(0, 0, 1, 1);
-
-    return (
-      "#" +
-      [...context.getImageData(0, 0, 1, 1).data]
-        .slice(0, 3)
-        .map((value) => value.toString(16).padStart(2, "0"))
-        .join("")
-    );
-  };
-
-  try {
-    const page = color(role.bgBase);
-    const ink = color(role.contentPrimary);
-    const dark = document.documentElement.dataset["displayMode"] === "dark";
-    const black = dark ? page : ink;
-    const white = dark ? ink : page;
-    probe.style.fontFamily = type.fontMono;
-    probe.style.fontSize = type.fontCode;
-    const font = getComputedStyle(probe);
-    const fontFamily = font.fontFamily;
-    const fontSize = Number.parseFloat(font.fontSize);
-
-    const theme = {
-      background: page,
-      foreground: ink,
-      cursor: ink,
-      selectionBackground: color(role.bgInteractivePrimaryTranslucent),
-      black,
-      red: color(role.contentSecondary, "red"),
-      green: color(role.contentSecondary, "green"),
-      yellow: color(role.contentSecondary, "yellow"),
-      blue: color(role.contentSecondary, "blue"),
-      magenta: color(role.contentSecondary, "pink"),
-      cyan: color(role.contentSecondary, "teal"),
-      white,
-      brightBlack: color(role.contentSecondary, "gray"),
-      brightRed: color(role.contentPrimary, "red"),
-      brightGreen: color(role.contentPrimary, "green"),
-      brightYellow: color(role.contentPrimary, "yellow"),
-      brightBlue: color(role.contentPrimary, "blue"),
-      brightMagenta: color(role.contentPrimary, "pink"),
-      brightCyan: color(role.contentPrimary, "teal"),
-      brightWhite: white,
-    } satisfies ITheme;
-
-    return { theme, fontFamily, fontSize };
-  } finally {
-    probe.remove();
-  }
+function running(tab: TerminalTab | undefined): boolean {
+  return tab !== undefined && tab.kind === "shell" && tab.state.kind === "running";
 }
 
-type ThemedTerminalOptions = Omit<
-  ITerminalOptions,
-  "ghostty" | "theme" | "colorScheme" | "fontFamily" | "fontSize" | "cursorStyle" | "cursorBlink"
->;
-
-export interface ThemedTerminal {
-  readonly terminal: Terminal;
-  readonly fit: FitAddon;
-  /** Stops following the appearance and cursor preferences and disposes the terminal. */
-  dispose(): void;
-}
-
-/**
- * Opens a ghostty terminal in `element` in the app's theme, code font and cursor preferences, and
- * keeps them current. `onRestyle` runs after the theme or font changes.
- */
-export function openThemedTerminal(
-  engine: Ghostty,
-  element: HTMLElement,
-  options: ThemedTerminalOptions,
-  onRestyle: () => void,
-): ThemedTerminal {
-  const root = document.documentElement;
-  const appearance = terminalAppearance();
-
-  const terminal = new Terminal({
-    ...options,
-    ghostty: engine,
-    cursorStyle: preferences.terminalCursorStyle.get(),
-    cursorBlink: preferences.terminalCursorBlink.get(),
-    theme: appearance.theme,
-    colorScheme: root.dataset["displayMode"] === "dark" ? "dark" : "light",
-    fontFamily: appearance.fontFamily,
-    fontSize: appearance.fontSize,
-  });
-
-  const fit = new FitAddon();
-  terminal.loadAddon(fit);
-  terminal.open(element);
-  let lastAppearance = "";
-
-  const restyle = new MutationObserver(() => {
-    const next = terminalAppearance();
-    const signature = JSON.stringify([root.dataset["displayMode"], next]);
-
-    if (signature === lastAppearance) return;
-    lastAppearance = signature;
-    terminal.options.theme = next.theme;
-    terminal.options.colorScheme = root.dataset["displayMode"] === "dark" ? "dark" : "light";
-    terminal.options.fontFamily = next.fontFamily;
-    terminal.options.fontSize = next.fontSize;
-    onRestyle();
-  });
-
-  restyle.observe(root, {
-    attributes: true,
-    attributeFilter: ["style", "class", "data-display-mode"],
-  });
-
-  const stopCursorStyle = preferences.terminalCursorStyle.subscribe(() => {
-    terminal.options.cursorStyle = preferences.terminalCursorStyle.get();
-  });
-
-  const stopBlink = preferences.terminalCursorBlink.subscribe(() => {
-    terminal.options.cursorBlink = preferences.terminalCursorBlink.get();
-  });
-
-  return {
-    terminal,
-    fit,
-    dispose() {
-      restyle.disconnect();
-      stopCursorStyle();
-      stopBlink();
-      terminal.dispose();
-    },
-  };
-}
-
-function takesInput(tab: TerminalTab): boolean {
-  return tab.kind === "shell" && (tab.state.kind === "running" || tab.state.kind === "starting");
-}
-
-async function createView(id: string): Promise<TerminalView | undefined> {
-  const engine = await loadGhostty();
+function createView(id: string): Promise<TerminalView | undefined> {
   const existing = views.get(id);
 
-  if (existing !== undefined) return existing;
+  if (existing !== undefined) return Promise.resolve(existing);
+  const created = pending.get(id) ?? buildView(id).finally(() => pending.delete(id));
+  pending.set(id, created);
+
+  return created;
+}
+
+async function buildView(id: string): Promise<TerminalView | undefined> {
+  const engine = await loadGhostty();
   const initialTab = getTerminal(id);
 
   if (initialTab === undefined) return undefined;
-  const commandOutput = initialTab.kind !== "shell";
+  const shell = initialTab.kind === "shell";
   const element = document.createElement("div");
   element.className = props(terminalStyles.screen).className ?? "";
-
-  const themed = openThemedTerminal(
-    engine,
-    element,
-    {
-      scrollback: preferences.terminalScrollback.get(),
-      smoothScrollDuration: 0,
-      convertEol: commandOutput,
-      disableStdin: commandOutput || !takesInput(initialTab),
-      scrollbar: false,
-    },
-    () => scheduleFit(),
-  );
-
-  const terminal = themed.terminal;
-  const fit = themed.fit;
-  const scrollbar = mountScrollbar(terminal, element);
-  terminal.pauseRendering();
-
-  if (commandOutput) terminal.write("\u001b[?25l");
-  element.removeAttribute("contenteditable");
-  element.removeAttribute("role");
-  element.removeAttribute("aria-label");
-  element.removeAttribute("aria-multiline");
   element.tabIndex = -1;
-  const focusInput = (): void => terminal.textarea?.focus({ preventScroll: true });
-  element.addEventListener("focus", focusInput);
-  terminal.textarea?.setAttribute(
-    "aria-label",
-    commandOutput ? "Command output" : "Terminal input",
-  );
-
-  if (commandOutput) terminal.textarea?.setAttribute("readonly", "");
-
+  const stage = document.createElement("div");
+  stage.className = props(terminalStyles.stage).className ?? "";
+  element.append(stage);
+  const textarea = createTextarea(shell);
+  const queue = serial();
+  const marks: Mark[] = [];
+  let attached = false;
+  let focused = false;
   let mirrorTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastSize = "";
+  let inputAt = "";
+
+  const send = (bytes: Uint8Array): void => {
+    if (bytes.length === 0) return;
+    void queue.run(() => terminalActions.write(id, bytes));
+  };
+
+  const sendToRunning = (bytes: Uint8Array): void => {
+    if (running(getTerminal(id))) send(bytes);
+  };
+
+  const placeInput = (cursor: Cursor | null): void => {
+    if (cursor === null) return;
+    const size = surface.cell();
+    const at = [cursor.x * size.width, cursor.y * size.height, size.height].join(":");
+
+    if (at === inputAt) return;
+    inputAt = at;
+    textarea.style.left = `${String(cursor.x * size.width)}px`;
+    textarea.style.top = `${String(cursor.y * size.height)}px`;
+    textarea.style.height = `${String(size.height)}px`;
+  };
+
+  const syncSize = (): void => {
+    const terminal = surface.terminal;
+    const size = `${String(terminal.cols)}:${String(terminal.rows)}`;
+
+    if (size === lastSize || !running(getTerminal(id))) return;
+    lastSize = size;
+    void terminalActions.resize(id, terminal.cols, terminal.rows).catch((cause: unknown) => {
+      toast.add({
+        type: "error",
+        title: "Couldn't resize terminal",
+        id: `terminal-resize-${id}`,
+        description: errorMessage(cause),
+      });
+    });
+  };
+
+  const surface = await openTerminalSurface(engine, stage, {
+    cursor: shell,
+    newlineMode: !shell,
+    reply: sendToRunning,
+    title: (title) => terminalActions.title(id, title),
+    painted(cursor) {
+      placeInput(cursor);
+      scrollbar.render();
+    },
+    resized() {
+      inputAt = "";
+      syncSize();
+    },
+  });
+
+  if (getTerminal(id) === undefined) {
+    surface.dispose();
+
+    return undefined;
+  }
+
+  const terminal = surface.terminal;
+  stage.append(textarea);
+  const scrollbar = mountScrollbar(surface, element);
 
   const mirrorNow = (): void => {
     clearTimeout(mirrorTimer);
     mirrorTimer = undefined;
 
-    if (!element.isConnected || terminal.textarea === undefined) return;
-    terminal.textarea.value = terminalPrinted(id);
+    if (element.isConnected) textarea.value = terminalPrinted(id);
   };
 
-  const mirrorOutput = (): void => {
-    if (mirrorTimer !== undefined || !element.isConnected) return;
-    mirrorTimer = setTimeout(mirrorNow, 250);
+  const mirror = (): void => {
+    if (shell || mirrorTimer !== undefined || !element.isConnected) return;
+    mirrorTimer = setTimeout(mirrorNow, MIRROR_MS);
   };
 
-  let shown = false;
-  let idleTimer: ReturnType<typeof setTimeout> | undefined;
-
-  const rest = (): void => {
-    if (document.hasFocus() && element.contains(document.activeElement)) return;
-    terminal.pauseRendering();
+  const disposeMarks = (): void => {
+    marks.splice(0).forEach((mark) => mark.dispose());
   };
 
-  const wake = (): void => {
-    if (!shown) return;
-    terminal.resumeRendering();
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(rest, 1000);
+  const markCommand = (): void => {
+    const mark = terminal.markCursorLine();
+
+    if (mark === null) return;
+    marks.push(mark);
+
+    if (marks.length > KEPT_MARKS) marks.shift()?.dispose();
   };
 
-  const wakeEvents = ["focusin", "focusout", "wheel", "pointerdown", "pointermove", "keydown"];
+  const focusInput = (): void => textarea.focus({ preventScroll: true });
 
-  for (const name of wakeEvents)
-    element.addEventListener(name, wake, { capture: true, passive: true });
-  window.addEventListener("focus", wake);
-  window.addEventListener("blur", wake);
-
-  terminal.textarea?.setAttribute("spellcheck", "false");
-  let resizeFrame = 0;
-  let lastSize = "";
-
-  const syncSize = (): void => {
-    const size = String(terminal.cols) + ":" + String(terminal.rows);
-    const tab = getTerminal(id);
-
-    if (
-      size === lastSize ||
-      tab === undefined ||
-      tab.kind !== "shell" ||
-      tab.state.kind !== "running"
-    ) {
-      return;
-    }
-
-    lastSize = size;
-    void terminalActions
-      .resize(
-        id,
-        Math.min(1000, Math.max(2, terminal.cols)),
-        Math.min(1000, Math.max(1, terminal.rows)),
-      )
-      .catch((cause: unknown) => {
-        toast.add({
-          type: "error",
-          title: "Couldn't resize terminal",
-          id: "terminal-resize-" + id,
-          description: errorMessage(cause),
-        });
-      });
+  const setFocused = (value: boolean): void => {
+    if (focused === value) return;
+    focused = value;
+    sendToRunning(terminal.focus(value));
+    surface.focus(value);
   };
 
-  const fitVisible = (): void => {
-    if (!element.isConnected || element.clientWidth === 0 || element.clientHeight === 0) return;
-    wake();
-    fit.fit();
-    syncSize();
-  };
+  const acknowledge = (): void => terminalActions.acknowledge(id);
 
-  const sized = terminal.onResize(syncSize);
-
-  const scheduleFit = (): void => {
-    cancelAnimationFrame(resizeFrame);
-    resizeFrame = requestAnimationFrame(fitVisible);
-  };
-
-  const update = (tab: TerminalTab): void => {
-    terminal.options.disableStdin = !takesInput(tab);
-
-    if (commandOutput) mirrorOutput();
-    scheduleFit();
-  };
-
-  const resize = new ResizeObserver(scheduleFit);
-  resize.observe(element);
-
-  const stopScrollback = preferences.terminalScrollback.subscribe(() => {
-    terminal.options.scrollback = preferences.terminalScrollback.get();
-  });
-
-  document.fonts.addEventListener("loadingdone", scheduleFit);
-  const input = serial();
-  const commands: CommandMark[] = [];
-
-  const data = terminal.onData((value) => {
-    if (value.includes("\r")) markCommand(terminal, commands);
-    void input.run(() => terminalActions.write(id, value));
-  });
-
-  const title = terminal.onTitleChange((value) => terminalActions.title(id, value));
-
-  const selected = terminal.onSelectionChange(() => {
-    wake();
-    notifySelection(id);
-  });
-
-  const reportSettledSelection = (): void => {
-    setTimeout(() => notifySelection(id));
-  };
-
-  const copy = (event: ClipboardEvent): void => {
-    const text = terminal.getSelection();
-
-    if (text === "") return;
-    event.preventDefault();
-    event.clipboardData?.setData("text/plain", text);
-  };
-
-  const paste = (event: ClipboardEvent): void => {
-    const text = event.clipboardData?.getData("text/plain");
-
-    if (text === undefined) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const tab = getTerminal(id);
-
-    if (tab === undefined || tab.kind !== "shell" || tab.state.kind !== "running") return;
-    terminal.paste(text);
-  };
-
-  element.addEventListener("mousedown", reportSettledSelection);
-  element.ownerDocument.addEventListener("mouseup", reportSettledSelection);
-  element.addEventListener("copy", copy, true);
-  element.addEventListener("paste", paste, true);
-  terminal.attachCustomKeyEventHandler((event) => {
-    if (event.type === "keydown") terminalActions.acknowledge(id);
-
-    if (event.ctrlKey && event.code === "Backquote") return true;
-
-    if (addsToChat(event, nyte.platform === "darwin")) {
-      if (event.type === "keydown" && addTerminalToChat(id)) event.preventDefault();
-
-      return true;
-    }
-
-    if ((event.metaKey || (event.ctrlKey && event.shiftKey)) && event.key.toLowerCase() === "c") {
-      if (event.type === "keydown") document.execCommand("copy");
-
-      return true;
-    }
-
-    return false;
-  });
-
-  const view = {
-    element,
+  const stopInput = attachInput({
     terminal,
-    commands,
-    fit: fitVisible,
-    show() {
-      shown = true;
-      wake();
+    element,
+    textarea,
+    shell,
+    takesInput() {
+      const tab = getTerminal(id);
 
-      if (commandOutput) mirrorNow();
+      return (
+        tab !== undefined &&
+        tab.kind === "shell" &&
+        (tab.state.kind === "running" || tab.state.kind === "starting")
+      );
     },
-    hide() {
-      shown = false;
-      clearTimeout(idleTimer);
-      terminal.pauseRendering();
+    running: () => running(getTerminal(id)),
+    send,
+    typed() {
+      const bar = terminal.scrollbar();
+
+      if (bar.offset + bar.length < bar.total) {
+        terminal.scrollToBottom();
+        surface.draw(true);
+      }
+
+      surface.restartBlink();
     },
-    wake,
+    submitted: markCommand,
+    focused: setFocused,
+    copy: () => copyTerminal(id),
+    addToChat: () => addTerminalToChat(id),
+  });
+
+  const stopPointer = attachPointer({
+    terminal,
+    canvas: surface.canvas,
+    cell: () => surface.cell(),
+    tracking: () => running(getTerminal(id)) && terminal.mouseTracking(),
+    send: sendToRunning,
+    focus: focusInput,
+    selecting: () => surface.draw(true),
+    settled: () => setTimeout(() => notifySelection(id)),
+    scrolled: () => surface.draw(true),
+  });
+
+  element.addEventListener("focus", focusInput);
+  element.addEventListener("keydown", acknowledge, true);
+
+  const view: TerminalView = {
+    element,
+    surface,
+    marks,
+    attach(container) {
+      container.append(element);
+      attached = true;
+      surface.show();
+      mirrorNow();
+    },
+    detach() {
+      setFocused(false);
+      attached = false;
+      element.remove();
+      surface.hide();
+    },
+    focus: focusInput,
+    redraw: () => surface.draw(true),
+    clear() {
+      terminal.write(encoder.encode("\u001b[H\u001b[2J\u001b[3J"));
+      terminal.clearSelection();
+      disposeMarks();
+      notifySelection(id);
+      surface.draw(true);
+    },
   };
 
   views.set(id, view);
   attachTerminalOutput(id, {
     reset() {
+      terminal.reset();
       terminal.clearSelection();
-      terminal.write("\u001bc\u001b[?25l");
-      wake();
-      scrollbar.place();
-      mirrorOutput();
+      disposeMarks();
+      notifySelection(id);
+      mirror();
+      surface.draw(true);
     },
-    write(value) {
-      terminal.write(commandOutput ? value + "\u001b[?25l" : value);
-      wake();
-      scrollbar.place();
-
-      if (commandOutput) mirrorOutput();
+    write(data) {
+      terminal.write(data);
+      mirror();
+      surface.draw(false);
     },
-    update,
-    visible: () => element.checkVisibility(),
+    update() {
+      mirror();
+      surface.fit();
+      syncSize();
+    },
+    visible: () => attached && element.checkVisibility(),
     dispose() {
-      cancelAnimationFrame(resizeFrame);
       clearTimeout(mirrorTimer);
-      clearTimeout(idleTimer);
-
-      for (const name of wakeEvents) element.removeEventListener(name, wake, true);
-      window.removeEventListener("focus", wake);
-      window.removeEventListener("blur", wake);
-      resize.disconnect();
-      stopScrollback();
-      document.fonts.removeEventListener("loadingdone", scheduleFit);
-      data.dispose();
-      sized.dispose();
-      title.dispose();
-      selected.dispose();
-      element.removeEventListener("mousedown", reportSettledSelection);
-      element.ownerDocument.removeEventListener("mouseup", reportSettledSelection);
-      element.removeEventListener("copy", copy, true);
-      element.removeEventListener("paste", paste, true);
       element.removeEventListener("focus", focusInput);
+      element.removeEventListener("keydown", acknowledge, true);
+      stopInput();
+      stopPointer();
+      disposeMarks();
       scrollbar.dispose();
-      themed.dispose();
+      attached = false;
+      surface.dispose();
       element.remove();
       views.delete(id);
     },
   });
-  scheduleFit();
 
   return view;
 }
 
+function createTextarea(shell: boolean): HTMLTextAreaElement {
+  const textarea = document.createElement("textarea");
+  textarea.setAttribute("aria-label", shell ? "Terminal input" : "Command output");
+  textarea.setAttribute("spellcheck", "false");
+  textarea.setAttribute("autocapitalize", "off");
+  textarea.setAttribute("autocomplete", "off");
+  textarea.setAttribute("autocorrect", "off");
+
+  if (!shell) textarea.readOnly = true;
+  textarea.className = props(terminalStyles.input).className ?? "";
+
+  return textarea;
+}
+
 /**
- * Draws `terminal`'s scrollbar along `element`'s padding edge, flush with the panel, in place of
- * ghostty's, which it paints inside the canvas over the last column. A press on it is
- * default-prevented so ghostty's selection and a program's mouse tracking never see it.
+ * Draws the terminal's scrollbar along `element`'s padding edge, flush with the panel. A press on
+ * it is default-prevented so selection and a program's mouse tracking never see it.
  */
-function mountScrollbar(terminal: Terminal, element: HTMLElement) {
+function mountScrollbar(surface: TerminalSurface, element: HTMLElement) {
+  const terminal = surface.terminal;
   const bar = document.createElement("div");
   const thumb = document.createElement("div");
   bar.setAttribute("aria-hidden", "true");
   thumb.className = props(terminalStyles.thumb).className ?? "";
   bar.append(thumb);
   element.append(bar);
-  let frame = 0;
-  let drag: { readonly y: number; readonly viewport: number } | undefined;
+  let drag: { readonly y: number; readonly offset: number } | undefined;
 
   const render = (): void => {
-    frame = 0;
-    const scrollback = terminal.getScrollbackLength();
+    const state = terminal.scrollbar();
+    const scrollback = state.total - state.length;
 
     bar.className =
       props(
         terminalStyles.scrollbar,
         drag !== undefined && terminalStyles.scrollbarHeld,
-        scrollback === 0 && terminalStyles.scrollbarEmpty,
+        scrollback <= 0 && terminalStyles.scrollbarEmpty,
       ).className ?? "";
 
-    if (scrollback === 0) return;
-    const size = Math.max(24, (terminal.rows / (scrollback + terminal.rows)) * bar.clientHeight);
-    const offset = (bar.clientHeight - size) * (1 - terminal.getViewportY() / scrollback);
+    if (scrollback <= 0) return;
+    const size = Math.max(24, (state.length / state.total) * bar.clientHeight);
+    const offset = ((bar.clientHeight - size) * state.offset) / scrollback;
     thumb.style.height = `${String(size)}px`;
     thumb.style.transform = `translateY(${String(offset)}px)`;
   };
 
-  const place = (): void => {
-    if (frame === 0) frame = requestAnimationFrame(render);
+  const scrollTo = (offset: number): void => {
+    terminal.scroll(Math.round(offset) - terminal.scrollbar().offset);
+    surface.draw(true);
   };
 
-  const scrollTo = (viewport: number): void => terminal.scrollToLine(Math.round(viewport));
+  const scrollback = (): number => {
+    const state = terminal.scrollbar();
+
+    return state.total - state.length;
+  };
 
   const press = (event: PointerEvent): void => {
     if (event.button !== 0) return;
@@ -524,40 +357,38 @@ function mountScrollbar(terminal: Terminal, element: HTMLElement) {
 
     if (event.target !== thumb && travel > 0) {
       const top = event.clientY - bar.getBoundingClientRect().top - thumb.offsetHeight / 2;
-      scrollTo((1 - top / travel) * terminal.getScrollbackLength());
+      scrollTo((top / travel) * scrollback());
     }
 
-    drag = { y: event.clientY, viewport: terminal.getViewportY() };
+    drag = { y: event.clientY, offset: terminal.scrollbar().offset };
     bar.setPointerCapture(event.pointerId);
-    place();
+    render();
   };
 
   const move = (event: PointerEvent): void => {
     const travel = bar.clientHeight - thumb.offsetHeight;
 
     if (drag === undefined || travel <= 0) return;
-    scrollTo(drag.viewport - ((event.clientY - drag.y) / travel) * terminal.getScrollbackLength());
+    scrollTo(drag.offset + ((event.clientY - drag.y) / travel) * scrollback());
   };
 
   const release = (): void => {
     drag = undefined;
-    place();
+    render();
   };
 
   bar.addEventListener("pointerdown", press);
   bar.addEventListener("pointermove", move);
   bar.addEventListener("pointerup", release);
   bar.addEventListener("pointercancel", release);
-  const scrolled = terminal.onScroll(place);
-  const resized = terminal.onResize(place);
-  place();
 
   return {
-    place,
+    render,
     dispose() {
-      cancelAnimationFrame(frame);
-      scrolled.dispose();
-      resized.dispose();
+      bar.removeEventListener("pointerdown", press);
+      bar.removeEventListener("pointermove", move);
+      bar.removeEventListener("pointerup", release);
+      bar.removeEventListener("pointercancel", release);
       bar.remove();
     },
   };
@@ -570,37 +401,30 @@ export function mountTerminal(id: string, container: HTMLDivElement, visible: bo
     .then((view) => {
       if (detached || view === undefined || !visible) return;
       mounted = view;
-      container.append(view.element);
-      view.show();
-      view.fit();
+      view.attach(container);
 
-      if (container.checkVisibility()) view.terminal.textarea?.focus({ preventScroll: true });
+      if (container.checkVisibility()) view.focus();
     })
     .catch((cause: unknown) => terminalActions.fail(id, errorMessage(cause)));
 
   return () => {
     detached = true;
-
-    if (mounted === undefined) return;
-    mounted.element.remove();
-    mounted.hide();
+    mounted?.detach();
   };
 }
 
 export function focusTerminal(id: string): void {
   const view = views.get(id);
 
-  if (view?.element.checkVisibility()) view.terminal.textarea?.focus({ preventScroll: true });
+  if (view?.element.checkVisibility()) view.focus();
 }
 
 export function clearTerminal(id: string): void {
-  const view = views.get(id);
-  view?.terminal.clear();
-  view?.wake();
+  views.get(id)?.clear();
 }
 
 export function copyTerminal(id: string): void {
-  const selection = views.get(id)?.terminal.getSelection();
+  const selection = views.get(id)?.surface.terminal.selectionText();
 
   if (selection)
     void navigator.clipboard.writeText(selection).catch((cause: unknown) =>
@@ -612,37 +436,24 @@ export function copyTerminal(id: string): void {
     );
 }
 
-function bufferLine(terminal: Terminal, row: number): string | undefined {
-  return terminal.buffer.active.getLine(row)?.translateToString(true).trim();
-}
-
-function markCommand(terminal: Terminal, commands: CommandMark[]): void {
-  const buffer = terminal.buffer.active;
-
-  if (buffer.type !== "normal") return;
-  const row = buffer.length - terminal.rows + buffer.cursorY;
-  const line = bufferLine(terminal, row);
-
-  if (line === undefined || line === "") return;
-  commands.push({ row, line });
-
-  if (commands.length > 200) commands.shift();
-}
-
 function terminalExcerpt(id: string): ExcerptReference | undefined {
   const view = views.get(id);
   const tab = getTerminal(id);
-  const text = view?.terminal.getSelection().replace(/\s+$/u, "") ?? "";
+  const text = view?.surface.terminal.selectionText().replace(/\s+$/u, "") ?? "";
 
   if (view === undefined || tab === undefined || text === "") return undefined;
-  const top = view.terminal.getSelectionPosition()?.start.y ?? -1;
+  const top = view.surface.terminal.selectionTop();
 
   const command =
     tab.kind === "job"
       ? tab.title
-      : view.commands.findLast(
-          (mark) => mark.row <= top && bufferLine(view.terminal, mark.row) === mark.line,
-        )?.line;
+      : view.marks
+          .findLast((mark) => {
+            const row = mark.row();
+
+            return row !== null && top !== null && row <= top;
+          })
+          ?.text.trim();
 
   return {
     kind: "excerpt",
@@ -652,7 +463,7 @@ function terminalExcerpt(id: string): ExcerptReference | undefined {
 }
 
 export function terminalHasSelection(id: string): boolean {
-  return views.get(id)?.terminal.hasSelection() === true;
+  return views.get(id)?.surface.terminal.hasSelection() === true;
 }
 
 export function subscribeTerminalSelection(id: string, listener: () => void): () => void {
@@ -671,7 +482,9 @@ export function addTerminalToChat(id: string): boolean {
   const reference = terminalExcerpt(id);
 
   if (reference === undefined || !addToChat({ reference })) return false;
-  views.get(id)?.terminal.clearSelection();
+  const view = views.get(id);
+  view?.surface.terminal.clearSelection();
+  view?.redraw();
   notifySelection(id);
 
   return true;

@@ -8,12 +8,7 @@ import { defaultClientConditions, type Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/lib/deferred-entries.ts";
 import { PICKER_SCRIPT } from "./src/main/browser/browser-picker-page.ts";
 import packageMetadata from "./package.json" with { type: "json" };
-import {
-  deferredChunks,
-  dropInlinedGhosttyWasm,
-  shareCentralIconBase,
-  stylex,
-} from "@nyte-ai/app/vite";
+import { deferredChunks, shareCentralIconBase, stylex } from "@nyte-ai/app/vite";
 
 const E2E_FIXTURES = new Map([
   [resolve("src/host/models.ts"), resolve("src/host/fixtures/e2e-models.ts")],
@@ -44,7 +39,6 @@ const renderer = {
       },
     }),
     shareCentralIconBase(),
-    dropInlinedGhosttyWasm(),
     stylex.vite({
       useCSSLayers: true,
       lightningcssOptions: { targets: { chrome: 152 << 16 } },
