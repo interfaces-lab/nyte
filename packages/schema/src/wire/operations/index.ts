@@ -12,6 +12,10 @@ import { HOST_OPERATIONS, MAINTENANCE_OPERATIONS } from "./host.ts";
 import { SESSION_OPERATIONS } from "./session.ts";
 import { WORKSPACE_OPERATIONS } from "./workspace.ts";
 
+export const API_REVISION = 1;
+
+export const API_MIN_REVISION = 1;
+
 /** The operations table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability, recovery and wait, in the order the host lists them. */
 export const OPERATIONS = {
   ...HOST_OPERATIONS,
