@@ -19,6 +19,7 @@ import type {
   ReceiptId,
   Revision,
   SessionId,
+  TailnetStatus,
   WorkspaceId,
 } from "@nyte-ai/schema";
 import type {
@@ -79,6 +80,8 @@ export interface ServerHost {
 
   /** Puts a plugin file's load row on the host view, replacing the row with its id. */
   report(row: HostView["plugins"][number]): void;
+
+  reportTailnet(status: TailnetStatus): void;
 
   /** The plugin rows the host view shows now. */
   pluginRows(): readonly HostView["plugins"][number][];

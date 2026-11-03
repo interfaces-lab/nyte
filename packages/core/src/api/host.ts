@@ -82,6 +82,7 @@ export function watchHost(
             views: fields.views,
             defaultWorkspace: fields.defaultWorkspace,
             authority: input.authority,
+            tailnet: input.authority.has("owner") ? fields.tailnet : undefined,
           },
         };
       },

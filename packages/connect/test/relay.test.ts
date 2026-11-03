@@ -43,8 +43,12 @@ const refusals = Object.keys(RELAY_REFUSALS).filter((name): name is RelayRefusal
 );
 
 describe("public relay targets", () => {
-  it("names every row of the operations table and nothing else", () => {
-    expect([...RELAY_OPERATIONS].sort()).toEqual(Object.keys(OPERATIONS).sort());
+  it("names every row of the operations table but the local ones, and nothing else", () => {
+    const remote = Object.entries(OPERATIONS).flatMap(([name, row]) =>
+      "local" in row ? [] : [name],
+    );
+
+    expect([...RELAY_OPERATIONS].sort()).toEqual(remote.sort());
   });
 
   it("carries protocol's stream channel: its paths, the stream headers, and the channel id back", () => {

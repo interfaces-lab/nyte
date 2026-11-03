@@ -340,6 +340,7 @@ export interface Host extends Connection {
 export interface ListenOptions {
   readonly transport:
     | { readonly kind: "http"; readonly hostname?: string; readonly port?: number }
+    | { readonly kind: "socket"; readonly path: string }
     | { readonly kind: "fetch" };
   readonly auth:
     | {
@@ -378,7 +379,7 @@ export interface Listener {
 
 export type HostViewFields = Pick<
   HostView,
-  "catalog" | "plugins" | "settings" | "views" | "defaultWorkspace"
+  "catalog" | "plugins" | "settings" | "views" | "defaultWorkspace" | "tailnet"
 >;
 
 export type ViewBuild =

@@ -7,6 +7,8 @@ import {
   PluginCheckReportSchema,
   PluginReplacementReportSchema,
   PrincipalViewWireType,
+  TailnetSettingsType,
+  TailnetStatusType,
 } from "../../host.ts";
 import { idSchema } from "../../ids.ts";
 import { JsonType } from "../../json.ts";
@@ -39,6 +41,8 @@ const PARTICIPANT = { authority: "participant", scope: "host" } as const;
 const OWNER = { authority: "owner", scope: "host" } as const;
 
 const MAINTENANCE = { authority: "maintenance", scope: "host" } as const;
+
+const LOCAL_OWNER = { ...OWNER, local: true } as const;
 
 const PROVIDER = { provider: Type.String() };
 
@@ -297,6 +301,28 @@ export const HOST_OPERATIONS = {
       limit: Type.Optional(Type.Number()),
     }),
     output: pagedSchema(SessionInfoType),
+  },
+  "host.tailnet.status": {
+    ...LOCAL_OWNER,
+    summary: "Returns the status of the host's embedded tailnet node.",
+    kind: "query",
+    input: NO_INPUT,
+    output: wireSchema(TailnetStatusType),
+  },
+  "host.tailnet.configure": {
+    ...LOCAL_OWNER,
+    summary:
+      "Saves the embedded tailnet node's settings and restarts it, signing in with the auth key when one is given; the key is passed to the node once and never saved.",
+    kind: "command",
+    input: wireObject({ ...TailnetSettingsType.properties, authKey: Type.Optional(Type.String()) }),
+    output: wireSchema(TailnetStatusType),
+  },
+  "host.tailnet.logout": {
+    ...LOCAL_OWNER,
+    summary: "Signs the embedded tailnet node out and turns it off.",
+    kind: "command",
+    input: NO_INPUT,
+    output: wireSchema(TailnetStatusType),
   },
 } as const satisfies OperationRows;
 

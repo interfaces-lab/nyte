@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { ValidationIssueType } from "./errors.ts";
 import { SendOptionsType } from "./heads.ts";
-import { AuthorityType } from "./host.ts";
+import { AuthorityType, TailnetStatusType } from "./host.ts";
 import type { Authority } from "./host.ts";
 import { idSchema } from "./ids.ts";
 import { withJson } from "./json.ts";
@@ -51,6 +51,7 @@ export const HostViewWireType = Type.Object({
   defaultWorkspace: nullable(idSchema<"workspace">()),
   authority: Type.Array(AuthorityType),
   principal: idSchema<"principal">(),
+  tailnet: Type.Optional(TailnetStatusType),
 });
 
 export type HostViewWire = Decoded<typeof HostViewWireType>;

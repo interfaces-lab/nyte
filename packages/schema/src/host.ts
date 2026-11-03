@@ -45,6 +45,35 @@ export const PrincipalViewWireType = Type.Object({
 
 export type PrincipalViewWire = Decoded<typeof PrincipalViewWireType>;
 
+export const TailnetAccessType = Type.Enum(["owner", "tailnet"]);
+
+export const TailnetSettingsType = Type.Object({
+  enabled: Type.Boolean(),
+  hostname: Type.String({ pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" }),
+  tags: Type.Array(Type.String({ pattern: "^tag:[A-Za-z0-9][A-Za-z0-9-]*$" })),
+  access: TailnetAccessType,
+});
+
+export type TailnetSettings = Decoded<typeof TailnetSettingsType>;
+
+export const TailnetStatusType = Type.Object({
+  state: Type.Enum([
+    "disabled",
+    "starting",
+    "needs_login",
+    "needs_machine_approval",
+    "running",
+    "stopped",
+  ]),
+  authUrl: Type.Optional(Type.String()),
+  dnsName: Type.Optional(Type.String()),
+  https: Type.Enum(["pending", "available", "unavailable"]),
+  access: TailnetAccessType,
+  tags: Type.Array(Type.String()),
+});
+
+export type TailnetStatus = Decoded<typeof TailnetStatusType>;
+
 export const PluginLoadOutcomeType = Type.Object({
   kind: Type.Enum(["activated", "rejected", "kept-previous"]),
   id: Type.String(),
@@ -68,6 +97,7 @@ export const OperationDescriptionType = Type.Object({
   authority: AuthorityType,
   scope: Type.Enum(["host", "session", "workspace"]),
   capability: Type.Optional(Type.Enum(["files", "git", "github", "browser"])),
+  local: Type.Optional(Type.Literal(true)),
   input: JsonType,
   output: JsonType,
 });

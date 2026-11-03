@@ -44,6 +44,7 @@ import type { PluginImport } from "./plugins/loader.ts";
 import { defaultSecrets } from "./secrets.ts";
 import type { SecretsSource } from "./secrets.ts";
 import { sqliteStore, storePath } from "./sqlite.ts";
+import { openTailnet } from "./tailnet.ts";
 
 declare const NYTE_BUILT_VERSION: string | undefined;
 
@@ -62,6 +63,7 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   readonly onStoreMigration?: () => void;
   /** How plugin files are imported fresh; Node's resolve hook (`nodePluginImport`) by default. A Bun host passes its own. */
   readonly pluginImport?: PluginImport;
+  readonly tailnet?: { readonly binary: string };
 };
 
 export async function openHost(options: OpenHostOptions): Promise<Host> {
@@ -198,9 +200,15 @@ async function composeOpen(
   const listeners = new Set<Listener>();
   let identity: ReturnType<typeof identitySigner> | null = null;
 
+  const tailnet =
+    options.tailnet === undefined
+      ? undefined
+      : await openTailnet({ host, home, binary: options.tailnet.binary });
+
   const attach = async (listenOptions: ListenOptions): Promise<Listener> => {
     const listener = await listen(host, {
       describe: () => description,
+      tailnet,
       ...listenOptions,
       identity: listenOptions.identity ?? (await (identity ??= identitySigner(host.hostId, home))),
     });
@@ -216,6 +224,7 @@ async function composeOpen(
   const close = (): Promise<void> => {
     closing ??= (async () => {
       for (const listener of listeners) await listener.close();
+      await tailnet?.close();
       await host.close();
       loader.close();
       await owned?.close();

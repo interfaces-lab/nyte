@@ -134,7 +134,7 @@ describe("connection gate (§52 rule 5)", () => {
     const { kernel, host, workspace: at } = await world();
     const { session } = await host.sessions.start({ workspace: at, content: "Hi." });
     const elevated = Object.entries(OPERATIONS).flatMap(([name, row]) =>
-      row.authority === "participant" ? [] : [name],
+      row.authority === "participant" || "local" in row ? [] : [name],
     );
     const denied = Object.fromEntries(elevated.map((name) => [name, "denied"]));
     const participant = connectionAs(kernel, PARTICIPANT_AUTHORITY);

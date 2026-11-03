@@ -12,7 +12,7 @@ import { HOST_OPERATIONS, MAINTENANCE_OPERATIONS } from "./host.ts";
 import { SESSION_OPERATIONS } from "./session.ts";
 import { WORKSPACE_OPERATIONS } from "./workspace.ts";
 
-/** The operations table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability, recovery and wait, in the order the host lists them. */
+/** The operations table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability, recovery, wait and locality, in the order the host lists them. */
 export const OPERATIONS = {
   ...HOST_OPERATIONS,
   ...SESSION_OPERATIONS,
@@ -47,6 +47,7 @@ export function describeOperations(names?: readonly string[]): readonly Operatio
         authority: row.authority,
         scope: row.scope,
         capability: row.capability,
+        local: row.local,
         input: wireJsonSchema(row.input),
         output: wireJsonSchema(row.output),
       },
