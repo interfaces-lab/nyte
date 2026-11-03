@@ -162,6 +162,7 @@ const question: PartView = {
   partKind: "ask/question",
   placement: { kind: "modal" },
   state: {
+    call: "call-question",
     questions: [
       {
         header: "Exports",
@@ -182,7 +183,7 @@ const question: PartView = {
         multiple: true,
       },
     ],
-    answers: null,
+    phase: { kind: "asking" },
   },
   version: 1,
   status: { kind: "live", run: liveRun.id },

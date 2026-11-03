@@ -81,6 +81,7 @@ const views = new Map<SessionId, readonly SessionView[]>([
             partKind: "ask/question",
             placement: { kind: "modal" },
             state: {
+              call: "call-question",
               questions: [
                 {
                   header: "Branch",
@@ -88,7 +89,7 @@ const views = new Map<SessionId, readonly SessionView[]>([
                   options: [{ label: "main", description: "" }],
                 },
               ],
-              answers: null,
+              phase: { kind: "asking" },
             },
             version: 1,
             status: { kind: "live", run: liveRun.id },
