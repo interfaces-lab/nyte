@@ -18,11 +18,13 @@ export interface JournalLoop {
   send(entry: JournalEntry): Promise<Sent>;
   replay(entries: readonly JournalEntry[]): void;
   unsent(session: SessionId, head: HeadName): readonly QueuedMessage[];
-  landed(session: SessionId, head: HeadName, view: SessionView): void;
+  landed(session: SessionId, head: HeadName, view: Landed, seq: number): void;
   subscribe(listener: () => void): Disposer;
 }
 
 type Sent = OperationOutput<"head.send">;
+
+type Landed = Pick<SessionView, "messages" | "queue" | "leadingPrompt">;
 
 type Held = {
   entry: JournalEntry;
@@ -180,9 +182,9 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
 
       return [...shown].map(([id, current]) => unsentMessage(id, current));
     },
-    landed(session, head, view) {
+    landed(session, head, view, seq) {
       const key = JSON.stringify([session, head]);
-      shown.set(key, Math.max(shown.get(key) ?? 0, view.seq));
+      shown.set(key, Math.max(shown.get(key) ?? 0, seq));
 
       if (held.size === 0) return;
       const ids = new Set([...view.messages, ...view.queue].map((message) => message.id));
@@ -196,7 +198,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
           answered === null ||
           entry.session !== session ||
           entry.head !== head ||
-          (!ids.has(answered) && answeredAfter !== null && view.seq <= answeredAfter)
+          (!ids.has(answered) && answeredAfter !== null && seq <= answeredAfter)
         )
           continue;
         held.delete(receipt);

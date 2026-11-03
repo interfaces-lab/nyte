@@ -12,6 +12,10 @@ export { streamText, withStreamedText } from "./streamed-text.ts";
 
 export type { StreamedPart, StreamedText } from "./streamed-text.ts";
 
+export { unsentSends } from "./unsent.ts";
+
+export type { UnsentSends } from "./unsent.ts";
+
 export type {
   ActionHandler,
   Health,
