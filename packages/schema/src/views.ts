@@ -21,7 +21,6 @@ import {
   CommandInfoType,
   HeadInfoType,
   SessionCatalogViewType,
-  SessionInfoType,
   SettingInfoType,
   SkillInfoType,
   ToolInfoType,
@@ -171,59 +170,6 @@ export const HistoryPageType = Type.Object({
 /** Messages before a view's window, with the turns they belong to and `leadingPrompt`, the prompt of the earliest of those turns when it is before `messages`, else null. */
 export type HistoryPage = Decoded<typeof HistoryPageType>;
 
-const VIEW = SessionViewType.properties;
-
-function viewSplice<T extends TSchema>(item: T) {
-  return Type.Object({ runs: Type.Array(Type.Number()), items: Type.Array(item) });
-}
-
-export const ViewAppendType = Type.Object({
-  at: Type.Number(),
-  append: Type.String(),
-  version: Type.Number(),
-});
-
-/** Text a streaming part streamed since the previous frame: the message at `at` of the spliced messages, its `state.markdown` grown by `append`, now at `version`. */
-export type ViewAppend = Decoded<typeof ViewAppendType>;
-
-export const ViewFrameType = Type.Union([
-  Type.Object({ kind: Type.Literal("view"), view: SessionViewType }),
-  Type.Object({
-    kind: Type.Literal("delta"),
-    seq: SeqType,
-    revision: Type.Optional(VIEW.revision),
-    activation: Type.Optional(VIEW.activation),
-    messages: Type.Optional(viewSplice(MessageType)),
-    queue: Type.Optional(viewSplice(QueuedMessageType)),
-    appends: Type.Optional(Type.Array(ViewAppendType)),
-    leadingPrompt: Type.Optional(VIEW.leadingPrompt),
-    parts: Type.Optional(viewSplice(PartViewType)),
-    turns: Type.Optional(viewSplice(TurnInfoType)),
-    usage: Type.Optional(VIEW.usage),
-    execution: Type.Optional(VIEW.execution),
-    reportsHeld: Type.Optional(VIEW.reportsHeld),
-    background: Type.Optional(viewSplice(BackgroundItemType)),
-    configuration: Type.Optional(VIEW.configuration),
-    context: Type.Optional(VIEW.context),
-    heads: Type.Optional(viewSplice(HeadInfoType)),
-    changes: Type.Optional(viewSplice(FileChangeType)),
-    catalog: Type.Optional(VIEW.catalog),
-    seenThrough: Type.Optional(VIEW.seenThrough),
-  }),
-]);
-
-/** One frame of a head's watch on the wire: the whole view first, then each later view as what changed since the frame before it, an absent field unchanged; a null `leadingPrompt` or `seenThrough` clears it. */
-export type ViewFrame = Decoded<typeof ViewFrameType>;
-
-export const SessionsFrameType = Type.Object({
-  kind: Type.Enum(["list", "delta"]),
-  order: viewSplice(idSchema<"session">()),
-  items: Type.Array(SessionInfoType),
-});
-
-/** One frame of `sessions.watch`: the list's session ids as the previous frame's ids spliced (a `list` splices from none and starts every stream), and the row of each id the splice takes; a row a client cannot read is left out. */
-export type SessionsFrame = Decoded<typeof SessionsFrameType>;
-
 export const HeadRowType = Type.Object({
   name: idSchema<"head">(),
   revision: nullable(idSchema<"revision">()),
@@ -355,8 +301,3 @@ export const TurnInfoSchema: Schema<TurnInfo> = standard(TurnInfoType);
 export const SessionViewSchema: Schema<SessionView> = standard(withJson(SessionViewType));
 
 export const HistoryPageSchema: Schema<HistoryPage> = standard(withJson(HistoryPageType));
-
-export const ViewFrameSchema: Schema<ViewFrame> = standard(withJson(ViewFrameType));
-
-/** One array of a view as the previous frame's array spliced: `runs` holds `[from, count]` pairs, each copying `count` items of the previous array from `from`, or with `from` -1 taking the next `count` of `items`. */
-export type ViewSplice<T> = { readonly runs: readonly number[]; readonly items: readonly T[] };

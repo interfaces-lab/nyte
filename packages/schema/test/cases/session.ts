@@ -50,7 +50,6 @@ import {
   TurnInfoSchema,
   UpdateOutcomeSchema,
   UserStatusSchema,
-  ViewFrameSchema,
   ViewOptionsSchema,
   WorkspaceCommandOutcomeSchema,
   asSeq,
@@ -135,18 +134,6 @@ export const sessionCases = {
     { kind: "has-children" },
   ),
   ViewOptionsSchema: sample(ViewOptionsSchema, { tail: 50 }, { tail: "all" }),
-  ViewFrameSchema: sample(
-    ViewFrameSchema,
-    {
-      kind: "delta",
-      seq: asSeq(5),
-      leadingPrompt: null,
-      execution: { kind: "idle", lastRun: null },
-      turns: { runs: [-1, 1], items: [turnInfo] },
-      changes: { runs: [], items: [] },
-    },
-    { kind: "delta", seq: asSeq(5), turns: { runs: [-1, 1], items: [{ id: "t" }] } },
-  ),
   UserStatusSchema: sample(
     UserStatusSchema,
     { kind: "unsent", attempts: 2, retrying: { at: 3, reason: "Offline." } },
