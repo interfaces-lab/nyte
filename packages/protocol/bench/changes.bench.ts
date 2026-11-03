@@ -1,8 +1,10 @@
+import { readFile } from "node:fs/promises";
 import { changesSince } from "@nyte-ai/core";
-import { emptyFold, fold, project } from "@nyte-ai/core/testing";
+import { emptyFold, fold } from "@nyte-ai/core/testing";
 import { asId } from "@nyte-ai/schema";
-import type { SessionEvent, SessionView, ViewFrame } from "@nyte-ai/schema";
-import { viewFrames } from "../src/view-frames.ts";
+import type { SessionEvent } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { recordLong, recordSessions } from "../test/sessions.ts";
 import type { Recorded } from "../test/sessions.ts";
 
@@ -36,8 +38,30 @@ const TOTALS_ONLY: ReadonlyMap<Kind, string> = new Map([
 type Weighed = {
   readonly kind: Kind | null;
   readonly change: number;
-  readonly frame: number;
 };
+
+const FramesSchema = Type.Object({
+  count: Type.Number(),
+  median: Type.Number(),
+  total: Type.Number(),
+});
+
+const BaselineSchema = Type.Object({
+  kinds: Type.Record(Type.String(), FramesSchema),
+  logs: Type.Record(
+    Type.String(),
+    Type.Object({
+      events: Type.Number(),
+      total: Type.Number(),
+      kinds: Type.Record(Type.String(), FramesSchema),
+    }),
+  ),
+});
+
+const baseline = Value.Parse(
+  BaselineSchema,
+  JSON.parse(await readFile(new URL("head-watch-frames.json", import.meta.url), "utf8")),
+);
 
 const long = await recordLong(TURNS);
 
@@ -71,9 +95,7 @@ console.log(
 
 const logs = [...(await recordSessions()), long];
 
-const weighed = await Promise.all(
-  logs.map(async (log) => ({ name: log.name, steps: await weigh(log) })),
-);
+const weighed = logs.map((log) => ({ name: log.name, steps: weigh(log) }));
 
 const steps = weighed.flatMap((log) => log.steps);
 
@@ -82,7 +104,7 @@ console.log("kind         | count | change B median | head.watch B median | gate
 const kinds = KINDS.map((kind) => {
   const sampled = steps.filter((step) => step.kind === kind);
   const change = median(sampled.map((step) => step.change));
-  const frame = median(sampled.map((step) => step.frame));
+  const frame = baseline.kinds[kind]?.median ?? 0;
   const reason = TOTALS_ONLY.get(kind);
   const pass = sampled.length > 0 && (reason !== undefined || change <= frame);
 
@@ -102,8 +124,14 @@ const kinds = KINDS.map((kind) => {
 console.log("\nlog     | events | change B total | head.watch B total | gate");
 
 const totals = weighed.map((log) => {
+  const recorded = baseline.logs[log.name];
+
+  if (recorded?.events !== log.steps.length)
+    throw new Error(
+      `The ${log.name} log has ${log.steps.length} events where head-watch-frames.json recorded ${recorded?.events ?? "none"}.`,
+    );
   const change = sum(log.steps.map((step) => step.change));
-  const frame = sum(log.steps.map((step) => step.frame));
+  const frame = recorded.total;
   const pass = change <= frame;
 
   console.log(
@@ -143,36 +171,18 @@ function measure(log: Recorded, size: number) {
   };
 }
 
-async function weigh(log: Recorded): Promise<readonly Weighed[]> {
+function weigh(log: Recorded): readonly Weighed[] {
   let state = emptyFold({ session: log.session, principal: PRINCIPAL });
 
-  const watches = log.heads.map((head) => {
-    const views = async function* (): AsyncGenerator<SessionView> {
-      for (let step = 0; step <= log.events.length; step += 1) yield project(state, head);
-    };
-
-    return viewFrames(views())[Symbol.asyncIterator]();
-  });
-
-  await framed(watches);
-  const steps: Weighed[] = [];
-
-  for (const event of log.events) {
+  return log.events.map((event) => {
     const seq = state.seq;
     state = fold(state, event);
-    const change = byteLength(JSON.stringify(changesSince(state, seq)));
-    steps.push({ kind: classify(event), change, frame: await framed(watches) });
-  }
 
-  return steps;
-}
-
-async function framed(watches: readonly AsyncIterator<ViewFrame>[]): Promise<number> {
-  const frames = await Promise.all(watches.map((watch) => watch.next()));
-
-  return sum(
-    frames.map((frame) => (frame.done === true ? 0 : byteLength(JSON.stringify(frame.value)))),
-  );
+    return {
+      kind: classify(event),
+      change: byteLength(JSON.stringify(changesSince(state, seq))),
+    };
+  });
 }
 
 function classify(event: SessionEvent): Kind | null {
