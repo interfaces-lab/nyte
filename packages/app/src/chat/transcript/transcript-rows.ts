@@ -69,12 +69,15 @@ export type TranscriptRow =
   | EarlierRow
   | PromptRow
   | (RowLayout & { readonly kind: "retry"; readonly message: string })
-  | (RowLayout & { readonly kind: "live"; readonly working: boolean })
+  | (RowLayout & { readonly kind: "live"; readonly state: LiveRowState })
   | (RowLayout & {
       readonly kind: "changes";
       readonly state: "pending" | "ready";
       readonly files: SessionView["changes"];
     });
+
+/** A `grouped` live row says nothing until planning runs slow, because the turn's active step group already shows the run working. */
+export type LiveRowState = "idle" | "planning" | "grouped";
 
 /** Belongs to the reader's visit, not the view, so the transcript inserts it into the projected rows. */
 export type DividerRow = RowLayout & { readonly kind: "divider" };
@@ -135,12 +138,14 @@ function opensTurn(message: UserMessage): boolean {
   );
 }
 
+/** The last step group stays active through the gap before its run's next step. A waiting or retrying run keeps it active only for a call still in flight, such as one awaiting approval. */
 function turnRows(
   turn: TurnMessages,
   place: {
     readonly group: string;
     readonly leads: boolean;
     readonly working: boolean;
+    readonly retrying: boolean;
     readonly latest: boolean;
   },
 ) {
@@ -154,6 +159,7 @@ function turnRows(
 
   if (turn.messages.length === 0 && state.kind !== "ended") return rows;
   const display = displayTranscriptParts(turn.messages);
+  const stepping = state.kind === "working" && !place.retrying;
 
   for (const [index, item] of display.entries()) {
     if (item.kind === "part") {
@@ -191,7 +197,7 @@ function turnRows(
           ...layout,
           messages: item.messages,
           ...stepChanges(item.messages),
-          running: ends && place.working && item.messages.some(inFlight),
+          running: ends && place.working && (stepping || item.messages.some(inFlight)),
         });
         break;
       case "agents":
@@ -329,6 +335,7 @@ export function transcriptRows({
       group,
       leads,
       working: working && turn === last,
+      retrying: retrying !== undefined,
       latest: turn === last,
     });
 
@@ -353,7 +360,16 @@ export function transcriptRows({
   if (retrying !== undefined)
     rows.push({ kind: "retry", key: "row:retry", ...OUTSIDE, message: retrying });
 
-  rows.push({ kind: "live", key: "row:live", ...OUTSIDE, working });
+  rows.push({
+    kind: "live",
+    key: "row:live",
+    ...OUTSIDE,
+    state: !working
+      ? "idle"
+      : rows.some((row) => row.kind === "step" && row.running)
+        ? "grouped"
+        : "planning",
+  });
 
   if (owner !== undefined)
     rows.push({
