@@ -25,6 +25,7 @@ type options struct {
 	controlURL string
 	authKeyFD  int
 	logout     bool
+	version    bool
 }
 
 const protocol = 1
@@ -51,6 +52,11 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "nyte-tailnet:", err)
 		os.Exit(2)
+	}
+
+	if opts.version {
+		fmt.Println(version)
+		return
 	}
 
 	for _, name := range credentialVariables {
@@ -119,6 +125,7 @@ func parseOptions(args []string) (options, error) {
 	set.StringVar(&opts.controlURL, "control-url", "", "")
 	set.IntVar(&opts.authKeyFD, "auth-key-fd", -1, "")
 	set.BoolVar(&opts.logout, "logout", false, "")
+	set.BoolVar(&opts.version, "version", false, "")
 	set.Func("tag", "", func(value string) error {
 		if !strings.HasPrefix(value, "tag:") {
 			return fmt.Errorf("%s isn't a tag; tags look like tag:name", value)
@@ -129,6 +136,10 @@ func parseOptions(args []string) (options, error) {
 
 	if err := set.Parse(args); err != nil {
 		return opts, err
+	}
+
+	if opts.version {
+		return opts, nil
 	}
 
 	if opts.dir == "" {

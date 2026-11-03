@@ -74,6 +74,7 @@ export async function openTailnet(options: {
   readonly host: ServedHost;
   readonly home: string;
   readonly binary: string;
+  readonly version: string;
 }): Promise<TailnetControl> {
   const folder = join(options.home, ".nyte");
   const settingsPath = join(folder, "tailnet.json");
@@ -229,6 +230,16 @@ export async function openTailnet(options: {
         fail(
           "protocol",
           `nyte-tailnet ${hello.version} speaks protocol ${String(hello.protocol)}, but this host speaks ${String(PROTOCOL)}.`,
+          false,
+        );
+
+        return;
+      }
+
+      if (hello.version !== options.version) {
+        fail(
+          "version",
+          `${options.binary} is version ${hello.version}, but this host is ${options.version}. Reinstall Nyte so they match.`,
           false,
         );
 

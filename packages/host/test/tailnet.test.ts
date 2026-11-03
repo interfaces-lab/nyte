@@ -38,13 +38,17 @@ const access = value("--access");
 const tags = args.flatMap((arg, index) => (args[index - 1] === "--tag" ? [arg] : []));
 const say = (status) => process.stdout.write(JSON.stringify({ access, tags, ...status }) + "\\n");
 
-const hello = (protocol) =>
-  process.stdout.write(JSON.stringify({ type: "hello", protocol, version: VERSION }) + "\\n");
-
 if (BEHAVIOR === "crash")
   process.stderr.write("boom\\n" + "x".repeat(5000) + "\\nlast words\\n", () => process.exit(3));
 
-if (BEHAVIOR !== "silent") hello(BEHAVIOR === "protocol" ? 2 : 1);
+if (BEHAVIOR !== "silent")
+  process.stdout.write(
+    JSON.stringify({
+      type: "hello",
+      protocol: BEHAVIOR === "protocol" ? 2 : 1,
+      version: BEHAVIOR === "outdated" ? "0.0.1" : VERSION,
+    }) + "\\n",
+  );
 
 if (BEHAVIOR === "garbage") say({ state: "sideways" });
 
@@ -76,7 +80,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-type Behavior = "ready" | "silent" | "stuck" | "protocol" | "garbage" | "crash";
+type Behavior = "ready" | "silent" | "stuck" | "protocol" | "outdated" | "garbage" | "crash";
 
 async function setup(
   behavior: Behavior = "ready",
@@ -438,6 +442,18 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
     expect(await runs(home)).toHaveLength(1);
   });
 
+  it("refuses a node built for another version and says which", async () => {
+    const { home, binary } = await setup("outdated");
+    const host = await open(home, binary);
+    const socket = await localSocket(host, home);
+    await enable(socket);
+
+    expect((await until(() => status(socket), stateIs("stopped"))).body).toMatchObject({
+      reason: "version",
+      detail: `${binary} is version 0.0.1, but this host is ${manifest.version}. Reinstall Nyte so they match.`,
+    });
+  });
+
   it("logs a status it can't read and restarts the node instead of dropping the line", async () => {
     const { home, binary } = await setup("garbage");
     const host = await open(home, binary);
@@ -527,9 +543,10 @@ describe.skipIf(process.platform === "win32")("the nyte-tailnet binary", () => {
   beforeAll(async () => {
     folder = await realpath(await mkdtemp(join(tmpdir(), "nyte-tailnet-bin-")));
     binary = join(folder, "nyte-tailnet");
-    await promisify(execFile)("go", ["build", "-o", binary, "."], {
-      cwd: fileURLToPath(new URL("../../tailnet/", import.meta.url)),
-    });
+    await promisify(execFile)(process.execPath, [
+      fileURLToPath(new URL("../../tailnet/build.mjs", import.meta.url)),
+      binary,
+    ]);
   }, 300_000);
 
   it("stops within a second once the host holding it is killed", async () => {

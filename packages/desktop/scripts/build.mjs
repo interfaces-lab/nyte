@@ -106,10 +106,11 @@ if (compiled && !existsSync(join(desktopRoot, "..", "canvas", "dist", "shell", "
   process.exit(1);
 }
 
-if (compiled && bundlesCli && !existsSync(join(desktopRoot, "..", "tui", "dist", "nyte"))) {
-  failure("packages/tui/dist/nyte is missing. Run `pnpm build:tui` first.");
-  process.exit(1);
-}
+for (const name of ["nyte", "nyte-tailnet"])
+  if (compiled && bundlesCli && !existsSync(join(desktopRoot, "..", "tui", "dist", name))) {
+    failure(`packages/tui/dist/${name} is missing. Run \`pnpm build:tui\` first.`);
+    process.exit(1);
+  }
 
 if (shouldPackage) {
   stages.push({

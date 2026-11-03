@@ -71,7 +71,15 @@ export const TailnetStatusType = Type.Object({
   access: TailnetAccessType,
   tags: Type.Array(Type.String()),
   reason: Type.Optional(
-    Type.Enum(["locked", "protocol", "hello_timeout", "start_timeout", "invalid_status", "exited"]),
+    Type.Enum([
+      "locked",
+      "protocol",
+      "version",
+      "hello_timeout",
+      "start_timeout",
+      "invalid_status",
+      "exited",
+    ]),
   ),
   holder: Type.Optional(Type.Number()),
   detail: Type.Optional(Type.String()),
