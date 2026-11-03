@@ -4,6 +4,7 @@ import { accountCommand } from "./account-command.ts";
 import { apiCommand } from "./api-command.ts";
 import { doctorCommand } from "./doctor-command.ts";
 import { mcpCommand } from "./mcp-command.ts";
+import { skillCommand } from "./skill-command.ts";
 import { TRIAGE_USAGE, triageCommand } from "./triage-command.ts";
 import { loginProvider, logoutProvider } from "./services/auth.ts";
 import { availableModels } from "./lib/catalog.ts";
@@ -372,7 +373,8 @@ async function main(): Promise<PrintOutcome | undefined> {
     command === "account" ||
     command === "mcp" ||
     command === "host" ||
-    command === "api"
+    command === "api" ||
+    command === "skill"
   ) {
     const serverCommandStart = invocationArgs.indexOf("--");
 
@@ -434,6 +436,16 @@ async function main(): Promise<PrintOutcome | undefined> {
     process.exitCode = await apiCommand({
       args: invocationArgs.slice(1),
       attach: (url) => openHost(attachedSource(url)),
+      output,
+    });
+
+    return undefined;
+  }
+
+  if (command === "skill") {
+    process.exitCode = await skillCommand({
+      args: invocationArgs.slice(1),
+      env: process.env,
       output,
     });
 
