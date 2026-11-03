@@ -10,6 +10,7 @@ import { main, setup } from "../src/harness.ts";
 import { memoryStore } from "../src/store.ts";
 import { world } from "./fake-env.ts";
 import { ok, echo, opaque, volume, says, provider, loaded } from "./plugin-support.ts";
+import { fakeModels, open } from "./fake-models.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -377,6 +378,36 @@ describe("plugin api", () => {
         .list()
         .map((tool) => tool.name),
     ).toEqual(["a", "b"]);
+  });
+
+  it("shows a chat's catalog to a client of a restarted host without starting the chat's plugins", async () => {
+    const store = memoryStore();
+    const plugins = [{ id: "greeter", contribute: { commands: [says("hello", "hi")] } }];
+    const fake = fakeModels();
+    fake.reply({ content: [{ type: "text", text: "Hello." }] });
+    const first = await open(fake, { store, plugins });
+    const { session, receipt } = await first.sessions.start({ content: "Hi." });
+    await receipt.settled();
+    await until(async () =>
+      (await session.view()).catalog.commands.length > 0 ? true : undefined,
+    );
+    await first.close();
+
+    await using second = await open(fakeModels(), { store, plugins });
+    const attached = attachSession(second.kernel, session.id, LOCAL);
+    await attached.ready();
+    const rows = attached.read(main, { tail: 50 }, null).tables.catalog.upsert;
+    attached.release();
+    assert(rows[0] !== undefined);
+
+    expect(rows).toHaveLength(1);
+    expect((await second.catalogs.read(rows[0].id)).commands).toEqual([
+      expect.objectContaining({ name: "hello", owner: "greeter" }),
+    ]);
+    expect((await second.session(session.id).view()).catalog.commands).toEqual([
+      expect.objectContaining({ name: "hello", owner: "greeter" }),
+    ]);
+    expect(second.kernel.plugins.runtimes().size).toBe(0);
   });
 
   it("logs a chat's catalog id, serves its content from the store, and keeps the generation", async () => {

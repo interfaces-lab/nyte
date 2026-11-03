@@ -7,7 +7,6 @@ import {
   API_REVISION,
   asId,
   backgroundRowKey,
-  catalogRowKey,
   compile,
   isJson,
   isJsonObject,
@@ -35,6 +34,7 @@ import { WebSocket } from "ws";
 import type { RawData } from "ws";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { listen } from "../src/index.ts";
+import { sqliteStore } from "../src/sqlite.ts";
 import { fakeModels, open } from "./fixtures/fake-models.ts";
 import type { FakeModels } from "./fixtures/fake-models.ts";
 import { rawConnect } from "./fixtures/raw-socket.ts";
@@ -293,6 +293,24 @@ async function readDirectory(client: Client, seq?: number) {
   return { read: decodeOutput("sessions.read", read), answered };
 }
 
+const GREETER = [
+  {
+    id: "greeter",
+    contribute: {
+      commands: [{ name: "hello", title: "Hello", description: "Says hi.", run: () => "hi" }],
+    },
+  },
+];
+
+const HELLO = { commands: [{ name: "hello", owner: "greeter" }] };
+
+async function fileStore() {
+  const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-catalog-")));
+  cleanups.push(() => rm(home, { recursive: true, force: true }));
+
+  return sqliteStore({ path: join(home, "nyte.db") });
+}
+
 async function startSession(host: Composed, fake: FakeModels): Promise<SessionId> {
   fake.reply({ content: [{ type: "text", text: "Hello." }] });
   const started = await host.sessions.start({ content: "Hi." });
@@ -525,28 +543,57 @@ describe("the host's WebSocket", () => {
     expect(store.snapshot()).toEqual(resumed.fresh);
   });
 
-  it("resumes with the plugin command a restarted host published while the client was away", async () => {
+  it("resumes across a restart with the catalog's new id and none of its content", async () => {
+    const store = await fileStore();
     const fake = fakeModels();
-    const store = memoryStore();
     const before = await compose(fake, { store });
     const session = await startSession(before, fake);
-    const held = await readAndDrop(await serve(before), session);
-    const command = { name: "hello", title: "Hello", description: "Says hi.", run: () => "hi" };
-    const plugins = [{ id: "greeter", contribute: { commands: [command] } }];
-    const listener = await serve(await compose(fake, { store, plugins }));
-    const watcher = await watch(listener, session);
+    const first = await serve(before);
+    const held = await readAndDrop(first, session);
+    const old = Array.from(held.snapshot().rows.catalog.keys());
+    await first.close();
+    await before.close();
 
-    await vi.waitFor(async () => {
-      const read = decodeOutput("head.read", await readWindow(watcher, session));
+    const after = await compose(fake, { store, plugins: GREETER });
+    await (await send(after, fake, session, "Again.")).settled();
+    const client = await watch(await serve(after), session);
+    const output = await readWindow(client, session, held);
+    const resumed = decodeOutput("head.read", output);
+    held.resume(resumed);
+    const ids = Array.from(held.snapshot().rows.catalog.keys());
 
-      expect(read.tables.catalog.upsert.map(catalogRowKey)).toContain("commands/hello");
-    });
-
-    const resumed = await reconnect(listener, session, held);
-
+    expect(old).toHaveLength(1);
+    expect(ids).toHaveLength(1);
+    expect(ids).not.toEqual(old);
     expect(resumed.complete).toBe(false);
-    expect(held.snapshot().rows.catalog.has("commands/hello")).toBe(true);
-    expect(held.snapshot()).toEqual(resumed.fresh);
+    expect(resumed.tables.catalog).toEqual({ upsert: ids.map((id) => ({ id })), drop: old });
+    expect(JSON.stringify(output)).not.toContain('"commands"');
+    expect(await client.call("catalogs.read", { id: ids[0] })).toMatchObject(HELLO);
+    expect(held.snapshot()).toEqual((await freshSnapshot(client, session)).snapshot);
+  });
+
+  it("shows a client of a restarted host the catalog a chat had, with no run on the new host", async () => {
+    const store = await fileStore();
+    const fake = fakeModels();
+    const before = await compose(fake, { store, plugins: GREETER });
+    const session = await startSession(before, fake);
+
+    await vi.waitFor(async () =>
+      expect((await before.session(session).view()).catalog).toMatchObject(HELLO),
+    );
+    await before.close();
+
+    const client = await watch(
+      await serve(await compose(fake, { store, plugins: GREETER })),
+      session,
+    );
+    const read = decodeOutput("head.read", await readWindow(client, session));
+    const id = read.tables.catalog.upsert[0]?.id;
+    assert(id !== undefined);
+
+    expect(read.tables.catalog.upsert).toHaveLength(1);
+    expect(await client.call("catalogs.read", { id })).toMatchObject(HELLO);
+    expect(fake.requests).toHaveLength(1);
   });
 
   it("sends a streaming part's live text when the text channel opens, then its appends, adding up to the part's text", async () => {
