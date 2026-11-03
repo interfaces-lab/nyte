@@ -16,7 +16,7 @@ import type { ImageContent } from "@nyte-ai/schema/model";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { admitDraft } from "../../canvas/client-plugins.tsx";
 import { errorMessage } from "../../contract/errors.ts";
-import { COMPACT_COMMAND } from "../../data/plugins.ts";
+import { CLIENT_COMMANDS, COMPACT_COMMAND, SIDECHAT_COMMAND } from "../../data/plugins.ts";
 import { workspaceFiles } from "../../data/files.ts";
 import { connected } from "../../data/connection.ts";
 import { sessionWatch } from "../../data/watches.ts";
@@ -25,6 +25,7 @@ import type { ContentPart } from "../../references/message-references.ts";
 import { messageFiles } from "../transcript/message-content.tsx";
 import type { MessageFile } from "../transcript/message-content.tsx";
 import { parsePluginCommand } from "./plugin-command.ts";
+import { openSideChat } from "../side-chat/side-chats.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
 
 interface ComposerContent {
@@ -180,7 +181,7 @@ async function draftCommands(sessionId: SessionId, text: string): Promise<DraftC
   return (shown === undefined ? store.next() : Promise.resolve(shown)).then(
     (view): DraftCommands => ({
       kind: "loaded",
-      commands: [...view.catalog.commands, COMPACT_COMMAND],
+      commands: [...view.catalog.commands, ...CLIENT_COMMANDS],
     }),
     (cause: unknown): DraftCommands => ({
       kind: "kept",
@@ -280,11 +281,24 @@ export async function compactSession(
   }
 }
 
+/** Opens a side chat of `parent`, refusing one inside a side chat: side chats don't nest. */
+async function openSideChatFrom(parent: SessionId, question: string): Promise<DeliveryOutcome> {
+  const info = await (await connected()).session(parent).info();
+
+  if (info.side === true) return { kind: "refused", message: "Side chats can't start side chats." };
+
+  void openSideChat(parent, question);
+
+  return { kind: "sent", note: undefined };
+}
+
 async function runCommand(
   session: Session,
   { name, argument }: ParsedPluginCommand,
 ): Promise<DeliveryOutcome> {
   if (name === COMPACT_COMMAND.name) return compactSession(session, argument);
+
+  if (name === SIDECHAT_COMMAND.name) return openSideChatFrom(session.id, argument);
 
   const outcome = await session.command(name, argument);
 

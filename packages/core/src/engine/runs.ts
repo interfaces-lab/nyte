@@ -278,7 +278,7 @@ async function deliverChildReport(
   const found = await readSession(kernel.store, child);
   const parent = found?.record.parent ?? null;
 
-  if (found === null || parent === null) return;
+  if (found === null || parent === null || found.record.side === true) return;
   const target = await readSession(kernel.store, parent);
 
   if (target === null) return;

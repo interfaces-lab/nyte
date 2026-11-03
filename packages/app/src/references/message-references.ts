@@ -169,6 +169,8 @@ function excerptLabel(reference: ExcerptReference): string {
       return source.command ?? `Terminal (${lineCount(reference.text)})`;
     case "browser":
       return selectorTail(source.selector);
+    case "chat":
+      return source.title;
     default: {
       const exhaustive: never = source;
 
@@ -187,6 +189,8 @@ function excerptTitle(reference: ExcerptReference): string {
       return source.command === undefined ? "Terminal output" : `Output of ${source.command}`;
     case "browser":
       return `${source.selector} on ${source.url}`;
+    case "chat":
+      return `Side chat: ${source.title}`;
     default: {
       const exhaustive: never = source;
 

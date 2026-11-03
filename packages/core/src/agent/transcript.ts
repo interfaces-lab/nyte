@@ -934,6 +934,8 @@ function excerptAttributes(source: ExcerptSource): string {
         : `source="terminal" ${attribute("command", source.command)}`;
     case "browser":
       return `source="browser" ${attribute("url", source.url)} ${attribute("selector", source.selector)}`;
+    case "chat":
+      return `source="side chat" ${attribute("title", source.title)}`;
   }
 }
 

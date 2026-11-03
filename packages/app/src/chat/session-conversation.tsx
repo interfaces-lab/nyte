@@ -46,6 +46,7 @@ import { useCommitCount } from "../lib/work-counts.ts";
 import { chatTitle, useChat, useChats, useChatTasks, useChatWorkspace } from "../chats/index.ts";
 import { useChatFolder } from "./chat-folder.ts";
 import { ChatScope } from "./chat-scope.tsx";
+import { SideChatWindow } from "./side-chat/side-chat-window.tsx";
 import { chatWindow, showTray, useChatWindow } from "../window/index.ts";
 import type { TrayView } from "../window/index.ts";
 
@@ -145,6 +146,12 @@ type SessionConversationProps =
       readonly presentation: "tray";
       readonly paneId: PaneId;
       readonly sessionId: SessionId;
+    }
+  | {
+      readonly presentation: "side";
+      readonly paneId: PaneId;
+      readonly sessionId: SessionId;
+      readonly inputRef: (element: ComposerEditorHandle | null) => void;
     };
 
 const ANNOUNCEMENTS = {
@@ -243,6 +250,26 @@ function SeeTip({ sessionId }: { readonly sessionId: SessionId }): null {
 }
 
 /** A chat inside its own folder, so a hidden or split chat never reads the folder the window has open. */
+/** A side chat inside its parent's side-chat window: its transcript and composer only. */
+function SideConversation({
+  paneId,
+  sessionId,
+  inputRef,
+}: {
+  readonly paneId: PaneId;
+  readonly sessionId: SessionId;
+  readonly inputRef: (element: ComposerEditorHandle | null) => void;
+}): ReactElement {
+  return (
+    <SessionConversation
+      presentation="side"
+      paneId={paneId}
+      sessionId={sessionId}
+      inputRef={inputRef}
+    />
+  );
+}
+
 export function SessionConversation(conversation: SessionConversationProps): ReactElement {
   return (
     <ChatScope folder={useChatWorkspace(conversation.sessionId)}>
@@ -295,7 +322,7 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
 
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<ComposerEditorHandle | null>(null);
-  const inputRef = presentation === "full" ? conversation.inputRef : undefined;
+  const inputRef = presentation === "tray" ? undefined : conversation.inputRef;
 
   const attachComposer = (handle: ComposerEditorHandle | null): void => {
     composerRef.current = handle;
@@ -501,7 +528,33 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                 inputRef={attachComposer}
               />
             )}
+            {presentation === "side" && (
+              <Composer
+                sessionId={sessionId}
+                status={status}
+                pending={messages.queued}
+                unsent={messages.unsent}
+                fileDropRoot={column}
+                initialViewState={viewStore.readSession(sessionId, paneId).composer}
+                onViewStateChange={(composer) =>
+                  viewStore.updateSession(sessionId, paneId, (current) => ({
+                    ...current,
+                    composer,
+                  }))
+                }
+                inputRef={attachComposer}
+              />
+            )}
           </TranscriptColumn>
+          {presentation === "full" && (
+            <SideChatWindow
+              parent={sessionId}
+              paneId={paneId}
+              active={activePane(layout).id === paneId}
+              focusMain={() => composerRef.current?.focus({ preventScroll: true })}
+              conversation={SideConversation}
+            />
+          )}
         </TranscriptProvider>
       </div>
       {presentation === "full" && deletion.kind === "open" && (

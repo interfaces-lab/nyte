@@ -33,6 +33,19 @@ export const COMPACT_COMMAND = {
   completes: false,
 } satisfies CommandInfo;
 
+export const SIDECHAT_COMMAND = {
+  name: "sidechat" satisfies ClientCommandName,
+  owner: "",
+  side: "client",
+  title: "Side Chat",
+  description: "Ask in a side chat without interrupting this one",
+  takesText: true,
+  completes: false,
+} satisfies CommandInfo;
+
+/** The commands Nyte's app runs itself, offered beside the chat's plugin commands. */
+export const CLIENT_COMMANDS: readonly CommandInfo[] = [COMPACT_COMMAND, SIDECHAT_COMMAND];
+
 export function usePluginCatalog(sessionId?: SessionId) {
   const store = sessionId === undefined ? undefined : sessionWatch(sessionId);
   const catalog = useWatchSelect(store, (state) => state.value?.catalog);
@@ -45,7 +58,7 @@ export function usePluginCatalog(sessionId?: SessionId) {
   const data =
     catalog === undefined
       ? undefined
-      : { ...catalog, commands: [...catalog.commands, COMPACT_COMMAND] };
+      : { ...catalog, commands: [...catalog.commands, ...CLIENT_COMMANDS] };
 
   return { data, isError: failed };
 }

@@ -97,6 +97,8 @@ const SessionRecordType = record({
   prompt: nullable(typed<PromptOverride>()(PromptOverrideType)),
   /** `false` when the chat started without context files (`Sessions.start`); absent loads them. */
   contextFiles: Type.Optional(Type.Literal(false)),
+  /** `true` for a side chat of `parent` (`Sessions.start`): it never reports to its parent or counts as its background work. */
+  side: Type.Optional(Type.Literal(true)),
 });
 
 export type SessionRecord = Static<typeof SessionRecordType>;

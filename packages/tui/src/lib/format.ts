@@ -109,6 +109,8 @@ export function excerptLabel(source: ExcerptSource, text: string): string {
 
     case "browser":
       return `Element ${source.selector}`;
+    case "chat":
+      return `Side chat ${source.title}`;
     default: {
       const _exhaustive: never = source;
 

@@ -29,7 +29,7 @@ export class TaskIndex {
     this.stops.push(
       follow(
         connection.sessions.watch({ parents: { kind: "children", session: session.id } }),
-        (children) => this.syncChildren(children),
+        (children) => this.syncChildren(children.filter((child) => child.side !== true)),
         options.onError,
       ),
       follow(
