@@ -186,16 +186,6 @@ export const operations = {
     {},
     1,
   ),
-  "sessions.watch input": operation(
-    OPERATIONS["sessions.watch"].input,
-    { parents: { kind: "roots" }, limit: 50 },
-    { parents: { kind: "orphans" } },
-  ),
-  "sessions.watch output": operation(
-    OPERATIONS["sessions.watch"].output,
-    { kind: "delta", order: { runs: [0, 2, -1, 1], items: [session] }, items: [sessionInfo] },
-    { kind: "delta", order: { runs: [0, 2] }, items: [] },
-  ),
   "sessions.start input": operation(
     OPERATIONS["sessions.start"].input,
     {
@@ -274,22 +264,6 @@ export const operations = {
     OPERATIONS["head.view"].input,
     { ...headInput, options: { tail: 20 } },
     { session },
-  ),
-  "head.watch input": operation(
-    OPERATIONS["head.watch"].input,
-    { ...headInput, options: { tail: 20 } },
-    { ...headInput, options: { tail: "20" } },
-  ),
-  "head.watch output": operation(
-    OPERATIONS["head.watch"].output,
-    {
-      kind: "delta",
-      seq: asSeq(12),
-      revision,
-      messages: { runs: [0, 2, -1, 1], items: [userMessage] },
-      appends: [{ at: 1, append: "more", version: 3 }],
-    },
-    { kind: "delta", seq: asSeq(12), messages: { runs: [0, 1] } },
   ),
   "head.see input": operation(OPERATIONS["head.see"].input, { ...headInput, commit }, headInput),
   "head.read input": operation(
@@ -512,20 +486,6 @@ export const operations = {
     OPERATIONS["part.answer"].output,
     { action: "pick", input: { choice: "a" } },
     { input: 1 },
-  ),
-  "part.watch input": operation(OPERATIONS["part.watch"].input, { session, part }, { part }),
-  "part.watch output": operation(
-    OPERATIONS["part.watch"].output,
-    {
-      id: part,
-      partKind: "text",
-      placement: { kind: "transcript", role: "answer" },
-      state: { markdown: "Hello." },
-      version: 3,
-      status: { kind: "settled", commit, endedAt: 4 },
-      owner: null,
-    },
-    { id: part },
   ),
   "part.close input": operation(OPERATIONS["part.close"].input, { session, part }, { session }),
   "part.close output": operation(OPERATIONS["part.close"].output, null, {}),

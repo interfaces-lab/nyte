@@ -80,7 +80,7 @@ async function localServer(): Promise<Local> {
         response.end();
 
         return;
-      case "/head.watch": {
+      case "/workspace.watch": {
         response.writeHead(200, { "content-type": "application/octet-stream" });
         let offset = 0;
 
@@ -105,7 +105,7 @@ async function localServer(): Promise<Local> {
         return;
       }
 
-      case "/sessions.watch":
+      case "/connection.watch":
         response.writeHead(200, { "content-type": "text/plain" });
         response.write("x");
         response.on("close", () => {
@@ -278,7 +278,7 @@ test("a response moves only as the relay grants credit, and the local server wai
   connection.start();
   await connected(connection);
 
-  const response = await relay.exchange({ method: "POST", path: "/head.watch" });
+  const response = await relay.exchange({ method: "POST", path: "/workspace.watch" });
   await vi.waitFor(() => assert.equal(relay.received, RELAY_WINDOW_BYTES));
   await sleep(300);
   assert.equal(relay.received, RELAY_WINDOW_BYTES);
@@ -349,7 +349,7 @@ test("a phone going away, dropped streams, or a lost socket ends the local excha
   await connected(connection);
 
   const hold = async (signal?: AbortSignal) => {
-    const response = await relay.exchange({ method: "POST", path: "/sessions.watch", signal });
+    const response = await relay.exchange({ method: "POST", path: "/connection.watch", signal });
     assert.ok(response.body);
     const reader = response.body.getReader();
     assert.equal(new TextDecoder().decode((await reader.read()).value), "x");
@@ -402,15 +402,15 @@ test("a frame that breaks the contract closes the socket, and it comes back with
       "a live channel id opened again",
       () => {
         const ch = randomId();
-        relay.send(openFrame("/sessions.watch", ch));
-        relay.send(openFrame("/sessions.watch", ch));
+        relay.send(openFrame("/connection.watch", ch));
+        relay.send(openFrame("/connection.watch", ch));
       },
     ],
     [
       "one channel past the limit",
       () => {
         for (let index = 0; index <= RELAY_CHANNEL_LIMIT; index += 1)
-          relay.send(openFrame("/sessions.watch"));
+          relay.send(openFrame("/connection.watch"));
       },
     ],
     [
@@ -426,7 +426,7 @@ test("a frame that breaks the contract closes the socket, and it comes back with
       "credit past the window",
       () => {
         const ch = randomId();
-        relay.send(openFrame("/sessions.watch", ch));
+        relay.send(openFrame("/connection.watch", ch));
         relay.send(JSON.stringify({ t: "end", ch }));
         relay.send(JSON.stringify({ t: "credit", ch, bytes: RELAY_WINDOW_BYTES }));
       },

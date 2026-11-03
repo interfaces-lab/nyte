@@ -53,15 +53,6 @@ function readKind(frame: Json): string | null {
     : null;
 }
 
-async function firstView(response: Response) {
-  const [first] = await until(response, () => true);
-  const frame = decodeOutput("head.watch", first);
-
-  assert(frame.kind === "view");
-
-  return frame.view;
-}
-
 function changed(change: (opened: StoreConnection) => StoreConnection): Store {
   const base = memoryStore();
 
@@ -78,7 +69,7 @@ async function sent(handler: (request: Request) => Promise<Response>) {
 }
 
 describe("handler", () => {
-  it("creates, sends, settles, and streams the head's view whole first, marking its tip seen only on head.see", async () => {
+  it("creates, sends, settles, and reads the head's view, marking its tip seen only on head.see", async () => {
     const { handler, fake, host } = await served();
     fake.reply("Hello there.");
     const { session, receipt } = await sent(handler);
@@ -89,12 +80,18 @@ describe("handler", () => {
       kind: "completed",
     });
 
-    const watch = await post(handler, "head.watch", { session, head: main });
+    const view = decodeOutput(
+      "head.view",
+      await (await post(handler, "head.view", { session, head: main })).json(),
+    );
 
-    expect(watch.headers.get("Content-Type")).toBe("text/event-stream");
-    const view = await firstView(watch);
+    const info = decodeOutput(
+      "session.info",
+      await (await post(handler, "session.info", { session })).json(),
+    );
+
     const ref = await host.kernel.store.refs.get(headRef(session, main));
-    const tip = view.heads[0]?.tip;
+    const tip = info.heads[0]?.tip;
 
     expect(view.messages.map((message) => message.kind)).toEqual(["user", "part"]);
     expect(view.execution.kind).toBe("idle");
@@ -119,7 +116,7 @@ describe("handler", () => {
     expect(await seen()).toBe(tip.id);
   });
 
-  it("sends the watched head's view with that head's revision, not another head's (§54a)", async () => {
+  it("sends a head's view with that head's revision, not another head's (§54a)", async () => {
     const { handler, fake, host } = await served();
     fake.reply("Landed.");
     const { session, receipt } = await sent(handler);
@@ -127,7 +124,11 @@ describe("handler", () => {
     const side: HeadName = asId("side");
     await host.session(session).heads.create(side);
     const ref = await host.kernel.store.refs.get(headRef(session, side));
-    const view = await firstView(await post(handler, "head.watch", { session, head: side }));
+
+    const view = decodeOutput(
+      "head.view",
+      await (await post(handler, "head.view", { session, head: side })).json(),
+    );
 
     assert(ref !== null);
     expect(view.revision).toBe(ref.revision);
@@ -218,24 +219,9 @@ describe("handler", () => {
   });
 
   it("ends a stream with its abort's SdkError, so a client revoked here reads unauthenticated (ADV C N2)", async () => {
-    const { handler } = await served();
-
-    const { session } = decodeOutput(
-      "sessions.start",
-      await (
-        await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })
-      ).json(),
-    );
-
+    const { handler, workspace } = await served();
     const controller = new AbortController();
-
-    const response = await post(
-      handler,
-      "head.watch",
-      { session, head: main },
-      {},
-      controller.signal,
-    );
+    const response = await post(handler, "workspace.watch", { workspace }, {}, controller.signal);
 
     assert(response.body !== null);
     const frames = parseSse(response.body)[Symbol.asyncIterator]();
@@ -287,7 +273,13 @@ describe("handler", () => {
     expect(await readError(denied)).toMatchObject({ code: "denied" });
 
     const unknown = await post(handler, "session.teleport", {});
-    const unwatched = await post(handler, "head.watch", { session: "nope", head: "main" });
+
+    const missing = await post(handler, "head.read", {
+      session: "nope",
+      head: "main",
+      window: { tail: 10 },
+    });
+
     const read = await handler(new Request("http://host.test/sessions.list", { method: "GET" }));
     const strict = await post(handler, "session.info", { session: "s1", extra: true });
     const large = await post(handler, "settings.apply", { id: "x", value: "y".repeat(100) });
@@ -297,7 +289,7 @@ describe("handler", () => {
       404, 404, 400, 413, 401,
     ]);
     expect(await readError(unknown)).toMatchObject({ code: "unknown" });
-    expect(unwatched.status).toBe(404);
+    expect(missing.status).toBe(404);
     expect((await readError(strict)).issues.map((issue) => issue.path)).toEqual([["extra"]]);
     expect(await readError(large)).toMatchObject({ code: "invalid" });
   });

@@ -26,7 +26,6 @@ import {
 import { PromptOverrideType } from "../../plugins.ts";
 import { pagedSchema, ParentFilterType } from "../../primitives.ts";
 import { SessionInfoType, SessionsReadType } from "../../sessions.ts";
-import { SessionsFrameType } from "../../views.ts";
 import {
   AddOutcomeSchema,
   ForgetOutcomeSchema,
@@ -261,16 +260,6 @@ export const HOST_OPERATIONS = {
     kind: "command",
     input: NO_INPUT,
     output: WorktreeCleanupSchema,
-  },
-  "sessions.watch": {
-    ...PARTICIPANT,
-    summary: "Streams the host's sessions as they change.",
-    kind: "watch",
-    input: wireObject({
-      parents: Type.Optional(ParentFilterType),
-      limit: Type.Optional(Type.Number()),
-    }),
-    output: wireSchema(SessionsFrameType),
   },
   "sessions.start": {
     ...PARTICIPANT,
