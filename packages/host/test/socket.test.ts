@@ -10,6 +10,7 @@ import type { Duplex } from "node:stream";
 import {
   API_REVISION,
   asId,
+  backgroundRowKey,
   compile,
   isJson,
   isJsonObject,
@@ -325,6 +326,60 @@ describe("the host's WebSocket", () => {
 
     expect(store.seq).toBeGreaterThan(resumed.seq);
     expect(store.snapshot()).toEqual(fresh.snapshot);
+  });
+
+  it("sends the background row a child changes alone, never a row the client already holds", async () => {
+    const fake = fakeModels();
+    const host = await compose(fake);
+    const listener = await serve(host);
+    const session = await startSession(host, fake);
+    const client = await connect(listener);
+
+    await client.call("events.subscribe", { scopes: [`session/${session}`] });
+    const read = await readWindow(client, session);
+    const answered = client.frames.findIndex((frame) => frame.output === read);
+    const store = openSessionStore(decodeOutput("head.read", read));
+    const gate = Promise.withResolvers<void>();
+    const held = { content: [{ type: "text", text: "Done." }], until: gate.promise } as const;
+    fake.reply(held, held);
+
+    const children = [
+      await host.sessions.start({ parent: session, content: "One." }),
+      await host.sessions.start({ parent: session, content: "Two." }),
+    ];
+
+    for (const child of children)
+      await client.until(
+        (frame) =>
+          frame.kind === "change" &&
+          changes.Check(frame) &&
+          frame.tables.background?.upsert.some((row) => row.item.id === child.session.id) === true,
+      );
+
+    const fresh = await freshSnapshot(client, session);
+    let sent = 0;
+
+    const resent = client.frames.slice(answered + 1, fresh.before).flatMap((frame) => {
+      if (frame.kind !== "change" || !changes.Check(frame)) return [];
+      const rows = store.snapshot().rows.background;
+      const upserts = frame.tables.background?.upsert ?? [];
+      sent += upserts.length;
+
+      const same = upserts.filter(
+        (row) => JSON.stringify(rows.get(backgroundRowKey(row))) === JSON.stringify(row),
+      );
+
+      store.apply(frame);
+
+      return same;
+    });
+
+    expect(sent).toBe(2);
+    expect(resent).toEqual([]);
+    expect(store.snapshot()).toEqual(fresh.snapshot);
+    gate.resolve();
+
+    for (const child of children) await child.receipt.settled();
   });
 
   it("sends a streaming part's live text when the text channel opens, then its appends, adding up to the part's text", async () => {

@@ -161,12 +161,18 @@ export interface Touched {
 
 export interface Step extends Touched {
   readonly seq: Seq;
+  readonly mark: number;
 }
 
 export interface Ring {
   readonly steps: Step[];
   from: Seq;
-  amended: number;
+  mark: number;
+}
+
+export interface ChangeCursor {
+  readonly seq: Seq;
+  readonly mark: number;
 }
 
 export interface Path {

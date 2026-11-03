@@ -192,6 +192,7 @@ The sketch deletes the first four before adding anything.
 
 - The directory watch without the re-list: 1.21 to 1.42 ms CPU per event against 3.36 to 3.81 before, and 0 full lists against 1,000, on 300 sessions with a 300-row watch (3 runs).
 - Change bytes against today's `head.watch` frames, medians per kind: land 35 vs 484, part created 528 vs 888, call settled 1,188 vs 1,379, run phase 391 vs 728; totals smaller on every recorded log (6.04 MB vs 7.84 MB on the 10,643-event one). `part updated` (417 vs 85) and `input` (515 vs 420) are gated on totals only, with the reason printed: whole rows cannot match today's text-append frames without field patches.
+- One turn in the largest real session (text and 3 tool calls, end to end, 3 runs): change events 289.8 KB to 81.5 KB and the turn's bytes down 307.5 KB to 99.2 KB, against 103.7 KB for `head.watch`, once a bus event's change carries only the rows it touched instead of the whole step at its seq. Before, 110 of 203 catalog rows and 324 of 360 background rows were rows the client already held.
 - Embedded Tailscale: the sidecar is 19.3 MiB, 33.5 to 34.3 MiB resident, 326 to 359 ms to running; libtailscale through `node:ffi` saved about 3 MiB, no time, blocked its thread and ignored SIGTERM (3 runs each).
 
 ## Next implementation step

@@ -24,7 +24,6 @@ import type {
   Resume,
   Revision,
   RunId,
-  Seq,
   SessionChange,
   SessionId,
   SessionsChange,
@@ -39,6 +38,7 @@ import type {
   Host,
   OpenOptions,
 } from "./host.ts";
+import type { ChangeCursor } from "./fold.ts";
 import type { PartDefinition } from "./parts.ts";
 import type { Receipt, SendReceipt } from "./session.ts";
 import type { BatchEntry, FilesApi, Page, PageTable } from "./workspace.ts";
@@ -170,11 +170,10 @@ export interface PartProgress {
 
 export interface SessionAttachment {
   ready(): Promise<void>;
-  seq(): Seq;
-  amended(): number;
+  cursor(): ChangeCursor;
   activation(): Activation;
   read(head: HeadName, window: WindowSpec, resume: Resume | null): HeadWindow;
-  changesSince(seq: Seq): SessionChange;
+  changesAfter(cursor: ChangeCursor): SessionChange;
   streaming(): readonly StreamingPart[];
   progress(): readonly PartProgress[];
   subscribe(listener: () => void): Disposer;
