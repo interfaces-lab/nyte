@@ -37,6 +37,9 @@ func TestOneNodePerStateDirectoryAndStdinIsItsLease(t *testing.T) {
 	host := startFakeHost(t)
 
 	first := startProcess(t, dir, control.HTTPTestServer.URL, host.socket)
+	if line := <-first.lines; line["type"] != "hello" || line["protocol"] != float64(protocol) || line["version"] != version {
+		t.Fatalf("the first line was %v, not the hello", line)
+	}
 	expectLine(t, first, func(line map[string]any) bool { return line["state"] == "starting" })
 
 	data, err := os.ReadFile(filepath.Join(dir, lockName))

@@ -35,13 +35,19 @@ The node serves HTTPS with `ListenTLS("tcp", ":443")` once it is running, after 
 
 For every connection the sidecar asks `LocalClient.WhoIs` who is calling and builds the principal `{ kind: "tailscale", userId, loginName, node, tags, owner }` (`node` is the caller's stable node ID; `owner` is true when the caller is the untagged Tailscale user who owns this untagged node). A caller the access mode refuses gets `403` with `{ "code": "denied", "message": "..." }`, the host's own error shape. An admitted request, WebSocket upgrades included, is proxied to `--socket` with the principal, as base64url JSON, in `X-Nyte-Tailnet-Principal`; a value the caller sent there is replaced. The host trusts that header only on the socket it gave the sidecar.
 
-Status goes to stdout, one JSON line per change:
+The first stdout line is the handshake:
+
+```json
+{ "type": "hello", "protocol": 1, "version": "0.0.24" }
+```
+
+The host refuses another `protocol`. Every later line is a status, one JSON line per change:
 
 ```json
 { "state": "running", "dnsName": "nyte.example.ts.net", "https": "available", "access": "owner", "tags": [] }
 ```
 
-`state` is `starting`, `needs_login` (with `authUrl`), `needs_machine_approval`, `running` or `stopped`; `disabled` is the host's, for when it runs no sidecar. `https` is `pending` until the node runs and has tried for its certificate, then `available` or `unavailable`. `tags` are the node's own once it runs. Logs go to stderr. `SIGTERM` closes the listener and the node, writes a last `stopped` line and exits 0.
+`state` is `starting`, `needs_login` (with `authUrl`), `needs_machine_approval`, `running` or `stopped`; `disabled` is the host's, for when it runs no sidecar. `https` is `pending` until the node runs and has tried for its certificate, then `available` or `unavailable`. `tags` are the node's own once it runs. A status the host can't read counts as a failure: the host logs it and restarts the sidecar. `reason` explains a `stopped` status: the sidecar sets `locked` (with `holder`); the host sets `protocol`, `hello_timeout` (no hello within 10 s), `start_timeout` (no `running`, `needs_login` or `needs_machine_approval` within 120 s), `invalid_status` and `exited`, with a `detail` sentence. Logs go to stderr; the host logs every line as a `NYTE_TAILNET` process warning and attaches the last 4 KiB as `stderr` to the `stopped` status after an exit it didn't ask for. `SIGTERM` closes the listener and the node, writes a last `stopped` line and exits 0.
 
 ## Sidecar or linked library
 

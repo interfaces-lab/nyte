@@ -5,13 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Type } from "typebox";
 import { memoryStore } from "@nyte-ai/core/store";
-import { compile } from "@nyte-ai/schema";
+import { compile, TailnetStatusType } from "@nyte-ai/schema";
 import type { Host } from "@nyte-ai/core";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import manifest from "../package.json" with { type: "json" };
 import { openHost } from "../src/index.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
@@ -36,8 +38,20 @@ const access = value("--access");
 const tags = args.flatMap((arg, index) => (args[index - 1] === "--tag" ? [arg] : []));
 const say = (status) => process.stdout.write(JSON.stringify({ access, tags, ...status }) + "\\n");
 
-say({ state: "starting", https: "pending" });
-say({ state: "running", dnsName: value("--hostname") + ".example.ts.net", https: "available" });
+const hello = (protocol) =>
+  process.stdout.write(JSON.stringify({ type: "hello", protocol, version: VERSION }) + "\\n");
+
+if (BEHAVIOR === "crash")
+  process.stderr.write("boom\\n" + "x".repeat(5000) + "\\nlast words\\n", () => process.exit(3));
+
+if (BEHAVIOR !== "silent") hello(BEHAVIOR === "protocol" ? 2 : 1);
+
+if (BEHAVIOR === "garbage") say({ state: "sideways" });
+
+if (BEHAVIOR === "stuck" || BEHAVIOR === "ready") say({ state: "starting", https: "pending" });
+
+if (BEHAVIOR === "ready")
+  say({ state: "running", dnsName: value("--hostname") + ".example.ts.net", https: "available" });
 process.on("SIGTERM", () => {
   say({ state: "stopped", https: "pending" });
   process.exit(0);
@@ -57,14 +71,21 @@ type Answer = { readonly status: number; readonly body: unknown };
 const cleanups: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
+
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-async function setup(): Promise<{ readonly home: string; readonly binary: string }> {
+type Behavior = "ready" | "silent" | "stuck" | "protocol" | "garbage" | "crash";
+
+async function setup(
+  behavior: Behavior = "ready",
+): Promise<{ readonly home: string; readonly binary: string }> {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-tailnet-")));
   cleanups.push(() => rm(home, { recursive: true, force: true }));
   const binary = join(home, "nyte-tailnet");
-  await writeFile(binary, `#!${process.execPath}\n${SIDECAR}`);
+  const constants = `const BEHAVIOR = ${JSON.stringify(behavior)};\nconst VERSION = ${JSON.stringify(manifest.version)};\n`;
+  await writeFile(binary, `#!${process.execPath}\n${constants}${SIDECAR}`);
   await chmod(binary, 0o755);
 
   return { home, binary };
@@ -137,7 +158,7 @@ async function until<T>(read: () => Promise<T>, done: (value: T) => boolean): Pr
     const value = await read();
 
     if (done(value)) return value;
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sleep(20);
   }
 }
 
@@ -166,6 +187,35 @@ function principalHeader(userId: string, owner: boolean) {
 }
 
 const status = (socket: string) => post(socket, "host.tailnet.status", {});
+
+const enable = (socket: string) =>
+  post(socket, "host.tailnet.configure", {
+    enabled: true,
+    hostname: "nyte",
+    tags: [],
+    access: "owner",
+  });
+
+function warnings(): readonly string[] {
+  const seen: string[] = [];
+
+  const listener = (warning: Error) => {
+    if ("code" in warning && warning.code === "NYTE_TAILNET") seen.push(warning.message);
+  };
+
+  process.on("warning", listener);
+  cleanups.push(async () => {
+    process.off("warning", listener);
+  });
+
+  return seen;
+}
+
+const statusCheck = compile(TailnetStatusType);
+
+function readStderr(answer: Answer): string {
+  return statusCheck.Check(answer.body) ? (answer.body.stderr ?? "") : "";
+}
 
 const stateIs = (state: string) => (answer: Answer) =>
   typeof answer.body === "object" &&
@@ -325,6 +375,105 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
 
     expect(restarted).toHaveLength(2);
     expect(restarted[1]?.pid).not.toBe(crashed);
+  });
+
+  it("stops a node that never says hello or never gets ready, and starts it again", async () => {
+    const silent = await setup("silent");
+    const quiet = await open(silent.home, silent.binary);
+    const quietSocket = await localSocket(quiet, silent.home);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await enable(quietSocket);
+    await until(
+      () => runs(silent.home),
+      (found) => found.length === 1,
+    );
+    vi.advanceTimersByTime(10_000);
+
+    expect((await until(() => status(quietSocket), stateIs("stopped"))).body).toMatchObject({
+      reason: "hello_timeout",
+    });
+    vi.advanceTimersByTime(1_000);
+    await until(
+      () => runs(silent.home),
+      (found) => found.length === 2,
+    );
+
+    const stuck = await setup("stuck");
+    const waiting = await open(stuck.home, stuck.binary);
+    const waitingSocket = await localSocket(waiting, stuck.home);
+    await enable(waitingSocket);
+    await until(
+      () => runs(stuck.home),
+      (found) => found.length === 1,
+    );
+    vi.advanceTimersByTime(119_000);
+
+    expect((await status(waitingSocket)).body).toMatchObject({ state: "starting" });
+    vi.advanceTimersByTime(1_000);
+
+    expect((await until(() => status(waitingSocket), stateIs("stopped"))).body).toMatchObject({
+      reason: "start_timeout",
+    });
+    vi.advanceTimersByTime(1_000);
+    await until(
+      () => runs(stuck.home),
+      (found) => found.length === 2,
+    );
+  });
+
+  it("refuses a node that speaks another protocol and doesn't start it again", async () => {
+    const { home, binary } = await setup("protocol");
+    const host = await open(home, binary);
+    const socket = await localSocket(host, home);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await enable(socket);
+
+    expect((await until(() => status(socket), stateIs("stopped"))).body).toMatchObject({
+      reason: "protocol",
+      detail: `nyte-tailnet ${manifest.version} speaks protocol 2, but this host speaks 1.`,
+    });
+    vi.advanceTimersByTime(60_000);
+    await sleep(100);
+
+    expect(await runs(home)).toHaveLength(1);
+  });
+
+  it("logs a status it can't read and restarts the node instead of dropping the line", async () => {
+    const { home, binary } = await setup("garbage");
+    const host = await open(home, binary);
+    const socket = await localSocket(host, home);
+    const logged = warnings();
+    await enable(socket);
+
+    expect((await until(() => status(socket), stateIs("stopped"))).body).toMatchObject({
+      reason: "invalid_status",
+    });
+    expect(logged.find((line) => line.includes('"sideways"'))).toBeDefined();
+    await until(
+      () => runs(home),
+      (found) => found.length === 2,
+    );
+  });
+
+  it("logs the node's stderr and attaches its last 4 KiB to the stopped status", async () => {
+    const { home, binary } = await setup("crash");
+    const host = await open(home, binary);
+    const socket = await localSocket(host, home);
+    const logged = warnings();
+    await enable(socket);
+
+    const stopped = await until(() => status(socket), stateIs("stopped"));
+
+    expect(stopped.body).toMatchObject({
+      reason: "exited",
+      detail: "nyte-tailnet exited with code 3.",
+    });
+    expect(logged).toEqual(expect.arrayContaining(["boom", "last words"]));
+
+    const tail = readStderr(stopped);
+
+    expect(Buffer.byteLength(tail)).toBe(4096);
+    expect(tail.endsWith("x\nlast words\n")).toBe(true);
   });
 });
 
