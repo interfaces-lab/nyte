@@ -78,6 +78,7 @@ const TABLES: readonly Table[] = [
   "changes",
   "catalog",
   "heads",
+  "settings",
   "background",
 ];
 
@@ -202,7 +203,7 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
     const after = path.usage.at(-1) ?? ZERO_USAGE;
 
     if (before !== after && JSON.stringify(before) !== JSON.stringify(after))
-      touchRow(draft, "heads", name);
+      touchRow(draft, "settings", name);
   }
 
   return touched;

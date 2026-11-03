@@ -20,7 +20,7 @@ import { text, thinking } from "../contract/parts.ts";
 import { readPositionCommit, START } from "../store/session.ts";
 import { addUsage, ZERO_USAGE } from "../util/usage.ts";
 import { countBackground } from "./background.ts";
-import { emptyHead, reuse, snapshots } from "./draft.ts";
+import { belongsInQueue, emptyHead, reuse, snapshots } from "./draft.ts";
 
 const DEFAULT_TAIL = 200;
 
@@ -200,19 +200,6 @@ function readQueue(state: FoldState, folded: FoldHead): readonly QueuedMessage[]
   queues.set(folded.messages, queue);
 
   return queue;
-}
-
-export function belongsInQueue(message: Message, execution: Execution): message is QueuedMessage {
-  if (message.kind !== "user" || message.status.kind !== "pending") return false;
-
-  if (message.source.kind === "child" || message.source.kind === "job") return false;
-  const schedule = message.status.schedule;
-
-  return (
-    schedule.kind === "attached" ||
-    (schedule.kind === "next-turn" &&
-      (schedule.reason !== "idle" || (execution.kind !== "idle" && message.delivery !== "steer")))
-  );
 }
 
 export function showMessage(message: Message): Message {

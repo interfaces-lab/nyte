@@ -228,18 +228,24 @@ export const HeadRowType = Type.Object({
   name: idSchema<"head">(),
   revision: nullable(idSchema<"revision">()),
   execution: ExecutionType,
-  configuration: Type.Object({
-    selected: nullable(ConfigurationType),
-    effective: nullable(ConfigurationType),
-  }),
-  context: ContextViewType,
-  usage: UsageType,
   reportsHeld: Type.Boolean(),
   seenThrough: nullable(Type.Number()),
   queue: Type.Array(idSchema<"message">()),
 });
 
 export type HeadRow = Decoded<typeof HeadRowType>;
+
+export const HeadSettingsRowType = Type.Object({
+  name: idSchema<"head">(),
+  configuration: Type.Object({
+    selected: nullable(ConfigurationType),
+    effective: nullable(ConfigurationType),
+  }),
+  context: ContextViewType,
+  usage: UsageType,
+});
+
+export type HeadSettingsRow = Decoded<typeof HeadSettingsRowType>;
 
 export const BackgroundRowType = Type.Object({
   head: idSchema<"head">(),
@@ -269,6 +275,7 @@ export const TableChangesType = Type.Object({
   changes: tableChange(FileChangeType),
   catalog: tableChange(CatalogRowType),
   heads: tableChange(HeadRowType),
+  settings: tableChange(HeadSettingsRowType),
   background: tableChange(BackgroundRowType),
 });
 

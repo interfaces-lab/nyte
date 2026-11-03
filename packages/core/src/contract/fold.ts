@@ -142,7 +142,15 @@ export interface Index {
   readonly ring: Ring;
 }
 
-export type Table = "messages" | "turns" | "parts" | "changes" | "catalog" | "heads" | "background";
+export type Table =
+  | "messages"
+  | "turns"
+  | "parts"
+  | "changes"
+  | "catalog"
+  | "heads"
+  | "settings"
+  | "background";
 
 export interface Touched {
   readonly upsert: { readonly [T in Table]: Set<string> };

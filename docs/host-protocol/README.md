@@ -45,8 +45,11 @@ Session scope, per head:
 
 | Table | Row | Keyed by |
 | --- | --- | --- |
-| `heads` | `HeadRow`: name, revision, execution, configuration, context, usage, reportsHeld, seenThrough, `queue: MessageId[]` | head name |
+| `heads` | `HeadRow`: name, revision, execution, reportsHeld, seenThrough, `queue: MessageId[]` | head name |
+| `settings` | `HeadSettingsRow`: name, configuration, context, usage | head name |
 | `background` | `{ head, item }` | `<head>/<kind>/<id>` |
+
+A head's facts are split by how often they change: `heads` moves with every run phase, `settings` only when the configuration, the context window or the completed usage moves, so a phase change resends the execution alone.
 
 Branches share history, so a message or turn can sit on several heads' paths; each head's path is an order over the session's message rows.
 

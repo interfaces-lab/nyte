@@ -3,6 +3,7 @@ import type {
   Execution,
   HeadName,
   HeadRow,
+  HeadSettingsRow,
   HeadWindow,
   Message,
   MessageId,
@@ -15,10 +16,18 @@ import type {
   WindowSpec,
 } from "@nyte-ai/schema";
 import { INDEX } from "../contract/fold.ts";
-import type { FoldState, Path, Table, Touched } from "../contract/fold.ts";
+import type { FoldHead, FoldState, Path, Table, Touched } from "../contract/fold.ts";
 import { ZERO_USAGE } from "../util/usage.ts";
-import { backgroundRows, catalogRows, emptyHead, IDLE, newTouched } from "./draft.ts";
-import { belongsInQueue, findLeadingPrompt, holdsReports, readSeenThrough } from "./project.ts";
+import {
+  backgroundRows,
+  belongsInQueue,
+  catalogRows,
+  emptyHead,
+  IDLE,
+  newTouched,
+  readQueueIds,
+} from "./draft.ts";
+import { findLeadingPrompt, holdsReports, readSeenThrough } from "./project.ts";
 
 const DEFAULT_TAIL = 200;
 
@@ -29,6 +38,7 @@ const TABLES: readonly Table[] = [
   "changes",
   "catalog",
   "heads",
+  "settings",
   "background",
 ];
 
@@ -108,6 +118,10 @@ export function readWindow(
         drop: tables.turns.drop,
       },
       heads: { upsert: sent("heads", head) ? [row] : [], drop: tables.heads.drop },
+      settings: {
+        upsert: sent("settings", head) ? [readSettingsRow(state, head)] : [],
+        drop: tables.settings.drop,
+      },
       background: {
         upsert: Array.from(backgroundRows(head, state.heads.get(head)?.background ?? [])).flatMap(
           ([key, entry]) => (sent("background", key) ? [entry] : []),
@@ -171,24 +185,31 @@ function readHeld(state: FoldState, path: Path, resume: Resume, execution: Execu
 }
 
 function readHeadRow(state: FoldState, name: HeadName): HeadRow {
-  const folded = state.heads.get(name) ?? emptyHead(name, { messages: [], turns: [] });
-  const execution = folded.info.execution;
+  const folded = readHead(state, name);
 
   return {
     name,
     revision: folded.revision,
-    execution,
+    execution: folded.info.execution,
+    reportsHeld: holdsReports(folded.info.execution),
+    seenThrough: readSeenThrough(state, name),
+    queue: readQueueIds(state.messages, folded),
+  };
+}
+
+function readSettingsRow(state: FoldState, name: HeadName): HeadSettingsRow {
+  const folded = readHead(state, name);
+
+  return {
+    name,
     configuration: folded.configuration,
     context: folded.context,
     usage: state[INDEX].paths.get(name)?.usage.at(-1) ?? ZERO_USAGE,
-    reportsHeld: holdsReports(execution),
-    seenThrough: readSeenThrough(state, name),
-    queue: folded.pending.filter((id) => {
-      const message = state.messages.get(id);
-
-      return message !== undefined && belongsInQueue(message, execution);
-    }),
   };
+}
+
+function readHead(state: FoldState, name: HeadName): FoldHead {
+  return state.heads.get(name) ?? emptyHead(name, { messages: [], turns: [] });
 }
 
 function readPathChange(state: FoldState, head: HeadName, position: number): PathChange {
@@ -294,6 +315,11 @@ function readTables(state: FoldState, touched: Touched): TableChanges {
       const name = asId<"head">(key);
 
       return state.heads.has(name) ? readHeadRow(state, name) : undefined;
+    }),
+    settings: readTable(touched, "settings", () => (key) => {
+      const name = asId<"head">(key);
+
+      return state.heads.has(name) ? readSettingsRow(state, name) : undefined;
     }),
     background: readTable(touched, "background", () => {
       const rows = new Map(

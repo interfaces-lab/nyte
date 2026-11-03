@@ -4,6 +4,7 @@ import type {
   CatalogRow,
   FileChange,
   HeadRow,
+  HeadSettingsRow,
   HeadWindow,
   Message,
   MessageId,
@@ -22,6 +23,7 @@ export interface SessionRows {
   readonly changes: Map<string, FileChange>;
   readonly catalog: Map<string, CatalogRow>;
   readonly heads: Map<string, HeadRow>;
+  readonly settings: Map<string, HeadSettingsRow>;
   readonly background: Map<string, BackgroundRow>;
 }
 
@@ -49,6 +51,7 @@ export function openSessionStore(window: HeadWindow): SessionStore {
     changes: new Map(),
     catalog: new Map(),
     heads: new Map(),
+    settings: new Map(),
     background: new Map(),
   };
 
@@ -123,6 +126,7 @@ function write(rows: SessionRows, tables: TableChanges): void {
   replace(rows.changes, tables.changes, (row) => row.path);
   replace(rows.catalog, tables.catalog, catalogRowKey);
   replace(rows.heads, tables.heads, (row) => row.name);
+  replace(rows.settings, tables.settings, (row) => row.name);
   replace(rows.background, tables.background, backgroundRowKey);
 }
 

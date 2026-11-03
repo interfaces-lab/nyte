@@ -12,6 +12,7 @@ import type {
   MessageId,
   PartId,
   PartView,
+  QueuedMessage,
   SessionCatalogView,
   SessionView,
   TurnId,
@@ -131,8 +132,13 @@ export function setMessage(draft: Draft, message: Message): void {
   if (previous?.turn !== message.turn && draft.turns.has(message.turn))
     touchRow(draft, "turns", message.turn);
   const owner = draft.inputs.get(message.id)?.head;
+  const head = owner === undefined ? undefined : draft.heads.get(owner);
 
-  if (owner !== undefined && draft.heads.has(owner) && (pending(previous) || pending(message)))
+  if (
+    owner !== undefined &&
+    head?.pending.includes(message.id) === true &&
+    queued(previous, head) !== queued(message, head)
+  )
     touchRow(draft, "heads", owner);
 
   if (previous === undefined) return;
@@ -204,13 +210,19 @@ export function noteHead(
 ): void {
   if (
     current === undefined ||
-    current.info !== next.info ||
     current.revision !== next.revision ||
-    current.configuration !== next.configuration ||
-    current.context !== next.context ||
-    current.pending !== next.pending
+    !sameValue(current.info.execution, next.info.execution) ||
+    (current.pending !== next.pending &&
+      !sameValue(readQueueIds(draft.messages, current), readQueueIds(draft.messages, next)))
   )
     touchRow(draft, "heads", name);
+
+  if (
+    current === undefined ||
+    !sameValue(current.configuration, next.configuration) ||
+    !sameValue(current.context, next.context)
+  )
+    touchRow(draft, "settings", name);
 
   if (current?.background !== next.background)
     diffRows(
@@ -229,6 +241,7 @@ export function dropHead(draft: Draft, name: HeadName): void {
 
   if (head === undefined) return;
   dropRow(draft, "heads", name);
+  dropRow(draft, "settings", name);
 
   for (const key of backgroundRows(name, head.background).keys()) dropRow(draft, "background", key);
   touchPath(draft, name, 0);
@@ -242,6 +255,7 @@ export function emptyStamps(): Index["stamps"] {
     changes: new Map(),
     catalog: new Map(),
     heads: new Map(),
+    settings: new Map(),
     background: new Map(),
   };
 }
@@ -258,6 +272,7 @@ function tableSets(): Touched["upsert"] {
     changes: new Set(),
     catalog: new Set(),
     heads: new Set(),
+    settings: new Set(),
     background: new Set(),
   };
 }
@@ -271,8 +286,7 @@ function diffRows(
   for (const [key, row] of after) {
     const old = before.get(key);
 
-    if (old === undefined || (old !== row && JSON.stringify(old) !== JSON.stringify(row)))
-      touchRow(draft, table, key);
+    if (old === undefined || !sameValue(old, row)) touchRow(draft, table, key);
   }
 
   for (const key of before.keys()) if (!after.has(key)) dropRow(draft, table, key);
@@ -299,8 +313,32 @@ export function backgroundRows(
   return new Map(rows.map((row) => [backgroundRowKey(row), row]));
 }
 
-function pending(message: Message | undefined): boolean {
-  return message?.kind === "user" && message.status.kind === "pending";
+function sameValue<T>(left: T, right: T): boolean {
+  return left === right || JSON.stringify(left) === JSON.stringify(right);
+}
+
+export function readQueueIds(
+  messages: ReadonlyMap<MessageId, Message>,
+  head: FoldHead,
+): readonly MessageId[] {
+  return head.pending.filter((id) => queued(messages.get(id), head));
+}
+
+function queued(message: Message | undefined, head: FoldHead): boolean {
+  return message !== undefined && belongsInQueue(message, head.info.execution);
+}
+
+export function belongsInQueue(message: Message, execution: Execution): message is QueuedMessage {
+  if (message.kind !== "user" || message.status.kind !== "pending") return false;
+
+  if (message.source.kind === "child" || message.source.kind === "job") return false;
+  const schedule = message.status.schedule;
+
+  return (
+    schedule.kind === "attached" ||
+    (schedule.kind === "next-turn" &&
+      (schedule.reason !== "idle" || (execution.kind !== "idle" && message.delivery !== "steer")))
+  );
 }
 
 function unsign(message: Message): Message {
