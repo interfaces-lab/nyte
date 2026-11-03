@@ -1,8 +1,8 @@
 # @nyte-ai/desktop
 
-The Electron desktop client embeds the Nyte host. Main-process code lives in `src/main`, the preload bridge in `src/preload`, and the renderer entry in `src/renderer`. The React interface itself is [`@nyte-ai/app`](../renderer/README.md). Shared session behavior belongs in core.
+The Electron desktop client of the Nyte host. Main-process code lives in `src/main`, the preload bridge in `src/preload`, and the renderer entry in `src/renderer`. The React interface itself is [`@nyte-ai/app`](../renderer/README.md). Shared session behavior belongs in core.
 
-The host runs in the Nyte Host utility process, and a window reaches it over a MessagePort that main hands both sides, not over loopback HTTP. `src/shared/host-port.ts` carries each fetch the SDK makes as numbered exchanges with per-exchange flow control. A window has no per-origin connection cap, its uploads stream, and a host restart fails open requests as a dropped connection does, so the SDK reconnects through a new port.
+The host is the bundled `nyte host`, run by launchd as a login agent, so it keeps running after the app quits. The packaged app registers `Contents/Library/LaunchAgents/ai.nyte.desktop.host.plist` through SMAppService; a development build writes `~/Library/LaunchAgents/ai.nyte.desktop.dev.host.plist` for `packages/tui/dist/nyte` (build it with `pnpm --dir packages/tui build`) and bootstraps it. `NYTE_DESKTOP_HOST_LABEL` picks another label for a development build. The host serves `$NYTE_HOME/host.sock` (default `~/.nyte`, mode 0600), and main connects there. A window reaches the host over a MessagePort that main bridges to the socket, never learning its path or a token. `src/shared/host-port.ts` carries each fetch the SDK makes as numbered exchanges with per-exchange flow control. A window has no per-origin connection cap, its uploads stream, and a host restart fails open requests as a dropped connection does, so the SDK reconnects.
 
 ## Development
 

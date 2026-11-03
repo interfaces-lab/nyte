@@ -1,9 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig, type UserConfig } from "electron-vite";
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { resolvePhotonWasmPath } from "@nyte-ai/host/images";
-import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/lib/deferred-entries.ts";
 import { PICKER_SCRIPT } from "./src/main/browser/browser-picker-page.ts";
@@ -16,7 +13,6 @@ import {
 } from "@nyte-ai/app/vite";
 
 const E2E_FIXTURES = new Map([
-  [resolve("src/host/models.ts"), resolve("src/host/fixtures/e2e-models.ts")],
   [resolve("src/host/connections/tailnet.ts"), resolve("src/host/fixtures/e2e-tailnet.ts")],
 ]);
 
@@ -92,26 +88,6 @@ const config = (mode: string): UserConfig => ({
     plugins: [
       ...(mode === "e2e" ? [e2eFixtures] : []),
       {
-        name: "nyte:codemode-wasm",
-        async generateBundle() {
-          this.emitFile({
-            type: "asset",
-            fileName: "quickjs.wasm",
-            source: await readFile(resolveQuickJSWasmPath()),
-          });
-        },
-      } satisfies Plugin,
-      {
-        name: "nyte:photon-wasm",
-        async generateBundle() {
-          this.emitFile({
-            type: "asset",
-            fileName: "photon_rs_bg.wasm",
-            source: await readFile(resolvePhotonWasmPath()),
-          });
-        },
-      } satisfies Plugin,
-      {
         name: "nyte:browser-picker-page",
         generateBundle() {
           this.emitFile({
@@ -122,6 +98,7 @@ const config = (mode: string): UserConfig => ({
         },
       } satisfies Plugin,
     ],
+    resolve: { alias: { fflate: "fflate/browser" } },
     build: {
       ...(mode === "e2e" ? { outDir: "out-e2e/main" } : {}),
       externalizeDeps: { exclude: ["@clerk/electron"] },
@@ -130,20 +107,11 @@ const config = (mode: string): UserConfig => ({
       rolldownOptions: {
         input: {
           index: resolve("src/main/index.ts"),
-          "host-entry": resolve("src/host/host-entry.ts"),
           "usage-worker": resolve("src/workers/usage-worker.ts"),
-          "codemode-worker": resolve("src/workers/codemode-worker.ts"),
-          "codemode-runtime": resolve("src/workers/codemode-runtime.ts"),
-          "image-worker": resolve("src/workers/image-worker.ts"),
-          "image-runtime": resolve("src/workers/image-runtime.ts"),
         },
         output: {
           entryFileNames: "[name].js",
-          chunkFileNames: (chunk) =>
-            chunk.moduleIds.includes(resolve("src/workers/codemode-runtime.ts")) ||
-            chunk.moduleIds.includes(resolve("src/workers/image-runtime.ts"))
-              ? "[name]-[hash].js"
-              : "chunks/[name].js",
+          chunkFileNames: "chunks/[name].js",
         },
       },
     },
@@ -157,7 +125,6 @@ const config = (mode: string): UserConfig => ({
         input: {
           index: resolve("src/preload/index.ts"),
           "browser-page": resolve("src/preload/browser-page.ts"),
-          "canvas-preview": resolve("src/preload/canvas-preview.ts"),
         },
         treeshake: { moduleSideEffects: false },
         output: { format: "cjs", entryFileNames: "[name].js" },

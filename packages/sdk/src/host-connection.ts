@@ -59,7 +59,7 @@ export type HostCredentials = Exclude<CredentialSource, { readonly kind: "pairin
 export interface HostOptions {
   readonly credentials: HostCredentials;
   readonly client: Omit<ClientInfo, "actions">;
-  readonly socket?: OpenSocket;
+  readonly socket: OpenSocket;
   readonly online?: () => boolean;
 }
 
@@ -146,7 +146,7 @@ export function openHost(address: string, options: HostOptions): HostConnection 
 }
 
 function superviseHost(address: string, options: HostOptions, registry: Registry): Owned {
-  const openSocket = options.socket ?? openGlobalSocket;
+  const openSocket = options.socket;
   const online = options.online ?? (() => true);
   const healthListeners = listenerSet();
   const joined = new Set<Joined>();
@@ -494,8 +494,4 @@ function socketUrl(address: string): string {
   url.protocol = url.protocol === "https:" || url.protocol === "wss:" ? "wss:" : "ws:";
 
   return url.href;
-}
-
-function openGlobalSocket(request: SocketRequest): SocketLike {
-  return new WebSocket(request.url, { headers: request.headers });
 }

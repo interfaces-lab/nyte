@@ -25,6 +25,7 @@
     "./core/canvas-preview": "./src/canvas/canvas-preview.ts",
     "./core/claude-code-sdk": "./src/claude-code-sdk/index.ts",
     "./core/codemode": "./src/codemode.ts",
+    "./core/desktop-settings": "./src/desktop-settings.ts",
     "./core/codemode-runtime": "./src/codemode-runtime.ts",
     "./core/codemode-worker": "./src/codemode-worker.ts",
     "./core/openai-astra-context": "./src/openai-astra-context.ts",
@@ -97,6 +98,10 @@
       "./core/codemode-worker": {
         "types": "./dist/src/codemode-worker.d.ts",
         "import": "./dist/src/codemode-worker.js"
+      },
+      "./core/desktop-settings": {
+        "types": "./dist/src/desktop-settings.d.ts",
+        "import": "./dist/src/desktop-settings.js"
       },
       "./core/openai-astra-context": {
         "types": "./dist/src/openai-astra-context.d.ts",

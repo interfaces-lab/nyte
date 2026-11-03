@@ -2,7 +2,7 @@ import type { UpdateState } from "@nyte-ai/app/contract/bridge.ts";
 import type { MessageBoxOptions } from "electron";
 import { describe, expect, test } from "vitest";
 import { createUpdateController } from "./update-controller.ts";
-import type { DesktopUpdateActivity } from "../../shared/host-messages.ts";
+import type { DesktopUpdateActivity } from "../../shared/update-activity.ts";
 
 function setup({
   available = true,

@@ -1,11 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, test, vi } from "vitest";
-import { createModels } from "@nyte-ai/ai/models";
-import { credentialStore, defaultSecrets, sqliteStore } from "@nyte-ai/host";
-import { fakeModels, titleReply } from "@nyte-ai/bench";
+import { titleReply } from "@nyte-ai/bench";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import type { Connection } from "@nyte-ai/sdk";
 import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
@@ -60,14 +57,6 @@ test("the renderer reaches the host over its port and a chat runs there", async 
   assert.equal(view.execution.kind, "idle");
 });
 
-test("a wrong token is refused before anything is read", async () => {
-  const made = await desktop();
-
-  await assert.rejects(made.connect({ kind: "token", token: "x".repeat(43) }), {
-    code: "unauthenticated",
-  });
-});
-
 test("keep awake holds while a head is live and lets go when its run ends", async () => {
   const awake: boolean[] = [];
   const made = await desktop({ keepAwake: (value) => awake.push(value) });
@@ -88,67 +77,6 @@ test("keep awake holds while a head is live and lets go when its run ends", asyn
   await vi.waitFor(() => assert.deepEqual(awake, [true, false]));
 });
 
-test("a suspend ends the stream in flight and holds the chat until resume continues it", async () => {
-  const made = await desktop();
-  const connection = await connectLocal(made);
-
-  made.fake.reply(
-    { content: [{ type: "text", text: "A partial answer" }], hold: true },
-    { content: [{ type: "text", text: "l answer" }] },
-  );
-
-  const { session, receipt } = await connection.sessions.start({ name: "work", content: "Work" });
-
-  await vi.waitFor(async () =>
-    assert.ok(
-      (await session.view()).messages.some(
-        (message) => isPart(message, text) && message.state.markdown !== "",
-      ),
-    ),
-  );
-
-  made.host.suspend();
-  await vi.waitFor(() => assert.equal(made.fake.requests[0]?.options?.signal?.aborted, true));
-  await vi.waitFor(async () => assert.equal((await session.view()).execution.kind, "retrying"));
-  await new Promise((resolve) => setTimeout(resolve, 30));
-  assert.equal(made.fake.requests.length, 1);
-
-  made.host.resume();
-
-  assert.equal((await receipt.settled()).kind, "completed");
-  assert.equal(made.fake.requests.length, 2);
-  assert.deepEqual(
-    (await session.view()).messages.flatMap((message) =>
-      isPart(message, text) ? [message.state.markdown] : [],
-    ),
-    ["A partia", "l answer"],
-  );
-});
-
-test("with pause on sleep off, a suspend leaves the stream running", async () => {
-  const seen: boolean[] = [];
-  const made = await desktop({ settingsChanged: (settings) => seen.push(settings.pauseOnSleep) });
-  const connection = await connectLocal(made);
-
-  assert.deepEqual(await connection.settings.apply("desktop.pauseOnSleep", false), {
-    kind: "applied",
-  });
-  await vi.waitFor(() => assert.equal(seen.at(-1), false));
-  const finish = Promise.withResolvers<void>();
-  made.fake.reply({ content: [{ type: "text", text: "working" }], until: finish.promise });
-
-  const { receipt } = await connection.sessions.start({ name: "work", content: "Work" });
-  await vi.waitFor(() => assert.equal(made.fake.requests.length, 1));
-
-  made.host.suspend();
-  await new Promise((resolve) => setTimeout(resolve, 30));
-  assert.equal(made.fake.requests[0]?.options?.signal?.aborted, false);
-
-  finish.resolve();
-  assert.equal((await receipt.settled()).kind, "completed");
-  assert.equal(made.fake.requests.length, 1);
-});
-
 test("the desktop's settings reach main from the host view", async () => {
   const seen: boolean[] = [];
   const made = await desktop({ settingsChanged: (settings) => seen.push(settings.blockAds) });
@@ -161,15 +89,19 @@ test("the desktop's settings reach main from the host view", async () => {
 
 test("connecting a server proves the token, pins the host that answered and remembers both", async () => {
   const server = await desktop();
-  const remote = await server.host.call(1, "host.remote.start", { reach: "tailnet" });
-  const made = await desktop();
+  const token = "z".repeat(43);
 
-  if (remote.kind !== "serving" || remote.reach === "cloudflare")
-    throw new Error("Remote access did not start over the tailnet");
+  const listener = await server.served.listen({
+    transport: { kind: "http", hostname: "127.0.0.1" },
+    auth: { kind: "token", token },
+  });
+
+  const address = listener.address ?? "";
+  const made = await desktop();
 
   assert.deepEqual(
     await made.host.call(1, "host.server.connect", {
-      baseUrl: remote.address,
+      baseUrl: address,
       token: "y".repeat(43),
     }),
     {
@@ -180,17 +112,17 @@ test("connecting a server proves the token, pins the host that answered and reme
   assert.deepEqual(await made.host.call(1, "host.server.state", undefined), { kind: "none" });
 
   const connected = await made.host.call(1, "host.server.connect", {
-    baseUrl: remote.address,
-    token: remote.token,
+    baseUrl: address,
+    token,
   });
 
   assert.equal(connected.kind, "connected");
   assert.equal((await made.host.call(1, "host.server.state", undefined)).kind, "connected");
   assert.ok(made.events.some((event) => event.kind === "server_changed"));
   const saved = await readFile(join(made.home, ".nyte", "server.json"), "utf8");
-  assert.equal(JSON.parse(saved).hostId, (await server.host.host()).hostId);
+  assert.equal(JSON.parse(saved).hostId, server.served.hostId);
 
-  await server.close();
+  await listener.close();
   await vi.waitFor(async () =>
     assert.equal((await made.host.call(1, "host.server.state", undefined)).kind, "unavailable"),
   );
@@ -214,9 +146,7 @@ test("opening a folder registers it and selects it for that window only; a faile
   if (opened.kind !== "opened") throw new Error("The folder did not open");
   assert.deepEqual(opened.workspace, { id: opened.workspace.id, path: folder, name: "project" });
   assert.ok(
-    (await (await made.host.host()).workspaces.list()).some(
-      (entry) => entry.id === opened.workspace.id,
-    ),
+    (await made.served.workspaces.list()).some((entry) => entry.id === opened.workspace.id),
   );
   assert.equal(
     (await made.host.call(1, "host.state", undefined)).workspace?.id,
@@ -254,7 +184,7 @@ test("a window reopening on a chat answers its state with the chat's folder sele
   const opened = await made.host.call(1, "host.openWorkspace", { path: folder });
 
   if (opened.kind !== "opened") throw new Error("The folder did not open");
-  const host = await made.host.host();
+  const host = made.served;
   await host.workspace(opened.workspace.id).update({ projectResources: true });
 
   const { session: chat } = await host.sessions.start({
@@ -271,76 +201,4 @@ test("a window reopening on a chat answers its state with the chat's folder sele
   });
   assert.equal((await made.host.call(3, "host.restore", { session: "gone" })).workspace, undefined);
   assert.deepEqual(received, []);
-});
-
-test("a key login over the loopback listener connects the provider, and the reopened home keeps it without reading the key", async () => {
-  const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-login-")));
-  const store = sqliteStore({ path: join(home, "credentials.db") });
-  const file = defaultSecrets(home);
-  let reads = 0;
-
-  const secrets = {
-    key: () => {
-      reads += 1;
-
-      return file.key();
-    },
-  };
-
-  const models = () => {
-    const fake = fakeModels({
-      into: createModels({ credentials: credentialStore(store, secrets) }),
-    });
-
-    fake.configured = false;
-
-    return fake.models;
-  };
-
-  const credential = async (connection: Connection) =>
-    (await connection.models.list()).providers.find((row) => row.id === "test")?.credential;
-
-  try {
-    const first = await desktop({ home, models: models() });
-    const connection = await first.connect();
-    await vi.waitFor(async () => assert.equal(await credential(connection), "missing"));
-
-    const login = connection.models.login({
-      provider: "test",
-      method: { kind: "key" },
-      label: "Work",
-    });
-
-    const steps: string[] = [];
-
-    for await (const step of login.steps()) {
-      steps.push(step.kind);
-
-      if (step.kind === "paste") await login.answer("sk-test");
-    }
-
-    assert.deepEqual(steps, ["paste", "done"]);
-    await vi.waitFor(async () => assert.equal(await credential(connection), "configured"));
-    assert.deepEqual(
-      (await connection.models.accounts("test")).map((account) => account.label),
-      ["Work"],
-    );
-    await connection.close();
-    await first.close();
-    const written = reads;
-    assert.ok(written > 0);
-
-    if (process.platform !== "win32")
-      assert.equal((await stat(join(home, ".nyte", "secret.key"))).mode & 0o777, 0o600);
-
-    const second = await desktop({ home, models: models() });
-    const again = await connectLocal(second);
-
-    assert.equal(await credential(again), "configured");
-    assert.equal(reads, written);
-  } finally {
-    await closeOpened();
-    await store.close();
-    await rm(home, { recursive: true, force: true });
-  }
 });

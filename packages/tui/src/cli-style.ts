@@ -105,7 +105,7 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   },
   { label: "nyte account [status|unlink]", detail: "share this machine with your Nyte account" },
   { label: "nyte mcp <add|remove|list|login|logout>", detail: "manage MCP servers" },
-  { label: "nyte host [--json]", detail: "serve your chats for --host-url to attach to" },
+  { label: "nyte host [--json] [--log]", detail: "serve your chats for --host-url to attach to" },
   { label: "nyte api <list|describe|call>", detail: "print or call the operations a host serves" },
   {
     label: "nyte events [--scope <scope>]...",
@@ -215,11 +215,13 @@ export function renderCommandHelp(
       ].join("\n");
     case "host":
       return [
-        "Usage: nyte host [--json]",
+        "Usage: nyte host [--json] [--log]",
         "Serve your chats on 127.0.0.1 until stopped, so other nyte processes attach with --host-url.",
+        "Also serves ~/.nyte/host.sock (mode 0600), where the Nyte app connects.",
         "Writes the URL, token and pid to ~/.nyte/host.json (mode 0600) and removes it on exit.",
+        "--log appends the output and the error it stops on to ~/.nyte/logs/host.log.",
         "One host runs at a time; a second exits 1 and names the first.",
-        'Prints the URL on stdout; --json prints one {"type":"listening","url","endpoint","pid"} line.',
+        'Prints the URL on stdout; --json prints one {"type":"listening","url","endpoint","socket","pid"} line.',
         "SIGINT, SIGTERM and SIGHUP stop it and exit 0.",
         "Attach: NYTE_HOST_TOKEN=<token from host.json> nyte --host-url <url>",
       ].join("\n");

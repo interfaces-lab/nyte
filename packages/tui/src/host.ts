@@ -11,16 +11,21 @@ import { imageRuntimeOptions } from "./image-runtime.ts";
 import { bunPluginImport } from "./plugin-import.ts";
 
 export function openTerminalHost(
-  options: Pick<OpenHostOptions, "execution" | "label" | "onRevoked"> = {},
+  options: Pick<OpenHostOptions, "execution" | "label" | "onRevoked" | "shell" | "plugins"> = {},
 ): Promise<Host> {
   if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, "tui");
 
   return sdk.open({
-    plugins: [codemodePlugin(codemodeRuntimeOptions()), canvasPlugin(chromiumCanvasPreview(files))],
+    plugins: [
+      codemodePlugin(codemodeRuntimeOptions()),
+      canvasPlugin(chromiumCanvasPreview(files)),
+      ...(options.plugins ?? []),
+    ],
     images: nodeImages(imageRuntimeOptions()),
     pluginImport: bunPluginImport(),
     execution: options.execution ?? { kind: "run", coverage: { kind: "all" } },
     label: options.label,
     onRevoked: options.onRevoked,
+    shell: options.shell,
   });
 }
