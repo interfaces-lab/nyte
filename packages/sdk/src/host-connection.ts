@@ -312,8 +312,8 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   const schedule = (error: SdkError): void => {
     const delay = retryDelay(attempt);
     attempt += 1;
-    show({ kind: "retrying", attempt, at: Date.now() + delay, error });
     retryTimer = setTimeout(() => void connect(), delay);
+    show({ kind: "retrying", attempt, at: Date.now() + delay, error });
   };
 
   const restart = (): void => {

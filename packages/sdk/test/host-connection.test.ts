@@ -286,6 +286,32 @@ describe("a reconnect", () => {
       await until(connection, "open");
     }
   });
+
+  it("keeps one socket when a health listener wakes the connection as it starts retrying", async () => {
+    const served = await serve();
+    const transport = counting();
+    const connection = attach(served.listener, transport.socket);
+    await until(connection, "open");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    cleanups.push(async () => {
+      vi.useRealTimers();
+    });
+
+    connection.health.subscribe(() => {
+      if (connection.health.snapshot().kind === "retrying") connection.wake();
+    });
+    served.listener.disconnectClients();
+    await vi.waitFor(() => expect(transport.opened).toHaveLength(2));
+    await until(connection, "open");
+    await vi.advanceTimersByTimeAsync(30_000);
+    vi.useRealTimers();
+    await new Promise((settle) => setTimeout(settle, 50));
+
+    expect(transport.opened.map((socket) => socket.readyState)).toEqual([
+      WebSocket.CLOSED,
+      WebSocket.OPEN,
+    ]);
+  });
 });
 
 describe("a failed read", () => {
