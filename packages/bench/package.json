@@ -20,11 +20,13 @@
     "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "typebox": "^1.4.2"
+    "typebox": "^1.4.2",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@nyte-ai/connect": "workspace:*",
     "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
     "vitest": "^5.0.5"
   },
   "engines": {
