@@ -1,17 +1,15 @@
 import { spawn } from "node:child_process";
-import type { ChildProcess } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import process from "node:process";
-import { createInterface } from "node:readline";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
+import { dev } from "@nyte-ai/core";
 import { compile } from "@nyte-ai/schema";
-
-const repo = resolve(import.meta.dirname, "../../..");
+import { openHost } from "../src/index.ts";
 
 const PROMPT = "Use the nyte MCP tools to list the host's sessions and say how many there are.";
 
@@ -19,34 +17,36 @@ const REDIRECT = "http://127.0.0.1:1/callback";
 
 const AGENT_MS = 5 * 60 * 1000;
 
-const Listening = Type.Object({ url: Type.String(), socket: Type.String() });
-
-const HostFile = Type.Object({ token: Type.String() });
-
 const root = await mkdtemp(join(tmpdir(), "nyte-mcp-agents-"));
 const home = join(root, "home");
 const project = join(root, "project");
+const socket = join(home, ".nyte", "host.sock");
+const token = randomBytes(32).toString("base64url");
 const hostLog: string[] = [];
+const agentEnv = { ...process.env };
 await mkdir(project, { recursive: true });
+process.env.HOME = home;
+dev.on((line) => hostLog.push(line));
 
-const host = spawn(
-  process.env.NYTE_BINARY ?? "bun",
-  process.env.NYTE_BINARY === undefined
-    ? [join(repo, "packages/tui/src/binary.ts"), "host", "--json"]
-    : ["host", "--json"],
-  {
-    cwd: project,
-    env: { ...process.env, HOME: home, NYTE_HOME: join(home, ".nyte"), NYTE_DEV: "1" },
-    stdio: ["ignore", "pipe", "pipe"],
-  },
-);
+const host = await openHost({ home, workspace: { kind: "local", path: project } });
 
 try {
-  const listening = await firstLine(host, Listening);
-  const url = listening.url;
+  const auth = { kind: "token", token } as const;
+  const listener = await host.listen({
+    transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+    auth,
+  });
+
+  await host.listen({
+    transport: { kind: "socket", path: socket },
+    auth,
+    execution: { kind: "admit-only" },
+  });
+
+  if (listener.address === null) throw new Error("The host bound no address.");
+  const url = listener.address;
   const resource = `${url}/mcp`;
-  const token = (await readJson(join(home, ".nyte", "host.json"), HostFile)).token;
-  process.stdout.write(`host: ${url}, local socket ${listening.socket}\n`);
+  process.stdout.write(`host: ${url}, local socket ${socket}\n`);
 
   const catalog = await json(
     await post(`${url}/models.list`, token, {}),
@@ -75,7 +75,7 @@ try {
   );
   process.stdout.write(`created a session: ${JSON.stringify(started)}\n`);
 
-  const access = await signIn(url, resource, listening.socket, token);
+  const access = await signIn(url, resource, socket, token);
   process.stdout.write("signed in with a read-only grant\n");
 
   const claude = await runClaude(resource, access);
@@ -88,8 +88,7 @@ try {
   );
   process.exitCode = claude.code === 0 && codex.code === 0 ? 0 : 1;
 } finally {
-  host.kill("SIGINT");
-  await new Promise((done) => host.once("exit", done));
+  await host.close();
   await rm(root, { recursive: true, force: true });
 }
 
@@ -103,7 +102,11 @@ async function signIn(
     await fetch(`${url}/oauth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_name: "MCP agents check", redirect_uris: [REDIRECT] }),
+      body: JSON.stringify({
+        client_name: "MCP agents check",
+        application_type: "native",
+        redirect_uris: [REDIRECT],
+      }),
     }),
     Type.Object({ client_id: Type.String() }),
   );
@@ -166,7 +169,7 @@ async function runClaude(
   access: string,
 ): Promise<{ readonly code: number; readonly output: string }> {
   const config = join(root, "claude");
-  const env = { ...process.env, CLAUDE_CONFIG_DIR: config };
+  const env = { ...agentEnv, CLAUDE_CONFIG_DIR: config };
   await mkdir(config, { recursive: true });
 
   await run(
@@ -194,9 +197,9 @@ async function runCodex(
   access: string,
 ): Promise<{ readonly code: number; readonly output: string }> {
   const codexHome = join(root, "codex");
-  const env = { ...process.env, CODEX_HOME: codexHome, NYTE_MCP_TOKEN: access };
+  const env = { ...agentEnv, CODEX_HOME: codexHome, NYTE_MCP_TOKEN: access };
   await mkdir(codexHome, { recursive: true });
-  const auth = process.env.NYTE_AGENTS_CODEX_AUTH;
+  const auth = agentEnv.NYTE_AGENTS_CODEX_AUTH;
 
   if (auth !== undefined) await copyFile(auth, join(codexHome, "auth.json"));
 
@@ -271,40 +274,6 @@ function socketCall(socket: string, token: string, name: string, body: unknown):
     sent.once("error", failed);
     sent.end(payload);
   });
-}
-
-function firstLine<T extends TSchema>(child: ChildProcess, type: T): Promise<Static<T>> {
-  const check = compile(type);
-
-  return new Promise((done, failed) => {
-    if (child.stdout === null || child.stderr === null) {
-      failed(new Error("The host has no output."));
-
-      return;
-    }
-
-    const lines = createInterface({ input: child.stdout });
-    createInterface({ input: child.stderr }).on("line", (line) => hostLog.push(line));
-    lines.on("line", (line) => {
-      hostLog.push(line);
-
-      if (!line.startsWith("{")) return;
-      const value: unknown = JSON.parse(line);
-
-      if (check.Check(value)) done(value);
-    });
-    child.once("exit", (code) =>
-      failed(new Error(`nyte host exited with ${String(code)}:\n${hostLog.join("\n")}`)),
-    );
-  });
-}
-
-async function readJson<T extends TSchema>(path: string, type: T): Promise<Static<T>> {
-  const value: unknown = JSON.parse(await readFile(path, "utf8"));
-
-  if (!compile(type).Check(value)) throw new Error(`${path} isn't what the host writes.`);
-
-  return value;
 }
 
 async function json<T extends TSchema>(response: Response, type: T): Promise<Static<T>> {
