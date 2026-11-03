@@ -64,7 +64,12 @@ Each device gets its own code, so you can remove one without the others. A code 
 
 ## Use another host [#another-host]
 
-To list another Nyte host's chats in the sidebar, open **Settings > Server** and click **Connect to Host…** under **Remote host**. Enter its `https://` address and token. Nyte stores the token in `~/.nyte/server.json`.
+To list another Nyte host's chats in the sidebar, open **Settings > Server** and click **Connect to Host…** under **Remote host**. Enter its `https://` address and a token. Nyte stores the token in `~/.nyte/server.json`.
+
+Where the address and token come from depends on how that host serves:
+
+- **Cloudflare Tunnel**: on that computer, click **Pair…**, name this Mac and copy the pairing link. The address is the part before `/pair`, and the token is the text after `token=`. The token is this Mac's own, so **Remove** next to it on that computer ends its access.
+- **Tailscale**: this Mac needs Tailscale to reach it. The address is the one that computer shows under [Tailscale](#tailscale). That host knows you from your Tailscale sign-in and ignores the token, but the field can't be empty, so enter any text.
 
 **Change Host…** points it at another address. **Disconnect…** removes it. Its chats keep running on that host.
 
@@ -84,13 +89,13 @@ To list another Nyte host's chats in the sidebar, open **Settings > Server** and
 
 ## Troubleshooting [#troubleshooting]
 
-| What you see                                  | What to do                                                                                                                     |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Devices can't see a linked Mac                | Turn on **Remote access**. It starts off.                                                                                      |
-| The computer isn't listed, or doesn't answer  | Wake it. Check that Nyte is open with **Remote access** on.                                                                    |
-| **Offline** next to **Remote access**         | The computer can't reach Nyte to verify itself, so it refuses devices. Check its internet connection.                          |
-| **Not reachable** next to **Remote access**   | Another Nyte connection replaced this one. Turn **Remote access** off, then on again.                                          |
-| **Account disabled**                          | The Nyte account is locked or disabled, so every device is refused.                                                            |
-| **Pair…** for the tunnel is greyed out        | The tunnel hasn't connected yet. Wait for **Connected**.                                                                       |
-| The token is refused                          | A manual token ends when you stop serving. Turn serving on again and scan the new code. A revoked device has to sign in again. |
-| **Different host**, with **Pair as New Host** | The address answered as a different computer. Pair again only if you reinstalled Nyte or reset its profile on that computer.   |
+| What you see                                  | What to do                                                                                                                                                       |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Devices can't see a linked Mac                | Turn on **Remote access**. It starts off.                                                                                                                        |
+| The computer isn't listed, or doesn't answer  | Wake it. Check that Nyte is open with **Remote access** on.                                                                                                      |
+| **Offline** next to **Remote access**         | The computer can't reach Nyte to verify itself, so it refuses devices. Check its internet connection.                                                            |
+| **Not reachable** next to **Remote access**   | Another Nyte connection replaced this one. Turn **Remote access** off, then on again.                                                                            |
+| **Account disabled**                          | The Nyte account is locked or disabled, so every device is refused.                                                                                              |
+| **Pair…** for the tunnel is greyed out        | The tunnel hasn't connected yet. Wait for **Connected**.                                                                                                         |
+| The token is refused                          | The device was removed, or its pairing code expired unused. Click **Pair…** on the computer and use the new code. A revoked account device has to sign in again. |
+| **Different host**, with **Pair as New Host** | The address answered as a different computer. Pair again only if you reinstalled Nyte or reset its profile on that computer.                                     |
