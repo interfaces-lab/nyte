@@ -213,12 +213,14 @@ const check = () => {
     if (asked.has(request.part)) continue;
     asked.add(request.part);
 
-    answering = answering.then(async () => {
-      const { title, detail } = approvalPrompt(request);
-      const answer = await prompt.question(`${title}\n${detail}\nAllow? [y/N] `);
+    answering = answering
+      .then(async () => {
+        const { title, detail } = approvalPrompt(request);
+        const answer = await prompt.question(`${title}\n${detail}\nAllow? [y/N] `);
 
-      await session.part(request.part).act(answer === "y" ? "once" : "deny", {});
-    });
+        await session.part(request.part).act(answer === "y" ? "once" : "deny", {});
+      })
+      .catch((error: unknown) => console.error(error));
   }
 
   if (view.execution.kind === "idle" && view.execution.lastRun?.id === run) done.resolve();
@@ -231,6 +233,7 @@ await done.promise;
 stopRows();
 store.close();
 live.release();
+await answering;
 prompt.close();
 await host.close();
 ```
@@ -239,7 +242,8 @@ await host.close();
 command?" and the command. The answers are `once`, `session`, which allows that tool for the rest
 of the chat, and `deny`. The setting is saved in the store, so later chats ask too until you apply
 `"full"` again. `"auto-edit"` lets the agent edit files in the folder and asks before commands,
-edits outside it and other tools.
+edits outside it and other tools. The `catch` logs an answer that fails and keeps the chain going, so
+the next request is still asked.
 
 ## Stop a run that takes too long [#stop-a-run]
 
