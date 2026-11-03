@@ -430,16 +430,11 @@ describe("phone requests", () => {
     expect(desktop.pending("open")).toEqual([]);
     desktop.close();
     await desktop.closed;
-    await waitFor(async () => {
-      const rows = await broker.query(
-        "SELECT relay_session FROM environments WHERE id = ?1",
-        environmentId,
-      );
-
-      return JSON.stringify(rows) === '[{"relay_session":null}]';
-    });
-    expect(await wireError(await phone({ environmentId, bearer }, "/sessions.list"))).toEqual(
-      refused(503, "closed"),
+    await waitFor(
+      async () =>
+        JSON.stringify(
+          await wireError(await phone({ environmentId, bearer }, "/sessions.list")),
+        ) === JSON.stringify(refused(503, "closed")),
     );
   });
 
@@ -458,7 +453,8 @@ describe("phone requests", () => {
     expect(
       await wireError(await phone({ environmentId, bearer }, "/_nyte/connect/device")),
     ).toEqual(refused(405, "method_not_allowed"));
-    await broker.query(
+    await broker.relayQuery(
+      environmentId,
       "UPDATE devices SET state = 'reserved', revoke_reason = NULL WHERE id = ?1",
       deviceId,
     );
@@ -466,7 +462,8 @@ describe("phone requests", () => {
     expect(await wireError(await phone({ environmentId, bearer }, "/sessions.list"))).toEqual(
       refused(401, "unauthorized"),
     );
-    await broker.query(
+    await broker.relayQuery(
+      environmentId,
       "UPDATE devices SET state = 'revoked', revoke_reason = 'released' WHERE id = ?1",
       deviceId,
     );

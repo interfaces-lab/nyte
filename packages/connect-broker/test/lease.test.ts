@@ -1,8 +1,6 @@
 import { ErrorBody, LEASE_LIFETIME_SECONDS } from "@nyte-ai/connect";
 import { Value } from "typebox/value";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { OWNER_FRESHNESS_MS } from "../src/clerk.ts";
-import { attachRelay, detachRelay } from "../src/store/environments.ts";
 import { ORIGIN, createHarness, read } from "./harness.ts";
 import type { FakeDesktop, Harness } from "./harness.ts";
 
@@ -61,17 +59,16 @@ describe("leases", () => {
       return read(listed.body, "environments", "0", "online");
     };
 
-    await harness.lease(desktop);
     expect(await online()).toBe(false);
-    await attachRelay(harness.db, { id: desktop.environmentId, session: "session-one-000000000" });
+    harness.relay.connected.add(desktop.environmentId);
+    expect(await online()).toBe(false);
+    await harness.lease(desktop);
     expect(await online()).toBe(true);
     harness.clock.offsetMs = 91_000;
     expect(await online()).toBe(false);
     harness.clock.offsetMs = 0;
-    await attachRelay(harness.db, { id: desktop.environmentId, session: "session-two-000000000" });
-    await detachRelay(harness.db, { id: desktop.environmentId, session: "session-one-000000000" });
     expect(await online()).toBe(true);
-    await detachRelay(harness.db, { id: desktop.environmentId, session: "session-two-000000000" });
+    harness.relay.connected.delete(desktop.environmentId);
     expect(await online()).toBe(false);
   });
 
@@ -154,62 +151,14 @@ describe("leases", () => {
     expect(code(answer.body)).toBe("revoked");
   });
 
-  it("rechecks the owner with Clerk every 15 minutes and keeps the stored standing when Clerk fails", async () => {
+  it("never asks Clerk on a lease", async () => {
     const desktop = await linked();
+    const calls = harness.clerkApi.calls.length;
 
-    expect(harness.clerkApi.calls).toEqual(["GET /v1/users/user_alice"]);
-    expect((await harness.lease(desktop)).answer.status).toBe(200);
-    expect((await harness.lease(desktop)).answer.status).toBe(200);
-    expect(harness.clerkApi.calls).toHaveLength(1);
-
-    harness.clock.offsetMs = 16 * 60_000;
     harness.clerkApi.userStatus = 503;
+    harness.clock.offsetMs = 2 * 60 * 60_000;
     expect((await harness.lease(desktop)).answer.status).toBe(200);
-    expect(harness.clerkApi.calls).toHaveLength(2);
-
-    harness.clerkApi.userStatus = undefined;
-    harness.clerkApi.users.set("user_alice", { banned: false, locked: true, updated_at: 5 });
-    const locked = await harness.lease(desktop);
-
-    expect(locked.answer.status).toBe(403);
-    expect(code(locked.answer.body)).toBe("owner_disabled");
-  });
-
-  it("stops serving on a stale standing once Clerk has been unreachable past the freshness bound", async () => {
-    const desktop = await linked();
-
-    expect((await harness.lease(desktop)).answer.status).toBe(200);
-    harness.clerkApi.userStatus = 503;
-    harness.clock.offsetMs = OWNER_FRESHNESS_MS - 60_000;
-    expect((await harness.lease(desktop)).answer.status).toBe(200);
-
-    harness.clock.offsetMs = OWNER_FRESHNESS_MS + 1000;
-    const stale = await harness.lease(desktop);
-
-    expect(stale.answer.status).toBe(503);
-    expect(code(stale.answer.body)).toBe("internal");
-    expect(stale.answer.headers.get("retry-after")).toBe("60");
-
-    harness.clerkApi.userStatus = undefined;
-    expect((await harness.lease(desktop)).answer.status).toBe(200);
-  });
-
-  it("is unavailable, not active, when Clerk never answered for this owner", async () => {
-    harness.clerkApi.userStatus = 500;
-    const desktop = await linked();
-
-    expect((await harness.lease(desktop)).answer.status).toBe(503);
-  });
-
-  it("fails closed for an owner Clerk no longer knows, without revoking the link", async () => {
-    const desktop = await linked();
-
-    harness.clerkApi.users.clear();
-    harness.clock.offsetMs = 16 * 60_000;
-    expect(code((await harness.lease(desktop)).answer.body)).toBe("owner_disabled");
-    harness.clerkApi.users.set("user_alice", { banned: false, locked: false, updated_at: 9 });
-    harness.clock.offsetMs = 32 * 60_000;
-    expect((await harness.lease(desktop)).answer.status).toBe(200);
+    expect(harness.clerkApi.calls).toHaveLength(calls);
   });
 
   it("rate-limits leases per environment", async () => {

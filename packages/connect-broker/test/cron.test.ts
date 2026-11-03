@@ -17,29 +17,29 @@ beforeEach(async () => {
 });
 
 describe("the scheduled sweep", () => {
-  it("revokes reservations whose grant lapsed and bumps the policy", async () => {
+  it("catches a ban whose webhook never arrived and ends the owner's relay channels", async () => {
     const { desktop } = await harness.link({ userId: "user_alice" });
-    const before = await harness.lease(desktop);
 
-    await harness.db
-      .prepare(
-        `INSERT INTO devices (id, environment_id, client_id, client_name, digest, session_id, state, grant_id,
-           nonce, grant_expires_at, created_at)
-         VALUES (?1, ?2, 'client-0000000000000', 'Phone', ?3, 'sess_x', 'reserved', 'grant-00000000000000000000', 'nonce-0000000000000000000', ?4, ?4)`,
-      )
-      .bind(crypto.randomUUID(), desktop.environmentId, "d".repeat(43), harness.now() - 60_000)
-      .run();
+    expect((await harness.lease(desktop)).answer.status).toBe(200);
+    harness.clerkApi.users.set("user_alice", { banned: true, locked: false, updated_at: 100 });
     await harness.sweep();
-    expect(read(await harness.rows("devices"), "0", "state")).toBe("revoked");
-    expect((await harness.lease(desktop)).claims?.policy).toBeGreaterThan(
-      before.claims?.policy ?? Infinity,
+    expect(read((await harness.lease(desktop)).answer.body, "error", "code")).toBe(
+      "owner_disabled",
     );
+    expect(harness.relay.calls).toContainEqual({
+      operation: "/reset",
+      environmentId: desktop.environmentId,
+      deviceId: null,
+      path: null,
+    });
+
+    harness.clerkApi.users.set("user_alice", { banned: false, locked: false, updated_at: 200 });
+    await harness.sweep();
+    expect((await harness.lease(desktop)).answer.status).toBe(200);
   });
 
   it("drops expired replay and rate rows but keeps live ones", async () => {
-    const { desktop } = await harness.link({ userId: "user_alice" });
-
-    await harness.lease(desktop);
+    await harness.link({ userId: "user_alice" });
     expect((await harness.rows("proof_replays")).length).toBeGreaterThan(0);
     await harness.sweep();
     expect((await harness.rows("proof_replays")).length).toBeGreaterThan(0);

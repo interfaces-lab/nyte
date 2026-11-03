@@ -1,38 +1,29 @@
 /**
- * Clerk: offline session verification, the Backend API calls behind owner
- * rechecks and session revocation, and the owner standing they feed.
+ * Clerk: offline session verification, and the Backend API calls behind
+ * linking, the reconcile cron, and session revocation.
  */
 import { verifyToken } from "@clerk/backend";
 import { CLOCK_TOLERANCE_SECONDS } from "@nyte-ai/connect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-import type { Context } from "./context.ts";
+import { rateStatement, withinLimit } from "./context.ts";
+import type { Context, RateLimit } from "./context.ts";
 import { Refusal, readText } from "./http.ts";
 import { errorName } from "./log.ts";
 import {
   confirmSessionRevoked,
   deferSessionRevocation,
-  findOwner,
-  sessionDenied,
-  recordOwnerCheck,
+  deniedStatement,
+  ownerStatement,
 } from "./store/owners.ts";
+import { OwnerRow, one } from "./store/rows.ts";
 
 const CLERK_API = "https://api.clerk.com/v1";
 
 const CLERK_TIMEOUT_MS = 3_000;
 
 const CLERK_REPLY_LIMIT = 65_536;
-
-/** How long a Backend API owner lookup stands before a lease asks again. */
-const OWNER_RECHECK_MS = 15 * 60_000;
-
-/**
- * How long a lookup may serve leases while Clerk cannot be asked again. Past
- * it, leases stop until Clerk answers, so an owner banned during an outage
- * that also swallowed the webhook is served for at most this long.
- */
-export const OWNER_FRESHNESS_MS = 60 * 60_000;
 
 /**
  * How long a denied session stays denied after Clerk confirms its
@@ -79,6 +70,9 @@ type ClerkUser = Static<typeof ClerkUser>;
 
 const LABEL_LIMIT = 320;
 
+/** Users per Backend API list call, Clerk's page limit. */
+export const RECONCILE_BATCH = 100;
+
 interface Session {
   readonly userId: string;
   readonly sessionId: string;
@@ -109,10 +103,14 @@ function userLabel(user: ClerkUser): string | undefined {
  * Verify a Clerk session JWT offline and check what `verifyToken` leaves to
  * the caller: the exact issuer, a required audience naming `CONNECT_ORIGIN`,
  * a session id, an allowed `azp` when one is present, an active session
- * status, and no impersonation. Then refuse disabled owners and denied
- * sessions.
+ * status, and no impersonation. Then, in one D1 round trip, refuse a disabled
+ * owner and a denied session, and count the request against `bucket`.
  */
-export async function verifySession(context: Context, request: Request): Promise<Session> {
+export async function verifySession(
+  context: Context,
+  request: Request,
+  bucket: RateLimit,
+): Promise<Session> {
   const token = BEARER.exec(request.headers.get("authorization") ?? "")?.[1];
 
   if (token === undefined || token.length > TOKEN_LIMIT) throw new Refusal("unauthorized");
@@ -142,12 +140,18 @@ export async function verifySession(context: Context, request: Request): Promise
   )
     throw new Refusal("unauthorized");
 
-  const owner = await findOwner(context.db, claims.sub);
+  const [owner, denied, count] = await context.db.batch([
+    ownerStatement(context.db, claims.sub),
+    deniedStatement(context.db, { sessionId: claims.sid, now: Date.now() }),
+    rateStatement(context, bucket, claims.sub),
+  ]);
+  const standing = one(OwnerRow, owner?.results[0])?.status ?? "active";
 
-  if (owner !== undefined && owner.status !== "active") throw new Refusal("owner_disabled");
+  if (standing !== "active") throw new Refusal("owner_disabled");
 
-  if (await sessionDenied(context.db, { sessionId: claims.sid, now: context.now() }))
-    throw new Refusal("session_revoked");
+  if ((denied?.results.length ?? 0) > 0) throw new Refusal("session_revoked");
+
+  if (!withinLimit(bucket, count?.results[0])) throw new Refusal("rate_limited");
 
   return {
     userId: claims.sub,
@@ -188,89 +192,87 @@ async function clerkCall(
   return { status: response.status, body };
 }
 
-type Standing =
-  | "active"
-  /** Banned or locked in Clerk, or unknown to it. Not terminal. */
-  | "disabled"
-  | "deleted"
-  /** Clerk has not answered for longer than `OWNER_FRESHNESS_MS`. */
-  | "unavailable";
-
-/**
- * Whether the owner may be served now. Deleted is final. With `recheck`, a
- * standing older than `OWNER_RECHECK_MS` is looked up in the Backend API, so
- * a missed webhook is caught within that bound. While Clerk cannot answer,
- * the stored standing serves until its last answered lookup is
- * `OWNER_FRESHNESS_MS` old; after that the owner is unavailable, not active.
- */
-export async function ownerStanding(
-  context: Context,
-  input: { readonly userId: string; readonly recheck: boolean },
-): Promise<Standing> {
-  const owner = await findOwner(context.db, input.userId);
-
-  if (owner?.status === "deleted") return "deleted";
-
-  if (!input.recheck) return owner?.status ?? "active";
-  const now = context.now();
-  const checkedAt = owner?.checked_at ?? null;
-
-  if (owner !== undefined && checkedAt !== null && checkedAt + OWNER_RECHECK_MS > now)
-    return owner.status;
-  const lookup = await lookupOwner(context, input.userId);
-
-  if (lookup.kind === "failed") {
-    if (owner?.status === "disabled") return "disabled";
-
-    return owner !== undefined && checkedAt !== null && checkedAt + OWNER_FRESHNESS_MS > now
-      ? owner.status
-      : "unavailable";
-  }
-
-  return (await findOwner(context.db, input.userId))?.status ?? "active";
+/** How Clerk's user record maps to the broker's standing: banned or locked is disabled. */
+function clerkStanding(user: { readonly banned: boolean; readonly locked: boolean }) {
+  return user.banned || user.locked ? "disabled" : "active";
 }
 
 type OwnerLookup =
-  | { readonly kind: "found"; readonly label: string | undefined }
+  | {
+      readonly kind: "found";
+      readonly label: string | undefined;
+      readonly status: "active" | "disabled";
+    }
   | { readonly kind: "absent" }
   | { readonly kind: "failed" };
 
 /**
- * Ask the Backend API about the owner and record the standing it reports:
- * disabled when banned, locked, or unknown. Unknown is not terminal, so a
- * misconfigured key cannot revoke every link; only the webhook deletes.
+ * Ask the Backend API about the owner before a link: its standing and how
+ * Clerk would name it. Nothing is recorded; the webhook and the reconcile
+ * cron are the only writers of an owner's standing.
  */
-export async function lookupOwner(context: Context, userId: string): Promise<OwnerLookup> {
+async function lookupOwner(context: Context, userId: string): Promise<OwnerLookup> {
   const answer = Value.Check(ClerkId, userId)
     ? await clerkCall(context, { method: "GET", path: `/users/${userId}` })
     : undefined;
-  const now = context.now();
 
-  if (answer?.status === 200 && Value.Check(ClerkUser, answer.body) && answer.body.id === userId) {
-    await recordOwnerCheck(context.db, {
-      userId,
-      status: answer.body.banned || answer.body.locked ? "disabled" : "active",
-      version: answer.body.updated_at,
-      now,
-    });
+  if (answer?.status === 200 && Value.Check(ClerkUser, answer.body) && answer.body.id === userId)
+    return { kind: "found", label: userLabel(answer.body), status: clerkStanding(answer.body) };
 
-    return { kind: "found", label: userLabel(answer.body) };
-  }
-
-  if (answer?.status === 404) {
-    await recordOwnerCheck(context.db, {
-      userId,
-      status: "disabled",
-      version: (await findOwner(context.db, userId))?.version ?? 0,
-      now,
-    });
-
-    return { kind: "absent" };
-  }
-
+  if (answer?.status === 404) return { kind: "absent" };
   context.log.warn("owner.lookup_failed", { status: answer?.status ?? 0 });
 
   return { kind: "failed" };
+}
+
+/**
+ * Refuse a link for an owner Clerk reports banned, locked, or unknown, or
+ * cannot report on now. Answers the owner label: Clerk's primary email,
+ * username, or name, then the session's `email` claim, then the user id.
+ */
+export async function requireLinkableOwner(context: Context, session: Session): Promise<string> {
+  const lookup = await lookupOwner(context, session.userId);
+
+  if (lookup.kind === "failed") throw new Refusal("internal", 503);
+
+  if (lookup.kind === "absent" || lookup.status !== "active") throw new Refusal("owner_disabled");
+
+  return lookup.label ?? session.email ?? session.userId;
+}
+
+const ClerkUserList = Type.Array(ClerkUser, { maxItems: RECONCILE_BATCH });
+
+/**
+ * The standing Clerk reports for each of up to `RECONCILE_BATCH` users, keyed
+ * by id. A user Clerk no longer has is absent from the map. Undefined when
+ * Clerk did not answer.
+ */
+export async function lookupOwners(
+  context: Context,
+  userIds: readonly string[],
+): Promise<
+  | ReadonlyMap<string, { readonly status: "active" | "disabled"; readonly version: number }>
+  | undefined
+> {
+  const ids = userIds.filter((id) => Value.Check(ClerkId, id));
+  const query = new URLSearchParams([
+    ...ids.map((id): [string, string] => ["user_id", id]),
+    ["limit", String(RECONCILE_BATCH)],
+  ]);
+  const answer =
+    ids.length === 0
+      ? undefined
+      : await clerkCall(context, { method: "GET", path: `/users?${query.toString()}` });
+
+  if (answer?.status !== 200 || !Value.Check(ClerkUserList, answer.body)) {
+    context.log.warn("owner.reconcile_failed", { status: answer?.status ?? 0 });
+
+    return undefined;
+  }
+
+  return new Map(
+    answer.body.map((user) => [user.id, { status: clerkStanding(user), version: user.updated_at }]),
+  );
 }
 
 /**
@@ -309,7 +311,7 @@ export async function settleSessionRevocation(
       return false;
     }
   })();
-  const now = context.now();
+  const now = Date.now();
 
   if (settled) {
     await confirmSessionRevoked(context.db, {

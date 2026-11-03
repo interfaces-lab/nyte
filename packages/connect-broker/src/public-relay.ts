@@ -1,3 +1,9 @@
+/**
+ * Phone requests under `/r/`. The Worker checks what needs no data (the
+ * route, the method, a browser `Origin`, the declared size, and the bearer's
+ * shape) and hands the rest to the environment's relay, which checks the
+ * bearer against its own devices before it opens a channel.
+ */
 import { DeviceToken } from "@nyte-ai/connect";
 import {
   PUBLIC_RELAY_BEARER,
@@ -6,17 +12,20 @@ import {
   publicRelayTarget,
   relayRefusal,
 } from "@nyte-ai/connect/relay";
-import type { RelayRefusalCode } from "@nyte-ai/connect/relay";
-import { randomId, sha256 } from "@nyte-ai/connect/signing";
+import type { RelayMethod, RelayRefusalCode } from "@nyte-ai/connect/relay";
+import { randomId } from "@nyte-ai/connect/signing";
 import { Value } from "typebox/value";
-import { allow } from "./context.ts";
 import type { Context } from "./context.ts";
 import { Refusal } from "./http.ts";
 import { errorName } from "./log.ts";
-import { connectRequest, forwardRequest, resetRelay, socketRequest } from "./relay-stub.ts";
-import { findRelayDevice } from "./store/environments.ts";
-
-const BEARER = /^Bearer (\S+)$/u;
+import type { RelayAdmission } from "./environment-api.ts";
+import {
+  bearerToken,
+  connectRequest,
+  forwardRequest,
+  resetChannel,
+  socketRequest,
+} from "./relay-stub.ts";
 
 function refuse(code: RelayRefusalCode, headers: Record<string, string> = {}): Response {
   const response = relayRefusal(code);
@@ -26,34 +35,28 @@ function refuse(code: RelayRefusalCode, headers: Record<string, string> = {}): R
   return response;
 }
 
-function clientAddress(request: Request): string {
-  return request.headers.get("cf-connecting-ip") ?? "unknown";
-}
-
-async function admit(
-  context: Context,
-  request: Request,
-): Promise<
+type Admission =
   | { readonly kind: "refused"; readonly response: Response }
   | {
       readonly kind: "admitted";
       readonly environmentId: string;
-      readonly deviceId: string | undefined;
       readonly path: string;
-      readonly method: "GET" | "POST" | "DELETE";
+      readonly method: RelayMethod;
+      readonly admission: RelayAdmission;
       readonly socket: boolean;
-    }
-> {
+    };
+
+function admit(context: Context, request: Request): Admission {
   const refused = (code: RelayRefusalCode, headers?: Record<string, string>) =>
     ({ kind: "refused", response: refuse(code, headers) }) as const;
+
   const target = publicRelayTarget(new URL(request.url));
 
   if (target === undefined) return refused("not_found");
-  const methods: readonly ("GET" | "POST" | "DELETE")[] = PUBLIC_RELAY_METHODS[target.kind];
+  const methods: readonly RelayMethod[] = PUBLIC_RELAY_METHODS[target.kind];
   const method = methods.find((allowed) => allowed === request.method);
 
   if (method === undefined) return refused("method_not_allowed", { allow: methods.join(", ") });
-
   const origin = request.headers.get("origin");
 
   if (origin !== null && !context.config.webOrigins.includes(origin)) return refused("forbidden");
@@ -61,46 +64,19 @@ async function admit(
 
   if (declared !== null && !(Number(declared) <= RELAY_BODY_LIMIT_BYTES))
     return refused("payload_too_large");
+  const admission = PUBLIC_RELAY_BEARER[target.kind];
+  const token = bearerToken(request.headers);
 
-  if (!(await allow(context, "relayAddress", clientAddress(request)))) return refused("closed");
-  const bearer = PUBLIC_RELAY_BEARER[target.kind];
-
-  if (bearer === "none")
-    return (await allow(context, "relay", target.environmentId))
-      ? {
-          kind: "admitted",
-          environmentId: target.environmentId,
-          deviceId: undefined,
-          path: target.path,
-          method,
-          socket: target.kind === "socket",
-        }
-      : refused("closed");
-  const token = BEARER.exec(request.headers.get("authorization") ?? "")?.[1];
-
-  if (token === undefined || !Value.Check(DeviceToken, token)) return refused("unauthorized");
-  const device = await findRelayDevice(context.db, {
-    environmentId: target.environmentId,
-    digest: await sha256(token),
-  });
-
-  if (device === undefined) return refused("unauthorized");
-  const live = device.environment_state === "active" && device.state !== "revoked";
-
-  if (bearer === "reserved-or-active" ? !live : !live || device.state !== "active")
-    return refused(bearer === "reserved-or-active" ? "forbidden" : "unauthorized");
-
-  if (device.owner_status !== "active") return refused("closed");
-
-  if (!(await allow(context, "relay", target.environmentId))) return refused("closed");
+  if (admission !== "none" && (token === undefined || !Value.Check(DeviceToken, token)))
+    return refused("unauthorized");
 
   return {
     kind: "admitted",
     environmentId: target.environmentId,
-    deviceId: device.id,
     path: target.path,
     method,
-    socket: false,
+    admission,
+    socket: target.kind === "socket",
   };
 }
 
@@ -112,14 +88,15 @@ async function admit(
 function passThrough(response: Response, input: { readonly onCancel: () => void }): Response {
   if (response.body === null) return response;
   const reader = response.body.getReader();
+
   const body = new ReadableStream<Uint8Array>(
     {
       async pull(controller) {
         try {
-          const { done, value } = await reader.read();
+          const read = await reader.read();
 
-          if (done) controller.close();
-          else controller.enqueue(value);
+          if (read.done) controller.close();
+          else controller.enqueue(read.value);
         } catch (error) {
           controller.error(error);
         }
@@ -135,59 +112,51 @@ function passThrough(response: Response, input: { readonly onCancel: () => void 
   return new Response(body, { status: response.status, headers: response.headers });
 }
 
-/** A phone request: admitted to the environment's relay, or refused here. */
+/** A phone request: handed to the environment's relay, or refused here. */
 export async function relayPublic(context: Context, request: Request): Promise<Response> {
-  let admission: Awaited<ReturnType<typeof admit>>;
-
-  try {
-    admission = await admit(context, request);
-  } catch (error) {
-    context.log.error("relay.admit_failed", { error: errorName(error) });
-
-    return refuse("internal");
-  }
+  const admission = admit(context, request);
 
   if (admission.kind === "refused") return admission.response;
 
   if (request.signal.aborted) return refuse("closed");
-  const { environmentId } = admission;
+  const environmentId = admission.environmentId;
   const channel = randomId();
-  const stub = context.relay(environmentId);
+  const stub = context.environment(environmentId);
 
   if (admission.socket) {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return refuse("not_found");
 
-    return stub.fetch(socketRequest({ environmentId, channel, path: admission.path }));
+    return stub.fetch(socketRequest({ channel, path: admission.path }));
   }
 
   let reset = false;
-  const resetChannel = () => {
+
+  const cancel = () => {
     if (reset) return;
     reset = true;
-    resetRelay(context, { environmentId, channel, stub });
+    resetChannel(context, { stub, environmentId, channel });
   };
 
-  request.signal.addEventListener("abort", resetChannel, { once: true });
+  request.signal.addEventListener("abort", cancel, { once: true });
 
   try {
     const response = await stub.fetch(
       forwardRequest({
-        environmentId,
         channel,
         method: admission.method,
         path: admission.path,
         headers: request.headers,
         body: request.body,
-        deviceId: admission.deviceId,
+        admission: admission.admission,
         signal: request.signal,
       }),
     );
 
-    return passThrough(response, { onCancel: resetChannel });
+    return passThrough(response, { onCancel: cancel });
   } catch (error) {
     if (!request.signal.aborted)
       context.log.warn("relay.forward_failed", { environmentId, error: errorName(error) });
-    resetChannel();
+    cancel();
 
     return refuse("closed");
   }
@@ -204,5 +173,5 @@ export async function connectRelay(
 ): Promise<Response> {
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") throw new Refusal("invalid");
 
-  return context.relay(environmentId).fetch(connectRequest(environmentId));
+  return context.environment(environmentId).fetch(connectRequest());
 }

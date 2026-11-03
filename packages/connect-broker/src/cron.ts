@@ -1,18 +1,21 @@
-import { CLOCK_TOLERANCE_SECONDS } from "@nyte-ai/connect";
-import { settleSessionRevocation } from "./clerk.ts";
+/**
+ * The five-minute sweep: expire link transactions, retry Clerk session
+ * revocations, reconcile owner standing with Clerk, and drop what expired.
+ */
+import { RECONCILE_BATCH, lookupOwners, settleSessionRevocation } from "./clerk.ts";
 import type { Context } from "./context.ts";
 import { errorName } from "./log.ts";
-import { expireReservations } from "./store/devices.ts";
+import { publishStanding } from "./webhook.ts";
 import { expireLinkTransactions } from "./store/link-transactions.ts";
-import { pendingSessionRevocations } from "./store/owners.ts";
+import { applyOwnerStatus, ownersToReconcile, pendingSessionRevocations } from "./store/owners.ts";
 import { purge } from "./store/replays.ts";
 
 const BATCH = 20;
 
 export async function sweep(context: Context): Promise<void> {
-  const now = context.now();
+  const now = Date.now();
+
   const steps: readonly (readonly [string, () => Promise<void>])[] = [
-    ["reservations", () => expireReservations(context.db, now - CLOCK_TOLERANCE_SECONDS * 1000)],
     ["transactions", () => expireLinkTransactions(context.db, now)],
     [
       "sessions",
@@ -21,6 +24,7 @@ export async function sweep(context: Context): Promise<void> {
           await settleSessionRevocation(context, pending);
       },
     ],
+    ["owners", () => reconcileOwners(context)],
     ["purge", () => purge(context.db, now)],
   ];
 
@@ -30,5 +34,46 @@ export async function sweep(context: Context): Promise<void> {
     } catch (error) {
       context.log.error("sweep.failed", { step, error: errorName(error) });
     }
+  }
+}
+
+/**
+ * Ask Clerk about every owner holding an active environment, a page at a
+ * time, and give each owner's relays the standing D1 then holds. A missed
+ * webhook is caught within one sweep. A user Clerk no longer returns is
+ * disabled at the version the broker holds, never deleted: only the webhook
+ * deletes. A page Clerk doesn't answer ends the run.
+ */
+async function reconcileOwners(context: Context): Promise<void> {
+  let after = "";
+
+  for (;;) {
+    const owners = await ownersToReconcile(context.db, { after, limit: RECONCILE_BATCH });
+    const last = owners.at(-1);
+
+    if (last === undefined) return;
+
+    const users = await lookupOwners(
+      context,
+      owners.map((owner) => owner.id),
+    );
+
+    if (users === undefined) return;
+
+    for (const owner of owners) {
+      const user = users.get(owner.id);
+
+      await publishStanding(
+        context,
+        await applyOwnerStatus(context.db, {
+          userId: owner.id,
+          status: user?.status ?? "disabled",
+          version: user?.version ?? owner.version,
+          source: "lookup",
+        }),
+      );
+    }
+
+    after = last.id;
   }
 }

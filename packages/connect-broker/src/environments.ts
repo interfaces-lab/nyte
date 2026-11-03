@@ -1,79 +1,43 @@
 /**
  * Environment routes: list and link with a Clerk session, lease with a
- * machine-key proof, and removal with either.
+ * machine-key proof, and removal with either. Past its D1 index row, an
+ * environment is its relay's to decide about.
  */
-import {
-  LEASE_LIFETIME_SECONDS,
-  LinkRequest,
-  ONLINE_WINDOW_SECONDS,
-  PROOF_HEADER,
-  TOKEN_TYPES,
-} from "@nyte-ai/connect";
-import type {
-  EnvironmentList,
-  ErrorCode,
-  LeaseClaims,
-  LeaseResponse,
-  LinkResponse,
-} from "@nyte-ai/connect";
-import { nowSeconds, publicKeySet, signClaims } from "@nyte-ai/connect/signing";
-import { Type } from "typebox";
-import { lookupOwner, ownerStanding, verifySession } from "./clerk.ts";
-import { throttle } from "./context.ts";
+import { LinkRequest, PROOF_HEADER } from "@nyte-ai/connect";
+import type { EnvironmentList, ErrorCode, LinkResponse } from "@nyte-ai/connect";
+import { publicKeySet } from "@nyte-ai/connect/signing";
+import { requireLinkableOwner, verifySession } from "./clerk.ts";
 import type { Context } from "./context.ts";
-import { Refusal, json, noContent, parseBody, requestText } from "./http.ts";
-import { verifyEnvironmentProof, verifyLinkProof } from "./proof.ts";
-import { revokeRelay } from "./relay-stub.ts";
-import {
-  claimEnvironment,
-  findOwnedEnvironment,
-  leaseSnapshot,
-  listActiveEnvironments,
-  revokeEnvironment,
-  touchEnvironment,
-} from "./store/environments.ts";
+import type { Actor } from "./environment-api.ts";
+import { Refusal, json, noContent, parseBody, requestText, unwrap } from "./http.ts";
+import { proofToken, verifyLinkProof } from "./proof.ts";
+import { claimEnvironment, listActiveEnvironments } from "./store/environments.ts";
 import type { ClaimOutcome } from "./store/environments.ts";
-import type { Environment } from "./store/rows.ts";
 
-const EmptyObject = Type.Object({}, { additionalProperties: false });
-
-/** Refuse an environment whose owner is not in good standing, or cannot be confirmed to be. */
-async function requireStanding(context: Context, environment: Environment): Promise<void> {
-  const standing = await ownerStanding(context, { userId: environment.owner_id, recheck: true });
-
-  switch (standing) {
-    case "active":
-      return;
-    case "deleted":
-      throw new Refusal("revoked");
-    case "disabled":
-      throw new Refusal("owner_disabled");
-    case "unavailable":
-      throw new Refusal("internal", 503);
-    default: {
-      const _exhaustive: never = standing;
-      return _exhaustive;
-    }
-  }
-}
-
-/** Online: an authenticated relay socket and a heartbeat within `ONLINE_WINDOW_SECONDS`. */
+/** The owner's active environments; each relay says whether its desktop is online. */
 export async function listEnvironments(context: Context, request: Request): Promise<Response> {
-  const session = await verifySession(context, request);
-
-  await throttle(context, "list", session.userId);
-  const now = context.now();
+  const session = await verifySession(context, request, "list");
   const environments = await listActiveEnvironments(context.db, session.userId);
+
+  const presences = await Promise.all(
+    environments.map((environment) => context.environment(environment.id).status(session.userId)),
+  );
+
   const body: EnvironmentList = {
-    environments: environments.map((environment) => ({
-      id: environment.id,
-      name: environment.name,
-      online:
-        environment.relay_session !== null &&
-        environment.last_seen_at !== null &&
-        now - environment.last_seen_at <= ONLINE_WINDOW_SECONDS * 1000,
-      lastSeenAt: environment.last_seen_at,
-    })),
+    environments: environments.flatMap((environment, index) => {
+      const presence = presences[index];
+
+      return presence === null || presence === undefined
+        ? []
+        : [
+            {
+              id: environment.id,
+              name: environment.name,
+              online: presence.online,
+              lastSeenAt: presence.lastSeenAt,
+            },
+          ];
+    }),
   };
 
   return json(200, body);
@@ -82,27 +46,21 @@ export async function listEnvironments(context: Context, request: Request): Prom
 /**
  * Link a desktop to the caller's account, or resume the link with the same
  * key. The owner is looked up in Clerk first: a banned, locked, or unknown
- * user links nothing, and the owner label is Clerk's primary email, username,
- * or name, falling back to a session `email` claim and then the user id.
- * Clerk being unreachable does not block a link; the first lease asks again.
+ * user links nothing, and neither does any user while Clerk can't answer.
  */
 export async function linkEnvironment(context: Context, request: Request): Promise<Response> {
-  const session = await verifySession(context, request);
-
-  await throttle(context, "link", session.userId);
+  const session = await verifySession(context, request, "link");
   const text = await requestText(request);
   const body = parseBody(LinkRequest, text);
+
   const thumbprint = await verifyLinkProof(context, {
     request,
     body: text,
     publicKey: body.publicKey,
   });
-  const lookup = await lookupOwner(context, session.userId);
 
-  if ((await ownerStanding(context, { userId: session.userId, recheck: false })) !== "active")
-    throw new Refusal("owner_disabled");
-  const label =
-    (lookup.kind === "found" ? lookup.label : undefined) ?? session.email ?? session.userId;
+  const label = await requireLinkableOwner(context, session);
+
   const claimed = await claimEnvironment(context.db, {
     kind: "session",
     ownerId: session.userId,
@@ -110,10 +68,11 @@ export async function linkEnvironment(context: Context, request: Request): Promi
     thumbprint,
     publicKey: body.publicKey.x,
     name: body.name,
-    now: context.now(),
+    now: Date.now(),
   });
 
   if (claimed.kind !== "linked") throw new Refusal(claimRefusal(claimed));
+
   const response: LinkResponse = {
     environment: { id: claimed.environment.id, name: claimed.environment.name },
     owner: { id: session.userId, label },
@@ -144,101 +103,41 @@ export function claimRefusal(outcome: Exclude<ClaimOutcome, { kind: "linked" }>)
 }
 
 /**
- * The environment a removal names: proven by its machine key, or owned by
- * the Clerk session. Another owner's environment is not found.
+ * Who asks to remove something: the desktop, when the request carries a
+ * proof, else the owner's Clerk session. The relay checks either.
  */
-export async function authorizeEnvironment(
-  context: Context,
-  input: { readonly request: Request; readonly environmentId: string },
-): Promise<Environment> {
-  if (input.request.headers.has(PROOF_HEADER)) {
-    const { environment } = await verifyEnvironmentProof(context, {
-      request: input.request,
-      body: await requestText(input.request),
-      environmentId: input.environmentId,
-    });
+export async function requestActor(context: Context, request: Request): Promise<Actor> {
+  if (request.headers.has(PROOF_HEADER))
+    return {
+      kind: "desktop",
+      proof: { token: proofToken(request), body: await requestText(request) },
+    };
+  const session = await verifySession(context, request, "revoke");
 
-    await throttle(context, "revoke", environment.id);
-
-    return environment;
-  }
-
-  const session = await verifySession(context, input.request);
-
-  await throttle(context, "revoke", session.userId);
-  const environment = await findOwnedEnvironment(context.db, {
-    id: input.environmentId,
-    ownerId: session.userId,
-  });
-
-  if (environment === undefined) throw new Refusal("not_found");
-
-  return environment;
+  return { kind: "owner", ownerId: session.userId };
 }
 
-/** Revoke, then close the environment's relay sockets. */
+/** Revoke the environment; its relay closes the desktop's socket. */
 export async function removeEnvironment(
   context: Context,
   request: Request,
   environmentId: string,
 ): Promise<Response> {
-  const environment = await authorizeEnvironment(context, { request, environmentId });
+  const actor = await requestActor(context, request);
 
-  if (environment.state !== "revoked") {
-    await revokeEnvironment(context.db, { id: environment.id, now: context.now() });
-    revokeRelay(context, environment.id);
-  }
+  unwrap(await context.environment(environmentId).revoke(actor));
 
   return noContent();
 }
 
-/**
- * The signed allowlist a serving desktop renews every heartbeat. Asks Clerk
- * about the owner at most every 15 minutes.
- */
+/** The signed allowlist a serving desktop renews every heartbeat, answered by its relay. */
 export async function issueLease(
   context: Context,
   request: Request,
   environmentId: string,
 ): Promise<Response> {
-  const text = await requestText(request);
-  const { environment, claims } = await verifyEnvironmentProof(context, {
-    request,
-    body: text,
-    environmentId,
-  });
+  const body = await requestText(request);
+  const token = proofToken(request);
 
-  parseBody(EmptyObject, text);
-
-  if (environment.state === "revoked") throw new Refusal("revoked");
-  await throttle(context, "lease", environment.id);
-  await requireStanding(context, environment);
-  const snapshot = await leaseSnapshot(context.db, environment.id);
-
-  if (snapshot === undefined || snapshot.environment.state === "revoked")
-    throw new Refusal("revoked");
-  const now = context.now();
-  const iat = nowSeconds(now);
-  const lease: LeaseClaims = {
-    iss: context.config.origin,
-    aud: snapshot.environment.id,
-    sub: snapshot.environment.owner_id,
-    iat,
-    exp: iat + LEASE_LIFETIME_SECONDS,
-    req: claims.jti,
-    generation: snapshot.environment.generation,
-    policy: snapshot.environment.policy,
-    devices: snapshot.devices,
-  };
-  const body: LeaseResponse = {
-    lease: await signClaims({
-      key: context.config.signing.active,
-      typ: TOKEN_TYPES.lease,
-      claims: lease,
-    }),
-  };
-
-  await touchEnvironment(context.db, { id: environment.id, now });
-
-  return json(200, body);
+  return json(200, unwrap(await context.environment(environmentId).lease({ token, body })));
 }

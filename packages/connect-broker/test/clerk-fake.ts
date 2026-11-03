@@ -6,7 +6,7 @@ export interface FakeUser {
   username?: string;
 }
 
-/** The Clerk Backend API as the broker calls it: user lookups and session revocation, in memory. */
+/** The Clerk Backend API as the broker calls it: user lookups, user lists, and session revocation, in memory. */
 export class FakeClerkApi {
   readonly users = new Map<string, FakeUser>();
   readonly revoked: string[] = [];
@@ -34,6 +34,18 @@ export class FakeClerkApi {
 
     if (new Headers(init.headers).get("authorization") !== `Bearer ${this.secretKey}`)
       return Response.json({ errors: [] }, { status: 401 });
+    if (url.pathname === "/v1/users" && method === "GET") {
+      if (this.userStatus !== undefined) return Response.json({}, { status: this.userStatus });
+
+      return Response.json(
+        url.searchParams.getAll("user_id").flatMap((id) => {
+          const found = this.users.get(id);
+
+          return found === undefined ? [] : [userBody(id, found)];
+        }),
+      );
+    }
+
     const user = /^\/v1\/users\/([^/]+)$/u.exec(url.pathname)?.[1];
 
     if (user !== undefined && method === "GET") {
@@ -43,24 +55,7 @@ export class FakeClerkApi {
       if (found === undefined)
         return Response.json({ errors: [{ code: "resource_not_found" }] }, { status: 404 });
 
-      return Response.json({
-        object: "user",
-        id: user,
-        banned: found.banned,
-        locked: found.locked,
-        updated_at: found.updated_at,
-        primary_email_address_id: found.email === undefined ? null : "idn_primary",
-        email_addresses:
-          found.email === undefined
-            ? []
-            : [
-                { id: "idn_secondary", email_address: "secondary@example.com" },
-                { id: "idn_primary", email_address: found.email },
-              ],
-        username: found.username ?? null,
-        first_name: null,
-        last_name: null,
-      });
+      return Response.json(userBody(user, found));
     }
 
     const session = /^\/v1\/sessions\/([^/]+)\/revoke$/u.exec(url.pathname)?.[1];
@@ -76,4 +71,25 @@ export class FakeClerkApi {
 
     return Response.json({}, { status: 404 });
   }
+}
+
+function userBody(id: string, user: FakeUser) {
+  return {
+    object: "user",
+    id,
+    banned: user.banned,
+    locked: user.locked,
+    updated_at: user.updated_at,
+    primary_email_address_id: user.email === undefined ? null : "idn_primary",
+    email_addresses:
+      user.email === undefined
+        ? []
+        : [
+            { id: "idn_secondary", email_address: "secondary@example.com" },
+            { id: "idn_primary", email_address: user.email },
+          ],
+    username: user.username ?? null,
+    first_name: null,
+    last_name: null,
+  };
 }

@@ -55,7 +55,6 @@ export const WORKERD_AUTHORIZED_PARTY = "https://app.test.example";
 
 const TABLES = [
   "link_transactions",
-  "devices",
   "environments",
   "owners",
   "denied_sessions",
@@ -350,6 +349,8 @@ export interface WorkerdBroker {
   }): Promise<string>;
   /** Rows from the Worker's D1, for assertions and setup. */
   query(sql: string, ...bindings: D1Value[]): Promise<unknown[]>;
+  /** Rows from one environment's relay SQLite (its devices, proofs, outbox), for assertions and setup. */
+  relayQuery(environmentId: string, sql: string, ...bindings: D1Value[]): Promise<unknown[]>;
   /**
    * Evict the environment's relay from memory. `hibernate` (the default)
    * keeps its sockets open; `close` drops them, as a deploy or crash would.
@@ -507,6 +508,12 @@ export async function startWorkerdBroker(
           .bind(...bindings)
           .all()
       ).results;
+    },
+
+    async relayQuery(environmentId, sql, ...bindings) {
+      const storage = await worker.getDurableObjectStorage("RELAY", { name: environmentId });
+
+      return storage.exec(sql, ...bindings);
     },
 
     async evictRelay(environmentId, options = {}) {

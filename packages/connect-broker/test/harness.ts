@@ -1,14 +1,15 @@
 /**
  * A broker over a real local D1 (wrangler's platform proxy), real jose
- * signatures, and a generated Clerk RSA key, run in Node with an injected
- * clock. Only the outside world is fake: the Clerk Backend API, and each
- * environment's relay, which answers enrollments as its desktop would and
- * records resets and revocations. The real relay runs in `relay.test.ts`.
+ * signatures, and a generated Clerk RSA key, run in Node under a fake `Date`.
+ * Each environment's relay is its real `EnvironmentRecord` over `node:sqlite`,
+ * reached the way RPC reaches it (arguments and answers cloned); only its
+ * sockets are fake: a desktop that answers enrollments, and a record of the
+ * socket effects and forwards. The real relay runs in workerd in the
+ * `relay-*.test.ts` files. Only the Clerk Backend API is fake outside.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
-  DESKTOP_ROUTES,
   ENROLLMENT_LIFETIME_SECONDS,
   EnrollEnvelope,
   EnrollmentClaims,
@@ -35,21 +36,31 @@ import type { PrivateJwk } from "@nyte-ai/connect/signing";
 import { SignJWT, decodeJwt, exportSPKI, generateKeyPair } from "jose";
 import { Value } from "typebox/value";
 import { relayRefusal } from "@nyte-ai/connect/relay";
+import { vi } from "vitest";
 import { getPlatformProxy, unstable_splitSqlQuery } from "wrangler";
 import { createBroker } from "../src/broker.ts";
-import type { Env } from "../src/config.ts";
+import { parseConfig } from "../src/config.ts";
+import type { Config, Env } from "../src/config.ts";
 import type { D1Database } from "../src/d1.ts";
-import type { LogFields } from "../src/log.ts";
-import { RELAY_HEADERS, RELAY_INTERNAL_ORIGIN, RELAY_OPERATIONS } from "../src/relay-stub.ts";
-import type { RelayNamespace } from "../src/relay-binding.ts";
+import { RelayAdmission } from "../src/environment-api.ts";
+import type { EnvironmentApi, EnvironmentNamespace } from "../src/environment-api.ts";
+import { EnvironmentRecord } from "../src/environment-record.ts";
+import type { DurableObjectSql, Effect, Outcome } from "../src/environment-record.ts";
+import type { Logger, LogFields } from "../src/log.ts";
+import {
+  RELAY_HEADERS,
+  RELAY_INTERNAL_ORIGIN,
+  RELAY_OPERATIONS,
+  bearerToken,
+} from "../src/relay-stub.ts";
 import { FakeClerkApi } from "./clerk-fake.ts";
+import { doSqlStub } from "./do-sql-stub.ts";
 
 export const ORIGIN = "https://connect.test.example";
 export const ISSUER = "https://clerk.test.example";
 export const AZP = "https://app.test.example";
 const TABLES = [
   "link_transactions",
-  "devices",
   "environments",
   "owners",
   "denied_sessions",
@@ -104,7 +115,7 @@ export class FakeDesktop {
     return toPublicJwk(this.key);
   }
 
-  async handle(text: string, keys: BrokerKeys, now: () => number): Promise<Response> {
+  async handle(text: string, keys: BrokerKeys): Promise<Response> {
     if (this.mode === "down") return relayRefusal("closed");
 
     if (this.mode === "refuse") return Response.json({}, { status: 403 });
@@ -124,7 +135,6 @@ export class FakeDesktop {
       audience: this.environmentId,
       schema: EnrollmentClaims,
       lifetime: ENROLLMENT_LIFETIME_SECONDS,
-      now: now(),
     });
 
     if (grant.sub !== this.owner || this.consumed.has(grant.jti))
@@ -132,7 +142,7 @@ export class FakeDesktop {
     this.consumed.add(grant.jti);
     this.recorded.push(grant);
     await this.beforeReceipt?.();
-    const iat = Math.floor(now() / 1000);
+    const iat = Math.floor(Date.now() / 1000);
     const signer = this.mode === "foreign-key" ? await generateMachineKey() : this.key;
     const receipt = await signClaims({
       key: signer,
@@ -161,51 +171,178 @@ export interface RelayCall {
 }
 
 /**
- * Every environment's relay as the broker sees it: enrollments reach the
- * environment's desktop, and resets and revocations are recorded.
+ * Every environment's relay as the broker sees it: a real record per
+ * environment over its own SQLite, a desktop per linked environment that
+ * answers enrollments, and `calls`, which records forwards to the desktop
+ * and the socket effects a relay would apply (`/reset` ends channels,
+ * `/revoke` closes sockets). An outbox write the record owes is drained at
+ * once, as the relay's alarm would.
  */
 export class FakeRelay {
   readonly calls: RelayCall[] = [];
   readonly desktops = new Map<string, FakeDesktop>();
+  /** Environments whose desktop holds an authenticated relay socket. */
+  readonly connected = new Set<string>();
+  readonly storages = new Map<string, DurableObjectSql>();
+  /** The D1 binding every relay reads and writes, as the Worker's own is shared in production. */
+  readonly directory: D1Database;
+  private readonly records = new Map<string, EnvironmentRecord>();
   private readonly keys: BrokerKeys;
-  private readonly now: () => number;
+  private readonly input: {
+    readonly config: () => Config;
+    readonly log: Logger;
+  };
 
-  constructor(input: { keys: BrokerKeys; now: () => number }) {
+  constructor(input: {
+    readonly keys: BrokerKeys;
+    readonly directory: D1Database;
+    readonly config: () => Config;
+    readonly log: Logger;
+  }) {
     this.keys = input.keys;
-    this.now = input.now;
+    this.directory = input.directory;
+    this.input = input;
   }
 
-  namespace(): RelayNamespace {
-    return { getByName: (name) => ({ fetch: (request) => this.handle(name, request) }) };
+  namespace(): EnvironmentNamespace {
+    return { getByName: (name) => this.stub(name) };
   }
 
   reset(): void {
     this.calls.length = 0;
     this.desktops.clear();
+    this.connected.clear();
+    this.records.clear();
+    this.storages.clear();
   }
 
-  private async handle(name: string, request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    const environmentId = request.headers.get(RELAY_HEADERS.environment) ?? "";
+  /** The rows of one relay table across every environment, each with its `environment_id`. */
+  rows(table: "devices" | "outbox" | "proofs"): unknown[] {
+    return [...this.storages].flatMap(([environmentId, storage]) =>
+      storage.sql
+        .exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1", table)
+        .toArray().length === 0
+        ? []
+        : storage.sql.exec(`SELECT ?1 AS environment_id, * FROM ${table}`, environmentId).toArray(),
+    );
+  }
 
-    if (url.origin !== RELAY_INTERNAL_ORIGIN || environmentId !== name)
-      throw new Error("The broker addressed a relay wrongly");
-    this.calls.push({
-      operation: url.pathname,
-      environmentId,
-      deviceId: request.headers.get(RELAY_HEADERS.device),
-      path: request.headers.get(RELAY_HEADERS.path),
+  private record(name: string): EnvironmentRecord {
+    const existing = this.records.get(name);
+
+    if (existing !== undefined) return existing;
+    const storage = doSqlStub();
+    const record = new EnvironmentRecord({
+      id: name,
+      storage,
+      directory: this.directory,
+      config: this.input.config(),
+      log: this.input.log,
+      exchange: async (request) => {
+        this.calls.push({
+          operation: RELAY_OPERATIONS.forward,
+          environmentId: name,
+          deviceId: null,
+          path: request.path,
+        });
+        const desktop = this.desktops.get(name);
+
+        if (desktop === undefined) throw new Error("The desktop is not connected");
+
+        return desktop.handle(request.body, this.keys);
+      },
     });
 
-    if (url.pathname !== RELAY_OPERATIONS.forward) return new Response(null, { status: 204 });
-    const desktop = this.desktops.get(environmentId);
+    this.records.set(name, record);
+    this.storages.set(name, storage);
 
-    if (desktop === undefined) return relayRefusal("closed");
+    return record;
+  }
 
-    if (request.headers.get(RELAY_HEADERS.path) !== DESKTOP_ROUTES.enroll)
-      return relayRefusal("not_found");
+  private stub(name: string): EnvironmentApi {
+    const run = async <T>(
+      operation: (record: EnvironmentRecord) => Promise<Outcome<T>> | Outcome<T>,
+    ) => {
+      const record = this.record(name);
+      let outcome: Outcome<T>;
 
-    return desktop.handle(await request.text(), this.keys, this.now);
+      try {
+        outcome = await operation(record);
+      } catch (error) {
+        throw new Error(error instanceof Error ? error.message : "The relay failed");
+      }
+
+      for (const effect of outcome.effects) this.calls.push(this.effectCall(name, effect));
+      await record.drain();
+
+      return structuredClone(outcome.answer);
+    };
+
+    return {
+      lease: (proof) => run((record) => record.lease(structuredClone(proof))),
+      enroll: (input) => run((record) => record.enroll(structuredClone(input))),
+      release: (input) => run((record) => record.release(structuredClone(input))),
+      revokeDevice: (input) => run((record) => record.revokeDevice(structuredClone(input))),
+      revoke: (actor) => run((record) => record.revoke(structuredClone(actor))),
+      status: async (ownerId) =>
+        structuredClone(this.record(name).status(ownerId, this.connected.has(name))),
+      setOwner: async (standing) => {
+        await run((record) => record.setOwner(structuredClone(standing)));
+      },
+      fetch: (request) => this.fetch(name, request),
+    };
+  }
+
+  private effectCall(environmentId: string, effect: Effect): RelayCall {
+    switch (effect.kind) {
+      case "end-device":
+        return {
+          operation: RELAY_OPERATIONS.reset,
+          environmentId,
+          deviceId: effect.deviceId,
+          path: null,
+        };
+      case "end-channels":
+        return { operation: RELAY_OPERATIONS.reset, environmentId, deviceId: null, path: null };
+      case "close":
+        return { operation: "/revoke", environmentId, deviceId: null, path: null };
+      default: {
+        const _exhaustive: never = effect;
+
+        return _exhaustive;
+      }
+    }
+  }
+
+  private async fetch(name: string, request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (url.origin !== RELAY_INTERNAL_ORIGIN)
+      throw new Error("The broker addressed a relay wrongly");
+
+    if (url.pathname === RELAY_OPERATIONS.reset) {
+      this.calls.push({ operation: url.pathname, environmentId: name, deviceId: null, path: null });
+
+      return new Response(null, { status: 204 });
+    }
+
+    if (url.pathname !== RELAY_OPERATIONS.forward)
+      throw new Error(`The fake relay has no ${url.pathname}`);
+    const path = request.headers.get(RELAY_HEADERS.path);
+    const admitted = await this.record(name).admit({
+      bearer: bearerToken(request.headers),
+      admission: Value.Parse(RelayAdmission, request.headers.get(RELAY_HEADERS.admission)),
+    });
+
+    if (!admitted.ok) return relayRefusal(admitted.code);
+    this.calls.push({
+      operation: url.pathname,
+      environmentId: name,
+      deviceId: admitted.deviceId ?? null,
+      path,
+    });
+
+    return this.desktops.has(name) ? relayRefusal("not_found") : relayRefusal("closed");
   }
 }
 
@@ -235,6 +372,7 @@ export interface Harness {
   readonly logs: LogEntry[];
   /** Every URL the broker fetched. */
   readonly egress: string[];
+  /** How far the fake `Date` runs ahead of the real one. Setting it moves the clock. */
   readonly clock: { offsetMs: number };
   readonly brokerKeys: BrokerKeys;
   now(): number;
@@ -321,7 +459,8 @@ export interface Harness {
     input?: { readonly secret?: string; readonly timestamp?: number },
   ): Promise<Answer>;
   sweep(): Promise<void>;
-  rows(table: (typeof TABLES)[number]): Promise<unknown[]>;
+  /** Rows of a D1 table, or of a relay table across every environment. */
+  rows(table: (typeof TABLES)[number] | "devices" | "outbox" | "proofs"): Promise<unknown[]>;
 }
 
 async function webhookSignature(input: {
@@ -367,9 +506,40 @@ export async function createHarness(): Promise<Harness> {
   const brokerKeys: BrokerKeys = {
     keys: [{ kty: "OKP", crv: "Ed25519", x: brokerSigningKey.x, kid: brokerSigningKey.kid }],
   };
-  const clock = { offsetMs: 0 };
-  const now = () => Date.now() + clock.offsetMs;
-  const relay = new FakeRelay({ keys: brokerKeys, now });
+  vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+  let offset = 0;
+  const clock = {
+    get offsetMs() {
+      return offset;
+    },
+    set offsetMs(value: number) {
+      vi.setSystemTime(Date.now() - offset + value);
+      offset = value;
+    },
+  };
+  const now = () => Date.now();
+  const logs: LogEntry[] = [];
+  const record =
+    (level: string) =>
+    (event: string, fields: LogFields = {}) => {
+      logs.push({ level, event, fields });
+    };
+  const log: Logger = { info: record("info"), warn: record("warn"), error: record("error") };
+  const relay = new FakeRelay({
+    keys: brokerKeys,
+    directory: {
+      prepare: (query) => db.prepare(query),
+      batch: (statements) => db.batch(statements),
+    },
+    log,
+    config: () => {
+      const config = parseConfig(env);
+
+      if ("invalid" in config) throw new Error(`Invalid test config: ${config.invalid.join(",")}`);
+
+      return config;
+    },
+  });
   const env: Env = {
     DB: db,
     RELAY: relay.namespace(),
@@ -383,16 +553,9 @@ export async function createHarness(): Promise<Harness> {
     BROKER_SIGNING_KEYS: JSON.stringify([brokerSigningKey]),
   };
   const clerkApi = new FakeClerkApi(clerkSecretKey);
-  const logs: LogEntry[] = [];
   const egress: string[] = [];
-  const record =
-    (level: string) =>
-    (event: string, fields: LogFields = {}) => {
-      logs.push({ level, event, fields });
-    };
   const broker = createBroker({
-    now,
-    log: { info: record("info"), warn: record("warn"), error: record("error") },
+    log,
     fetch: async (input, init) => {
       egress.push(input);
       const url = new URL(input);
@@ -447,8 +610,7 @@ export async function createHarness(): Promise<Harness> {
       .sign(input.key ?? clerkKeys.privateKey);
   };
 
-  const proof: Harness["proof"] = (input) =>
-    createProof({ ...input, audience: ORIGIN, now: now() });
+  const proof: Harness["proof"] = (input) => createProof({ ...input, audience: ORIGIN });
 
   const actorHeaders = async (
     actor: Actor,
@@ -493,6 +655,7 @@ export async function createHarness(): Promise<Harness> {
     },
 
     async dispose() {
+      vi.useRealTimers();
       await proxy.dispose();
     },
 
@@ -568,7 +731,6 @@ export async function createHarness(): Promise<Harness> {
         audience: desktop.environmentId,
         schema: LeaseClaims,
         lifetime: LEASE_LIFETIME_SECONDS,
-        now: now(),
       });
 
       return { answer, claims, jti };
@@ -742,6 +904,8 @@ export async function createHarness(): Promise<Harness> {
     },
 
     async rows(table) {
+      if (table === "devices" || table === "outbox" || table === "proofs") return relay.rows(table);
+
       return (await db.prepare(`SELECT * FROM ${table}`).all()).results;
     },
   };

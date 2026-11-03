@@ -1,50 +1,25 @@
 /**
- * Environments: claims, lookups, revocation, relay sockets, and the one
- * consistent read a lease states. A revoked row never changes back.
+ * The D1 index of environments: claims, the owner's list, and retirement. A
+ * retired row never changes back. Each environment's devices, policy, and
+ * presence live in its relay Durable Object (`environment-record.ts`).
  */
-import { DEVICE_LIMIT } from "@nyte-ai/connect";
 import type { LinkTransactionState } from "@nyte-ai/connect";
 import type { D1Database } from "../d1.ts";
 import { findOwner, sessionDenied } from "./owners.ts";
 import {
+  ENVIRONMENT_COLUMNS,
   EnvironmentRow,
   IdRow,
   LinkTransactionRow,
-  REVOKE_DEVICES,
-  REVOKE_ENVIRONMENTS,
-  RelayDeviceRow,
-  changed,
+  OwnerRow,
+  RETIRE_ENVIRONMENTS,
   many,
   one,
 } from "./rows.ts";
-import type { Environment, LinkTransaction, RelayDevice } from "./rows.ts";
+import type { Environment, LinkTransaction, Owner } from "./rows.ts";
 
 /** Environments an owner may hold at once. */
 const ENVIRONMENT_LIMIT = 3;
-
-export async function findEnvironment(
-  db: D1Database,
-  id: string,
-): Promise<Environment | undefined> {
-  return one(
-    EnvironmentRow,
-    await db.prepare("SELECT * FROM environments WHERE id = ?1").bind(id).first(),
-  );
-}
-
-/** The environment if `ownerId` owns it. Another owner's environment is indistinguishable from none. */
-export async function findOwnedEnvironment(
-  db: D1Database,
-  input: { readonly id: string; readonly ownerId: string },
-): Promise<Environment | undefined> {
-  return one(
-    EnvironmentRow,
-    await db
-      .prepare("SELECT * FROM environments WHERE id = ?1 AND owner_id = ?2")
-      .bind(input.id, input.ownerId)
-      .first(),
-  );
-}
 
 export async function listActiveEnvironments(
   db: D1Database,
@@ -52,7 +27,7 @@ export async function listActiveEnvironments(
 ): Promise<Environment[]> {
   const { results } = await db
     .prepare(
-      "SELECT * FROM environments WHERE owner_id = ?1 AND state = 'active' ORDER BY created_at, id LIMIT 64",
+      `SELECT ${ENVIRONMENT_COLUMNS} FROM environments WHERE owner_id = ?1 AND state = 'active' ORDER BY created_at, id LIMIT 64`,
     )
     .bind(ownerId)
     .all();
@@ -66,7 +41,7 @@ const standing = (owner: string, session: string, now: string) => `
                   WHERE session_id = ${session} AND (expires_at IS NULL OR expires_at > ${now}))`;
 
 const CLAIM_INSERT = `INSERT INTO environments
-  (id, owner_id, thumbprint, public_key, name, state, generation, policy, created_at)`;
+  (id, owner_id, thumbprint, public_key, name, state, created_at)`;
 
 type ClaimInput =
   | {
@@ -109,7 +84,7 @@ export async function claimEnvironment(db: D1Database, input: ClaimInput): Promi
       db
         .prepare(
           `${CLAIM_INSERT}
-           SELECT ?1, ?2, ?3, ?4, ?5, 'active', 1, 1, ?7
+           SELECT ?1, ?2, ?3, ?4, ?5, 'active', ?7
            WHERE ${eligible}
              AND NOT EXISTS (SELECT 1 FROM environments WHERE thumbprint = ?3)
              AND (SELECT count(*) FROM environments WHERE owner_id = ?2 AND state = 'active') < ?6`,
@@ -131,7 +106,9 @@ export async function claimEnvironment(db: D1Database, input: ClaimInput): Promi
              AND ${standing("?2", "?4", "?1")}`,
         )
         .bind(input.now, input.ownerId, input.thumbprint, input.sessionId, input.name),
-      db.prepare("SELECT * FROM environments WHERE thumbprint = ?1").bind(input.thumbprint),
+      db
+        .prepare(`SELECT ${ENVIRONMENT_COLUMNS} FROM environments WHERE thumbprint = ?1`)
+        .bind(input.thumbprint),
     ]);
 
     const environment = one(EnvironmentRow, row?.results[0]);
@@ -162,7 +139,7 @@ export async function claimEnvironment(db: D1Database, input: ClaimInput): Promi
     db
       .prepare(
         `${CLAIM_INSERT}
-         SELECT ?4, t.owner_id, t.thumbprint, t.public_key, t.name, 'active', 1, 1, ?3
+         SELECT ?4, t.owner_id, t.thumbprint, t.public_key, t.name, 'active', ?3
          FROM link_transactions t
          WHERE ${approved}
            AND NOT EXISTS (SELECT 1 FROM environments WHERE thumbprint = t.thumbprint)
@@ -187,7 +164,9 @@ export async function claimEnvironment(db: D1Database, input: ClaimInput): Promi
                        WHERE e.thumbprint = ?2 AND e.state = 'active' AND e.owner_id = link_transactions.owner_id)`,
       )
       .bind(input.transactionId, input.thumbprint, input.now),
-    db.prepare("SELECT * FROM environments WHERE thumbprint = ?1").bind(input.thumbprint),
+    db
+      .prepare(`SELECT ${ENVIRONMENT_COLUMNS} FROM environments WHERE thumbprint = ?1`)
+      .bind(input.thumbprint),
     db
       .prepare("SELECT * FROM link_transactions WHERE id = ?1 AND thumbprint = ?2")
       .bind(input.transactionId, input.thumbprint),
@@ -243,109 +222,50 @@ async function refusedClaim(
   return { kind: "limit" };
 }
 
-/** Revoke an environment and all its devices. Idempotent; a revoked row stays revoked. */
-export async function revokeEnvironment(
+/** Retire an environment's index row: its slot frees and its key stays a tombstone. Idempotent. */
+export async function retireEnvironment(
   db: D1Database,
-  input: { readonly id: string; readonly now: number },
+  input: { readonly id: string; readonly at: number },
 ): Promise<void> {
-  await db.batch([
-    db.prepare(`${REVOKE_DEVICES} (?1)`).bind(input.id, input.now),
-    db.prepare(`${REVOKE_ENVIRONMENTS} id = ?1`).bind(input.id, input.now),
-  ]);
+  await db.prepare(`${RETIRE_ENVIRONMENTS} id = ?1`).bind(input.id, input.at).run();
 }
 
-export async function touchEnvironment(
+/** The owner's environment ids: the active ones, or every one the owner ever linked. */
+export async function ownerEnvironmentIds(
   db: D1Database,
-  input: { readonly id: string; readonly now: number },
-): Promise<void> {
-  await db
-    .prepare("UPDATE environments SET last_seen_at = ?2 WHERE id = ?1 AND state = 'active'")
-    .bind(input.id, input.now)
-    .run();
-}
-
-/** The owner's active environment ids. */
-export async function ownerEnvironmentIds(db: D1Database, ownerId: string): Promise<string[]> {
+  input: { readonly ownerId: string; readonly state: "active" | "any" },
+): Promise<string[]> {
   const { results } = await db
-    .prepare("SELECT id FROM environments WHERE owner_id = ?1 AND state = 'active' LIMIT 64")
-    .bind(ownerId)
+    .prepare(
+      `SELECT id FROM environments WHERE owner_id = ?1 ${input.state === "active" ? "AND state = 'active'" : ""} LIMIT 64`,
+    )
+    .bind(input.ownerId)
     .all();
 
   return many(IdRow, results).map((row) => row.id);
 }
 
 /**
- * Record the relay socket that proved the environment's key, replacing any
- * earlier one. False when the environment is no longer active.
+ * What an environment's relay copies once, the first time a desktop or its
+ * owner reaches it: the identity, which never changes, and its owner's
+ * current standing.
  */
-export async function attachRelay(
+export async function loadEnvironment(
   db: D1Database,
-  input: { readonly id: string; readonly session: string },
-): Promise<boolean> {
-  return changed(
-    db
-      .prepare("UPDATE environments SET relay_session = ?2 WHERE id = ?1 AND state = 'active'")
-      .bind(input.id, input.session),
-  );
-}
-
-/** Forget the relay socket, unless a newer one has replaced it. */
-export async function detachRelay(
-  db: D1Database,
-  input: { readonly id: string; readonly session: string },
-): Promise<void> {
-  await db
-    .prepare("UPDATE environments SET relay_session = NULL WHERE id = ?1 AND relay_session = ?2")
-    .bind(input.id, input.session)
-    .run();
-}
-
-/**
- * The device a relayed bearer digest names in this environment, with the
- * environment's state and its owner's standing. A live device wins over a
- * revoked one with the same digest.
- */
-export async function findRelayDevice(
-  db: D1Database,
-  input: { readonly environmentId: string; readonly digest: string },
-): Promise<RelayDevice | undefined> {
-  return one(
-    RelayDeviceRow,
-    await db
-      .prepare(
-        `SELECT d.id, d.state, e.state AS environment_state, coalesce(o.status, 'active') AS owner_status
-         FROM devices d
-         JOIN environments e ON e.id = d.environment_id
-         LEFT JOIN owners o ON o.user_id = e.owner_id
-         WHERE d.environment_id = ?1 AND d.digest = ?2
-         ORDER BY CASE d.state WHEN 'active' THEN 0 WHEN 'reserved' THEN 1 ELSE 2 END, d.created_at DESC
-         LIMIT 1`,
-      )
-      .bind(input.environmentId, input.digest)
-      .first(),
-  );
-}
-
-/** One consistent read of what a lease states. */
-export async function leaseSnapshot(
-  db: D1Database,
-  environmentId: string,
-): Promise<{ readonly environment: Environment; readonly devices: string[] } | undefined> {
-  const [environment, devices] = await db.batch([
-    db.prepare("SELECT * FROM environments WHERE id = ?1").bind(environmentId),
+  id: string,
+): Promise<{ readonly environment: Environment; readonly owner: Owner | undefined } | undefined> {
+  const [environment, owner] = await db.batch([
+    db.prepare(`SELECT ${ENVIRONMENT_COLUMNS} FROM environments WHERE id = ?1`).bind(id),
     db
       .prepare(
-        "SELECT id FROM devices WHERE environment_id = ?1 AND state = 'active' ORDER BY created_at, id LIMIT ?2",
+        "SELECT o.user_id, o.status, o.version FROM owners o JOIN environments e ON e.owner_id = o.user_id WHERE e.id = ?1",
       )
-      .bind(environmentId, DEVICE_LIMIT),
+      .bind(id),
   ]);
 
   const row = one(EnvironmentRow, environment?.results[0]);
 
-  if (row === undefined) return undefined;
-
-  return {
-    environment: row,
-    devices: many(IdRow, devices?.results ?? []).map((device) => device.id),
-  };
+  return row === undefined
+    ? undefined
+    : { environment: row, owner: one(OwnerRow, owner?.results[0]) };
 }

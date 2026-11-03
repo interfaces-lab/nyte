@@ -15,7 +15,7 @@ import type {
   LinkTransactionStatus,
 } from "@nyte-ai/connect";
 import { publicKeySet, sha256 } from "@nyte-ai/connect/signing";
-import { lookupOwner, ownerStanding, verifySession } from "./clerk.ts";
+import { requireLinkableOwner, verifySession } from "./clerk.ts";
 import { throttle } from "./context.ts";
 import type { Context } from "./context.ts";
 import { claimRefusal } from "./environments.ts";
@@ -87,7 +87,7 @@ export async function openTransaction(context: Context, request: Request): Promi
   const code = normalizeUserCode(body.userCode);
 
   if (code === undefined) throw new Refusal("invalid");
-  const now = context.now();
+  const now = Date.now();
 
   const opened = await openLinkTransaction(context.db, {
     id: crypto.randomUUID(),
@@ -127,16 +127,14 @@ export async function openTransaction(context: Context, request: Request): Promi
 }
 
 export async function lookupTransaction(context: Context, request: Request): Promise<Response> {
-  const session = await verifySession(context, request);
-
-  await throttle(context, "linkLookup", session.userId);
+  await verifySession(context, request, "linkLookup");
   const body = parseBody(LinkTransactionLookupRequest, await requestText(request));
   const code = normalizeUserCode(body.userCode);
 
   if (code === undefined) throw new Refusal("not_found");
   const transaction = await findPendingLinkTransaction(context.db, {
     codeHash: await sha256(code),
-    now: context.now(),
+    now: Date.now(),
   });
 
   if (transaction === undefined) throw new Refusal("not_found");
@@ -155,25 +153,18 @@ export async function approveTransaction(
   request: Request,
   transactionId: string,
 ): Promise<Response> {
-  const session = await verifySession(context, request);
-
-  await throttle(context, "linkApprove", session.userId);
+  const session = await verifySession(context, request, "linkApprove");
   const body = parseBody(LinkTransactionApproveRequest, await requestText(request));
   const transaction = await findLinkTransaction(context.db, transactionId);
-  const now = context.now();
 
   if (
     transaction === undefined ||
-    resolveState(transaction, now) !== "pending" ||
+    resolveState(transaction, Date.now()) !== "pending" ||
     keyFingerprint(transaction.thumbprint) !== body.fingerprint
   )
     throw new Refusal("not_found");
-  const lookup = await lookupOwner(context, session.userId);
-
-  if ((await ownerStanding(context, { userId: session.userId, recheck: false })) !== "active")
-    throw new Refusal("owner_disabled");
-  const label =
-    (lookup.kind === "found" ? lookup.label : undefined) ?? session.email ?? session.userId;
+  const label = await requireLinkableOwner(context, session);
+  const now = Date.now();
 
   const approved = await approveLinkTransaction(context.db, {
     id: transaction.id,
@@ -195,13 +186,11 @@ export async function denyTransaction(
   request: Request,
   transactionId: string,
 ): Promise<Response> {
-  const session = await verifySession(context, request);
-
-  await throttle(context, "linkApprove", session.userId);
+  await verifySession(context, request, "linkApprove");
   const transaction = await findLinkTransaction(context.db, transactionId);
 
   if (transaction === undefined) throw new Refusal("not_found");
-  const denied = await denyLinkTransaction(context.db, { id: transaction.id, now: context.now() });
+  const denied = await denyLinkTransaction(context.db, { id: transaction.id, now: Date.now() });
 
   if (!denied) throw new Refusal("conflict");
   const answer: LinkTransactionStatus = { state: "denied" };
@@ -217,7 +206,7 @@ export async function pollTransaction(
   const { transaction } = await provenTransaction(context, { request, transactionId });
 
   await throttle(context, "linkPoll", transaction.id);
-  const answer: LinkTransactionStatus = { state: resolveState(transaction, context.now()) };
+  const answer: LinkTransactionStatus = { state: resolveState(transaction, Date.now()) };
 
   return json(200, answer);
 }
@@ -230,14 +219,7 @@ export async function completeTransaction(
   const { transaction } = await provenTransaction(context, { request, transactionId });
 
   await throttle(context, "linkPoll", transaction.id);
-  const now = context.now();
-
-  if (transaction.state === "approved" && transaction.owner_id !== null) {
-    const standing = await ownerStanding(context, { userId: transaction.owner_id, recheck: true });
-
-    if (standing === "unavailable") throw new Refusal("internal", 503);
-  }
-
+  const now = Date.now();
   const claimed = await claimEnvironment(context.db, {
     kind: "transaction",
     transactionId: transaction.id,
@@ -288,7 +270,7 @@ export async function cancelTransaction(
   });
 
   if (cancelled === undefined) throw new Refusal("not_found");
-  const answer: LinkTransactionStatus = { state: resolveState(cancelled, context.now()) };
+  const answer: LinkTransactionStatus = { state: resolveState(cancelled, Date.now()) };
 
   return json(200, answer);
 }

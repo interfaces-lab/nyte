@@ -1,21 +1,22 @@
 /**
- * What one request or scheduled run works with, and the rate limits it obeys.
+ * What one request or scheduled run works with, and the D1 rate limits it
+ * obeys. Limits on an environment's own traffic live in its relay
+ * (`environment-record.ts`).
  */
 import type { Config, Env } from "./config.ts";
 import { parseConfig } from "./config.ts";
-import type { D1Database } from "./d1.ts";
+import type { D1Database, D1PreparedStatement } from "./d1.ts";
+import type { EnvironmentApi } from "./environment-api.ts";
 import { Refusal } from "./http.ts";
 import { errorName } from "./log.ts";
 import type { Logger } from "./log.ts";
-import type { RelayStub } from "./relay-binding.ts";
-import { hit } from "./store/replays.ts";
+import { hitCount, hitStatement } from "./store/replays.ts";
 
 type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 
 export interface Dependencies {
   /** Outbound requests: the Clerk Backend API only. */
   readonly fetch: Fetch;
-  readonly now: () => number;
   readonly log: Logger;
 }
 
@@ -23,7 +24,7 @@ export interface Context extends Dependencies {
   readonly config: Config;
   readonly db: D1Database;
   /** The relay Durable Object of one environment. */
-  readonly relay: (environmentId: string) => RelayStub;
+  readonly environment: (environmentId: string) => EnvironmentApi;
   /** Run after the answer is sent. Failures are logged, never thrown. */
   readonly defer: (task: Promise<unknown>) => void;
 }
@@ -48,7 +49,7 @@ export function createContext(input: {
     ...dependencies,
     config,
     db: env.DB,
-    relay: (environmentId) => env.RELAY.getByName(environmentId),
+    environment: (environmentId) => env.RELAY.getByName(environmentId),
     defer: (task) =>
       input.waitUntil(
         task.catch((error: unknown) => log.error("deferred.failed", { error: errorName(error) })),
@@ -57,37 +58,35 @@ export function createContext(input: {
 }
 
 const RATE_LIMITS = {
-  /** Every broker API request from one client address, before authentication. */
+  /** Opening a link transaction, from one client address: the one route that writes D1 for anyone. */
   address: { windowMs: 60_000, limit: 300 },
   list: { windowMs: 60_000, limit: 60 },
   link: { windowMs: 600_000, limit: 10 },
   enroll: { windowMs: 60_000, limit: 10 },
   revoke: { windowMs: 60_000, limit: 30 },
-  /** Three heartbeats a minute, plus readiness refreshes after enrollments. */
-  lease: { windowMs: 60_000, limit: 20 },
   linkOpen: { windowMs: 600_000, limit: 10 },
   linkLookup: { windowMs: 60_000, limit: 10 },
   linkApprove: { windowMs: 60_000, limit: 10 },
   linkPoll: { windowMs: 60_000, limit: 30 },
-  /** Every relayed phone request from one client address, before its bearer is checked. */
-  relayAddress: { windowMs: 60_000, limit: 1200 },
-  /** Relayed phone requests to one environment, after its bearer is checked. */
-  relay: { windowMs: 60_000, limit: 1200 },
 } as const;
 
-type RateLimit = keyof typeof RATE_LIMITS;
+export type RateLimit = keyof typeof RATE_LIMITS;
 
-/** Count one request against `bucket` for `subject`. False once the window is full. */
-export async function allow(
+/** The statement that counts one request against `bucket` for `subject`; `withinLimit` reads its row. */
+export function rateStatement(
   context: Context,
   bucket: RateLimit,
   subject: string,
-): Promise<boolean> {
-  return hit(context.db, {
+): D1PreparedStatement {
+  return hitStatement(context.db, {
     key: `${bucket}:${subject}`,
-    ...RATE_LIMITS[bucket],
-    now: context.now(),
+    windowMs: RATE_LIMITS[bucket].windowMs,
+    now: Date.now(),
   });
+}
+
+export function withinLimit(bucket: RateLimit, row: unknown): boolean {
+  return hitCount(row) <= RATE_LIMITS[bucket].limit;
 }
 
 /** Count one request against `bucket` for `subject`, or refuse it. */
@@ -96,5 +95,6 @@ export async function throttle(
   bucket: RateLimit,
   subject: string,
 ): Promise<void> {
-  if (!(await allow(context, bucket, subject))) throw new Refusal("rate_limited");
+  if (!withinLimit(bucket, await rateStatement(context, bucket, subject).first()))
+    throw new Refusal("rate_limited");
 }

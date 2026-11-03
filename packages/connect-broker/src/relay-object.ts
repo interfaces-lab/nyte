@@ -1,18 +1,22 @@
 /**
  * The relay Durable Object: one per environment, named by its id. It holds
- * the desktop's hibernatable WebSocket and turns each phone request the
- * Worker forwards into a channel on it (see `@nyte-ai/connect/relay`).
+ * the environment itself (`environment-record.ts`, in the object's SQLite),
+ * the desktop's hibernatable WebSocket, and a channel on it for each phone
+ * request the Worker forwards (see `@nyte-ai/connect/relay`). The Worker asks
+ * it about the environment by RPC (`environment-api.ts`).
  *
- * Hibernation-safe: a socket's state lives in its attachment (ids, a session
- * id, and an auth deadline, never a credential), the auth deadline is an
- * alarm, and pings are answered by the runtime's auto-response. Channels live
- * only in memory, and only while their phone request is in flight.
+ * Hibernation-safe: a socket's state lives in its attachment (a session id
+ * and an auth deadline, never a credential), and pings are answered by the
+ * runtime's auto-response. One alarm serves the pending-auth deadlines and
+ * the D1 writes the record still owes. Channels live only in memory, and only
+ * while their exchange is in flight.
  *
  * Imported by the Worker entry alone; the broker and its Node tests never load
  * the Workers runtime module.
  */
 import { DurableObject } from "cloudflare:workers";
 import { RandomId, Uuid } from "@nyte-ai/connect";
+import type { EnrollRequest, EnrollResponse, LeaseResponse } from "@nyte-ai/connect";
 import {
   ChannelId,
   RELAY_AUTH_TIMEOUT_MS,
@@ -29,31 +33,43 @@ import {
   relayRefusal,
   relayRequestHeaders,
 } from "@nyte-ai/connect/relay";
-import type { DesktopFrame, RelayFrame } from "@nyte-ai/connect/relay";
+import type {
+  DesktopFrame,
+  RelayFrame,
+  RelayRefusalCode,
+  RelayRequestHeaders,
+} from "@nyte-ai/connect/relay";
 import { randomId } from "@nyte-ai/connect/signing";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-import { ownerStanding } from "./clerk.ts";
 import type { Env } from "./config.ts";
-import { createContext } from "./context.ts";
-import type { Context } from "./context.ts";
-import { Refusal } from "./http.ts";
-import { consoleLogger, errorName } from "./log.ts";
-import { verifyRelayProof } from "./proof.ts";
+import { parseConfig } from "./config.ts";
+import type {
+  Actor,
+  Answer,
+  EnvironmentApi,
+  OwnerStanding,
+  Presence,
+  Proven,
+} from "./environment-api.ts";
+import { RelayAdmission } from "./environment-api.ts";
+import { EnvironmentRecord } from "./environment-record.ts";
+import type { DesktopExchange, Effect, Outcome } from "./environment-record.ts";
+import { consoleLogger } from "./log.ts";
 import { RelayChannel } from "./relay-channel.ts";
+import {
+  RELAY_HEADERS,
+  RELAY_INTERNAL_ORIGIN,
+  RELAY_OPERATIONS,
+  bearerToken,
+} from "./relay-stub.ts";
 import { SocketChannel } from "./socket-channel.ts";
-import { RELAY_HEADERS, RELAY_INTERNAL_ORIGIN, RELAY_OPERATIONS } from "./relay-stub.ts";
-import { attachRelay, detachRelay } from "./store/environments.ts";
 
 const Attachment = Type.Union([
-  Type.Object({
-    state: Type.Literal("pending"),
-    environmentId: Uuid,
-    session: RandomId,
-    deadline: Type.Integer(),
-  }),
-  Type.Object({ state: Type.Literal("ready"), environmentId: Uuid, session: RandomId }),
+  Type.Object({ state: Type.Literal("pending"), session: RandomId, deadline: Type.Integer() }),
+  /** `deadline` stays as the socket's arrival order: the latest proven socket wins. */
+  Type.Object({ state: Type.Literal("ready"), session: RandomId, deadline: Type.Integer() }),
 ]);
 
 type Attachment = Static<typeof Attachment>;
@@ -99,51 +115,96 @@ function closeSocket(socket: WebSocket, code: number, reason: string): void {
   } catch {}
 }
 
-export class EnvironmentRelay extends DurableObject<Env> {
+export class EnvironmentRelay extends DurableObject<Env> implements EnvironmentApi {
+  readonly #record: EnvironmentRecord | undefined;
   readonly #channels = new Map<string, RelayChannel | SocketChannel>();
   /** Sessions whose `auth` frame is being checked. */
   readonly #verifying = new Set<string>();
-  /** Orders socket takeovers and their D1 writes, so the latest proof always wins. */
-  #attaching: Promise<void> = Promise.resolve();
+  /** Channels whose `forward` is being admitted; a reset meanwhile removes the id. */
+  readonly #admitting = new Set<string>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(RELAY_PING, RELAY_PONG));
+    const config = parseConfig(env);
+    const id = ctx.id.name;
+
+    if ("invalid" in config)
+      consoleLogger.error("config.invalid", { bindings: config.invalid.join(",") });
+    this.#record =
+      "invalid" in config || !Value.Check(Uuid, id)
+        ? undefined
+        : new EnvironmentRecord({
+            id,
+            storage: ctx.storage,
+            directory: env.DB,
+            config,
+            log: consoleLogger,
+            exchange: (request) => this.#exchange(request),
+          });
+  }
+
+  async lease(proof: Proven): Promise<Answer<LeaseResponse>> {
+    return this.#run((record) => record.lease(proof));
+  }
+
+  async enroll(input: {
+    readonly ownerId: string;
+    readonly sessionId: string;
+    readonly body: EnrollRequest;
+  }): Promise<Answer<EnrollResponse>> {
+    return this.#run((record) => record.enroll(input));
+  }
+
+  async release(input: {
+    readonly proof: Proven;
+    readonly deviceId: string;
+  }): Promise<Answer<null>> {
+    return this.#run((record) => record.release(input));
+  }
+
+  async revokeDevice(input: {
+    readonly actor: Actor;
+    readonly deviceId: string;
+  }): Promise<Answer<{ readonly sessionId: string }>> {
+    return this.#run((record) => record.revokeDevice(input));
+  }
+
+  async revoke(actor: Actor): Promise<Answer<null>> {
+    return this.#run((record) => record.revoke(actor));
+  }
+
+  async status(ownerId: string): Promise<Presence | null> {
+    return this.#record?.status(ownerId, this.#ready() !== undefined) ?? null;
+  }
+
+  async setOwner(standing: OwnerStanding): Promise<void> {
+    await this.#run((record) => record.setOwner(standing));
   }
 
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const environmentId = request.headers.get(RELAY_HEADERS.environment);
 
-    if (url.origin !== RELAY_INTERNAL_ORIGIN || !Value.Check(Uuid, environmentId))
-      return relayRefusal("not_found");
+    if (url.origin !== RELAY_INTERNAL_ORIGIN) return relayRefusal("not_found");
 
     switch (url.pathname) {
       case RELAY_OPERATIONS.connect:
-        return this.#connect(environmentId);
+        return this.#connect();
       case RELAY_OPERATIONS.forward:
         return this.#forward(request);
       case RELAY_OPERATIONS.socket:
         return this.#socket(request);
       case RELAY_OPERATIONS.reset: {
-        const deviceId = request.headers.get(RELAY_HEADERS.device);
         const id = request.headers.get(RELAY_HEADERS.channel);
 
-        for (const channel of this.#channels.values())
-          if (
-            (deviceId === null || channel.deviceId === deviceId) &&
-            (id === null || channel.id === id)
-          ) {
-            if (channel instanceof SocketChannel) channel.reset();
-            else channel.reset("closed");
-          }
+        if (id !== null) {
+          this.#admitting.delete(id);
+          this.#resetChannels((channel) => channel.id === id);
+        }
 
         return new Response(null, { status: 204 });
       }
-      case RELAY_OPERATIONS.revoke:
-        for (const { socket } of this.#sockets()) this.#close(socket, "revoked");
 
-        return new Response(null, { status: 204 });
       default:
         return relayRefusal("not_found");
     }
@@ -151,16 +212,12 @@ export class EnvironmentRelay extends DurableObject<Env> {
 
   override async alarm(): Promise<void> {
     const now = Date.now();
-    let next: number | undefined;
 
-    for (const { socket, attachment } of this.#sockets()) {
-      if (attachment.state !== "pending") continue;
-
-      if (attachment.deadline <= now) this.#close(socket, "unauthorized");
-      else next = Math.min(next ?? attachment.deadline, attachment.deadline);
-    }
-
-    if (next !== undefined) await this.ctx.storage.setAlarm(next);
+    for (const { socket, attachment } of this.#sockets())
+      if (attachment.state === "pending" && attachment.deadline <= now)
+        this.#close(socket, "unauthorized");
+    await this.#record?.drain();
+    await this.#schedule();
   }
 
   override async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
@@ -187,6 +244,64 @@ export class EnvironmentRelay extends DurableObject<Env> {
     this.#end(socket);
   }
 
+  /** Run one record operation, apply its socket effects, and keep the alarm on what the outbox owes. */
+  async #run<T>(
+    operation: (record: EnvironmentRecord) => Promise<Outcome<T>> | Outcome<T>,
+  ): Promise<Answer<T>> {
+    const record = this.#record;
+
+    if (record === undefined) return { ok: false, code: "internal" };
+    const outcome = await operation(record);
+
+    for (const effect of outcome.effects) this.#apply(effect);
+    await this.#schedule();
+
+    return outcome.answer;
+  }
+
+  #apply(effect: Effect): void {
+    switch (effect.kind) {
+      case "end-device":
+        this.#resetChannels((channel) => channel.deviceId === effect.deviceId);
+        break;
+      case "end-channels":
+        this.#resetChannels(() => true);
+        break;
+      case "close":
+        for (const { socket } of this.#sockets()) this.#close(socket, "revoked");
+        break;
+      default: {
+        const _exhaustive: never = effect;
+
+        return _exhaustive;
+      }
+    }
+  }
+
+  #resetChannels(matches: (channel: RelayChannel | SocketChannel) => boolean): void {
+    for (const channel of this.#channels.values()) {
+      if (!matches(channel)) continue;
+
+      if (channel instanceof SocketChannel) channel.reset();
+      else channel.reset("closed");
+    }
+  }
+
+  /** Set the alarm to the earliest pending-auth deadline or outbox retry. */
+  async #schedule(): Promise<void> {
+    const deadlines = this.#sockets().flatMap(({ attachment }) =>
+      attachment.state === "pending" ? [attachment.deadline] : [],
+    );
+
+    const due = this.#record?.nextDue();
+    const next = Math.min(...deadlines, due ?? Number.POSITIVE_INFINITY);
+
+    if (next === Number.POSITIVE_INFINITY) return;
+    const current = await this.ctx.storage.getAlarm();
+
+    if (current === null || current > next) await this.ctx.storage.setAlarm(next);
+  }
+
   #sockets(): Socket[] {
     return this.ctx.getWebSockets().flatMap((socket) => {
       const attachment = readAttachment(socket);
@@ -195,19 +310,11 @@ export class EnvironmentRelay extends DurableObject<Env> {
     });
   }
 
-  #context(): Context | undefined {
-    return createContext({
-      env: this.env,
-      dependencies: {
-        fetch: () => Promise.reject(new Error("The relay makes no outbound requests")),
-        now: () => Date.now(),
-        log: consoleLogger,
-      },
-      waitUntil: (task) => this.ctx.waitUntil(task),
-    });
+  #ready(): Socket | undefined {
+    return this.#sockets().find(({ attachment }) => attachment.state === "ready");
   }
 
-  async #connect(environmentId: string): Promise<Response> {
+  async #connect(): Promise<Response> {
     const pending = this.#sockets()
       .flatMap(({ socket, attachment }) =>
         attachment.state === "pending" ? [{ socket, deadline: attachment.deadline }] : [],
@@ -217,19 +324,16 @@ export class EnvironmentRelay extends DurableObject<Env> {
     for (const oldest of pending.slice(0, Math.max(0, pending.length + 1 - RELAY_PENDING_LIMIT)))
       this.#close(oldest.socket, "unauthorized");
     const pair = new WebSocketPair();
-    const deadline = Date.now() + RELAY_AUTH_TIMEOUT_MS;
+
     const attachment: Attachment = {
       state: "pending",
-      environmentId,
       session: randomId(),
-      deadline,
+      deadline: Date.now() + RELAY_AUTH_TIMEOUT_MS,
     };
 
     this.ctx.acceptWebSocket(pair[1]);
     pair[1].serializeAttachment(attachment);
-    const alarm = await this.ctx.storage.getAlarm();
-
-    if (alarm === null || alarm > deadline) await this.ctx.storage.setAlarm(deadline);
+    await this.#schedule();
 
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
@@ -251,33 +355,19 @@ export class EnvironmentRelay extends DurableObject<Env> {
       return;
     }
 
-    const context = this.#context();
+    const record = this.#record;
 
-    if (context === undefined) {
+    if (record === undefined) {
       socket.close(INTERNAL_ERROR, "internal");
 
       return;
     }
 
     this.#verifying.add(attachment.session);
-    let outcome: CloseReason | "ready";
+    let outcome: Awaited<ReturnType<EnvironmentRecord["authenticate"]>>;
 
     try {
-      const environment = await verifyRelayProof(context, {
-        token: frame.proof,
-        environmentId: attachment.environmentId,
-      });
-      const standing =
-        environment.state === "revoked"
-          ? "deleted"
-          : await ownerStanding(context, { userId: environment.owner_id, recheck: false });
-
-      outcome =
-        standing === "active" ? "ready" : standing === "deleted" ? "revoked" : "unauthorized";
-    } catch (error) {
-      if (!(error instanceof Refusal))
-        context.log.error("relay.auth_failed", { error: errorName(error) });
-      outcome = "unauthorized";
+      outcome = await record.authenticate(frame.proof);
     } finally {
       this.#verifying.delete(attachment.session);
     }
@@ -292,52 +382,34 @@ export class EnvironmentRelay extends DurableObject<Env> {
       return;
     }
 
-    await this.#attach(context, socket, attachment);
+    this.#attach(socket, attachment);
   }
 
-  /** Make this socket the environment's one authenticated socket, replacing any other. */
-  async #attach(
-    context: Context,
-    socket: WebSocket,
-    attachment: Extract<Attachment, { state: "pending" }>,
-  ): Promise<void> {
-    const { environmentId, session } = attachment;
-    const step = this.#attaching.then(async () => {
-      if (socket.readyState !== OPEN) return;
+  /**
+   * Make this socket the environment's one authenticated socket. The socket
+   * that arrived last wins, whichever proof finished verifying first.
+   */
+  #attach(socket: WebSocket, attachment: Extract<Attachment, { state: "pending" }>): void {
+    const others = this.#sockets().filter(
+      (other) => other.socket !== socket && other.attachment.state === "ready",
+    );
 
-      if (Date.now() > attachment.deadline) {
-        this.#close(socket, "unauthorized");
+    if (others.some((other) => other.attachment.deadline > attachment.deadline)) {
+      this.#close(socket, "replaced");
 
-        return;
-      }
+      return;
+    }
 
-      if (!(await attachRelay(context.db, { id: environmentId, session }))) {
-        this.#close(socket, "revoked");
+    for (const other of others) this.#close(other.socket, "replaced");
+    const ready: Attachment = {
+      state: "ready",
+      session: attachment.session,
+      deadline: attachment.deadline,
+    };
 
-        return;
-      }
-
-      if (socket.readyState !== OPEN) {
-        await detachRelay(context.db, { id: environmentId, session });
-
-        return;
-      }
-
-      for (const other of this.#sockets())
-        if (other.socket !== socket && other.attachment.state === "ready")
-          this.#close(other.socket, "replaced");
-      const ready: Attachment = { state: "ready", environmentId, session };
-
-      socket.serializeAttachment(ready);
-      send(socket, { t: "ready" });
-      context.log.info("relay.attached", { environmentId });
-    });
-
-    this.#attaching = step.catch((error: unknown) => {
-      context.log.error("relay.attach_failed", { environmentId, error: errorName(error) });
-      this.#close(socket, "unauthorized");
-    });
-    await this.#attaching;
+    socket.serializeAttachment(ready);
+    send(socket, { t: "ready" });
+    consoleLogger.info("relay.attached", { environmentId: this.ctx.id.name ?? "" });
   }
 
   #receive(
@@ -380,6 +452,7 @@ export class EnvironmentRelay extends DurableObject<Env> {
         kept = bytes !== undefined && channel.onData(bytes);
         break;
       }
+
       case "end":
         kept = channel.onEnd();
         break;
@@ -403,47 +476,106 @@ export class EnvironmentRelay extends DurableObject<Env> {
     if (!kept) this.#close(socket, "invalid");
   }
 
+  /** A phone's HTTP exchange: admit its bearer here, then open a channel on the desktop's socket. */
   async #forward(request: Request): Promise<Response> {
     const path = request.headers.get(RELAY_HEADERS.path);
-    const deviceId = request.headers.get(RELAY_HEADERS.device) ?? undefined;
     const id = request.headers.get(RELAY_HEADERS.channel);
+    const admission = request.headers.get(RELAY_HEADERS.admission);
     const method = request.method;
+    const record = this.#record;
 
     if (
       !Value.Check(RelayPath, path) ||
       !Value.Check(RelayMethod, method) ||
       !Value.Check(ChannelId, id) ||
-      (deviceId !== undefined && !Value.Check(Uuid, deviceId))
+      !Value.Check(RelayAdmission, admission)
     )
       return relayRefusal("not_found");
-    const desktop = this.#sockets().find(({ attachment }) => attachment.state === "ready");
 
-    if (desktop === undefined || request.signal.aborted || this.#channels.has(id))
-      return relayRefusal("closed");
-    const { session } = desktop.attachment;
-    let open = 0;
+    if (record === undefined) return relayRefusal("internal");
+    this.#admitting.add(id);
 
-    for (const channel of this.#channels.values()) if (channel.session === session) open += 1;
-
-    if (open >= RELAY_CHANNEL_LIMIT) return relayRefusal("closed");
-    const channel = new RelayChannel({
-      id,
-      session,
-      deviceId,
-      send: (frame) => send(desktop.socket, frame),
-      onDone: () => this.#channels.delete(id),
+    const admitted = await record.admit({
+      bearer: bearerToken(request.headers),
+      admission,
     });
 
-    this.#channels.set(id, channel);
-    request.signal.addEventListener("abort", () => channel.cancel(), { once: true });
-    channel.start({
+    if (!this.#admitting.delete(id) || request.signal.aborted) return relayRefusal("closed");
+
+    if (!admitted.ok) return relayRefusal(admitted.code);
+
+    const opened = this.#open({
+      id,
       method,
       path,
       headers: relayRequestHeaders(request.headers),
       body: request.body,
+      deviceId: admitted.deviceId,
     });
 
-    return channel.response;
+    if (typeof opened === "string") return relayRefusal(opened);
+    request.signal.addEventListener("abort", () => opened.cancel(), { once: true });
+
+    return opened.response;
+  }
+
+  /** The record's way to the desktop: one exchange on a channel only the broker opens. */
+  #exchange: DesktopExchange = async (request) => {
+    const opened = this.#open({
+      id: randomId(),
+      method: "POST",
+      path: request.path,
+      headers: relayRequestHeaders(
+        new Headers({ "content-type": "application/json", accept: "application/json" }),
+      ),
+      body: new Response(request.body).body,
+      deviceId: undefined,
+    });
+
+    if (typeof opened === "string") throw new Error("The desktop is not connected");
+
+    if (request.signal.aborted) opened.reset("closed");
+    else request.signal.addEventListener("abort", () => opened.reset("closed"), { once: true });
+
+    return opened.response;
+  };
+
+  /** Open a channel on the desktop's socket, or say why none opens. */
+  #open(input: {
+    readonly id: string;
+    readonly method: RelayMethod;
+    readonly path: string;
+    readonly headers: RelayRequestHeaders;
+    readonly body: ReadableStream<Uint8Array> | null;
+    readonly deviceId: string | undefined;
+  }): RelayChannel | RelayRefusalCode {
+    const desktop = this.#ready();
+
+    if (desktop === undefined || this.#channels.has(input.id)) return "closed";
+    const session = desktop.attachment.session;
+    let open = 0;
+
+    for (const channel of this.#channels.values()) if (channel.session === session) open += 1;
+
+    if (open >= RELAY_CHANNEL_LIMIT) return "closed";
+
+    const channel = new RelayChannel({
+      id: input.id,
+      session,
+      deviceId: input.deviceId,
+      send: (frame) => send(desktop.socket, frame),
+      onDone: () => this.#channels.delete(input.id),
+    });
+
+    this.#channels.set(input.id, channel);
+    channel.start({
+      method: input.method,
+      path: input.path,
+      headers: input.headers,
+      body: input.body,
+    });
+
+    return channel;
   }
 
   #socketFrame(
@@ -483,10 +615,10 @@ export class EnvironmentRelay extends DurableObject<Env> {
       !Value.Check(ChannelId, id)
     )
       return relayRefusal("not_found");
-    const desktop = this.#sockets().find(({ attachment }) => attachment.state === "ready");
+    const desktop = this.#ready();
 
     if (desktop === undefined || this.#channels.has(id)) return relayRefusal("closed");
-    const { session } = desktop.attachment;
+    const session = desktop.attachment.session;
     let open = 0;
 
     for (const channel of this.#channels.values()) if (channel.session === session) open += 1;
@@ -494,6 +626,7 @@ export class EnvironmentRelay extends DurableObject<Env> {
     if (open >= RELAY_CHANNEL_LIMIT) return relayRefusal("closed");
     const pair = new WebSocketPair();
     pair[1].accept();
+
     const channel = new SocketChannel({
       id,
       session,
@@ -514,7 +647,7 @@ export class EnvironmentRelay extends DurableObject<Env> {
     this.#end(socket);
   }
 
-  /** End a socket's channels and, for the authenticated one, its D1 session. */
+  /** End a socket's channels. */
   #end(socket: WebSocket): void {
     const attachment = readAttachment(socket);
 
@@ -526,13 +659,5 @@ export class EnvironmentRelay extends DurableObject<Env> {
       if (channel instanceof SocketChannel) channel.fail();
       else channel.fail("closed");
     }
-
-    if (attachment.state !== "ready") return;
-    const context = this.#context();
-
-    if (context !== undefined)
-      this.ctx.waitUntil(
-        detachRelay(context.db, { id: attachment.environmentId, session: attachment.session }),
-      );
   }
 }

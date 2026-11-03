@@ -68,6 +68,7 @@ describe("Clerk webhooks", () => {
   it("stops leases and session routes for a banned owner and resumes on a newer unban", async () => {
     const { desktop } = await harness.link({ userId: "user_alice" });
 
+    expect((await harness.lease(desktop)).answer.status).toBe(200);
     expect(
       (await harness.webhook(updated({ id: "user_alice", banned: true, updatedAt: 100 }))).status,
     ).toBe(204);

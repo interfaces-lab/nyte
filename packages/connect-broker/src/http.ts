@@ -5,6 +5,7 @@
 import type { ErrorBody, ErrorCode } from "@nyte-ai/connect";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
+import type { Answer } from "./environment-api.ts";
 
 /** Most bytes the broker reads from a request body. */
 const REQUEST_BODY_LIMIT = 16_384;
@@ -164,4 +165,11 @@ export function parseBody<S extends TSchema>(schema: S, text: string): Static<S>
   if (value === undefined) throw new Refusal("invalid");
 
   return value;
+}
+
+/** The value a relay answered, or its refusal thrown for the top of the request to answer. */
+export function unwrap<T>(answer: Answer<T>): T {
+  if (!answer.ok) throw new Refusal(answer.code, answer.status);
+
+  return answer.value;
 }

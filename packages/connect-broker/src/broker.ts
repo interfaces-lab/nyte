@@ -84,9 +84,7 @@ async function route(context: Context, request: Request): Promise<Response> {
   if (pathname === BROKER_ROUTES.keys) {
     if (method !== "GET") return methodNotAllowed("GET");
 
-    return json(200, publicKeySet(context.config.signing.all), {
-      "cache-control": "public, max-age=300",
-    });
+    return json(200, publicKeySet(context.config.signing.all));
   }
 
   if (pathname === BROKER_ROUTES.webhook) {
@@ -96,8 +94,6 @@ async function route(context: Context, request: Request): Promise<Response> {
   }
 
   if (pathname === BROKER_ROUTES.environments) {
-    await throttle(context, "address", request.headers.get("cf-connecting-ip") ?? "unknown");
-
     if (method === "GET") return listEnvironments(context, request);
 
     if (method === "POST") return linkEnvironment(context, request);
@@ -112,8 +108,6 @@ async function route(context: Context, request: Request): Promise<Response> {
   }
 
   if (pathname === BROKER_ROUTES.linkTransactionLookup) {
-    await throttle(context, "address", request.headers.get("cf-connecting-ip") ?? "unknown");
-
     return method === "POST" ? lookupTransaction(context, request) : methodNotAllowed("POST");
   }
 
@@ -121,7 +115,6 @@ async function route(context: Context, request: Request): Promise<Response> {
 
   if (transaction !== null) {
     const [, transactionId = "", step] = transaction;
-    await throttle(context, "address", request.headers.get("cf-connecting-ip") ?? "unknown");
 
     switch (step) {
       case "approve":
@@ -151,8 +144,6 @@ async function route(context: Context, request: Request): Promise<Response> {
 
   if (match === null) throw new Refusal("not_found");
   const [, environmentId = "", action, devices, deviceId, release] = match;
-
-  await throttle(context, "address", request.headers.get("cf-connecting-ip") ?? "unknown");
 
   if (action === "lease")
     return method === "POST"

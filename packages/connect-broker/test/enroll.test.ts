@@ -2,7 +2,6 @@ import { EnrollResponse, ErrorBody } from "@nyte-ai/connect";
 import { sha256 } from "@nyte-ai/connect/signing";
 import { Value } from "typebox/value";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { activateDevice } from "../src/store/devices.ts";
 import { FakeDesktop, createHarness, read } from "./harness.ts";
 import type { DesktopMode, Harness } from "./harness.ts";
 
@@ -32,7 +31,7 @@ async function linked(userId = "user_alice"): Promise<FakeDesktop> {
 
 async function deviceState(deviceId: string): Promise<unknown> {
   return read(
-    await harness.db.prepare("SELECT state FROM devices WHERE id = ?1").bind(deviceId).first(),
+    (await harness.rows("devices")).find((row) => read(row, "id") === deviceId),
     "state",
   );
 }
@@ -129,15 +128,6 @@ describe("enrolling a device", () => {
 
     expect(await deviceState(deviceId)).toBe("revoked");
     expect((await harness.lease(desktop)).claims?.devices).toEqual([]);
-    expect(
-      await activateDevice(harness.db, {
-        id: deviceId,
-        environmentId: desktop.environmentId,
-        clientId: "phone-install-0001",
-        generation: 1,
-        now: harness.now(),
-      }),
-    ).toBe(false);
     desktop.beforeReceipt = undefined;
     const again = await harness.enroll({
       userId: "user_alice",
@@ -191,23 +181,19 @@ describe("enrolling a device", () => {
   it("enforces the device limit", async () => {
     const desktop = await linked();
 
-    await harness.db.batch(
-      Array.from({ length: 20 }, (_, index) =>
-        harness.db
-          .prepare(
-            `INSERT INTO devices (id, environment_id, client_id, client_name, digest, session_id, state, grant_id,
-               nonce, grant_expires_at, created_at)
-             VALUES (?1, ?2, ?3, 'Phone', ?4, 'sess_x', 'active', ?5, 'nonce-nonce-nonce-nonce', 0, 0)`,
-          )
-          .bind(
-            crypto.randomUUID(),
-            desktop.environmentId,
-            `client-${index}-0000000000`,
-            "d".repeat(43),
-            `grant-${index}-000000000000000000`,
-          ),
-      ),
-    );
+    expect((await harness.lease(desktop)).answer.status).toBe(200);
+    const storage = harness.relay.storages.get(desktop.environmentId);
+
+    for (let index = 0; index < 20; index += 1)
+      storage?.sql.exec(
+        `INSERT INTO devices (id, client_id, client_name, digest, session_id, state, grant_id,
+           nonce, grant_expires_at, created_at)
+         VALUES (?1, ?2, 'Phone', ?3, 'sess_x', 'active', ?4, 'nonce-nonce-nonce-nonce', 0, 0)`,
+        crypto.randomUUID(),
+        `client-${index}-0000000000`,
+        "d".repeat(43),
+        `grant-${index}-000000000000000000`,
+      );
     const answer = await harness.enroll({
       userId: "user_alice",
       environmentId: desktop.environmentId,
@@ -216,6 +202,36 @@ describe("enrolling a device", () => {
     expect(code(answer.body)).toBe("limit");
     expect(desktop.recorded).toEqual([]);
     expect((await harness.lease(desktop)).claims?.devices).toHaveLength(20);
+  });
+
+  it("ends reservations whose grant lapsed before counting the limit", async () => {
+    const desktop = await linked();
+
+    expect((await harness.lease(desktop)).answer.status).toBe(200);
+    const storage = harness.relay.storages.get(desktop.environmentId);
+
+    for (let index = 0; index < 20; index += 1)
+      storage?.sql.exec(
+        `INSERT INTO devices (id, client_id, client_name, digest, session_id, state, grant_id,
+           nonce, grant_expires_at, created_at)
+         VALUES (?1, ?2, 'Phone', ?3, 'sess_x', 'reserved', ?4, 'nonce-nonce-nonce-nonce', ?5, ?5)`,
+        crypto.randomUUID(),
+        `client-${index}-0000000000`,
+        "d".repeat(43),
+        `grant-${index}-000000000000000000`,
+        Date.now() - 60_000,
+      );
+    const answer = await harness.enroll({
+      userId: "user_alice",
+      environmentId: desktop.environmentId,
+    });
+
+    expect(answer.status).toBe(201);
+    const ended = (await harness.rows("devices")).filter(
+      (row) => read(row, "revoke_reason") === "expired",
+    );
+
+    expect(ended).toHaveLength(20);
   });
 
   it("hides other owners' environments and devices", async () => {

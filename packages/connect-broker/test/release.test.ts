@@ -34,10 +34,9 @@ async function enrolled(): Promise<{ desktop: FakeDesktop; deviceId: string }> {
 }
 
 async function device(deviceId: string): Promise<unknown> {
-  return harness.db
-    .prepare("SELECT state, revoke_reason FROM devices WHERE id = ?1")
-    .bind(deviceId)
-    .first();
+  const row = (await harness.rows("devices")).find((entry) => read(entry, "id") === deviceId);
+
+  return { state: read(row, "state"), revoke_reason: read(row, "revoke_reason") };
 }
 
 const denials = () => harness.rows("denied_sessions");

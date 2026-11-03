@@ -7,12 +7,12 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import type { D1Database } from "./d1.ts";
-import type { RelayNamespace } from "./relay-binding.ts";
+import type { EnvironmentNamespace } from "./environment-api.ts";
 
 export interface Env {
   readonly DB: D1Database;
   /** One relay Durable Object per environment, named by the environment id. */
-  readonly RELAY: RelayNamespace;
+  readonly RELAY: EnvironmentNamespace;
   /** The broker's own origin: proofs, Clerk `aud`, token issuer, and relay addresses. */
   readonly CONNECT_ORIGIN: string;
   readonly CONNECT_WEB_ORIGINS: string;

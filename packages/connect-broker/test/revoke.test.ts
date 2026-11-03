@@ -139,10 +139,7 @@ describe("removing environments", () => {
       });
       expect(
         read(
-          await harness.db
-            .prepare("SELECT state FROM devices WHERE id = ?1")
-            .bind(deviceId)
-            .first(),
+          (await harness.rows("devices")).find((row) => read(row, "id") === deviceId),
           "state",
         ),
       ).toBe("revoked");

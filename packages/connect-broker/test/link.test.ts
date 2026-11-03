@@ -39,7 +39,7 @@ describe("linking a desktop", () => {
         owner_id: "user_alice",
         public_key: desktop.publicKey.x,
         state: "active",
-        relay_session: null,
+        revoked_at: null,
       }),
     ]);
   });
@@ -53,11 +53,12 @@ describe("linking a desktop", () => {
     });
     expect((await harness.link({ userId: "user_named" })).link?.owner.label).toBe("nyte-fan");
 
-    harness.clerkApi.userStatus = 503;
-    expect((await harness.link({ userId: "user_offline" })).link?.owner).toEqual({
-      id: "user_offline",
-      label: "user_offline",
+    harness.clerkApi.users.set("user_unnamed", { banned: false, locked: false, updated_at: 1 });
+    expect((await harness.link({ userId: "user_unnamed" })).link?.owner).toEqual({
+      id: "user_unnamed",
+      label: "user_unnamed",
     });
+    harness.clerkApi.users.set("user_claimed", { banned: false, locked: false, updated_at: 1 });
     const desktop = await harness.newDesktop();
     const body = JSON.stringify({ publicKey: desktop.publicKey, name: "Mac" });
     const claimed = await harness.send({
@@ -80,6 +81,15 @@ describe("linking a desktop", () => {
     });
 
     expect(read(claimed.body, "owner", "label")).toBe("claimed@example.com");
+  });
+
+  it("links nothing while Clerk can't say who the owner is", async () => {
+    harness.clerkApi.userStatus = 503;
+    const { answer } = await harness.link({ userId: "user_offline" });
+
+    expect(answer.status).toBe(503);
+    expect(answer.headers.get("retry-after")).toBe("60");
+    expect(await harness.rows("environments")).toEqual([]);
   });
 
   it("refuses a link for an owner Clerk reports banned, locked, or unknown", async () => {
