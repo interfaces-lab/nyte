@@ -31,9 +31,9 @@ const names = [
   ...MOBILE_GLYPH_NAMES.map((name) => ["mobile", name, mobileLucide.glyphs[name]]),
 ];
 
-describe(`every icon name has a Lucide glyph (${names.length} names)`, () => {
+void describe(`every icon name has a Lucide glyph (${names.length} names)`, () => {
   for (const [source, name, glyph] of names) {
-    test(`${source}: ${name}`, () => {
+    void test(`${source}: ${name}`, () => {
       assert.equal(typeof glyph, "function", `${source} "${name}" has no Lucide glyph`);
       const markup = renderToStaticMarkup(createElement(glyph, { size: 16 }));
       assert.match(markup, /^<svg[\s>]/u, `${source} "${name}" didn't render an <svg>`);
@@ -47,7 +47,7 @@ describe(`every icon name has a Lucide glyph (${names.length} names)`, () => {
   }
 });
 
-describe("each Lucide set maps exactly its names", () => {
+void describe("each Lucide set maps exactly its names", () => {
   const sets = [
     ["ui", uiNames.ICON_NAMES, uiLucide.GLYPHS],
     ["ui filled", uiNames.FILLED_ICON_NAMES, uiLucide.FILLED_GLYPHS],
@@ -56,24 +56,24 @@ describe("each Lucide set maps exactly its names", () => {
   ];
 
   for (const [source, expected, set] of sets) {
-    test(source, () => {
+    void test(source, () => {
       const byName = (a, b) => a.localeCompare(b);
       assert.deepEqual(Object.keys(set).toSorted(byName), expected.slice().toSorted(byName));
     });
   }
 });
 
-describe("icon switch", () => {
-  test("NYTE_ICONS=lucide wins even when Central is installed", () => {
+void describe("icon switch", () => {
+  void test("NYTE_ICONS=lucide wins even when Central is installed", () => {
     for (const { name } of ICON_CONSUMERS)
       assert.equal(iconSet(name, { NYTE_ICONS: "lucide" }), "lucide");
   });
 
-  test("NYTE_ICONS rejects anything but central or lucide", () => {
+  void test("NYTE_ICONS rejects anything but central or lucide", () => {
     assert.throws(() => iconSet("ui", { NYTE_ICONS: "feather" }), /central or lucide/u);
   });
 
-  test("NYTE_ICONS=central fails loudly without Central installed", (t) => {
+  void test("NYTE_ICONS=central fails loudly without Central installed", (t) => {
     if (iconSet("ui", {}) === "central") {
       t.skip("Central Icons are installed here");
 

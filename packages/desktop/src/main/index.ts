@@ -12,7 +12,6 @@ import {
   shell,
 } from "electron";
 import { randomUUID } from "node:crypto";
-import { windowAt } from "./window-at.ts";
 import { macOSTrafficLightPosition } from "./traffic-lights.ts";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -24,7 +23,6 @@ import {
   HOST_PORT_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
-  INITIAL_TAB_ARGUMENT,
   LAUNCH_WINDOWS_ARGUMENT,
   MACHINE_NAME_ARGUMENT,
   MAIN_OPERATION_PATHS,
@@ -382,20 +380,6 @@ const mainCalls: CallTable = {
   "host.openExternal": async (_window, { url }) => void shell.openExternal(safeExternalUrl(url)),
   "host.confirmExternal": (window, { url }) => confirmExternal(safeExternalUrl(url), window),
   "host.revealPath": async (_window, { path }) => shell.showItemInFolder(path),
-  "host.tearOffTab": async (_window, { tab, x, y }) => {
-    const at = { x: Math.round(x), y: Math.round(y) };
-
-    if (
-      windowAt(
-        [...windows.values()].map((entry) => entry.window),
-        at,
-      )
-    )
-      return { kind: "inside" };
-    createWindow(randomUUID(), { tab, at });
-
-    return { kind: "opened" };
-  },
   "host.openPluginsFolder": async () => {
     const folder = join(home, ".nyte", "plugins");
     await mkdir(folder, { recursive: true });
@@ -647,27 +631,9 @@ function openingFrame(): OpeningFrame {
 
 const FIRST_FRAME_LIMIT_MS = 4_000;
 
-/** Where a torn-off window's top left sits from the pointer, so the pointer lands on its tab strip. */
-const TORN_GRAB = { x: 160, y: 20 } as const;
-
-/**
- * Each window keeps a lasting id, so its tabs and drafts reopen in it after a quit. A window a tab
- * was dragged out to opens under the pointer, showing that tab.
- */
-function createWindow(
-  windowId: string = randomUUID(),
-  torn?: { readonly tab: string; readonly at: { readonly x: number; readonly y: number } },
-): NyteWindow {
-  const opening = openingFrame();
-
-  const frame =
-    torn === undefined
-      ? opening
-      : {
-          ...opening,
-          bounds: { ...opening.bounds, x: torn.at.x - TORN_GRAB.x, y: torn.at.y - TORN_GRAB.y },
-        };
-
+/** Each window keeps a lasting id, so its tabs and drafts reopen in it after a quit. */
+function createWindow(windowId: string = randomUUID()): NyteWindow {
+  const frame = openingFrame();
   const kept = launchState.windows();
 
   if (!kept.includes(windowId)) launchState.setWindows([...kept, windowId]);
@@ -687,7 +653,6 @@ function createWindow(
         ...(windows.size === 0
           ? [`${LAUNCH_WINDOWS_ARGUMENT}=${launchState.windows().join(",")}`]
           : []),
-        ...(torn === undefined ? [] : [`${INITIAL_TAB_ARGUMENT}=${torn.tab}`]),
       ],
       contextIsolation: true,
       nodeIntegration: false,
