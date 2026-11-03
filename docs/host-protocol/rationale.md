@@ -177,15 +177,21 @@ The sketch deletes the first four before adding anything.
 - **Field-level patches (RFC 6902).** Smallest frames. Lost on idempotence and simplicity: patches are positional, cannot be applied twice, and need the host to keep the previous view, which is the identity-cache design again.
 - **Ship the log, fold on the client.** One code path. Lost on cost: an 18k-event session is 49 MB, every client would carry core and its fold-code hash, and mobile cannot.
 
-## Open questions and risks
+## Decisions on the open questions
 
-1. Can messages be ordered by `(at, id)` along a head's path after rewinds and replaces? If yes, `order` can go. I could not prove it from the fold, so the spec sends it.
-2. The host-scope `seq` is a column on the store's session index, assigned per transaction. Is a store migration acceptable for sqlite, Postgres and the Durable Object store in the same change?
-3. Should `background` counts stay host-computed in `HeadRow`, or be derived on the client from child rows in the sessions table? The spec keeps them in the row.
-4. What is "the local socket" for the desktop's embedded host, which today serves 127.0.0.1 with an in-memory token? The spec assumes a unix domain socket in the host's state directory once the host runs on its own.
-5. Text channel transport: a second SSE stream on the same origin, or a WebSocket? The spec is silent on purpose.
-6. The fold-code hash covers every file in `fold/`, so a change to `commit.ts` with no fold semantics invalidated every checkpoint (502 MB on this machine). Worth scoping the hash to the files that fold.
+1. Window order is explicit. The host sends `order`; messages are not sorted by `(at, id)`, because nothing proves `at` is monotonic along a rewound path.
+2. The host-scope seq is a column on the session index in all three stores, assigned in the writing transaction (store version 27). A 5 GB copy of a real store migrated in 0.46 s.
+3. Background counts stay host-computed in the head row; a child's run restamps its parent's row.
+4. The local socket is a unix socket in the host's state directory, mode 0600. Loopback TCP is not local, because Tailscale Serve forwards network traffic to it.
+5. Both channels ride one WebSocket. pi uses WebSocket only; opencode uses SSE for its one-way event stream because browsers cannot set headers on an upgrade, and gives its sockets a one-time ticket. Nyte does the same for browsers and needs no SSE on the new channel.
+6. Open: the fold-code hash still covers every file in `fold/`, so a change with no fold semantics, such as `commit.ts`, invalidates every checkpoint.
+
+## Measured since
+
+- The directory watch without the re-list: 1.21 to 1.42 ms CPU per event against 3.36 to 3.81 before, and 0 full lists against 1,000, on 300 sessions with a 300-row watch (3 runs).
+- Change bytes against today's `head.watch` frames, medians per kind: land 35 vs 484, part created 528 vs 888, call settled 1,188 vs 1,379, run phase 391 vs 728; totals smaller on every recorded log (6.04 MB vs 7.84 MB on the 10,643-event one). `part updated` (417 vs 85) and `input` (515 vs 420) are gated on totals only, with the reason printed: whole rows cannot match today's text-append frames without field patches.
+- Embedded Tailscale: the sidecar is 19.3 MiB, 33.5 to 34.3 MiB resident, 326 to 359 ms to running; libtailscale through `node:ffi` saved about 3 MiB, no time, blocked its thread and ignored SIGTERM (3 runs each).
 
 ## Next implementation step
 
-In core, stamp rows with `seq` in `draft.ts` (`setMessage`, `setTurn`, parts, background, changes, catalog) and record them in `touched`; add `readWindow` and `changeEvent` beside `project`; write the differential test that folds random and recorded logs and applies the resulting change events to a client store, requiring equal tables at every seq; then delete `project`'s caches and `view-frames.ts`.
+Delete the old path once the desktop app reads rows: the SDK's watch APIs, `head.watch`, `sessions.watch` and `part.watch`, `view-frames.ts`, core's in-process watches, `project`'s caches (with `head.view` rebuilt on `readWindow`), and `SessionView.heads`.
