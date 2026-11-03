@@ -252,6 +252,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       },
       start: refuse,
       list: async () => ({ items: rows, next: null }),
+      read: async () => ({ seq: 0, ids: rows.map((row) => row.id), rows }),
     },
     workspaces: {
       list: async () => script.workspaces ?? [],

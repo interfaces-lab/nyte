@@ -224,6 +224,16 @@ export const operations = {
     { items: [sessionInfo], next: null },
     { items: [] },
   ),
+  "sessions.read input": operation(
+    OPERATIONS["sessions.read"].input,
+    { parents: { kind: "roots" }, limit: 300, resume: { seq: 41 } },
+    { resume: {} },
+  ),
+  "sessions.read output": operation(
+    OPERATIONS["sessions.read"].output,
+    { seq: 42, ids: [session], rows: [sessionInfo] },
+    { seq: 42, ids: [session] },
+  ),
   "session.info input": operation(OPERATIONS["session.info"].input, sessionInput, {}),
   "session.update input": operation(
     OPERATIONS["session.update"].input,

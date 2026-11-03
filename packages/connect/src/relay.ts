@@ -148,6 +148,7 @@ export const RELAY_OPERATIONS = [
   "sessions.watch",
   "sessions.start",
   "sessions.list",
+  "sessions.read",
   "session.info",
   "session.update",
   "session.remove",

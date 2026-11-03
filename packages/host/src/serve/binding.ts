@@ -274,6 +274,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       return { session: session.id, receipt: receipt.id, message: receipt.message };
     },
     "sessions.list": (input) => connection.sessions.list(input),
+    "sessions.read": (input) => connection.sessions.read(input),
     "host.tailnet.status": async () => tailnet().status(),
     "host.tailnet.configure": (input) => tailnet().configure(input),
     "host.tailnet.logout": () => tailnet().logout(),

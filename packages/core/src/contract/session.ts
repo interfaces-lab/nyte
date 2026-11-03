@@ -31,6 +31,7 @@ import type {
   SendOptions,
   SessionId,
   SessionInfo,
+  SessionsRead,
   SessionView,
   StopOutcome,
   TreeView,
@@ -168,6 +169,12 @@ export interface Sessions {
     readonly cursor?: Cursor;
     readonly limit?: number;
   }): Promise<Paged<SessionInfo>>;
+
+  read(input?: {
+    readonly parents?: ParentFilter;
+    readonly limit?: number;
+    readonly resume?: { readonly seq: number };
+  }): Promise<SessionsRead>;
 }
 
 export interface Head {

@@ -165,6 +165,7 @@ export function createConnection(
         return { ...started, session: session(started.session) };
       },
       list: (input) => sessions.list(input),
+      read: (input) => sessions.read(input),
     },
     workspaces: gated("workspaces", createWorkspaces(kernel, context), authority),
     session: (id) => session(sessionHandle(kernel, context, id)),

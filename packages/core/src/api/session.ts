@@ -1,6 +1,5 @@
 import { asId, SdkError } from "@nyte-ai/schema";
 import type {
-  Activation,
   Configuration,
   ConfigurationPatch,
   Cursor,
@@ -12,16 +11,16 @@ import type {
   ParentFilter,
   PrincipalId,
   RemoveSessionOutcome,
-  Revision,
   RunId,
   SessionId,
   SessionInfo,
+  SessionsRead,
   UpdateOutcome,
   WorkspaceId,
 } from "@nyte-ai/schema";
 import { CORE_CONTEXT } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
-import type { Kernel } from "../contract/kernel.ts";
+import type { HostChange, Kernel } from "../contract/kernel.ts";
 import type { Part, PartDefinition } from "../contract/parts.ts";
 import { decodeSeenRecord, decodeSessionRecord } from "../contract/records.ts";
 import type { HeadRecord, RunRecord, SessionRecord } from "../contract/records.ts";
@@ -54,31 +53,14 @@ import {
   STALE,
 } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
-import { closable, coalesce, latest } from "../util/iterable.ts";
+import { closable, coalesce, DONE, latest } from "../util/iterable.ts";
+import { byCodePoint } from "../util/text.ts";
 import { followedTrace, followTrace, traced } from "../util/trace.ts";
 import { createHead, headHandle, mergeHead, removeHead } from "./head.ts";
 import { createPart, partHandle } from "./part.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const DEFAULT_LIMIT = 50;
-
-const DIRECTORY_EVENTS: ReadonlySet<string> = new Set([
-  "background",
-  "session",
-  "run",
-  "head",
-  "commit",
-  "seen",
-  "activation",
-]);
-
-interface DirectoryEntry {
-  readonly version: Revision;
-  readonly activation: Activation;
-  readonly background: string;
-  readonly info: SessionInfo;
-  readonly fingerprint: string;
-}
 
 export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: SessionId): Session {
   return {
@@ -177,6 +159,7 @@ export function createSessions(kernel: Kernel, context: ConnectionContext): Sess
       };
     },
     list: (input) => listSessions(kernel, context.principal, input),
+    read: (input) => readSessions(kernel, context.principal, input),
   };
 }
 
@@ -260,15 +243,58 @@ async function listSessions(
   };
 }
 
-export function watchSessions(
+interface SessionsWindow {
+  readonly parents?: ParentFilter;
+  readonly limit?: number;
+}
+
+export async function readSessions(
   kernel: Kernel,
   principal: PrincipalId,
-  input?: { readonly parents?: ParentFilter; readonly limit?: number },
-): AsyncIterable<readonly SessionInfo[]> {
-  return closable<readonly SessionInfo[]>(() => {
+  input?: SessionsWindow & { readonly resume?: { readonly seq: number } },
+): Promise<SessionsRead> {
+  const read = await kernel.store.sessions.changed({
+    since: input?.resume?.seq ?? 0,
+    parents: input?.parents ?? { kind: "all" },
+    limit: Math.max(1, input?.limit ?? DEFAULT_LIMIT),
+  });
+
+  const rows = await Promise.all(
+    read.rows.map(async (row) => {
+      const found = await load(kernel.store, row.ref, decodeSessionRecord);
+
+      return found === null ? null : describeSession(kernel, found.record, principal);
+    }),
+  );
+
+  return {
+    seq: read.seq,
+    ids: read.ids,
+    rows: rows.flatMap((info) => (info === null ? [] : [info])),
+  };
+}
+
+export function sessionsFeed(
+  kernel: Kernel,
+  principal: PrincipalId,
+  input?: SessionsWindow,
+): AsyncIterable<SessionsRead> {
+  return closable<SessionsRead>(() => {
+    const parents = input?.parents ?? { kind: "all" };
+    const limit = Math.max(1, input?.limit ?? DEFAULT_LIMIT);
+    const touched = new Set<SessionId>();
+    const live = new Set<SessionId>();
+    const ahead = new Set<number>();
+    let external = false;
     let changes = 0;
-    let shown: readonly SessionInfo[] | null = null;
-    let cached = new Map<SessionId, DirectoryEntry>();
+    let through = 0;
+    let ids: readonly SessionId[] = [];
+    let held = new Map<SessionId, SessionInfo>();
+
+    let sent: {
+      readonly ids: readonly SessionId[];
+      readonly rows: ReadonlyMap<SessionId, SessionInfo>;
+    } | null = null;
 
     const ticks = coalesce(
       latest(changes, (push) => {
@@ -276,61 +302,175 @@ export function watchSessions(
           changes += 1;
           push(changes);
         };
-        const dispose = kernel.bus.subscribeAll((_session, event) => {
-          if (!DIRECTORY_EVENTS.has(event.kind)) return;
+
+        const published = (change: HostChange): void => {
+          if (change.seq <= through) return;
+          ahead.add(change.seq);
+
+          for (const session of change.sessions) touched.add(session);
+          changed();
+        };
+
+        const committed = (): void => {
+          external = true;
+          changed();
+        };
+
+        const dispose = kernel.bus.subscribeAll((session, event) => {
+          if (event.kind !== "activation" && event.kind !== "background") return;
+          live.add(session);
           changed();
         });
-        kernel.externalCommits.add(changed);
+        kernel.hostChanges.add(published);
+        kernel.externalCommits.add(committed);
 
         return () => {
           dispose();
-          kernel.externalCommits.delete(changed);
+          kernel.hostChanges.delete(published);
+          kernel.externalCommits.delete(committed);
         };
       }),
     )[Symbol.asyncIterator]();
 
+    const take = (read: SessionsRead): void => {
+      for (const info of read.rows) keep(info);
+      ids = read.ids.filter((id) => held.has(id));
+      held = new Map(ids.flatMap((id) => held.get(id) ?? []).map((info) => [info.id, info]));
+      through = Math.max(through, read.seq);
+
+      for (const seq of ahead) if (seq <= through) ahead.delete(seq);
+    };
+
+    const keep = (info: SessionInfo): void => {
+      const previous = held.get(info.id);
+
+      if (previous === undefined || JSON.stringify(previous) !== JSON.stringify(info))
+        held.set(info.id, info);
+    };
+
+    const resume = async (): Promise<void> => {
+      const read = await readSessions(kernel, principal, {
+        parents,
+        limit,
+        resume: { seq: through },
+      });
+      const fresh = new Set(read.rows.map((info) => info.id));
+
+      const entered = await Promise.all(
+        read.ids
+          .filter((id) => !held.has(id) && !fresh.has(id))
+          .map((id) => sessionInfo(kernel, id, principal)),
+      );
+
+      take({ ...read, rows: [...read.rows, ...entered.flatMap((info) => info ?? [])] });
+    };
+
+    const splice = async (sessions: readonly SessionId[]): Promise<boolean> => {
+      const full = ids.length >= limit;
+      let dropped = false;
+
+      for (const info of await Promise.all(
+        sessions.map(async (id) => ({ id, info: await sessionInfo(kernel, id, principal) })),
+      )) {
+        if (info.info !== null && selects(parents, info.info)) {
+          keep(info.info);
+          continue;
+        }
+
+        dropped = held.delete(info.id) || dropped;
+      }
+
+      const ordered = [...held.values()].toSorted(
+        (left, right) =>
+          right.lastActivityAt - left.lastActivityAt || byCodePoint(left.id, right.id),
+      );
+      ids = ordered.slice(0, limit).map((info) => info.id);
+      held = new Map(ordered.slice(0, limit).map((info) => [info.id, info]));
+
+      while (ahead.has(through + 1)) {
+        through += 1;
+        ahead.delete(through);
+      }
+
+      return dropped && full;
+    };
+
+    const refresh = (): void => {
+      for (const id of live) {
+        const info = held.get(id);
+
+        if (info !== undefined && !touched.has(id)) keep(liveInfo(kernel, info));
+      }
+      live.clear();
+    };
+
     return {
       async pull() {
+        if (sent === null) {
+          await ticks.next();
+          take(await readSessions(kernel, principal, { parents, limit }));
+          sent = { ids, rows: new Map(held) };
+
+          return { done: false, value: { seq: through, ids, rows: [...held.values()] } };
+        }
+
         for (;;) {
           const tick = await ticks.next();
 
           if (tick.done) return tick;
+          const sessions = [...touched];
+          refresh();
+          touched.clear();
 
-          const rows = await kernel.store.sessions.list({
-            parents: input?.parents ?? { kind: "all" },
-            limit: Math.max(1, input?.limit ?? DEFAULT_LIMIT),
+          if (external || (await splice(sessions))) {
+            external = false;
+            await resume();
+          }
+
+          const last = sent;
+          const rows = ids.flatMap((id) => {
+            const info = held.get(id);
+
+            return info === undefined || last.rows.get(id) === info ? [] : [info];
           });
-          const next = new Map<SessionId, DirectoryEntry>();
-          const infos = await Promise.all(
-            rows.map(async ({ ref, version }) => {
-              const id = asId<"session">(ref.name.slice("sessions/".length));
-              const previous = cached.get(id);
-              const activation = kernel.sessions.activation(id);
-              const background = backgroundKey(kernel, id);
 
-              if (
-                previous?.version === version &&
-                previous.activation === activation &&
-                previous.background === background
-              ) {
-                next.set(id, previous);
+          if (
+            rows.length === 0 &&
+            ids.length === last.ids.length &&
+            ids.every((id, index) => id === last.ids[index])
+          )
+            continue;
+          sent = { ids, rows: new Map(held) };
 
-                return previous.info;
-              }
-              const found = await load(kernel.store, ref, decodeSessionRecord);
+          return { done: false, value: { seq: through, ids, rows } };
+        }
+      },
+      close() {
+        void ticks.return?.();
+      },
+    };
+  });
+}
 
-              if (found === null) return null;
-              const current = await describeSession(kernel, found.record, principal);
-              const fingerprint = JSON.stringify(current);
-              const info = previous?.fingerprint === fingerprint ? previous.info : current;
-              next.set(id, { version, activation, background, fingerprint, info });
+export function watchSessions(
+  kernel: Kernel,
+  principal: PrincipalId,
+  input?: SessionsWindow,
+): AsyncIterable<readonly SessionInfo[]> {
+  return closable<readonly SessionInfo[]>(() => {
+    const feed = sessionsFeed(kernel, principal, input)[Symbol.asyncIterator]();
+    let held = new Map<SessionId, SessionInfo>();
+    let shown: readonly SessionInfo[] | null = null;
 
-              return info;
-            }),
-          );
-          cached = next;
-          const items = infos.flatMap((info) => (info === null ? [] : [info]));
+    return {
+      async pull() {
+        for (;;) {
+          const next = await feed.next();
 
+          if (next.done === true) return DONE;
+          const rows = new Map(next.value.rows.map((info) => [info.id, info]));
+          const items = next.value.ids.flatMap((id) => rows.get(id) ?? held.get(id) ?? []);
+          held = new Map(items.map((info) => [info.id, info]));
           const previous = shown;
 
           if (
@@ -345,10 +485,31 @@ export function watchSessions(
         }
       },
       close() {
-        void ticks.return?.();
+        void feed.return?.();
       },
     };
   });
+}
+
+function selects(parents: ParentFilter, info: SessionInfo): boolean {
+  if (parents.kind === "all") return true;
+
+  return info.parent === (parents.kind === "roots" ? null : parents.session);
+}
+
+function liveInfo(kernel: Kernel, info: SessionInfo): SessionInfo {
+  const background = backgroundItems(kernel, info.id);
+
+  return {
+    ...info,
+    activation: kernel.sessions.activation(info.id),
+    heads: info.heads.map((head) => ({
+      ...head,
+      background: countBackground(
+        background.flatMap((entry) => (entry.head === head.name ? [entry.item] : [])),
+      ),
+    })),
+  };
 }
 
 async function start(
@@ -644,17 +805,6 @@ async function listChildSessionIds(
   } while (cursor !== undefined);
 
   return children;
-}
-
-function backgroundKey(kernel: Kernel, session: SessionId): string {
-  return backgroundItems(kernel, session)
-    .flatMap(({ head, item }) =>
-      item.kind !== "page" && (item.state === "working" || item.state === "waiting")
-        ? [`${head} ${item.state}`]
-        : [],
-    )
-    .toSorted()
-    .join("\n");
 }
 
 async function headInfo(
