@@ -42,9 +42,9 @@ const CLOSE_GRACE_MS = 2_000;
 
 const DONE = { done: true, value: undefined } as const;
 
-let loaded: PtyModule | null | undefined;
+let loaded: PtyModule | undefined;
 
-/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell()` read at each start, else `$SHELL`, else `/bin/sh`, as a login shell; §37h, which starts without waiting for `processEnvironment()` when its path is absolute, since its startup files load the user's environment, while a bare name waits for the PATH that finds it), a pty's environment carrying `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Nyte` without Electron's `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`, and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` (with `stdio: "protocol"`, stderr's frames tagged `stream: "stderr"` and the pipe paced like a pty, so a reader open from the start misses nothing) and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and under Bun (whose runtime breaks node-pty) or where it does not load throws `SdkError("unavailable")` naming the desktop app's host. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped, and `exit { code }` last; a merged pipe never stalls, and a pty or a protocol pipe pauses while its slowest open reader is 256 KiB behind, resuming once it is within 64 KiB. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` checks the OS process table for a login shell with no live child outside its own process group, whose id is the pty's pid (job control gives each command its own group, while prompt hooks such as starship or mise run as command substitutions in the shell's), with no live child at all while an integrated zsh or bash reports a running command line or background jobs, and not on the CPU while it reports a running command line; false for a pipe or explicit command and true once it ended; a pty's output never carries OSC 633 markers; `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s (on Windows, which has no signals, it ends a pipe's process tree at once with `taskkill /T /F`), and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
+/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell()` read at each start, else `$SHELL`, else `/bin/sh`, as a login shell; §37h, which starts without waiting for `processEnvironment()` when its path is absolute, since its startup files load the user's environment, while a bare name waits for the PATH that finds it), a pty's environment carrying `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Nyte` without Electron's `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`, and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` (with `stdio: "protocol"`, stderr's frames tagged `stream: "stderr"` and the pipe paced like a pty, so a reader open from the start misses nothing) and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded through `createRequire` and kept once it loads (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size; under Bun (whose runtime breaks node-pty) a pty start throws `SdkError("unavailable")` naming the desktop app's host, and where the module does not load it throws `SdkError("unavailable")` with the cause's first line and loads again at the next pty start. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped, and `exit { code }` last; a merged pipe never stalls, and a pty or a protocol pipe pauses while its slowest open reader is 256 KiB behind, resuming once it is within 64 KiB. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` checks the OS process table for a login shell with no live child outside its own process group, whose id is the pty's pid (job control gives each command its own group, while prompt hooks such as starship or mise run as command substitutions in the shell's), with no live child at all while an integrated zsh or bash reports a running command line or background jobs, and not on the CPU while it reports a running command line; false for a pipe or explicit command and true once it ended; a pty's output never carries OSC 633 markers; `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s (on Windows, which has no signals, it ends a pipe's process tree at once with `taskkill /T /F`), and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
 export function localExec(
   root: string,
   options?: {
@@ -275,18 +275,12 @@ async function terminal(
     readonly env: NodeJS.ProcessEnv;
     readonly size: { readonly columns: number; readonly rows: number };
     readonly shell: string | undefined;
-    readonly load: () => PtyModule | null;
+    readonly load: () => PtyModule;
   },
   log: OutputLog,
   finish: (code: number | null) => void,
 ): Promise<Driver> {
   const pty = options.load();
-
-  if (pty === null)
-    throw new SdkError(
-      "unavailable",
-      "Terminals need the Nyte desktop app's host: this host can't run @lydell/node-pty.",
-    );
   const windows = process.platform === "win32";
 
   const shell =
@@ -401,22 +395,28 @@ async function terminal(
   };
 }
 
-function loadPty(): PtyModule | null {
-  if ("bun" in process.versions) return null;
-
-  if (loaded === undefined)
-    loaded = ptyFrom(() => createRequire(import.meta.url)("@lydell/node-pty"));
+function loadPty(): PtyModule {
+  if ("bun" in process.versions)
+    throw new SdkError(
+      "unavailable",
+      "Terminals need the Nyte desktop app's host: this host can't run @lydell/node-pty.",
+    );
+  loaded ??= ptyFrom(() => createRequire(import.meta.url)("@lydell/node-pty"));
 
   return loaded;
 }
 
-function ptyFrom(load: () => unknown): PtyModule | null {
+function ptyFrom(load: () => unknown): PtyModule {
   try {
     const required = load();
 
-    return fitsPtyModule(required) ? required : null;
-  } catch {
-    return null;
+    if (fitsPtyModule(required)) return required;
+    throw new Error("it exports no spawn");
+  } catch (cause) {
+    throw new SdkError(
+      "unavailable",
+      `Terminals need @lydell/node-pty, which did not load: ${cause instanceof Error ? cause.message.split("\n", 1)[0] : String(cause)}`,
+    );
   }
 }
 

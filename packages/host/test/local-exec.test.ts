@@ -235,6 +235,44 @@ describe("localExec where the pty module does not load (§41a)", () => {
         .text,
     ).toBe("piped\n");
   });
+
+  it("names why the pty module did not load and opens a terminal once a later load succeeds", async () => {
+    const spawned: string[] = [];
+    let attempts = 0;
+
+    const loadPty = () => {
+      attempts += 1;
+
+      if (attempts === 1) throw new Error("No prebuilt binary for this platform.\n    at require");
+
+      return {
+        spawn: (file: string) => {
+          spawned.push(file);
+
+          return {
+            onData: () => undefined,
+            onExit: () => undefined,
+            pause: () => undefined,
+            resume: () => undefined,
+            write: () => undefined,
+            resize: () => undefined,
+            kill: () => undefined,
+          };
+        },
+      };
+    };
+
+    const exec = localExec(await folder(), { loadPty });
+
+    await expect(exec("echo hi", { pty: { columns: 80, rows: 24 } })).rejects.toMatchObject({
+      code: "unavailable",
+      message:
+        "Terminals need @lydell/node-pty, which did not load: No prebuilt binary for this platform.",
+    });
+    await exec("echo hi", { pty: { columns: 80, rows: 24 } });
+
+    expect(spawned).toHaveLength(1);
+  });
 });
 
 describe("localExec over a pty module", () => {
