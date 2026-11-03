@@ -8,7 +8,9 @@
  */
 import { isPart, text, tool } from "@nyte-ai/plugin/client";
 import { sdk } from "@nyte-ai/sdk";
-import type { Message, Session, SessionView } from "@nyte-ai/sdk";
+import type { Message, Session } from "@nyte-ai/sdk";
+import { headView, openHost, streamText, withStreamedText } from "@nyte-ai/sdk/client";
+import type { HeadView, StreamedText } from "@nyte-ai/sdk/client";
 import { createCliRenderer } from "@opentui/core";
 import type { ThemeMode } from "@opentui/core";
 import { render, useKeyboard } from "@opentui/solid";
@@ -31,13 +33,29 @@ renderer.on("theme_mode", (mode: ThemeMode) => setThemeMode(mode));
 
 const palette = () => PALETTES[themeMode()];
 
+const TAIL = 200;
+
 const host = await sdk.open({});
+
+const token = crypto.randomUUID();
+
+const listener = await host.listen({
+  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  auth: { kind: "token", token },
+});
+
+if (listener.address === null) throw new Error("The host isn't listening.");
+
+const live = openHost(listener.address, {
+  credentials: { kind: "token", token },
+  client: { kind: "tui", name: "tui-chat", version: "0.0.0" },
+});
 
 const [session, setSession] = createSignal<Session | null>(null);
 
 const [starting, setStarting] = createSignal(false);
 
-const [view, setView] = createSignal<SessionView | null>(null);
+const [view, setView] = createSignal<HeadView | null>(null);
 
 const [error, setError] = createSignal<string | null>(null);
 
@@ -48,8 +66,21 @@ async function start(content: string): Promise<void> {
   const started = await host.sessions.start({ content }).finally(() => setStarting(false));
 
   setSession(started.session);
+  const store = live.head(started.session.id, started.session.name, { tail: TAIL });
+  let texts: StreamedText = new Map();
 
-  for await (const next of started.session.watch()) setView(next);
+  const show = (): void => {
+    const snapshot = store.snapshot();
+
+    if (snapshot !== null) setView(withStreamedText(headView(snapshot), texts));
+  };
+
+  store.subscribe(show);
+  live.text((update) => {
+    texts = streamText(texts, update);
+    show();
+  });
+  show();
 }
 
 interface Line {
@@ -93,7 +124,10 @@ function App() {
   };
 
   useKeyboard((key) => {
-    if (key.ctrl && key.name === "c") void host.close().finally(() => renderer.destroy());
+    if (key.ctrl && key.name === "c") {
+      live.release();
+      void host.close().finally(() => renderer.destroy());
+    }
 
     if (key.name === "escape" && busy()) void session()?.stop();
   });
