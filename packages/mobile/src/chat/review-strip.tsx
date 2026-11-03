@@ -1,5 +1,6 @@
 import { css, html } from "react-strict-dom";
-import type { SessionId, SessionView } from "@nyte-ai/sdk";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import { Chip } from "../ui/chip.tsx";
 import { spacing, tokens } from "../theme.ts";
 
@@ -9,7 +10,7 @@ export function ReviewStrip({
   sessionId,
   onAskMerge,
 }: {
-  changes: SessionView["changes"];
+  changes: HeadView["changes"];
   sessionId: SessionId;
   onAskMerge: () => void;
 }) {

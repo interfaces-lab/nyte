@@ -4,12 +4,11 @@ import { Alert, ScrollView } from "react-native";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { SdkError } from "@nyte-ai/sdk";
 import { useAccount } from "../account/account-provider.tsx";
 import { ConnectSheet, type ConnectionSheetPage } from "../account/connect-panel.tsx";
 import { useHost } from "../connection/host-context.tsx";
 import { displayAddress } from "../connection/connection.ts";
-import { useWatch } from "../connection/use-watch.ts";
+import { useHealth } from "../connection/live.ts";
 import { workspaceName, workspacePath } from "../chat/workspace-menu.ts";
 import { useRegistryFolders } from "../chat/workspace-start.tsx";
 import { Group, GroupRow } from "../ui/group.tsx";
@@ -30,7 +29,7 @@ type HostStatus = "checking" | "connected" | "unreachable" | "refused";
 /** The settings page. Its box is the scroll view's own content: an inner styled box would be a flex child of a native parent, which cannot grow it. */
 export function SettingsScreen() {
   const theme = useTheme();
-  const { client, connection, saved, disconnect } = useHost();
+  const { live, connection, saved, disconnect } = useHost();
   const account = useAccount();
   const [connectionPage, setConnectionPage] = useState<ConnectionSheetPage>();
   const insets = useSafeAreaInsets();
@@ -42,26 +41,19 @@ export function SettingsScreen() {
   const [dateSections, setDateSections] = useDateSections();
   const [twoLinePreview, setTwoLinePreview] = useTwoLinePreview();
 
-  const [check, recheck] = useWatch(client);
+  const health = useHealth(live);
   const registry = useRegistryFolders();
 
   const version = Constants.expoConfig?.version ?? "0.0.0";
 
-  const refused =
-    saved.kind === "managed" &&
-    ((check.kind === "failed" &&
-      check.error instanceof SdkError &&
-      (check.error.code === "unauthenticated" || check.error.code === "denied")) ||
-      (check.kind === "ready" &&
-        check.value.link.kind === "closed" &&
-        check.value.link.reason === "revoked"));
+  const refused = saved.kind === "managed" && health.kind === "blocked" && health.reason === "auth";
 
   const status: HostStatus =
-    check.kind === "loading" || (check.kind === "ready" && check.value.link.kind === "reconnecting")
+    health.kind === "connecting" || health.kind === "retrying"
       ? "checking"
       : refused
         ? "refused"
-        : check.kind === "failed" || check.value.link.kind === "closed"
+        : health.kind === "blocked"
           ? "unreachable"
           : "connected";
 
@@ -186,7 +178,7 @@ export function SettingsScreen() {
           <GroupRow
             busy={status === "checking"}
             onClick={() => {
-              recheck();
+              live.retry();
 
               if (registry.kind !== "loading") registry.refresh();
             }}
