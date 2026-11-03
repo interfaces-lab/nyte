@@ -15,9 +15,7 @@ import type {
   StandardSchemaWithJSON,
 } from "@modelcontextprotocol/server";
 import {
-  ApprovalPolicyType,
   asId,
-  compile,
   describeOperations,
   isJson,
   isJsonObject,
@@ -28,7 +26,6 @@ import type { Authority, Declaration, Json, JsonSchema } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import type { ServerHost } from "@nyte-ai/core/server";
-import { PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import {
   answersOnce,
   asSdkError,
@@ -59,10 +56,6 @@ type Bound = {
 const PARTICIPANT: ReadonlySet<Authority> = new Set<Authority>(["participant"]);
 
 const rows: { readonly [name: string]: Declaration<unknown, unknown> } = OPERATIONS;
-
-const policyCheck = compile(ApprovalPolicyType);
-
-const POLICIES = ApprovalPolicyType.anyOf.map((literal) => literal.const);
 
 const INSTRUCTIONS =
   "Tools read and steer the sessions on this Nyte host. Each tool is one host operation.";
@@ -115,6 +108,9 @@ export function createMcpEndpoint(options: {
       authority: PARTICIPANT,
       credential: { kind: "token", token: "" },
       origin: null,
+      ...(grant.access.kind === "ceiling"
+        ? { mcp: { grant: grant.id, ceiling: grant.access.ceiling } }
+        : {}),
     });
 
     const admitted = options.server.connections.register(principal, () => forget(grant.id));
@@ -272,13 +268,15 @@ async function run(
   if (!PARTICIPANT.has(row.authority))
     throw new SdkError("denied", `${tool.operation} needs ${row.authority} authority.`);
 
-  if (tool.access === "write" && grant.access.kind === "ceiling") {
-    const policy = await hostPolicy(bound.connection);
+  const target = isJsonObject(value) ? value.session : undefined;
 
-    if (POLICIES.indexOf(policy) > POLICIES.indexOf(grant.access.ceiling))
+  if (tool.access === "write" && typeof target === "string") {
+    const owner = (await bound.connection.session(asId<"session">(target)).info()).mcp?.grant;
+
+    if (owner !== grant.id)
       throw new SdkError(
         "denied",
-        `The host's permissions are ${policy}, above this grant's ceiling of ${grant.access.ceiling}, so it may not start or steer work.`,
+        `Session ${target} wasn't started through this MCP grant, so it may not steer or stop it.`,
       );
   }
 
@@ -292,15 +290,4 @@ async function callOperation<N extends CallName>(
   signal: AbortSignal,
 ): Promise<Json> {
   return encodeOutput(name, await binding[name](decodeInput(name, value), { body: null, signal }));
-}
-
-async function hostPolicy(connection: Connection) {
-  const iterator = connection.watch()[Symbol.asyncIterator]();
-  const first = await iterator.next();
-  await iterator.return?.();
-
-  if (first.done === true) return "full" as const;
-  const value = first.value.settings.find((setting) => setting.id === PERMISSIONS)?.value;
-
-  return policyCheck.Check(value) ? value : ("full" as const);
 }

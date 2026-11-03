@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import { McpCeilingType } from "./host.ts";
 import { idSchema } from "./ids.ts";
 import { JsonObjectType, JsonType, withJson } from "./json.ts";
 import { PositionType, UserContentType } from "./messages.ts";
@@ -35,6 +36,7 @@ export const SessionInfoType = Type.Object({
   heads: Type.Array(HeadInfoType),
   createdAt: Type.Number(),
   lastActivityAt: Type.Number(),
+  mcp: Type.Optional(McpCeilingType),
 });
 
 export type SessionInfo = Decoded<typeof SessionInfoType>;

@@ -210,6 +210,7 @@ async function describeSession(
     heads,
     createdAt: record.createdAt,
     lastActivityAt: record.lastActivityAt,
+    ...(record.mcp === undefined ? {} : { mcp: record.mcp }),
   };
 }
 
@@ -571,6 +572,12 @@ async function start(
       if ((await kernel.store.refs.get(workspaceRef(named))) === null)
         throw new SdkError("unknown", `Workspace ${named} is not registered on this host.`);
 
+      const mcp =
+        context.mcp ??
+        parent?.record.mcp ??
+        (origin === null
+          ? undefined
+          : (await readSession(kernel.store, origin.session))?.record.mcp);
       const selected = await resolveInitialConfiguration(kernel, id, input.configuration);
       const effective = selected ?? (await defaults(kernel, id));
 
@@ -602,6 +609,7 @@ async function start(
         heads: [{ name: MAIN, stack: null, selected, lastRun: null }],
         prompt: input.prompt ?? null,
         ...(input.contextFiles === undefined ? {} : { contextFiles: input.contextFiles }),
+        ...(mcp === undefined ? {} : { mcp }),
       };
 
       const outcome = await commit(kernel, [

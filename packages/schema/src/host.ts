@@ -89,6 +89,11 @@ export const McpAccessType = Type.Union([
 
 export type McpAccess = Decoded<typeof McpAccessType>;
 
+/** The MCP grant a session was started through, and the approval policy its runs never exceed. */
+export const McpCeilingType = Type.Object({ grant: Type.String(), ceiling: ApprovalPolicyType });
+
+export type McpCeiling = Decoded<typeof McpCeilingType>;
+
 export const McpGrantViewType = Type.Object({
   id: Type.String(),
   client: Type.String(),

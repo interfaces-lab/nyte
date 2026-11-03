@@ -19,7 +19,7 @@ it("keeps every stored shape until a store change is decided", () => {
     fingerprints,
     "A stored shape changed. Stores keep rows in the old shape, and reads reject them: a log event throws and stops the session, a record decodes to null. Run `pnpm --dir packages/host check:store` against a store with history. Backfill what it reports (a STORE_STEPS step once the old shape has shipped), then update the hashes here.",
   ).toEqual({
-    SessionEvent: "833c0dc303e2ed70",
+    SessionEvent: "f7109f7ef1a0a2cb",
     WaitOutcome: "2164fa1f0aafd2a7",
     call: "c84b5d8ecc0de059",
     commit: "9df720d3e0cdb2bf",
@@ -34,7 +34,7 @@ it("keeps every stored shape until a store change is decided", () => {
     receipt: "b1c69ca5c6840997",
     run: "b896603fc0a9c2a8",
     seen: "d56e60a18cd524d4",
-    session: "be1676c5d8642731",
+    session: "0dc1590eb3d9aa66",
     trust: "3134382ffff2bad2",
     workspace: "1276ff8f9e376d05",
   });

@@ -778,6 +778,31 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
           },
           "lastActivityAt": {
             "type": "number"
+          },
+          "mcp": {
+            "type": "object",
+            "required": ["grant", "ceiling"],
+            "properties": {
+              "grant": {
+                "type": "string"
+              },
+              "ceiling": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "ask"
+                  },
+                  {
+                    "type": "string",
+                    "const": "auto-edit"
+                  },
+                  {
+                    "type": "string",
+                    "const": "full"
+                  }
+                ]
+              }
+            }
           }
         }
       }

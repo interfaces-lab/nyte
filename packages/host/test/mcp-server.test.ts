@@ -5,7 +5,9 @@ import { join } from "node:path";
 import process from "node:process";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
-import { compile } from "@nyte-ai/schema";
+import { asId, compile, standard } from "@nyte-ai/schema";
+import type { ToolDefinition } from "@nyte-ai/core";
+import { openApprovals, PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Host, Listener } from "@nyte-ai/core";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,6 +15,7 @@ import { openHost } from "../src/index.ts";
 import { fetchClientMetadata } from "../src/mcp-server/client-metadata.ts";
 import type { ClientMetadataFetch } from "../src/mcp-server/client-metadata.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
+import type { FakeModels, Reply, Request as ModelRequest } from "./fixtures/fake-models.ts";
 
 const TOKEN = "a-token-of-16-chars";
 
@@ -21,6 +24,30 @@ const ORIGIN = "http://127.0.0.1:4100";
 const RESOURCE = `${ORIGIN}/mcp`;
 
 const REDIRECT = "http://127.0.0.1:9999/callback";
+
+const ran: string[] = [];
+
+const shell = {
+  name: "shell",
+  description: "Run a command.",
+  parameters: standard(Type.Object({ command: Type.String() })),
+  class: (args) => ({ kind: "shell", command: args.command }),
+  replay: "never",
+  execute: async (args) => {
+    ran.push(args.command);
+
+    return { content: [{ kind: "text", text: `Ran ${args.command}.` }] };
+  },
+} satisfies ToolDefinition<{ command: string }>;
+
+const tools = { id: "tools", contribute: { tools: [shell] } };
+
+const CALLED = Type.Object({
+  result: Type.Object({
+    isError: Type.Optional(Type.Boolean()),
+    content: Type.Array(Type.Object({ type: Type.Literal("text"), text: Type.String() })),
+  }),
+});
 
 const TOOL_LIST = Type.Object({
   result: Type.Object({
@@ -40,17 +67,20 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-async function open(fetchDocument?: ClientMetadataFetch): Promise<Opened> {
+async function open(options?: {
+  readonly fetchDocument?: ClientMetadataFetch;
+  readonly models?: FakeModels;
+}): Promise<Opened> {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-mcp-server-")));
   cleanups.push(() => rm(home, { recursive: true, force: true }));
 
   const host = await openHost({
     store: memoryStore(),
-    models: fakeModels().models,
-    plugins: [chatOnly],
+    models: (options?.models ?? fakeModels()).models,
+    plugins: [chatOnly, tools],
     workspace: { kind: "chat-only", locator: null },
     home,
-    fetchClientMetadata: fetchDocument,
+    fetchClientMetadata: options?.fetchDocument,
   });
 
   cleanups.push(() => host.close());
@@ -64,6 +94,17 @@ async function open(fetchDocument?: ClientMetadataFetch): Promise<Opened> {
   });
 
   return { host, http, local };
+}
+
+async function eventually<T>(check: () => Promise<readonly T[]>): Promise<readonly T[]> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const found = await check();
+
+    if (found.length > 0) return found;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  return check();
 }
 
 async function read<T extends TSchema>(response: Response, type: T): Promise<Static<T>> {
@@ -327,20 +368,22 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
     const clientId = "https://client.example/oauth/metadata.json";
     const fetched: string[] = [];
 
-    const opened = await open(async (url) => {
-      fetched.push(url.href);
+    const opened = await open({
+      fetchDocument: async (url) => {
+        fetched.push(url.href);
 
-      return {
-        status: 200,
-        cacheControl: "max-age=300",
-        expires: null,
-        body: JSON.stringify({
-          client_id: clientId,
-          client_name: "Test agent",
-          redirect_uris: [REDIRECT],
-          token_endpoint_auth_method: "none",
-        }),
-      };
+        return {
+          status: 200,
+          cacheControl: "max-age=300",
+          expires: null,
+          body: JSON.stringify({
+            client_id: clientId,
+            client_name: "Test agent",
+            redirect_uris: [REDIRECT],
+            token_endpoint_auth_method: "none",
+          }),
+        };
+      },
     });
 
     const page = await get(opened.http, authorizeUrl(clientId, pkce().challenge));
@@ -364,16 +407,18 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
   });
 
   it("refuses a metadata document whose client_id is another URL", async () => {
-    const opened = await open(async () => ({
-      status: 200,
-      cacheControl: null,
-      expires: null,
-      body: JSON.stringify({
-        client_id: "https://client.example/other.json",
-        client_name: "Impostor",
-        redirect_uris: [REDIRECT],
+    const opened = await open({
+      fetchDocument: async () => ({
+        status: 200,
+        cacheControl: null,
+        expires: null,
+        body: JSON.stringify({
+          client_id: "https://client.example/other.json",
+          client_name: "Impostor",
+          redirect_uris: [REDIRECT],
+        }),
       }),
-    }));
+    });
     const page = await get(
       opened.http,
       authorizeUrl("https://client.example/oauth/metadata.json", pkce().challenge),
@@ -520,6 +565,71 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
 
     expect(listed.result.tools.map((tool) => tool.name)).toContain("sessions_list");
     expect(listed.result.tools.map((tool) => tool.name)).not.toContain("sessions_start");
+  });
+
+  it("keeps a session an ask grant starts at ask on a full host, past the revoke", async () => {
+    const fake = fakeModels();
+    const answer = (request: ModelRequest): Reply =>
+      JSON.stringify(request.context).includes('"name":"shell"') &&
+      !request.context.messages.some((message) => message.role === "toolResult")
+        ? { content: [{ type: "toolCall", id: "c1", name: "shell", arguments: { command: "ls" } }] }
+        : { content: [{ type: "text", text: "Done." }] };
+    fake.reply(answer, answer, answer);
+    ran.length = 0;
+    const opened = await open({ models: fake });
+
+    expect(await opened.host.settings.apply(PERMISSIONS, "full")).toEqual({ kind: "applied" });
+    const tokens = await signIn(opened, { kind: "ceiling", ceiling: "ask" });
+    const started = await read(
+      await rpc(opened.http, tokens.access, "tools/call", {
+        name: "sessions_start",
+        arguments: { id: "capped", content: "List the files." },
+      }),
+      CALLED,
+    );
+
+    expect(started.result.isError).toBeUndefined();
+    const session = opened.host.session(asId<"session">("capped"));
+    const pending = await eventually(async () =>
+      openApprovals(await session.head(asId<"head">("main")).view()),
+    );
+
+    expect(pending).toEqual([expect.objectContaining({ tool: "shell", reason: "shell" })]);
+    expect(ran).toEqual([]);
+
+    const grants = await read(
+      await owner(opened.local, "mcp.grants.list", {}),
+      Type.Array(Type.Object({ id: Type.String() })),
+    );
+
+    expect((await session.info()).mcp).toEqual({ grant: grants[0]?.id, ceiling: "ask" });
+    await owner(opened.local, "mcp.grants.revoke", { id: grants[0]?.id });
+    expect((await session.info()).mcp).toEqual({ grant: grants[0]?.id, ceiling: "ask" });
+  });
+
+  it("lets a grant steer only the sessions it started", async () => {
+    const opened = await open();
+    const first = await signIn(opened, { kind: "ceiling", ceiling: "full" });
+    const second = await signIn(opened, { kind: "ceiling", ceiling: "full" });
+    await opened.host.sessions.start({ id: asId<"session">("owners"), content: "Hi." });
+
+    await rpc(opened.http, first.access, "tools/call", {
+      name: "sessions_start",
+      arguments: { id: "mine", content: "Hi." },
+    });
+
+    const send = (token: string, session: string) =>
+      rpc(opened.http, token, "tools/call", {
+        name: "head_send",
+        arguments: { session, head: "main", content: "And then?" },
+      }).then((response) => read(response, CALLED));
+
+    expect((await send(first.access, "mine")).result.isError).toBeUndefined();
+
+    for (const refused of [await send(second.access, "mine"), await send(first.access, "owners")]) {
+      expect(refused.result.isError).toBe(true);
+      expect(refused.result.content[0]?.text).toMatch(/wasn't started through this MCP grant/);
+    }
   });
 
   it("keeps a read-only grant to read tools", async () => {
