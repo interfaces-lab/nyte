@@ -55,6 +55,7 @@ export type SocketPeer = {
   readonly local: boolean;
   readonly server: ServerHost;
   readonly tailnet?: TailnetControl;
+  readonly execution?: { pause(): void; resume(): void };
   readonly signal: AbortSignal;
   leave(): void;
 };
@@ -168,6 +169,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   const binding = bindConnection(peer.connection, {
     server: peer.server,
     tailnet: peer.tailnet,
+    execution: peer.execution,
   });
 
   const flights = new Set<AbortController>();

@@ -140,6 +140,8 @@ export type {
 
 export { attachFile } from "./env/attach.ts";
 
+export { onlyNyteAppHas } from "./engine/surface.ts";
+
 export { processEnvironment } from "./util/process-environment.ts";
 
 export { bashProperties } from "./builtins/environment.ts";

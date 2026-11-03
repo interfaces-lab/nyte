@@ -39,6 +39,7 @@ import {
 import type { CallHandler, CallRequest, CallTable, MainCallPath } from "../shared/ipc.ts";
 import { machineName } from "@nyte-ai/connect/host";
 import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
+import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import {
   applicationMenuTemplate,
@@ -63,6 +64,7 @@ import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
 import { defaultSecrets } from "@nyte-ai/host/secrets";
 import { AccountStore } from "./account/account-store.ts";
 import { accountScheme } from "../shared/account/scheme.ts";
+import { offscreenCanvasPreviewer } from "./canvas-preview.ts";
 import { canvasShellUrl, registerRenderer } from "./renderer-protocol.ts";
 import { ACCOUNT_CHANNELS } from "../shared/account/protocol.ts";
 import { readConnectConfig } from "../shared/connect-config.ts";
@@ -105,6 +107,10 @@ let account: AccountSession | undefined;
 let rendererUrl: string;
 
 let canvasShell: string;
+
+let previewCanvas: CanvasPreviewer;
+
+let previewsOpen = new AbortController();
 
 function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> {
   const options: Partial<Electron.BrowserWindowConstructorOptions> = {
@@ -441,6 +447,9 @@ function startHost(): DesktopHost {
       onChange: () => desktopHost?.remoteChanged(),
     }),
     usageWorker: new URL("./usage-worker.js", import.meta.url),
+    agent: browserSurfaces.agent,
+    preview: (request, signal) => previewCanvas(request, signal),
+    previewSignal: () => previewsOpen.signal,
     emitHostEvent,
     keepAwake,
     settingsChanged: (next) => {
@@ -788,6 +797,11 @@ function createWindow(
     browserSurfaces.releaseWindow(id);
     desktopHost?.releaseWindow(id);
     alerts.release(id);
+
+    if (windows.size === 0) {
+      previewsOpen.abort();
+      previewsOpen = new AbortController();
+    }
   });
 
   return entry;
@@ -843,6 +857,11 @@ if (!hasSingleInstanceLock) {
     shellRoot,
   });
   canvasShell = canvasShellUrl(scheme);
+  previewCanvas = offscreenCanvasPreviewer(
+    scheme,
+    shellRoot,
+    join(import.meta.dirname, "../preload/canvas-preview.js"),
+  );
   account = createAccount(config);
 
   app.on("second-instance", (_event, argv) => {
@@ -861,6 +880,7 @@ if (!hasSingleInstanceLock) {
     if (devDockIcon) app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
 
     desktopHost = startHost();
+    powerMonitor.on("suspend", () => desktopHost?.suspend());
     powerMonitor.on("resume", () => desktopHost?.resume());
 
     const menu = Menu.buildFromTemplate(

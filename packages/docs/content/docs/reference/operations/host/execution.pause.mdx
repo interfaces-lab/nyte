@@ -1,0 +1,68 @@
+---
+title: host.execution.pause
+description: Ends the host's model streams in flight and holds new requests until resumed, as while the machine sleeps; runs stay live.
+---
+
+Ends the host's model streams in flight and holds every new model request until
+[`host.execution.resume`](/docs/reference/operations/host/execution.resume). Runs stay live: a run
+whose stream was cut retries once the host resumes and continues where its committed text ends.
+Pausing an already paused host changes nothing.
+
+## When to call it
+
+When the machine the host runs on is about to sleep, so no request is cut off mid-answer by the
+network going away. Nyte.app calls it on macOS's suspend notice when the user keeps Pause agents
+while asleep on.
+
+## Access
+
+Needs `owner` authority, and answers only on the host's local socket: never over the network or
+the tailnet. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `denied` off the local socket: `host.execution.pause answers only on the host's local socket.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

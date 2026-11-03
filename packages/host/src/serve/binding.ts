@@ -89,11 +89,12 @@ type OutputBinding = {
 /** Returns the server side of the table for one connection: each row takes its decoded input and the request's body and abort signal, and answers its output, its frames, or a byte reader; setup failures (authority, capability, unknown ids) reject before any frame. */
 export type Binding = CallBinding & FrameBinding & ByteBinding & OutputBinding;
 
-/** Describes what a binding needs beyond the connection: the server port, for the rows that carry a wire-only id (§40o) and `parts.create`, the tailnet node, for the `host.tailnet.*` rows, and the MCP server, for the owner's `mcp.approve`, `mcp.deny` and `mcp.grants.*` rows. */
+/** Describes what a binding needs beyond the connection: the server port, for the rows that carry a wire-only id (§40o) and `parts.create`, the tailnet node, for the `host.tailnet.*` rows, the MCP server, for the owner's `mcp.approve`, `mcp.deny` and `mcp.grants.*` rows, and the host's execution, for `host.execution.pause` and `host.execution.resume`. */
 export type BindingOptions = {
   readonly server: ServerHost;
   readonly tailnet?: TailnetControl;
   readonly mcpServer?: McpOwner;
+  readonly execution?: { pause(): void; resume(): void };
 };
 
 const LOGIN_LIFETIME = 10 * 60 * 1000;
@@ -136,6 +137,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
   const mcpServer = (): McpOwner =>
     options.mcpServer ?? fail("unavailable", "This host serves no MCP endpoint.");
+
+  const execution = (): NonNullable<BindingOptions["execution"]> =>
+    options.execution ?? fail("unavailable", "This listener can't pause the host.");
 
   const findLogin = (provider: string): Attempt =>
     logins.get(principalKey(principal, provider)) ??
@@ -290,6 +294,16 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "host.tailnet.status": async () => tailnet().status(),
     "host.tailnet.configure": (input) => tailnet().configure(input),
     "host.tailnet.logout": () => tailnet().logout(),
+    "host.execution.pause": async () => {
+      execution().pause();
+
+      return null;
+    },
+    "host.execution.resume": async () => {
+      execution().resume();
+
+      return null;
+    },
     "mcp.approve": (input) => mcpServer().approve(input),
     "mcp.deny": async (input) => {
       await mcpServer().deny(input);

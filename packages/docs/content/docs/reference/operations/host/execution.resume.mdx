@@ -1,0 +1,66 @@
+---
+title: host.execution.resume
+description: Lets the runs a pause held request again.
+---
+
+Lets the runs a [`host.execution.pause`](/docs/reference/operations/host/execution.pause) held
+request again; a run whose stream the pause cut retries. Resuming a host that is not paused
+changes nothing, so a client can resume on every wake without remembering whether it paused.
+
+## When to call it
+
+When the machine wakes. Nyte.app calls it on macOS's resume notice whatever Pause agents while
+asleep is set to, since the setting may have changed while the machine slept.
+
+## Access
+
+Needs `owner` authority, and answers only on the host's local socket: never over the network or
+the tailnet. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `denied` off the local socket: `host.execution.resume answers only on the host's local socket.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

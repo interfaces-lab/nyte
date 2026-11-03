@@ -4,7 +4,7 @@ import { serial } from "@nyte-ai/schema/serial";
 import { UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
 import { SdkError, sdk } from "@nyte-ai/sdk/client";
-import type { Connection, HostView, SessionInfo } from "@nyte-ai/sdk/client";
+import type { Connection, HostConnection, HostView, SessionInfo } from "@nyte-ai/sdk/client";
 import { ConnectError, ConnectRuntime } from "@nyte-ai/connect/host";
 import type {
   HostEvent,
@@ -42,6 +42,7 @@ import { findTailnetAddress } from "./connections/tailnet.ts";
 export interface DesktopHostDependencies {
   readonly home: string;
   open(): Promise<Connection>;
+  readonly client: Pick<HostConnection, "call">;
   readonly usageScan?: UsageScanReader;
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
@@ -453,8 +454,16 @@ export class DesktopHost {
     this.#remoteChanged();
   }
 
+  /** The machine is going to sleep: with `pauseOnSleep` on, the host's runs stop requesting until `resume`. */
+  suspend(): void {
+    if (!this.#settings.pauseOnSleep) return;
+    void this.#deps.client.call("host.execution.pause", {}).catch(() => undefined);
+  }
+
+  /** The machine woke. Resuming is a no-op unless a suspend paused the runs, so it ignores `pauseOnSleep`, which may have changed while asleep. */
   resume(): void {
     this.#connect.resume();
+    void this.#deps.client.call("host.execution.resume", {}).catch(() => undefined);
   }
 
   accountChanged(): void {

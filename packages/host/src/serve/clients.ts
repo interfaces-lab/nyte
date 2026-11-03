@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { ClientId, ClientRow, Json, PrincipalId, SdkErrorCode } from "@nyte-ai/schema";
 import type { ServerHost } from "@nyte-ai/core/server";
 
@@ -80,6 +80,11 @@ type Entry = {
   current: Pending | null;
   listening: boolean;
   seq: number;
+};
+
+const HOST_REQUESTER: Requester = {
+  client: asId<"client">("host"),
+  principal: asId<"principal">("local"),
 };
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -281,4 +286,22 @@ function openClients(): Clients {
       finish(entry, pending, reply, null);
     },
   };
+}
+
+/** Asks the first connected client that declared `action` to perform it on the host's own behalf; `not_supported` when none did. */
+export function performOffered(
+  server: ServerHost,
+  request: { readonly action: string; readonly input: Json; readonly timeoutMs: number },
+): Promise<Json> {
+  const clients = sharedClients(server);
+  const target = clients
+    .rows()
+    .find((row) => row.actions.some((action) => action.name === request.action));
+
+  if (target === undefined)
+    return Promise.reject(
+      new SdkError("not_supported", `No connected client offers ${request.action}.`),
+    );
+
+  return clients.perform(HOST_REQUESTER, { ...request, client: target.id });
 }

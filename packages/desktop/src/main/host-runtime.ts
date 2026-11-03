@@ -11,12 +11,17 @@ import type { DesktopHostDependencies } from "../host/desktop-host.ts";
 import { CloudflareTunnelPlugin } from "../host/connections/cloudflare-tunnel.ts";
 import { hostAgent } from "./host-agent.ts";
 import type { AgentRegistration, HostAgent } from "./host-agent.ts";
+import type { HostConnection } from "@nyte-ai/sdk/client";
+import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
+import type { BrowserAgent } from "../shared/browser-agent.ts";
+import { offerAppActions, openAppClient } from "../shared/host-client.ts";
 import { HostLink } from "./host-link.ts";
 import type { HostLinkState } from "./host-link.ts";
 
 export interface HostRuntime {
   readonly agent: HostAgent;
   readonly link: HostLink;
+  readonly client: HostConnection;
   readonly desktop: DesktopHost;
   close(): Promise<void>;
 }
@@ -30,6 +35,9 @@ export type HostRuntimeOptions = Pick<
   readonly nyteHome: string;
   readonly connect: ConnectRuntime;
   readonly usageWorker: URL;
+  readonly agent: BrowserAgent;
+  readonly preview: CanvasPreviewer;
+  previewSignal(): AbortSignal;
   readonly linkChanged?: (state: HostLinkState) => void;
   readonly registrationChanged?: (registration: AgentRegistration) => void;
 };
@@ -47,7 +55,9 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
 
   let offered: string | undefined;
 
-  const link = new HostLink(join(options.nyteHome, "host.sock"), (state) => {
+  const socket = join(options.nyteHome, "host.sock");
+
+  const link = new HostLink(socket, (state) => {
     options.linkChanged?.(state);
 
     if (state.kind !== "connected" || state.compatible || offered === state.version) return;
@@ -63,10 +73,18 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
     (cause: unknown) => dialog.showErrorBox("Nyte couldn't start its host", describe(cause)),
   );
   link.start();
+  const client = openAppClient({ socket, version: app.getVersion() });
+
+  const withdraw = offerAppActions(client, {
+    agent: options.agent,
+    preview: options.preview,
+    signal: () => options.previewSignal(),
+  });
 
   const desktop = new DesktopHost({
     home: options.home,
     open: () => link.connect(),
+    client,
     usageScan: new UsageScanWorker(options.home, options.usageWorker),
     remoteAccessPlugins: {
       cloudflare: new CloudflareTunnelPlugin({ home: join(options.home, ".nyte") }),
@@ -82,10 +100,13 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
   return {
     agent,
     link,
+    client,
     desktop,
     async close() {
+      withdraw();
       link.close();
       await desktop.close();
+      client.release();
     },
   };
 }

@@ -1,5 +1,5 @@
 {
-  "revision": 6,
+  "revision": 7,
   "operations": {
     "connection.watch": "38887a11ce30c305",
     "connection.blob": "d661f9695af8afc2",
@@ -30,6 +30,8 @@
     "host.tailnet.status": "ad7904ae72cfeb65",
     "host.tailnet.configure": "deeaec9d81edc09b",
     "host.tailnet.logout": "dbf9605bc5c97503",
+    "host.execution.pause": "d662fe4fe2018933",
+    "host.execution.resume": "6b60c8bcc1812efa",
     "mcp.approve": "e71e9810430d586e",
     "mcp.deny": "cfb3a96a3bb059b7",
     "mcp.grants.list": "eae200156b84f324",
