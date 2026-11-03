@@ -3,9 +3,11 @@
 `nyte-tailnet` puts a Nyte host on a tailnet as a device of its own, with Tailscale built in through [`tsnet`](https://pkg.go.dev/tailscale.com/tsnet). The machine doesn't need Tailscale installed, and the sidecar never touches a Tailscale app or CLI that is.
 
 ```sh
-pnpm --dir packages/tailnet build   # dist/nyte-tailnet, for this machine
+pnpm --dir packages/tailnet build   # dist/nyte-tailnet, for this machine, at the host's version
 pnpm --dir packages/tailnet test    # the test control integration test
 ```
+
+`build.mjs` stamps the version (`NYTE_RELEASE_VERSION`, else `@nyte-ai/host`'s) into the binary; `nyte-tailnet --version` prints it. The TUI build puts `nyte-tailnet` beside `nyte` in `packages/tui/dist`, so it ships next to `nyte` in every release tarball, in the installers, and in the desktop app's resources, signed with the app. The host runs the `nyte-tailnet` in the directory of its own executable and refuses one whose hello names another version.
 
 ## Contract
 
@@ -14,6 +16,7 @@ The host starts it; nobody else should.
 ```sh
 nyte-tailnet --dir <state> --socket <host.sock> --hostname nyte --access owner [--tag tag:name]... [--auth-key-fd 3] [--control-url URL]
 nyte-tailnet --dir <state> --logout
+nyte-tailnet --version
 ```
 
 | Flag | Meaning |
@@ -41,7 +44,7 @@ The first stdout line is the handshake:
 { "type": "hello", "protocol": 1, "version": "0.0.24" }
 ```
 
-The host refuses another `protocol`. Every later line is a status, one JSON line per change:
+The host refuses another `protocol` (reason `protocol`) or a `version` other than its own (reason `version`). Every later line is a status, one JSON line per change:
 
 ```json
 { "state": "running", "dnsName": "nyte.example.ts.net", "https": "available", "access": "owner", "tags": [] }
