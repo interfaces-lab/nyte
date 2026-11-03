@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const DIRECTORY =
-  process.env["NYTE_PROJECTS_EXPORT"] ?? join(process.cwd(), ".local/research_notes/projects/export");
+  process.env["NYTE_PROJECTS_EXPORT"] ??
+  join(process.cwd(), ".local/research_notes/projects/export");
 
 const FILES = new Set(["evidence.json", "checks.json"]);
 
