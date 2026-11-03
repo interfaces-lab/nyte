@@ -5,7 +5,7 @@ import type { HeadName, HeadWindow, SessionEvent, WindowSpec } from "@nyte-ai/sc
 import { beforeAll, describe, expect, it } from "vitest";
 import { openSessionStore } from "../src/index.ts";
 import type { SessionSnapshot, SessionStore } from "../src/index.ts";
-import { interleave, random, recordLong, recordSessions } from "./sessions.ts";
+import { interleave, MAIN, random, recordLong, recordSessions } from "./sessions.ts";
 import type { Recorded } from "./sessions.ts";
 
 type FoldState = ReturnType<typeof emptyFold>;
@@ -88,6 +88,32 @@ describe("session store", () => {
     });
 
     expect(failures.slice(0, 3)).toEqual([]);
+  });
+
+  it("holds what a fresh read holds when a head moves right after the host restores a checkpoint", () => {
+    const log = logs.find((entry) => entry.recorded.name === "replace");
+
+    if (log === undefined) throw new Error("No replace recording.");
+
+    const schedule: Schedule = {
+      id: "replace/moved",
+      head: MAIN,
+      spec: 1,
+      attach: 37,
+      check: 39,
+      emits: new Set([39]),
+      drops: new Map([[38, 38]]),
+    };
+
+    expect(log.recorded.events[38]).toMatchObject({ kind: "head", reason: "moved" });
+    expect(
+      simulate(
+        { recorded: log.recorded, events: log.recorded.events },
+        [schedule],
+        38,
+        random(SEED),
+      ),
+    ).toEqual([]);
   });
 });
 

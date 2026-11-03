@@ -21,6 +21,7 @@ import {
   WaitTargetType,
 } from "@nyte-ai/schema";
 import type {
+  CommitId,
   Configuration,
   ContextView,
   Delivery,
@@ -385,7 +386,13 @@ export function decodeFoldCheckpoint(
 
   if (!valid) return null;
   const parts = new Map(body.parts);
-  const messages = new Map(body.messages);
+  const commits = new Map(body.commits);
+  const siblings = new Map(body.siblings);
+
+  const messages = new Map(
+    body.messages.map(([id, item]) => [id, shareSiblings(item, commits, siblings)] as const),
+  );
+
   const turns = new Map(body.turns);
 
   for (const id of body.partStates) {
@@ -446,8 +453,8 @@ export function decodeFoldCheckpoint(
 
   const index: Index = {
     heads,
-    commits: new Map(body.commits),
-    siblings: new Map(body.siblings),
+    commits,
+    siblings,
     inputs: new Map(body.inputs),
     parts,
     runs: new Map(body.runs),
@@ -484,6 +491,22 @@ export function decodeFoldCheckpoint(
     turns,
     messages,
   };
+}
+
+function shareSiblings(
+  item: Message,
+  commits: ReadonlyMap<CommitId, CommitRecord>,
+  siblings: ReadonlyMap<CommitId | null, readonly CommitId[]>,
+): Message {
+  if (item.kind !== "user") return item;
+  const held = item.siblings.ids;
+  const first = held[0];
+  const commit = first === undefined ? undefined : commits.get(first);
+  const ids = commit === undefined ? undefined : siblings.get(commit.parent);
+
+  return ids !== undefined && ids.length === held.length && ids.every((id, at) => id === held[at])
+    ? { ...item, siblings: { ...item.siblings, ids } }
+    : item;
 }
 
 function typed<T>() {
