@@ -83,6 +83,8 @@ const HOST_PROCESS_PATHS = [
   "host.remote.clear",
   "host.remote.pair",
   "host.remote.revoke",
+  "host.remote.configureTailnet",
+  "host.remote.signOutTailnet",
   "host.connect.state",
   "host.connect.link",
   "host.connect.cancel",

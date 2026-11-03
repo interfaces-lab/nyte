@@ -123,12 +123,13 @@ connected client's `workspace.select` does, and the row names what is being
 served. A project must be trusted first. The Cloud server is never a
 candidate; only local targets are served.
 
-Remote access has one of two reaches, picked when it starts. **Over Tailscale**
-binds `127.0.0.1` on an ephemeral port and serves it at `https://<this Mac>.ts.net`
-with `tailscale serve`, so a device signed into the same tailnet can reach it
-from any network and nothing off the tailnet can route to it; it needs the
-Tailscale CLI installed, the backend running, MagicDNS, and HTTPS certificates.
-**Over Cloudflare Tunnel** comes from a remote-access plugin, described below.
+**Over Tailscale** is the host's own tailnet node, not a reach of this listener:
+`nyte host` runs the bundled `nyte-tailnet`, and the Server page reads and sets
+it with `host.tailnet.status`, `host.tailnet.configure` and `host.tailnet.logout`
+over the local socket. The page shows the node's state: the sign-in link, the
+admin approval it waits for, its `https://<name>.ts.net` address once running,
+or why it stopped. **Over Cloudflare Tunnel** comes from a remote-access plugin,
+described below.
 
 The row shows a pairing link, `<address>/pair#host=…&token=…`, with **Copy
 link** and **Open**; opening it signs the web app in without a form. Host and

@@ -12,20 +12,6 @@ import {
   stylex,
 } from "@nyte-ai/app/vite";
 
-const E2E_FIXTURES = new Map([
-  [resolve("src/host/connections/tailnet.ts"), resolve("src/host/fixtures/e2e-tailnet.ts")],
-]);
-
-const e2eFixtures: Plugin = {
-  name: "nyte:e2e-fixtures",
-  enforce: "pre",
-  resolveId(source, importer) {
-    if (importer === undefined) return null;
-
-    return E2E_FIXTURES.get(resolve(importer, "..", source)) ?? null;
-  },
-};
-
 /**
  * The renderer. StyleX compiles @nyte-ai/ui from source here, so it resolves the
  * `nyte-source` condition.
@@ -86,7 +72,6 @@ const config = (mode: string): UserConfig => ({
       ),
     },
     plugins: [
-      ...(mode === "e2e" ? [e2eFixtures] : []),
       {
         name: "nyte:browser-picker-page",
         generateBundle() {

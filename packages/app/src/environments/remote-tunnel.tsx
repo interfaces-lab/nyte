@@ -235,14 +235,11 @@ export function TunnelPairButton({ tunnel }: { readonly tunnel: ConfiguredTunnel
 export function CloudflareSection({
   tunnel,
   serving,
-  blocked,
   pending,
   onServe,
 }: {
   readonly tunnel: CloudflareTunnelView;
   readonly serving: boolean;
-  /** Tailscale serves now; this Mac serves over one of them at a time. */
-  readonly blocked: boolean;
   readonly pending: boolean;
   readonly onServe: (on: boolean) => void;
 }): ReactElement | null {
@@ -282,13 +279,7 @@ export function CloudflareSection({
       );
     case "configured":
       return (
-        <ConfiguredSection
-          tunnel={tunnel}
-          serving={serving}
-          blocked={blocked}
-          pending={pending}
-          onServe={onServe}
-        />
+        <ConfiguredSection tunnel={tunnel} serving={serving} pending={pending} onServe={onServe} />
       );
     default: {
       const _exhaustive: never = tunnel;
@@ -301,13 +292,11 @@ export function CloudflareSection({
 function ConfiguredSection({
   tunnel,
   serving,
-  blocked,
   pending,
   onServe,
 }: {
   readonly tunnel: ConfiguredTunnel;
   readonly serving: boolean;
-  readonly blocked: boolean;
   readonly pending: boolean;
   readonly onServe: (on: boolean) => void;
 }): ReactElement {
@@ -359,13 +348,9 @@ function ConfiguredSection({
       </FactRow>
       <SettingsSwitchRow
         title="Serve over Cloudflare Tunnel"
-        description={
-          blocked
-            ? "Turn off Serve over Tailscale first. This Mac serves over one of them at a time."
-            : "Reach this Mac at its public hostname, from any network"
-        }
+        description="Reach this Mac at its public hostname, from any network"
         checked={serving}
-        disabled={pending || blocked || !tunnel.cloudflaredInstalled}
+        disabled={pending || !tunnel.cloudflaredInstalled}
         onCheckedChange={onServe}
       />
       <DeviceRows

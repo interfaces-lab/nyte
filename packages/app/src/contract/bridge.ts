@@ -1,3 +1,4 @@
+import type { TailnetStatus } from "@nyte-ai/schema";
 import type { CredentialSource, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
 import type { ConnectionProblem, HostEndpoint } from "./connection.ts";
 import { clientActions } from "./client-actions.ts";
@@ -164,14 +165,12 @@ export type ServerConnectOutcome =
   | { readonly kind: "connected"; readonly baseUrl: string; readonly version: string }
   | { readonly kind: "failed"; readonly message: string };
 
-export type RemoteReach = "tailnet" | RemoteAccessPluginId;
+export type RemoteReach = RemoteAccessPluginId;
 
 export type RemoteAccessPluginId = "cloudflare";
 
-export type TailnetAvailability =
-  | { readonly kind: "ready"; readonly ip: string; readonly name: string | undefined }
-  | { readonly kind: "unavailable"; readonly state: string }
-  | { readonly kind: "missing" };
+/** The host's tailnet node as `host.tailnet.status` reports it, or `unavailable` when the host runs none. */
+export type TailnetNode = TailnetStatus | { readonly state: "unavailable" };
 
 export interface CloudflareTunnelSettings {
   readonly hostname: string;
@@ -224,16 +223,7 @@ export type ServedTarget =
 export type RemoteAccessState =
   | {
       readonly kind: "off";
-      readonly tailnet: TailnetAvailability;
-      readonly cloudflare: CloudflareTunnelView;
-    }
-  | {
-      readonly kind: "serving";
-      readonly reach: "tailnet";
-      readonly address: string;
-      readonly token: string;
-      readonly pairingUrl: string;
-      readonly target: ServedTarget;
+      readonly tailnet: TailnetNode;
       readonly cloudflare: CloudflareTunnelView;
     }
   | {
@@ -241,6 +231,7 @@ export type RemoteAccessState =
       readonly reach: RemoteAccessPluginId;
       readonly address: string;
       readonly target: ServedTarget;
+      readonly tailnet: TailnetNode;
       readonly cloudflare: CloudflareTunnelView;
     };
 
@@ -551,6 +542,8 @@ export interface HostBridge {
     clear(input: { plugin: RemoteAccessPluginId }): Promise<void>;
     pair(input: { plugin: RemoteAccessPluginId; name: string }): Promise<RemotePairing>;
     revoke(input: { plugin: RemoteAccessPluginId; deviceId: string }): Promise<void>;
+    configureTailnet(input: { enabled: boolean }): Promise<void>;
+    signOutTailnet(): Promise<void>;
   };
   connect: ConnectBridge;
   openExternal(input: { url: string }): Promise<void>;

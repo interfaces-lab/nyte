@@ -14,7 +14,7 @@ import type {
   SelectedWorkspace,
   ServerConnectionProblem,
   ServerState,
-  TailnetAvailability,
+  TailnetNode,
 } from "@nyte-ai/app/contract/bridge.ts";
 import type {
   CallHandler,
@@ -37,7 +37,6 @@ import { callTable } from "../shared/ipc-call.ts";
 import type { RemoteAccessPlugins } from "./connections/remote-access-plugin.ts";
 import { ServerSettingsStore } from "./connections/server-settings.ts";
 import type { SavedServer } from "./connections/server-settings.ts";
-import { findTailnetAddress } from "./connections/tailnet.ts";
 
 export interface DesktopHostDependencies {
   readonly home: string;
@@ -57,7 +56,7 @@ type HostCalls = { readonly [P in HostCallPath]: CallHandler<P> };
 
 const NOT_SERVED = {
   code: "unavailable",
-  message: "Remote access isn't served by the Nyte host yet.",
+  message: "Cloudflare Tunnel isn't served by the Nyte host yet. Use Tailscale.",
 } as const;
 
 function working(session: SessionInfo): boolean {
@@ -220,14 +219,6 @@ async function probeServer(url: string, token: string, hostId?: SavedServer["hos
   }
 }
 
-async function tailnetAvailability(): Promise<TailnetAvailability> {
-  const lookup = await findTailnetAddress(process.platform);
-
-  return lookup.kind === "ready"
-    ? { kind: "ready", ip: lookup.address.ip, name: lookup.address.name }
-    : lookup;
-}
-
 export class DesktopHost {
   readonly #deps: DesktopHostDependencies;
   readonly #connect: ConnectRuntime;
@@ -236,6 +227,7 @@ export class DesktopHost {
   readonly #servers: ServerSettingsStore;
   readonly #selections = new Map<HostWindow, SelectedWorkspace>();
   #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
+  #tailnet: string | undefined;
   #rows: readonly SessionInfo[] = [];
   readonly #watching = new AbortController();
   #rowsFollowed = false;
@@ -291,6 +283,10 @@ export class DesktopHost {
     void follow(
       () => opened.watch(),
       (view) => {
+        const tailnet = JSON.stringify(view.tailnet ?? null);
+
+        if (this.#tailnet !== undefined && this.#tailnet !== tailnet) this.#remoteChanged();
+        this.#tailnet = tailnet;
         this.#settings = desktopSettings(view);
         this.#deps.settingsChanged?.(this.#settings);
         this.#followRows(opened);
@@ -433,6 +429,27 @@ export class DesktopHost {
       await this.#remoteOperations.run(() =>
         this.#remotePlugin(input.plugin).revoke({ deviceId: input.deviceId }),
       );
+      this.#remoteChanged();
+    },
+    "host.remote.configureTailnet": async (_window, { enabled }) => {
+      const node = await this.#tailnetNode();
+
+      if (node.state === "unavailable")
+        throw new ExpectedHostError({
+          code: "unavailable",
+          message: "This Mac's Nyte host has no Tailscale node. Reinstall Nyte to get it back.",
+        });
+
+      await this.#deps.client.call("host.tailnet.configure", {
+        enabled,
+        hostname: node.dnsName?.split(".")[0] ?? "nyte",
+        tags: node.tags,
+        access: node.access,
+      });
+      this.#remoteChanged();
+    },
+    "host.remote.signOutTailnet": async () => {
+      await this.#deps.client.call("host.tailnet.logout", {});
       this.#remoteChanged();
     },
     "host.connect.state": () => this.#connect.view(),
@@ -660,10 +677,19 @@ export class DesktopHost {
   async #remoteState(): Promise<RemoteAccessState> {
     const [cloudflare, tailnet] = await Promise.all([
       this.#deps.remoteAccessPlugins?.cloudflare.view() ?? { kind: "unregistered" as const },
-      tailnetAvailability(),
+      this.#tailnetNode(),
     ]);
 
     return { kind: "off", tailnet, cloudflare };
+  }
+
+  #tailnetNode(): Promise<TailnetNode> {
+    return this.#deps.client.call("host.tailnet.status", {}).catch((cause: unknown) => {
+      if (cause instanceof SdkError && cause.code === "unavailable")
+        return { state: "unavailable" as const };
+
+      throw cause;
+    });
   }
 
   readonly #remoteChanged = (): void => {
