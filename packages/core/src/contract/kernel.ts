@@ -29,7 +29,6 @@ import type {
   RunEnd,
   RunId,
   RunView,
-  SessionCatalogView,
   SessionId,
   ToolInfo,
   Usage,
@@ -210,10 +209,6 @@ export interface SessionDirectory {
   activations(): ReadonlyMap<SessionId, Activation>;
 
   setActivation(session: SessionId, activation: Activation): void;
-
-  catalog(session: SessionId): SessionCatalogView;
-
-  setCatalog(session: SessionId, catalog: SessionCatalogView): void;
 
   forget(session: SessionId): void;
 }

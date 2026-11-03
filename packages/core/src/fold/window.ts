@@ -136,10 +136,6 @@ export function readWindow(
         }),
         drop: tables.turns.drop,
       },
-      catalog: {
-        upsert: state.catalogId === null ? [] : [{ id: state.catalogId }],
-        drop: tables.catalog.drop,
-      },
       heads: { upsert: sent("heads", head) ? [row] : [], drop: tables.heads.drop },
       settings: {
         upsert: sent("settings", head) ? [readSettingsRow(state, head)] : [],

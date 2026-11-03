@@ -1,5 +1,6 @@
 import type {
   HeadName,
+  SessionCatalogView,
   HistoryPage,
   MessageId,
   PrincipalId,
@@ -10,9 +11,16 @@ import type {
 import { INDEX } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { readCatalog } from "../store/catalogs.ts";
-import { EMPTY_CATALOG } from "./fold.ts";
 import { findLeadingPrompt, showMessage } from "./project.ts";
 import { readView } from "./window.ts";
+
+const EMPTY_CATALOG: SessionCatalogView = {
+  commands: [],
+  settings: [],
+  skills: [],
+  agents: [],
+  tools: [],
+};
 
 export async function viewHead(
   kernel: Kernel,

@@ -393,11 +393,7 @@ export function publishCatalog(kernel: Kernel, session: SessionId): Promise<void
     .then(async () => {
       const catalog = await sessionCatalog(kernel, session);
 
-      if (catalog === null) return;
-
-      if (JSON.stringify(catalog) !== JSON.stringify(kernel.sessions.catalog(session)))
-        kernel.sessions.setCatalog(session, catalog);
-      await recordCatalog(kernel, session, catalog);
+      if (catalog !== null) await recordCatalog(kernel, session, catalog);
     });
 
   queues.set(session, next);

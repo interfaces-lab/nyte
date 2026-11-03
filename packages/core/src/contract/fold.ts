@@ -22,7 +22,6 @@ import type {
   RunView,
   Schedule,
   Seq,
-  SessionCatalogView,
   SessionEvent,
   SessionId,
   SessionView,
@@ -47,7 +46,6 @@ export interface FoldState {
   readonly seq: Seq;
   readonly base: Seq;
   readonly activation: Activation;
-  readonly catalog: SessionCatalogView;
   readonly catalogId: CatalogId | null;
 
   readonly changes: readonly FileChange[];
@@ -194,7 +192,6 @@ export interface Draft extends Index {
   seen: ReadonlyMap<PrincipalId, ReadonlyMap<HeadName, CommitId | null>>;
   seq: Seq;
   activation: Activation;
-  catalog: SessionCatalogView;
   catalogId: CatalogId | null;
   changes: readonly FileChange[];
   partViews: readonly PartView[];

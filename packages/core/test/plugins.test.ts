@@ -379,13 +379,13 @@ describe("plugin api", () => {
     ).toEqual(["a", "b"]);
   });
 
-  it("publishes the catalog as a seq-0 event a warm fold takes and a cold fold seeds, and keeps the generation", async () => {
+  it("logs a chat's catalog id, serves its content from the store, and keeps the generation", async () => {
     const { kernel, host } = await setup();
     const generation = kernel.host.current().catalog;
-    const events: SessionCatalogView[] = [];
+    let logged = 0;
 
     kernel.bus.subscribeAll((_session, event) => {
-      if (event.kind === "catalog" && "catalog" in event) events.push(event.catalog);
+      if (event.kind === "catalog") logged += 1;
     });
 
     kernel.plugins.host = [
@@ -439,15 +439,20 @@ describe("plugin api", () => {
       ],
     };
 
-    expect(events).toEqual([catalog]);
-    expect((await session.view()).catalog).toEqual(catalog);
-    expect(kernel.host.current().catalog).toBe(generation);
-
     const hold = kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
+    const id = hold.state().catalogId;
+    assert(id !== null);
+
+    expect(logged).toBe(1);
+    expect(await host.catalogs.read(id)).toEqual(catalog);
+    expect((await session.view()).catalog).toEqual(catalog);
+    expect(kernel.host.current().catalog).toBe(generation);
     await host.plugins.replace([], { session: session.id });
 
-    expect(hold.state().catalog.commands).toEqual([]);
+    expect(logged).toBe(2);
+    expect(hold.state().catalogId).not.toBe(id);
+    expect((await session.view()).catalog.commands).toEqual([]);
     hold.release();
   });
 

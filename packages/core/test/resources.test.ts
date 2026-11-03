@@ -181,19 +181,19 @@ describe("resources", () => {
 
     const { session } = await host.sessions.start({ workspace, content: "Hi." });
     await kernel.plugins.runtime(session.id).ready;
-    const names = (): readonly string[] =>
-      kernel.sessions.catalog(session.id).skills.map((skill) => skill.name);
+    const names = async (): Promise<readonly string[]> =>
+      (await session.view()).catalog.skills.map((skill) => skill.name);
 
-    expect(names()).not.toContain("fresh");
+    expect(await names()).not.toContain("fresh");
     await until(() => (disk.watchers.size === 2 ? true : undefined));
 
     disk.put(
       "/work/project/.agents/skills/fresh/SKILL.md",
       '---\nname: fresh\ndescription: "Added later."\n---\n',
     );
-    await until(() => (names().includes("fresh") ? true : undefined));
+    await until(async () => ((await names()).includes("fresh") ? true : undefined));
     disk.put("/home/ada/.nyte/skills/late/SKILL.md", "---\nname: late\n---\n");
-    await until(() => (names().includes("late") ? true : undefined));
+    await until(async () => ((await names()).includes("late") ? true : undefined));
 
     disk.put("/work/project/src/app.ts", "unrelated\n");
     expect(disk.watchers.size).toBe(2);

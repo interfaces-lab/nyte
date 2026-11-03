@@ -18,7 +18,6 @@ import type {
   PrincipalId,
   RunId,
   RunView,
-  SessionCatalogView,
   SessionEvent,
   SessionId,
   TurnId,
@@ -75,14 +74,6 @@ const SINGLE: Extract<Message, { readonly kind: "user" }>["siblings"] = {
   ids: [],
 };
 
-export const EMPTY_CATALOG: SessionCatalogView = {
-  commands: [],
-  settings: [],
-  skills: [],
-  agents: [],
-  tools: [],
-};
-
 const STOPPED: Failure = { class: "aborted", message: "Stopped." };
 
 const UNTOUCHED = newTouched();
@@ -117,7 +108,6 @@ export function emptyFold(input: {
     seq: asSeq(0),
     base: asSeq(0),
     activation: INACTIVE,
-    catalog: EMPTY_CATALOG,
     catalogId: null,
     changes: [],
     heads: index.heads,
@@ -153,7 +143,6 @@ function open(state: FoldState, durable: boolean): Draft {
     seen: state.seen,
     seq: state.seq,
     activation: state.activation,
-    catalog: state.catalog,
     catalogId: state.catalogId,
     changes: state.changes,
     partViews: state.partViews,
@@ -213,10 +202,7 @@ function apply(draft: Draft, event: SessionEvent): void {
 
       return;
     case "catalog":
-      if ("id" in event) return setCatalogId(draft, event.id);
-      draft.catalog = event.catalog;
-
-      return;
+      return setCatalogId(draft, event.id);
   }
 }
 

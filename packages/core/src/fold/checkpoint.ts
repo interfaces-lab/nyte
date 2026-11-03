@@ -51,7 +51,6 @@ import { STORE_VERSION } from "../store/migrations.ts";
 import { dev } from "../util/dev-log.ts";
 import { FOLD_CODE } from "./code.ts";
 import { emptyStamps } from "./draft.ts";
-import { EMPTY_CATALOG } from "./fold.ts";
 import { sumUsage } from "./paths.ts";
 
 const REPLAY_EVENTS = 1_024;
@@ -471,7 +470,6 @@ export function decodeFoldCheckpoint(
     seq: body.seq,
     base: body.seq,
     activation: { kind: "inactive" },
-    catalog: EMPTY_CATALOG,
     catalogId: body.catalogId,
     changes: body.changes,
     heads,

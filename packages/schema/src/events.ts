@@ -11,7 +11,7 @@ import { PlacementType, ToolChangesType } from "./parts.ts";
 import { BackgroundItemType, RunEndType, RunViewType, WaitTargetType } from "./runs.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
-import { SessionCatalogViewType, SessionInfoType } from "./sessions.ts";
+import { SessionInfoType } from "./sessions.ts";
 import { ToolOutcomeType, ToolProgressType } from "./tools.ts";
 import { nullable } from "./wire/nullable.ts";
 import { ActivationType } from "./workspaces.ts";
@@ -210,7 +210,6 @@ function durableEvent<Common extends TProperties>(common: Common) {
     Type.Object({ ...common, kind: Type.Literal("changes"), files: Type.Array(FileChangeType) }),
     Type.Object({ ...common, kind: Type.Literal("session"), info: SessionInfoType }),
     Type.Object({ ...common, kind: Type.Literal("activation"), activation: ActivationType }),
-    Type.Object({ ...common, kind: Type.Literal("catalog"), catalog: SessionCatalogViewType }),
     Type.Object({ ...common, kind: Type.Literal("catalog"), id: idSchema<"catalog">() }),
   ]);
 }

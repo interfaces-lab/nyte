@@ -1,6 +1,7 @@
 import type { ToolDefinition } from "@nyte-ai/core";
 import { asId, asSeq, standard } from "@nyte-ai/schema";
 import type {
+  CatalogId,
   CommitId,
   FileChange,
   HeadName,
@@ -254,7 +255,7 @@ export function interleave(
         });
         break;
       case "catalog":
-        events.push({ seq: asSeq(0), at, head: null, kind: "catalog", catalog: catalog(next) });
+        events.push({ seq: asSeq(0), at, head: null, kind: "catalog", id: catalog(next) });
         break;
       case "seen":
         if (commits.length > 0)
@@ -302,7 +303,11 @@ function files(next: () => number): FileChange[] {
   );
 }
 
-function catalog(next: () => number): SessionCatalogView {
+function catalog(next: () => number): CatalogId {
+  return asId(JSON.stringify(catalogView(next)));
+}
+
+function catalogView(next: () => number): SessionCatalogView {
   return {
     commands: ["review", "ship"].flatMap((name) =>
       next() < 0.6

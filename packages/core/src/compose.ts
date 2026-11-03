@@ -7,7 +7,6 @@ import type {
   Json,
   Owned,
   RunId,
-  SessionCatalogView,
   SessionId,
   ValidationIssue,
 } from "@nyte-ai/schema";
@@ -80,7 +79,6 @@ import { closeWatches, forgetScans, resourcesPlugin, watchHome } from "./extend/
 import { settingInfos } from "./extend/setting-layers.ts";
 import { createSettingsApi } from "./extend/settings.ts";
 import { createBus } from "./fold/bus.ts";
-import { EMPTY_CATALOG } from "./fold/fold.ts";
 import { createFoldCache, createLogPublisher, pollStore } from "./fold/watch.ts";
 import { createModelState } from "./store/model-state.ts";
 import { createPartTable } from "./store/parts.ts";
@@ -707,7 +705,6 @@ function createRunTable(bus: SessionBus): RunTable {
 
 function createSessionDirectory(bus: SessionBus): SessionDirectory {
   const activations = new Map<SessionId, Activation>();
-  const catalogs = new Map<SessionId, SessionCatalogView>();
   const now = () => ({ seq: asSeq(0), at: Date.now(), head: null });
 
   return {
@@ -717,13 +714,7 @@ function createSessionDirectory(bus: SessionBus): SessionDirectory {
       activations.set(session, activation);
       bus.publish(session, { ...now(), kind: "activation", activation });
     },
-    catalog: (session) => catalogs.get(session) ?? EMPTY_CATALOG,
-    setCatalog(session, catalog) {
-      catalogs.set(session, catalog);
-      bus.publish(session, { ...now(), kind: "catalog", catalog });
-    },
     forget(session) {
-      catalogs.delete(session);
       activations.delete(session);
     },
   };

@@ -557,7 +557,7 @@ export const events = {
   activation: [
     { seq: asSeq(30), at: 1, head: null, kind: "activation", activation: { kind: "active" } },
   ],
-  catalog: [{ seq: asSeq(31), at: 1, head: null, kind: "catalog", catalog }],
+  catalog: [{ seq: asSeq(31), at: 1, head: null, kind: "catalog", id: asId("3f8a1c2b9d0e4f71") }],
 } satisfies {
   readonly [Kind in SessionEvent["kind"]]: readonly Extract<
     SessionEvent,

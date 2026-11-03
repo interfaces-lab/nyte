@@ -534,7 +534,6 @@ function openFoldFeed(
           kind: "activation",
           activation: kernel.sessions.activation(session),
         },
-        { ...seed, head: null, kind: "catalog", catalog: kernel.sessions.catalog(session) },
         ...backgroundItems(kernel, session).map(({ head, item }): SessionEvent => ({
           ...seed,
           head,
