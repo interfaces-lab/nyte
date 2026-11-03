@@ -17,7 +17,7 @@ export const API_REVISION = 5;
 
 export const API_MIN_REVISION = 1;
 
-/** The operations table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability, recovery, wait and locality, in the order the host lists them. */
+/** The operations table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability, recovery, wait, locality and MCP access, in the order the host lists them. */
 export const OPERATIONS = {
   ...HOST_OPERATIONS,
   ...EVENT_OPERATIONS,

@@ -218,6 +218,7 @@ export const HOST_OPERATIONS = {
   },
   "workspaces.list": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Lists the workspaces the host knows.",
     kind: "query",
     input: NO_INPUT,
@@ -271,6 +272,7 @@ export const HOST_OPERATIONS = {
   },
   "sessions.start": {
     ...PARTICIPANT,
+    mcp: "write",
     summary: "Starts a chat with its first message.",
     kind: "receipt",
     recovery: "replay",
@@ -293,6 +295,7 @@ export const HOST_OPERATIONS = {
   },
   "sessions.list": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Lists the host's sessions one page at a time.",
     kind: "query",
     input: wireObject({

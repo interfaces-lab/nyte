@@ -50,6 +50,7 @@ const ON_SERVER = wireObject({ ...WORKSPACE, server: Type.String() });
 export const WORKSPACE_OPERATIONS = {
   "workspace.info": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Reads the workspace's folder, trust and state.",
     kind: "query",
     input: ON_WORKSPACE,
