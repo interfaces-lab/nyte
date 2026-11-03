@@ -1,0 +1,2806 @@
+---
+title: head.read
+description: Reads a window of a head's rows at a seq, or what changed in it since a seq the client resumes from.
+---
+
+Reads a window of a head's rows at a seq. `window` is `{ tail }`, the last `tail` messages of the
+head's path, or `{ from }`, the messages from that one on. The answer carries `seq`, the session seq
+the rows are current through, the window's `order` and `leadingPrompt`, every row of the session's
+tables the window needs, and the session's live `activation`. A first read is `complete: true`: the
+client replaces its tables with it.
+
+To resume after a dropped connection, pass `resume: { seq, from }`, the seq the client's rows are
+current through and the first message it holds. The answer then holds only the rows changed after
+`seq` and the rows the old window did not cover, with `complete: false`; rows in the client's store
+that are in neither the answer's `order` nor its turns are dropped. A `from` the host can't place
+on the path any more, or a `seq` older than the log it still holds, answers a complete window.
+
+## When to call it
+
+After [`events.subscribe`](/docs/reference/operations/events/subscribe) on the session's scope,
+never before: subscribing first is what keeps a change between the two from being lost.
+
+## Access
+
+Any principal with `participant` authority who can read the session. Session scope. It answers over
+HTTP and on the WebSocket.
+
+## Example
+
+Input:
+
+```json
+{ "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f", "head": "main", "window": { "tail": 50 } }
+```
+
+Output, with the tables shortened:
+
+```json
+{
+  "seq": 12,
+  "head": "main",
+  "order": ["f9b3c8e6-6257-4b24-a875-5f6c9cafb923"],
+  "leadingPrompt": null,
+  "complete": true,
+  "tables": { "messages": { "upsert": [], "drop": [] } },
+  "live": { "activation": { "kind": "active" } }
+}
+```
+
+## Errors
+
+- `unknown` for a session the host doesn't have.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head", "window"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "window": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["tail"],
+          "properties": {
+            "tail": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["from"],
+          "properties": {
+            "from": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "resume": {
+      "type": "object",
+      "required": ["seq", "from"],
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["seq", "head", "order", "leadingPrompt", "complete", "tables", "live"],
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "head": {
+      "type": "string"
+    },
+    "order": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "leadingPrompt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "complete": {
+      "type": "boolean"
+    },
+    "tables": {
+      "type": "object",
+      "required": [
+        "messages",
+        "turns",
+        "parts",
+        "changes",
+        "catalog",
+        "heads",
+        "settings",
+        "usage",
+        "background"
+      ],
+      "properties": {
+        "messages": {
+          "type": "object",
+          "required": ["upsert", "drop"],
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "turn",
+                      "at",
+                      "kind",
+                      "content",
+                      "source",
+                      "delivery",
+                      "status",
+                      "siblings"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "turn": {
+                        "type": "string"
+                      },
+                      "at": {
+                        "type": "number"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "user"
+                      },
+                      "content": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "text"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "text"
+                                    },
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "blob", "mime", "name"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "file"
+                                    },
+                                    "blob": {
+                                      "type": "string"
+                                    },
+                                    "mime": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "path"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "reference"
+                                    },
+                                    "path": {
+                                      "type": "string"
+                                    },
+                                    "blob": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "name", "location"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "skill"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "location": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "source", "text"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "excerpt"
+                                    },
+                                    "source": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "required": ["kind", "path", "side", "start", "end"],
+                                          "properties": {
+                                            "kind": {
+                                              "type": "string",
+                                              "const": "diff"
+                                            },
+                                            "path": {
+                                              "type": "string"
+                                            },
+                                            "side": {
+                                              "enum": ["old", "new"]
+                                            },
+                                            "start": {
+                                              "type": "number"
+                                            },
+                                            "end": {
+                                              "type": "number"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "object",
+                                          "required": ["kind"],
+                                          "properties": {
+                                            "kind": {
+                                              "type": "string",
+                                              "const": "terminal"
+                                            },
+                                            "command": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "object",
+                                          "required": ["kind", "url", "selector"],
+                                          "properties": {
+                                            "kind": {
+                                              "type": "string",
+                                              "const": "browser"
+                                            },
+                                            "url": {
+                                              "type": "string"
+                                            },
+                                            "selector": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      "source": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": ["kind"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "user"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "session", "end"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "child"
+                              },
+                              "session": {
+                                "type": "string"
+                              },
+                              "end": {
+                                "enum": ["completed", "stopped", "failed"]
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "job"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "job"
+                              },
+                              "job": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "shell"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "label"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "action"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "command": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "delivery": {
+                        "enum": ["steer", "queue", "attach"]
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": ["kind", "attempts", "retrying"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "unsent"
+                              },
+                              "attempts": {
+                                "type": "number"
+                              },
+                              "retrying": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "required": ["at", "reason"],
+                                    "properties": {
+                                      "at": {
+                                        "type": "number"
+                                      },
+                                      "reason": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "schedule", "covered"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "pending"
+                              },
+                              "schedule": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "run"],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "joined"
+                                      },
+                                      "run": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "reason"],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "next-turn"
+                                      },
+                                      "reason": {
+                                        "enum": ["requested", "idle", "run-ended"]
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "required": ["kind"],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "attached"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "required": ["kind"],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "deciding"
+                                      }
+                                    }
+                                  }
+                                ]
+                              },
+                              "covered": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "commit", "run", "replaced"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "landed"
+                              },
+                              "commit": {
+                                "type": "string"
+                              },
+                              "run": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "replaced": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "required": ["previous", "stopped"],
+                                    "properties": {
+                                      "previous": {
+                                        "type": "string"
+                                      },
+                                      "stopped": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "siblings": {
+                        "type": "object",
+                        "required": ["index", "count", "ids"],
+                        "properties": {
+                          "index": {
+                            "type": "number"
+                          },
+                          "count": {
+                            "type": "number"
+                          },
+                          "ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "turn",
+                      "at",
+                      "kind",
+                      "part",
+                      "partKind",
+                      "role",
+                      "state",
+                      "version",
+                      "status"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "turn": {
+                        "type": "string"
+                      },
+                      "at": {
+                        "type": "number"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "part"
+                      },
+                      "part": {
+                        "type": "string"
+                      },
+                      "partKind": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "enum": ["step", "answer", "note"]
+                      },
+                      "state": {},
+                      "version": {
+                        "type": "number"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": ["kind", "run"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "live"
+                              },
+                              "run": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "waiting": {
+                                "type": "string"
+                              },
+                              "answer": {
+                                "type": "object",
+                                "required": ["action", "input"],
+                                "properties": {
+                                  "action": {
+                                    "type": "string"
+                                  },
+                                  "input": {
+                                    "$ref": "Json"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "run", "on"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "waiting"
+                              },
+                              "run": {
+                                "type": "string"
+                              },
+                              "on": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "session", "run"],
+                                    "properties": {
+                                      "deadline": {
+                                        "type": "number"
+                                      },
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "run"
+                                      },
+                                      "session": {
+                                        "type": "string"
+                                      },
+                                      "run": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "job"],
+                                    "properties": {
+                                      "deadline": {
+                                        "type": "number"
+                                      },
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "job"
+                                      },
+                                      "job": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "part"],
+                                    "properties": {
+                                      "deadline": {
+                                        "type": "number"
+                                      },
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "part"
+                                      },
+                                      "part": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "until"],
+                                    "properties": {
+                                      "deadline": {
+                                        "type": "number"
+                                      },
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "timer"
+                                      },
+                                      "until": {
+                                        "type": "number"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "commit", "endedAt"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "settled"
+                              },
+                              "commit": {
+                                "type": "string"
+                              },
+                              "endedAt": {
+                                "type": "number"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "run", "failure"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "failed"
+                              },
+                              "run": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "failure": {
+                                "type": "object",
+                                "required": ["class", "message"],
+                                "properties": {
+                                  "class": {
+                                    "enum": [
+                                      "rate_limit",
+                                      "auth",
+                                      "quota",
+                                      "context_window",
+                                      "overloaded",
+                                      "network",
+                                      "aborted",
+                                      "provider",
+                                      "runner"
+                                    ]
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "retryAfterMs": {
+                                    "type": "number"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "turns": {
+          "type": "object",
+          "required": ["upsert", "drop"],
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "run",
+                  "prompt",
+                  "state",
+                  "startedAt",
+                  "endedAt",
+                  "steps",
+                  "thinkingOnly",
+                  "summary"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "run": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "prompt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "state": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "activity"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "working"
+                          },
+                          "activity": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "on"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "waiting"
+                          },
+                          "on": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": ["kind", "session", "run"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "run"
+                                  },
+                                  "session": {
+                                    "type": "string"
+                                  },
+                                  "run": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "job"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "job"
+                                  },
+                                  "job": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "part"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "part"
+                                  },
+                                  "part": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "until"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "timer"
+                                  },
+                                  "until": {
+                                    "type": "number"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "end"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "ended"
+                          },
+                          "end": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": ["kind", "usage"],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "completed"
+                                  },
+                                  "usage": {
+                                    "type": "object",
+                                    "required": [
+                                      "input",
+                                      "output",
+                                      "cacheRead",
+                                      "cacheWrite",
+                                      "reasoning",
+                                      "total",
+                                      "cost"
+                                    ],
+                                    "properties": {
+                                      "input": {
+                                        "type": "number"
+                                      },
+                                      "output": {
+                                        "type": "number"
+                                      },
+                                      "cacheRead": {
+                                        "type": "number"
+                                      },
+                                      "cacheWrite": {
+                                        "type": "number"
+                                      },
+                                      "reasoning": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "total": {
+                                        "type": "number"
+                                      },
+                                      "cost": {
+                                        "type": "object",
+                                        "required": [
+                                          "input",
+                                          "output",
+                                          "cacheRead",
+                                          "cacheWrite",
+                                          "total"
+                                        ],
+                                        "properties": {
+                                          "input": {
+                                            "type": "number"
+                                          },
+                                          "output": {
+                                            "type": "number"
+                                          },
+                                          "cacheRead": {
+                                            "type": "number"
+                                          },
+                                          "cacheWrite": {
+                                            "type": "number"
+                                          },
+                                          "total": {
+                                            "type": "number"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind"],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "stopped"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "failure"],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "failed"
+                                  },
+                                  "failure": {
+                                    "type": "object",
+                                    "required": ["class", "message"],
+                                    "properties": {
+                                      "class": {
+                                        "enum": [
+                                          "rate_limit",
+                                          "auth",
+                                          "quota",
+                                          "context_window",
+                                          "overloaded",
+                                          "network",
+                                          "aborted",
+                                          "provider",
+                                          "runner"
+                                        ]
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      },
+                                      "retryAfterMs": {
+                                        "type": "number"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "startedAt": {
+                    "type": "number"
+                  },
+                  "endedAt": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "steps": {
+                    "type": "number"
+                  },
+                  "thinkingOnly": {
+                    "type": "boolean"
+                  },
+                  "summary": {
+                    "type": "object",
+                    "required": ["byClass", "failed", "stopped", "added", "removed"],
+                    "properties": {
+                      "byClass": {
+                        "type": "object",
+                        "required": ["read", "list", "edit", "shell", "delegate", "custom"],
+                        "properties": {
+                          "read": {
+                            "type": "object",
+                            "required": ["count", "paths"],
+                            "properties": {
+                              "count": {
+                                "type": "number"
+                              },
+                              "paths": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "list": {
+                            "type": "object",
+                            "required": ["count", "paths"],
+                            "properties": {
+                              "count": {
+                                "type": "number"
+                              },
+                              "paths": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "edit": {
+                            "type": "object",
+                            "required": ["count", "paths"],
+                            "properties": {
+                              "count": {
+                                "type": "number"
+                              },
+                              "paths": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "shell": {
+                            "type": "object",
+                            "required": ["count", "paths"],
+                            "properties": {
+                              "count": {
+                                "type": "number"
+                              },
+                              "paths": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "delegate": {
+                            "type": "object",
+                            "required": ["count", "paths"],
+                            "properties": {
+                              "count": {
+                                "type": "number"
+                              },
+                              "paths": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "custom": {
+                            "type": "object",
+                            "required": ["count", "paths"],
+                            "properties": {
+                              "count": {
+                                "type": "number"
+                              },
+                              "paths": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "failed": {
+                        "type": "number"
+                      },
+                      "stopped": {
+                        "type": "number"
+                      },
+                      "added": {
+                        "type": "number"
+                      },
+                      "removed": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "parts": {
+          "type": "object",
+          "required": ["upsert", "drop"],
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "partKind", "placement", "state", "version", "status", "owner"],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "partKind": {
+                    "type": "string"
+                  },
+                  "placement": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "role"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "transcript"
+                          },
+                          "role": {
+                            "enum": ["step", "answer", "note"]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "modal"
+                          }
+                        }
+                      },
+                      {
+                        "allOf": [
+                          {
+                            "type": "object",
+                            "required": ["kind"],
+                            "properties": {
+                              "kind": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "patternProperties": {
+                              "^.*$": {
+                                "$ref": "Json"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "state": {
+                    "$ref": "Json"
+                  },
+                  "version": {
+                    "type": "number"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "run"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "live"
+                          },
+                          "run": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "waiting": {
+                            "type": "string"
+                          },
+                          "answer": {
+                            "type": "object",
+                            "required": ["action", "input"],
+                            "properties": {
+                              "action": {
+                                "type": "string"
+                              },
+                              "input": {
+                                "$ref": "Json"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "run", "on"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "waiting"
+                          },
+                          "run": {
+                            "type": "string"
+                          },
+                          "on": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": ["kind", "session", "run"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "run"
+                                  },
+                                  "session": {
+                                    "type": "string"
+                                  },
+                                  "run": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "job"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "job"
+                                  },
+                                  "job": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "part"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "part"
+                                  },
+                                  "part": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "until"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "timer"
+                                  },
+                                  "until": {
+                                    "type": "number"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "commit", "endedAt"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "settled"
+                          },
+                          "commit": {
+                            "type": "string"
+                          },
+                          "endedAt": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "run", "failure"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "failed"
+                          },
+                          "run": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "failure": {
+                            "type": "object",
+                            "required": ["class", "message"],
+                            "properties": {
+                              "class": {
+                                "enum": [
+                                  "rate_limit",
+                                  "auth",
+                                  "quota",
+                                  "context_window",
+                                  "overloaded",
+                                  "network",
+                                  "aborted",
+                                  "provider",
+                                  "runner"
+                                ]
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "retryAfterMs": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "owner": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "changes": {
+          "type": "object",
+          "required": ["upsert", "drop"],
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["path", "status", "added", "removed"],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                  },
+                  "added": {
+                    "type": "number"
+                  },
+                  "removed": {
+                    "type": "number"
+                  },
+                  "from": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "catalog": {
+          "type": "object",
+          "required": ["upsert", "drop"],
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["kind", "entry"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "commands"
+                      },
+                      "entry": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "owner",
+                          "side",
+                          "title",
+                          "description",
+                          "takesText",
+                          "completes"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string"
+                          },
+                          "side": {
+                            "enum": ["core", "client"]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "takesText": {
+                            "type": "boolean"
+                          },
+                          "completes": {
+                            "type": "boolean"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "keywords": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "entry"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "settings"
+                      },
+                      "entry": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "owner",
+                          "scope",
+                          "label",
+                          "schema",
+                          "choices",
+                          "value",
+                          "from"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "enum": ["host", "session"]
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "schema": {
+                            "type": "object",
+                            "patternProperties": {
+                              "^.*$": {
+                                "$ref": "Json"
+                              }
+                            }
+                          },
+                          "choices": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": ["value", "label"],
+                                  "properties": {
+                                    "value": {
+                                      "$ref": "Json"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "badge": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "value": {
+                            "$ref": "Json"
+                          },
+                          "from": {
+                            "enum": ["default", "host", "session"]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "entry"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "skills"
+                      },
+                      "entry": {
+                        "type": "object",
+                        "required": ["name", "owner", "description", "location"],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "location": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "entry"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "agents"
+                      },
+                      "entry": {
+                        "type": "object",
+                        "required": ["id", "owner", "description", "model", "mode"],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "model": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": ["provider", "id"],
+                                "properties": {
+                                  "provider": {
+                                    "type": "string"
+                                  },
+                                  "id": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mode": {
+                            "enum": ["primary", "subagent", "all"]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "entry"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "tools"
+                      },
+                      "entry": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "owner",
+                          "namespace",
+                          "description",
+                          "parameters",
+                          "output",
+                          "exposure"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string"
+                          },
+                          "namespace": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "parameters": {
+                            "type": "object",
+                            "patternProperties": {
+                              "^.*$": {
+                                "$ref": "Json"
+                              }
+                            }
+                          },
+                          "output": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.*$": {
+                                    "$ref": "Json"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "exposure": {
+                            "enum": ["model", "model-only", "deferred", "code", "hidden"]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "heads": {
+          "type": "object",
+          "required": ["upsert", "drop"],
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "revision",
+                  "execution",
+                  "reportsHeld",
+                  "seenThrough",
+                  "queue"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "execution": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "lastRun"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "idle"
+                          },
+                          "lastRun": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": ["id", "end", "endedAt"],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "end": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "required": ["kind", "usage"],
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "const": "completed"
+                                          },
+                                          "usage": {
+                                            "type": "object",
+                                            "required": [
+                                              "input",
+                                              "output",
+                                              "cacheRead",
+                                              "cacheWrite",
+                                              "reasoning",
+                                              "total",
+                                              "cost"
+                                            ],
+                                            "properties": {
+                                              "input": {
+                                                "type": "number"
+                                              },
+                                              "output": {
+                                                "type": "number"
+                                              },
+                                              "cacheRead": {
+                                                "type": "number"
+                                              },
+                                              "cacheWrite": {
+                                                "type": "number"
+                                              },
+                                              "reasoning": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "number"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "total": {
+                                                "type": "number"
+                                              },
+                                              "cost": {
+                                                "type": "object",
+                                                "required": [
+                                                  "input",
+                                                  "output",
+                                                  "cacheRead",
+                                                  "cacheWrite",
+                                                  "total"
+                                                ],
+                                                "properties": {
+                                                  "input": {
+                                                    "type": "number"
+                                                  },
+                                                  "output": {
+                                                    "type": "number"
+                                                  },
+                                                  "cacheRead": {
+                                                    "type": "number"
+                                                  },
+                                                  "cacheWrite": {
+                                                    "type": "number"
+                                                  },
+                                                  "total": {
+                                                    "type": "number"
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "type": "object",
+                                        "required": ["kind"],
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "const": "stopped"
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "type": "object",
+                                        "required": ["kind", "failure"],
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "const": "failed"
+                                          },
+                                          "failure": {
+                                            "type": "object",
+                                            "required": ["class", "message"],
+                                            "properties": {
+                                              "class": {
+                                                "enum": [
+                                                  "rate_limit",
+                                                  "auth",
+                                                  "quota",
+                                                  "context_window",
+                                                  "overloaded",
+                                                  "network",
+                                                  "aborted",
+                                                  "provider",
+                                                  "runner"
+                                                ]
+                                              },
+                                              "message": {
+                                                "type": "string"
+                                              },
+                                              "retryAfterMs": {
+                                                "type": "number"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  "endedAt": {
+                                    "type": "number"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "run", "phase", "stopping"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "live"
+                          },
+                          "run": {
+                            "type": "object",
+                            "required": ["id", "head", "startedAt", "attempt", "origin"],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "head": {
+                                "type": "string"
+                              },
+                              "startedAt": {
+                                "type": "number"
+                              },
+                              "attempt": {
+                                "type": "number"
+                              },
+                              "origin": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "message"],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "input"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "from"],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "continuation"
+                                      },
+                                      "from": {
+                                        "enum": ["child", "job", "wake"]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "phase": {
+                            "enum": ["responding", "executing"]
+                          },
+                          "stopping": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "run", "on"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "waiting"
+                          },
+                          "run": {
+                            "type": "object",
+                            "required": ["id", "head", "startedAt", "attempt", "origin"],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "head": {
+                                "type": "string"
+                              },
+                              "startedAt": {
+                                "type": "number"
+                              },
+                              "attempt": {
+                                "type": "number"
+                              },
+                              "origin": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "message"],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "input"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "from"],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "continuation"
+                                      },
+                                      "from": {
+                                        "enum": ["child", "job", "wake"]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "on": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": ["kind", "session", "run"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "run"
+                                  },
+                                  "session": {
+                                    "type": "string"
+                                  },
+                                  "run": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "job"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "job"
+                                  },
+                                  "job": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "part"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "part"
+                                  },
+                                  "part": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "until"],
+                                "properties": {
+                                  "deadline": {
+                                    "type": "number"
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "timer"
+                                  },
+                                  "until": {
+                                    "type": "number"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "run", "until", "reason"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "retrying"
+                          },
+                          "run": {
+                            "type": "object",
+                            "required": ["id", "head", "startedAt", "attempt", "origin"],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "head": {
+                                "type": "string"
+                              },
+                              "startedAt": {
+                                "type": "number"
+                              },
+                              "attempt": {
+                                "type": "number"
+                              },
+                              "origin": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "message"],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "input"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "object",
+                                    "required": ["kind", "from"],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "const": "continuation"
+                                      },
+                                      "from": {
+                                        "enum": ["child", "job", "wake"]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "until": {
+                            "type": "number"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "reportsHeld": {
+                    "type": "boolean"
+                  },
+                  "seenThrough": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "queue": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "settings": {
+          "type": "object",
+          "required": ["upsert", "drop"],
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "configuration", "context"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "configuration": {
+                    "type": "object",
+                    "required": ["selected", "effective"],
+                    "properties": {
+                      "selected": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "model",
+                              "thinking",
+                              "agent",
+                              "settings",
+                              "settingsVersion"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "exact"
+                              },
+                              "model": {
+                                "type": "object",
+                                "required": ["provider", "id"],
+                                "properties": {
+                                  "provider": {
+                                    "type": "string"
+                                  },
+                                  "id": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "thinking": {
+                                "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+                              },
+                              "agent": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "settings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.*$": {
+                                    "$ref": "Json"
+                                  }
+                                }
+                              },
+                              "settingsVersion": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "effective": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "model",
+                              "thinking",
+                              "agent",
+                              "settings",
+                              "settingsVersion"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "exact"
+                              },
+                              "model": {
+                                "type": "object",
+                                "required": ["provider", "id"],
+                                "properties": {
+                                  "provider": {
+                                    "type": "string"
+                                  },
+                                  "id": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "thinking": {
+                                "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+                              },
+                              "agent": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "settings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.*$": {
+                                    "$ref": "Json"
+                                  }
+                                }
+                              },
+                              "settingsVersion": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "context": {
+                    "type": "object",
+                    "required": ["tokens", "window", "lastRequest"],
+                    "properties": {
+                      "tokens": {
+                        "type": "number"
+                      },
+                      "window": {
+                        "type": "number"
+                      },
+                      "lastRequest": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "input",
+                              "output",
+                              "cacheRead",
+                              "cacheWrite",
+                              "reasoning",
+                              "total",
+                              "cost"
+                            ],
+                            "properties": {
+                              "input": {
+                                "type": "number"
+                              },
+                              "output": {
+                                "type": "number"
+                              },
+                              "cacheRead": {
+                                "type": "number"
+                              },
+                              "cacheWrite": {
+                                "type": "number"
+                              },
+                              "reasoning": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "total": {
+                                "type": "number"
+                              },
+                              "cost": {
+                                "type": "object",
+                                "required": ["input", "output", "cacheRead", "cacheWrite", "total"],
+                                "properties": {
+                                  "input": {
+                                    "type": "number"
+                                  },
+                                  "output": {
+                                    "type": "number"
+                                  },
+                                  "cacheRead": {
+                                    "type": "number"
+                                  },
+                                  "cacheWrite": {
+                                    "type": "number"
+                                  },
+                                  "total": {
+                                    "type": "number"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "usage": {
+          "type": "object",
+          "required": ["upsert", "drop"],
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "usage"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "usage": {
+                    "type": "object",
+                    "required": [
+                      "input",
+                      "output",
+                      "cacheRead",
+                      "cacheWrite",
+                      "reasoning",
+                      "total",
+                      "cost"
+                    ],
+                    "properties": {
+                      "input": {
+                        "type": "number"
+                      },
+                      "output": {
+                        "type": "number"
+                      },
+                      "cacheRead": {
+                        "type": "number"
+                      },
+                      "cacheWrite": {
+                        "type": "number"
+                      },
+                      "reasoning": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "total": {
+                        "type": "number"
+                      },
+                      "cost": {
+                        "type": "object",
+                        "required": ["input", "output", "cacheRead", "cacheWrite", "total"],
+                        "properties": {
+                          "input": {
+                            "type": "number"
+                          },
+                          "output": {
+                            "type": "number"
+                          },
+                          "cacheRead": {
+                            "type": "number"
+                          },
+                          "cacheWrite": {
+                            "type": "number"
+                          },
+                          "total": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "background": {
+          "type": "object",
+          "required": ["upsert", "drop"],
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["head", "item"],
+                "properties": {
+                  "head": {
+                    "type": "string"
+                  },
+                  "item": {
+                    "type": "object",
+                    "required": ["kind", "id", "title", "state", "startedBy"],
+                    "properties": {
+                      "kind": {
+                        "enum": ["child", "job", "page"]
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "enum": ["working", "waiting", "done", "failed"]
+                      },
+                      "startedBy": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "live": {
+      "type": "object",
+      "required": ["activation"],
+      "properties": {
+        "activation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "active"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "inactive"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "reason", "workspace"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "unavailable"
+                },
+                "reason": {
+                  "enum": ["unsupported", "unreachable"]
+                },
+                "workspace": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "message"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "failed"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

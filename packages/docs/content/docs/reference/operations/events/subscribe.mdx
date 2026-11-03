@@ -1,0 +1,95 @@
+---
+title: events.subscribe
+description: Sends the connection every later event of the scopes named, on the socket's event channel.
+---
+
+Sends the connection every later event of the scopes named, on the event channel of the host's
+WebSocket at `/.nyte/ws`. A scope is `host`, `session/<id>` or `client/<id>`, and a connection may
+name only its own client scope, the `client_id` its welcome carried.
+
+Subscribing to `session/<id>` holds the session's fold for the connection. From then on each change
+to the session's rows arrives as
+`{ c: "e", type: "event", scope, seq, kind: "change", tables, paths }`, carrying whole rows, and
+`{ kind: "live", scope, seq: null, activation }` arrives on subscribe and whenever the session's
+activation changes. A change that touched no row sends nothing, so a client's seq can lag the
+session's; that only makes a later resume send a little more.
+
+The answer comes after the subscription is registered. Subscribe first, then read with
+[`head.read`](/docs/reference/operations/head/read): every change after the read's seq reaches the
+connection, and an event at or below it is already in the answer. Subscribing to a scope twice is a
+no-op.
+
+## When to call it
+
+Right after the welcome, and again after every reconnect, before reading or resuming.
+
+## Access
+
+Any principal with `participant` authority, and only on the WebSocket; over HTTP it answers
+`invalid`. A session scope needs the principal to be able to read the session.
+
+## Example
+
+Call frame:
+
+```json
+{
+  "c": "e",
+  "type": "call",
+  "id": "1",
+  "op": "events.subscribe",
+  "input": { "scopes": ["session/0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f"] }
+}
+```
+
+Answer:
+
+```json
+{ "c": "e", "type": "result", "id": "1", "output": null }
+```
+
+## Errors
+
+- `denied` for another connection's client scope: `A connection may subscribe only to its own
+client scope, not client/<id>.`
+- `unknown` for a session the host doesn't have.
+- `invalid` over HTTP: `events.subscribe answers only on the host's WebSocket at /.nyte/ws.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["scopes"],
+  "properties": {
+    "scopes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(host|session/[^/]+|client/[^/]+)$"
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

@@ -1,5 +1,5 @@
 {
-  "revision": 2,
+  "revision": 3,
   "operations": {
     "connection.watch": "38887a11ce30c305",
     "connection.blob": "d661f9695af8afc2",
@@ -29,6 +29,9 @@
     "host.tailnet.status": "ad7904ae72cfeb65",
     "host.tailnet.configure": "deeaec9d81edc09b",
     "host.tailnet.logout": "dbf9605bc5c97503",
+    "events.subscribe": "f125591474a866d7",
+    "events.unsubscribe": "9886bfb9ea3e0718",
+    "text.open": "4da72834b86023c6",
     "session.info": "ff0ebc4090edfcd9",
     "session.update": "b904f8c923e7ced9",
     "session.remove": "64f951e2105ba114",
@@ -38,6 +41,7 @@
     "head.send": "94eaccf1dda25d25",
     "head.configure": "24b15dbbf3a0394d",
     "head.view": "2c3c978efaecfefc",
+    "head.read": "bfe89f75d6244935",
     "head.watch": "4d872158f4bb60bf",
     "head.see": "10d92f97a2b9100f",
     "head.history": "6b9f0bc6468f385d",

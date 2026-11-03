@@ -14,16 +14,28 @@ import {
   withJson,
 } from "@nyte-ai/schema";
 import type {
+  Activation,
   Authority,
   CallFrame,
   ClientId,
   HelloFrame,
   Json,
   PrincipalId,
+  SdkErrorWire,
+  Seq,
+  SessionChange,
+  SessionId,
+  WelcomeFrame,
 } from "@nyte-ai/schema";
 import type { Connection } from "@nyte-ai/core";
-import type { ServerHost } from "@nyte-ai/core/server";
-import { answersOnce, asSdkError, encodeError, namesOperation } from "@nyte-ai/protocol";
+import type { ServerHost, SessionAttachment, StreamingPart } from "@nyte-ai/core/server";
+import {
+  answersOnce,
+  asSdkError,
+  decodeInput,
+  encodeError,
+  namesOperation,
+} from "@nyte-ai/protocol";
 import type { RawData, WebSocket } from "ws";
 import type { TailnetControl } from "../tailnet.ts";
 import { bindConnection } from "./binding.ts";
@@ -48,9 +60,37 @@ export type TextEntry = {
   readonly body: string;
 };
 
+type EventOut =
+  | WelcomeFrame
+  | { readonly c: "e"; readonly type: "result"; readonly id: string; readonly output: Json }
+  | { readonly c: "e"; readonly type: "error"; readonly id: string; readonly error: SdkErrorWire }
+  | {
+      readonly c: "e";
+      readonly type: "event";
+      readonly scope: string;
+      readonly seq: Seq;
+      readonly kind: "change";
+      readonly tables: SessionChange["tables"];
+      readonly paths: SessionChange["paths"];
+    }
+  | {
+      readonly c: "e";
+      readonly type: "event";
+      readonly scope: string;
+      readonly seq: null;
+      readonly kind: "live";
+      readonly activation: Activation;
+    };
+
 type Outbox = {
-  event(frame: Json): void;
+  event(frame: EventOut): void;
   text(entry: TextEntry): void;
+};
+
+type Subscription = {
+  readonly attachment: SessionAttachment | null;
+  readonly sent: Map<string, StreamingPart>;
+  release(): void;
 };
 
 type Queued = { part: string; run: string | null; version: number; whole: boolean; body: string };
@@ -83,7 +123,153 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     socket.close(code, truncate(reason));
   };
 
-  const outbox = openOutbox(socket, close);
+  const subscriptions = new Map<string, Subscription>();
+  let textOpen = false;
+
+  const outbox = openOutbox(socket, close, () => {
+    textOpen = false;
+
+    for (const subscription of subscriptions.values()) subscription.sent.clear();
+  });
+
+  const stream = (subscription: Subscription): void => {
+    if (!textOpen || subscription.attachment === null) return;
+    const live = subscription.attachment.streaming();
+    const kept = new Set<string>();
+
+    for (const part of live) {
+      kept.add(part.part);
+      const previous = subscription.sent.get(part.part);
+
+      if (previous !== undefined && previous.version === part.version) continue;
+      subscription.sent.set(part.part, part);
+
+      const appended =
+        previous !== undefined &&
+        part.version > previous.version &&
+        part.markdown.startsWith(previous.markdown);
+
+      const body = appended ? part.markdown.slice(previous.markdown.length) : part.markdown;
+
+      if (!appended || body !== "")
+        outbox.text({
+          part: part.part,
+          run: part.run,
+          version: part.version,
+          whole: !appended,
+          body,
+        });
+    }
+
+    for (const part of subscription.sent.keys())
+      if (!kept.has(part)) subscription.sent.delete(part);
+  };
+
+  const attachSession = async (scope: string, id: SessionId): Promise<void> => {
+    await peer.connection.session(id).info();
+    const attachment = peer.server.wire.attach(id, peer.principal);
+
+    try {
+      await attachment.ready();
+    } catch (error) {
+      attachment.release();
+
+      throw error;
+    }
+
+    if (closed || subscriptions.has(scope)) {
+      attachment.release();
+
+      return;
+    }
+
+    let sent = attachment.seq();
+    let activation = JSON.stringify(attachment.activation());
+
+    const live = (): void =>
+      outbox.event({
+        c: "e",
+        type: "event",
+        scope,
+        seq: null,
+        kind: "live",
+        activation: attachment.activation(),
+      });
+
+    const changed = (): void => {
+      if (attachment.seq() > sent) {
+        const change = attachment.changesSince(sent);
+        sent = change.seq;
+
+        if (Object.keys(change.tables).length > 0 || change.paths.length > 0)
+          outbox.event({
+            c: "e",
+            type: "event",
+            scope,
+            seq: change.seq,
+            kind: "change",
+            tables: change.tables,
+            paths: change.paths,
+          });
+      }
+
+      const now = JSON.stringify(attachment.activation());
+
+      if (now !== activation) {
+        activation = now;
+        live();
+      }
+
+      stream(subscription);
+    };
+
+    const unsubscribe = attachment.subscribe(changed);
+
+    const subscription: Subscription = {
+      attachment,
+      sent: new Map(),
+      release() {
+        unsubscribe();
+        attachment.release();
+      },
+    };
+
+    subscriptions.set(scope, subscription);
+    live();
+    stream(subscription);
+  };
+
+  const subscribe = async (scopes: readonly string[]): Promise<void> => {
+    const targets = scopes.map((scope) => readScope(scope, client?.id ?? null));
+
+    for (const target of targets) {
+      if (subscriptions.has(target.scope)) continue;
+
+      if (target.kind === "session") await attachSession(target.scope, target.session);
+      else
+        subscriptions.set(target.scope, {
+          attachment: null,
+          sent: new Map(),
+          release: () => undefined,
+        });
+    }
+  };
+
+  const unsubscribe = (scopes: readonly string[]): void => {
+    for (const scope of scopes) {
+      subscriptions.get(scope)?.release();
+      subscriptions.delete(scope);
+    }
+  };
+
+  const openText = (): void => {
+    textOpen = true;
+
+    for (const subscription of subscriptions.values()) {
+      subscription.sent.clear();
+      stream(subscription);
+    }
+  };
 
   const greet = (data: string): void => {
     const value = Buffer.byteLength(data) > HELLO_MAX_BYTES ? undefined : readJson(data);
@@ -141,6 +327,25 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       throw new SdkError("denied", `${op} needs ${needed} authority.`);
 
     if (UPLOADS.has(op)) throw new SdkError("invalid", `${op} carries bytes; call it over HTTP.`);
+
+    if (op === "events.subscribe") {
+      await subscribe(decodeInput(op, input).scopes);
+
+      return null;
+    }
+
+    if (op === "events.unsubscribe") {
+      unsubscribe(decodeInput(op, input).scopes);
+
+      return null;
+    }
+
+    if (op === "text.open") {
+      decodeInput(op, input);
+      openText();
+
+      return null;
+    }
 
     return callBinding(binding, op, input, { body: null, signal });
   };
@@ -207,6 +412,9 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     for (const flight of flights) flight.abort(new SdkError("unavailable", "The socket closed."));
     flights.clear();
+
+    for (const subscription of subscriptions.values()) subscription.release();
+    subscriptions.clear();
     peer.leave();
   });
 
@@ -214,7 +422,11 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   else peer.signal.addEventListener("abort", revoked, { once: true });
 }
 
-function openOutbox(socket: WebSocket, close: (code: number, reason: string) => void): Outbox {
+function openOutbox(
+  socket: WebSocket,
+  close: (code: number, reason: string) => void,
+  textClosing: () => void,
+): Outbox {
   const events: { readonly text: string; readonly bytes: number }[] = [];
   const texts = new Map<string, Queued>();
   let eventBytes = 0;
@@ -309,11 +521,32 @@ function openOutbox(socket: WebSocket, close: (code: number, reason: string) => 
         texts.clear();
         textBytes = 0;
         textClosed = true;
+        textClosing();
       }
 
       pump();
     },
   };
+}
+
+function readScope(
+  scope: string,
+  client: ClientId | null,
+):
+  | { readonly kind: "host"; readonly scope: string }
+  | { readonly kind: "session"; readonly scope: string; readonly session: SessionId }
+  | { readonly kind: "client"; readonly scope: string } {
+  if (scope === "host") return { kind: "host", scope };
+
+  if (scope.startsWith("session/"))
+    return { kind: "session", scope, session: asId<"session">(scope.slice("session/".length)) };
+
+  if (scope === `client/${client ?? ""}`) return { kind: "client", scope };
+
+  throw new SdkError(
+    "denied",
+    `A connection may subscribe only to its own client scope, not ${scope}.`,
+  );
 }
 
 function refuseRevisions(hello: HelloFrame): string | null {

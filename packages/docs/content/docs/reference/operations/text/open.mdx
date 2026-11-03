@@ -1,0 +1,72 @@
+---
+title: text.open
+description: "Opens the socket's text channel: the whole text of every part streaming in the subscribed sessions, then what each streams."
+---
+
+Opens the text channel of the host's WebSocket. For every text or thinking part streaming in the
+sessions the connection subscribes to, the host sends the part's whole text so far,
+`{ c: "t", part, run, version, text }`, then `{ c: "t", part, run, version, append }` for each piece
+it streams, `version` being the part's version after it. A session subscribed later sends its
+streaming parts whole too.
+
+The host merges queued appends for one part into a longer one and never reorders them. When the
+queued text still passes the backlog budget the host drops it and sends `{ c: "t", type: "closed" }`;
+the event channel is untouched, and the client calls `text.open` again to get every part whole.
+
+## When to call it
+
+Once after subscribing, by a client that shows text as a model writes it, and again after a
+`closed` frame.
+
+## Access
+
+Any principal with `participant` authority, and only on the WebSocket; over HTTP it answers
+`invalid`.
+
+## Example
+
+Input:
+
+```json
+{}
+```
+
+Output, followed on the text channel by a frame like:
+
+```json
+{ "c": "t", "part": "run1:a1:0", "run": "run1", "version": 2, "text": "Streaming words" }
+```
+
+## Errors
+
+- `invalid` over HTTP: `text.open answers only on the host's WebSocket at /.nyte/ws.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

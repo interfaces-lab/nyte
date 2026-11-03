@@ -1,9 +1,11 @@
 import type {
+  Activation,
   Authority,
   BatchOutcome,
   Disposer,
   ExecutionCoverage,
   HeadName,
+  HeadWindow,
   HoldLease,
   HostId,
   HostView,
@@ -14,12 +16,18 @@ import type {
   MoveOutcome,
   Owned,
   PageId,
+  PartId,
   Position,
   PrincipalId,
   ReceiptId,
+  Resume,
   Revision,
+  RunId,
+  Seq,
+  SessionChange,
   SessionId,
   TailnetStatus,
+  WindowSpec,
   WorkspaceId,
 } from "@nyte-ai/schema";
 import type {
@@ -131,6 +139,26 @@ export interface WireHost {
 
   /** The part definition registered under `kind` in a session, once its plugins are loaded. */
   partDefinition(session: SessionId, kind: string): Promise<PartDefinition | undefined>;
+
+  attach(session: SessionId, principal: PrincipalId): SessionAttachment;
+}
+
+export interface StreamingPart {
+  readonly part: PartId;
+  readonly run: RunId | null;
+  readonly version: number;
+  readonly markdown: string;
+}
+
+export interface SessionAttachment {
+  ready(): Promise<void>;
+  seq(): Seq;
+  activation(): Activation;
+  read(head: HeadName, window: WindowSpec, resume: Resume | null): HeadWindow;
+  changesSince(seq: Seq): SessionChange;
+  streaming(): readonly StreamingPart[];
+  subscribe(listener: () => void): Disposer;
+  release(): void;
 }
 
 /** A composed host and the server port in front of it. */

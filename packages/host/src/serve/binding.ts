@@ -1,4 +1,4 @@
-import { isJson, SdkError } from "@nyte-ai/schema";
+import { isJson, SdkError, SOCKET_PATH } from "@nyte-ai/schema";
 import type {
   ByteReader,
   Capability,
@@ -274,6 +274,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       return { session: session.id, receipt: receipt.id, message: receipt.message };
     },
     "sessions.list": (input) => connection.sessions.list(input),
+    "events.subscribe": async () => socketOnly("events.subscribe"),
+    "events.unsubscribe": async () => socketOnly("events.unsubscribe"),
+    "text.open": async () => socketOnly("text.open"),
     "host.tailnet.status": async () => tailnet().status(),
     "host.tailnet.configure": (input) => tailnet().configure(input),
     "host.tailnet.logout": () => tailnet().logout(),
@@ -293,6 +296,18 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     },
     "head.configure": ({ session: id, head, patch }) => session(id).head(head).configure(patch),
     "head.view": ({ session: id, head, options }) => session(id).head(head).view(options),
+    "head.read": async ({ session: id, head, window, resume }) => {
+      await session(id).info();
+      const attachment = wire.attach(id, principal);
+
+      try {
+        await attachment.ready();
+
+        return attachment.read(head, window, resume ?? null);
+      } finally {
+        attachment.release();
+      }
+    },
     "head.watch": async ({ session: id, head, options }) => {
       await session(id).info();
 
@@ -657,6 +672,10 @@ function toJson(value: unknown): Json {
 
 function principalKey(principal: PrincipalId, name: string): string {
   return JSON.stringify([principal, name]);
+}
+
+function socketOnly(name: string): never {
+  return fail("invalid", `${name} answers only on the host's WebSocket at ${SOCKET_PATH}.`);
 }
 
 function fail(code: "unknown" | "invalid" | "denied" | "unavailable", message: string): never {

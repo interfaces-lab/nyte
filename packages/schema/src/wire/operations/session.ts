@@ -28,11 +28,14 @@ import {
   UpdateOutcomeSchema,
 } from "../../sessions.ts";
 import {
+  HeadWindowType,
   HistoryPageType,
+  ResumeType,
   SessionViewSchema,
   UserStatusType,
   ViewFrameSchema,
   ViewOptionsType,
+  WindowSpecType,
 } from "../../views.ts";
 import { NOTHING, ON_SESSION, RECEIPT_ID, SESSION, wireObject, wireSchema } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
@@ -151,6 +154,18 @@ export const SESSION_OPERATIONS = {
     kind: "query",
     input: wireObject({ ...HEAD, options: Type.Optional(ViewOptionsType) }),
     output: SessionViewSchema,
+  },
+  "head.read": {
+    ...PARTICIPANT,
+    summary:
+      "Reads a window of a head's rows at a seq, or what changed in it since a seq the client resumes from.",
+    kind: "query",
+    input: wireObject({
+      ...HEAD,
+      window: WindowSpecType,
+      resume: Type.Optional(ResumeType),
+    }),
+    output: wireSchema(HeadWindowType),
   },
   "head.watch": {
     ...PARTICIPANT,
