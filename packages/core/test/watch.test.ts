@@ -12,10 +12,9 @@ import type {
 } from "@nyte-ai/schema";
 import { assert, describe, expect, it, vi } from "vitest";
 import { createHostState, watchHost } from "../src/api/host.ts";
-import { sessionInfo, watchSessions } from "../src/api/session.ts";
+import { sessionInfo } from "../src/api/session.ts";
 import { createKernel } from "../src/compose.ts";
-import { project } from "../src/fold/project.ts";
-import { watchHead } from "../src/fold/view.ts";
+import { readView } from "../src/fold/window.ts";
 import { publishSet } from "../src/fold/watch.ts";
 import { coalesce } from "../src/index.ts";
 import { envelope, headRef, inboxRef, memoryStore, sessionRef } from "../src/store.ts";
@@ -24,8 +23,6 @@ import type { CommitRecord, SessionRecord } from "../src/store.ts";
 import { fakeModels, open } from "./fake-models.ts";
 
 const first: SessionId = asId("s1");
-
-const second: SessionId = asId("s2");
 
 const ada: PrincipalId = asId("ada");
 
@@ -286,34 +283,24 @@ describe("watch", () => {
     expect(moved.seenThrough).toBeLessThanOrEqual(current.messages.at(-1)?.at ?? 0);
   });
 
-  it("shares one fold between watchers of the same session and principal", async () => {
+  it("shares one fold between holders of the same session and principal, and rebuilds it after the last leaves", async () => {
     const kernel = await createMemoryKernel();
     await createSession(kernel, first, "triage", 1);
     await admit(kernel, first, "m1");
 
-    const left = watchHead(kernel, { session: first, head: main, principal: ada })[
-      Symbol.asyncIterator
-    ]();
-
-    const right = watchHead(kernel, { session: first, head: main, principal: ada })[
-      Symbol.asyncIterator
-    ]();
-
-    const [one, two] = await Promise.all([left.next(), right.next()]);
-    assert(!one.done && !two.done);
-
-    expect(one.value).toBe(two.value);
-    expect(one.value.messages.map((message) => message.id)).toEqual(["m1"]);
-
     const hold = kernel.folds.acquire(first, ada);
     const other = kernel.folds.acquire(first, bob);
+    await Promise.all([hold.ready(), other.ready()]);
     let notified = 0;
     hold.subscribe(() => {
       notified += 1;
     });
-    await Promise.all([hold.ready(), other.ready()]);
 
-    expect(project(hold.state(), main)).toBe(one.value);
+    const shared = kernel.folds.acquire(first, ada);
+
+    expect(shared.state()).toBe(hold.state());
+    shared.release();
+    expect(readView(hold.state(), main).messages.map((message) => message.id)).toEqual(["m1"]);
     expect(other.state()).not.toBe(hold.state());
 
     await land(kernel, first, "m2", null);
@@ -326,7 +313,6 @@ describe("watch", () => {
         ?.messages.map((message) => message.id),
     ).toEqual(["m2", "m1"]);
 
-    await Promise.all([left.return?.(), right.return?.()]);
     const kept = hold.state();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
@@ -356,68 +342,6 @@ describe("watch", () => {
         ?.messages.map((message) => message.id),
     ).toEqual(["m2", "m1"]);
     rebuilt.release();
-  });
-
-  it("releases the fold within a tick when a watcher returns while a pull is pending", async () => {
-    const kernel = await createMemoryKernel();
-    await createSession(kernel, first, "triage", 1);
-    await admit(kernel, first, "m1");
-    let released = 0;
-
-    const spied: Kernel = {
-      ...kernel,
-      folds: {
-        ...kernel.folds,
-        acquire(session, principal) {
-          const hold = kernel.folds.acquire(session, principal);
-
-          return {
-            ...hold,
-            release() {
-              released += 1;
-              hold.release();
-            },
-          };
-        },
-      },
-    };
-
-    const views = watchHead(spied, { session: first, head: main, principal: ada })[
-      Symbol.asyncIterator
-    ]();
-
-    const opened = await views.next();
-    assert(!opened.done);
-    const pending = views.next();
-    await new Promise((resolve) => setTimeout(resolve, 40));
-
-    expect(released).toBe(0);
-
-    const closing = views.return?.();
-    await Promise.resolve();
-
-    expect(released).toBe(1);
-    expect(await pending).toEqual({ done: true, value: undefined });
-    expect(await closing).toEqual({ done: true, value: undefined });
-    expect(await views.next()).toEqual({ done: true, value: undefined });
-    expect(released).toBe(1);
-  });
-
-  it("re-yields the directory when a session publishes", async () => {
-    const kernel = await createMemoryKernel();
-    await createSession(kernel, first, "first", 1);
-    const directory = watchSessions(kernel, ada)[Symbol.asyncIterator]();
-    const before = await directory.next();
-    assert(!before.done);
-
-    expect(before.value.map((info) => info.name)).toEqual(["first"]);
-
-    await createSession(kernel, second, "second", 2);
-    const after = await directory.next();
-    assert(!after.done);
-
-    expect(after.value.map((info) => info.name)).toEqual(["second", "first"]);
-    await directory.return?.();
   });
 
   it("yields the host view again when the host state updates", async () => {

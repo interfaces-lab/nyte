@@ -115,7 +115,7 @@ describe("child background items", () => {
     expect(await askUser(kernel, host, turns, grandchild, 2)).toEqual({ kind: "parked" });
     expect(await childState(child, grandchild.id, "waiting")).toBe("waiting");
     expect(await childState(root, child.id, "waiting")).toBe("waiting");
-    expect((await root.view()).heads[0]?.background).toEqual({ working: 0, waiting: 1 });
+    expect((await root.info()).heads[0]?.background).toEqual({ working: 0, waiting: 1 });
   });
 
   it("links a child from the store after a restart, so its parked question reaches the parent", async () => {
@@ -136,7 +136,10 @@ describe("child background items", () => {
     const view = await after.host.session(parent.id).view();
 
     expect(view.background).toMatchObject([{ kind: "child", id: child.id, state: "waiting" }]);
-    expect(view.heads[0]?.background).toEqual({ working: 0, waiting: 1 });
+    expect((await after.host.session(parent.id).info()).heads[0]?.background).toEqual({
+      working: 0,
+      waiting: 1,
+    });
   });
 
   it("shows a done child's question from another host to its watched parent", async () => {

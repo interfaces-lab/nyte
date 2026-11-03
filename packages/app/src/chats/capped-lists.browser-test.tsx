@@ -66,7 +66,6 @@ const views = new Map<SessionId, readonly SessionView[]>([
     [
       sessionView({
         execution: OWN_RUN_WAITS,
-        heads: heads(OWN_RUN_WAITS, 1),
         background: [waitingChild(LEAF, "Leaf")],
       }),
     ],
@@ -76,7 +75,6 @@ const views = new Map<SessionId, readonly SessionView[]>([
     [
       sessionView({
         execution: ASKING,
-        heads: heads(ASKING),
         parts: [
           {
             id: QUESTION,

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { tree } from "../src/api/head.ts";
 import { landing } from "../src/engine/admission.ts";
 import { emptyFold, fold } from "../src/fold/fold.ts";
-import { project } from "../src/fold/project.ts";
+import { readView } from "../src/fold/window.ts";
 import { pollStore } from "../src/fold/watch.ts";
 import { LOCAL } from "../src/index.ts";
 import {
@@ -260,7 +260,7 @@ describe("the store is the truth", () => {
 
     for (const event of [request(4, 100), request(5, 200), request(4, 100)]) {
       state = fold(state, event);
-      seqs.push(project(state, main).seq);
+      seqs.push(readView(state, main).seq);
     }
 
     expect(seqs).toEqual([4, 5, 4]);

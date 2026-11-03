@@ -7,7 +7,7 @@ import type { Task } from "../../src/lib/tasks.ts";
 import { shellCard, toolCard } from "../../src/lib/tool-card.ts";
 import type { ToolCardModel } from "../../src/lib/tool-card.ts";
 import type { ShellJob } from "../../src/model/state.ts";
-import { buildView } from "../fixture/view.ts";
+import { buildView, followed } from "../fixture/view.ts";
 import type { TurnBuilder } from "../fixture/view.ts";
 
 function findTool(name: string, spec: Parameters<TurnBuilder["tool"]>[1]): ToolMessage {
@@ -199,7 +199,7 @@ describe("toolCard", () => {
         pinned: false,
         archived: false,
         activation: { kind: "active" },
-        heads: childView.heads,
+        heads: followed(childView).info.heads,
         createdAt: 0,
         lastActivityAt: 0,
       },
@@ -236,7 +236,7 @@ describe("toolCard", () => {
         pinned: false,
         archived: false,
         activation: { kind: "active" },
-        heads: working.heads,
+        heads: followed(working).info.heads,
         createdAt: 0,
         lastActivityAt: 0,
       },

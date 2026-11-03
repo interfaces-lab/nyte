@@ -39,9 +39,9 @@ export const IDLE: Execution = { kind: "idle", lastRun: null };
 
 export const WORKING: TurnInfo["state"] = { kind: "working", activity: null };
 
-const UNCONFIGURED: SessionView["configuration"] = { selected: null, effective: null };
+export const UNCONFIGURED: SessionView["configuration"] = { selected: null, effective: null };
 
-const NO_CONTEXT: ContextView = { tokens: 0, window: 0, lastRequest: null };
+export const NO_CONTEXT: ContextView = { tokens: 0, window: 0, lastRequest: null };
 
 const UNTOUCHED = { count: 0, paths: [] };
 
@@ -59,11 +59,6 @@ const EMPTY_SUMMARY: TurnInfo["summary"] = {
   added: 0,
   removed: 0,
 };
-
-export const snapshots = new WeakMap<
-  readonly TurnInfo[],
-  { readonly turns: readonly TurnInfo[]; readonly stale: boolean }
->();
 
 export function updatePart(
   draft: Draft,
@@ -478,13 +473,6 @@ export function emptyHead(
     configuration: UNCONFIGURED,
     context: NO_CONTEXT,
   };
-}
-
-export function stale(turns: readonly TurnInfo[]): void {
-  const known = snapshots.get(turns);
-
-  if (known !== undefined && !known.stale)
-    snapshots.set(turns, { turns: known.turns, stale: true });
 }
 
 export function partView(part: PartRecord): PartView {

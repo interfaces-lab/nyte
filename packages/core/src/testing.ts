@@ -18,4 +18,4 @@ export { decodeFoldCheckpoint, encodeFoldCheckpoint } from "./fold/checkpoint.ts
 
 export { emptyFold, fold } from "./fold/fold.ts";
 
-export { project } from "./fold/project.ts";
+export { readView } from "./fold/window.ts";

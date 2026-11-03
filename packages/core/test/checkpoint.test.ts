@@ -131,7 +131,7 @@ it("counts no background work on a head restored from a checkpoint taken while a
   await writer.workspace(workspace).jobs.start({ command: "pnpm dev", session: session.id });
   await (await session.head(main).send("x".repeat(1_100_000))).settled();
 
-  expect((await session.view()).heads[0]?.background).toEqual({ working: 1, waiting: 0 });
+  expect((await session.info()).heads[0]?.background).toEqual({ working: 1, waiting: 0 });
   await until(async () => (await connection.checkpoints?.read(session.id)) ?? undefined);
   await writer.close();
 
@@ -139,5 +139,8 @@ it("counts no background work on a head restored from a checkpoint taken while a
   const view = await reader.session(session.id).head(main).view();
 
   expect(view.background).toEqual([]);
-  expect(view.heads[0]?.background).toEqual({ working: 0, waiting: 0 });
+  expect((await reader.session(session.id).info()).heads[0]?.background).toEqual({
+    working: 0,
+    waiting: 0,
+  });
 });

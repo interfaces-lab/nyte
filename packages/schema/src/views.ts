@@ -19,7 +19,6 @@ import type { Decoded, Schema } from "./schema.ts";
 import {
   AgentInfoType,
   CommandInfoType,
-  HeadInfoType,
   SessionCatalogViewType,
   SettingInfoType,
   SkillInfoType,
@@ -152,7 +151,6 @@ export const SessionViewType = Type.Object({
     effective: nullable(ConfigurationType),
   }),
   context: ContextViewType,
-  heads: Type.Array(HeadInfoType),
   changes: Type.Array(FileChangeType),
   catalog: SessionCatalogViewType,
   seenThrough: nullable(Type.Number()),

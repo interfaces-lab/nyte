@@ -2,7 +2,7 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, HeadName, SessionView } from "@nyte-ai/schema";
 import { isPart, text } from "@nyte-ai/core";
 import type { Session } from "@nyte-ai/core";
-import { emptyFold, fold, project } from "@nyte-ai/core/testing";
+import { emptyFold, fold, readView } from "@nyte-ai/core/testing";
 import { listen } from "@nyte-ai/host";
 import { afterEach, assert, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
@@ -302,7 +302,7 @@ it("refreshes a retained leading prompt from the host's newer record of the same
     for (const event of events)
       state = fold(state, { seq: asSeq(state.seq + 1), at: state.seq, ...event });
 
-    return project(state, main, { tail: 2 });
+    return readView(state, main, { tail: 2 });
   };
 
   const opening = play(

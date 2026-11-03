@@ -9,7 +9,7 @@ import { runStep } from "../src/engine/durable.ts";
 import { authenticateToken, redeemPairing } from "../src/engine/principals.ts";
 import { workspaceHandle } from "../src/env/workspaces.ts";
 import { resourcesPlugin } from "../src/extend/resources.ts";
-import { project } from "../src/fold/project.ts";
+import { readView } from "../src/fold/window.ts";
 import { viewHead } from "../src/fold/view.ts";
 import { createFoldCache } from "../src/fold/watch.ts";
 import { LOCAL } from "../src/index.ts";
@@ -943,7 +943,7 @@ describe("browser pages (§37i)", () => {
 
     const cold = createFoldCache(kernel).acquire(session.id, LOCAL);
     await cold.ready();
-    expect(project(cold.state(), main).background).toEqual([{ ...item, state: "working" }]);
+    expect(readView(cold.state(), main).background).toEqual([{ ...item, state: "working" }]);
     cold.release();
 
     const client = await host.workspace(workspace).browser();

@@ -1,5 +1,5 @@
 {
-  "revision": 8,
+  "revision": 9,
   "operations": {
     "connection.watch": "231c9971fb65c2af",
     "connection.blob": "d661f9695af8afc2",
@@ -23,7 +23,6 @@
     "workspaces.add": "25ec29b4e37786af",
     "workspaces.forget": "8aea8d47ef4e422c",
     "workspaces.cleanWorktrees": "87adb6ec8d5b3b13",
-    "sessions.watch": "ee4e3e0dd8822abb",
     "sessions.start": "a30ef840361d0792",
     "sessions.list": "cb56a272894e2a86",
     "sessions.read": "b391cc99d4ab025a",
@@ -50,9 +49,8 @@
     "session.completeCommand": "560d72fe50c98ead",
     "head.send": "f4b74208b4f36524",
     "head.configure": "24b15dbbf3a0394d",
-    "head.view": "22f95c8b4d792c1b",
+    "head.view": "bada2cedc1dcc5ab",
     "head.read": "bfe89f75d6244935",
-    "head.watch": "4d872158f4bb60bf",
     "head.see": "10d92f97a2b9100f",
     "head.history": "e49cc4c5942c8fdd",
     "head.tree": "5fe8ad00dfe40cef",
@@ -74,7 +72,6 @@
     "part.update": "f1d16651466bf0e0",
     "part.act": "0ef71b38ebf2cdf0",
     "part.answer": "4fd6ca406398bcaa",
-    "part.watch": "bb02586021634b24",
     "part.close": "3bea393b101cda0a",
     "workspace.info": "4585eee20b66e729",
     "workspace.watch": "c41e3363092789cd",

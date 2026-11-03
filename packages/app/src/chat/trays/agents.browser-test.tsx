@@ -164,16 +164,6 @@ function view(
       effective: configuration,
     },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [
-      {
-        name: asId<"head">("main"),
-        tip: { kind: "start" },
-        stack: null,
-        execution,
-        unread: false,
-        background: { working: 0, waiting: 0 },
-      },
-    ],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };

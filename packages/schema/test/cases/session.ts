@@ -180,7 +180,6 @@ export const sessionCases = {
       background: [background],
       configuration: { selected: null, effective: configuration },
       context: contextView,
-      heads: [headInfo],
       changes: [fileChange],
       catalog,
     },

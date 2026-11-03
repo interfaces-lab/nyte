@@ -136,7 +136,6 @@ const unchanged = {
   background: [],
   configuration: { selected: configuration, effective: configuration },
   context: { tokens: 0, window: 1_000, lastRequest: null },
-  heads: [],
   changes: [],
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 } as const satisfies Omit<SessionView, "messages">;

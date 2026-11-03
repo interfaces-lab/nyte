@@ -1,5 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type {
+  CatalogRow,
   Execution,
   HeadName,
   HeadRow,
@@ -12,8 +13,11 @@ import type {
   PathChange,
   Resume,
   Seq,
+  SessionCatalogView,
   SessionChange,
+  SessionView,
   TableChanges,
+  ViewOptions,
   WindowSpec,
 } from "@nyte-ai/schema";
 import { INDEX } from "../contract/fold.ts";
@@ -26,8 +30,10 @@ import {
   emptyHead,
   IDLE,
   newTouched,
+  NO_CONTEXT,
   readQueueIds,
   showsTurn,
+  UNCONFIGURED,
 } from "./draft.ts";
 import { findLeadingPrompt, holdsReports, readSeenThrough } from "./project.ts";
 
@@ -142,6 +148,44 @@ export function readWindow(
       },
     },
     live: { activation: state.activation },
+  };
+}
+
+export function readView(state: FoldState, head: HeadName, options?: ViewOptions): SessionView {
+  const window = readWindow(state, head, { tail: options?.tail ?? DEFAULT_TAIL }, null);
+  const tables = window.tables;
+  const messages = new Map(tables.messages.upsert.map((message) => [message.id, message]));
+  const row = tables.heads.upsert.find((entry) => entry.name === head);
+  const settings = tables.settings.upsert.find((entry) => entry.name === head);
+  const shown = window.order.flatMap((id) => messages.get(id) ?? []);
+  const turns = new Set(shown.map((message) => message.turn));
+  const prompt = window.leadingPrompt === null ? undefined : messages.get(window.leadingPrompt);
+  const execution = row?.execution ?? IDLE;
+
+  return {
+    revision: row?.revision ?? null,
+    seq: window.seq,
+    activation: window.live.activation,
+    messages: shown,
+    queue: (row?.queue ?? []).flatMap((id) => {
+      const message = messages.get(id);
+
+      return message !== undefined && belongsInQueue(message, execution) ? [message] : [];
+    }),
+    leadingPrompt: prompt?.kind === "user" ? prompt : null,
+    parts: tables.parts.upsert,
+    turns: tables.turns.upsert.filter((turn) => turns.has(turn.id)),
+    usage: tables.usage.upsert.find((entry) => entry.name === head)?.usage ?? ZERO_USAGE,
+    execution,
+    reportsHeld: row?.reportsHeld ?? false,
+    background: tables.background.upsert.flatMap((entry) =>
+      entry.head === head ? [entry.item] : [],
+    ),
+    configuration: settings?.configuration ?? UNCONFIGURED,
+    context: settings?.context ?? NO_CONTEXT,
+    changes: tables.changes.upsert,
+    catalog: groupCatalog(tables.catalog.upsert),
+    seenThrough: row?.seenThrough ?? null,
   };
 }
 
@@ -402,5 +446,15 @@ function readTable<Row>(
   return {
     upsert: rows.flatMap((entry) => (entry.row === undefined ? [] : [entry.row])),
     drop: rows.flatMap((entry) => (entry.row === undefined ? [entry.key] : [])),
+  };
+}
+
+function groupCatalog(rows: readonly CatalogRow[]): SessionCatalogView {
+  return {
+    commands: rows.flatMap((row) => (row.kind === "commands" ? [row.entry] : [])),
+    settings: rows.flatMap((row) => (row.kind === "settings" ? [row.entry] : [])),
+    skills: rows.flatMap((row) => (row.kind === "skills" ? [row.entry] : [])),
+    agents: rows.flatMap((row) => (row.kind === "agents" ? [row.entry] : [])),
+    tools: rows.flatMap((row) => (row.kind === "tools" ? [row.entry] : [])),
   };
 }

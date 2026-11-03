@@ -8,7 +8,6 @@ import {
   reuse,
   setTurn,
   showsTurn,
-  stale,
   toPartMessageId,
   touchPath,
   touchRow,
@@ -203,7 +202,6 @@ function updatePaths(draft: Draft): ReadonlySet<HeadName> {
 
       if (position === undefined || path.turns[position] === info) continue;
       path.turns[position] = info;
-      stale(path.turns);
       touched.add(name);
       resum(name, position);
     }
@@ -311,8 +309,6 @@ function reflowTurns(draft: Draft, path: Path, from: number): number {
     path.turns.push(turn.info);
     path.firstAt.push(position);
   }
-
-  stale(path.turns);
 
   return kept;
 }

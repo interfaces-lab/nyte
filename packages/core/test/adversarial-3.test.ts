@@ -239,7 +239,7 @@ describe("ADV A-3", () => {
       };
 
       await until(async () =>
-        (await session.view()).heads[0]?.execution.kind === "waiting" ? true : undefined,
+        (await session.view()).execution.kind === "waiting" ? true : undefined,
       );
 
       await new Promise((resolve) => setTimeout(resolve, 50));
