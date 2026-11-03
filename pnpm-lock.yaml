@@ -184,6 +184,9 @@ importers:
       '@nyte-ai/plugin':
         specifier: workspace:*
         version: link:packages/plugin
+      '@nyte-ai/schema':
+        specifier: workspace:*
+        version: link:packages/schema
       '@nyte-ai/sdk':
         specifier: workspace:*
         version: link:packages/sdk
