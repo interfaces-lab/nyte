@@ -15,7 +15,7 @@ export function openClientsStore(join: Join): ClientsStore {
   let stop: (() => void) | null = null;
 
   const leave = join("host", {
-    attach(live) {
+    attach(live, subscribe) {
       stop = live.onEvent((event) => {
         if (event.scope !== "host" || event.kind !== "live" || !Array.isArray(event.clients))
           return;
@@ -26,6 +26,7 @@ export function openClientsStore(join: Join): ClientsStore {
         snapshot = next;
         listeners.notify();
       });
+      void subscribe();
     },
     detach() {
       stop?.();

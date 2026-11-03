@@ -266,6 +266,35 @@ describe("a head store", () => {
   });
 });
 
+describe("a failed read", () => {
+  it("leaves the store stale with the read's error and retries it while the socket stays open", async () => {
+    const served = await serve();
+    const session = await startSession(served);
+    let failed = false;
+
+    const connection = attach(served.listener, (request) => {
+      const socket = global(request);
+      const send = socket.send.bind(socket);
+
+      return Object.assign(socket, {
+        send(data: string) {
+          const breaks = !failed && data.includes('"op":"head.read"');
+          failed ||= breaks;
+          send(breaks ? data.replace(`"tail":${TAIL}`, '"tail":"many"') : data);
+        },
+      });
+    });
+
+    const store = watched(connection, session);
+
+    await vi.waitFor(() =>
+      expect(store.freshness()).toMatchObject({ kind: "stale", error: { code: "invalid" } }),
+    );
+    expect(connection.health.snapshot().kind).toBe("open");
+    await matchesRead(connection, store, session);
+  });
+});
+
 describe("a sessions store", () => {
   it("resumes the host's session rows after a drop and ends equal to a fresh sessions.read", async () => {
     const served = await serve();
@@ -294,6 +323,42 @@ describe("a sessions store", () => {
     await until(connection, "open");
     await matches();
     expect(sessions.snapshot()?.ids).toEqual([second, first]);
+  });
+});
+
+describe("a sessions store's order", () => {
+  it("moves a session from outside the limit into its ids, adds a new one and drops a removed one, without a read", async () => {
+    const served = await serve();
+    const older = await startSession(served);
+    const middle = await startSession(served);
+    const newer = await startSession(served);
+    const reads: string[] = [];
+
+    const connection = attach(served.listener, (request) => {
+      const socket = global(request);
+      const send = socket.send.bind(socket);
+
+      return Object.assign(socket, {
+        send(data: string) {
+          if (data.includes('"op":"sessions.read"')) reads.push(data);
+          send(data);
+        },
+      });
+    });
+
+    const sessions = connection.directory({ limit: 2 });
+    cleanups.push(async () => sessions.close());
+    const ids = () => sessions.snapshot()?.ids;
+
+    await vi.waitFor(() => expect(ids()).toEqual([newer, middle]));
+    await send(served, older, "Back again.");
+    await vi.waitFor(() => expect(ids()).toEqual([older, newer]));
+
+    const added = await startSession(served);
+    await vi.waitFor(() => expect(ids()).toEqual([added, older]));
+    await served.host.session(added).remove();
+    await vi.waitFor(() => expect(ids()).toEqual([older, newer]));
+    expect(reads).toHaveLength(1);
   });
 });
 

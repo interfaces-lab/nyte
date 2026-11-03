@@ -27,7 +27,7 @@ import type {
   Seq,
   SessionChange,
   SessionId,
-  SessionsRead,
+  SessionsChange,
   TailnetStatus,
   WindowSpec,
   WorkspaceId,
@@ -148,7 +148,7 @@ export interface WireHost {
 
   attach(session: SessionId, principal: PrincipalId): SessionAttachment;
 
-  sessions(principal: PrincipalId): AsyncIterable<SessionsRead>;
+  sessions(principal: PrincipalId): AsyncIterable<SessionsChange>;
 
   activations(): ReadonlyMap<SessionId, Activation>;
 

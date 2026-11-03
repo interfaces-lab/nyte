@@ -88,7 +88,7 @@ A `from` the host cannot place on the path any more, because the head was rewoun
 
 A whole window says so with `complete: true`. It holds every row the window needs, so the client replaces its tables with it instead of merging: a row the host dropped while the client was away, which no drop the host still knows of names, goes with them. A first read is complete too.
 
-The sessions table resumes the same way with `seq` alone: the host answers the ids of every session the client may read, and every row with `seq` above the client's.
+The sessions table resumes the same way with `seq` alone: the host answers the ids of every session the client may read, and every row with `seq` above the client's. Between reads, a host subscriber receives every session row that changes, inside its window or not, and derives a list's order from its rows: filter by `parent`, sort by `lastActivityAt` descending then id, take the limit.
 
 The model's `ResumeSendsUnheld` mutant shows what happens when the host sends only rows changed since the client's seq: a row that was written before the client first attached and that its old window did not cover never arrives.
 

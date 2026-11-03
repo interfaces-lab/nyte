@@ -1,9 +1,15 @@
 import { ActivationType, compile, SessionChangeType, withJson } from "@nyte-ai/schema";
-import type { Activation, HeadName, MessageId, SessionChange, SessionId } from "@nyte-ai/schema";
-import { dev } from "@nyte-ai/core";
-import { openSessionStore } from "@nyte-ai/protocol";
+import type {
+  Activation,
+  HeadName,
+  MessageId,
+  SdkError,
+  SessionChange,
+  SessionId,
+} from "@nyte-ai/schema";
+import { asSdkError, openSessionStore } from "@nyte-ai/protocol";
 import type { HostSocket, SessionRows, SessionStore, SocketEvent } from "@nyte-ai/protocol";
-import { keepRows, listenerSet, request, sameJson } from "./live.ts";
+import { freshnessCell, keepRows, listenerSet, readRetries, request, sameJson } from "./live.ts";
 import type { Freshness, Join, Live } from "./live.ts";
 
 type RowIn<T> = T extends ReadonlyMap<string, infer Row> ? Row : never;
@@ -38,42 +44,39 @@ export function openHeadStore(
   const listeners = listenerSet();
   let held: Held | null = null;
   let snapshot: HeadSnapshot | null = null;
-  let freshness: Freshness = { kind: "stale", since: Date.now() };
+  const freshness = freshnessCell();
+  const retries = readRetries();
   let socket: HostSocket | null = null;
+  let subscribe: () => Promise<void> = async () => undefined;
   let stop: (() => void) | null = null;
   let pending: SessionChange[] = [];
   let reading = false;
 
-  const stale = (): void => {
-    if (freshness.kind === "stale") return;
-    freshness = { kind: "stale", since: Date.now() };
-    listeners.notify();
+  const stale = (error: SdkError | null): void => {
+    if (freshness.stale(error)) listeners.notify();
   };
 
   const settle = (live: HostSocket, current: Held): void => {
     if (current.store.stale) {
-      stale();
-      void read(live, Promise.resolve());
+      stale(null);
+      void read(live);
 
       return;
     }
 
     const next = rebuild(input.head, current, snapshot);
-    const seq = current.store.seq;
-    const moved = freshness.kind === "stale" || freshness.seq !== seq;
+    const moved = freshness.fresh(current.store.seq);
 
     if (next === snapshot && !moved) return;
     snapshot = next;
-
-    if (moved) freshness = { kind: "fresh", seq };
     listeners.notify();
   };
 
-  const read = async (live: HostSocket, subscribed: Promise<void>): Promise<void> => {
+  const read = async (live: HostSocket): Promise<void> => {
     reading = true;
 
     try {
-      await subscribed;
+      await subscribe();
       const resume = held?.store;
 
       const window = await request(live, "head.read", {
@@ -96,14 +99,15 @@ export function openHeadStore(
       }
 
       reading = false;
+      retries.reset();
 
       for (const change of pending.splice(0)) held.store.apply(change);
       settle(live, held);
     } catch (error) {
-      dev("sdk", "head read failed", {
-        session: input.session,
-        head: input.head,
-        error: error instanceof Error ? error.message : String(error),
+      if (socket !== live) return;
+      stale(asSdkError(error));
+      retries.failed(() => {
+        if (socket === live) void read(live);
       });
     }
   };
@@ -133,11 +137,12 @@ export function openHeadStore(
   };
 
   const leave = join(`session/${input.session}`, {
-    attach(live, subscribed) {
+    attach(live, subscribing) {
       socket = live;
+      subscribe = subscribing;
       pending = [];
       stop = live.onEvent((event) => receive(live, event));
-      void read(live, subscribed);
+      void read(live);
     },
     detach() {
       stop?.();
@@ -145,16 +150,18 @@ export function openHeadStore(
       socket = null;
       pending = [];
       reading = false;
-      stale();
+      retries.reset();
+      stale(null);
     },
   });
 
   return {
     subscribe: listeners.subscribe,
     snapshot: () => snapshot,
-    freshness: () => freshness,
+    freshness: freshness.current,
     close() {
       leave();
+      retries.reset();
       listeners.clear();
     },
   };
