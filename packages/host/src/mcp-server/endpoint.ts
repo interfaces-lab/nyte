@@ -40,7 +40,7 @@ import type { CallName } from "@nyte-ai/protocol";
 import { bindConnection } from "../serve/binding.ts";
 import type { CallBinding } from "../serve/binding.ts";
 import type { McpGrant, McpGrants } from "./grants.ts";
-import { mcpResource, resourceMetadataUrl } from "./oauth.ts";
+import { mcpResource, READ_SCOPE, resourceMetadataUrl, WRITE_SCOPE } from "./oauth.ts";
 
 type Tool = {
   readonly name: string;
@@ -225,13 +225,14 @@ export function createMcpEndpoint(options: {
           return {
             token,
             clientId: grant.client,
-            scopes: grant.access.kind === "read-only" ? ["read"] : ["read", "write"],
+            scopes: grant.access.kind === "read-only" ? [READ_SCOPE] : [READ_SCOPE, WRITE_SCOPE],
             expiresAt: Math.floor(grant.expiresAt / 1000),
             resource: new URL(grant.resource),
           };
         },
       },
       expectedResource: new URL(resource),
+      requiredScopes: [READ_SCOPE],
       resourceMetadataUrl: resourceMetadataUrl(url),
     });
 

@@ -10,6 +10,8 @@ import { memoryStore } from "@nyte-ai/core/store";
 import type { Host, Listener } from "@nyte-ai/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { openHost } from "../src/index.ts";
+import { fetchClientMetadata } from "../src/mcp-server/client-metadata.ts";
+import type { ClientMetadataFetch } from "../src/mcp-server/client-metadata.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
 const TOKEN = "a-token-of-16-chars";
@@ -38,7 +40,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-async function open(): Promise<Opened> {
+async function open(fetchDocument?: ClientMetadataFetch): Promise<Opened> {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-mcp-server-")));
   cleanups.push(() => rm(home, { recursive: true, force: true }));
 
@@ -48,6 +50,7 @@ async function open(): Promise<Opened> {
     plugins: [chatOnly],
     workspace: { kind: "chat-only", locator: null },
     home,
+    fetchClientMetadata: fetchDocument,
   });
 
   cleanups.push(() => host.close());
@@ -101,7 +104,7 @@ async function register(listener: Listener, name = "Test agent"): Promise<string
   const response = await post(
     listener,
     "/oauth/register",
-    { client_name: name, redirect_uris: [REDIRECT] },
+    { client_name: name, application_type: "native", redirect_uris: [REDIRECT] },
     { "Content-Type": "application/json" },
   );
 
@@ -140,8 +143,9 @@ function authorizeUrl(
 async function signIn(
   opened: Opened,
   access: { readonly kind: "read-only" } | { readonly kind: "ceiling"; readonly ceiling: string },
+  registered?: string,
 ): Promise<{ readonly access: string; readonly refresh: string; readonly client: string }> {
-  const client = await register(opened.http);
+  const client = registered ?? (await register(opened.http));
   const secret = pkce();
   const page = await get(opened.http, authorizeUrl(client, secret.challenge));
 
@@ -241,6 +245,9 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
       registration_endpoint: `${ORIGIN}/oauth/register`,
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none"],
+      authorization_response_iss_parameter_supported: true,
+      client_id_metadata_document_supported: true,
+      scopes_supported: ["nyte:read", "nyte:write"],
     });
 
     const local = { "Content-Type": "application/json", Host: "127.0.0.1:4100" };
@@ -250,6 +257,7 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
     expect(bare.headers.get("WWW-Authenticate")).toContain(
       `resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource"`,
     );
+    expect(bare.headers.get("WWW-Authenticate")).toContain('scope="nyte:read"');
 
     const listener = await post(
       opened.http,
@@ -276,6 +284,7 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
       "/oauth/register",
       {
         client_name: "Secretive",
+        application_type: "native",
         redirect_uris: [REDIRECT],
         token_endpoint_auth_method: "client_secret_basic",
       },
@@ -288,11 +297,100 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
     const plain = await post(
       opened.http,
       "/oauth/register",
-      { redirect_uris: ["http://example.com/callback"] },
+      { application_type: "native", redirect_uris: ["http://example.com/callback"] },
       { "Content-Type": "application/json" },
     );
 
     expect(await plain.json()).toMatchObject({ error: "invalid_redirect_uri" });
+
+    const untyped = await post(
+      opened.http,
+      "/oauth/register",
+      { client_name: "Untyped", redirect_uris: [REDIRECT] },
+      { "Content-Type": "application/json" },
+    );
+
+    expect(untyped.status).toBe(400);
+    expect(await untyped.json()).toMatchObject({ error: "invalid_client_metadata" });
+
+    const web = await post(
+      opened.http,
+      "/oauth/register",
+      { client_name: "Web", application_type: "web", redirect_uris: [REDIRECT] },
+      { "Content-Type": "application/json" },
+    );
+
+    expect(await web.json()).toMatchObject({ error: "invalid_redirect_uri" });
+  });
+
+  it("signs in a client by its metadata document", async () => {
+    const clientId = "https://client.example/oauth/metadata.json";
+    const fetched: string[] = [];
+
+    const opened = await open(async (url) => {
+      fetched.push(url.href);
+
+      return {
+        status: 200,
+        cacheControl: "max-age=300",
+        expires: null,
+        body: JSON.stringify({
+          client_id: clientId,
+          client_name: "Test agent",
+          redirect_uris: [REDIRECT],
+          token_endpoint_auth_method: "none",
+        }),
+      };
+    });
+
+    const page = await get(opened.http, authorizeUrl(clientId, pkce().challenge));
+
+    expect(await page.text()).toContain(`Client ID: <code>${clientId}</code>`);
+
+    const tokens = await signIn(opened, { kind: "read-only" }, clientId);
+
+    expect((await rpc(opened.http, tokens.access, "tools/list")).status).toBe(200);
+    expect(fetched).toEqual([clientId]);
+
+    const elsewhere = await get(
+      opened.http,
+      authorizeUrl(clientId, pkce().challenge).replace(
+        encodeURIComponent(REDIRECT),
+        encodeURIComponent("http://127.0.0.1:9999/other"),
+      ),
+    );
+
+    expect(elsewhere.status).toBe(400);
+  });
+
+  it("refuses a metadata document whose client_id is another URL", async () => {
+    const opened = await open(async () => ({
+      status: 200,
+      cacheControl: null,
+      expires: null,
+      body: JSON.stringify({
+        client_id: "https://client.example/other.json",
+        client_name: "Impostor",
+        redirect_uris: [REDIRECT],
+      }),
+    }));
+    const page = await get(
+      opened.http,
+      authorizeUrl("https://client.example/oauth/metadata.json", pkce().challenge),
+    );
+
+    expect(page.status).toBe(400);
+    expect(await page.text()).toContain("Unknown MCP client");
+  });
+
+  it("fetches no metadata document from a loopback or private address", async () => {
+    for (const url of [
+      "https://127.0.0.1/client.json",
+      "https://[::1]/client.json",
+      "https://10.1.2.3/client.json",
+      "https://localhost/client.json",
+    ])
+      await expect(fetchClientMetadata(new URL(url))).rejects.toThrow(/does not fetch from/);
   });
 
   it("refuses an authorization without PKCE or for another resource", async () => {
@@ -315,6 +413,7 @@ describe.skipIf(process.platform === "win32")("the MCP server", () => {
       const location = new URL(response.headers.get("Location") ?? "");
 
       expect(location.searchParams.get("error")).toBe(entry.error);
+      expect(location.searchParams.get("iss")).toBe(ORIGIN);
       expect(location.searchParams.get("state")).toBe("xyz");
     }
   });

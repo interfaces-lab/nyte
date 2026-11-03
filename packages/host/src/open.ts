@@ -38,6 +38,7 @@ import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts"
 import { listen } from "./listen.ts";
 import { nodeImages } from "./images/node.ts";
 import { createMcpHub } from "./mcp/hub.ts";
+import type { ClientMetadataFetch } from "./mcp-server/client-metadata.ts";
 import { openMcpServer } from "./mcp-server/server.ts";
 import { createViewCompiler } from "./plugins/views.ts";
 import { createPluginLoader } from "./plugins/loader.ts";
@@ -65,6 +66,8 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   /** How plugin files are imported fresh; Node's resolve hook (`nodePluginImport`) by default. A Bun host passes its own. */
   readonly pluginImport?: PluginImport;
   readonly tailnet?: { readonly binary: string };
+  /** How the MCP authorization server fetches a client's metadata document; from public https addresses only by default. */
+  readonly fetchClientMetadata?: ClientMetadataFetch;
 };
 
 export async function openHost(options: OpenHostOptions): Promise<Host> {
@@ -206,7 +209,12 @@ async function composeOpen(
       ? undefined
       : await openTailnet({ host, home, binary: options.tailnet.binary });
 
-  const mcpServer = openMcpServer({ server: host.server, home, version: description.version });
+  const mcpServer = openMcpServer({
+    server: host.server,
+    home,
+    version: description.version,
+    fetchClientMetadata: options.fetchClientMetadata,
+  });
 
   const attach = async (listenOptions: ListenOptions): Promise<Listener> => {
     const listener = await listen(host, {

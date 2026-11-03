@@ -1,6 +1,8 @@
 import { Buffer } from "node:buffer";
 import { Type } from "typebox";
 import { compile, isJson } from "@nyte-ai/schema";
+import { allowsRedirect, namesMetadataDocument } from "./client-metadata.ts";
+import type { ClientDirectory } from "./client-metadata.ts";
 import type { McpClient, McpGrants, McpIssue } from "./grants.ts";
 
 export const MCP_PATH = "/mcp";
@@ -19,16 +21,19 @@ const TOKEN = "/oauth/token";
 
 const MAX_FORM_BYTES = 64 * 1024;
 
-const SCOPES = ["read", "write"];
+export const READ_SCOPE = "nyte:read";
+
+export const WRITE_SCOPE = "nyte:write";
+
+const SCOPES = [READ_SCOPE, WRITE_SCOPE];
 
 const CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
-
-const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const registration = compile(
   Type.Object({
     redirect_uris: Type.Array(Type.String(), { minItems: 1, maxItems: 8 }),
     client_name: Type.Optional(Type.String({ maxLength: 200 })),
+    application_type: Type.Optional(Type.String()),
     token_endpoint_auth_method: Type.Optional(Type.String()),
     grant_types: Type.Optional(Type.Array(Type.String())),
     response_types: Type.Optional(Type.Array(Type.String())),
@@ -49,8 +54,12 @@ export function resourceMetadataUrl(url: URL): string {
   return `${url.origin}${RESOURCE_METADATA}`;
 }
 
-/** Answers the authorization server's routes and the protected resource's metadata, or null for any other path. */
-export async function serveOAuth(request: Request, grants: McpGrants): Promise<Response | null> {
+/** Answers the authorization server's routes and the protected resource's metadata, or null for any other path. A client is either a Client ID Metadata Document URL, looked up in `clients`, or an id this host's deprecated dynamic registration issued. */
+export async function serveOAuth(
+  request: Request,
+  grants: McpGrants,
+  clients: ClientDirectory,
+): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname;
 
@@ -63,13 +72,13 @@ export async function serveOAuth(request: Request, grants: McpGrants): Promise<R
   if (path === REGISTER) return request.method === "POST" ? register(request) : notAllowed("POST");
 
   if (path === AUTHORIZE)
-    return request.method === "GET" ? authorize(url, grants) : notAllowed("GET");
+    return request.method === "GET" ? authorize(url, grants, clients) : notAllowed("GET");
 
   if (path === SIGN_IN_STATE)
     return request.method === "GET" ? signInState(url, grants) : notAllowed("GET");
 
   if (path === TOKEN)
-    return request.method === "POST" ? token(request, grants) : notAllowed("POST");
+    return request.method === "POST" ? token(request, grants, clients) : notAllowed("POST");
 
   return null;
 }
@@ -97,6 +106,7 @@ function serverMetadata(url: URL) {
     token_endpoint_auth_methods_supported: ["none"],
     scopes_supported: SCOPES,
     authorization_response_iss_parameter_supported: true,
+    client_id_metadata_document_supported: true,
   };
 }
 
@@ -109,6 +119,13 @@ async function register(request: Request): Promise<Response> {
       400,
       "invalid_client_metadata",
       "Send redirect_uris and an optional client_name.",
+    );
+
+  if (value.application_type !== "native" && value.application_type !== "web")
+    return oauthError(
+      400,
+      "invalid_client_metadata",
+      "Send application_type: native for a client on this machine, web for a remote one. Dynamic registration is deprecated; a Client ID Metadata Document needs no registration.",
     );
 
   if (value.token_endpoint_auth_method !== undefined && value.token_endpoint_auth_method !== "none")
@@ -129,13 +146,18 @@ async function register(request: Request): Promise<Response> {
 
   if (value.response_types?.some((type) => type !== "code"))
     return oauthError(400, "invalid_client_metadata", "This host answers response_type code only.");
-  const unsafe = value.redirect_uris.find((uri) => !allowsRedirect(uri));
+  const web = value.application_type === "web";
+  const unsafe = value.redirect_uris.find(
+    (uri) => !allowsRedirect(uri) || (web && new URL(uri).protocol !== "https:"),
+  );
 
   if (unsafe !== undefined)
     return oauthError(
       400,
       "invalid_redirect_uri",
-      `${unsafe} isn't an https URL or an http URL on localhost, 127.0.0.1 or [::1].`,
+      web
+        ? `${unsafe} isn't an https URL, which a web client needs.`
+        : `${unsafe} isn't an https URL or an http URL on localhost, 127.0.0.1 or [::1].`,
     );
   const name = value.client_name ?? "An unnamed MCP client";
 
@@ -152,15 +174,20 @@ async function register(request: Request): Promise<Response> {
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
     token_endpoint_auth_method: "none",
+    application_type: value.application_type,
   });
 }
 
-function authorize(url: URL, grants: McpGrants): Response {
+async function authorize(url: URL, grants: McpGrants, clients: ClientDirectory): Promise<Response> {
   const params = url.searchParams;
-  const client = findClient(params.get("client_id") ?? "");
+  const client = await findClient(params.get("client_id") ?? "", clients);
 
   if (client === null)
-    return page(400, "Unknown MCP client", "Register the client at this host before it signs in.");
+    return page(
+      400,
+      "Unknown MCP client",
+      "The client ID is neither a metadata document this host could fetch and accept nor one it registered.",
+    );
 
   const redirectUri =
     params.get("redirect_uri") ??
@@ -206,6 +233,7 @@ function authorize(url: URL, grants: McpGrants): Response {
 
   return consentPage({
     client: client.name,
+    clientId: namesMetadataDocument(client.id) ? client.id : null,
     scope: params.get("scope"),
     destination: new URL(redirectUri).host,
     request: asked.id,
@@ -223,7 +251,11 @@ function signInState(url: URL, grants: McpGrants): Response {
   return json(200, { state: "decided", location: state.location });
 }
 
-async function token(request: Request, grants: McpGrants): Promise<Response> {
+async function token(
+  request: Request,
+  grants: McpGrants,
+  clients: ClientDirectory,
+): Promise<Response> {
   const text = await readLimited(request);
 
   if (text === null) return oauthError(400, "invalid_request", "The form is too large.");
@@ -236,7 +268,7 @@ async function token(request: Request, grants: McpGrants): Promise<Response> {
   const grant = form.get("grant_type");
   const clientId = form.get("client_id");
 
-  if (clientId === null || findClient(clientId) === null)
+  if (clientId === null || (await findClient(clientId, clients)) === null)
     return oauthError(401, "invalid_client", "Send the client_id this host registered.");
 
   if (grant === "authorization_code") {
@@ -271,7 +303,9 @@ function issued(issue: McpIssue): Response {
   return json(200, issue.tokens);
 }
 
-function findClient(id: string): McpClient | null {
+async function findClient(id: string, clients: ClientDirectory): Promise<McpClient | null> {
+  if (namesMetadataDocument(id)) return clients.find(id);
+
   if (id === "" || !/^[A-Za-z0-9_-]+$/.test(id)) return null;
   const text = Buffer.from(id, "base64url").toString("utf8");
   const value = readJson(text);
@@ -289,15 +323,6 @@ function readJson(text: string): unknown {
   } catch {
     return null;
   }
-}
-
-function allowsRedirect(uri: string): boolean {
-  if (!URL.canParse(uri)) return false;
-  const url = new URL(uri);
-
-  if (url.hash !== "") return false;
-
-  return url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK.has(url.hostname));
 }
 
 async function readLimited(request: Request): Promise<string | null> {
@@ -328,12 +353,18 @@ function redirectError(
 
 function consentPage(input: {
   readonly client: string;
+  readonly clientId: string | null;
   readonly scope: string | null;
   readonly destination: string;
   readonly request: string;
   readonly code: string;
 }): Response {
+  const identity =
+    input.clientId === null
+      ? "<p>The client registered itself here; its name is its own claim.</p>"
+      : `<p>Client ID: <code>${escape(input.clientId)}</code></p>`;
   const body = `<h1>${escape(input.client)} wants to use this Nyte host</h1>
+${identity}
 <p>Access requested: ${escape(input.scope ?? "not named; you choose")}.</p>
 <p>Approving sends access to ${escape(input.destination)}.</p>
 <p>Code: <code id="code">${escape(input.code)}</code></p>

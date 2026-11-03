@@ -178,7 +178,7 @@ export function openMcpGrants(path: string): McpGrants {
         token_type: "Bearer",
         expires_in: ACCESS_TOKEN_MS / 1000,
         refresh_token: refresh,
-        scope: record.access.kind === "read-only" ? "read" : "read write",
+        scope: record.access.kind === "read-only" ? "nyte:read" : "nyte:read nyte:write",
       },
     };
   };
