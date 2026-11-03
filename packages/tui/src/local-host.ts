@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { sdk } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
 import type { LocalEndpoint } from "@nyte-ai/service";
-import { OWN_TOKEN_AUTHORITY, startHostThread } from "./hosting.ts";
+import { OWN_TOKEN_AUTHORITY, startHostThread } from "@nyte-ai/service/host-thread";
+import { HOST_WORKER } from "./host-thread.ts";
 
 export type HostSource =
   | { readonly kind: "local" }
@@ -32,7 +33,7 @@ export function connectHost(source: HostSource): Promise<HostSession> {
 export async function connectLocalHost(): Promise<HostSession> {
   const token = randomBytes(32).toString("base64url");
 
-  const thread = await startHostThread({
+  const thread = await startHostThread(HOST_WORKER, {
     kind: "local",
     port: 0,
     token,

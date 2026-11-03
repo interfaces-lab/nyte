@@ -45,7 +45,7 @@
     "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
-    "@nyte-ai/tui": "workspace:*",
+    "@nyte-ai/service": "workspace:*",
     "@oxlint/plugins": "^1.89.0",
     "@shadcn/lint": "^0.2.3",
     "@types/node": "^26.6.5",

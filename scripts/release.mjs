@@ -11,7 +11,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { openApprovals } from "@nyte-ai/plugin/approvals/schema";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import { sdk } from "@nyte-ai/sdk/client";
-import { findRunningHost, hostFilePath } from "@nyte-ai/tui/host-endpoint";
+import { findRunningHost, hostFilePath } from "@nyte-ai/service/host-endpoint";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 

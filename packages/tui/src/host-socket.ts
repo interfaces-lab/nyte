@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import process from "node:process";
 import { openHostSocket } from "@nyte-ai/protocol";
 import type { HostSocket } from "@nyte-ai/protocol";
-import { findRunningHost, hostFilePath } from "./host-endpoint.ts";
+import { findRunningHost, hostFilePath } from "@nyte-ai/service/host-endpoint";
 import { VERSION } from "./version.ts";
 
 export async function connectHostSocket(input: {
