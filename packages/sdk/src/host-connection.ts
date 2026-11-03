@@ -102,8 +102,6 @@ type Waiter = { resolve(socket: HostSocket): void; reject(error: SdkError): void
 
 type Offered = { readonly action: ActionDeclaration; readonly handler: ActionHandler };
 
-const STABLE_MS = 30_000;
-
 const performs = compile(withJson(PerformEventType));
 
 const hosts = new Map<string, Owned>();
@@ -160,7 +158,6 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   let current: HostSocket | null = null;
   let host: HostId | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
-  let stableTimer: ReturnType<typeof setTimeout> | undefined;
 
   const show = (next: Health): void => {
     health = next;
@@ -236,10 +233,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     subscribed = new Map();
     host = socket.welcome.host_id;
     registry.named(host);
-
-    stableTimer = setTimeout(() => {
-      attempt = 0;
-    }, STABLE_MS);
+    attempt = 0;
 
     void socket.closed.then((closed) => dropped(socket, closed));
 
@@ -273,7 +267,6 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   const dropped = (socket: HostSocket, closed: SocketClosed): void => {
     if (current !== socket) return;
     current = null;
-    clearTimeout(stableTimer);
 
     for (const entry of joined) entry.attachment.detach();
 
@@ -317,8 +310,8 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   };
 
   const schedule = (error: SdkError): void => {
-    attempt += 1;
     const delay = retryDelay(attempt);
+    attempt += 1;
     show({ kind: "retrying", attempt, at: Date.now() + delay, error });
     retryTimer = setTimeout(() => void connect(), delay);
   };
@@ -427,7 +420,6 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
       released = true;
       generation += 1;
       clearTimeout(retryTimer);
-      clearTimeout(stableTimer);
 
       for (const waiter of waiters)
         waiter.reject(new SdkError("unavailable", "This host connection was released."));

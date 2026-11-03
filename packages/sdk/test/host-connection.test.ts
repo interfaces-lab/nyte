@@ -266,6 +266,28 @@ describe("a head store", () => {
   });
 });
 
+describe("a reconnect", () => {
+  it("retries a host that welcomed it again on the first delay after every drop", async () => {
+    const served = await serve();
+    const connection = attach(served.listener);
+    await until(connection, "open");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    cleanups.push(async () => {
+      vi.useRealTimers();
+    });
+
+    for (const drop of [1, 2, 3]) {
+      served.listener.disconnectClients();
+      const retrying = await until(connection, "retrying");
+
+      expect({ drop, retrying }).toMatchObject({ drop, retrying: { attempt: 1 } });
+      expect(retrying.kind === "retrying" && retrying.at - Date.now()).toBeLessThanOrEqual(1_000);
+      vi.advanceTimersByTime(1_000);
+      await until(connection, "open");
+    }
+  });
+});
+
 describe("a failed read", () => {
   it("leaves the store stale with the read's error and retries it while the socket stays open", async () => {
     const served = await serve();
