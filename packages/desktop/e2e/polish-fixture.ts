@@ -37,7 +37,7 @@ import { Value } from "typebox/value";
 import { scriptedReply } from "../src/host/fixtures/e2e-models.ts";
 import { inspectProcessTree, survivors } from "./process-tree.ts";
 
-const POLISH_MODEL = "scripted-polish";
+export const POLISH_MODEL = "scripted-polish";
 
 const BlockSchema = Type.Object({
   type: Type.String(),

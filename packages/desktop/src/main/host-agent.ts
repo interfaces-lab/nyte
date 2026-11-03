@@ -6,8 +6,11 @@ import { promisify } from "node:util";
 import { app } from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { bundledHostAgentJob, hostAgentPlist } from "../shared/host-agent-job.ts";
-import type { HostAgentJob } from "../shared/host-agent-job.ts";
+import {
+  bundledHostAgentJob,
+  developmentHostAgentJob,
+  hostAgentPlist,
+} from "../shared/host-agent-job.ts";
 
 const execute = promisify(execFile);
 
@@ -70,13 +73,13 @@ function developmentAgent(options: HostAgentOptions): HostAgent {
   const label = options.label ?? `${options.appId}.dev.host`;
   const path = join(options.home, "Library", "LaunchAgents", `${label}.plist`);
 
-  const job: HostAgentJob = {
+  const job = developmentHostAgentJob({
     label,
-    program: { kind: "path", path: developmentBinary(options) },
-    arguments: ["host"],
-    environment: { HOME: options.home, NYTE_HOME: options.nyteHome },
-    log: join(options.nyteHome, "logs", "host.log"),
-  };
+    binary: developmentBinary(options),
+    home: options.home,
+    nyteHome: options.nyteHome,
+    environment: process.env,
+  });
 
   const loaded = (): Promise<boolean> =>
     execute("launchctl", ["print", target(label)]).then(

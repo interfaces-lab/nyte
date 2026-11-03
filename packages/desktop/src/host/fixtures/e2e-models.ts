@@ -1,23 +1,8 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
-import process from "node:process";
-import {
-  CI_PROMPT,
-  ciScript,
-  fakeModels,
-  lastToolText,
-  lastUserText,
-  testModel,
-  titleReply,
-} from "@nyte-ai/bench";
+import { CI_PROMPT, ciScript, lastToolText, lastUserText, titleReply } from "@nyte-ai/bench";
 import type { Block, Reply, Request, Script } from "@nyte-ai/bench";
 import { contentText, getCurrentTools } from "@nyte-ai/schema/model";
-import type { ModelRef } from "@nyte-ai/schema";
 import { restaurantReplies, restaurantSkill } from "@nyte-ai/app/e2e/scenario-u-fixture";
-
-export const E2E_PROVIDER = "e2e";
-
-export const E2E_MODEL: ModelRef = { provider: E2E_PROVIDER, id: "scripted" };
 
 export const MARKDOWN_REPLY = `# Release notes
 
@@ -202,7 +187,7 @@ function ciChat(request: Request): boolean {
   return first?.role === "user" && contentText(first.content, "") === CI_PROMPT;
 }
 
-function ciAnswer(): (request: Request) => Reply | undefined {
+function ciAnswer(input: E2eAnswerOptions): (request: Request) => Reply | undefined {
   let turns: Script | undefined;
 
   return (request) => {
@@ -214,7 +199,7 @@ function ciAnswer(): (request: Request) => Reply | undefined {
       );
 
       turns = ciScript({
-        skill: join(homedir(), ".agents", "skills", "ci-triage", "SKILL.md"),
+        skill: join(input.home, ".agents", "skills", "ci-triage", "SKILL.md"),
         route: listed ? "mcp" : "gh",
       });
     }
@@ -223,7 +208,7 @@ function ciAnswer(): (request: Request) => Reply | undefined {
     const last = request.context.messages.at(-1);
     const read = lastToolText(request);
 
-    console.log(
+    input.log(
       `NYTE_E2E_CI ${JSON.stringify({
         tool: last?.role === "toolResult" ? last.toolName : (last?.role ?? null),
         chars: read.length,
@@ -237,42 +222,42 @@ function ciAnswer(): (request: Request) => Reply | undefined {
   };
 }
 
-export function e2eModels() {
-  const ci = ciAnswer();
-
-  const restaurant = restaurantReplies({
-    skill: restaurantSkill(homedir()),
-    origin: process.env.NYTE_E2E_PLACES_ORIGIN,
-    log: true,
-  });
-
-  return fakeModels({
-    id: E2E_PROVIDER,
-    name: "E2E",
-    models: [testModel(E2E_MODEL.id, { name: "Scripted", provider: E2E_PROVIDER })],
-    fallback: (request): Reply => {
-      const rendering = renderReply(request);
-
-      if (rendering !== undefined) return rendering;
-      const scripted = ci(request);
-
-      if (scripted !== undefined) return scripted;
-      const pick = restaurant(request);
-
-      if (pick !== null) return pick;
-      const survey = surveyReply(request);
-
-      if (survey !== undefined) return survey;
-      const text = lastUserText(request);
-
-      if (request.context.messages.at(-1)?.role === "toolResult")
-        return { content: [{ type: "text", text: "Both agents are working in the background." }] };
-
-      const title = titleReply(request);
-
-      return title === null ? scriptedReply(text) : { content: [{ type: "text", text: title }] };
-    },
-  });
+export interface E2eAnswerOptions {
+  readonly home: string;
+  readonly places?: string;
+  readonly log: (line: string) => void;
 }
 
-export const models = e2eModels().models;
+/** The scripted catalog's answers, served to the host behind a model endpoint. */
+export function e2eAnswers(input: E2eAnswerOptions): (request: Request) => Reply {
+  const ci = ciAnswer(input);
+
+  const restaurant = restaurantReplies({
+    skill: restaurantSkill(input.home),
+    origin: input.places,
+    log: input.log,
+  });
+
+  return (request) => {
+    const rendering = renderReply(request);
+
+    if (rendering !== undefined) return rendering;
+    const scripted = ci(request);
+
+    if (scripted !== undefined) return scripted;
+    const pick = restaurant(request);
+
+    if (pick !== null) return pick;
+    const survey = surveyReply(request);
+
+    if (survey !== undefined) return survey;
+    const text = lastUserText(request);
+
+    if (request.context.messages.at(-1)?.role === "toolResult")
+      return { content: [{ type: "text", text: "Both agents are working in the background." }] };
+
+    const title = titleReply(request);
+
+    return title === null ? scriptedReply(text) : { content: [{ type: "text", text: title }] };
+  };
+}

@@ -21,6 +21,36 @@ export function bundledHostAgentJob(appId: string): HostAgentJob {
   };
 }
 
+const DEVELOPMENT_HOST_VARIABLES = [
+  "NYTE_MODELS_URL",
+  "NYTE_TRACE",
+  "NYTE_DEV",
+  "NYTE_SKIP_VERSION_CHECK",
+] as const;
+
+/** An unpackaged build's host: `binary host` for this HOME and NYTE_HOME, logging to the host log, with the app's own model catalog, trace and dev-log variables. */
+export function developmentHostAgentJob(input: {
+  readonly label: string;
+  readonly binary: string;
+  readonly home: string;
+  readonly nyteHome: string;
+  readonly environment: Readonly<Record<string, string | undefined>>;
+}): HostAgentJob {
+  const forwarded = DEVELOPMENT_HOST_VARIABLES.flatMap((name) => {
+    const value = input.environment[name];
+
+    return value === undefined || value === "" ? [] : [[name, value] as const];
+  });
+
+  return {
+    label: input.label,
+    program: { kind: "path", path: input.binary },
+    arguments: ["host"],
+    environment: { HOME: input.home, NYTE_HOME: input.nyteHome, ...Object.fromEntries(forwarded) },
+    log: `${input.nyteHome}/logs/host.log`,
+  };
+}
+
 export function hostAgentPlist(job: HostAgentJob): string {
   const argv0 = job.program.kind === "bundle" ? "nyte" : job.program.path;
   const environment = Object.entries(job.environment);

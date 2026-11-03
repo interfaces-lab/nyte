@@ -52,8 +52,15 @@ test("scenario U: a random restaurant nearby, quit mid-answer, reopen and resume
   cleanup.defer(() => scenario.close());
   const appData = join(parent, "app-data");
   await mkdir(appData);
-  const environment = { NYTE_TRACE: "stdout", NYTE_E2E_PLACES_ORIGIN: scenario.origin };
-  const first = await launchDesktop({ home, parentDirectory: parent, appData, environment });
+  const environment = { NYTE_TRACE: "stdout" };
+  const places = scenario.origin;
+  const first = await launchDesktop({
+    home,
+    parentDirectory: parent,
+    appData,
+    environment,
+    places,
+  });
   cleanup.defer(() => first.close());
   const { page } = first;
 
@@ -142,7 +149,13 @@ test("scenario U: a random restaurant nearby, quit mid-answer, reopen and resume
     await first.close();
   });
 
-  const second = await launchDesktop({ home, parentDirectory: parent, appData, environment });
+  const second = await launchDesktop({
+    home,
+    parentDirectory: parent,
+    appData,
+    environment,
+    places,
+  });
   cleanup.defer(() => second.close());
   const reopened = second.page;
   const reopenedErrors = collectErrors(reopened);

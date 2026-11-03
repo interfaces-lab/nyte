@@ -4,6 +4,8 @@ import process from "node:process";
 
 const CI = process.env.CI !== undefined && process.env.CI !== "";
 
+process.env.TMPDIR = "/tmp";
+
 export default defineConfig({
   testDir: import.meta.dirname,
   testIgnore: "stores/**",
