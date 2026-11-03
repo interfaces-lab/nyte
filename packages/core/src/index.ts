@@ -102,6 +102,7 @@ export type {
   ObjectStore,
   RefStore,
   SessionIndex,
+  SessionIndexRow,
   Store,
   StoreConnection,
 } from "./contract/store.ts";

@@ -154,6 +154,7 @@ export const RELAY_OPERATIONS = [
   "clients.read",
   "client.perform",
   "client.reply",
+  "sessions.read",
   "session.info",
   "session.update",
   "session.remove",

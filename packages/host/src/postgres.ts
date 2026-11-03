@@ -16,6 +16,7 @@ import {
   collectBlob,
   decodeObject,
   collectSessionEvents,
+  directorySessions,
   migrateStore,
   objectId,
   replacedTargets,
@@ -40,9 +41,15 @@ import {
 } from "./store-rows.ts";
 import {
   postgresSessionIndexQuery,
+  READ_HOST_SEQ,
+  removedRoots,
   sessionIndexChanges,
   sqlSessionIndex,
+  stampedSessions,
+  stampRows,
+  WRITE_HOST_SEQ,
 } from "./session-index.ts";
+import type { HostStamp } from "./session-index.ts";
 
 /** Returns one pooled client: what `PostgresPool.connect` lends, a query at a time, released once. */
 export type PostgresClient = {
@@ -229,6 +236,8 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
             }
           }
 
+          for (const statement of change.indexed) await client.query(statement);
+
           await client.query(
             "INSERT INTO store_meta (id, version) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET version = excluded.version",
             [change.to],
@@ -393,6 +402,13 @@ async function publish(
     for (const key of locks)
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [key]);
 
+    const directory = directorySessions(updates);
+
+    const hostSeq =
+      directory.changed.length === 0
+        ? 0
+        : parseNumber((await client.query(`${READ_HOST_SEQ} FOR UPDATE`)).rows[0]?.seq ?? 0);
+
     const { rows } =
       names.length === 0
         ? { rows: [] }
@@ -459,6 +475,13 @@ async function publish(
       };
     }
 
+    const roots = removedRoots(directory.removed);
+
+    const { rows: removed } =
+      roots === null
+        ? { rows: [] }
+        : await client.query(postgresSessionIndexQuery(roots.text), roots.values);
+
     const revisions: Revision[] = [];
     const touched = new Map<SessionId, Revision>();
 
@@ -491,6 +514,7 @@ async function publish(
         [replaced],
       );
 
+    const host = await stampDirectory(client, hostSeq + 1, directory.changed, removed);
     const at = Date.now();
     const tails = new Map<SessionId, number>();
     const appended: Seq[] = [];
@@ -509,12 +533,29 @@ async function publish(
 
     await client.query("COMMIT");
 
-    return { kind: "set", logged: appended, at, revisions };
+    return { kind: "set", logged: appended, at, revisions, host };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
 
     throw error;
   }
+}
+
+async function stampDirectory(
+  client: PostgresClient,
+  next: number,
+  changed: readonly SessionId[],
+  removed: readonly Record<string, unknown>[],
+): Promise<HostStamp> {
+  if (changed.length === 0) return null;
+  const stamp = stampRows(next, changed, removed);
+  const { rows } = await client.query(postgresSessionIndexQuery(stamp.text), stamp.values);
+  const sessions = stampedSessions(rows, removed);
+
+  if (sessions.length === 0) return null;
+  await client.query(postgresSessionIndexQuery(WRITE_HOST_SEQ), [next]);
+
+  return { seq: next, sessions };
 }
 
 async function updateSessionIndex(

@@ -1,15 +1,30 @@
-import { projectSessionIndex, sessionIndexRef } from "@nyte-ai/core/store";
-import type { SessionIndex } from "@nyte-ai/core";
+import { directorySessions, projectSessionIndex, sessionIndexRef } from "@nyte-ai/core/store";
+import type { SessionIndex, SessionIndexRow } from "@nyte-ai/core";
 import { asId } from "@nyte-ai/schema";
-import type { Json, Revision } from "@nyte-ai/schema";
-import { parseRef, parseText } from "./store-rows.ts";
+import type {
+  Json,
+  ParentFilter,
+  RefUpdate,
+  Revision,
+  SessionId,
+  SetOutcome,
+} from "@nyte-ai/schema";
+import { parseNumber, parseRef, parseText } from "./store-rows.ts";
 
 type Binding = string | number | null;
+
+type Rows = readonly Readonly<Record<string, unknown>>[];
 
 interface Statement {
   readonly text: string;
   readonly values: readonly Binding[];
 }
+
+export type HostStamp = Extract<SetOutcome, { kind: "set" }>["host"];
+
+export const READ_HOST_SEQ = "SELECT seq FROM host_seq WHERE id = 1";
+
+export const WRITE_HOST_SEQ = "UPDATE host_seq SET seq = ? WHERE id = 1";
 
 export function sessionIndexChanges(
   name: string,
@@ -43,33 +58,38 @@ export function sessionIndexChanges(
 }
 
 export function sqlSessionIndex(
-  read: (text: string, values: readonly Binding[]) => Promise<readonly Record<string, unknown>[]>,
+  read: (text: string, values: readonly Binding[]) => Promise<Rows>,
 ): SessionIndex {
   return {
     async list({ parents, after, limit }) {
-      const conditions: string[] = [];
-      const values: Binding[] = [];
-
-      if (parents.kind === "roots") conditions.push("s.parent IS NULL");
-      if (parents.kind === "children") {
-        conditions.push("s.parent = ?");
-        values.push(parents.session);
-      }
-      if (after !== undefined) {
-        conditions.push("(s.sort_at, s.session) > (?, ?)");
-        values.push(-after.at, after.id);
-      }
-      values.push(limit);
+      const filter = selection(parents, after);
 
       return (
         await read(
-          `SELECT r.name, r.target, r.revision, s.version FROM session_index s JOIN refs r ON r.name = s.name${conditions.length === 0 ? "" : ` WHERE ${conditions.join(" AND ")}`} ORDER BY s.sort_at, s.session LIMIT ?`,
-          values,
+          `SELECT r.name, r.target, r.revision, s.version, s.seq FROM session_index s JOIN refs r ON r.name = s.name${filter.where} ORDER BY s.sort_at, s.session LIMIT ?`,
+          [...filter.values, limit],
         )
-      ).map((row) => ({
-        ref: parseRef(row),
-        version: asId<"revision">(parseText(row.version) ?? ""),
-      }));
+      ).map(indexRow);
+    },
+    async changed({ since, parents, limit }) {
+      const filter = selection(parents, undefined);
+
+      const rows = await read(
+        `SELECT m.seq AS host_seq, x.session, x.name, x.target, x.revision, x.version, x.seq FROM host_seq m LEFT JOIN (SELECT s.session, s.sort_at, r.name, r.target, r.revision, s.version, s.seq FROM session_index s JOIN refs r ON r.name = s.name${filter.where} ORDER BY s.sort_at, s.session LIMIT ?) x ON 1 = 1 WHERE m.id = 1 ORDER BY x.sort_at, x.session`,
+        [...filter.values, limit],
+      );
+
+      const listed = rows.flatMap((row) => {
+        const session = parseText(row.session);
+
+        return session === null ? [] : [{ id: asId<"session">(session), row: indexRow(row) }];
+      });
+
+      return {
+        seq: parseNumber(rows[0]?.host_seq ?? 0),
+        ids: listed.map((entry) => entry.id),
+        rows: listed.flatMap((entry) => (entry.row.seq > since ? [entry.row] : [])),
+      };
     },
     async work({ after, limit }) {
       return (
@@ -90,6 +110,94 @@ export function sqlSessionIndex(
       ).map(parseRef);
     },
   };
+}
+
+export function stampDirectory(
+  updates: readonly RefUpdate[],
+  run: (text: string, values: readonly Binding[]) => Rows,
+): () => HostStamp {
+  const directory = directorySessions(updates);
+  const before = removedRoots(directory.removed);
+  const removed = before === null ? [] : run(before.text, before.values);
+
+  return () => {
+    if (directory.changed.length === 0) return null;
+    const next = parseNumber(run(READ_HOST_SEQ, [])[0]?.seq ?? 0) + 1;
+    const stamp = stampRows(next, directory.changed, removed);
+    const stamped = run(stamp.text, stamp.values);
+    const sessions = stampedSessions(stamped, removed);
+
+    if (sessions.length === 0) return null;
+    run(WRITE_HOST_SEQ, [next]);
+
+    return { seq: next, sessions };
+  };
+}
+
+export function removedRoots(removed: readonly SessionId[]): Statement | null {
+  return removed.length === 0
+    ? null
+    : {
+        text: `SELECT session, parent FROM session_index WHERE session IN (${marks(removed)})`,
+        values: removed,
+      };
+}
+
+export function stampRows(next: number, changed: readonly SessionId[], removed: Rows): Statement {
+  const orphaned = removed.flatMap((row) => {
+    const parent = parseText(row.parent);
+
+    return parent === null ? [] : [parent];
+  });
+
+  return {
+    text: `UPDATE session_index SET seq = ? WHERE session IN (${marks(changed)}) OR session IN (SELECT parent FROM session_index WHERE session IN (${marks(changed)}))${orphaned.length === 0 ? "" : ` OR session IN (${marks(orphaned)})`} RETURNING session`,
+    values: [next, ...changed, ...changed, ...orphaned],
+  };
+}
+
+export function stampedSessions(stamped: Rows, removed: Rows): readonly SessionId[] {
+  return [
+    ...new Set(
+      [...stamped, ...removed].flatMap((row) => {
+        const session = parseText(row.session);
+
+        return session === null ? [] : [asId<"session">(session)];
+      }),
+    ),
+  ].toSorted();
+}
+
+function selection(
+  parents: ParentFilter,
+  after: { readonly at: number; readonly id: SessionId } | undefined,
+): { readonly where: string; readonly values: readonly Binding[] } {
+  const conditions: string[] = [];
+  const values: Binding[] = [];
+
+  if (parents.kind === "roots") conditions.push("s.parent IS NULL");
+  if (parents.kind === "children") {
+    conditions.push("s.parent = ?");
+    values.push(parents.session);
+  }
+  if (after !== undefined) {
+    conditions.push("(s.sort_at, s.session) > (?, ?)");
+    values.push(-after.at, after.id);
+  }
+
+  return { where: conditions.length === 0 ? "" : ` WHERE ${conditions.join(" AND ")}`, values };
+}
+
+function indexRow(row: Readonly<Record<string, unknown>>): SessionIndexRow {
+  return {
+    ref: parseRef(row),
+    version: asId<"revision">(parseText(row.version) ?? ""),
+    seq: parseNumber(row.seq ?? 0),
+  };
+}
+
+function marks(values: readonly unknown[]): string {
+  return values.map(() => "?").join(", ");
 }
 
 export function postgresSessionIndexQuery(text: string): string {

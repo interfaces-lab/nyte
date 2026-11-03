@@ -23,7 +23,7 @@ import {
 } from "../../models.ts";
 import { PromptOverrideType } from "../../plugins.ts";
 import { pagedSchema, ParentFilterType } from "../../primitives.ts";
-import { SessionInfoType } from "../../sessions.ts";
+import { SessionInfoType, SessionsReadType } from "../../sessions.ts";
 import { SessionsFrameType } from "../../views.ts";
 import {
   AddOutcomeSchema,
@@ -301,6 +301,18 @@ export const HOST_OPERATIONS = {
       limit: Type.Optional(Type.Number()),
     }),
     output: pagedSchema(SessionInfoType),
+  },
+  "sessions.read": {
+    ...PARTICIPANT,
+    summary:
+      "Reads the host's sessions table: the ids a filter selects and every row changed since a seq.",
+    kind: "query",
+    input: wireObject({
+      parents: Type.Optional(ParentFilterType),
+      limit: Type.Optional(Type.Number()),
+      resume: Type.Optional(Type.Object({ seq: Type.Number() })),
+    }),
+    output: wireSchema(SessionsReadType),
   },
   "host.tailnet.status": {
     ...LOCAL_OWNER,

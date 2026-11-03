@@ -281,6 +281,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "clients.read": async () => sharedClients(options.server).rows(),
     "client.perform": async () => socketOnly("client.perform"),
     "client.reply": async () => socketOnly("client.reply"),
+    "sessions.read": (input) => connection.sessions.read(input),
     "host.tailnet.status": async () => tailnet().status(),
     "host.tailnet.configure": (input) => tailnet().configure(input),
     "host.tailnet.logout": () => tailnet().logout(),

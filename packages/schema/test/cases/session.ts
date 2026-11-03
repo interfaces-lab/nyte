@@ -398,7 +398,13 @@ export const sessionCases = {
   ),
   SetOutcomeSchema: sample(
     SetOutcomeSchema,
-    { kind: "set", logged: [asSeq(3)], at: 4, revisions: [revision] },
-    { kind: "set", logged: [1.5], at: 4, revisions: [] },
+    {
+      kind: "set",
+      logged: [asSeq(3)],
+      at: 4,
+      revisions: [revision],
+      host: { seq: 7, sessions: [session] },
+    },
+    { kind: "set", logged: [1.5], at: 4, revisions: [], host: null },
   ),
 } satisfies Record<string, Case>;

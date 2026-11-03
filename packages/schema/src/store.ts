@@ -30,6 +30,9 @@ export const SetOutcomeType = Type.Union([
     logged: Type.Array(SeqType),
     at: Type.Number(),
     revisions: Type.Array(idSchema<"revision">()),
+    host: nullable(
+      Type.Object({ seq: Type.Number(), sessions: Type.Array(idSchema<"session">()) }),
+    ),
   }),
   Type.Object({
     kind: Type.Literal("stale"),

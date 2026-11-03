@@ -45,6 +45,12 @@ export interface FoldCheckpoints {
   gap(session: SessionId, after: Seq): Promise<{ readonly events: number; readonly bytes: number }>;
 }
 
+export interface SessionIndexRow {
+  readonly ref: Ref;
+  readonly version: Revision;
+  readonly seq: number;
+}
+
 /** Indexed reads of current session roots and unsettled records, never historical objects. */
 export interface SessionIndex {
   /** Roots in descending activity order, then ascending id, strictly after the supplied key. */
@@ -52,7 +58,16 @@ export interface SessionIndex {
     readonly parents: ParentFilter;
     readonly after?: { readonly at: number; readonly id: SessionId };
     readonly limit: number;
-  }): Promise<readonly { readonly ref: Ref; readonly version: Revision }[]>;
+  }): Promise<readonly SessionIndexRow[]>;
+  changed(input: {
+    readonly since: number;
+    readonly parents: ParentFilter;
+    readonly limit: number;
+  }): Promise<{
+    readonly seq: number;
+    readonly ids: readonly SessionId[];
+    readonly rows: readonly SessionIndexRow[];
+  }>;
   /** Roots with live runs, queued input, unfinished calls or receipts, in ascending id order. */
   work(input: { readonly after?: SessionId; readonly limit: number }): Promise<readonly Ref[]>;
   /** Unsettled receipt or call refs; omitted sessions selects every session. */

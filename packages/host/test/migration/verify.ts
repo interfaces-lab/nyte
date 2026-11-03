@@ -453,6 +453,23 @@ export async function verifyMigration(
         `session_index holds ${indexRows.length} rows, the refs project ${indexed.size}`,
       );
 
+    const seqs = database
+      .prepare("SELECT seq FROM main.session_index ORDER BY sort_at, session")
+      .all()
+      .map((row) => Number(row.seq));
+
+    const hostSeq = Number(
+      database.prepare("SELECT seq FROM main.host_seq WHERE id = 1").get()?.seq,
+    );
+
+    if (
+      from < 27 &&
+      (hostSeq !== seqs.length || seqs.some((seq, index) => seq !== seqs.length - index))
+    )
+      problems.push(
+        `session_index seqs ${seqs.join(",")} and host_seq ${hostSeq} do not count the roots from the least recently active`,
+      );
+
     for (const row of pendingRows)
       if (pending.get(text(row.name)) !== row.kind)
         problems.push(`pending_work row ${text(row.name)} does not match its ref`);

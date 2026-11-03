@@ -82,6 +82,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
         };
       },
       list: (input) => rows.call("sessions.list", input ?? {}),
+      read: (input) => rows.call("sessions.read", input ?? {}),
     },
     workspaces: {
       list: () => rows.call("workspaces.list", {}),

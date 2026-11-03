@@ -258,6 +258,14 @@ export const MAPPING = [
       "adds the `waits/` index refs, with the call id escaped (`%` as `%25`, `/` as `%2F`), of each unsettled call record at `sessions/<s>/calls/<call>` whose id holds `/` or `%`, at that record, unless they exist",
     covers: ["from 25"],
   },
+  {
+    version: 27,
+    step: "2026-11-03-session-seqs",
+    target: "tables",
+    change:
+      "session_index gains `seq`: each root takes its place counted from the end of the directory's order, so the least recently active (then greatest id) is 1, and the new host_seq table holds their count",
+    covers: ["from 26"],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {

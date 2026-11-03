@@ -467,6 +467,7 @@ export function createKernel(input: KernelOptions): Kernel {
     presence: input.presence ?? null,
     poll: input.poll ?? null,
     externalCommits: new Set(),
+    hostChanges: new Set(),
     store: input.store,
     description: input.description,
     bus,
