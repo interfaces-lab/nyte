@@ -320,6 +320,7 @@ export async function listenFetch(
       local: options.local === true,
       server,
       tailnet: options.tailnet,
+      mcpServer: options.mcpServer,
       signal: AbortSignal.any([generation.signal, controller.signal]),
       leave: () => land(flight),
     };

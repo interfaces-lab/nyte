@@ -1,3 +1,4 @@
+import type { McpOwner } from "../mcp-server/grants.ts";
 import { Buffer } from "node:buffer";
 import {
   API_MIN_REVISION,
@@ -55,6 +56,7 @@ export type SocketPeer = {
   readonly local: boolean;
   readonly server: ServerHost;
   readonly tailnet?: TailnetControl;
+  readonly mcpServer?: McpOwner;
   readonly signal: AbortSignal;
   leave(): void;
 };
@@ -168,6 +170,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   const binding = bindConnection(peer.connection, {
     server: peer.server,
     tailnet: peer.tailnet,
+    mcpServer: peer.mcpServer,
   });
 
   const flights = new Set<AbortController>();
