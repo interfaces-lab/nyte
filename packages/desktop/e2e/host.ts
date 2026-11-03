@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdir, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
@@ -13,6 +13,7 @@ import {
   developmentHostAgentJob,
   hostAgentPlist,
 } from "../src/shared/host-agent-job.ts";
+import type { HostAgentJob } from "../src/shared/host-agent-job.ts";
 import { e2eAnswers } from "../src/host/fixtures/e2e-models.ts";
 import { POLISH_MODEL, polishModel, serveScriptedModel } from "./polish-fixture.ts";
 
@@ -87,14 +88,11 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
   });
 
   await ensureTuiLink(options.parentDirectory);
-  const agents = join(options.home, "Library", "LaunchAgents");
-  const plist = join(agents, `${label}.plist`);
-  await mkdir(agents, { recursive: true });
   await mkdir(join(nyteHome, "logs"), { recursive: true, mode: 0o700 });
   await writeFile(join(nyteHome, "logs", "host.log"), "", { flag: "a" });
-  await writeFile(plist, hostAgentPlist(job));
-  await execute("launchctl", ["bootstrap", domain(), plist]);
-  cleanup.defer(() => bootout(label));
+  const stop =
+    process.platform === "darwin" ? await bootstrapJob(job, options.home) : await spawnJob(job);
+  cleanup.defer(stop);
 
   const tail = spawn("tail", ["-n", "+1", "-F", join(nyteHome, "logs", "host.log")], {
     stdio: ["ignore", "pipe", "ignore"],
@@ -121,7 +119,6 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
     },
     async close() {
       await owned.disposeAsync();
-      await rm(plist, { force: true });
     },
   };
 }
@@ -203,15 +200,56 @@ async function runningHost(nyteHome: string): Promise<number | null> {
   return socket && Value.Check(RunningHostType, parsed) && alive(parsed.pid) ? parsed.pid : null;
 }
 
+/** Loads `job` into launchd, as the app's development agent does on macOS. */
+async function bootstrapJob(job: HostAgentJob, home: string): Promise<() => Promise<void>> {
+  const agents = join(home, "Library", "LaunchAgents");
+  const plist = join(agents, `${job.label}.plist`);
+  await mkdir(agents, { recursive: true });
+  await writeFile(plist, hostAgentPlist(job));
+  await execute("launchctl", ["bootstrap", domain(), plist]);
+
+  return async () => {
+    await bootout(job.label);
+    await rm(plist, { force: true });
+  };
+}
+
+/** Starts `job` as a detached process, as the app starts its host where there is no launchd. */
+async function spawnJob(job: HostAgentJob): Promise<() => Promise<void>> {
+  const log = job.log === null ? null : await open(job.log, "a");
+  const output = log === null ? "ignore" : log.fd;
+
+  const child = spawn(job.program.path, job.arguments, {
+    detached: true,
+    stdio: ["ignore", output, output],
+    env: { PATH: process.env.PATH ?? "", ...job.environment },
+  });
+
+  child.unref();
+  await log?.close();
+  const pid = child.pid;
+
+  if (pid === undefined) throw new Error(`Couldn't start ${job.program.path}.`);
+
+  return async () => {
+    if (alive(pid)) process.kill(pid, "SIGTERM");
+    await exited(pid, "its SIGTERM");
+  };
+}
+
 async function bootout(label: string): Promise<void> {
   const printed = await execute("launchctl", ["print", `${domain()}/${label}`]).catch(() => null);
   const found = /^\s*pid = (\d+)$/mu.exec(printed?.stdout ?? "")?.[1];
   await execute("launchctl", ["bootout", `${domain()}/${label}`]).catch(() => undefined);
 
   if (found === undefined) return;
-  const pid = Number(found);
+  await exited(Number(found), "its launchd job's bootout");
+}
+
+/** Waits for `pid` to exit after `after`, and kills it if it outlives the wait. */
+async function exited(pid: number, after: string): Promise<void> {
   resume(pid);
-  const gone = await waitFor(async () => !alive(pid), `the host ${found} to exit`).then(
+  const gone = await waitFor(async () => !alive(pid), `the host ${String(pid)} to exit`).then(
     () => true,
     () => false,
   );
@@ -219,7 +257,7 @@ async function bootout(label: string): Promise<void> {
   if (gone) return;
   process.kill(pid, "SIGKILL");
 
-  throw new Error(`The host ${found} outlived its launchd job's bootout.`);
+  throw new Error(`The host ${String(pid)} outlived ${after}.`);
 }
 
 function resume(pid: number): void {
