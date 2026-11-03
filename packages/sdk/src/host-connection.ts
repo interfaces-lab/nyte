@@ -49,7 +49,6 @@ export type Health =
 export type SocketRequest = {
   readonly url: string;
   readonly headers: Readonly<Record<string, string>>;
-  refused(status: number): void;
 };
 
 export type OpenSocket = (request: SocketRequest) => SocketLike;
@@ -60,6 +59,7 @@ export interface HostOptions {
   readonly credentials: HostCredentials;
   readonly client: Omit<ClientInfo, "actions">;
   readonly socket?: OpenSocket;
+  readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
   readonly online?: () => boolean;
 }
 
@@ -94,7 +94,7 @@ type Owned = { readonly connection: HostConnection; hold(): void };
 
 type Registry = { named(host: HostId): void; closed(): void };
 
-type Attempt = { refusal: number | null; closed: SocketClosed | null };
+type Attempt = { opened: boolean; refusal: number | null; closed: SocketClosed | null };
 
 type Joined = { readonly scope: string; readonly attachment: Attachment };
 
@@ -195,21 +195,18 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     }
 
     if (health.kind !== "connecting") show({ kind: "connecting" });
-    const seen: Attempt = { refusal: null, closed: null };
+    const seen: Attempt = { opened: false, refusal: null, closed: null };
 
     try {
       const headers = await credentialHeaders(options.credentials);
 
       if (mine !== generation) return;
 
-      const raw = openSocket({
-        url: socketUrl(address),
-        headers,
-        refused: (status) => {
-          seen.refusal = status;
-        },
-      });
+      const raw = openSocket({ url: socketUrl(address), headers });
 
+      raw.addEventListener("open", () => {
+        seen.opened = true;
+      });
       raw.addEventListener("close", (event) => {
         seen.closed = { code: event.code, reason: event.reason };
       });
@@ -230,6 +227,10 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
 
       opened(socket);
     } catch (error) {
+      if (mine !== generation) return;
+
+      if (!seen.opened) seen.refusal = await loginStatus(address, options);
+
       if (mine === generation) failed(asSdkError(error), seen);
     }
   };
@@ -302,7 +303,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
         reason: "auth",
         error: new SdkError(
           seen.refusal === 401 ? "unauthenticated" : "denied",
-          `The host refused the socket (${seen.refusal}).`,
+          `The host refused the credential (${seen.refusal}).`,
         ),
       });
 
@@ -487,6 +488,26 @@ async function credentialHeaders(
   if (credentials.kind === "custom") return credentials.headers();
 
   return { Authorization: `Bearer ${credentials.token}` };
+}
+
+async function loginStatus(address: string, options: HostOptions): Promise<number | null> {
+  const send = options.fetch ?? fetch;
+  const url = new URL(address);
+  url.protocol = url.protocol === "wss:" || url.protocol === "https:" ? "https:" : "http:";
+
+  const response = await credentialHeaders(options.credentials)
+    .then((headers) =>
+      send(`${url.origin}/clients.read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: "{}",
+      }),
+    )
+    .catch(() => null);
+
+  await response?.body?.cancel();
+
+  return response?.status ?? null;
 }
 
 function socketUrl(address: string): string {

@@ -79,10 +79,10 @@ function global(request: SocketRequest): WebSocket {
 function attach(
   listener: Listener,
   socket: OpenSocket = global,
-  input: { readonly name?: string; readonly address?: string } = {},
+  input: { readonly name?: string; readonly address?: string; readonly token?: string } = {},
 ): HostConnection {
   const connection = openHost(input.address ?? listener.address ?? "", {
-    credentials: { kind: "token", token: TOKEN },
+    credentials: { kind: "token", token: input.token ?? TOKEN },
     client: { ...CLIENT, name: input.name ?? CLIENT.name },
     socket,
   });
@@ -184,6 +184,43 @@ async function matchesRead(connection: HostConnection, store: HeadStore, session
     { timeout: 4_000 },
   );
 }
+
+describe("a refused login", () => {
+  it("blocks on auth once the host revokes the credential, and keeps retrying a network failure", async () => {
+    const served = await serve();
+    const address = served.listener.address ?? "";
+    const code = (await served.host.principals.pair({ authority: new Set(["participant"]) })).code;
+
+    const exchanged = await fetch(`${address}/clients.read`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Pairing ${code}` },
+      body: "{}",
+    });
+
+    const token = exchanged.headers.get("X-Nyte-Credential") ?? "";
+    const paired = attach(served.listener, global, { token });
+    await until(paired, "open");
+
+    const principal = (await served.host.principals.list())[0]?.id;
+    expect(principal).toBeDefined();
+    await served.host.principals.revoke(principal ?? asId("none"));
+    await until(paired, "retrying");
+    paired.retry();
+
+    expect(await until(paired, "blocked")).toMatchObject({
+      reason: "auth",
+      error: { code: "unauthenticated" },
+    });
+
+    const unreachable = openHost("http://127.0.0.1:9", {
+      credentials: { kind: "token", token: TOKEN },
+      client: CLIENT,
+    });
+
+    cleanups.push(async () => unreachable.release());
+    expect(await until(unreachable, "retrying")).toMatchObject({ attempt: 1 });
+  });
+});
 
 describe("a head store", () => {
   it("ends equal to a fresh head.read after the head moves, and keeps unchanged rows", async () => {
