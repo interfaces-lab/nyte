@@ -1,3 +1,4 @@
+import { test } from "vitest";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,6 +26,9 @@ export interface TestDesktop {
   connect(credentials?: CredentialSource): Promise<Connection>;
   close(): Promise<void>;
 }
+
+/** A test that runs the host on its local socket, which Windows has no named pipe for yet. */
+export const socketTest = test.skipIf(process.platform === "win32");
 
 /** A desktop over a host served as `nyte host` serves it: on a local socket whose peer is the owner, where the app's client connects. */
 export async function testDesktop(

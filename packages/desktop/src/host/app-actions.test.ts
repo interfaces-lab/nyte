@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import process from "node:process";
-import { afterEach, test, vi } from "vitest";
+import { afterEach, vi } from "vitest";
 import { PERMISSIONS } from "@nyte-ai/plugin/approvals/schema";
 import { isPart, tool } from "@nyte-ai/plugin/core";
 import { clientBrowserPlugins } from "@nyte-ai/plugin/core/browser-client";
@@ -17,7 +17,7 @@ import type {
   BrowserPageState,
 } from "../shared/browser-agent.ts";
 import { offerAppActions } from "../shared/host-client.ts";
-import { testDesktop } from "./fixtures/desktop-host.ts";
+import { socketTest, testDesktop } from "./fixtures/desktop-host.ts";
 import type { TestDesktop } from "./fixtures/desktop-host.ts";
 
 const opened: TestDesktop[] = [];
@@ -135,143 +135,152 @@ function toolResults(view: SessionView): { readonly name: string; readonly text:
   });
 }
 
-test("the browser tools drive the session's page through the app that offers the browser", async () => {
-  const made = await desktop();
-  const recording = recordingAgent();
-  offerAppActions(made.client, {
-    agent: recording.agent,
-    preview: chromium,
-    signal: () => new AbortController().signal,
-  });
-  await offered(made);
+socketTest(
+  "the browser tools drive the session's page through the app that offers the browser",
+  async () => {
+    const made = await desktop();
+    const recording = recordingAgent();
+    offerAppActions(made.client, {
+      agent: recording.agent,
+      preview: chromium,
+      signal: () => new AbortController().signal,
+    });
+    await offered(made);
 
-  made.fake.reply(
-    {
-      content: [
-        {
-          type: "toolCall",
-          id: "call-1",
-          name: "browser_open",
-          arguments: { url: "https://example.test/" },
-        },
-      ],
-      stopReason: "toolUse",
-    },
-    {
-      content: [
-        { type: "toolCall", id: "call-2", name: "browser_click", arguments: { ref: "s1e1" } },
-      ],
-      stopReason: "toolUse",
-    },
-    { content: [{ type: "text", text: "done" }] },
-  );
-
-  const started = await made.served.sessions.start({
-    name: "browse",
-    content: "Open the page and sign in",
-  });
-
-  await started.receipt.settled();
-  const results = toolResults(await started.session.view());
-
-  const owner: BrowserOwner = { kind: "home" };
-  assert.deepEqual(recording.calls[0], {
-    verb: "open",
-    input: {
-      method: "open",
-      session: started.session.sessionId,
-      owner,
-      url: "https://example.test/",
-    },
-  });
-  assert.ok(recording.calls.some((call) => call.verb === "click"));
-  assert.equal(results.length, 2);
-  assert.match(results[0]?.text ?? "", /Example/);
-  assert.match(results[0]?.text ?? "", /\[s1e1\] button \\"Signin\\"/);
-  assert.match(results[1]?.text ?? "", /occluded/);
-});
-
-test("with no app offering the browser, a browser tool answers that only Nyte.app has it", async () => {
-  const made = await desktop();
-
-  made.fake.reply(
-    {
-      content: [
-        {
-          type: "toolCall",
-          id: "call-1",
-          name: "browser_open",
-          arguments: { url: "https://example.test/" },
-        },
-      ],
-      stopReason: "toolUse",
-    },
-    { content: [{ type: "text", text: "done" }] },
-  );
-
-  const started = await made.served.sessions.start({ name: "browse", content: "Open the page" });
-  await started.receipt.settled();
-
-  assert.match(
-    toolResults(await started.session.view())[0]?.text ?? "",
-    /The browser isn't available here: this chat uses browser-tools, which only Nyte\.app has\. Open Nyte\.app to continue\./,
-  );
-});
-
-test("a canvas preview renders in the app that offers it, its screenshot crossing the socket whole", async () => {
-  const made = await desktop();
-  const themes: string[] = [];
-
-  offerAppActions(made.client, {
-    agent: recordingAgent().agent,
-    preview: async (request) => {
-      themes.push(request.theme);
-
-      return {
-        kind: "rendered",
-        report: {
-          png: PNG,
-          heights: { chat: 312, phone: 640 },
-          errors: [],
-          console: [{ level: "log", text: "hi" }],
-        },
-      };
-    },
-    signal: () => new AbortController().signal,
-  });
-  await offered(made);
-
-  made.fake.reply(
-    {
-      content: [
-        {
-          type: "toolCall",
-          id: "p1",
-          name: "canvas_preview",
-          arguments: {
-            source: `import { Text } from "${KIT_SPECIFIER}";\nexport default () => <Text>Hi</Text>;`,
-            theme: "dark",
+    made.fake.reply(
+      {
+        content: [
+          {
+            type: "toolCall",
+            id: "call-1",
+            name: "browser_open",
+            arguments: { url: "https://example.test/" },
           },
-        },
-      ],
-      stopReason: "toolUse",
-    },
-    { content: [{ type: "text", text: "Looks right." }] },
-  );
+        ],
+        stopReason: "toolUse",
+      },
+      {
+        content: [
+          { type: "toolCall", id: "call-2", name: "browser_click", arguments: { ref: "s1e1" } },
+        ],
+        stopReason: "toolUse",
+      },
+      { content: [{ type: "text", text: "done" }] },
+    );
 
-  const started = await made.served.sessions.start({ name: "preview", content: "Preview it." });
-  await started.receipt.settled();
+    const started = await made.served.sessions.start({
+      name: "browse",
+      content: "Open the page and sign in",
+    });
 
-  assert.deepEqual(themes, ["dark"]);
-  const result = made.fake.requests
-    .at(-1)
-    ?.context.messages.find((message) => message.role === "toolResult");
+    await started.receipt.settled();
+    const results = toolResults(await started.session.view());
 
-  assert.ok(result?.role === "toolResult");
-  const texts = result.content.map((part) => (part.type === "text" ? part.text : ""));
-  assert.match(texts[0] ?? "", /At 808 px wide \(the chat column\) it is 312 px tall\./);
-  assert.equal(
-    texts[1],
-    `[File ${createHash("sha256").update(PNG).digest("hex")}, ${PNG.byteLength} bytes, image/png]`,
-  );
-});
+    const owner: BrowserOwner = { kind: "home" };
+    assert.deepEqual(recording.calls[0], {
+      verb: "open",
+      input: {
+        method: "open",
+        session: started.session.sessionId,
+        owner,
+        url: "https://example.test/",
+      },
+    });
+    assert.ok(recording.calls.some((call) => call.verb === "click"));
+    assert.equal(results.length, 2);
+    assert.match(results[0]?.text ?? "", /Example/);
+    assert.match(results[0]?.text ?? "", /\[s1e1\] button \\"Signin\\"/);
+    assert.match(results[1]?.text ?? "", /occluded/);
+  },
+);
+
+socketTest(
+  "with no app offering the browser, a browser tool answers that only Nyte.app has it",
+  async () => {
+    const made = await desktop();
+
+    made.fake.reply(
+      {
+        content: [
+          {
+            type: "toolCall",
+            id: "call-1",
+            name: "browser_open",
+            arguments: { url: "https://example.test/" },
+          },
+        ],
+        stopReason: "toolUse",
+      },
+      { content: [{ type: "text", text: "done" }] },
+    );
+
+    const started = await made.served.sessions.start({ name: "browse", content: "Open the page" });
+    await started.receipt.settled();
+
+    assert.match(
+      toolResults(await started.session.view())[0]?.text ?? "",
+      /The browser isn't available here: this chat uses browser-tools, which only Nyte\.app has\. Open Nyte\.app to continue\./,
+    );
+  },
+);
+
+socketTest(
+  "a canvas preview renders in the app that offers it, its screenshot crossing the socket whole",
+  async () => {
+    const made = await desktop();
+    const themes: string[] = [];
+
+    offerAppActions(made.client, {
+      agent: recordingAgent().agent,
+      preview: async (request) => {
+        themes.push(request.theme);
+
+        return {
+          kind: "rendered",
+          report: {
+            png: PNG,
+            heights: { chat: 312, phone: 640 },
+            errors: [],
+            console: [{ level: "log", text: "hi" }],
+          },
+        };
+      },
+      signal: () => new AbortController().signal,
+    });
+    await offered(made);
+
+    made.fake.reply(
+      {
+        content: [
+          {
+            type: "toolCall",
+            id: "p1",
+            name: "canvas_preview",
+            arguments: {
+              source: `import { Text } from "${KIT_SPECIFIER}";\nexport default () => <Text>Hi</Text>;`,
+              theme: "dark",
+            },
+          },
+        ],
+        stopReason: "toolUse",
+      },
+      { content: [{ type: "text", text: "Looks right." }] },
+    );
+
+    const started = await made.served.sessions.start({ name: "preview", content: "Preview it." });
+    await started.receipt.settled();
+
+    assert.deepEqual(themes, ["dark"]);
+    const result = made.fake.requests
+      .at(-1)
+      ?.context.messages.find((message) => message.role === "toolResult");
+
+    assert.ok(result?.role === "toolResult");
+    const texts = result.content.map((part) => (part.type === "text" ? part.text : ""));
+    assert.match(texts[0] ?? "", /At 808 px wide \(the chat column\) it is 312 px tall\./);
+    assert.equal(
+      texts[1],
+      `[File ${createHash("sha256").update(PNG).digest("hex")}, ${PNG.byteLength} bytes, image/png]`,
+    );
+  },
+);
