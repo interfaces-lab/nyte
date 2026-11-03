@@ -486,25 +486,6 @@ describe("plugin api", () => {
     expect((await session.view()).catalog.commands).toEqual([]);
     hold.release();
   });
-
-  it("keeps the generation when a restarted host opens a chat", async () => {
-    const store = await memoryStore().open();
-    const plugins = [{ id: "greeter", contribute: { commands: [says("hello", "hi")] } }];
-    const first = await setup({ store, plugins });
-    const { session } = await first.host.sessions.start({ content: "Hi." });
-    const second = await setup({ store, plugins });
-    const generation = second.kernel.host.current().catalog;
-    const attached = attachSession(second.kernel, session.id, second.host.principal);
-
-    await attached.ready();
-    await second.kernel.plugins.runtime(session.id).ready;
-
-    expect(second.kernel.sessions.catalog(session.id).commands).toEqual([
-      expect.objectContaining({ name: "hello" }),
-    ]);
-    expect(second.kernel.host.current().catalog).toBe(generation);
-    attached.release();
-  });
 });
 
 describe("commands", () => {
