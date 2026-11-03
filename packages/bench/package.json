@@ -18,12 +18,12 @@
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "typebox": "^1.4.2"
   },
   "devDependencies": {
     "@nyte-ai/connect": "workspace:*",
-    "@nyte-ai/protocol": "workspace:*",
     "@types/node": "^26.6.5",
     "vitest": "^5.0.5"
   },
