@@ -98,6 +98,7 @@ function snapshot(): HeadSnapshot {
     leadingPrompt: null,
     activation: { kind: "active" },
     rows,
+    catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
 }
 

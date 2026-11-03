@@ -264,6 +264,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     workspace,
     watch: () => script.host?.watch() ?? refused(),
     blob: refuse,
+    catalogs: { read: refuse },
     models: {
       list: refuse,
       accounts: refuse,

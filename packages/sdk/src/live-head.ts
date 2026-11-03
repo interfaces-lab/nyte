@@ -1,14 +1,17 @@
 import { ActivationType, compile, SessionChangeType, withJson } from "@nyte-ai/schema";
 import type {
   Activation,
+  CatalogId,
   HeadName,
   MessageId,
   SdkError,
+  SessionCatalogView,
   SessionChange,
   SessionId,
 } from "@nyte-ai/schema";
 import { asSdkError, openSessionStore } from "@nyte-ai/protocol";
 import type { HostSocket, SessionRows, SessionStore, SocketEvent } from "@nyte-ai/protocol";
+import type { Catalogs } from "./catalogs.ts";
 import { freshnessCell, keepRows, listenerSet, readRetries, request, sameJson } from "./live.ts";
 import type { Freshness, Join, Live } from "./live.ts";
 
@@ -24,6 +27,7 @@ export interface HeadSnapshot {
   readonly leadingPrompt: MessageId | null;
   readonly activation: Activation;
   readonly rows: HeadRows;
+  readonly catalog: SessionCatalogView;
 }
 
 export interface HeadStore extends Live<HeadSnapshot | null> {
@@ -37,9 +41,18 @@ const changes = compile(withJson(SessionChangeType));
 
 const activations = compile(withJson(ActivationType));
 
+const EMPTY_CATALOG: SessionCatalogView = {
+  commands: [],
+  settings: [],
+  skills: [],
+  agents: [],
+  tools: [],
+};
+
 export function openHeadStore(
   input: { readonly session: SessionId; readonly head: HeadName; readonly tail: number },
   join: Join,
+  catalogs: Catalogs,
 ): HeadStore {
   const listeners = listenerSet();
   let held: Held | null = null;
@@ -51,6 +64,7 @@ export function openHeadStore(
   let stop: (() => void) | null = null;
   let pending: SessionChange[] = [];
   let reading = false;
+  let wanted: CatalogId | null = null;
 
   const stale = (error: SdkError | null): void => {
     if (freshness.stale(error)) listeners.notify();
@@ -64,12 +78,37 @@ export function openHeadStore(
       return;
     }
 
-    const next = rebuild(input.head, current, snapshot);
+    const next = rebuild(input.head, current, snapshot, resolveCatalog(live, current));
     const moved = freshness.fresh(current.store.seq);
 
     if (next === snapshot && !moved) return;
     snapshot = next;
     listeners.notify();
+  };
+
+  const resolveCatalog = (live: HostSocket, current: Held): SessionCatalogView => {
+    const id = Array.from(current.store.snapshot().rows.catalog.values())[0]?.id ?? null;
+
+    if (id === null) return EMPTY_CATALOG;
+    const known = catalogs.known(id);
+
+    if (known !== undefined) return known;
+
+    if (wanted !== id) {
+      wanted = id;
+      catalogs.read(id).then(
+        () => {
+          if (socket === live && held === current && !reading) settle(live, current);
+        },
+        (error) => {
+          if (wanted === id) wanted = null;
+
+          if (socket === live) stale(asSdkError(error));
+        },
+      );
+    }
+
+    return snapshot?.catalog ?? EMPTY_CATALOG;
   };
 
   const read = async (live: HostSocket): Promise<void> => {
@@ -169,7 +208,12 @@ export function openHeadStore(
   };
 }
 
-function rebuild(head: HeadName, current: Held, previous: HeadSnapshot | null): HeadSnapshot {
+function rebuild(
+  head: HeadName,
+  current: Held,
+  previous: HeadSnapshot | null,
+  catalog: SessionCatalogView,
+): HeadSnapshot {
   const source = current.store.snapshot();
   const rows = keepTables(source.rows, previous?.rows);
 
@@ -186,11 +230,12 @@ function rebuild(head: HeadName, current: Held, previous: HeadSnapshot | null): 
     rows === previous.rows &&
     order === previous.order &&
     activation === previous.activation &&
+    catalog === previous.catalog &&
     source.leadingPrompt === previous.leadingPrompt
   )
     return previous;
 
-  return { head, order, leadingPrompt: source.leadingPrompt, activation, rows };
+  return { head, order, leadingPrompt: source.leadingPrompt, activation, rows, catalog };
 }
 
 function keepTables(source: SessionRows, previous: HeadRows | undefined): HeadRows {

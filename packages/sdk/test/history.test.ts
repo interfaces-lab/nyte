@@ -349,7 +349,7 @@ it("refreshes a retained leading prompt from the host's newer record of the same
     ...answer(3),
   );
 
-  const wire: SessionView[] = [opening];
+  const wire: Omit<SessionView, "catalog">[] = [opening];
   let deliver: (() => void) | null = null;
 
   const views = pagedViews({
@@ -366,7 +366,7 @@ it("refreshes a retained leading prompt from the host's newer record of the same
 
   const iterator = views[Symbol.asyncIterator]();
 
-  const next = async (view: SessionView) => {
+  const next = async (view: Omit<SessionView, "catalog">) => {
     wire.push(view);
     deliver?.();
     const step = await iterator.next();

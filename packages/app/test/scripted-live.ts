@@ -8,7 +8,6 @@ import type {
   SessionsStore,
 } from "@nyte-ai/sdk/client";
 import { asId } from "@nyte-ai/schema";
-import type { CatalogRow } from "@nyte-ai/schema";
 
 export interface LiveSource<T> {
   readonly latest: () => T | undefined;
@@ -176,15 +175,7 @@ export function viewSnapshot(view: SessionView, head: HeadName): HeadSnapshot {
       turns: new Map(view.turns.map((turn) => [turn.id, turn])),
       parts: new Map(view.parts.map((part) => [part.id, part])),
       changes: new Map(view.changes.map((change) => [change.path, change])),
-      catalog: new Map(
-        [
-          ...view.catalog.commands.map((entry) => ({ kind: "commands" as const, entry })),
-          ...view.catalog.settings.map((entry) => ({ kind: "settings" as const, entry })),
-          ...view.catalog.skills.map((entry) => ({ kind: "skills" as const, entry })),
-          ...view.catalog.agents.map((entry) => ({ kind: "agents" as const, entry })),
-          ...view.catalog.tools.map((entry) => ({ kind: "tools" as const, entry })),
-        ].map((row, index): [string, CatalogRow] => [`${row.kind}/${String(index)}`, row]),
-      ),
+      catalog: new Map(),
       heads: new Map([
         [
           head,
@@ -206,5 +197,6 @@ export function viewSnapshot(view: SessionView, head: HeadName): HeadSnapshot {
         view.background.map((item) => [`${head}/${item.kind}/${item.id}`, { head, item }]),
       ),
     },
+    catalog: view.catalog,
   };
 }

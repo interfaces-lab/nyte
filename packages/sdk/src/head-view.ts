@@ -1,9 +1,7 @@
 import type {
-  CatalogRow,
   Execution,
   Message,
   QueuedMessage,
-  SessionCatalogView,
   SessionView,
   TurnInfo,
   Usage,
@@ -119,11 +117,6 @@ function buildView(snapshot: HeadSnapshot, previous: Built | undefined): HeadVie
       ? last.changes
       : reuse(last?.changes, Array.from(rows.changes.values()));
 
-  const catalog =
-    last !== undefined && before?.catalog === rows.catalog
-      ? last.catalog
-      : groupCatalog(Array.from(rows.catalog.values()), last?.catalog);
-
   const prompt =
     snapshot.leadingPrompt === null ? undefined : rows.messages.get(snapshot.leadingPrompt);
 
@@ -142,7 +135,7 @@ function buildView(snapshot: HeadSnapshot, previous: Built | undefined): HeadVie
     configuration: settings?.configuration ?? UNCONFIGURED,
     context: settings?.context ?? NO_CONTEXT,
     changes,
-    catalog,
+    catalog: snapshot.catalog,
     seenThrough: head?.seenThrough ?? null,
   };
 
@@ -186,43 +179,6 @@ function waitsInQueue(message: Message): message is QueuedMessage {
   if (message.status.kind === "unsent") return true;
 
   return message.status.kind === "pending" && message.status.schedule.kind !== "joined";
-}
-
-function groupCatalog(
-  rows: readonly CatalogRow[],
-  previous: SessionCatalogView | undefined,
-): SessionCatalogView {
-  const next: SessionCatalogView = {
-    commands: reuse(
-      previous?.commands,
-      rows.flatMap((row) => (row.kind === "commands" ? [row.entry] : [])),
-    ),
-    settings: reuse(
-      previous?.settings,
-      rows.flatMap((row) => (row.kind === "settings" ? [row.entry] : [])),
-    ),
-    skills: reuse(
-      previous?.skills,
-      rows.flatMap((row) => (row.kind === "skills" ? [row.entry] : [])),
-    ),
-    agents: reuse(
-      previous?.agents,
-      rows.flatMap((row) => (row.kind === "agents" ? [row.entry] : [])),
-    ),
-    tools: reuse(
-      previous?.tools,
-      rows.flatMap((row) => (row.kind === "tools" ? [row.entry] : [])),
-    ),
-  };
-
-  return previous !== undefined &&
-    next.commands === previous.commands &&
-    next.settings === previous.settings &&
-    next.skills === previous.skills &&
-    next.agents === previous.agents &&
-    next.tools === previous.tools
-    ? previous
-    : next;
 }
 
 function reuse<T>(previous: readonly T[] | undefined, next: readonly T[]): readonly T[] {

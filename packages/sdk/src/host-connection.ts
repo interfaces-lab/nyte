@@ -23,6 +23,7 @@ import type {
   SocketClosed,
   SocketLike,
 } from "@nyte-ai/protocol";
+import { catalogCache } from "./catalogs.ts";
 import { openClientsStore } from "./live-clients.ts";
 import type { ClientsStore } from "./live-clients.ts";
 import { openSessions } from "./live-sessions.ts";
@@ -416,6 +417,8 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     if (current !== null && declared !== JSON.stringify(actions())) current.close();
   };
 
+  const catalogs = catalogCache(async (id) => request(await ready(), "catalogs.read", { id }));
+
   const connection: HostConnection = {
     address,
     get hostId() {
@@ -441,7 +444,8 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     async call(name, input) {
       return request(await ready(), name, input);
     },
-    head: (session, head, view) => openHeadStore({ session, head, tail: view.tail }, join),
+    head: (session, head, view) =>
+      openHeadStore({ session, head, tail: view.tail }, join, catalogs),
     directory: (window) => openSessions(window ?? {}, join),
     text(listener) {
       texts.add(listener);
