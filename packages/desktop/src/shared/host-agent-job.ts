@@ -1,3 +1,5 @@
+import { basename } from "node:path";
+
 export const DESKTOP_APP_IDS = {
   production: "ai.nyte.desktop",
   updateTest: "ai.nyte.desktop.update-test",
@@ -11,12 +13,21 @@ export interface HostAgentJob {
   readonly log: string | null;
 }
 
-export function bundledHostAgentJob(appId: string): HostAgentJob {
+/** The packaged app's host: its own executable as Node (`ELECTRON_RUN_AS_NODE`) on the `nyte-host.js` its asar bundles, found from the executable's resources and placed in `argv` as a script's path would be, since a bundled plist holds no absolute path, logging with `--log`. */
+export function bundledHostAgentJob(input: {
+  readonly appId: string;
+  readonly executable: string;
+}): HostAgentJob {
   return {
-    label: `${appId}.host`,
-    program: { kind: "bundle", path: "Contents/Resources/nyte" },
-    arguments: ["host", "--log"],
-    environment: {},
+    label: `${input.appId}.host`,
+    program: { kind: "bundle", path: `Contents/MacOS/${input.executable}` },
+    arguments: [
+      "-e",
+      'const entry = require("node:path").join(process.resourcesPath, "app.asar", "out", "main", "nyte-host.js"); process.argv.splice(1, 0, entry); require(entry);',
+      "--",
+      "--log",
+    ],
+    environment: { ELECTRON_RUN_AS_NODE: "1" },
     log: null,
   };
 }
@@ -28,10 +39,12 @@ const DEVELOPMENT_HOST_VARIABLES = [
   "NYTE_SKIP_VERSION_CHECK",
 ] as const;
 
-/** An unpackaged build's host: `binary host` for this HOME and NYTE_HOME, logging to the host log, with the app's own model catalog, trace and dev-log variables. */
+/** An unpackaged build's host: `executable` as Node on the app's `entry`, with the `nyte-tailnet` at `tailnet`, for this HOME and NYTE_HOME, logging to the host log, with the app's own model catalog, trace and dev-log variables. */
 export function developmentHostAgentJob(input: {
   readonly label: string;
-  readonly binary: string;
+  readonly executable: string;
+  readonly entry: string;
+  readonly tailnet: string;
   readonly home: string;
   readonly nyteHome: string;
   readonly environment: Readonly<Record<string, string | undefined>>;
@@ -44,15 +57,20 @@ export function developmentHostAgentJob(input: {
 
   return {
     label: input.label,
-    program: { kind: "path", path: input.binary },
-    arguments: ["host"],
-    environment: { HOME: input.home, NYTE_HOME: input.nyteHome, ...Object.fromEntries(forwarded) },
+    program: { kind: "path", path: input.executable },
+    arguments: [input.entry, "--tailnet", input.tailnet],
+    environment: {
+      ELECTRON_RUN_AS_NODE: "1",
+      HOME: input.home,
+      NYTE_HOME: input.nyteHome,
+      ...Object.fromEntries(forwarded),
+    },
     log: `${input.nyteHome}/logs/host.log`,
   };
 }
 
 export function hostAgentPlist(job: HostAgentJob): string {
-  const argv0 = job.program.kind === "bundle" ? "nyte" : job.program.path;
+  const argv0 = job.program.kind === "bundle" ? basename(job.program.path) : job.program.path;
   const environment = Object.entries(job.environment);
 
   const entries = [

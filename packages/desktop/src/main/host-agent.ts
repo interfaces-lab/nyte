@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { app } from "electron";
@@ -29,15 +29,18 @@ export interface HostAgentOptions {
   readonly home: string;
   readonly nyteHome: string;
   readonly packaged: boolean;
-  readonly resources: string;
   readonly appPath: string;
+  /** The app's executable, which runs the host as Node. */
+  readonly executable: string;
+  /** The host script the app bundles beside its main. */
+  readonly entry: string;
   readonly label: string | undefined;
 }
 
 export function hostAgent(options: HostAgentOptions): HostAgent {
   if (process.platform !== "darwin") return detachedHost(options);
 
-  return options.packaged ? loginItemAgent(options.appId) : developmentAgent(options);
+  return options.packaged ? loginItemAgent(options) : developmentAgent(options);
 }
 
 export function processAlive(pid: number): boolean {
@@ -50,8 +53,12 @@ export function processAlive(pid: number): boolean {
   }
 }
 
-function loginItemAgent(appId: string): HostAgent {
-  const job = bundledHostAgentJob(appId);
+function loginItemAgent(options: HostAgentOptions): HostAgent {
+  const job = bundledHostAgentJob({
+    appId: options.appId,
+    executable: basename(options.executable),
+  });
+
   const service = { type: "agentService", serviceName: `${job.label}.plist` } as const;
   const registration = async (): Promise<AgentRegistration> =>
     app.getLoginItemSettings(service).status;
@@ -75,7 +82,9 @@ function developmentAgent(options: HostAgentOptions): HostAgent {
 
   const job = developmentHostAgentJob({
     label,
-    binary: developmentBinary(options),
+    executable: options.executable,
+    entry: options.entry,
+    tailnet: developmentTailnet(options),
     home: options.home,
     nyteHome: options.nyteHome,
     environment: process.env,
@@ -116,7 +125,6 @@ function developmentAgent(options: HostAgentOptions): HostAgent {
 const RunningHostType = Type.Object({ pid: Type.Integer() });
 
 function detachedHost(options: HostAgentOptions): HostAgent {
-  const binary = options.packaged ? join(options.resources, "nyte") : developmentBinary(options);
   const label = options.label ?? `${options.appId}.host`;
 
   const pid = async (): Promise<number | null> => {
@@ -130,11 +138,24 @@ function detachedHost(options: HostAgentOptions): HostAgent {
     if (process.platform === "win32") return "not-found";
 
     if ((await pid()) !== null) return "enabled";
-    spawn(binary, ["host", "--log"], {
-      detached: true,
-      stdio: "ignore",
-      env: { ...process.env, HOME: options.home, NYTE_HOME: options.nyteHome },
-    }).unref();
+    spawn(
+      options.executable,
+      [
+        options.entry,
+        "--log",
+        ...(options.packaged ? [] : ["--tailnet", developmentTailnet(options)]),
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: "1",
+          HOME: options.home,
+          NYTE_HOME: options.nyteHome,
+        },
+      },
+    ).unref();
 
     return "enabled";
   };
@@ -159,8 +180,8 @@ async function stopped(pid: () => Promise<number | null>): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
-function developmentBinary(options: HostAgentOptions): string {
-  return join(options.appPath, "..", "tui", "dist", "nyte");
+function developmentTailnet(options: HostAgentOptions): string {
+  return join(options.appPath, "..", "tui", "dist", "nyte-tailnet");
 }
 
 async function bootstrap(path: string): Promise<void> {

@@ -452,6 +452,7 @@ function startHost(): DesktopHost {
       onChange: () => desktopHost?.remoteChanged(),
     }),
     usageWorker: new URL("./usage-worker.js", import.meta.url),
+    hostEntry: new URL("./nyte-host.js", import.meta.url),
     agent: browserSurfaces.agent,
     preview: (request, signal) => previewCanvas(request, signal),
     previewSignal: () => previewsOpen.signal,

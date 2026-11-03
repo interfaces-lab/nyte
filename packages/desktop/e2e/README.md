@@ -1,6 +1,6 @@
 # Desktop E2E
 
-Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwright.config.ts`. Its catalog is the offline `Scripted` model: `/hold` streams until stopped, `/error` refuses, `/think` answers with reasoning, `/markdown` answers a showcase, `/long <n>` answers n paragraphs, `/swarm` starts five agents that each stream notes and read a file for eight rounds before answering, anything else `Echo: <text>`. Each launch starts its own host the way the app finds it in production: `nyte host` from `packages/tui/dist` as a launchd job with its own label, for the chapter's isolated `HOME`, signed in with a key to a local Anthropic endpoint that serves the scripted catalog. The app gets that label in `NYTE_DESKTOP_HOST_LABEL`, finds the job loaded and connects to its socket. Closing the launch boots the job out. Each spec file is a chapter that launches one window over its own copy of a seeded home and walks one surface. `stores/` has its own `stores/playwright.config.ts`, so this config skips it.
+Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwright.config.ts`. Its catalog is the offline `Scripted` model: `/hold` streams until stopped, `/error` refuses, `/think` answers with reasoning, `/markdown` answers a showcase, `/long <n>` answers n paragraphs, `/swarm` starts five agents that each stream notes and read a file for eight rounds before answering, anything else `Echo: <text>`. Each launch starts its own host the way the app finds it in production: the e2e build's `nyte-host.js` on Electron's Node (`ELECTRON_RUN_AS_NODE=1`) as a launchd job with its own label, for the chapter's isolated `HOME`, signed in with a key to a local Anthropic endpoint that serves the scripted catalog. The app gets that label in `NYTE_DESKTOP_HOST_LABEL`, finds the job loaded and connects to its socket. Closing the launch boots the job out. Each spec file is a chapter that launches one window over its own copy of a seeded home and walks one surface. `stores/` has its own `stores/playwright.config.ts`, so this config skips it.
 
 ## Chapters
 
@@ -32,7 +32,7 @@ The seeded home is built once by `baseline.ts` through `sdk.open` over the e2e c
 ```sh
 pnpm --dir packages/canvas build
 pnpm --dir packages/app build
-pnpm --dir packages/tui build             # dist/nyte and dist/nyte-tailnet; needs Go
+pnpm --dir packages/tui build             # dist/nyte-tailnet, the host's sidecar; needs Go
 pnpm --dir packages/desktop build
 pnpm --dir packages/desktop build:e2e   # needs the regular build
 ```

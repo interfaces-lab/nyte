@@ -107,7 +107,11 @@ async function verifyBundledCli(context: AfterPackContext): Promise<void> {
 
 async function bundleHostAgent(context: AfterPackContext): Promise<void> {
   if (context.electronPlatformName !== "darwin") return;
-  const job = bundledHostAgentJob(appId);
+
+  const job = bundledHostAgentJob({
+    appId,
+    executable: context.packager.appInfo.productFilename,
+  });
 
   const agents = join(
     context.appOutDir,

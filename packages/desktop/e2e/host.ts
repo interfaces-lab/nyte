@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
@@ -18,7 +18,9 @@ import { POLISH_MODEL, polishModel, serveScriptedModel } from "./polish-fixture.
 
 const execute = promisify(execFile);
 
-const TUI_ROOT = resolve(import.meta.dirname, "../../tui");
+const DESKTOP_ROOT = resolve(import.meta.dirname, "..");
+
+const TUI_ROOT = resolve(DESKTOP_ROOT, "../tui");
 
 /** How long the host has to answer on its socket after launchd starts it, and to exit after `bootout`. */
 const HOST_MS = 30_000;
@@ -31,7 +33,7 @@ const JsonObjectType = Type.Record(Type.String(), Type.Unknown());
 
 export interface E2eHostOptions {
   readonly home: string;
-  /** Where the app resolves its development binary: `<parent>/tui/dist/nyte`, as `app.getAppPath()/../tui` resolves it. */
+  /** Where the app resolves its development tailnet sidecar: `<parent>/tui/dist/nyte-tailnet`, as `app.getAppPath()/../tui` resolves it. */
   readonly parentDirectory: string;
   readonly places?: string;
   readonly environment?: Readonly<Record<string, string>>;
@@ -49,7 +51,7 @@ export interface E2eHost {
 }
 
 /**
- * Starts `nyte host` for `home` as its own launchd job, as the app's development agent would, over
+ * Starts the e2e build's host for `home` as its own launchd job, as the app's development agent would, over
  * the scripted catalog served at a local Anthropic endpoint. The app launched with
  * `environment` finds the same job loaded and only connects to its socket.
  */
@@ -76,7 +78,9 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
 
   const job = developmentHostAgentJob({
     label,
-    binary: join(options.parentDirectory, "tui", "dist", "nyte"),
+    executable: await realpath(await electronExecutable()),
+    entry: await realpath(join(DESKTOP_ROOT, "out-e2e", "main", "nyte-host.js")),
+    tailnet: join(options.parentDirectory, "tui", "dist", "nyte-tailnet"),
     home: options.home,
     nyteHome,
     environment,
@@ -101,7 +105,7 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
   cleanup.defer(() => void tail.kill());
 
   const pid = (): Promise<number | null> => runningHost(nyteHome);
-  await waitFor(async () => (await pid()) !== null, `nyte host for ${options.home} to answer`);
+  await waitFor(async () => (await pid()) !== null, `the host for ${options.home} to answer`);
   const owned = cleanup.move();
 
   return {
@@ -122,7 +126,7 @@ export async function startE2eHost(options: E2eHostOptions): Promise<E2eHost> {
   };
 }
 
-/** Signs `home` in to the scripted Anthropic endpoint with a key and picks its model, through the store `nyte host` opens. */
+/** Signs `home` in to the scripted Anthropic endpoint with a key and picks its model, through the store the host opens. */
 async function signIn(home: string, origin: string): Promise<void> {
   const models = join(home, ".nyte", "models-store.json");
   await mkdir(join(home, ".nyte"), { recursive: true, mode: 0o700 });
@@ -171,10 +175,15 @@ async function signIn(home: string, origin: string): Promise<void> {
   }
 }
 
+/** The Electron binary the e2e app and its host run. */
+export async function electronExecutable(): Promise<string> {
+  const electronRoot = join(DESKTOP_ROOT, "node_modules/electron");
+  const executable = await readFile(join(electronRoot, "path.txt"), "utf8");
+
+  return join(electronRoot, "dist", executable.trim());
+}
+
 async function ensureTuiLink(parent: string): Promise<void> {
-  await readFile(join(TUI_ROOT, "dist", "nyte")).catch(() => {
-    throw new Error(`Missing ${TUI_ROOT}/dist/nyte. Run pnpm --dir packages/tui build first.`);
-  });
   await symlink(TUI_ROOT, join(parent, "tui"), "junction").catch((cause: NodeJS.ErrnoException) => {
     if (cause.code !== "EEXIST") throw cause;
   });
@@ -202,7 +211,7 @@ async function bootout(label: string): Promise<void> {
   if (found === undefined) return;
   const pid = Number(found);
   resume(pid);
-  const gone = await waitFor(async () => !alive(pid), `nyte host ${found} to exit`).then(
+  const gone = await waitFor(async () => !alive(pid), `the host ${found} to exit`).then(
     () => true,
     () => false,
   );
@@ -210,7 +219,7 @@ async function bootout(label: string): Promise<void> {
   if (gone) return;
   process.kill(pid, "SIGKILL");
 
-  throw new Error(`nyte host ${found} outlived its launchd job's bootout.`);
+  throw new Error(`The host ${found} outlived its launchd job's bootout.`);
 }
 
 function resume(pid: number): void {
