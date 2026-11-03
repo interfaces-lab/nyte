@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const terminalStyles = create({
@@ -24,7 +24,7 @@ export const terminalStyles = create({
   },
   canvas: { flex: 1, minHeight: 0, minWidth: 0, overflow: "clip" },
   screen: {
-    "--_scrollbar-opacity": { default: "0", ":hover": "1" },
+    "--_scrollbar-opacity": { default: "0", ":hover": { [media.hover]: "1" } },
     position: "relative",
     boxSizing: "border-box",
     width: "100%",
