@@ -75,6 +75,8 @@ async function open(command: HostCommand): Promise<Opened> {
     shell: () => shell,
     plugins: command.socket === undefined ? [] : [desktopSettingsPlugin],
     clients: command.socket !== undefined,
+    workspace:
+      command.workspace === undefined ? undefined : { kind: "local", path: command.workspace },
   });
 
   if (command.socket !== undefined)

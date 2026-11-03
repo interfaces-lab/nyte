@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { appendFile, mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { alignedRows, ansiEnabled, statusGlyph } from "./cli-style.ts";
@@ -53,6 +54,7 @@ export async function hostCommand(
   }
 }
 
+/** Opens home as the default workspace, never the working directory: launchd starts the desktop's agent in `/`, and a workspace there reads every folder macOS protects under home. */
 async function serve(json: boolean, signal: AbortSignal, output: Output): Promise<void> {
   const path = hostFilePath();
   const socket = process.platform === "win32" ? undefined : hostSocketPath();
@@ -71,6 +73,7 @@ async function serve(json: boolean, signal: AbortSignal, output: Output): Promis
     token,
     authority: OWN_TOKEN_AUTHORITY,
     socket,
+    workspace: homedir(),
   });
 
   const port = Number(new URL(thread.address).port);
