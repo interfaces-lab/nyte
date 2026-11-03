@@ -364,6 +364,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       api_revision: Math.min(API_REVISION, value.api_revision ?? API_REVISION),
       api_min_revision: API_MIN_REVISION,
       api_server_revision: API_REVISION,
+      host_id: peer.connection.hostId,
       client_id: id,
       limits: SOCKET_LIMITS,
     });

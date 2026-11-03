@@ -136,7 +136,7 @@ The host advertises both limits in its welcome.
 
 The host speaks a range of API revisions. A revision is an integer; every change to an operation, a row, or an event kind that an older client could not ignore bumps it.
 
-The client's hello carries `api_min_revision`, the oldest revision it can use, and may carry `api_revision`, the newest it speaks, so a host can tell a client too old for it. The welcome carries `api_revision`, the newest the two share, `api_min_revision`, the oldest the host serves, and `api_server_revision`, the host's own. A host and a client with no revision in common close the connection, and the close reason names the side to update.
+The client's hello carries `api_min_revision`, the oldest revision it can use, and may carry `api_revision`, the newest it speaks, so a host can tell a client too old for it. The welcome carries `api_revision`, the newest the two share, `api_min_revision`, the oldest the host serves, `api_server_revision`, the host's own, and `host_id`, so a client keys its connection by the host rather than the address it dialed. A host and a client with no revision in common close the connection, and the close reason names the side to update.
 
 The operations table and the row and event schemas have a digest. CI records the digest next to the revision and fails when the digest moves without the revision, or an operation changes without its docs page.
 

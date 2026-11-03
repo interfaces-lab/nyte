@@ -2,6 +2,18 @@ import { connect } from "./connect.ts";
 
 export { createSendJournal } from "./journal.ts";
 
+export { openHost } from "./host-connection.ts";
+
+export type {
+  Health,
+  HostConnection,
+  HostCredentials,
+  HostOptions,
+  Live,
+  OpenSocket,
+  SocketRequest,
+} from "./host-connection.ts";
+
 export * from "./surface.ts";
 
 /**

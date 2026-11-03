@@ -64,6 +64,7 @@ export const WelcomeFrameType = Type.Object({
   api_revision: Type.Integer(),
   api_min_revision: Type.Integer(),
   api_server_revision: Type.Integer(),
+  host_id: idSchema<"host">(),
   client_id: idSchema<"client">(),
   limits: Type.Object({ backlogBytes: Type.Integer(), maxFrameBytes: Type.Integer() }),
 });
