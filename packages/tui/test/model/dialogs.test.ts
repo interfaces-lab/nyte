@@ -5,7 +5,7 @@ import type { Task } from "../../src/lib/tasks.ts";
 import { reduceList, visibleChoices } from "../../src/model/dialogs/list.ts";
 import { rowDraft, visibleModels } from "../../src/model/dialogs/model-picker.ts";
 import { deriveScreen } from "../../src/model/screen.ts";
-import { followed, buildView } from "../fixture/view.ts";
+import { buildView, followed, FRESH } from "../fixture/view.ts";
 import { play, ready, S1, typed } from "./support.ts";
 import { idle, top, key, list } from "./dialog-support.ts";
 
@@ -396,11 +396,21 @@ describe("accepting a row", () => {
         .waiting("q1"),
     );
 
-    const interrupted = play(started.state, { kind: "view", session: S1, view: parent });
+    const interrupted = play(started.state, {
+      kind: "view",
+      session: S1,
+      view: parent,
+      freshness: FRESH,
+    });
 
     expect(top(interrupted.state)).toMatchObject({ title: "Parent question" });
 
-    const resumed = play(interrupted.state, { kind: "view", session: S1, view: idle });
+    const resumed = play(interrupted.state, {
+      kind: "view",
+      session: S1,
+      view: idle,
+      freshness: FRESH,
+    });
 
     expect(top(resumed.state)).toMatchObject({ title: "2/2 · Subagent c1: Child second" });
     expect(
@@ -440,7 +450,7 @@ describe("accepting a row", () => {
     const submitted = play(
       ready(old),
       { kind: "dialog", command: { kind: "pick", index: 0 } },
-      { kind: "view", session: S1, view: next },
+      { kind: "view", session: S1, view: next, freshness: FRESH },
       { kind: "dialog", command: { kind: "pick", index: 0 } },
     );
 

@@ -1,4 +1,5 @@
-import type { Failure, Message, SessionView, TurnId, TurnInfo } from "@nyte-ai/sdk";
+import type { Failure, Message, TurnId, TurnInfo } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import { runMark, runStatus, showsTool, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { MIN_REPORTED_DURATION_MS } from "../lib/constants.ts";
@@ -86,7 +87,7 @@ export function rowWeight(row: Row): number {
  * gets a new model.
  */
 export function deriveTranscript(
-  view: SessionView | null,
+  view: HeadView | null,
   shells: readonly ShellJob[],
   local: TranscriptLocal,
   previous: TranscriptModel | null,
@@ -144,7 +145,7 @@ export function deriveTranscript(
   };
 }
 
-function turnRows(view: SessionView): readonly Row[] {
+function turnRows(view: HeadView): readonly Row[] {
   const indexes = readTurnIndexes(view.turns);
   const first = Math.min(firstReachedTurn(view.messages, indexes), view.turns.length - 1);
   const count = view.turns.length - Math.max(0, first);
@@ -230,7 +231,7 @@ function awaitsDelegate(message: Message): boolean {
   return awaits;
 }
 
-function turnModel(info: TurnInfo, built: readonly Message[], view: SessionView): TurnModel {
+function turnModel(info: TurnInfo, built: readonly Message[], view: HeadView): TurnModel {
   const before = TURN_MODELS.get(info);
 
   const blocks =
@@ -324,7 +325,7 @@ function shellRow(job: ShellJob): Row {
 export function turnStatus(
   info: TurnInfo,
   blocks: readonly Message[],
-  view: SessionView,
+  view: HeadView,
 ): TurnStatus | null {
   const live = view.turns.at(-1)?.id === info.id;
   const { execution } = view;

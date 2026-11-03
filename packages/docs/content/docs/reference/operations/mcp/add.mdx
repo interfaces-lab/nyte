@@ -1,0 +1,246 @@
+---
+title: mcp.add
+description: Adds or replaces an MCP server in the user or project mcp.json.
+---
+
+Adds a server to `~/.nyte/mcp.json` (`user`) or the trusted workspace's `.nyte/mcp.json`
+(`project`), or replaces the one with that name. A server has a `command` (stdio) or a `url`
+(HTTP), with options such as `enabled`, `timeout`, `description` and `exposure`. It doesn't wait for
+the server to connect.
+
+## When to call it
+
+From an "add server" form. Watch [`mcp.watch`](/docs/reference/operations/mcp/watch) for it to
+connect or ask for sign-in.
+
+## Access
+
+Needs `owner` authority. Workspace scope. A `project` server needs the folder to be trusted.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "server": "docs",
+  "config": { "url": "https://docs.example.com/mcp", "exposure": "direct" },
+  "scope": "user"
+}
+```
+
+Response:
+
+```json
+{ "kind": "updated" }
+```
+
+`invalid` with a message answers a change that can't be made, such as a `project` server in a
+folder that isn't trusted: `Project servers need a trusted folder on this machine.`
+
+## Errors
+
+- `unavailable` when the host has no MCP servers.
+- `unknown` when no workspace has the id.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "server", "config", "scope"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "server": {
+      "type": "string"
+    },
+    "config": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["command"],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "description": {
+              "type": "string"
+            },
+            "exposure": {
+              "enum": ["direct", "deferred", "codemode", "codemode-deferred", "hidden"]
+            },
+            "toolExposure": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "enum": ["direct", "deferred", "codemode", "codemode-deferred", "hidden"]
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "stdio"
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "env": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "type": "string"
+                }
+              }
+            },
+            "cwd": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["url"],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "description": {
+              "type": "string"
+            },
+            "exposure": {
+              "enum": ["direct", "deferred", "codemode", "codemode-deferred", "hidden"]
+            },
+            "toolExposure": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "enum": ["direct", "deferred", "codemode", "codemode-deferred", "hidden"]
+                }
+              }
+            },
+            "type": {
+              "enum": ["http", "streamable-http"]
+            },
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "headers": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "type": "string"
+                }
+              }
+            },
+            "oauth": {
+              "type": "object",
+              "properties": {
+                "clientId": {
+                  "type": "string"
+                },
+                "clientSecret": {
+                  "type": "string"
+                },
+                "callbackPort": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "callbackUrl": {
+                  "type": "string"
+                },
+                "clientName": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "authServerMetadataUrl": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "scope": {
+      "enum": ["user", "project"]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "updated"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "invalid"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

@@ -12,12 +12,15 @@ import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { PaneController } from "../../panes/pane-controller.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { installConnection } from "../../data/connection.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { SessionScreen } from "../../panes/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import "../../theme/tokens.stylex.ts";
-import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
+import {
+  installScripted,
+  scriptedConnection,
+  viewStream,
+} from "../../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../../test/view-fixtures.ts";
 
 const SESSION = asId<"session">("composer-keys");
@@ -92,7 +95,6 @@ const view: SessionView = {
   background: [],
   configuration: { selected: configuration, effective: configuration },
   context: { tokens: 0, window: 0, lastRequest: null },
-  heads: [],
   changes: [],
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 };
@@ -101,7 +103,7 @@ const historyReads: string[] = [];
 
 let historyGate = Promise.resolve();
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: [sessionRow(SESSION)],
     views: new Map([[SESSION, viewStream(view)]]),
@@ -118,7 +120,7 @@ installConnection(
         };
       },
     }),
-  }).connection,
+  }),
 );
 
 async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
@@ -156,7 +158,7 @@ async function recallPrompts(editor: HTMLElement): Promise<void> {
   document.execCommand("insertText", false, DRAFT);
   await reads(DRAFT);
 
-  await until(() => sessionWatch(SESSION).value, "the chat's view");
+  await until(() => chatStore(SESSION).value, "the chat's view");
 
   for (const shown of [PROMPTS[2], PROMPTS[1], PROMPTS[0], PROMPTS[0]]) {
     press(editor, "ArrowUp", { ctrlKey: true, altKey: true });

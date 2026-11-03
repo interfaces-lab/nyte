@@ -1,0 +1,109 @@
+---
+title: models.setListing
+description: Shows, hides or favorites models in the model list.
+---
+
+Shows, hides or favorites models in the model list. `shown` clears a listing; `hidden` and
+`favorite` are saved per model. Every ref must name a model in the catalog, or nothing changes.
+
+## When to call it
+
+From a model picker's hide and favorite controls. The listing comes back in each provider's
+`listings` from [`models.list`](/docs/reference/operations/models/list).
+
+## Access
+
+Needs `owner` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "refs": [{ "provider": "anthropic", "id": "claude-sonnet-4-5" }],
+  "listing": "favorite"
+}
+```
+
+Response:
+
+```json
+{ "kind": "set" }
+```
+
+## Errors
+
+- `unavailable` when the host was built without models. A ref the catalog doesn't have answers
+  `unknown-model`.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["refs", "listing"],
+  "properties": {
+    "refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["provider", "id"],
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "listing": {
+      "enum": ["shown", "hidden", "favorite"]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "set"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unknown-model"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

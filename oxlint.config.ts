@@ -35,7 +35,7 @@ const desktopProcessImports = (...folders: readonly string[]) =>
   }));
 
 const desktopProcessFolders = [
-  { folder: "main", forbidden: ["host", "workers", "preload"] },
+  { folder: "main", forbidden: ["workers", "preload"] },
   { folder: "host", forbidden: ["main", "preload"] },
   { folder: "workers", forbidden: ["main", "host", "preload"] },
   { folder: "preload", forbidden: ["main", "host", "workers"] },

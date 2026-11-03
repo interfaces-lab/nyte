@@ -49,7 +49,7 @@ describe("browser clients", () => {
         [BROKER_ROUTES.environment(environmentId), "DELETE", "DELETE", brokerHeaders],
         [BROKER_ROUTES.devices(environmentId), "POST", "POST", brokerHeaders],
         [BROKER_ROUTES.device(environmentId, deviceId), "DELETE", "DELETE", brokerHeaders],
-        [`/r/${environmentId}/head.watch`, "POST", "POST", relayHeaders],
+        [`/r/${environmentId}/connection.watch`, "POST", "POST", relayHeaders],
         [`/r/${environmentId}/.nyte/describe`, "GET", "GET", relayHeaders],
         [`/r/${environmentId}/_nyte/connect/device`, "DELETE", "DELETE", relayHeaders],
       ] as const;
@@ -105,7 +105,7 @@ describe("browser clients", () => {
     expect(Value.Check(EnvironmentList, body)).toBe(true);
 
     for (const [method, path] of [
-      ["POST", "/head.watch"],
+      ["POST", "/connection.watch"],
       ["GET", "/.nyte/describe"],
     ] as const) {
       const answer = await phone(input, path, {

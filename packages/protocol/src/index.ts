@@ -8,7 +8,11 @@ export * from "./stream-channel.ts";
 
 export * from "./wire.ts";
 
-export * from "./view-frames.ts";
+export * from "./session-store.ts";
+
+export * from "./directory-store.ts";
+
+export * from "./socket-client.ts";
 
 export { parseJson } from "./json.ts";
 

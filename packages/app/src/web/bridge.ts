@@ -133,7 +133,7 @@ export function createWebBridge(): WebBridge {
         state: () =>
           Promise.resolve({
             kind: "off",
-            tailnet: { kind: "missing" },
+            tailnet: { state: "unavailable" },
             cloudflare: { kind: "unregistered" },
           }),
         start: refuse(REMOTE_ACCESS),
@@ -142,6 +142,8 @@ export function createWebBridge(): WebBridge {
         clear: refuse(REMOTE_ACCESS),
         pair: refuse(REMOTE_ACCESS),
         revoke: refuse(REMOTE_ACCESS),
+        configureTailnet: refuse(REMOTE_ACCESS),
+        signOutTailnet: refuse(REMOTE_ACCESS),
       },
       connect: {
         state: () => Promise.resolve({ kind: "unavailable", reason: "not_configured" }),

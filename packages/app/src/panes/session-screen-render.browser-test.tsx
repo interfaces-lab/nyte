@@ -12,12 +12,11 @@ import { PaneControllerProvider } from "./pane-context.tsx";
 import { PaneController } from "./pane-controller.ts";
 import { SessionDndProvider } from "./session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
-import { installConnection } from "../data/connection.ts";
 import { SessionScreen } from "./session-screen.tsx";
 import { createAppRouter } from "../shell/routes.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
-import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { COMPLETED, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
 import {
   ID,
@@ -50,7 +49,7 @@ const editRead = Promise.withResolvers<SessionView>();
 
 const EDITED_MESSAGE = asId<"message">("footer-edited");
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: [sessionRow("session-screen-render", { name: "Transcript rules" })],
     views: new Map([[ID, stream]]),
@@ -72,7 +71,7 @@ installConnection(
         };
       },
     }),
-  }).connection,
+  }),
 );
 
 const catalog = {

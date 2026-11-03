@@ -9,7 +9,7 @@ import { FileModelsStore, type Models } from "@nyte-ai/ai";
 import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
 import { localDay } from "@nyte-ai/host/store-usage";
 import { CALL_INPUT_SCHEMAS } from "../shared/ipc-inputs.ts";
-import { testDesktop } from "./fixtures/desktop-host.ts";
+import { socketTest, testDesktop } from "./fixtures/desktop-host.ts";
 
 const folders: string[] = [];
 
@@ -27,40 +27,43 @@ async function histories() {
   return home;
 }
 
-test("host.usage reads a real completed chat and keeps external histories separate", async () => {
-  await histories();
-  const made = await testDesktop();
+socketTest(
+  "host.usage reads a real completed chat and keeps external histories separate",
+  async () => {
+    await histories();
+    const made = await testDesktop();
 
-  try {
-    const host = await made.host.host();
-    made.fake.reply({
-      content: [{ type: "text", text: "Done" }],
-      usage: { input: 100, output: 20, cacheRead: 10, reasoning: 5 },
-    });
-    const { receipt } = await host.sessions.start({ name: "Usage chat", content: "Work" });
-    await receipt.settled();
-    const today = localDay(Date.now());
-    const report = await made.host.call(1, "host.usage", { sinceDay: today, untilDay: today });
-    assert.equal(report.nyteError, null);
-    assert.equal(report.entries.length, 1);
-    assert.deepEqual(report.entries[0]?.subject, {
-      kind: "model",
-      provider: "test",
-      model: "model",
-    });
-    assert.equal(report.entries[0]?.totals.tokens, 130);
-    assert.equal(report.sessions[0]?.name, "Usage chat");
-    assert.deepEqual(report.claudeCode, { kind: "missing" });
-    assert.deepEqual(report.codex, { kind: "missing" });
-    assert.equal(
-      (await made.host.call(1, "host.usage", { sinceDay: "2000-01-01", untilDay: "2000-01-01" }))
-        .entries.length,
-      0,
-    );
-  } finally {
-    await made.close();
-  }
-});
+    try {
+      const host = made.served;
+      made.fake.reply({
+        content: [{ type: "text", text: "Done" }],
+        usage: { input: 100, output: 20, cacheRead: 10, reasoning: 5 },
+      });
+      const { receipt } = await host.sessions.start({ name: "Usage chat", content: "Work" });
+      await receipt.settled();
+      const today = localDay(Date.now());
+      const report = await made.host.call(1, "host.usage", { sinceDay: today, untilDay: today });
+      assert.equal(report.nyteError, null);
+      assert.equal(report.entries.length, 1);
+      assert.deepEqual(report.entries[0]?.subject, {
+        kind: "model",
+        provider: "test",
+        model: "model",
+      });
+      assert.equal(report.entries[0]?.totals.tokens, 130);
+      assert.equal(report.sessions[0]?.name, "Usage chat");
+      assert.deepEqual(report.claudeCode, { kind: "missing" });
+      assert.deepEqual(report.codex, { kind: "missing" });
+      assert.equal(
+        (await made.host.call(1, "host.usage", { sinceDay: "2000-01-01", untilDay: "2000-01-01" }))
+          .entries.length,
+        0,
+      );
+    } finally {
+      await made.close();
+    }
+  },
+);
 
 test("usage windows reject invalid, reversed and extra input", () => {
   for (const input of [

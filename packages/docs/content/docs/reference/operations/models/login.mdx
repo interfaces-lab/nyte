@@ -1,0 +1,115 @@
+---
+title: models.login
+description: Starts signing in to a provider; follow it with `login.steps`.
+---
+
+Starts signing in to a provider with OAuth or an API key, and answers at once. The sign-in itself
+runs when the client reads [`login.steps`](/docs/reference/operations/login/steps) for the same
+provider.
+
+## When to call it
+
+When the user chooses to sign in. Pick a method from the provider's `methods` in
+[`models.list`](/docs/reference/operations/models/list). Pass `label` to name the new account, and
+`browser: "elsewhere"` when the user's browser isn't on the host machine, such as over SSH.
+
+A principal has one sign-in per provider: starting another ends the first. A sign-in that isn't
+finished ends after 10 minutes.
+
+## Access
+
+Needs `owner` authority. Host scope. The sign-in belongs to the principal that started it; another
+principal can't read its steps.
+
+## Example
+
+Request body:
+
+```json
+{ "provider": "anthropic", "method": { "kind": "oauth" }, "label": "Work" }
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `unavailable` when the host was built without models. Problems with the sign-in itself arrive as
+  a `failed` step on `login.steps`.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["provider", "method"],
+  "properties": {
+    "provider": {
+      "type": "string"
+    },
+    "method": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "oauth"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "key"
+            }
+          }
+        }
+      ]
+    },
+    "label": {
+      "type": "string"
+    },
+    "browser": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "host"
+        },
+        {
+          "type": "string",
+          "const": "elsewhere"
+        }
+      ]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

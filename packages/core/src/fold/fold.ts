@@ -41,16 +41,25 @@ import { mergeChanges } from "./changes.ts";
 import {
   committed,
   dropFailed,
+  dropHead,
+  dropRow,
   emptyHead,
+  emptyStamps,
+  hidesTurn,
   IDLE,
   liveRun,
   newPath,
+  newTouched,
+  noteHead,
   openTurn,
   partView,
   pendingTurn,
+  setCatalog,
+  setChanges,
   setMessage,
   setTurn,
   toPartMessageId,
+  touchRow,
   turnInfo,
   updateHead,
   updatePart,
@@ -76,6 +85,8 @@ export const EMPTY_CATALOG: SessionCatalogView = {
 
 const STOPPED: Failure = { class: "aborted", message: "Stopped." };
 
+const UNTOUCHED = newTouched();
+
 export function emptyFold(input: {
   readonly session: SessionId;
   readonly principal: PrincipalId;
@@ -94,6 +105,8 @@ export function emptyFold(input: {
     riders: new Set(),
     thinking: new Map(),
     paths: new Map(),
+    stamps: emptyStamps(),
+    ring: { steps: [], from: asSeq(0), mark: 0 },
   };
 
   return {
@@ -102,6 +115,7 @@ export function emptyFold(input: {
     principal: input.principal,
     seen: new Map(),
     seq: asSeq(0),
+    base: asSeq(0),
     activation: INACTIVE,
     catalog: EMPTY_CATALOG,
     changes: [],
@@ -120,7 +134,7 @@ export function emptyFold(input: {
 }
 
 export function fold(state: FoldState, event: SessionEvent | PatchEvent): FoldState {
-  const draft = open(state);
+  const draft = open(state, event.kind !== "patch");
 
   if (event.kind === "patch") {
     if (!applyPatch(draft, event)) return state;
@@ -132,7 +146,7 @@ export function fold(state: FoldState, event: SessionEvent | PatchEvent): FoldSt
   return finish(state, draft);
 }
 
-function open(state: FoldState): Draft {
+function open(state: FoldState, durable: boolean): Draft {
   return {
     ...state[INDEX],
     seen: state.seen,
@@ -147,6 +161,8 @@ function open(state: FoldState): Draft {
     swapped: new Set(),
     retitled: new Set(),
     steps: new Map(),
+    durable,
+    touched: durable ? newTouched() : UNTOUCHED,
   };
 }
 
@@ -184,9 +200,10 @@ function apply(draft: Draft, event: SessionEvent): void {
     case "request":
       return eachHead(draft, event.head, (head) => ({ ...head, context: event.context }));
     case "changes":
-      draft.changes = "cleared" in event ? mergeChanges(draft.changes, event) : event.files;
-
-      return;
+      return setChanges(
+        draft,
+        "cleared" in event ? mergeChanges(draft.changes, event) : event.files,
+      );
     case "session":
       return applySession(draft, event);
     case "activation":
@@ -194,7 +211,7 @@ function apply(draft: Draft, event: SessionEvent): void {
 
       return;
     case "catalog":
-      draft.catalog = event.catalog;
+      return setCatalog(draft, event.catalog);
   }
 }
 
@@ -309,6 +326,7 @@ function applyHead(draft: Draft, event: Logged<"head">): void {
   if (name === null) return;
 
   if (event.reason === "removed") {
+    dropHead(draft, name);
     draft.heads.delete(name);
     draft.paths.delete(name);
     forget(draft, name);
@@ -331,6 +349,7 @@ function applySeen(draft: Draft, event: Logged<"seen">): void {
 
   if (name === null || !draft.heads.has(name) || marks?.get(name) === event.commit) return;
   draft.seen = new Map(draft.seen).set(event.principal, new Map(marks).set(name, event.commit));
+  touchRow(draft, "heads", name);
 }
 
 function forget(draft: Draft, name: HeadName): void {
@@ -370,6 +389,10 @@ function applySession(draft: Draft, event: Logged<"session">): void {
   }
 
   if (sameEntries(draft.heads, heads)) return;
+
+  for (const name of draft.heads.keys()) if (!heads.has(name)) dropHead(draft, name);
+
+  for (const [name, head] of heads) noteHead(draft, name, draft.heads.get(name), head);
   draft.heads.clear();
 
   for (const [name, head] of heads) draft.heads.set(name, head);
@@ -470,8 +493,15 @@ function leave(draft: Draft, input: FoldInput): void {
   const message = draft.messages.get(input.id);
   draft.inputs.delete(input.id);
   draft.messages.delete(input.id);
+  dropRow(draft, "messages", input.id);
 
-  if (message?.turn === pendingTurn(input.id)) draft.turns.delete(message.turn);
+  if (message?.turn === pendingTurn(input.id)) {
+    const info = draft.turns.get(message.turn)?.info;
+    draft.turns.delete(message.turn);
+
+    if (info === undefined || !hidesTurn(info, message)) dropRow(draft, "turns", message.turn);
+  }
+
   updateHead(draft, input.head, (head) => ({
     ...head,
     pending: head.pending.filter((id) => id !== input.id),
@@ -688,6 +718,7 @@ function applyPart(draft: Draft, event: Logged<"part">): void {
       if (!draft.parts.has(id) || draft.messages.has(toPartMessageId(id))) return;
       draft.parts.delete(id);
       draft.partViews = draft.partViews.filter((view) => view.id !== id);
+      dropRow(draft, "parts", id);
   }
 }
 
@@ -722,6 +753,7 @@ function create(
 
   if (role === null) {
     draft.partViews = [...draft.partViews.filter((view) => view.id !== id), partView(record)];
+    touchRow(draft, "parts", id);
 
     return;
   }

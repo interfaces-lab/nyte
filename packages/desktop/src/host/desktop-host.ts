@@ -1,32 +1,20 @@
-import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
 import { asId } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
-import { canvasPlugin } from "@nyte-ai/plugin/core/canvas";
-import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
-import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
-import { nodeImages } from "@nyte-ai/host/images";
-import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
-import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
+import { UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
-import { SdkError, sdk } from "@nyte-ai/sdk";
-import type { Host, HostView, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
-import { Sharing } from "@nyte-ai/service";
-import browserTools from "@nyte-ai/plugin/core/browser-tools";
-import type { ConnectShare } from "@nyte-ai/connect/host";
-import { ConnectError, ConnectRuntime, hostShare } from "@nyte-ai/connect/host";
-import { APP_ORIGINS } from "@nyte-ai/app/contract/origins.ts";
+import { SdkError, sdk } from "@nyte-ai/sdk/client";
+import type { Connection, HostConnection, HostView, SessionInfo } from "@nyte-ai/sdk/client";
+import { ConnectError, ConnectRuntime } from "@nyte-ai/connect/host";
 import type {
   HostEvent,
   OpenWorkspaceOutcome,
   RemoteAccessPluginId,
   RemoteAccessState,
-  RemoteReach,
   SelectedWorkspace,
   ServerConnectionProblem,
   ServerState,
-  StoreOpening,
-  TailnetAvailability,
+  TailnetNode,
 } from "@nyte-ai/app/contract/bridge.ts";
 import type {
   CallHandler,
@@ -37,78 +25,39 @@ import type {
   HostCallPath,
 } from "../shared/ipc.ts";
 import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
-import type { BrowserAgent } from "../shared/browser-agent.ts";
 import type { HostWindow } from "../shared/host-window.ts";
 import { planAttention } from "../shared/attention.ts";
 import type { AttentionDelivery, AttentionReminder, AttentionSeen } from "../shared/attention.ts";
-import { desktopBrowserPlugin } from "./browser-plugin.ts";
-import { codemodeRuntimeOptions } from "../workers/codemode-runtime.ts";
-import { imageRuntimeOptions } from "../workers/image-runtime.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
 import type { DesktopSettings } from "@nyte-ai/app/contract/desktop-settings.ts";
-import type { DesktopUpdateActivity } from "../shared/host-messages.ts";
-import { desktopSettings, desktopSettingsPlugin } from "./host-settings.ts";
+import type { DesktopUpdateActivity } from "../shared/update-activity.ts";
+import { desktopSettings } from "./host-settings.ts";
 import { ExpectedHostError, retainDiagnostic } from "../shared/errors.ts";
 import { callTable } from "../shared/ipc-call.ts";
-import type { RemoteAccessPlugins, RemoteExposure } from "./connections/remote-access-plugin.ts";
+import type { RemoteAccessPlugins } from "./connections/remote-access-plugin.ts";
 import { ServerSettingsStore } from "./connections/server-settings.ts";
 import type { SavedServer } from "./connections/server-settings.ts";
-import { findTailnetAddress, serveTailnet } from "./connections/tailnet.ts";
 
 export interface DesktopHostDependencies {
   readonly home: string;
-  readonly version: string;
-  readonly models?: OpenHostOptions["models"];
+  open(): Promise<Connection>;
+  readonly client: Pick<HostConnection, "call" | "directory">;
   readonly usageScan?: UsageScanReader;
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
-  readonly serveTailnet?: typeof serveTailnet;
   readonly keepAwake?: (awake: boolean) => void;
   readonly settingsChanged?: (settings: DesktopSettings) => void;
   readonly alert?: (delivery: AttentionDelivery) => void;
   readonly badge?: (count: number) => void;
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
-  readonly agent: BrowserAgent;
-  readonly openDelayMs?: number | undefined;
-  readonly token?: string;
-  readonly preview?: CanvasPreviewer;
-  readonly revoked?: () => void;
-  readonly storeOpening?: (opening: StoreOpening) => void;
 }
 
 type HostCalls = { readonly [P in HostCallPath]: CallHandler<P> };
 
-interface Opened {
-  readonly host: Host;
-  readonly listener: Listener;
-  readonly token: string;
-}
-
-type ActiveRemote =
-  | {
-      readonly kind: "token";
-      readonly reach: "tailnet";
-      readonly listener: Listener;
-      readonly address: string;
-      readonly token: string;
-      readonly unexpose: () => Promise<void>;
-    }
-  | {
-      readonly kind: "plugin";
-      readonly reach: RemoteAccessPluginId;
-      readonly listener: Listener;
-      readonly exposure: RemoteExposure;
-    };
-
-function newToken(): string {
-  return randomBytes(32).toString("base64url");
-}
-
-function listenerAddress(listener: Listener): string {
-  if (listener.address === null) throw new SdkError("internal", "The listener bound no address.");
-
-  return listener.address;
-}
+const NOT_SERVED = {
+  code: "unavailable",
+  message: "Cloudflare Tunnel isn't served by the Nyte host yet. Use Tailscale.",
+} as const;
 
 function working(session: SessionInfo): boolean {
   return session.heads.some(
@@ -116,7 +65,7 @@ function working(session: SessionInfo): boolean {
   );
 }
 
-async function listSessions(host: Host): Promise<readonly SessionInfo[]> {
+async function listSessions(host: Connection): Promise<readonly SessionInfo[]> {
   let page = await host.sessions.list({ parents: { kind: "all" } });
   const rows = [...page.items];
 
@@ -128,23 +77,7 @@ async function listSessions(host: Host): Promise<readonly SessionInfo[]> {
   return rows;
 }
 
-/** Rows as this app's windows see them: through the listener with their token, so `unread` is theirs. */
-async function* watchRows(opened: Opened): AsyncIterable<readonly SessionInfo[]> {
-  const connection = await sdk.connect({
-    url: HOST_PORT_ORIGIN,
-    credentials: { kind: "token", token: opened.token },
-    expect: { hostId: opened.host.hostId },
-    fetch: (url, init) => opened.listener.fetch(new Request(url, init)),
-  });
-
-  try {
-    yield* connection.sessions.watch({ parents: { kind: "all" } });
-  } finally {
-    await connection.close();
-  }
-}
-
-async function busyTerminals(host: Host): Promise<number> {
+async function busyTerminals(host: Connection): Promise<number> {
   const busy = await Promise.all(
     (await host.workspaces.list()).map(async ({ id }) => {
       const workspace = host.workspace(id);
@@ -286,23 +219,15 @@ async function probeServer(url: string, token: string, hostId?: SavedServer["hos
   }
 }
 
-async function tailnetAvailability(): Promise<TailnetAvailability> {
-  const lookup = await findTailnetAddress(process.platform);
-
-  return lookup.kind === "ready"
-    ? { kind: "ready", ip: lookup.address.ip, name: lookup.address.name }
-    : lookup;
-}
-
 export class DesktopHost {
   readonly #deps: DesktopHostDependencies;
   readonly #connect: ConnectRuntime;
-  readonly #sharing: Sharing;
-  #opened: Promise<Opened>;
+  #opened: Promise<Connection>;
   readonly #usageScan: UsageScanReader;
   readonly #servers: ServerSettingsStore;
   readonly #selections = new Map<HostWindow, SelectedWorkspace>();
   #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
+  #tailnet: string | undefined;
   #rows: readonly SessionInfo[] = [];
   readonly #watching = new AbortController();
   #rowsFollowed = false;
@@ -314,7 +239,6 @@ export class DesktopHost {
     string,
     { readonly signature: string; readonly timer: ReturnType<typeof setInterval> }
   >();
-  #remote: Promise<ActiveRemote> | undefined;
   readonly #remoteOperations = serial();
   #server: Promise<ServerWatch | undefined> | undefined;
   #closing: Promise<void> | undefined;
@@ -333,25 +257,20 @@ export class DesktopHost {
         onChange: () => this.remoteChanged(),
       });
 
-    this.#sharing = new Sharing({
-      connect: this.#connect,
-      share: this.#connectShare,
-      home: dependencies.home,
-    });
     this.#opened = this.#begin();
   }
 
-  #begin(): Promise<Opened> {
-    const opened = this.#openOwned();
+  #begin(): Promise<Connection> {
+    const opened = this.#deps.open();
     opened.then(
-      (opened) => this.#followView(opened),
+      (connection) => this.#followView(connection),
       () => undefined,
     );
 
     return opened;
   }
 
-  #ready(): Promise<Opened> {
+  #ready(): Promise<Connection> {
     return this.#opened.catch((cause: unknown) => {
       if (this.#closing !== undefined) throw cause;
       this.#opened = this.#begin();
@@ -360,62 +279,17 @@ export class DesktopHost {
     });
   }
 
-  host(): Promise<Host> {
-    return this.#ready().then((opened) => opened.host);
-  }
-
-  async #openOwned(): Promise<Opened> {
-    performance.mark("nyte:host-start");
-    void completeShellEnvironment().then(() => performance.mark("nyte:shell-environment-ready"));
-    const delay = this.#deps.openDelayMs;
-
-    if (delay !== undefined) await new Promise((resolve) => setTimeout(resolve, delay));
-    const { home } = this.#deps;
-
-    const host = await sdk.open({
-      models: this.#deps.models,
-      home,
-      label: "Nyte.app",
-      onRevoked: this.#deps.revoked,
-      onStoreMigration: () => this.#deps.storeOpening?.("migrating"),
-      workspace: { kind: "local", path: home },
-      shell: () => this.#settings.terminalShell,
-      images: nodeImages(imageRuntimeOptions()),
-      plugins: [
-        desktopSettingsPlugin,
-        browserTools,
-        desktopBrowserPlugin(this.#deps.agent, home),
-        codemodePlugin(codemodeRuntimeOptions()),
-        canvasPlugin(this.#deps.preview),
-      ],
-    });
-
-    performance.mark("nyte:host-opened");
-    this.#deps.storeOpening?.("ready");
-
-    const token = this.#deps.token ?? newToken();
-
-    const listener = await host.listen({
-      transport: { kind: "fetch" },
-      auth: { kind: "token", token },
-    });
-
-    performance.mark("nyte:endpoint-ready");
-
-    return { host, listener, token };
-  }
-
-  async fetch(request: Request): Promise<Response> {
-    return (await this.#ready()).listener.fetch(request);
-  }
-
-  #followView(opened: Opened): void {
+  #followView(opened: Connection): void {
     void follow(
-      () => opened.host.watch(),
+      () => opened.watch(),
       (view) => {
+        const tailnet = JSON.stringify(view.tailnet ?? null);
+
+        if (this.#tailnet !== undefined && this.#tailnet !== tailnet) this.#remoteChanged();
+        this.#tailnet = tailnet;
         this.#settings = desktopSettings(view);
         this.#deps.settingsChanged?.(this.#settings);
-        this.#followRows(opened);
+        this.#followRows();
         this.#holdAwake();
 
         if (this.#seen !== undefined) this.#attend();
@@ -424,17 +298,31 @@ export class DesktopHost {
     );
   }
 
-  #followRows(opened: Opened): void {
-    if (this.#rowsFollowed) return;
+  #followRows(): void {
+    if (this.#rowsFollowed || this.#watching.signal.aborted) return;
     this.#rowsFollowed = true;
-    void follow(
-      () => watchRows(opened),
-      (rows) => {
-        this.#rows = rows;
-        this.#holdAwake();
-        this.#attend();
+    const directory = this.#deps.client.directory({ parents: { kind: "all" } });
+
+    const stop = directory.subscribe(() => {
+      const snapshot = directory.snapshot();
+
+      if (snapshot === null) return;
+      this.#rows = snapshot.ids.flatMap((id) => {
+        const row = snapshot.rows.get(id);
+
+        return row === undefined ? [] : [row];
+      });
+      this.#holdAwake();
+      this.#attend();
+    });
+
+    this.#watching.signal.addEventListener(
+      "abort",
+      () => {
+        stop();
+        directory.close();
       },
-      this.#watching.signal,
+      { once: true },
     );
   }
 
@@ -501,12 +389,12 @@ export class DesktopHost {
 
   readonly #handlers: CallTable = {
     "host.endpoint": async () => {
-      const { host, token } = await this.#ready();
+      const connection = await this.#ready();
 
       return {
         url: HOST_PORT_ORIGIN,
-        credentials: { kind: "token", token },
-        expect: { hostId: host.hostId },
+        credentials: { kind: "token", token: "" },
+        expect: { hostId: connection.hostId },
       };
     },
     "host.state": async (window) => this.#state(window),
@@ -521,14 +409,7 @@ export class DesktopHost {
       if (this.#selections.delete(window))
         this.#deps.emitHostEvent({ kind: "workspace_closed" }, window);
     },
-    "host.usage": async (_window, usageWindow) => {
-      await this.#opened;
-
-      return this.#usageScan.scan({
-        window: usageWindow,
-        catalog: this.#deps.models === undefined ? undefined : catalogForUsage(this.#deps.models),
-      });
-    },
+    "host.usage": async (_window, usageWindow) => this.#usageScan.scan({ window: usageWindow }),
     "host.server.state": () => this.#serverState(),
     "host.server.connect": (_window, input) => this.#connectServer(input),
     "host.server.disconnect": async () => {
@@ -537,9 +418,10 @@ export class DesktopHost {
       this.#deps.emitHostEvent({ kind: "server_changed" });
     },
     "host.remote.state": () => this.#remoteState(),
-    "host.remote.start": (_window, { reach }) =>
-      this.#remoteOperations.run(() => this.#startRemote(reach)),
-    "host.remote.stop": () => this.#remoteOperations.run(() => this.#stopRemote()),
+    "host.remote.start": async () => {
+      throw new ExpectedHostError(NOT_SERVED);
+    },
+    "host.remote.stop": async () => undefined,
     "host.remote.configure": async (_window, { plugin, ...settings }) => {
       await this.#remoteOperations.run(() => this.#remotePlugin(plugin).configure(settings));
       this.#remoteChanged();
@@ -557,16 +439,38 @@ export class DesktopHost {
 
       return pairing;
     },
-    "host.remote.revoke": (_window, input) =>
-      this.#remoteOperations.run(() => this.#revokeRemoteDevice(input)),
+    "host.remote.revoke": async (_window, input) => {
+      await this.#remoteOperations.run(() =>
+        this.#remotePlugin(input.plugin).revoke({ deviceId: input.deviceId }),
+      );
+      this.#remoteChanged();
+    },
+    "host.remote.configureTailnet": async (_window, { enabled }) => {
+      const node = await this.#tailnetNode();
+
+      if (node.state === "unavailable")
+        throw new ExpectedHostError({
+          code: "unavailable",
+          message: "This Mac's Nyte host has no Tailscale node. Reinstall Nyte to get it back.",
+        });
+
+      await this.#deps.client.call("host.tailnet.configure", {
+        enabled,
+        hostname: node.dnsName?.split(".")[0] ?? "nyte",
+        tags: node.tags,
+        access: node.access,
+      });
+      this.#remoteChanged();
+    },
+    "host.remote.signOutTailnet": async () => {
+      await this.#deps.client.call("host.tailnet.logout", {});
+      this.#remoteChanged();
+    },
     "host.connect.state": () => this.#connect.view(),
     "host.connect.link": () => this.#connect.link(),
     "host.connect.cancel": () => this.#connect.cancel(),
     "host.connect.setEnabled": (_window, { enabled }) =>
-      this.#connect.setEnabled({
-        enabled,
-        share: enabled && this.#sharing.claim() ? this.#connectShare : null,
-      }),
+      this.#connect.setEnabled({ enabled, share: null }),
     "host.connect.unlink": () => this.#connect.unlink(),
     "host.connect.revokeDevice": (_window, input) => this.#connect.revokeDevice(input),
     "host.connect.openAccount": () => this.#connect.openAccount(),
@@ -581,22 +485,16 @@ export class DesktopHost {
     this.#remoteChanged();
   }
 
-  /** The machine is going to sleep: with `pauseOnSleep` on, this host's runs stop requesting until `resume`. */
+  /** The machine is going to sleep: with `pauseOnSleep` on, the host's runs stop requesting until `resume`. */
   suspend(): void {
     if (!this.#settings.pauseOnSleep) return;
-    void this.#opened.then(
-      (opened) => opened.host.execution.pause(),
-      () => undefined,
-    );
+    void this.#deps.client.call("host.execution.pause", {}).catch(() => undefined);
   }
 
   /** The machine woke. Resuming is a no-op unless a suspend paused the runs, so it ignores `pauseOnSleep`, which may have changed while asleep. */
   resume(): void {
     this.#connect.resume();
-    void this.#opened.then(
-      (opened) => opened.host.execution.resume(),
-      () => undefined,
-    );
+    void this.#deps.client.call("host.execution.resume", {}).catch(() => undefined);
   }
 
   accountChanged(): void {
@@ -609,11 +507,9 @@ export class DesktopHost {
       this.#holdAwake();
       this.#remind([]);
       await this.#connect.close().catch(() => undefined);
-      await this.#remoteOperations.run(() => this.#stopRemote()).catch(() => undefined);
-      await this.#sharing.close();
       const opened = await this.#opened.catch(() => undefined);
       await this.#usageScan.close();
-      await opened?.host.close();
+      await opened?.close();
     })();
 
     return this.#closing;
@@ -621,8 +517,8 @@ export class DesktopHost {
 
   async updateActivity(): Promise<DesktopUpdateActivity> {
     const opened = await this.#opened.catch(() => undefined);
-    const rows = opened === undefined ? [] : await listSessions(opened.host);
-    const terminalCommandCount = opened === undefined ? 0 : await busyTerminals(opened.host);
+    const rows = opened === undefined ? [] : await listSessions(opened);
+    const terminalCommandCount = opened === undefined ? 0 : await busyTerminals(opened);
 
     const taskCount = rows.filter((row) =>
       row.heads.some((head) => head.execution.kind !== "idle"),
@@ -633,16 +529,12 @@ export class DesktopHost {
       : { kind: "busy", taskCount, terminalCommandCount };
   }
 
-  autostartConnect(): void {
-    this.#sharing.start();
-  }
-
   #state(window: HostWindow) {
     return { workspace: this.#selections.get(window) };
   }
 
   async #selectChatFolder(window: HostWindow, session: string): Promise<void> {
-    const { host } = await this.#opened;
+    const host = await this.#ready();
 
     const info = await host
       .session(asId<"session">(session))
@@ -673,7 +565,7 @@ export class DesktopHost {
     path: string,
     trust = false,
   ): Promise<OpenWorkspaceOutcome> {
-    const { host } = await this.#opened;
+    const host = await this.#ready();
     const seen = await host.workspaces.inspect({ kind: "local", path });
     const added = await host.workspaces.add(seen.target, { expect: { identity: seen.identity } });
 
@@ -797,34 +689,21 @@ export class DesktopHost {
   }
 
   async #remoteState(): Promise<RemoteAccessState> {
-    const [active, cloudflare, tailnet] = await Promise.all([
-      this.#activeRemote(),
+    const [cloudflare, tailnet] = await Promise.all([
       this.#deps.remoteAccessPlugins?.cloudflare.view() ?? { kind: "unregistered" as const },
-      tailnetAvailability(),
+      this.#tailnetNode(),
     ]);
 
-    if (active === undefined) return { kind: "off", tailnet, cloudflare };
+    return { kind: "off", tailnet, cloudflare };
+  }
 
-    if (active.kind === "plugin")
-      return {
-        kind: "serving",
-        reach: active.reach,
-        address: active.exposure.address,
-        target: { kind: "home" },
-        cloudflare,
-      };
+  #tailnetNode(): Promise<TailnetNode> {
+    return this.#deps.client.call("host.tailnet.status", {}).catch((cause: unknown) => {
+      if (cause instanceof SdkError && cause.code === "unavailable")
+        return { state: "unavailable" as const };
 
-    const { reach, address, token } = active;
-
-    return {
-      kind: "serving",
-      reach,
-      address,
-      token,
-      pairingUrl: `${APP_ORIGINS[0]}/pair#host=${encodeURIComponent(address)}&token=${encodeURIComponent(token)}`,
-      target: { kind: "home" },
-      cloudflare,
-    };
+      throw cause;
+    });
   }
 
   readonly #remoteChanged = (): void => {
@@ -842,146 +721,4 @@ export class DesktopHost {
 
     return plugin;
   }
-
-  async #activeRemote(): Promise<ActiveRemote | undefined> {
-    const pending = this.#remote;
-
-    if (pending === undefined) return undefined;
-
-    try {
-      return await pending;
-    } catch {
-      if (this.#remote === pending) this.#remote = undefined;
-
-      return undefined;
-    }
-  }
-
-  async #startRemote(reach: RemoteReach): Promise<RemoteAccessState> {
-    if (this.#closing !== undefined)
-      throw new ExpectedHostError({
-        code: "unavailable",
-        message: "The window closed before serving",
-      });
-
-    if (this.#remote === undefined) {
-      const pending = this.#serve(reach);
-      this.#remote = pending;
-
-      try {
-        await pending;
-      } catch (cause) {
-        if (this.#remote === pending) this.#remote = undefined;
-        throw cause;
-      }
-    }
-
-    const state = await this.#remoteState();
-    this.#remoteChanged();
-
-    return state;
-  }
-
-  async #serve(reach: RemoteReach): Promise<ActiveRemote> {
-    const { host } = await this.#opened;
-
-    if (reach === "tailnet") {
-      const token = newToken();
-
-      const listener = await host.listen({
-        transport: { kind: "http", hostname: "127.0.0.1" },
-        auth: { kind: "token", token },
-        origins: [...APP_ORIGINS, ...this.#settings.webOrigins],
-      });
-
-      try {
-        const served = await (this.#deps.serveTailnet ?? serveTailnet)(
-          Number(new URL(listenerAddress(listener)).port),
-        );
-
-        return {
-          kind: "token",
-          reach,
-          listener,
-          address: served.address,
-          token,
-          unexpose: served.stop,
-        };
-      } catch (cause) {
-        await listener.close();
-        throw cause;
-      }
-    }
-
-    const exposure = await this.#remotePlugin(reach).expose(this.#remoteChanged);
-
-    try {
-      const listener = await host
-        .listen({
-          transport: { kind: "http", hostname: "127.0.0.1", port: exposure.listen.port },
-          auth: exposure.listen.auth,
-          origins: exposure.listen.browserOrigins,
-          before: exposure.listen.handle,
-        })
-        .catch((cause: unknown) => {
-          if (cause instanceof SdkError && cause.code === "unavailable")
-            throw new ExpectedHostError({
-              code: "unavailable",
-              message: `Port ${String(exposure.listen.port)} can't be used on this Mac. Free it, or set the tunnel up with another port.`,
-            });
-          throw cause;
-        });
-
-      exposure.connect();
-
-      return { kind: "plugin", reach, listener, exposure };
-    } catch (cause) {
-      await exposure.disconnect();
-      throw cause;
-    }
-  }
-
-  async #stopRemote(): Promise<void> {
-    const active = await this.#activeRemote();
-
-    if (active === undefined) return;
-    this.#remote = undefined;
-
-    try {
-      if (active.kind === "plugin") await active.exposure.disconnect();
-      else await active.unexpose();
-    } finally {
-      await active.listener.close();
-    }
-
-    this.#remoteChanged();
-  }
-
-  async #revokeRemoteDevice(input: {
-    readonly plugin: RemoteAccessPluginId;
-    readonly deviceId: string;
-  }): Promise<void> {
-    try {
-      await this.#remotePlugin(input.plugin).revoke({ deviceId: input.deviceId });
-    } catch (cause) {
-      await this.#stopRemote();
-      throw cause;
-    }
-
-    const active = await this.#activeRemote();
-
-    if (active?.reach === input.plugin) active.listener.disconnectClients();
-    this.#remoteChanged();
-  }
-
-  readonly #connectShare: ConnectShare = async (listen) => {
-    if (this.#closing !== undefined)
-      throw new ExpectedHostError({
-        code: "unavailable",
-        message: "The window closed before serving",
-      });
-    const { host } = await this.#opened;
-
-    return hostShare(host)(listen);
-  };
 }

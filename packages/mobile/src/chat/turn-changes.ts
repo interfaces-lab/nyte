@@ -1,15 +1,16 @@
 import { isPart, text } from "@nyte-ai/plugin/client";
-import type { FileStatus, SessionView, TurnInfo } from "@nyte-ai/sdk";
+import type { FileStatus, TurnInfo } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 
 export function changedFiles(turn: TurnInfo): boolean {
   return turn.summary.added + turn.summary.removed > 0 || turn.summary.byClass.edit.count > 0;
 }
 
-export function latestChangedTurn(view: SessionView): TurnInfo | undefined {
+export function latestChangedTurn(view: HeadView): TurnInfo | undefined {
   return view.turns.findLast(changedFiles);
 }
 
-export function turnAnswer(view: SessionView, turn: TurnInfo): string | undefined {
+export function turnAnswer(view: HeadView, turn: TurnInfo): string | undefined {
   const answer = view.messages.findLast(
     (message) => message.turn === turn.id && isPart(message, text),
   );

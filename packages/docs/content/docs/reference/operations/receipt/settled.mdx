@@ -1,0 +1,124 @@
+---
+title: receipt.settled
+description: Waits until a receipt settles and returns its outcome.
+---
+
+Waits until a receipt settles and answers its outcome. A send's outcome is how its run ended, or
+`withdrawn`, or why its edit failed; a move's is the move outcome; a batch's is the batch outcome.
+
+## When to call it
+
+After [`head.send`](/docs/reference/operations/head/send),
+[`head.move`](/docs/reference/operations/head/move) or
+[`files.batch`](/docs/reference/operations/files/batch), to learn how the work ended. It is a wait:
+closing the request stops waiting without stopping the work, and it is safe to call again after a
+lost connection.
+
+## Access
+
+Any principal with `participant` authority. Session scope, or `session` `null` for a batch receipt.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "receipt": "e9c7a5b3-1d2f-4e6a-8b0c-3d5f7a9c1e2b"
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "moved",
+  "revision": "8d0f2b4a-6c8e-4a1b-9c3d-5e7f9a1b3c5d",
+  "position": { "kind": "start" },
+  "summary": null,
+  "handback": "Find out why the date test fails on CI"
+}
+```
+
+## Errors
+
+- `unknown` when no receipt has the id: `No receipt has the id <id>.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: yes
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "receipt"],
+  "properties": {
+    "session": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "receipt": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "$ref": "Json",
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

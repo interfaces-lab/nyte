@@ -7,11 +7,11 @@ import type {
   Message,
   PartId,
   PartStatus,
-  SessionView,
   ToolPartState,
   TurnId,
   UserContent,
 } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 
 export type ActivityPart =
   | { kind: "tool"; id: string; state: ToolPartState; status: PartStatus }
@@ -137,7 +137,7 @@ function activityPart(message: Message): ActivityPart | undefined {
   return undefined;
 }
 
-export function conversationRows(view: SessionView): ChatRow[] {
+export function conversationRows(view: HeadView): ChatRow[] {
   const ends = new Map(view.turns.map((turn) => [turn.id, turn.state]));
   const rows: ChatRow[] = [];
   let group: ActivityPart[] | undefined;

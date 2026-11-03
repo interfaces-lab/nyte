@@ -9,7 +9,7 @@ import type {
   SettingDefinition,
   ToolDefinition,
 } from "@nyte-ai/core";
-import { SdkError } from "@nyte-ai/schema";
+import { ApprovalPolicyType, SdkError } from "@nyte-ai/schema";
 import type { Awaitable, Infer } from "@nyte-ai/schema";
 import {
   APPROVAL_POLICIES,
@@ -38,6 +38,8 @@ export interface ApprovalTool extends RuntimeCall {
 const DENIED = "The user denied this tool call. Ask them how to proceed instead of retrying it.";
 
 const UNANSWERED = "The approval request closed before the user answered.";
+
+const POLICIES = ApprovalPolicyType.anyOf.map((literal) => literal.const);
 
 /**
  * The host's policy for tool calls, `full` by default. It applies to every
@@ -106,13 +108,20 @@ export function approvalReason(
   return "tool";
 }
 
+/** The host's policy, or the session's MCP ceiling where that asks more. */
 async function readPolicy(api: PluginApi<"core">): Promise<ApprovalPolicy> {
   const value = await api.contribute.settings.value(PERMISSIONS);
+  const ceiling = (await api.session.info()).mcp?.ceiling;
   const checked = approvalPolicy["~standard"].validate(value);
 
-  return checked instanceof Promise || checked.issues !== undefined
-    ? permissions.default
-    : checked.value;
+  const host =
+    checked instanceof Promise || checked.issues !== undefined
+      ? permissions.default
+      : checked.value;
+
+  return ceiling !== undefined && POLICIES.indexOf(ceiling) < POLICIES.indexOf(host)
+    ? ceiling
+    : host;
 }
 
 async function pendingReason(

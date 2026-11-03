@@ -1,4 +1,4 @@
-import { ORIGIN_PATTERN, SdkError } from "@nyte-ai/schema";
+import { ORIGIN_PATTERN, SdkError, TICKET_PATH } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
 import type { Authority, Disposer, Owned, PrincipalId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
@@ -13,8 +13,12 @@ import {
   errorStatus,
   operationsDigest,
 } from "@nyte-ai/protocol";
+import type { McpService } from "./mcp-server/server.ts";
+import { MCP_TOKEN_PREFIX } from "./mcp-server/token.ts";
 import { allowsOrigin, createHandler } from "./serve/handler.ts";
 import type { HandlerOptions } from "./serve/handler.ts";
+import type { SocketPeer } from "./serve/socket.ts";
+import type { TailnetControl } from "./tailnet.ts";
 
 type Cached = {
   readonly connection: Connection;
@@ -34,13 +38,24 @@ type Device = {
   readonly token: string;
 };
 
+type Identity = Device & { readonly headers?: Readonly<Record<string, string>> };
+
+export type SocketListener = Listener & { admit(request: Request): Promise<SocketPeer> };
+
+const TICKET_LIFETIME = 30_000;
+
 const encoder = new TextEncoder();
 
 /** Serves a composed host as a bare fetch handler with no socket and no `node:*` import, so a Worker can serve it (§41j): `before`, the unauthenticated identity and describe routes, then `createHandler` over one cached connection per principal and authority, every response carrying `X-Nyte-Host` (§43a, §43j). A request authenticates by a pairing code, then the listener token (compared in constant time over SHA-256 digests, granting `auth.authority`) or a device token remembered until a commit from another process moves the host's principals, then `authorize` under `custom`; a revoke aborts that principal's open requests and streams. A `token` shorter than 16 characters throws `SdkError("invalid")`; `execution` (default: run covering all) drives covered sessions in process on an `admit-only` host, covers their leases otherwise and takes nothing on a `dispatch` host (§42v); `close()` disconnects the clients and releases the execution once, after which every request answers `unavailable`. */
 export async function listenFetch(
   host: ServedHost,
-  options: ListenOptions & { readonly transport: { readonly kind: "fetch" } },
-): Promise<Listener> {
+  options: ListenOptions & {
+    readonly transport: { readonly kind: "fetch" };
+    readonly local?: boolean;
+    readonly tailnet?: TailnetControl;
+    readonly mcpServer?: McpService;
+  },
+): Promise<SocketListener> {
   const { auth } = options;
 
   if (auth.kind === "token" && auth.token.length < 16)
@@ -59,6 +74,7 @@ export async function listenFetch(
   const devices = new Map<string, Device>();
   const streams = new Map<PrincipalId, Set<Flight>>();
   const flights = new WeakMap<Request, Flight>();
+  const tickets = new Map<string, { readonly identity: Identity; readonly expires: number }>();
   let generation = new AbortController();
   let closing: Promise<void> | null = null;
   let principalsRevision: string | null = null;
@@ -193,10 +209,7 @@ export async function listenFetch(
           );
         };
 
-  const authenticate = async (
-    request: Request,
-    flight: Flight,
-  ): ReturnType<HandlerOptions["connection"]> => {
+  const identify = async (request: Request): Promise<Identity> => {
     const header = request.headers.get("Authorization") ?? "";
     const pairing = /^Pairing\s+(\S+)\s*$/i.exec(header)?.[1];
 
@@ -205,43 +218,121 @@ export async function listenFetch(
 
       if (redeemed === null)
         throw new SdkError("unauthenticated", "The pairing code is unknown or has expired.");
-      const digest = hex(await sha256(redeemed.token));
-      const { principal, authority, token } = redeemed;
-      const connection = connectionFor(flight, principal, authority, token);
-      devices.set(digest, { principal, authority, token });
+      const device = {
+        principal: redeemed.principal,
+        authority: redeemed.authority,
+        token: redeemed.token,
+      };
+      devices.set(hex(await sha256(redeemed.token)), device);
 
-      return { connection, authority, headers: { "X-Nyte-Credential": token } };
+      return { ...device, headers: { "X-Nyte-Credential": redeemed.token } };
     }
 
     const token = /^Bearer\s+(\S+)\s*$/i.exec(header)?.[1];
 
+    if (token?.startsWith(MCP_TOKEN_PREFIX) === true)
+      throw new SdkError("denied", "An MCP token answers only at /mcp.");
+
     if (token !== undefined) {
       if (await isListenerToken(token))
-        return {
-          connection: connectionFor(flight, TOKEN, listenerAuthority, token),
-          authority: listenerAuthority,
-        };
+        return { principal: TOKEN, authority: listenerAuthority, token };
       const remembered = await findDevice(token);
 
       if (remembered !== null) {
-        const { digest, device } = remembered;
-        const connection = connectionFor(flight, device.principal, device.authority, token);
-        devices.set(digest, device);
+        devices.set(remembered.digest, remembered.device);
 
-        return { connection, authority: device.authority };
+        return remembered.device;
       }
     }
 
     const verdict = await fallback(request, token);
 
+    return { principal: verdict.principal, authority: verdict.authority, token: "" };
+  };
+
+  const authenticate = async (
+    request: Request,
+    flight: Flight,
+  ): ReturnType<HandlerOptions["connection"]> => {
+    const identity = await identify(request);
+
     return {
-      connection: connectionFor(flight, verdict.principal, verdict.authority, ""),
-      authority: verdict.authority,
+      connection: connectionFor(flight, identity.principal, identity.authority, identity.token),
+      authority: identity.authority,
+      headers: identity.headers,
+    };
+  };
+
+  const allowsCaller = (request: Request): boolean => {
+    const origin = request.headers.get("Origin");
+
+    return (
+      origin === null ||
+      origin === new URL(request.url).origin ||
+      allowsOrigin(options.origins, origin)
+    );
+  };
+
+  const issueTicket = async (request: Request): Promise<Response> => {
+    if (!allowsCaller(request))
+      return failure(new SdkError("denied", "This origin may not call the host."), {});
+    const identity = await identify(request);
+    const now = Date.now();
+
+    for (const [key, held] of tickets) if (held.expires <= now) tickets.delete(key);
+    const ticket = crypto.randomUUID();
+    const expiresAt = now + TICKET_LIFETIME;
+    tickets.set(ticket, { identity, expires: expiresAt });
+
+    return json({ ticket, expiresAt }, { ...cors(request), ...identity.headers });
+  };
+
+  const redeemTicket = (ticket: string): Identity => {
+    const held = tickets.get(ticket);
+    tickets.delete(ticket);
+
+    if (held === undefined || held.expires <= Date.now())
+      throw new SdkError("unauthenticated", "The ticket is unknown, used or expired.");
+
+    return held.identity;
+  };
+
+  const admitSocket = async (request: Request): Promise<SocketPeer> => {
+    if (closing !== null) throw new SdkError("unavailable", "This listener is closed.");
+
+    if (!allowsCaller(request)) throw new SdkError("denied", "This origin may not call the host.");
+    const ticket = new URL(request.url).searchParams.get("ticket");
+    const identity = ticket === null ? await identify(request) : redeemTicket(ticket);
+    const controller = new AbortController();
+    const flight: Flight = { request, controller, principal: null };
+
+    const connection = connectionFor(
+      flight,
+      identity.principal,
+      identity.authority,
+      identity.token,
+    );
+
+    return {
+      connection,
+      principal: identity.principal,
+      authority: identity.authority,
+      local: options.local === true,
+      server,
+      tailnet: options.tailnet,
+      mcpServer: options.mcpServer,
+      execution: host.execution,
+      signal: AbortSignal.any([generation.signal, controller.signal]),
+      leave: () => land(flight),
     };
   };
 
   const handler = createHandler({
     server,
+    local: options.local === true,
+    tailnet: options.tailnet,
+    mcpServer: options.mcpServer,
+    execution: host.execution,
     origins: options.origins,
     maxBodyBytes: options.maxBodyBytes,
     connection: (request) => {
@@ -289,12 +380,18 @@ export async function listenFetch(
       );
     }
 
+    if (request.method === "POST" && url.pathname === TICKET_PATH) return issueTicket(request);
+
     if (request.method === "GET" && url.pathname === "/.nyte/describe") {
       if (options.describe === undefined)
         return failure(new SdkError("unknown", "This host describes nothing."), cors(request));
 
       return json(await options.describe(), cors(request));
     }
+
+    const mcp = await options.mcpServer?.serve(request, options.origins ?? []);
+
+    if (mcp !== undefined && mcp !== null) return mcp;
 
     const controller = new AbortController();
 
@@ -357,7 +454,14 @@ export async function listenFetch(
     return closing;
   };
 
-  return { address: null, fetch, disconnectClients, close, [Symbol.asyncDispose]: close };
+  return {
+    address: null,
+    fetch,
+    admit: admitSocket,
+    disconnectClients,
+    close,
+    [Symbol.asyncDispose]: close,
+  };
 }
 
 function landing(response: Response, done: () => void): Response {

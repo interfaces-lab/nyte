@@ -5,7 +5,7 @@ import type { Task } from "../../src/lib/tasks.ts";
 import { deriveScreen } from "../../src/model/screen.ts";
 import { blockedBy } from "../../src/model/table-input.ts";
 import type { State } from "../../src/model/state.ts";
-import { followed, buildView } from "../fixture/view.ts";
+import { buildView, followed, FRESH } from "../fixture/view.ts";
 import { blank, CATALOG, model, play, ready, S1, typed } from "./support.ts";
 
 const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
@@ -262,7 +262,7 @@ describe("footer and status", () => {
     });
   });
 
-  test("OSC 7501: a question blocks, a run works, a watched run that completed is done until a key", () => {
+  test("OSC 7501: a question blocks, a run works, a run that completed unfocused is done until a key", () => {
     const asking = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
@@ -273,12 +273,12 @@ describe("footer and status", () => {
         .waiting("q1"),
     );
 
-    expect(deriveScreen(ready(asking), null).program).toEqual({
+    expect(deriveScreen(ready(asking), null).program).toMatchObject({
       state: "blocked",
       kind: "question",
       msg: "Pick",
     });
-    expect(deriveScreen(ready(working), null).program).toEqual({ state: "working" });
+    expect(deriveScreen(ready(working), null).program).toMatchObject({ state: "working" });
 
     const done = buildView((v) =>
       v
@@ -286,12 +286,22 @@ describe("footer and status", () => {
         .idle({ run: "run-t1", end: "completed" }),
     );
 
-    const finished = play(ready(working), { kind: "view", session: S1, view: done }).state;
+    const seen = play(ready(working), {
+      kind: "view",
+      session: S1,
+      view: done,
+      freshness: FRESH,
+    }).state;
 
-    expect(deriveScreen(finished, null).program).toEqual({ state: "done" });
-    expect(deriveScreen(play(finished, { kind: "dismiss-notice" }).state, null).program).toEqual({
-      state: "idle",
-    });
+    expect(deriveScreen(seen, null).program).toMatchObject({ state: "idle" });
+
+    const away = play(ready(working), { kind: "terminal-focus", focused: false }).state;
+    const finished = play(away, { kind: "view", session: S1, view: done, freshness: FRESH }).state;
+
+    expect(deriveScreen(finished, null).program).toMatchObject({ state: "done" });
+    expect(
+      deriveScreen(play(finished, { kind: "dismiss-notice" }).state, null).program,
+    ).toMatchObject({ state: "idle" });
   });
 
   test("the tasks line counts unfinished tasks", () => {

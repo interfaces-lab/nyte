@@ -5,7 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { createContext, useRef, useState } from "react";
 import { useWaitingDescendants } from "../../chats/index.ts";
 import { connection } from "../../data/connection.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { sameComposerDocument } from "../composer/composer-document.ts";
 import type { ComposerDocumentState } from "../composer/composer-document.ts";
@@ -116,7 +116,7 @@ export interface QuestionDock {
 export const QuestionDockContext = createContext<QuestionDock | undefined>(undefined);
 
 export function useQuestionDock(sessionId: SessionId): QuestionDock | undefined {
-  const parts = useWatchSelect(sessionWatch(sessionId), (state) => state.value?.parts);
+  const parts = useWatchSelect(chatStore(sessionId), (state) => state.value?.parts);
   const waiting = useWaitingDescendants(sessionId);
 
   const [stored, setStored] = useState<readonly RequestDraft[]>([]);

@@ -3,7 +3,7 @@ import type { Task } from "../../src/lib/tasks.ts";
 import type { Msg } from "../../src/model/msg.ts";
 import type { State } from "../../src/model/state.ts";
 import { Screen } from "../../src/ui/screen.tsx";
-import { buildView, followed } from "../../test/fixture/view.ts";
+import { buildView, followed, FRESH } from "../../test/fixture/view.ts";
 import type { ViewBuilder } from "../../test/fixture/view.ts";
 import { ready, S1 } from "../../test/model/support.ts";
 import { defineStory } from "./story.tsx";
@@ -163,7 +163,7 @@ function composerFacts(d: Dimensions, state: State, now: number): readonly Msg[]
           info: session.info,
           selection: session.selection,
         }
-      : { kind: "view", session: session.id, view },
+      : { kind: "view", session: session.id, view, freshness: FRESH },
     { kind: "tasks", session: session.id, tasks: backgroundTasks(d.tasks) },
   ];
 }

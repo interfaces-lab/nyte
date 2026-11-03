@@ -70,6 +70,7 @@ jobs:
       - run: pnpm format
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: pnpm operations
 
   binary:
     needs: check

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { tree } from "../src/api/head.ts";
 import { landing } from "../src/engine/admission.ts";
 import { emptyFold, fold } from "../src/fold/fold.ts";
-import { project } from "../src/fold/project.ts";
+import { readView } from "../src/fold/window.ts";
 import { pollStore } from "../src/fold/watch.ts";
 import { LOCAL } from "../src/index.ts";
 import {
@@ -18,7 +18,7 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { StoreConnection } from "../src/index.ts";
 import { commit } from "../src/fold/commit.ts";
 import { put, readTip } from "../src/store/session.ts";
-import { configuration, main, setup, usage } from "../src/harness.ts";
+import { configuration, main, setup, until, usage } from "../src/harness.ts";
 
 async function land(kernel: Kernel, session: SessionId, text: string): Promise<void> {
   const tip = await readTip(kernel.store, session, main);
@@ -50,8 +50,8 @@ describe("the store is the truth", () => {
     const a = await setup({ store, poll: 10, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
     const { session } = await a.host.sessions.start({ content: "From A." });
-    const watched = a.host.session(session.id).head(main).watch()[Symbol.asyncIterator]();
-    await watched.next();
+    const held = a.kernel.folds.acquire(session.id, a.host.principal);
+    await held.ready();
 
     const first = a.host.execution.advance({ session: session.id, head: main });
     (await a.script.started(1)).finish();
@@ -73,7 +73,7 @@ describe("the store is the truth", () => {
     ).toEqual(["From A.", "From B."]);
     expect(view.revision).toBe(stored?.revision);
     unpoll();
-    await watched.return?.();
+    held.release();
   });
 
   it("lands the content another instance revised while this kernel held its fold (ADV A F4)", async () => {
@@ -186,33 +186,30 @@ describe("the store is the truth", () => {
     const { kernel, host } = await setup({ store, execution: { kind: "admit-only" } });
     const { session, receipt } = await host.sessions.start({ content: "Old." });
     await landing(kernel, session.id, main, [receipt.message], null);
-    const watched = session.watch()[Symbol.asyncIterator]();
-    await watched.next();
+    const held = kernel.folds.acquire(session.id, host.principal);
+    await held.ready();
     armed = true;
     await land(kernel, session.id, "New.");
     const stored = await shared.refs.get(headRef(session.id, main));
-    let shown = await watched.next();
 
-    while (
-      shown.done !== true &&
-      (shown.value.heads[0]?.tip.kind !== "commit" ||
-        asId<"object">(shown.value.heads[0].tip.id) !== stored?.target)
-    )
-      shown = await watched.next();
+    const shown = await until(async () => {
+      const view = await session.view();
 
-    expect(shown.done !== true && shown.value.revision).toBe(stored?.revision);
+      return view.revision === stored?.revision ? view : undefined;
+    });
+
     release.resolve();
+    const tip = (await session.info()).heads[0]?.tip;
+
+    expect(tip).toEqual({ kind: "commit", id: stored?.target });
     expect(
-      shown.done !== true &&
-        (
-          await (
-            await session.move(shown.value.heads[0]?.tip ?? { kind: "start" }, {
-              expect: shown.value.revision ?? undefined,
-            })
-          ).settled()
-        ).kind,
+      (
+        await (
+          await session.move(tip ?? { kind: "start" }, { expect: shown.revision ?? undefined })
+        ).settled()
+      ).kind,
     ).toBe("moved");
-    await watched.return?.();
+    held.release();
   });
 
   it("rejects a stored record whose shape its type forbids (§54d)", () => {
@@ -263,7 +260,7 @@ describe("the store is the truth", () => {
 
     for (const event of [request(4, 100), request(5, 200), request(4, 100)]) {
       state = fold(state, event);
-      seqs.push(project(state, main).seq);
+      seqs.push(readView(state, main).seq);
     }
 
     expect(seqs).toEqual([4, 5, 4]);

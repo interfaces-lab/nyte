@@ -1,0 +1,225 @@
+---
+title: part.act
+description: Performs one of a part's actions with the given input.
+---
+
+Performs one of a part's actions with the given input, such as a button press or form submit. The
+input is checked against the action's schema, then the plugin that owns the part runs it. For a
+modal part, the first action that succeeds answers the part.
+
+It answers `ok` with the action's output, `rejected` with the reason when the action refused the
+input, `unknown-action`, `closed` when the part closed first, `no-owner` when the plugin that owns
+it isn't loaded, or `failed` with the message of an action that threw.
+
+## When to call it
+
+When the user interacts with a part a client renders.
+
+## Access
+
+Any principal with `participant` authority. Session scope. The action runs with the caller as its
+principal.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "part": "b2d4f6a8-0c1e-4b3d-9f5a-7c9e1b3d5f7a",
+  "action": "approve",
+  "input": { "note": "Ship it" }
+}
+```
+
+Response:
+
+```json
+{ "kind": "ok", "output": null }
+```
+
+## Errors
+
+- `unknown` when no part has the id: `No part has the id <id>.`
+- `invalid` when the input fails the action's schema, with its issues.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "part", "action", "input"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "part": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string"
+    },
+    "input": {
+      "$ref": "Json"
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "output"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "ok"
+        },
+        "output": {
+          "$ref": "Json"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "rejected"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unknown-action"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "closed"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "no-owner"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "failed"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

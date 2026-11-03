@@ -80,6 +80,11 @@ import type {
   WorkspaceState,
 } from "./workspace.ts";
 
+export interface HostChange {
+  readonly seq: number;
+  readonly sessions: readonly SessionId[];
+}
+
 export interface Kernel {
   readonly hostId: HostId;
 
@@ -90,6 +95,8 @@ export interface Kernel {
   readonly poll: number | null;
 
   readonly externalCommits: Set<() => void>;
+
+  readonly hostChanges: Set<(change: HostChange) => void>;
 
   readonly store: StoreConnection;
 
@@ -199,6 +206,8 @@ export interface PluginHost {
 
 export interface SessionDirectory {
   activation(session: SessionId): Activation;
+
+  activations(): ReadonlyMap<SessionId, Activation>;
 
   setActivation(session: SessionId, activation: Activation): void;
 

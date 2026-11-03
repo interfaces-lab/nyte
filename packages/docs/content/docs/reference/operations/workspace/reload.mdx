@@ -1,0 +1,90 @@
+---
+title: workspace.reload
+description: Reloads the workspace's project files and the plugins of its live sessions.
+---
+
+Reads the workspace's project files again and reloads the plugins of its live sessions. It answers
+`updated`, or `missing` when no workspace has the id.
+
+## When to call it
+
+After editing a project plugin, skill or prompt file, when the change should apply without
+waiting for the file watcher.
+
+## Access
+
+Needs `owner` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response:
+
+```json
+{ "kind": "updated" }
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "updated"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

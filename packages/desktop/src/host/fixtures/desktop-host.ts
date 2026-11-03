@@ -1,19 +1,25 @@
+import { test } from "vitest";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeModels } from "@nyte-ai/bench";
 import type { FakeModels } from "@nyte-ai/bench";
 import type { HostEvent } from "@nyte-ai/app/contract/bridge.ts";
+import type { Authority } from "@nyte-ai/schema";
+import { TOKEN } from "@nyte-ai/core/server";
+import { desktopSettingsPlugin } from "@nyte-ai/plugin/core/desktop-settings";
 import { sdk } from "@nyte-ai/sdk";
-import type { Connection, CredentialSource } from "@nyte-ai/sdk";
-import { messagePortEnd, portFetch, servePort } from "../../shared/host-port.ts";
-import type { BrowserAgent } from "../../shared/browser-agent.ts";
-import { unusedBrowserAgent } from "../browser-stub.ts";
+import type { Connection, CredentialSource, Host, Listener, OpenHostOptions } from "@nyte-ai/sdk";
+import type { HostConnection } from "@nyte-ai/sdk/client";
+import { openAppClient } from "../../shared/host-client.ts";
+import { HOST_PORT_ORIGIN, messagePortEnd, portFetch, servePort } from "../../shared/host-port.ts";
 import { DesktopHost } from "../desktop-host.ts";
 import type { DesktopHostDependencies } from "../desktop-host.ts";
 
 export interface TestDesktop {
   readonly host: DesktopHost;
+  readonly served: Host;
+  readonly client: HostConnection;
   readonly home: string;
   readonly fake: FakeModels;
   readonly events: HostEvent[];
@@ -21,39 +27,59 @@ export interface TestDesktop {
   close(): Promise<void>;
 }
 
+/** A test that runs the host on its local socket, which Windows has no named pipe for yet. */
+export const socketTest = test.skipIf(process.platform === "win32");
+
+/** A desktop over a host served as `nyte host` serves it: on a local socket whose peer is the owner, where the app's client connects. */
 export async function testDesktop(
-  overrides: Partial<DesktopHostDependencies> & { readonly agent?: BrowserAgent } = {},
+  overrides: Partial<DesktopHostDependencies> = {},
+  serving: Pick<OpenHostOptions, "clientPlugins"> = {},
 ): Promise<TestDesktop> {
-  const { agent, ...dependencies } = overrides;
-
-  const home =
-    dependencies.home ?? (await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-"))));
-
+  const home = overrides.home ?? (await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-"))));
   const fake = fakeModels();
   const events: HostEvent[] = [];
 
-  const host = new DesktopHost({
+  const served = await sdk.open({
     home,
-    version: "0.0.0-test",
     models: fake.models,
-    emitHostEvent: (event) => events.push(event),
-    agent: agent ?? unusedBrowserAgent(),
-    serveTailnet: async (port) => ({
-      address: `http://127.0.0.1:${String(port)}`,
-      stop: async () => {},
-    }),
-    ...dependencies,
+    plugins: [desktopSettingsPlugin],
+    clientPlugins: serving.clientPlugins,
   });
+
+  const authority = new Set<Authority>(["participant", "owner", "maintenance"]);
+  const socket = join(home, ".nyte", "host.sock");
+
+  const listener: Listener = await served.listen({
+    transport: { kind: "socket", path: socket },
+    auth: { kind: "custom", authorize: () => ({ principal: TOKEN, authority }) },
+  });
+
+  const client = openAppClient({ socket, version: "test" });
 
   const [model] = fake.provider.getModels();
 
   if (model !== undefined)
-    await (await host.host()).models.setDefault({ provider: fake.provider.id, id: model.id });
+    await served.models.setDefault({ provider: fake.provider.id, id: model.id });
+
+  const host = new DesktopHost({
+    home,
+    open: () =>
+      sdk.connect({
+        url: HOST_PORT_ORIGIN,
+        credentials: { kind: "custom", headers: () => ({}) },
+        fetch: (url, init) => listener.fetch(new Request(url, init)),
+      }),
+    client,
+    emitHostEvent: (event) => events.push(event),
+    ...overrides,
+  });
 
   const ports: MessagePort[] = [];
 
   return {
     host,
+    served,
+    client,
     home,
     fake,
     events,
@@ -66,7 +92,7 @@ export async function testDesktop(
         fetch: portFetch(async () => {
           const { port1, port2 } = new MessageChannel();
           ports.push(port1, port2);
-          servePort(messagePortEnd(port1), (request) => host.fetch(request));
+          servePort(messagePortEnd(port1), (request) => listener.fetch(request));
 
           return messagePortEnd(port2);
         }),
@@ -75,8 +101,11 @@ export async function testDesktop(
     close: async () => {
       for (const port of ports) port.close();
       await host.close();
+      client.release();
+      await listener.close();
+      await served.close();
 
-      if (dependencies.home === undefined) await rm(home, { recursive: true, force: true });
+      if (overrides.home === undefined) await rm(home, { recursive: true, force: true });
     },
   };
 }

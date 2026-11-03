@@ -214,7 +214,7 @@ describe("cancellation and revocation", () => {
 
       desktop.handler = undefined;
       const abort = new AbortController();
-      const answer = phone({ environmentId, bearer }, "/head.watch", {
+      const answer = phone({ environmentId, bearer }, "/connection.watch", {
         signal: abort.signal,
         headers: origin === undefined ? {} : { origin },
       });
@@ -243,7 +243,7 @@ describe("cancellation and revocation", () => {
     const { environmentId, desktop, bearer, deviceId } = await enrolled();
 
     desktop.handler = undefined;
-    const answer = phone({ environmentId, bearer }, "/head.watch");
+    const answer = phone({ environmentId, bearer }, "/connection.watch");
     const { ch } = await desktop.next("open");
 
     desktop.send({ t: "head", ch, status: 200, headers: { "content-type": "text/event-stream" } });

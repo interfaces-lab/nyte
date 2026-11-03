@@ -211,7 +211,7 @@ export function createFoldCache(kernel: Feeds): FoldCache {
 
 /** Publishes a set's events through the kernel's publisher as the set logged them, from the updates in hand: each event at the seq and time the store gave it, each head-moving event with its head's ref pair (the one this set wrote, else read). */
 export async function publishSet(
-  kernel: Pick<Kernel, "store" | "publisher">,
+  kernel: Pick<Kernel, "store" | "publisher" | "hostChanges">,
   updates: readonly RefUpdate[],
   outcome: SetOutcome,
 ): Promise<void> {
@@ -270,6 +270,10 @@ export async function publishSet(
     );
     ended?.();
   }
+
+  if (outcome.host === null) return;
+
+  for (const listener of kernel.hostChanges) listener(outcome.host);
 }
 
 /** Returns the kernel's {@link LogPublisher} over `bus`, reading gaps from `store`'s log. */

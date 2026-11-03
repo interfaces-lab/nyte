@@ -1,0 +1,68 @@
+---
+title: connection.blob
+description: Streams the bytes of a stored blob, such as an image attached to a message.
+---
+
+Streams the bytes of a blob in the host's store, such as an image a user attached to a message.
+The answer is an octet stream with the blob's size.
+
+## When to call it
+
+When a message, part or view names a blob id and the client needs its bytes, for instance to show
+an attached image. The id comes from a `file` item in a message's content or from
+[`files.upload`](/docs/reference/operations/files/upload).
+
+## Access
+
+Any principal with `participant` authority. Host scope: blobs belong to the host's store, not to
+a session or workspace.
+
+## Example
+
+Request body:
+
+```json
+{ "id": "5d41402abc4b2a76b9719d911017c592ae8b6f4c1e0a7d3f2b9c8e1a0f6d5c4b" }
+```
+
+The answer is the blob's bytes, `Content-Type: application/octet-stream`.
+
+## Errors
+
+- `unknown` when no blob has the id: `No blob has the id <id>.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `stream`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "string",
+  "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+}
+```
+
+{/* generated:end */}

@@ -168,7 +168,6 @@ function chat(name: Name): Chat {
     background: [],
     configuration: { selected: configuration, effective: configuration },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   } as const satisfies Omit<SessionView, "messages">;
@@ -230,19 +229,22 @@ const files: FilesApi = {
   upload: refuse,
 };
 
-const { connection } = scriptedConnection({
+const { connection, live } = scriptedConnection({
   sessions: NAMES.map((name) => sessionRow(name, { name })),
   views: new Map([...chats.values()].map((entry) => [asId<"session">(entry.name), entry.stream])),
 });
 
-installConnection({
-  ...connection,
-  workspace: (id) => ({
-    ...connection.workspace(id),
-    files: async () => ({ kind: "available", api: files }),
-    git: async () => ({ kind: "unsupported", reason: "Not a repository." }),
-  }),
-});
+installConnection(
+  {
+    ...connection,
+    workspace: (id) => ({
+      ...connection.workspace(id),
+      files: async () => ({ kind: "available", api: files }),
+      git: async () => ({ kind: "unsupported", reason: "Not a repository." }),
+    }),
+  },
+  live,
+);
 
 const catalog = {
   generation: asId<"catalog-generation">("initial"),

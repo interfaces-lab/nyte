@@ -1,5 +1,4 @@
 import type { Locator, Page } from "@playwright/test";
-import { collectErrors } from "@nyte-ai/app/e2e/errors";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
 import { chatTab, openChat, revealChat, sidebar } from "./ui.ts";
@@ -88,77 +87,8 @@ async function leadingShare(page: Page): Promise<number> {
   return leading.width / (leading.width + trailing.width);
 }
 
-const TAB_TYPE = "application/x-nyte-tab";
-
-const SESSION_TYPE = "application/x-nyte-session";
-
-/**
- * One window's half of a native tab drag, as the browser sends it: press, pick up, then end with
- * `dropEffect` set by whoever took the drop. Returns the tab the drag carried. A real drag hands
- * the same events across windows; Playwright can't carry one there, so each half is sent itself.
- */
-async function dragTabOut(
-  tab: Locator,
-  end: { readonly dropEffect: "move" | "none"; readonly screenX: number; readonly screenY: number },
-): Promise<string> {
-  return tab.evaluate(
-    (element, { type, dropEffect, screenX, screenY }) => {
-      const item = element.closest('[draggable="true"]');
-
-      if (item === null) throw new Error("The tab can't be dragged");
-      const rect = element.getBoundingClientRect();
-      const point = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
-      const dataTransfer = new DataTransfer();
-      element.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true, isPrimary: true, button: 0, ...point }),
-      );
-      item.dispatchEvent(
-        new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer, ...point }),
-      );
-      const carried = dataTransfer.getData(type);
-      dataTransfer.dropEffect = dropEffect;
-      item.dispatchEvent(
-        new DragEvent("dragend", { bubbles: true, dataTransfer, ...point, screenX, screenY }),
-      );
-
-      return carried;
-    },
-    { type: TAB_TYPE, ...end },
-  );
-}
-
-/** The other half: a drag from another window hovers `target` at `point` and drops there. */
-async function dropFromAnotherWindow(
-  page: Page,
-  target: Locator,
-  point: Point,
-  data: { readonly type: string; readonly value: string },
-): Promise<void> {
-  await target.evaluate(
-    (_element, { x, y, type, value }) => {
-      const dataTransfer = new DataTransfer();
-      dataTransfer.setData(type, value);
-      const under = document.elementFromPoint(x, y);
-
-      if (under === null) throw new Error("Nothing is under the drop point");
-      const init = { bubbles: true, cancelable: true, dataTransfer, clientX: x, clientY: y };
-      under.dispatchEvent(new DragEvent("dragenter", init));
-      under.dispatchEvent(new DragEvent("dragover", init));
-      under.dispatchEvent(new DragEvent("drop", init));
-    },
-    { ...point, ...data },
-  );
-  await page.evaluate(
-    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
-  );
-}
-
-function tabs(page: Page): Locator {
-  return page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
-}
-
 /** Each pane's floor in the app's pane layout. */
-const PANE_WIDTH_MIN = 256;
+const PANE_WIDTH_MIN = 320;
 
 test("the panes journey", async ({ desktop }) => {
   const { page } = desktop;
@@ -224,8 +154,9 @@ test("the panes journey", async ({ desktop }) => {
     expect(floor, "the window leaves room to resize").toBeLessThan(0.42);
     const target = (floor + 0.5) / 2;
     const handle = await center(sash);
+    const lane = (await box(sash)).width;
 
-    await drag(page, handle, { x: leading.x + width * target, y: handle.y });
+    await drag(page, handle, { x: leading.x + width * target + lane / 2, y: handle.y });
     expect(await leadingShare(page)).toBeCloseTo(target, 1);
     expect(Number(await sash.getAttribute("aria-valuenow"))).toBeCloseTo(target * 100, -0.5);
 
@@ -308,7 +239,7 @@ test("the panes journey", async ({ desktop }) => {
     await expect(handle).toHaveAttribute("aria-valuenow", "400");
     await handle.focus();
     await page.keyboard.press("Home");
-    await expect(handle).toHaveAttribute("aria-valuenow", "210");
+    await expect(handle).toHaveAttribute("aria-valuenow", "214");
   });
 
   await test.step("the workbench's handle resizes it and the title bar follows", async () => {
@@ -340,69 +271,5 @@ test("the panes journey", async ({ desktop }) => {
 
     expect(Number.parseFloat(active)).toBeCloseTo(after.width, 0);
     await page.getByRole("button", { name: "Close workbench panel" }).click();
-  });
-
-  await test.step("a tab dropped where no window is opens in a new window and leaves this one", async () => {
-    await openChat(page, FIXTURES.composer);
-    await chatTab(page, FIXTURES.composer).dblclick();
-    await expect(tabs(page)).toHaveCount(2);
-
-    const opened = desktop.application.waitForEvent("window");
-
-    const bounds = await desktop.application.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.getBounds(),
-    );
-
-    if (bounds === undefined) throw new Error("The window has no bounds");
-    await dragTabOut(chatTab(page, FIXTURES.composer), {
-      dropEffect: "none",
-      screenX: bounds.x + bounds.width + 400,
-      screenY: bounds.y + 40,
-    });
-
-    const torn = await opened;
-    const tornErrors = collectErrors(torn);
-    await expect(chatTab(torn, FIXTURES.composer)).toHaveAttribute("aria-selected", "true");
-    await expect(transcript(panes(torn))).toContainText("A first draft");
-    await expect(tabs(page)).toHaveCount(1);
-    await expect(chatTab(page, FIXTURES.composer)).toHaveCount(0);
-
-    await test.step("a tab dropped on another window's strip moves there", async () => {
-      const carried = await dragTabOut(chatTab(torn, FIXTURES.composer), {
-        dropEffect: "move",
-        screenX: 0,
-        screenY: 0,
-      });
-
-      expect(JSON.parse(carried)).toMatchObject({ view: { kind: "panes" } });
-      await expect(
-        chatTab(torn, FIXTURES.composer),
-        "the tab left the window it moved from",
-      ).toHaveCount(0);
-
-      const first = await box(tabs(page).first());
-      await dropFromAnotherWindow(
-        page,
-        tabs(page).first(),
-        { x: first.x + first.width - 2, y: first.y + first.height / 2 },
-        { type: TAB_TYPE, value: carried },
-      );
-      await expect(tabs(page)).toHaveCount(2);
-      await expect(chatTab(page, FIXTURES.composer)).toHaveAttribute("aria-selected", "true");
-      await expect(tabs(page).nth(1)).toHaveAccessibleName(FIXTURES.composer);
-    });
-
-    await test.step("a chat dragged from another window lands on a pane's edge there", async () => {
-      await dropFromAnotherWindow(torn, panes(torn), await pointIn(panes(torn), "right"), {
-        type: SESSION_TYPE,
-        value: desktop.sessions.alpha,
-      });
-      await expect(panes(torn)).toHaveCount(2);
-      await expect(transcript(panes(torn).nth(1))).toContainText("Hello from alpha");
-    });
-
-    expect(tornErrors.pageErrors).toEqual([]);
-    expect(tornErrors.consoleErrors.filter((text) => !text.startsWith("DEV:"))).toEqual([]);
-    await torn.close();
   });
 });

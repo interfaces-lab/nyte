@@ -363,7 +363,7 @@ describe("sqliteStore", () => {
     await right.close();
   });
 
-  it("brings another host's commits on the same file to a polling host's directory and head watch", async () => {
+  it("brings another host's commits on the same file to a polling host's session feed and attached head", async () => {
     const path = join(await folder(), "nyte.db");
 
     await using stores = new AsyncDisposableStack();
@@ -383,25 +383,33 @@ describe("sqliteStore", () => {
     await using reader = await host(20);
     await using writer = await host();
     const { session: created } = await writer.sessions.start({ name: "Before", content: "Hi." });
-    const directory = reader.sessions.watch()[Symbol.asyncIterator]();
-    const views = reader.session(created.id).watch()[Symbol.asyncIterator]();
-    await views.next();
+    const directory = reader.server.wire.sessions(reader.principal)[Symbol.asyncIterator]();
+    const attached = reader.server.wire.attach(created.id, reader.principal);
+    await Promise.all([directory.next(), attached.ready()]);
     await created.update({ name: "After" });
     await created.send("From the writer.");
 
     let listed = await directory.next();
 
-    while (listed.done !== true && listed.value[0]?.name !== "After")
+    while (
+      listed.done !== true &&
+      listed.value.tables.sessions?.upsert.some((row) => row.name === "After") !== true
+    )
       listed = await directory.next();
 
-    let viewed = await views.next();
+    const window = await vi.waitFor(() => {
+      const read = attached.read(asId("main"), { tail: 10 }, null);
+      expect(read.order).toHaveLength(2);
 
-    while (viewed.done !== true && viewed.value.messages.length < 2) viewed = await views.next();
+      return read;
+    });
 
-    assert(listed.done !== true && viewed.done !== true);
-    expect(viewed.value.messages[1]).toMatchObject({ kind: "user", content: "From the writer." });
+    assert(listed.done !== true);
+    expect(
+      window.tables.messages.upsert.find((message) => message.id === window.order[1]),
+    ).toMatchObject({ kind: "user", content: "From the writer." });
     await directory.return?.();
-    await views.return?.();
+    attached.release();
   });
 
   it("rewrites records written before the fields the decoders require, once, with a backup", async () => {

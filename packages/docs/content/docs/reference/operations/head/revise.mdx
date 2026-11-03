@@ -1,0 +1,289 @@
+---
+title: head.revise
+description: Edits the content of a message that has not been sent yet.
+---
+
+Changes the content of a message that is still queued on a head. The message keeps its id and
+place, and the session's `before_send` hooks check the new content. `delivery` changes how it meets
+the run ahead of it.
+
+It answers `revised` while the message is queued, `sent` once it has started (and changes
+nothing), and `missing` when it was withdrawn or isn't queued on this head.
+
+## When to call it
+
+When the user edits a queued message before it runs. Hold it first with
+[`head.hold`](/docs/reference/operations/head/hold) so it doesn't start mid-edit. To change a message
+that already started, send a replacement with [`head.send`](/docs/reference/operations/head/send)
+and `replace`.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "message": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b",
+  "content": "Then add a regression test for the time zone"
+}
+```
+
+Response:
+
+```json
+{ "kind": "revised" }
+```
+
+## Errors
+
+- `invalid` when the message is still being decided by the `before_send` hooks:
+  `Message <id> is still being decided.`
+- `invalid` when a `before_send` hook refuses the new content.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head", "message", "content"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "content": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "text"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "blob", "mime", "name"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "file"
+                  },
+                  "blob": {
+                    "type": "string"
+                  },
+                  "mime": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "path"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "reference"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "blob": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "name", "location"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "skill"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "location": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "source", "text"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "excerpt"
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "path", "side", "start", "end"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "diff"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "side": {
+                            "enum": ["old", "new"]
+                          },
+                          "start": {
+                            "type": "number"
+                          },
+                          "end": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "terminal"
+                          },
+                          "command": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "url", "selector"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "browser"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "selector": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "session", "title"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "chat"
+                          },
+                          "session": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "delivery": {
+          "enum": ["steer", "queue", "attach"]
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "revised"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "sent"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

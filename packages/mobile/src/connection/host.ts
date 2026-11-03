@@ -7,6 +7,8 @@ import { displayAddress, type Connection, type SavedConnection } from "./connect
 import { classifyConnectFailure, type ConnectFailure } from "./connect-copy.ts";
 import { createConnectionStore } from "./connection-store.ts";
 import { createJournal } from "./journal.ts";
+import { openLiveHost } from "./live.ts";
+import type { LiveHost } from "./live.ts";
 import { createPinStore, pinRoute } from "./pins.ts";
 import { readAccountConfig } from "../account/account-config.ts";
 import { deviceCrypto } from "../account/device.ts";
@@ -37,6 +39,7 @@ function hostFetch(saved: SavedConnection): typeof globalThis.fetch {
 
 interface VerifiedHost {
   readonly connection: HostConnection;
+  readonly live: LiveHost;
   readonly saved: SavedConnection;
   readonly scope: string;
   readonly key: string;
@@ -114,6 +117,7 @@ export async function verifyHost(input: {
 
   const host: VerifiedHost = {
     connection,
+    live: openLiveHost(saved.connection.url, saved.connection.token),
     saved,
     scope: JSON.stringify(["host", connection.hostId, ...principal]),
     key: String(adoptions),
@@ -140,10 +144,10 @@ export async function connectHost(input: {
   });
 
   if (result.kind !== "verified") return result;
-  const { saved: next, connection } = result.host;
+  const next = result.host.saved;
   const saved = await connectionStore.save(next, signal);
 
-  if (saved.kind !== "saved") void connection.close();
+  if (saved.kind !== "saved") closeHost(result.host);
 
   if (saved.kind === "failed") return { kind: "notSaved" };
 
@@ -173,7 +177,7 @@ function createHostVerifier() {
       check.kind === "verified" &&
       (next.kind !== "verified" || next.host.connection !== check.host.connection)
     )
-      void check.host.connection.close();
+      closeHost(check.host);
     check = next;
 
     for (const listener of listeners) listener();
@@ -204,7 +208,7 @@ function createHostVerifier() {
         clearTimeout(timer);
 
         if (running !== controller) {
-          if (result.kind === "verified") void result.host.connection.close();
+          if (result.kind === "verified") closeHost(result.host);
 
           return;
         }
@@ -212,7 +216,7 @@ function createHostVerifier() {
         running = undefined;
         const timedOut = controller.signal.aborted || result.kind === "cancelled";
 
-        if (timedOut && result.kind === "verified") void result.host.connection.close();
+        if (timedOut && result.kind === "verified") closeHost(result.host);
         publish(
           timedOut
             ? {
@@ -261,3 +265,8 @@ function createHostVerifier() {
 }
 
 export const hostVerifier = createHostVerifier();
+
+function closeHost(host: VerifiedHost): void {
+  void host.connection.close();
+  host.live.release();
+}

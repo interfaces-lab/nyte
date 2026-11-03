@@ -88,7 +88,7 @@ test("every unanswered question part is waiting; answered, stopped, foreign and 
 test("all answers go to the question part in one action", async () => {
   const acted: { readonly action: string; readonly input: unknown }[] = [];
   const session = asId<"session">("chat");
-  const { connection } = scriptedConnection({
+  const { connection, live } = scriptedConnection({
     session: () => ({
       part: (id) => ({
         id,
@@ -106,7 +106,7 @@ test("all answers go to the question part in one action", async () => {
       }),
     }),
   });
-  installConnection(connection);
+  installConnection(connection, live);
   const [question] = openQuestions(view([part("open")]));
   assert.ok(question !== undefined);
 
@@ -115,7 +115,7 @@ test("all answers go to the question part in one action", async () => {
 });
 
 test("a question nobody waits on any more says so", async () => {
-  const { connection } = scriptedConnection({
+  const { connection, live } = scriptedConnection({
     session: () => ({
       part: (id) => ({
         id,
@@ -129,7 +129,7 @@ test("a question nobody waits on any more says so", async () => {
       }),
     }),
   });
-  installConnection(connection);
+  installConnection(connection, live);
   const [question] = openQuestions(view([part("open")]));
   assert.ok(question !== undefined);
 

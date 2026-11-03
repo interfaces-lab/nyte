@@ -50,7 +50,6 @@ import {
   TurnInfoSchema,
   UpdateOutcomeSchema,
   UserStatusSchema,
-  ViewFrameSchema,
   ViewOptionsSchema,
   WorkspaceCommandOutcomeSchema,
   asSeq,
@@ -135,18 +134,6 @@ export const sessionCases = {
     { kind: "has-children" },
   ),
   ViewOptionsSchema: sample(ViewOptionsSchema, { tail: 50 }, { tail: "all" }),
-  ViewFrameSchema: sample(
-    ViewFrameSchema,
-    {
-      kind: "delta",
-      seq: asSeq(5),
-      leadingPrompt: null,
-      execution: { kind: "idle", lastRun: null },
-      turns: { runs: [-1, 1], items: [turnInfo] },
-      changes: { runs: [], items: [] },
-    },
-    { kind: "delta", seq: asSeq(5), turns: { runs: [-1, 1], items: [{ id: "t" }] } },
-  ),
   UserStatusSchema: sample(
     UserStatusSchema,
     { kind: "unsent", attempts: 2, retrying: { at: 3, reason: "Offline." } },
@@ -193,7 +180,6 @@ export const sessionCases = {
       background: [background],
       configuration: { selected: null, effective: configuration },
       context: contextView,
-      heads: [headInfo],
       changes: [fileChange],
       catalog,
     },
@@ -398,7 +384,13 @@ export const sessionCases = {
   ),
   SetOutcomeSchema: sample(
     SetOutcomeSchema,
-    { kind: "set", logged: [asSeq(3)], at: 4, revisions: [revision] },
-    { kind: "set", logged: [1.5], at: 4, revisions: [] },
+    {
+      kind: "set",
+      logged: [asSeq(3)],
+      at: 4,
+      revisions: [revision],
+      host: { seq: 7, sessions: [session] },
+    },
+    { kind: "set", logged: [1.5], at: 4, revisions: [], host: null },
   ),
 } satisfies Record<string, Case>;

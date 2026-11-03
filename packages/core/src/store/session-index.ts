@@ -1,5 +1,5 @@
 import { asId } from "@nyte-ai/schema";
-import type { Json, SessionId } from "@nyte-ai/schema";
+import type { Json, RefUpdate, SessionId } from "@nyte-ai/schema";
 import {
   decodeCallRecord,
   decodeInboxRecord,
@@ -7,6 +7,18 @@ import {
   decodeRunRecord,
   decodeSessionRecord,
 } from "../contract/records.ts";
+import { parseSessionRef, sessionRef } from "./refs.ts";
+
+const DIRECTORY_EVENTS: ReadonlySet<string> = new Set([
+  "session",
+  "run",
+  "head",
+  "commit",
+  "seen",
+  "background",
+]);
+
+const DIRECTORY_REFS: ReadonlySet<string> = new Set(["heads", "runs", "seen"]);
 
 /** The current ref names that contribute a directory row or outstanding work. */
 export function sessionIndexRef(name: string): {
@@ -85,4 +97,33 @@ export function projectSessionIndex(name: string, object: Json | null): SessionI
         ? { kind: "call", session: ref.session }
         : null;
   }
+}
+
+export function directorySessions(updates: readonly RefUpdate[]): {
+  readonly changed: readonly SessionId[];
+  readonly removed: readonly SessionId[];
+} {
+  const roots = new Map<SessionId, boolean>();
+  const changed = new Set<SessionId>();
+
+  for (const update of updates) {
+    const session = parseSessionRef(update.name);
+
+    if (session === null) continue;
+    const group = update.name.split("/")[2];
+
+    if (update.name === sessionRef(session)) roots.set(session, update.target === null);
+
+    if (
+      group === undefined ||
+      DIRECTORY_REFS.has(group) ||
+      update.events?.some((event) => DIRECTORY_EVENTS.has(event.kind)) === true
+    )
+      changed.add(session);
+  }
+
+  return {
+    changed: [...changed],
+    removed: [...roots].flatMap(([session, removed]) => (removed ? [session] : [])),
+  };
 }

@@ -1,11 +1,11 @@
-import type { SessionView } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import { showsAnswer, showsReport } from "@nyte-ai/plugin/client/presentation";
 import { draftFromContent } from "./draft.ts";
 import type { DraftSnapshot } from "./draft.ts";
 
 const MAX_HISTORY = 100;
 
-export function promptEntries(view: SessionView | null): readonly DraftSnapshot[] {
+export function promptEntries(view: HeadView | null): readonly DraftSnapshot[] {
   if (view === null) return [];
 
   return view.messages

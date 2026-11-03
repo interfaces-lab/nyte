@@ -49,16 +49,20 @@ export async function stageCli(options: {
 
   if ((await stat(staged).catch(() => undefined))?.isFile() === true) return staged;
   await mkdir(directory, { recursive: true });
-  const temporary = `${staged}.tmp`;
 
-  try {
-    await copyFile(join(options.resources, "nyte"), temporary);
-    await chmod(temporary, 0o755);
-    await rename(temporary, staged);
-  } catch (cause) {
-    await rm(temporary, { force: true });
+  for (const name of ["nyte-tailnet", "nyte"]) {
+    const target = join(directory, name);
+    const temporary = `${target}.tmp`;
 
-    throw cause;
+    try {
+      await copyFile(join(options.resources, name), temporary);
+      await chmod(temporary, 0o755);
+      await rename(temporary, target);
+    } catch (cause) {
+      await rm(temporary, { force: true });
+
+      throw cause;
+    }
   }
 
   return staged;

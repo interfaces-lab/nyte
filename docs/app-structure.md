@@ -22,7 +22,7 @@
 | `index.ts`, `app.tsx` | What the desktop imports; the providers around the shell | `index.ts` |
 | `contract/` | Types and tables the desktop main, host and preload processes share with the app, including the desktop settings. No React | `bridge.ts` |
 | `boot/` | Renderer startup, the first frame, the startup failure screen | `startup.ts` |
-| `data/` | The host connection, live watches and every query, one file per domain | `watches.ts`, `sessions.ts` |
+| `data/` | The host connection, the chat and session-list stores over its rows, live watches and every query, one file per domain | `chat-store.ts`, `sessions.ts` |
 | `lib/` | Helpers with no domain: number and time formats, deferred chunks, small hooks | `format.ts`, `deferred.tsx` |
 | `theme/` | Tokens, fonts, appearance and the global stylesheet | `schema.stylex.ts` |
 | `preferences/` | Stored preferences | `index.ts` |
@@ -60,7 +60,7 @@ Outside `src/`: `dev/` holds the account-footer harness page (`/dev/account-foot
 - A chat reads its own folder, not the window's: `chat/chat-scope.tsx` gives it the folder (`useChatFolder`) and a reference opener for that folder's workbench.
 - Tool rows are in `chat/tools/`; a subagent row is `chat/tools/subagent-call.tsx`.
 - A chat's tasks are its view's background items joined to the chats and jobs they name: `chats/tasks.ts`, read through `useChatTasks` and `useTask`. The trays list them with `listAgents` and `listTerminals`.
-- Session reads are `data/sessions.ts`, actions `data/session-actions.ts`, live watches `data/watches.ts`, cache keys `data/query-client.ts`.
+- Session reads are `data/sessions.ts`, actions `data/session-actions.ts`, a chat's rows `data/chat-store.ts`, the session list `data/directory.ts`, other live watches `data/watches.ts`, cache keys `data/query-client.ts`.
 - Git reads are `data/vcs.ts`; file reads `data/files.ts`; model catalog `data/catalog.ts`; usage `data/usage.ts`.
 - The workbench's kind table and tab types are `workbench/model.ts`; its pure transitions `workbench/view-reducer.ts`, the store `workbench/store.ts`, selectors and the rail model `workbench/selectors.ts`, the path rule `workbench/paths.ts`, its width `workbench/width.ts`, what it saves (and the persistence helper) `workbench/persistence.ts`. Actions that touch several stores, and the reference opener, are `workbench/commands.ts`; the rail is `workbench/rail.tsx`.
 - The Changes panel is `workbench/changes/changes-panel.tsx`, its derivations `workbench/changes/changes-model.ts`; the diff it draws is `diff/diff-view.tsx`.

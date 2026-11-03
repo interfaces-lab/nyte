@@ -5,9 +5,8 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
-import { fileURLToPath } from "node:url";
 import { alignedRows, ansiEnabled, bold, dim } from "./cli-style.ts";
-import { compiled } from "./compiled.ts";
+import { compiled, selfCommand } from "./compiled.ts";
 import { nyteHome, runDoctor, type DoctorReport } from "./doctor-command.ts";
 import { redact } from "./redact.ts";
 import { NEVER_READ, readShareable } from "./secrets.ts";
@@ -201,13 +200,6 @@ function agentLabel(agent: TriageAgent, report: DoctorReport): string {
   }
 }
 
-/** How to run this nyte again: the binary itself, or bun with the source entry. */
-function self(): readonly string[] {
-  return compiled
-    ? [process.execPath]
-    : [process.execPath, fileURLToPath(new URL("./binary.ts", import.meta.url))];
-}
-
 function ignoreSignal(): void {}
 
 /** Ctrl-C belongs to the agent while it runs; triage stays alive to offer the issue after. */
@@ -231,7 +223,7 @@ function run(command: string, args: readonly string[], cwd: string): Promise<num
 
 /** Sends the playbook as the first turn in print mode, then opens that session in the TUI. */
 async function runNyte(folder: string, message: string): Promise<number> {
-  const [command = "nyte", ...prefix] = self();
+  const [command, ...prefix] = selfCommand();
 
   const first = spawn(command, [...prefix, "-p", "--no-context-files", message], {
     cwd: folder,

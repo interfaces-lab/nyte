@@ -29,6 +29,7 @@ import type {
   ToolProgress,
   TurnId,
   TurnInfo,
+  Usage,
   UserContent,
   WaitTarget,
 } from "@nyte-ai/schema";
@@ -43,6 +44,7 @@ export interface FoldState {
   readonly seen: ReadonlyMap<PrincipalId, ReadonlyMap<HeadName, CommitId | null>>;
 
   readonly seq: Seq;
+  readonly base: Seq;
   readonly activation: Activation;
   readonly catalog: SessionCatalogView;
 
@@ -135,6 +137,42 @@ export interface Index {
 
   readonly thinking: Map<TurnId, number>;
   readonly paths: Map<HeadName, Path>;
+
+  readonly stamps: { readonly [T in Table]: Map<string, Seq> };
+  readonly ring: Ring;
+}
+
+export type Table =
+  | "messages"
+  | "turns"
+  | "parts"
+  | "changes"
+  | "catalog"
+  | "heads"
+  | "settings"
+  | "usage"
+  | "background";
+
+export interface Touched {
+  readonly upsert: { readonly [T in Table]: Set<string> };
+  readonly drop: { readonly [T in Table]: Set<string> };
+  readonly paths: Map<HeadName, number>;
+}
+
+export interface Step extends Touched {
+  readonly seq: Seq;
+  readonly mark: number;
+}
+
+export interface Ring {
+  readonly steps: Step[];
+  from: Seq;
+  mark: number;
+}
+
+export interface ChangeCursor {
+  readonly seq: Seq;
+  readonly mark: number;
 }
 
 export interface Path {
@@ -146,6 +184,8 @@ export interface Path {
   readonly turnAt: Map<TurnId, number>;
 
   readonly firstAt: number[];
+  readonly usage: Usage[];
+  readonly edits: { readonly seq: Seq; readonly position: number }[];
 }
 
 export interface Draft extends Index {
@@ -164,6 +204,9 @@ export interface Draft extends Index {
   readonly retitled: Set<TurnId>;
 
   readonly steps: Map<TurnId, { steps: number; thinking: number }>;
+
+  readonly durable: boolean;
+  readonly touched: Touched;
 }
 
 export const INDEX = Symbol("fold-index");

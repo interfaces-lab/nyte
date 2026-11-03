@@ -1,10 +1,11 @@
 import { useMutation, useMutationState } from "@tanstack/react-query";
-import type { SessionId, SessionView } from "@nyte-ai/sdk";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { ChatView } from "./chat-store.ts";
 import { projectSessionChoice, sessionConfigurationOptions } from "./session-configuration.ts";
 import type { PendingConfiguration } from "./session-configuration.ts";
 import { groupByWorkspace } from "./session-list.ts";
 import { useRootRows } from "./session-rows.ts";
-import { sessionWatch } from "./watches.ts";
+import { chatStore } from "./chat-store.ts";
 import { useWatch, useWatchSelect } from "./watch-store.ts";
 import { subagentActivity } from "./session-activity.ts";
 import { useSessionActions } from "./session-actions.ts";
@@ -36,24 +37,21 @@ export function useSessionSearch(search: string, enabled = true) {
   };
 }
 
-export function useSessionView(sessionId: SessionId | undefined): SessionView | undefined {
-  return useWatch(sessionId === undefined ? undefined : sessionWatch(sessionId)).value;
+export function useSessionView(sessionId: SessionId | undefined): ChatView | undefined {
+  return useWatch(sessionId === undefined ? undefined : chatStore(sessionId)).value;
 }
 
 export function useSessionActivity(
   sessionId: SessionId | undefined,
   cwd: string | undefined,
 ): string | undefined {
-  return useWatchSelect(sessionId === undefined ? undefined : sessionWatch(sessionId), (state) =>
+  return useWatchSelect(sessionId === undefined ? undefined : chatStore(sessionId), (state) =>
     subagentActivity(state.value?.activity, cwd),
   );
 }
 
 export function useSessionChoice(sessionId: SessionId) {
-  const configuration = useWatchSelect(
-    sessionWatch(sessionId),
-    (state) => state.value?.configuration,
-  );
+  const configuration = useWatchSelect(chatStore(sessionId), (state) => state.value?.configuration);
 
   const pending = useMutationState<PendingConfiguration>({
     filters: { mutationKey: ["session", sessionId, "configure"], status: "pending" },

@@ -45,7 +45,9 @@ export async function flagConfiguration(
   return { ...configuration, model: found.ref };
 }
 
-export async function* rootSessions(connection: Connection): AsyncIterable<SessionInfo> {
+export async function* rootSessions(connection: {
+  readonly sessions: Pick<Connection["sessions"], "list">;
+}): AsyncIterable<SessionInfo> {
   let cursor: Cursor | null = null;
 
   do {
@@ -58,7 +60,10 @@ export async function* rootSessions(connection: Connection): AsyncIterable<Sessi
   } while (cursor !== null);
 }
 
-export async function addFolder(connection: Connection, path: string): Promise<WorkspaceId> {
+export async function addFolder(
+  connection: { readonly workspaces: Pick<Connection["workspaces"], "inspect" | "add"> },
+  path: string,
+): Promise<WorkspaceId> {
   const seen = await connection.workspaces.inspect({ kind: "local", path });
   const added = await connection.workspaces.add(seen.target, {
     expect: { identity: seen.identity },

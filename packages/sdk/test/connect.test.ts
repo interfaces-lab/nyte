@@ -294,7 +294,8 @@ describe("connect", () => {
 
     const hostViews = device.watch()[Symbol.asyncIterator]();
     await hostViews.next();
-    const views = device.session(session.id).watch()[Symbol.asyncIterator]();
+    const workspace = (await device.session(session.id).info()).workspace;
+    const views = device.workspace(workspace).watch()[Symbol.asyncIterator]();
     await views.next();
     await a.principals.revoke(device.principal);
 

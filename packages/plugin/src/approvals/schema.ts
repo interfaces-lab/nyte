@@ -1,11 +1,9 @@
 import type { PartDefinition } from "@nyte-ai/core";
-import { standard, ToolClassType } from "@nyte-ai/schema";
+import { ApprovalPolicyType, standard, ToolClassType } from "@nyte-ai/schema";
 import type { Infer, PartId, SessionView } from "@nyte-ai/schema";
 import { Type } from "typebox";
 
-const policy = standard(
-  Type.Union([Type.Literal("ask"), Type.Literal("auto-edit"), Type.Literal("full")]),
-);
+const policy = standard(ApprovalPolicyType);
 
 /**
  * When a tool call waits for the user: `ask` before any call that may change

@@ -23,7 +23,6 @@ import type {
   SendOptions,
   SessionId,
   SessionInfo,
-  SessionView,
   SettingOutcome,
   SubmitDraft,
   Thinking,
@@ -33,6 +32,7 @@ import type {
   WorkspaceCommandOutcome,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import type { Freshness, HeadView, Health } from "@nyte-ai/sdk/client";
 import type { ApprovalDecision } from "@nyte-ai/plugin/approvals/schema";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { Clock } from "@opentui/core";
@@ -75,6 +75,7 @@ export interface HostPort {
   rootSessions(): AsyncIterable<SessionInfo>;
   catalog(): AsyncIterable<Pick<HostView, "catalog" | "settings" | "version">>;
   sessionInfos(): AsyncIterable<readonly SessionInfo[]>;
+  health(): AsyncIterable<Health>;
   listModels(): Promise<ModelCatalogView>;
   accounts(provider: string | null): Promise<readonly ModelAccount[]>;
   selectAccount(provider: string, account: string): Promise<void>;
@@ -109,6 +110,11 @@ export interface HostPort {
   blob(id: string): AsyncIterable<Uint8Array>;
 }
 
+export interface ChatUpdate {
+  readonly view: HeadView;
+  readonly freshness: Freshness;
+}
+
 export interface WorkspacePort {
   readonly id: WorkspaceId;
   catalog(): Promise<WorkspaceCatalogView>;
@@ -121,7 +127,7 @@ export interface WorkspacePort {
 
 export interface SessionPort {
   readonly id: SessionId;
-  watch(): AsyncIterable<SessionView>;
+  watch(): AsyncIterable<ChatUpdate>;
   earlier(limit: number): Promise<number>;
   see(commit: CommitId): Promise<void>;
   info(): Promise<SessionInfo>;

@@ -1,0 +1,211 @@
+---
+title: jobs.list
+description: Lists the workspace's jobs.
+---
+
+Lists the workspace's jobs this host process keeps, running and recently ended, each with its
+command, title, session, terminal size, state, times, the tail of its output, and whether it is
+still in the foreground of the tool call that started it.
+
+## When to call it
+
+To show a jobs or terminals panel once. To keep it current, use
+[`jobs.watch`](/docs/reference/operations/jobs/watch).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response:
+
+```json
+[
+  {
+    "id": "8a0c2e4f-6b1d-4f3a-9c5e-7b9d1f3a5c7e",
+    "command": "pnpm test --watch",
+    "title": "pnpm test --watch",
+    "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+    "pty": null,
+    "state": { "kind": "running" },
+    "startedAt": 1767240000000,
+    "endedAt": null,
+    "tail": "Tests: 41 passed, 41 total\n",
+    "foreground": false
+  }
+]
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "id",
+      "command",
+      "title",
+      "session",
+      "pty",
+      "state",
+      "startedAt",
+      "endedAt",
+      "tail",
+      "foreground"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "command": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "session": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "pty": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["columns", "rows", "shell"],
+            "properties": {
+              "columns": {
+                "type": "number"
+              },
+              "rows": {
+                "type": "number"
+              },
+              "shell": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "state": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "running"
+              }
+            }
+          },
+          {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "code", "reason"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "exited"
+                  },
+                  "code": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "enum": ["exited", "terminated", "expired", "host-lost"]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "lost"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "startedAt": {
+        "type": "number"
+      },
+      "endedAt": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "tail": {
+        "type": "string"
+      },
+      "foreground": {
+        "type": "boolean"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

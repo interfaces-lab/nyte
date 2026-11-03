@@ -1,0 +1,148 @@
+---
+title: github.account
+description: Reads the GitHub account the host machine is signed in as.
+---
+
+Reads the GitHub account the host machine's GitHub CLI (`gh`) is signed in as on github.com. It
+answers `ready` with the login, `signed_out`, `signing_in` with the one-time code while a sign-in
+waits, `cli_missing` when `gh` isn't on the `PATH`, or `error` with what to do next.
+
+## When to call it
+
+To show GitHub's connection state in settings. One login serves every workspace on the machine.
+
+## Access
+
+Any principal with `participant` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+{ "kind": "ready", "account": { "login": "ada", "name": "Ada Lovelace" } }
+```
+
+## Errors
+
+- `unavailable` when the host serves no GitHub login: `This host has no GitHub CLI login to serve.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "cli_missing"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signed_out"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "deviceCode"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signing_in"
+        },
+        "deviceCode": {
+          "type": "object",
+          "required": ["userCode", "verificationUri"],
+          "properties": {
+            "userCode": {
+              "type": "string"
+            },
+            "verificationUri": {
+              "type": "string"
+            },
+            "expiresInSeconds": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "account"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "ready"
+        },
+        "account": {
+          "type": "object",
+          "required": ["login"],
+          "properties": {
+            "login": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "avatarUrl": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "error"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

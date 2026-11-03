@@ -77,6 +77,6 @@ export {
   workspaceRef,
 } from "./store/refs.ts";
 
-export { projectSessionIndex, sessionIndexRef } from "./store/session-index.ts";
+export { directorySessions, projectSessionIndex, sessionIndexRef } from "./store/session-index.ts";
 
 export { blobId, objectId } from "./util/content.ts";

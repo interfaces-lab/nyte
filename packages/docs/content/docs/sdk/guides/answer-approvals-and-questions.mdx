@@ -34,20 +34,32 @@ session from its next tool call, including runs already going. Changing it needs
 ## Answer an approval
 
 `openApprovals` from `@nyte-ai/plugin/approvals/schema` returns the approvals nobody has answered
-yet, oldest first. `approvalPrompt` gives the words to show for one:
+yet, oldest first. `approvalPrompt` gives the words to show for one. Follow the session's head
+store, opened on `live` as [Render a session](/docs/sdk/guides/render-a-session) shows, and ask
+about each request once:
 
 ```ts
 import { approvalPrompt, openApprovals } from "@nyte-ai/plugin/approvals/schema";
+import { headView } from "@nyte-ai/sdk/client";
 
-for await (const view of session.watch()) {
-  for (const request of openApprovals(view)) {
+const store = live.head(session.id, session.name, { tail: 100 });
+const asked = new Set<string>();
+
+store.subscribe(async () => {
+  const snapshot = store.snapshot();
+
+  if (snapshot === null) return;
+
+  for (const request of openApprovals(headView(snapshot))) {
+    if (asked.has(request.part)) continue;
+    asked.add(request.part);
     const prompt = approvalPrompt(request);
     const decision = await ask(prompt.title, prompt.detail);
     const outcome = await session.part(request.part).act(decision, {});
 
     if (outcome.kind !== "ok") console.error(outcome.kind);
   }
-}
+});
 ```
 
 `prompt.title` is a question such as "Run this command?" and `prompt.detail` is the command, path

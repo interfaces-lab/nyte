@@ -1,0 +1,127 @@
+---
+title: git.refs
+description: Lists the workspace's branches, their upstreams and the current branch.
+---
+
+Lists the local branches with their commits and upstreams, the remotes, and the current branch
+(`null` on a detached HEAD).
+
+## When to call it
+
+For a branch picker, before [`git.checkout`](/docs/reference/operations/git/checkout).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `git` capability.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response:
+
+```json
+{
+  "current": "fix-date-test",
+  "branches": [
+    {
+      "name": "fix-date-test",
+      "commit": "3e1f9a2c4b6d8e0f1a3c5e7b9d2f4a6c8e0b1d3f",
+      "upstream": "origin/fix-date-test"
+    },
+    {
+      "name": "main",
+      "commit": "8d0f2b4a6c8e0a1b3c5d7e9f1a2b4c6d8e0f1a3b",
+      "upstream": "origin/main"
+    }
+  ],
+  "remotes": ["origin"]
+}
+```
+
+## Errors
+
+- `unavailable` outside a repository, or when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["current", "branches", "remotes"],
+  "properties": {
+    "current": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "branches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "commit", "upstream"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "upstream": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "remotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

@@ -1,3 +1,4 @@
+import { stopHomeProcesses } from "@nyte-ai/bench";
 import { _electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { spawn } from "node:child_process";
@@ -92,6 +93,7 @@ export async function makeHome(parent: string, model: ModelServer): Promise<Home
     store: join(home, ".nyte", "nyte.db"),
     env,
     async [Symbol.asyncDispose]() {
+      await stopHomeProcesses(home);
       await rm(root, { recursive: true, force: true });
     },
   };

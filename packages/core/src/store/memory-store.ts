@@ -1,7 +1,16 @@
 import { asId, asSeq, isJsonObject } from "@nyte-ai/schema";
-import type { BlobId, ObjectId, Ref, Revision, Seq, SessionId } from "@nyte-ai/schema";
-import type { FoldCheckpoint, Store, StoreConnection } from "../contract/store.ts";
+import type {
+  BlobId,
+  ObjectId,
+  ParentFilter,
+  Ref,
+  Revision,
+  Seq,
+  SessionId,
+} from "@nyte-ai/schema";
+import type { FoldCheckpoint, SessionIndexRow, Store, StoreConnection } from "../contract/store.ts";
 import { blobId, objectId } from "../util/content.ts";
+import { byCodePoint } from "../util/text.ts";
 import { collectBlob } from "./blobs.ts";
 import {
   admits,
@@ -11,8 +20,8 @@ import {
   loggedEvent,
   replacedTargets,
 } from "./log.ts";
-import { parseSessionRef } from "./refs.ts";
-import { projectSessionIndex, sessionIndexRef } from "./session-index.ts";
+import { parseSessionRef, sessionRef } from "./refs.ts";
+import { directorySessions, projectSessionIndex, sessionIndexRef } from "./session-index.ts";
 import type { SessionIndexEntry } from "./session-index.ts";
 
 export function memoryStore(): Store {
@@ -28,7 +37,9 @@ export function memoryStore(): Store {
   >();
   const checkpoints = new Map<SessionId, FoldCheckpoint>();
   const encoder = new TextEncoder();
+  const seqs = new Map<SessionId, number>();
   let minted = 0;
+  let hostSeq = 0;
 
   const tail = (session: SessionId): Seq => logs.get(session)?.at(-1)?.seq ?? asSeq(0);
 
@@ -40,31 +51,80 @@ export function memoryStore(): Store {
     else holders.set(id, count);
   };
 
+  const listed = (
+    parents: ParentFilter,
+    after: { readonly at: number; readonly id: SessionId } | undefined,
+    limit: number,
+  ): readonly SessionIndexRow[] =>
+    [...indexed.entries()]
+      .filter(
+        (entry): entry is [string, Extract<SessionIndexEntry, { kind: "session" }>] =>
+          entry[1].kind === "session" &&
+          (parents.kind === "all" ||
+            entry[1].parent === (parents.kind === "roots" ? null : parents.session)) &&
+          (after === undefined ||
+            entry[1].at < after.at ||
+            (entry[1].at === after.at && byCodePoint(entry[1].session, after.id) > 0)),
+      )
+      .sort(
+        (left, right) => right[1].at - left[1].at || byCodePoint(left[1].session, right[1].session),
+      )
+      .slice(0, limit)
+      .flatMap(([name, entry]) => {
+        const ref = refs.get(name);
+
+        return ref === undefined
+          ? []
+          : [
+              {
+                ref,
+                version: versions.get(entry.session) ?? ref.revision,
+                seq: seqs.get(entry.session) ?? 0,
+              },
+            ];
+      });
+
+  const readParent = (session: SessionId): SessionId | null => {
+    const entry = indexed.get(sessionRef(session));
+
+    return entry?.kind === "session" ? entry.parent : null;
+  };
+
+  const indexes = (session: SessionId | null): session is SessionId =>
+    session !== null && indexed.get(sessionRef(session))?.kind === "session";
+
+  const stamp = (
+    changed: readonly SessionId[],
+    removed: readonly SessionId[],
+    orphaned: readonly (SessionId | null)[],
+  ) => {
+    const stamped = [
+      ...new Set([...changed, ...changed.map(readParent), ...orphaned].filter(indexes)),
+    ];
+
+    if (stamped.length === 0 && removed.length === 0) return null;
+    hostSeq += 1;
+
+    for (const session of removed) seqs.delete(session);
+
+    for (const session of stamped) seqs.set(session, hostSeq);
+
+    return { seq: hostSeq, sessions: [...new Set([...stamped, ...removed])].toSorted() };
+  };
+
   const connection: StoreConnection = {
     sessions: {
       async list({ parents, after, limit }) {
-        return [...indexed.entries()]
-          .filter(
-            (entry): entry is [string, Extract<SessionIndexEntry, { kind: "session" }>] =>
-              entry[1].kind === "session" &&
-              (parents.kind === "all" ||
-                entry[1].parent === (parents.kind === "roots" ? null : parents.session)) &&
-              (after === undefined ||
-                entry[1].at < after.at ||
-                (entry[1].at === after.at && byCodePoint(entry[1].session, after.id) > 0)),
-          )
-          .sort(
-            (left, right) =>
-              right[1].at - left[1].at || byCodePoint(left[1].session, right[1].session),
-          )
-          .slice(0, limit)
-          .flatMap(([name, entry]) => {
-            const ref = refs.get(name);
+        return listed(parents, after, limit);
+      },
+      async changed({ since, parents, limit }) {
+        const rows = listed(parents, undefined, limit);
 
-            return ref === undefined
-              ? []
-              : [{ ref, version: versions.get(entry.session) ?? ref.revision }];
-          });
+        return {
+          seq: hostSeq,
+          ids: rows.map((row) => asId<"session">(row.ref.name.slice("sessions/".length))),
+          rows: rows.filter((row) => row.seq > since),
+        };
       },
       async work({ after, limit }) {
         const sessions = new Set(
@@ -172,6 +232,9 @@ export function memoryStore(): Store {
           new Map(updates.map((update) => [update.name, refs.get(update.name)])),
         );
 
+        const directory = directorySessions(updates);
+        const removed = directory.removed.filter(indexes);
+        const orphaned = removed.map(readParent);
         const at = Date.now();
 
         const appended = logged.map(({ session, event }) => {
@@ -219,7 +282,13 @@ export function memoryStore(): Store {
           if (!isJsonObject(object) || object.kind !== "commit") objects.delete(id);
         }
 
-        return { kind: "set", logged: appended, at, revisions };
+        return {
+          kind: "set",
+          logged: appended,
+          at,
+          revisions,
+          host: stamp(directory.changed, removed, orphaned),
+        };
       },
       log: async (session, after, limit) =>
         (logs.get(session) ?? [])
@@ -253,16 +322,4 @@ export function memoryStore(): Store {
     open: async () => connection,
     close: async () => {},
   };
-}
-
-function byCodePoint(left: string, right: string): number {
-  for (let index = 0; index < left.length && index < right.length;) {
-    const point = left.codePointAt(index) ?? 0;
-    const difference = point - (right.codePointAt(index) ?? 0);
-
-    if (difference !== 0) return difference;
-    index += point > 0xffff ? 2 : 1;
-  }
-
-  return left.length - right.length;
 }

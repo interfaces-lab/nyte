@@ -5,6 +5,7 @@ import { systemPromptPlugin } from "../src/builtins/system-prompt.ts";
 import { toolSource } from "../src/extend/registry.ts";
 import { LOCAL, text } from "../src/index.ts";
 import type { Plugin, PluginApi } from "../src/index.ts";
+import { attachSession } from "../src/api/attach.ts";
 import { main, setup } from "../src/harness.ts";
 import { memoryStore } from "../src/store.ts";
 import { world } from "./fake-env.ts";
@@ -450,23 +451,23 @@ describe("plugin api", () => {
     hold.release();
   });
 
-  it("keeps the generation when a restarted host opens a chat's watch", async () => {
+  it("keeps the generation when a restarted host opens a chat", async () => {
     const store = await memoryStore().open();
     const plugins = [{ id: "greeter", contribute: { commands: [says("hello", "hi")] } }];
     const first = await setup({ store, plugins });
     const { session } = await first.host.sessions.start({ content: "Hi." });
     const second = await setup({ store, plugins });
     const generation = second.kernel.host.current().catalog;
-    const views = second.host.session(session.id).watch()[Symbol.asyncIterator]();
+    const attached = attachSession(second.kernel, session.id, second.host.principal);
 
-    await views.next();
+    await attached.ready();
     await second.kernel.plugins.runtime(session.id).ready;
 
     expect(second.kernel.sessions.catalog(session.id).commands).toEqual([
       expect.objectContaining({ name: "hello" }),
     ]);
     expect(second.kernel.host.current().catalog).toBe(generation);
-    await views.return?.();
+    attached.release();
   });
 });
 

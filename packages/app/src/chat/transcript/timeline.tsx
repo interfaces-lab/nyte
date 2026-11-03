@@ -1,5 +1,6 @@
 import { props } from "@stylexjs/stylex";
-import type { SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
+import type { SessionId, UserContent } from "@nyte-ai/sdk";
+import type { ChatView } from "../../data/chat-store.ts";
 import { useState } from "react";
 // oxlint-disable-next-line no-restricted-imports -- TranscriptContent's uncompiled virtualizer calls renderRow on every scroll update, so each row needs its own memo boundary
 import { memo } from "react";
@@ -36,7 +37,7 @@ type EditUserMessage = (
 ) => Promise<void>;
 
 interface RowContext {
-  readonly store: WatchStore<SessionView>;
+  readonly store: WatchStore<ChatView>;
   readonly projector: TranscriptProjector;
   readonly navigating: boolean;
   readonly density: ToolCallDensity;

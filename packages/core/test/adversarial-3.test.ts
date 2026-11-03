@@ -148,22 +148,13 @@ describe("ADV A-3", () => {
     fake.reply({ content: [{ type: "text", text: "A partial answer" }], hold: true });
     await using host = await open(fake);
     const { session, receipt } = await host.sessions.start({ content: "Go." });
-    const views = session.watch()[Symbol.asyncIterator]();
-
-    for (;;) {
-      const next = await views.next();
-
-      if (next.done === true) throw new Error("The watch ended.");
-
-      if (
-        next.value.messages.some(
-          (message) => message.kind === "part" && JSON.stringify(message.state).includes("partia"),
-        )
+    await until(async () =>
+      (await session.view()).messages.some(
+        (message) => message.kind === "part" && JSON.stringify(message.state).includes("partia"),
       )
-        break;
-    }
-
-    await views.return?.();
+        ? true
+        : undefined,
+    );
     const landed = await receipt.landed();
 
     if (landed.kind !== "landed" || landed.run === null) throw new Error("No run landed.");
@@ -248,7 +239,7 @@ describe("ADV A-3", () => {
       };
 
       await until(async () =>
-        (await session.view()).heads[0]?.execution.kind === "waiting" ? true : undefined,
+        (await session.view()).execution.kind === "waiting" ? true : undefined,
       );
 
       await new Promise((resolve) => setTimeout(resolve, 50));

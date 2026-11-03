@@ -9,7 +9,7 @@ import { executionMark, mainHead } from "@nyte-ai/plugin/client/presentation";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { HeadName, SessionId } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
-import { useWatch } from "../connection/use-watch.ts";
+import { useChat, useSessions } from "../connection/live.ts";
 import { describeHostError } from "../connection/connection.ts";
 import { navigationMenuAction } from "../ui/navigation-menu.tsx";
 import { toast } from "../ui/toast.tsx";
@@ -30,18 +30,17 @@ import { seeWhileForeground } from "./seen.ts";
  * answered here as well as in the subagent's own conversation, which takes no messages of its own.
  */
 export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
-  const { client, newerHost } = useHost();
+  const { client, live, newerHost } = useHost();
   const insets = useSafeAreaInsets();
   const [head, setHead] = useState<HeadName>();
   const chat = useRemoteChat(client, sessionId, head);
 
   useFocusEffect(() => seeWhileForeground({ appState: AppState, tip: chat.tip, see: chat.see }));
 
-  const [children] = useWatch({
-    watch: () => client.sessions.watch({ parents: { kind: "children", session: sessionId } }),
-  });
+  const childSessions = useSessions(live, {
+    parents: { kind: "children", session: sessionId },
+  })?.sessions;
 
-  const childSessions = children.kind === "ready" ? children.value : undefined;
   const delegateNames = indexDelegateNames(childSessions ?? []);
 
   const asking = childSessions?.find(
@@ -50,10 +49,10 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
 
   const askingId = asking?.id;
 
-  const [askingView] = useWatch(askingId === undefined ? undefined : client.session(askingId));
+  const askingView = useChat(live, client, askingId, undefined)?.view;
 
   const ownQuestion = chat.state === undefined ? undefined : openQuestion(chat.state);
-  const childQuestion = askingView.kind === "ready" ? openQuestion(askingView.value) : undefined;
+  const childQuestion = askingView === undefined ? undefined : openQuestion(askingView);
 
   const question: AskedQuestion | undefined =
     ownQuestion !== undefined
@@ -255,11 +254,13 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
     );
   }
 
-  if (chat.error !== undefined) {
+  const unavailable = chat.error ?? chat.health;
+
+  if (unavailable !== undefined) {
     return (
       <html.div style={[styles.centered, styles.topInset(insets.top)]}>
         <html.p role="alert" style={[textStyles.error, styles.centeredText]}>
-          {chat.error}
+          {unavailable}
         </html.p>
       </html.div>
     );

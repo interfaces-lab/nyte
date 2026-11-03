@@ -1,6 +1,6 @@
 import { assert, expect, it } from "vitest";
 import { definePart } from "@nyte-ai/core";
-import { SdkError, standard } from "@nyte-ai/schema";
+import { asId, SdkError, standard } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import {
   CHANNEL_HEADER,
@@ -166,7 +166,7 @@ it("registers twelve pending answers without occupying twelve HTTP responses", a
 });
 
 it("keeps twelve watches on one response while commands and other watches continue", async () => {
-  const { handler } = await served();
+  const { handler, host } = await served();
   let channels = 0;
   let open = 0;
 
@@ -193,18 +193,20 @@ it("keeps twelve watches on one response while commands and other watches contin
   });
 
   const watches = Array.from({ length: 12 }, () =>
-    transport.frames("sessions.watch", {})[Symbol.asyncIterator](),
+    transport.frames("connection.watch", {})[Symbol.asyncIterator](),
   );
 
   try {
     const initial = await Promise.all(watches.map((watch) => watch.next()));
-    expect(initial.map((frame) => frame.value)).toEqual(
-      Array.from({ length: 12 }, () => ({
-        kind: "list",
-        order: { runs: [], items: [] },
-        items: [],
-      })),
-    );
+    const catalog = host.kernel.host.current().catalog;
+
+    expect(
+      initial.map((frame) => {
+        assert(!frame.done);
+
+        return decodeOutput("connection.watch", frame.value).catalog;
+      }),
+    ).toEqual(Array.from({ length: 12 }, () => catalog));
     expect([channels, open]).toEqual([1, 1]);
     const first = watches[0];
     assert(first !== undefined);
@@ -212,22 +214,14 @@ it("keeps twelve watches on one response while commands and other watches contin
     await first.return?.();
     expect(await pending).toEqual({ done: true, value: undefined });
 
-    const { session } = decodeOutput(
-      "sessions.start",
-      await transport.invoke("sessions.start", { id: crypto.randomUUID(), content: "Hi." }),
-    );
-
+    expect(await transport.invoke("sessions.list", {})).toMatchObject({ items: [] });
+    host.kernel.host.update({ catalog: asId("g2") });
     const changed = await Promise.all(watches.slice(1).map((watch) => watch.next()));
 
     for (const frame of changed) {
       assert(!frame.done);
-      const { kind, order, items } = decodeOutput("sessions.watch", frame.value);
 
-      expect({ kind, order, ids: items.map((row) => row.id) }).toEqual({
-        kind: "delta",
-        order: { runs: [-1, 1], items: [session] },
-        ids: [session],
-      });
+      expect(decodeOutput("connection.watch", frame.value).catalog).toBe("g2");
     }
 
     expect([channels, open]).toEqual([1, 1]);
@@ -252,7 +246,7 @@ it("checks channel ownership and operation authority independently", async () =>
   try {
     const stolen = await post(
       handler,
-      "sessions.watch",
+      "connection.watch",
       {},
       {
         Authorization: "Bearer guest",
@@ -344,7 +338,7 @@ it("preserves a revocation error for all logical streams", async () => {
   });
 
   const watches = Array.from({ length: 3 }, () =>
-    transport.frames("sessions.watch", {})[Symbol.asyncIterator](),
+    transport.frames("connection.watch", {})[Symbol.asyncIterator](),
   );
 
   await Promise.all(watches.map((watch) => watch.next()));

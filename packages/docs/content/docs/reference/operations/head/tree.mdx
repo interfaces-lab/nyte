@@ -1,0 +1,212 @@
+---
+title: head.tree
+description: Returns the tree of messages and branches behind a head.
+---
+
+Returns every commit in the session as a tree, in display order: each node's parent, depth,
+whether it starts a branch, whether it is on this head's path, the heads whose tip it is, its kind,
+and an 80-character preview of its text.
+
+## When to call it
+
+To draw a branch map of a chat, or to let the user pick a point to move a head to or to branch
+from.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{ "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f", "head": "main" }
+```
+
+Response, with one node:
+
+```json
+{
+  "revision": "2b4d6f8a-0c1e-4a3b-9d5f-7e9a1c3b5d7f",
+  "tip": {
+    "kind": "commit",
+    "id": "a3f1c5e7b9d2f4a6c8e0b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3"
+  },
+  "nodes": [
+    {
+      "id": "a3f1c5e7b9d2f4a6c8e0b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3",
+      "parent": null,
+      "depth": 0,
+      "branch": false,
+      "active": true,
+      "heads": ["main"],
+      "kind": "user",
+      "partKind": null,
+      "preview": "Find out why the date test fails on CI",
+      "at": 1767240000000,
+      "run": null
+    }
+  ]
+}
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["revision", "tip", "nodes"],
+  "properties": {
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tip": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "start"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "commit"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "parent",
+          "depth",
+          "branch",
+          "active",
+          "heads",
+          "kind",
+          "partKind",
+          "preview",
+          "at",
+          "run"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "depth": {
+            "type": "number"
+          },
+          "branch": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "heads": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kind": {
+            "enum": ["user", "part", "compaction", "branchSummary"]
+          },
+          "partKind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preview": {
+            "type": "string"
+          },
+          "at": {
+            "type": "number"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

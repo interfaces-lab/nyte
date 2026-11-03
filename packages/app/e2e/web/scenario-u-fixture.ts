@@ -33,7 +33,7 @@ const PACE: Reply["timing"] = { firstMs: 30, deltaMs: 2 };
 export function restaurantReplies(input: {
   readonly skill: string;
   readonly origin?: string;
-  readonly log?: boolean;
+  readonly log?: (line: string) => void;
 }): (request: Request) => Reply | null {
   const canvas =
     input.origin === undefined
@@ -51,8 +51,8 @@ export function restaurantReplies(input: {
       return null;
     const last = request.context.messages.at(-1);
 
-    if (input.log === true && last?.role === "toolResult")
-      console.log(
+    if (last?.role === "toolResult")
+      input.log?.(
         `NYTE_E2E_U ${JSON.stringify({ tool: last.toolName, text: contentText(last.content).slice(0, 600) })}`,
       );
 

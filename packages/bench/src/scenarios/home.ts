@@ -1,7 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
+import { setTimeout as sleep } from "node:timers/promises";
 
 export const PLACES_SERVER = join(import.meta.dirname, "places-mcp.mjs");
 
@@ -59,8 +61,54 @@ export async function scenarioHome(input: {
     home,
     traceFile,
     skills,
-    [Symbol.asyncDispose]: () => rm(home, { recursive: true, force: true, maxRetries: 10 }),
+    async [Symbol.asyncDispose]() {
+      await stopHomeProcesses(home);
+      await rm(home, { recursive: true, force: true, maxRetries: 10 });
+    },
   };
+}
+
+const STOP_MS = 10_000;
+
+export async function stopHomeProcesses(home: string): Promise<void> {
+  for (const pid of processesIn(home)) signal(pid, "SIGTERM");
+  const deadline = Date.now() + STOP_MS;
+
+  while (processesIn(home).length > 0) {
+    if (Date.now() > deadline) {
+      for (const pid of processesIn(home)) signal(pid, "SIGKILL");
+
+      return;
+    }
+
+    await sleep(50);
+  }
+}
+
+function processesIn(home: string): readonly number[] {
+  if (process.platform === "win32") return [];
+
+  const listed = spawnSync("ps", ["axeww", "-o", "pid=,command="], {
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+  });
+
+  if (listed.error !== undefined) throw listed.error;
+
+  return listed.stdout.split("\n").flatMap((line) => {
+    const match = /^\s*(\d+)\s.*\sHOME=(\S+)/u.exec(line);
+    const pid = Number(match?.[1]);
+
+    return match?.[2] === home && pid !== process.pid ? [pid] : [];
+  });
+}
+
+function signal(pid: number, name: NodeJS.Signals): void {
+  try {
+    process.kill(pid, name);
+  } catch (cause) {
+    if (!(cause instanceof Error && "code" in cause && cause.code === "ESRCH")) throw cause;
+  }
 }
 
 export async function nodeShim(folder: string, name: string, script: string): Promise<string> {

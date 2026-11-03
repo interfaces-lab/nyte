@@ -500,8 +500,8 @@ export function TranscriptContent({
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- restores the reading anchor before paint once rows are ready
   useLayoutEffect(() => {
-    if (ready) restoreAnchor();
-  }, [ready]);
+    if (ready && viewport !== null) restoreAnchor();
+  }, [ready, viewport]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- saves virtualizer measurements to the view store on unmount
   useLayoutEffect(

@@ -8,8 +8,12 @@ import { chatOnly, fakeModels, testModel } from "@nyte-ai/bench";
 import type { FakeModels } from "@nyte-ai/bench";
 import questionPlugin from "@nyte-ai/plugin/core/question";
 import subagentsPlugin from "@nyte-ai/plugin/core/subagents";
+import { listen } from "@nyte-ai/host";
 import { asId } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
+import type { HostConnection } from "@nyte-ai/sdk/client";
+import type { LocalEndpoint } from "@nyte-ai/service";
+import { openLiveHost } from "../../src/live-host.ts";
 
 export type Reply = FakeModels["reply"] extends (...replies: readonly (infer R)[]) => void
   ? R
@@ -21,6 +25,8 @@ export type ProviderRequest = FakeModels["requests"][number];
 
 export interface TestHost extends AsyncDisposable {
   readonly host: TestHostHandle;
+  readonly endpoint: LocalEndpoint;
+  readonly live: HostConnection;
   readonly models: FakeModels;
   readonly requests: readonly ProviderRequest[];
   reply(...replies: readonly Reply[]): void;
@@ -57,15 +63,28 @@ export async function openTestHost(options?: {
     loadPluginDirectory: options?.loadPluginDirectory,
   });
 
+  const token = crypto.randomUUID();
+
+  const listener = await listen(host, {
+    transport: { kind: "http" },
+    auth: { kind: "token", token },
+  });
+
+  const endpoint = { url: String(listener.address), token };
+  const live = openLiveHost(endpoint, "tui");
   let closed: Promise<void> | null = null;
 
   const close = (): Promise<void> =>
     (closed ??= (async () => {
+      live.release();
+      await listener.close();
       await host.close();
     })());
 
   return {
     host,
+    endpoint,
+    live,
     models,
     requests: models.requests,
     reply: (...replies) => models.reply(...replies),

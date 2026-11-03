@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,8 @@ import { afterAll, beforeAll, test } from "vitest";
 const desktop = fileURLToPath(new URL("../../../desktop/", import.meta.url));
 
 let directory: string | undefined;
+
+const label = `ai.nyte.desktop.titlebar-test.${String(process.pid)}.${String(Date.now())}`;
 
 let application: ElectronApplication;
 
@@ -53,7 +55,12 @@ beforeAll(async () => {
     executablePath,
     args: [entry],
     cwd: desktop,
-    env: { ...inherited, HOME: join(root, "home"), NYTE_HOME: join(root, "home/.nyte") },
+    env: {
+      ...inherited,
+      HOME: join(root, "home"),
+      NYTE_HOME: join(root, "home/.nyte"),
+      NYTE_DESKTOP_HOST_LABEL: label,
+    },
     timeout: 60_000,
   });
   page = await application.firstWindow();
@@ -63,6 +70,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await application?.close();
+
+  if (process.platform === "darwin")
+    spawnSync("launchctl", ["bootout", `gui/${String(process.getuid?.() ?? 0)}/${label}`]);
 
   if (directory !== undefined) await rm(directory, { recursive: true, force: true });
 });

@@ -1,0 +1,223 @@
+---
+title: git.changes
+description: Lists the files changed in a scope, such as the worktree, staged files or a commit.
+---
+
+Lists the files changed in a scope, with each file's status, line stats, and the path it was renamed
+from. Scopes are `worktree` (HEAD to the working tree), `staged` (HEAD to the index), `unstaged`
+(the index to the working tree), `commit` (its parent to it), and `branch` (the merge base with
+`base` to HEAD). Untracked files join `worktree` and `unstaged`. `ignoreWhitespace` affects the line stats, not which files
+are listed.
+
+## When to call it
+
+To list a diff's files, such as a review of a branch or of one commit. Read the patches with
+[`git.patches`](/docs/reference/operations/git/patches).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `git` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "scope": { "kind": "branch", "base": "main" }
+}
+```
+
+Response:
+
+```json
+{
+  "revision": "c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3",
+  "files": [
+    {
+      "path": "src/date.ts",
+      "status": "modified",
+      "stat": { "kind": "text", "added": 1, "removed": 1 }
+    }
+  ]
+}
+```
+
+## Errors
+
+- `unavailable` outside a repository, or when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "scope"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "worktree"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "staged"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unstaged"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "commit"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "commit"
+            },
+            "commit": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "base"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "branch"
+            },
+            "base": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "ignoreWhitespace": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["revision", "files"],
+  "properties": {
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "status", "stat"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+          },
+          "stat": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "added", "removed"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  "added": {
+                    "type": "number"
+                  },
+                  "removed": {
+                    "type": "number"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "binary"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "unknown"
+                  }
+                }
+              }
+            ]
+          },
+          "from": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

@@ -11,7 +11,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ClientCapabilities } from "../contract/client-actions.ts";
 import { formatTokens, formatUsd } from "../lib/format.ts";
-import { sessionWatch } from "../data/watches.ts";
+import { chatStore } from "../data/chat-store.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { useVcsChanges, useVcsSnapshot } from "../data/vcs.ts";
 import { usePaneControllerSnapshot } from "../panes/pane-context.tsx";
@@ -134,7 +134,7 @@ function SessionStatusRows({
   readonly sessionId: SessionId;
   readonly actions: ReactNode;
 }): ReactElement {
-  const store = sessionWatch(sessionId);
+  const store = chatStore(sessionId);
   const context = useWatchSelect(store, (state) => state.value?.context);
   const execution = useWatchSelect(store, (state) => state.value?.execution);
   const lastRun = execution?.kind === "idle" ? execution.lastRun : null;

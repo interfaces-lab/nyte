@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import { McpCeilingType } from "./host.ts";
 import { idSchema } from "./ids.ts";
 import { JsonObjectType, JsonType, withJson } from "./json.ts";
 import { PositionType, UserContentType } from "./messages.ts";
@@ -35,11 +36,36 @@ export const SessionInfoType = Type.Object({
   heads: Type.Array(HeadInfoType),
   createdAt: Type.Number(),
   lastActivityAt: Type.Number(),
+  mcp: Type.Optional(McpCeilingType),
   side: Type.Optional(Type.Literal(true)),
 });
 
 /** `side` marks a side chat of `parent`, which a person started beside it; absent for every other chat. */
 export type SessionInfo = Decoded<typeof SessionInfoType>;
+
+export const SESSIONS_LIMIT = 50;
+
+export const SessionsReadType = Type.Object({
+  seq: Type.Number(),
+  ids: Type.Array(idSchema<"session">()),
+  rows: Type.Array(SessionInfoType),
+});
+
+export type SessionsRead = Decoded<typeof SessionsReadType>;
+
+export const SessionsChangeType = Type.Object({
+  seq: Type.Number(),
+  tables: Type.Object({
+    sessions: Type.Optional(
+      Type.Object({
+        upsert: Type.Array(SessionInfoType),
+        drop: Type.Array(idSchema<"session">()),
+      }),
+    ),
+  }),
+});
+
+export type SessionsChange = Decoded<typeof SessionsChangeType>;
 
 /**
  * The slash names Nyte's own clients keep for their built-in commands and

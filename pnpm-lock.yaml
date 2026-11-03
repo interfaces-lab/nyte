@@ -183,12 +183,15 @@ importers:
       '@nyte-ai/plugin':
         specifier: workspace:*
         version: link:packages/plugin
+      '@nyte-ai/schema':
+        specifier: workspace:*
+        version: link:packages/schema
       '@nyte-ai/sdk':
         specifier: workspace:*
         version: link:packages/sdk
-      '@nyte-ai/tui':
+      '@nyte-ai/service':
         specifier: workspace:*
-        version: link:packages/tui
+        version: link:packages/service
       '@oxlint/plugins':
         specifier: ^1.89.0
         version: 1.89.0
@@ -410,22 +413,28 @@ importers:
       '@nyte-ai/plugin':
         specifier: workspace:*
         version: link:../plugin
+      '@nyte-ai/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema
       typebox:
         specifier: ^1.4.2
         version: 1.4.2
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
     devDependencies:
       '@nyte-ai/connect':
         specifier: workspace:*
         version: link:../connect
-      '@nyte-ai/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
@@ -944,6 +953,9 @@ importers:
       '@lydell/node-pty':
         specifier: ^1.2.0-beta.15
         version: 1.2.0-beta.15
+      '@modelcontextprotocol/server':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@nyte-ai/ai':
         specifier: workspace:*
         version: link:../ai
@@ -974,6 +986,9 @@ importers:
       typebox:
         specifier: ^1.4.2
         version: 1.4.2
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
     devDependencies:
       '@electric-sql/pglite':
         specifier: ^0.5.11
@@ -987,6 +1002,9 @@ importers:
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
       fast-check:
         specifier: ^4.10.2
         version: 4.10.2
@@ -1370,6 +1388,9 @@ importers:
         specifier: ^1.4.2
         version: 1.4.2
     devDependencies:
+      '@nyte-ai/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
@@ -1423,12 +1444,30 @@ importers:
 
   packages/service:
     dependencies:
+      '@nyte-ai/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@nyte-ai/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@nyte-ai/connect':
         specifier: workspace:*
         version: link:../connect
+      '@nyte-ai/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nyte-ai/host':
+        specifier: workspace:*
+        version: link:../host
+      '@nyte-ai/plugin':
+        specifier: workspace:*
+        version: link:../plugin
       '@nyte-ai/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@nyte-ai/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@nyte-ai/sdk':
         specifier: workspace:*
         version: link:../sdk
@@ -1442,6 +1481,8 @@ importers:
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
+
+  packages/tailnet: {}
 
   packages/tui:
     dependencies:
@@ -1457,6 +1498,9 @@ importers:
       '@nyte-ai/plugin':
         specifier: workspace:*
         version: link:../plugin
+      '@nyte-ai/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema

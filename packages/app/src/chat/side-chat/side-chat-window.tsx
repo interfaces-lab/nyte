@@ -12,7 +12,7 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../../contract/nyte.ts";
 import { addToChat, ADD_TO_CHAT_LABEL } from "../../references/add-to-chat.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import type { ComposerEditorHandle } from "../composer/composer-editor.tsx";
 import { GRIP, Pip } from "./pip.tsx";
@@ -338,7 +338,7 @@ function AddToChat({
   readonly title: string;
   readonly onAdded: () => void;
 }): ReactElement {
-  const store = sessionWatch(chat.id);
+  const store = chatStore(chat.id);
   const replied = useWatchSelect(store, (state) => state.value?.messages.some(showsText) === true);
 
   return (

@@ -108,11 +108,11 @@ test("the navigation journey", async ({ desktop }) => {
     const tab = chatTab(page, FIXTURES.beta);
     await tab.hover();
     await expect(folder).toBeVisible();
-    await expect(folder).toHaveAccessibleDescription("Click to copy");
+    await expect(folder).toHaveAccessibleDescription("Copy Path");
     const tabBox = await tab.boundingBox();
     expect((await folder.boundingBox())?.y).toBeGreaterThan(tabBox?.y ?? Infinity);
     await folder.click();
-    await expect(folder).toHaveAccessibleDescription("Copied");
+    await expect(page.getByRole("status").filter({ hasText: /^Copied$/u })).toHaveCount(1);
     expect(await desktop.application.evaluate(({ clipboard }) => clipboard.readText())).toBe(
       desktop.home,
     );
@@ -254,7 +254,7 @@ test("the sidebar journey", async ({ desktop }) => {
   const workspaces = sidebar(page).getByRole("region", { name: "Workspaces" });
   const pinned = sidebar(page).getByRole("region", { name: "Pinned" });
 
-  await test.step("a 260 px sidebar shows 24 px Pin and Archive beside the age", async () => {
+  await test.step("a 256 px sidebar shows 24 px Pin and Archive beside the age", async () => {
     await chooseGrouping(page, "Repository");
     await expect(workspace).toHaveAttribute("aria-expanded", "true");
 
@@ -262,7 +262,7 @@ test("the sidebar journey", async ({ desktop }) => {
       await page.evaluate(() =>
         getComputedStyle(document.documentElement).getPropertyValue("--nyte-sidebar-width").trim(),
       ),
-    ).toBe("260px");
+    ).toBe("256px");
 
     const row = chatRow(page, FIXTURES.long);
     const age = row.locator('[data-slot="row-meta"]');

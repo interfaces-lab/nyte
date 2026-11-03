@@ -1,0 +1,126 @@
+---
+title: mcp.grants.list
+description: Lists the MCP clients this host granted access to.
+---
+
+Lists the outside agents this host granted MCP access to, with the access each one holds and when
+it was granted. Tokens never appear; the host keeps only their digests.
+
+## When to call it
+
+To review which agents can reach `/mcp`, or to find a grant's id before revoking it.
+
+## Access
+
+Needs `owner` authority, and answers only on the host's local socket. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+[
+  {
+    "id": "u2Q0b3hYxW5zLk1e",
+    "client": "Codex",
+    "access": { "kind": "read-only" },
+    "createdAt": 1767240600000
+  }
+]
+```
+
+## Errors
+
+- `unavailable` when the host serves no MCP endpoint.
+- `denied` off the local socket.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "client", "access", "createdAt"],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "client": {
+        "type": "string"
+      },
+      "access": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "read-only"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "ceiling"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "ceiling"
+              },
+              "ceiling": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "ask"
+                  },
+                  {
+                    "type": "string",
+                    "const": "auto-edit"
+                  },
+                  {
+                    "type": "string",
+                    "const": "full"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "createdAt": {
+        "type": "number"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

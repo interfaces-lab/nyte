@@ -5,7 +5,8 @@ import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { errorMessage } from "../../contract/errors.ts";
 import { connected } from "../../data/connection.ts";
 import { projectSessionChoice } from "../../data/session-configuration.ts";
-import { childrenWatch, sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
+import { childList } from "../../data/directory.ts";
 import { useWatch } from "../../data/watch-store.ts";
 import { contentDraftText } from "../../references/message-references.ts";
 import type { ExcerptReference } from "../../references/message-references.ts";
@@ -63,7 +64,7 @@ export function useSideChatWindow(parent: SessionId): SideChatWindow {
 
 /** `parent`'s side chats that aren't archived, oldest first. */
 export function useSideChats(parent: SessionId): readonly SessionInfo[] {
-  return sideChats(useWatch(childrenWatch(parent)).value ?? []);
+  return sideChats(useWatch(childList(parent)).value ?? []);
 }
 
 /** The side chats among a chat's children that aren't archived, oldest first. */
@@ -94,7 +95,7 @@ export function summonSideChat(parent: SessionId): void {
     return;
   }
 
-  const newest = sideChats(childrenWatch(parent).value ?? []).at(-1);
+  const newest = sideChats(childList(parent).value ?? []).at(-1);
 
   open(
     parent,
@@ -124,7 +125,7 @@ export function closeSideChat(parent: SessionId): void {
 export async function startSideChat(parent: SessionId, question: string): Promise<void> {
   open(parent, { kind: "starting", question });
   const id = asId<"session">(crypto.randomUUID());
-  const view = sessionWatch(parent).value;
+  const view = chatStore(parent).value;
   const choice = view === undefined ? undefined : projectSessionChoice(view, []);
 
   try {
@@ -142,7 +143,7 @@ export async function startSideChat(parent: SessionId, question: string): Promis
       side: true,
       content: question,
     });
-    await sessionWatch(id)
+    await chatStore(id)
       .next()
       .catch(() => undefined);
     showSideChat(parent, id);

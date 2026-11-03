@@ -1,0 +1,207 @@
+---
+title: git.watchChanges
+description: Streams the files changed in a scope each time they change.
+---
+
+Streams the files changed in a scope, the same value as
+[`git.changes`](/docs/reference/operations/git/changes), first as it is and again each time the
+status revision moves.
+
+## When to call it
+
+To keep a changes list current while the user or an agent edits files.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `git` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "scope": { "kind": "worktree" }
+}
+```
+
+Each frame is a change set, as in the `git.changes` example.
+
+## Errors
+
+- `unavailable` outside a repository, or when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "scope"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "worktree"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "staged"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unstaged"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "commit"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "commit"
+            },
+            "commit": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "base"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "branch"
+            },
+            "base": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "ignoreWhitespace": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["revision", "files"],
+  "properties": {
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "status", "stat"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+          },
+          "stat": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "added", "removed"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  "added": {
+                    "type": "number"
+                  },
+                  "removed": {
+                    "type": "number"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "binary"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "unknown"
+                  }
+                }
+              }
+            ]
+          },
+          "from": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

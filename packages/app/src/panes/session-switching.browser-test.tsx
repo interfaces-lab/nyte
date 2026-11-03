@@ -20,11 +20,10 @@ import { PaneControllerProvider } from "./pane-context.tsx";
 import { PaneController } from "./pane-controller.ts";
 import { SessionDndProvider } from "./session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
-import { installConnection } from "../data/connection.ts";
 import { SessionScreen } from "./session-screen.tsx";
 import { createAppRouter } from "../shell/routes.tsx";
 import "../theme/tokens.stylex.ts";
-import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import type { ViewStream } from "../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow, settledTool } from "../../test/view-fixtures.ts";
 
@@ -165,7 +164,6 @@ function chat(name: Name): Chat {
     background: [],
     configuration: { selected: configuration, effective: configuration },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   } as const satisfies Omit<SessionView, "messages">;
@@ -210,7 +208,7 @@ function leadingPrompt(view: SessionView, start: number): SessionView["leadingPr
 /** Each round trip a chat cost, as `<chat>:<call>`, in the order they started. */
 const fetches: string[] = [];
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: NAMES.map((name) => sessionRow(name, { name })),
     views: new Map([...chats.values()].map((entry) => [entry.id, entry.stream])),
@@ -220,31 +218,6 @@ installConnection(
       if (entry === undefined) return {};
 
       return {
-        watch: async function* (options) {
-          fetches.push(`${entry.name}:watch`);
-          await roundTrip();
-
-          const initial = entry.view(entry.live);
-
-          const start = Math.max(
-            0,
-            initial.messages.length - (options?.tail ?? initial.messages.length),
-          );
-
-          const first = initial.turns.findIndex(
-            (turn) => turn.id === initial.messages[start]?.turn,
-          );
-
-          const turns = initial.turns.slice(Math.max(0, first));
-
-          for await (const view of entry.stream.watch())
-            yield {
-              ...view,
-              messages: view.messages.slice(start),
-              leadingPrompt: leadingPrompt(view, start),
-              turns,
-            };
-        },
         history: async ({ before, limit }) => {
           fetches.push(`${entry.name}:history`);
           await roundTrip();
@@ -262,7 +235,7 @@ installConnection(
         },
       };
     },
-  }).connection,
+  }),
 );
 
 const catalog = {

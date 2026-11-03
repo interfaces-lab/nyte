@@ -18,7 +18,7 @@ import { idSchema } from "../../ids.ts";
 import { JsonType, JsonValueSchema } from "../../json.ts";
 import { PositionType, UserContentType } from "../../messages.ts";
 import { nullable } from "../nullable.ts";
-import { actOutcomeSchema, PartViewType, PlacementType } from "../../parts.ts";
+import { actOutcomeSchema, PlacementType } from "../../parts.ts";
 import { RunEndSchema, RunEndType, stopOutcomeSchema } from "../../runs.ts";
 import {
   CommandCompletionsSchema,
@@ -28,11 +28,13 @@ import {
   UpdateOutcomeSchema,
 } from "../../sessions.ts";
 import {
+  HeadWindowType,
   HistoryPageType,
+  ResumeType,
   SessionViewSchema,
   UserStatusType,
-  ViewFrameSchema,
   ViewOptionsType,
+  WindowSpecType,
 } from "../../views.ts";
 import { NOTHING, ON_SESSION, RECEIPT_ID, SESSION, wireObject, wireSchema } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
@@ -68,6 +70,7 @@ const NAMED_HEAD_INPUT = wireObject({
 export const SESSION_OPERATIONS = {
   "session.info": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Reads a session's name, state and other details.",
     kind: "query",
     input: ON_SESSION,
@@ -97,6 +100,7 @@ export const SESSION_OPERATIONS = {
   },
   "session.stop": {
     ...PARTICIPANT,
+    mcp: "write",
     summary: "Stops every run in a session and withdraws its queued messages.",
     kind: "command",
     input: ON_SESSION,
@@ -125,6 +129,7 @@ export const SESSION_OPERATIONS = {
   },
   "head.send": {
     ...PARTICIPANT,
+    mcp: "write",
     summary: "Sends a message to a head and returns its receipt.",
     kind: "receipt",
     recovery: "replay",
@@ -147,17 +152,23 @@ export const SESSION_OPERATIONS = {
   },
   "head.view": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Reads the current transcript and state of a head.",
     kind: "query",
     input: wireObject({ ...HEAD, options: Type.Optional(ViewOptionsType) }),
     output: SessionViewSchema,
   },
-  "head.watch": {
+  "head.read": {
     ...PARTICIPANT,
-    summary: "Streams the transcript and state of a head each time it changes.",
-    kind: "watch",
-    input: wireObject({ ...HEAD, options: Type.Optional(ViewOptionsType) }),
-    output: ViewFrameSchema,
+    summary:
+      "Reads a window of a head's rows at a seq, or what changed in it since a seq the client resumes from.",
+    kind: "query",
+    input: wireObject({
+      ...HEAD,
+      window: WindowSpecType,
+      resume: Type.Optional(ResumeType),
+    }),
+    output: wireSchema(HeadWindowType),
   },
   "head.see": {
     ...PARTICIPANT,
@@ -168,6 +179,7 @@ export const SESSION_OPERATIONS = {
   },
   "head.history": {
     ...PARTICIPANT,
+    mcp: "read",
     summary: "Returns older messages before a given message, with their turns.",
     kind: "query",
     input: wireObject({
@@ -215,6 +227,7 @@ export const SESSION_OPERATIONS = {
   },
   "head.revise": {
     ...PARTICIPANT,
+    mcp: "write",
     summary: "Edits the content of a message that has not been sent yet.",
     kind: "command",
     input: wireObject({
@@ -365,13 +378,6 @@ export const SESSION_OPERATIONS = {
     wait: true,
     input: ON_PART,
     output: wireSchema(nullable(Type.Object({ action: Type.String(), input: JsonType }))),
-  },
-  "part.watch": {
-    ...PARTICIPANT,
-    summary: "Streams a part's view each time it changes.",
-    kind: "watch",
-    input: ON_PART,
-    output: wireSchema(nullable(PartViewType)),
   },
   "part.close": {
     ...PARTICIPANT,

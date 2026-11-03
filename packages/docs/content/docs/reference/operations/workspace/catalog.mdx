@@ -1,0 +1,133 @@
+---
+title: workspace.catalog
+description: Lists the commands and skills a new chat in the workspace would offer.
+---
+
+Lists the commands and skills a new chat in the workspace would offer, before any chat exists:
+those of the plugins its first message would load. Project plugins and skills appear only once the
+folder is trusted.
+
+## When to call it
+
+To fill a slash command menu in the composer of a chat that hasn't started yet. Once a chat exists,
+its view's `catalog` lists its own commands.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response, with each list shortened to empty:
+
+```json
+{ "commands": [], "skills": [] }
+```
+
+## Errors
+
+- `unknown` when no workspace has the id.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["commands", "skills"],
+  "properties": {
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "owner", "side", "title", "description", "takesText", "completes"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "side": {
+            "enum": ["core", "client"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "takesText": {
+            "type": "boolean"
+          },
+          "completes": {
+            "type": "boolean"
+          },
+          "category": {
+            "type": "string"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "owner", "description", "location"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

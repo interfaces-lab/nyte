@@ -1,0 +1,110 @@
+---
+title: files.watch
+description: Streams file changes in the workspace as they happen.
+---
+
+Streams changes to files in the workspace. Each frame is a list of events, `created`, `modified`
+or `removed`, each with the path and the version after (`null` when removed). Changes close
+together arrive in one frame, and while the reader is behind a path's last change wins. Folders
+aren't reported.
+
+Without `paths`, it watches the whole workspace and may leave out ignored files. With `paths`, it
+watches only those, including ignored files under them, and waits for a missing one to appear.
+
+## When to call it
+
+To refresh a file tree or reload an open editor when a file changes on disk.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "paths": ["src/date.ts"]
+}
+```
+
+A frame:
+
+```json
+[
+  {
+    "path": "src/date.ts",
+    "version": "7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b",
+    "kind": "modified"
+  }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer files.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["path", "version", "kind"],
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "kind": {
+        "enum": ["created", "modified", "removed"]
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

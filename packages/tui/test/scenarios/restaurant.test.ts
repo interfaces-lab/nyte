@@ -9,7 +9,7 @@ import {
 } from "@nyte-ai/bench";
 import { clearSpans, enableTracing } from "@nyte-ai/sdk/client";
 import { followedSession } from "../../src/model/state.ts";
-import { shownAt, startTui } from "../harness/tui.ts";
+import { shownAt, simulationEndpoint, startTui } from "../harness/tui.ts";
 import {
   epochNow,
   lastTrace,
@@ -44,6 +44,7 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
 
   await using tui = await startTui({
     host: scenario.host,
+    endpoint: await simulationEndpoint(scenario),
     size: SIZE,
     opened: false,
     typed: RESTAURANT_PROMPT,
@@ -167,6 +168,7 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
 
   await using resumed = await startTui({
     host: scenario.host,
+    endpoint: await simulationEndpoint(scenario),
     size: SIZE,
     target: { kind: "session", id: session },
     record: true,

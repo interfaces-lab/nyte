@@ -8,7 +8,7 @@ import { serial } from "@nyte-ai/schema/serial";
 import { createUpdateController } from "./update-controller.ts";
 import type { UpdateLogDetails } from "./update-controller.ts";
 import { updateLabel } from "@nyte-ai/app/contract/update-label.ts";
-import type { DesktopUpdateActivity } from "../../shared/host-messages.ts";
+import type { DesktopUpdateActivity } from "../../shared/update-activity.ts";
 import { UpdateSettingsStore } from "./update-settings.ts";
 
 const UPDATE_INTERVAL_MS = 6 * 60 * 60_000;

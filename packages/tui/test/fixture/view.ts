@@ -23,7 +23,10 @@ import type {
   Usage,
   UserContent,
 } from "@nyte-ai/sdk";
+import type { Freshness } from "@nyte-ai/sdk/client";
 import type { FollowedSession } from "../../src/model/state.ts";
+
+export const FRESH: Freshness = { kind: "fresh", seq: 1 };
 
 export type ScheduleSpec =
   | { readonly kind: "joined"; readonly run: string }
@@ -333,16 +336,6 @@ export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionVie
     background: [],
     configuration: { selected: CONFIGURATION, effective: CONFIGURATION },
     context: { tokens: 1_000, window: 100_000, lastRequest: null },
-    heads: [
-      {
-        name: asId("main"),
-        tip: { kind: "start" },
-        stack: null,
-        execution,
-        unread: false,
-        background: { working: 0, waiting: 0 },
-      },
-    ],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -358,7 +351,16 @@ export function followed(view: SessionView, id = "s1"): FollowedSession {
     pinned: false,
     archived: false,
     activation: view.activation,
-    heads: [],
+    heads: [
+      {
+        name: asId("main"),
+        tip: { kind: "start" },
+        stack: null,
+        execution: view.execution,
+        unread: false,
+        background: { working: 0, waiting: 0 },
+      },
+    ],
     createdAt: 1_000,
     lastActivityAt: 1_000,
   };
@@ -368,7 +370,7 @@ export function followed(view: SessionView, id = "s1"): FollowedSession {
     id: info.id,
     info,
     view,
-    watch: { kind: "live" },
+    freshness: FRESH,
     selection: { model: CONFIGURATION.model, effort: CONFIGURATION.thinking, fast: false },
   };
 }

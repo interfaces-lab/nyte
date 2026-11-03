@@ -9,11 +9,12 @@ import { runStep } from "../src/engine/durable.ts";
 import { authenticateToken, redeemPairing } from "../src/engine/principals.ts";
 import { workspaceHandle } from "../src/env/workspaces.ts";
 import { resourcesPlugin } from "../src/extend/resources.ts";
-import { project } from "../src/fold/project.ts";
+import { readView } from "../src/fold/window.ts";
 import { viewHead } from "../src/fold/view.ts";
 import { createFoldCache } from "../src/fold/watch.ts";
 import { LOCAL } from "../src/index.ts";
 import { envelope, hostPrincipalsRef, workspaceRef } from "../src/store.ts";
+import { attachSession } from "../src/api/attach.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { ConnectionContext, Durable, Page, Plugin } from "../src/index.ts";
 import type { WorkspaceRecord } from "../src/store.ts";
@@ -197,21 +198,21 @@ describe("workspaces", () => {
     });
 
     provider.failure = null;
-    const watched = broken.watch()[Symbol.asyncIterator]();
-    await watched.next();
+    const attached = attachSession(kernel, broken.id, host.principal);
+    await attached.ready();
 
     expect(await host.workspace(workspace).reload()).toEqual({ kind: "updated" });
     expect((await broken.info()).activation).toEqual({ kind: "active" });
     expect((await unreachable.info()).activation).toEqual({ kind: "active" });
 
     const seen = await until(async () => {
-      const next = await watched.next();
+      const view = await broken.view();
 
-      return !next.done && next.value.activation.kind === "active" ? next.value : undefined;
+      return view.activation.kind === "active" ? view : undefined;
     });
 
     expect(seen.activation).toEqual({ kind: "active" });
-    await watched.return?.();
+    attached.release();
   });
 
   it("attaches a session once per activation: a failed attach rejects ready, shows failed with its reason and is dropped, so the next activation attaches again (E7, E-2 N3)", async () => {
@@ -942,7 +943,7 @@ describe("browser pages (§37i)", () => {
 
     const cold = createFoldCache(kernel).acquire(session.id, LOCAL);
     await cold.ready();
-    expect(project(cold.state(), main).background).toEqual([{ ...item, state: "working" }]);
+    expect(readView(cold.state(), main).background).toEqual([{ ...item, state: "working" }]);
     cold.release();
 
     const client = await host.workspace(workspace).browser();

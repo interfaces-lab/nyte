@@ -8,7 +8,7 @@ import type { ToolClass } from "@nyte-ai/sdk";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { useWatchSelect } from "../../data/watch-store.ts";
 import { useTranscriptScope } from "../transcript/transcript.tsx";
 import { ToolLineView } from "./tool-line.tsx";
@@ -69,9 +69,8 @@ export function QuestionCallView({
   const sessionId = useTranscriptScope()?.sessionId;
   const call = message.state.call;
 
-  const part = useWatchSelect(
-    sessionId === undefined ? undefined : sessionWatch(sessionId),
-    (state) => findQuestionPart(state.value?.parts ?? [], call),
+  const part = useWatchSelect(sessionId === undefined ? undefined : chatStore(sessionId), (state) =>
+    findQuestionPart(state.value?.parts ?? [], call),
   );
 
   const asked = part === undefined ? null : readQuestion(part);

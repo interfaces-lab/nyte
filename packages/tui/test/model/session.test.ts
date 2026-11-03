@@ -1,9 +1,9 @@
-import { asId } from "@nyte-ai/schema";
-import type { SessionView } from "@nyte-ai/sdk";
+import { asId, SdkError } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
 import { deriveScreen } from "../../src/model/screen.ts";
+import type { Msg } from "../../src/model/msg.ts";
 import type { Step } from "../../src/model/step.ts";
-import { followed, buildView } from "../fixture/view.ts";
+import { buildView, followed, FRESH } from "../fixture/view.ts";
 import type { ViewBuilder } from "../fixture/view.ts";
 import { blank, CATALOG, play, ready, S1, typed } from "./support.ts";
 
@@ -18,7 +18,12 @@ const retracted = buildView((v) => v.idle({ run: "run-t1", end: "stopped" }));
 describe("views", () => {
   test("a view for a session we no longer follow is dropped", () => {
     const state = ready(working);
-    const next = play(state, { kind: "view", session: asId("s2"), view: retracted });
+    const next = play(state, {
+      kind: "view",
+      session: asId("s2"),
+      view: retracted,
+      freshness: FRESH,
+    });
 
     expect(next.state).toBe(state);
   });
@@ -36,7 +41,7 @@ describe("views", () => {
     const back = play(
       switched.state,
       { kind: "session-opened", session: s2.id, info: s2.info, selection: s2.selection },
-      { kind: "view", session: s2.id, view: retracted },
+      { kind: "view", session: s2.id, view: retracted, freshness: FRESH },
       { kind: "switch-session", session: S1, announce: false },
     );
 
@@ -45,7 +50,7 @@ describe("views", () => {
     const restored = play(
       back.state,
       { kind: "session-opened", session: s1.id, info: s1.info, selection: s1.selection },
-      { kind: "view", session: s1.id, view: working },
+      { kind: "view", session: s1.id, view: working, freshness: FRESH },
     );
 
     expect(restored.effects).toContainEqual({
@@ -82,10 +87,10 @@ describe("views", () => {
       editing,
       { kind: "switch-session", session: asId("s2"), announce: false },
       { kind: "session-opened", session: s2.id, info: s2.info, selection: s2.selection },
-      { kind: "view", session: s2.id, view: retracted },
+      { kind: "view", session: s2.id, view: retracted, freshness: FRESH },
       { kind: "switch-session", session: S1, announce: false },
       { kind: "session-opened", session: s1.id, info: s1.info, selection: s1.selection },
-      { kind: "view", session: s1.id, view: queued },
+      { kind: "view", session: s1.id, view: queued, freshness: FRESH },
     );
 
     expect(back.state.local.editing?.message).toBe(asId("m2"));
@@ -111,19 +116,25 @@ describe("views", () => {
   });
 });
 
-function atTip(view: SessionView, commit: string): SessionView {
+function atTip(commit: string): Msg {
+  const info = followed(working).info;
+
   return {
-    ...view,
-    heads: [
-      {
-        name: asId("main"),
-        tip: { kind: "commit", id: asId(commit) },
-        stack: null,
-        execution: view.execution,
-        unread: true,
-        background: { working: 0, waiting: 0 },
-      },
-    ],
+    kind: "session-info",
+    session: info.id,
+    info: {
+      ...info,
+      heads: [
+        {
+          name: asId("main"),
+          tip: { kind: "commit", id: asId(commit) },
+          stack: null,
+          execution: working.execution,
+          unread: true,
+          background: { working: 0, waiting: 0 },
+        },
+      ],
+    },
   };
 }
 
@@ -132,25 +143,25 @@ function marks(step: Step): Step["effects"] {
 }
 
 describe("reading", () => {
-  test("the followed chat is marked read through each new tip it draws, once per tip", () => {
-    const first = play(ready(working), { kind: "view", session: S1, view: atTip(working, "c1") });
+  test("the followed chat is marked read through each new tip the directory lists, once per tip", () => {
+    const first = play(ready(working), atTip("c1"));
 
     expect(marks(first)).toEqual([{ kind: "see", session: S1, commit: asId("c1") }]);
 
-    const same = play(first.state, { kind: "view", session: S1, view: atTip(stopped, "c1") });
+    const same = play(first.state, atTip("c1"));
 
     expect(marks(same)).toEqual([]);
-    expect(
-      marks(play(same.state, { kind: "view", session: S1, view: atTip(stopped, "c2") })),
-    ).toEqual([{ kind: "see", session: S1, commit: asId("c2") }]);
+    expect(marks(play(same.state, atTip("c2")))).toEqual([
+      { kind: "see", session: S1, commit: asId("c2") },
+    ]);
   });
 
   test("while the terminal is in the background nothing is marked; focus marks the tip on screen", () => {
     const away = play(
       ready(working),
       { kind: "terminal-focus", focused: false },
-      { kind: "view", session: S1, view: atTip(working, "c1") },
-      { kind: "view", session: S1, view: atTip(working, "c2") },
+      atTip("c1"),
+      atTip("c2"),
     );
 
     expect(marks(away)).toEqual([]);
@@ -162,13 +173,12 @@ describe("reading", () => {
   });
 
   test("a subagent the task list watches is never marked read", () => {
-    const view = atTip(working, "k1");
-    const child = followed(view, "child");
+    const child = followed(working, "child");
 
-    const listed = play(ready(atTip(working, "c1")), {
+    const listed = play(play(ready(working), atTip("c1")).state, {
       kind: "tasks",
       session: S1,
-      tasks: [{ kind: "agent", id: child.id, info: child.info, view }],
+      tasks: [{ kind: "agent", id: child.id, info: child.info, view: working }],
     });
 
     expect(listed.state.facts.tasks).toHaveLength(1);
@@ -190,6 +200,7 @@ describe("run ended", () => {
 
     const ended = play(ready(later), {
       kind: "view",
+      freshness: FRESH,
       session: S1,
       view: buildView((v) =>
         answered(v)
@@ -223,7 +234,12 @@ describe("run ended", () => {
 
     expect(outcome.effects).toEqual([]);
     const dropped = buildView((v) => answered(v).idle({ run: "run-t1", end: "stopped" }));
-    const landed = play(outcome.state, { kind: "view", session: S1, view: dropped });
+    const landed = play(outcome.state, {
+      kind: "view",
+      session: S1,
+      view: dropped,
+      freshness: FRESH,
+    });
 
     expect(landed.effects).toContainEqual({
       kind: "composer",
@@ -232,20 +248,30 @@ describe("run ended", () => {
     expect(landed.state.local.notice?.text).toBe("Stopped. Message is back in the composer.");
     expect(landed.state.local.draft.text).toBe("hi");
 
-    const again = play(landed.state, { kind: "view", session: S1, view: dropped });
+    const again = play(landed.state, {
+      kind: "view",
+      session: S1,
+      view: dropped,
+      freshness: FRESH,
+    });
 
     expect(again.effects.filter((effect) => effect.kind === "composer")).toEqual([]);
   });
 
   test("a stop on the chat's first message keeps it: the chat would be empty", () => {
-    const ended = play(ready(working), { kind: "view", session: S1, view: stopped });
+    const ended = play(ready(working), {
+      kind: "view",
+      session: S1,
+      view: stopped,
+      freshness: FRESH,
+    });
 
     expect(ended.effects).toEqual([{ kind: "refresh-workspace", cwd: "/w" }]);
   });
 
   test("a stop with text in the composer retracts nothing", () => {
     const state = play(ready(working), typed("keep this draft")).state;
-    const ended = play(state, { kind: "view", session: S1, view: stopped });
+    const ended = play(state, { kind: "view", session: S1, view: stopped, freshness: FRESH });
 
     expect(ended.effects.map((effect) => effect.kind)).toEqual(["refresh-workspace"]);
   });
@@ -257,7 +283,12 @@ describe("run ended", () => {
         .idle({ run: "run-t1", end: "failed" }),
     );
 
-    const ended = play(ready(working), { kind: "view", session: S1, view: failed });
+    const ended = play(ready(working), {
+      kind: "view",
+      session: S1,
+      view: failed,
+      freshness: FRESH,
+    });
 
     expect(ended.state.local.notice).toMatchObject({ tone: "error", text: "Error: failed" });
   });
@@ -334,7 +365,12 @@ describe("editing", () => {
         .live("run-t2"),
     );
 
-    const landed = play(editing.state, { kind: "view", session: S1, view: landedView });
+    const landed = play(editing.state, {
+      kind: "view",
+      session: S1,
+      view: landedView,
+      freshness: FRESH,
+    });
 
     expect(landed.state.local.editing).toBeNull();
     expect(landed.state.local.draft.text).toBe("tweak me more");
@@ -368,7 +404,7 @@ describe("questions", () => {
         .waiting("q1"),
     );
 
-    const asked = play(state, { kind: "view", session: S1, view: asking }).state;
+    const asked = play(state, { kind: "view", session: S1, view: asking, freshness: FRESH }).state;
 
     expect(deriveScreen(asked, null).dialog).toMatchObject({
       kind: "list",
@@ -501,20 +537,38 @@ describe("shell commands", () => {
   });
 });
 
-describe("watch", () => {
-  test("a failed watch is visible and retried with `follow`", () => {
-    const failed = play(ready(working), {
-      kind: "watch-ended",
-      session: S1,
-      failure: "socket closed",
+describe("connection", () => {
+  test("a dropped host and a stale chat show as two things, and both clear once it resumes", () => {
+    const dropped = play(
+      ready(working),
+      {
+        kind: "health",
+        health: {
+          kind: "retrying",
+          attempt: 1,
+          at: 5_000,
+          error: new SdkError("unavailable", "gone"),
+        },
+      },
+      {
+        kind: "view",
+        session: S1,
+        view: working,
+        freshness: { kind: "stale", since: 4_000, error: null },
+      },
+    );
+
+    expect(deriveScreen(dropped.state, null)).toMatchObject({
+      health: { kind: "reconnecting", at: 5_000 },
+      updated: 4_000,
     });
 
-    expect(deriveScreen(failed.state, null).watch).toEqual({ failure: "socket closed" });
+    const resumed = play(
+      dropped.state,
+      { kind: "health", health: { kind: "open", since: 6_000 } },
+      { kind: "view", session: S1, view: working, freshness: FRESH },
+    );
 
-    const retried = play(failed.state, { kind: "retry-watch" });
-
-    expect(retried.effects).toEqual([{ kind: "follow", target: S1, announce: false }]);
-    expect(deriveScreen(retried.state, null).watch).toBeNull();
-    expect(play(retried.state, { kind: "retry-watch" }).effects).toEqual([]);
+    expect(deriveScreen(resumed.state, null)).toMatchObject({ health: null, updated: null });
   });
 });

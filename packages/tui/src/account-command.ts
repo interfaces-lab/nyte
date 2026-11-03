@@ -8,7 +8,7 @@ import type {
 import { serviceConnect } from "@nyte-ai/service";
 import open from "open";
 import { alignedRows, ansiEnabled } from "./cli-style.ts";
-import { connectLocalHost } from "./local-host.ts";
+import { connectHost } from "./local-host.ts";
 import type { HostSession } from "./local-host.ts";
 
 interface Output {
@@ -44,7 +44,7 @@ export async function accountCommand(
 }
 
 async function withLocal<T>(act: (local: HostSession) => Promise<T>): Promise<T> {
-  const local = await connectLocalHost();
+  const local = await connectHost({ kind: "local" });
 
   try {
     return await act(local);

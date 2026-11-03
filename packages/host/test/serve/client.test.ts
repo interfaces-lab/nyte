@@ -39,7 +39,7 @@ async function take<T>(
 
 describe("transport", () => {
   it("invokes a row, watches it, and rethrows errors as SdkError", async () => {
-    const { transport, fake } = await served();
+    const { transport, fake, workspace } = await served();
     const owner = transport("Bearer owner");
     fake.reply("Hello.");
     const { session, receipt } = decodeOutput(
@@ -53,11 +53,16 @@ describe("transport", () => {
       kind: "completed",
     });
 
-    const [first] = await take(owner.frames("head.watch", { session, head: "main" }), () => true);
-    const frame = decodeOutput("head.watch", first);
+    const view = decodeOutput(
+      "head.view",
+      await owner.invoke("head.view", { session, head: "main" }),
+    );
 
-    assert(frame.kind === "view");
-    expect(frame.view.messages.map((message) => message.kind)).toEqual(["user", "part"]);
+    expect(view.messages.map((message) => message.kind)).toEqual(["user", "part"]);
+
+    const [first] = await take(owner.frames("workspace.watch", { workspace }), () => true);
+
+    expect(decodeOutput("workspace.watch", first).id).toBe(workspace);
 
     const denied = await failure(() => transport("Bearer guest").invoke("principals.list", {}));
     const unknown = await failure(() => owner.invoke("session.info", { session: "nope" }));
@@ -74,30 +79,23 @@ describe("transport", () => {
   it("aborts a watch's request at once when it returns, even while a pull waits (§40x)", async () => {
     const { transport, host } = await served();
     const owner = transport("Bearer owner");
-    const { session } = decodeOutput(
-      "sessions.start",
-      await owner.invoke("sessions.start", { id: crypto.randomUUID(), content: "Hi." }),
-    );
-    const { folds } = host.kernel;
-    const acquire = folds.acquire.bind(folds);
+    const state = host.kernel.host;
+    const subscribe = state.subscribe.bind(state);
     let held = 0;
 
-    folds.acquire = (id, principal) => {
-      const hold = acquire(id, principal);
-      let released = false;
+    state.subscribe = (listener) => {
+      const stop = subscribe(listener);
+      let stopped = false;
       held += 1;
 
-      return {
-        ...hold,
-        release() {
-          if (!released) held -= 1;
-          released = true;
-          hold.release();
-        },
+      return () => {
+        if (!stopped) held -= 1;
+        stopped = true;
+        stop();
       };
     };
 
-    const watch = owner.frames("head.watch", { session, head: "main" })[Symbol.asyncIterator]();
+    const watch = owner.frames("connection.watch", {})[Symbol.asyncIterator]();
     await watch.next();
 
     assert(watch.return !== undefined);

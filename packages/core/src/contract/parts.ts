@@ -15,7 +15,6 @@ import type {
   Json,
   Message,
   PartId,
-  PartView,
   PrincipalId,
   RequestOptions,
   Schema,
@@ -106,9 +105,6 @@ export interface Part<K extends PartDefinition> {
       }[keyof PartActions<K>]
     | null
   >;
-
-  /** The part's view each time it changes, wherever it sits in the session; `null` while the session holds no such part. */
-  watch(): AsyncIterable<PartView | null>;
 
   close(): Promise<void>;
 }

@@ -1,3 +1,4 @@
+import type { Health } from "@nyte-ai/sdk/client";
 import {
   ANSWER_COMPOSER_PLACEHOLDER,
   BUSY_COMPOSER_PLACEHOLDER,
@@ -6,7 +7,7 @@ import {
 import { backgroundLabel } from "@nyte-ai/plugin/client/presentation";
 import { approvalPrompt } from "@nyte-ai/plugin/approvals/schema";
 import { readProgramStatus } from "../lib/program-status.ts";
-import type { ProgramStatus } from "../lib/program-status.ts";
+import type { ProgramState, ProgramStatus } from "../lib/program-status.ts";
 import { unfinishedTask } from "../lib/tasks.ts";
 import type { Task } from "../lib/tasks.ts";
 import { promptMessages } from "../lib/view-helpers.ts";
@@ -36,7 +37,8 @@ export interface ScreenModel {
   readonly opening: boolean;
   /** The text of each message sent to a new chat while it waits for the host to open, oldest first. */
   readonly waiting: readonly string[];
-  readonly watch: WatchModel | null;
+  readonly health: HealthNotice | null;
+  readonly updated: number | null;
   readonly run: RunModel;
   readonly question: QuestionModel | null;
   readonly draft: DraftModel;
@@ -71,9 +73,11 @@ export interface PreviewModel {
   readonly part: DraftPart;
 }
 
-export interface WatchModel {
-  readonly failure: string | null;
-}
+export type HealthNotice =
+  | { readonly kind: "reconnecting"; readonly at: number }
+  | { readonly kind: "unreachable" }
+  | { readonly kind: "signed-out" }
+  | { readonly kind: "outdated" };
 
 interface TasksLine {
   readonly text: string;
@@ -182,7 +186,11 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   return {
     opening: view === null && (blank === null || (starting && waiting.length === 0)),
     waiting,
-    watch: session?.watch.kind === "failed" ? { failure: session.watch.failure } : null,
+    health: healthNotice(state.facts.health),
+    updated:
+      session?.view !== null && session?.freshness?.kind === "stale"
+        ? session.freshness.since
+        : null,
     run: input.run,
     question,
     draft: input.draft,
@@ -212,7 +220,10 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     tasksLine: tasksLine(state, question),
     notice: state.local.notice,
     failure: state.local.failures.at(-1) ?? null,
-    program: blockedStatus(state, question) ?? readProgramStatus(execution, state.local.watchedRun),
+    program: {
+      ...(blockedStatus(state, question) ?? readProgramStatus(execution, state.local.watchedRun)),
+      title: session?.info.name ?? null,
+    },
     welcome:
       (blank !== null ||
         (view !== null && view.turns.length === 0 && promptMessages(view).length === 0)) &&
@@ -223,8 +234,38 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   };
 }
 
+function healthNotice(health: Health): HealthNotice | null {
+  switch (health.kind) {
+    case "connecting":
+    case "open":
+      return null;
+    case "retrying":
+      return { kind: "reconnecting", at: health.at };
+    case "blocked":
+      switch (health.reason) {
+        case "offline":
+          return { kind: "unreachable" };
+        case "auth":
+          return { kind: "signed-out" };
+        case "version":
+          return { kind: "outdated" };
+        default: {
+          const _exhaustive: never = health.reason;
+
+          return _exhaustive;
+        }
+      }
+
+    default: {
+      const _exhaustive: never = health;
+
+      return _exhaustive;
+    }
+  }
+}
+
 /** What waits on the user, even behind a menu: a sign-in step, then an approval, then a question. */
-function blockedStatus(state: State, question: QuestionModel | null): ProgramStatus | null {
+function blockedStatus(state: State, question: QuestionModel | null): ProgramState | null {
   const auth = state.local.dialogs.findLast((dialog) => dialog.kind === "auth");
 
   if (auth?.step.kind === "link")

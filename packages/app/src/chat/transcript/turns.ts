@@ -1,4 +1,5 @@
-import type { Message, SessionView, TurnInfo } from "@nyte-ai/sdk";
+import type { Message, TurnInfo } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 
 export interface TurnMessages {
   readonly info: TurnInfo;
@@ -8,7 +9,7 @@ export interface TurnMessages {
 }
 
 /** Each of `view`'s turns with its messages; the turn `leadingPrompt` leads starts with it and is clipped. */
-export function conversationTurns(view: SessionView): readonly TurnMessages[] {
+export function conversationTurns(view: HeadView): readonly TurnMessages[] {
   const byTurn = new Map<string, Message[]>();
   const lead = view.leadingPrompt;
 

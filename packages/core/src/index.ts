@@ -94,12 +94,15 @@ export type {
 
 export { holdMessage } from "./api/hold.ts";
 
+export { changesSince, readWindow } from "./fold/window.ts";
+
 export type {
   FoldCheckpoint,
   FoldCheckpoints,
   ObjectStore,
   RefStore,
   SessionIndex,
+  SessionIndexRow,
   Store,
   StoreConnection,
 } from "./contract/store.ts";
@@ -137,6 +140,8 @@ export type {
 
 export { attachFile } from "./env/attach.ts";
 
+export { onlyNyteAppHas } from "./engine/surface.ts";
+
 export { processEnvironment } from "./util/process-environment.ts";
 
 export { bashProperties } from "./builtins/environment.ts";
@@ -161,9 +166,7 @@ export {
 
 export type { EndSpan, Span, SpanDetail, SpanName } from "./util/trace.ts";
 
-export { closable, coalesce, forwarded, watchStore } from "./util/iterable.ts";
-
-export type { WatchStore } from "./util/iterable.ts";
+export { closable, coalesce, forwarded } from "./util/iterable.ts";
 
 export { matchesOutput } from "./util/json-schema.ts";
 

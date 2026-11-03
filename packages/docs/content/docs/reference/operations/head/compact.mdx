@@ -1,0 +1,121 @@
+---
+title: head.compact
+description: Starts summarizing a head's transcript to free up context.
+---
+
+Starts summarizing a head's transcript to free context, and answers at once. The summary runs in
+the background and shows as a compaction message in the view. `instructions` steer what the summary
+keeps.
+
+It answers `started` with the compaction's message id, `busy` with the live run while one runs,
+or `nothing-to-compact`.
+
+## When to call it
+
+From a "compact" action when the context meter runs high. Runs also compact on their own when the
+context passes the model's threshold.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "instructions": "Keep the failing test names and the fix we chose"
+}
+```
+
+Response:
+
+```json
+{ "kind": "started", "message": "d4f6a8c0-2e1b-4d3f-9a5c-7e9b1d3f5a7c" }
+```
+
+## Errors
+
+- `invalid` when the head's model isn't in the catalog: `No model <provider>/<id> is in the
+catalog.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "instructions": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "started"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "run"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "run": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "nothing-to-compact"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

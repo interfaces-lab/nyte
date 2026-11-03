@@ -1,0 +1,158 @@
+---
+title: page.reload
+description: Reloads a page.
+---
+
+Reloads a page, and answers a page outcome as
+[`page.navigate`](/docs/reference/operations/page/navigate) does.
+
+## When to call it
+
+From a reload button, or after the code behind a dev server changed.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `browser` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "page": "page-7"
+}
+```
+
+Response, with the snapshot shortened:
+
+```json
+{ "kind": "applied", "snapshot": { "revision": "18", "nodes": [] } }
+```
+
+## Errors
+
+- `unknown` when no open page has the id.
+- `unavailable` or `denied` when the workspace doesn't offer a browser.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `browser`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "page"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "page": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "snapshot"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "applied"
+        },
+        "snapshot": {
+          "type": "object",
+          "required": ["revision", "nodes"],
+          "properties": {
+            "revision": {
+              "type": "string"
+            },
+            "nodes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["ref", "role", "name", "editable", "depth"],
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "editable": {
+                    "type": "boolean"
+                  },
+                  "depth": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "refused"
+        },
+        "reason": {
+          "enum": ["unknown-ref", "occluded", "not-visible", "policy"]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "closed"
+        },
+        "reason": {
+          "enum": ["released", "reclaimed", "crashed"]
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

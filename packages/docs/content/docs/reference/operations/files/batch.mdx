@@ -1,0 +1,163 @@
+---
+title: files.batch
+description: Writes and removes several files together under one receipt.
+---
+
+Writes and removes several files under one receipt. The host first checks every entry's `expect`;
+if any is out of date, nothing is written and the batch settles `stale` with those paths. Otherwise
+it applies the entries in order. A `put` takes its contents as a string, or as a blob from
+[`files.upload`](/docs/reference/operations/files/upload).
+
+The outcome comes from [`receipt.settled`](/docs/reference/operations/receipt/settled) with
+`session` `null`: `applied` with a snapshot and the paths written, `stale`, `partial` with what was
+applied, what remains and why it stopped, or `stopped` with what was applied before a
+[`receipt.stop`](/docs/reference/operations/receipt/stop).
+
+## When to call it
+
+To apply a multi-file change, such as accepting a suggested refactor. Pass `id` to retry safely: the
+same id and entries return the same receipt. This host process keeps the most recent batch
+receipts.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "id": "3a5c7e9b-1d2f-4a6c-8e0b-2d4f6a8c0e1b",
+  "entries": [
+    {
+      "kind": "put",
+      "path": "src/date.ts",
+      "contents": "export const today = () => new Date(Date.now());\n",
+      "expect": "4b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d"
+    },
+    { "kind": "remove", "path": "src/old-date.ts" }
+  ]
+}
+```
+
+Response:
+
+```json
+{ "receipt": "3a5c7e9b-1d2f-4a6c-8e0b-2d4f6a8c0e1b" }
+```
+
+## Errors
+
+- `invalid` when the receipt id was used for different input.
+- `unknown` when a `put` names a blob the host doesn't have: `No blob has the id <id>.`
+- `unavailable` or `denied` when the workspace doesn't offer files.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `receipt`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: `replay`
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "entries"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind", "path", "contents"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "put"
+              },
+              "path": {
+                "type": "string"
+              },
+              "contents": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "required": ["blob"],
+                    "properties": {
+                      "blob": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                ]
+              },
+              "expect": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "absent"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "path"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "remove"
+              },
+              "path": {
+                "type": "string"
+              },
+              "expect": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["receipt"],
+  "properties": {
+    "receipt": {
+      "type": "string"
+    }
+  }
+}
+```
+
+{/* generated:end */}

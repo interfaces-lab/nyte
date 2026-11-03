@@ -1,6 +1,5 @@
-import { asId, SdkError } from "@nyte-ai/schema";
+import { asId, SdkError, SESSIONS_LIMIT } from "@nyte-ai/schema";
 import type {
-  Activation,
   Configuration,
   ConfigurationPatch,
   Cursor,
@@ -12,10 +11,10 @@ import type {
   ParentFilter,
   PrincipalId,
   RemoveSessionOutcome,
-  Revision,
   RunId,
   SessionId,
   SessionInfo,
+  SessionsRead,
   UpdateOutcome,
   WorkspaceId,
 } from "@nyte-ai/schema";
@@ -54,31 +53,12 @@ import {
   STALE,
 } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
-import { closable, coalesce, latest } from "../util/iterable.ts";
 import { followedTrace, followTrace, traced } from "../util/trace.ts";
 import { createHead, headHandle, mergeHead, removeHead } from "./head.ts";
 import { createPart, partHandle } from "./part.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
-const DEFAULT_LIMIT = 50;
-
-const DIRECTORY_EVENTS: ReadonlySet<string> = new Set([
-  "background",
-  "session",
-  "run",
-  "head",
-  "commit",
-  "seen",
-  "activation",
-]);
-
-interface DirectoryEntry {
-  readonly version: Revision;
-  readonly activation: Activation;
-  readonly background: string;
-  readonly info: SessionInfo;
-  readonly fingerprint: string;
-}
+const DEFAULT_LIMIT = SESSIONS_LIMIT;
 
 export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: SessionId): Session {
   return {
@@ -167,7 +147,6 @@ export function activationSession(
 
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
   return {
-    watch: (input) => watchSessions(kernel, context.principal, input),
     async start(input) {
       const id = await start(kernel, context, input);
 
@@ -177,6 +156,7 @@ export function createSessions(kernel: Kernel, context: ConnectionContext): Sess
       };
     },
     list: (input) => listSessions(kernel, context.principal, input),
+    read: (input) => readSessions(kernel, context.principal, input),
   };
 }
 
@@ -228,6 +208,7 @@ async function describeSession(
     ...(record.side === true ? { side: true } : {}),
     createdAt: record.createdAt,
     lastActivityAt: record.lastActivityAt,
+    ...(record.mcp === undefined ? {} : { mcp: record.mcp }),
   };
 }
 
@@ -261,95 +242,35 @@ async function listSessions(
   };
 }
 
-export function watchSessions(
+interface SessionsWindow {
+  readonly parents?: ParentFilter;
+  readonly limit?: number;
+}
+
+export async function readSessions(
   kernel: Kernel,
   principal: PrincipalId,
-  input?: { readonly parents?: ParentFilter; readonly limit?: number },
-): AsyncIterable<readonly SessionInfo[]> {
-  return closable<readonly SessionInfo[]>(() => {
-    let changes = 0;
-    let shown: readonly SessionInfo[] | null = null;
-    let cached = new Map<SessionId, DirectoryEntry>();
-
-    const ticks = coalesce(
-      latest(changes, (push) => {
-        const changed = (): void => {
-          changes += 1;
-          push(changes);
-        };
-        const dispose = kernel.bus.subscribeAll((_session, event) => {
-          if (!DIRECTORY_EVENTS.has(event.kind)) return;
-          changed();
-        });
-        kernel.externalCommits.add(changed);
-
-        return () => {
-          dispose();
-          kernel.externalCommits.delete(changed);
-        };
-      }),
-    )[Symbol.asyncIterator]();
-
-    return {
-      async pull() {
-        for (;;) {
-          const tick = await ticks.next();
-
-          if (tick.done) return tick;
-
-          const rows = await kernel.store.sessions.list({
-            parents: input?.parents ?? { kind: "all" },
-            limit: Math.max(1, input?.limit ?? DEFAULT_LIMIT),
-          });
-          const next = new Map<SessionId, DirectoryEntry>();
-          const infos = await Promise.all(
-            rows.map(async ({ ref, version }) => {
-              const id = asId<"session">(ref.name.slice("sessions/".length));
-              const previous = cached.get(id);
-              const activation = kernel.sessions.activation(id);
-              const background = backgroundKey(kernel, id);
-
-              if (
-                previous?.version === version &&
-                previous.activation === activation &&
-                previous.background === background
-              ) {
-                next.set(id, previous);
-
-                return previous.info;
-              }
-              const found = await load(kernel.store, ref, decodeSessionRecord);
-
-              if (found === null) return null;
-              const current = await describeSession(kernel, found.record, principal);
-              const fingerprint = JSON.stringify(current);
-              const info = previous?.fingerprint === fingerprint ? previous.info : current;
-              next.set(id, { version, activation, background, fingerprint, info });
-
-              return info;
-            }),
-          );
-          cached = next;
-          const items = infos.flatMap((info) => (info === null ? [] : [info]));
-
-          const previous = shown;
-
-          if (
-            previous !== null &&
-            items.length === previous.length &&
-            items.every((info, index) => info === previous[index])
-          )
-            continue;
-          shown = items;
-
-          return { done: false, value: items };
-        }
-      },
-      close() {
-        void ticks.return?.();
-      },
-    };
+  input?: SessionsWindow & { readonly resume?: { readonly seq: number } },
+): Promise<SessionsRead> {
+  const read = await kernel.store.sessions.changed({
+    since: input?.resume?.seq ?? 0,
+    parents: input?.parents ?? { kind: "all" },
+    limit: Math.max(1, input?.limit ?? DEFAULT_LIMIT),
   });
+
+  const rows = await Promise.all(
+    read.rows.map(async (row) => {
+      const found = await load(kernel.store, row.ref, decodeSessionRecord);
+
+      return found === null ? null : describeSession(kernel, found.record, principal);
+    }),
+  );
+
+  return {
+    seq: read.seq,
+    ids: read.ids,
+    rows: rows.flatMap((info) => (info === null ? [] : [info])),
+  };
 }
 
 async function start(
@@ -415,6 +336,12 @@ async function start(
       if ((await kernel.store.refs.get(workspaceRef(named))) === null)
         throw new SdkError("unknown", `Workspace ${named} is not registered on this host.`);
 
+      const mcp =
+        context.mcp ??
+        parent?.record.mcp ??
+        (origin === null
+          ? undefined
+          : (await readSession(kernel.store, origin.session))?.record.mcp);
       const selected = await resolveInitialConfiguration(kernel, id, input.configuration);
       const effective = selected ?? (await defaults(kernel, id));
 
@@ -446,6 +373,7 @@ async function start(
         heads: [{ name: MAIN, stack: null, selected, lastRun: null }],
         prompt: input.prompt ?? null,
         ...(input.contextFiles === undefined ? {} : { contextFiles: input.contextFiles }),
+        ...(mcp === undefined ? {} : { mcp }),
         ...(input.side === undefined ? {} : { side: input.side }),
       };
 
@@ -650,17 +578,6 @@ async function listChildSessionIds(
   } while (cursor !== undefined);
 
   return children;
-}
-
-function backgroundKey(kernel: Kernel, session: SessionId): string {
-  return backgroundItems(kernel, session)
-    .flatMap(({ head, item }) =>
-      item.kind !== "page" && (item.state === "working" || item.state === "waiting")
-        ? [`${head} ${item.state}`]
-        : [],
-    )
-    .toSorted()
-    .join("\n");
 }
 
 async function headInfo(

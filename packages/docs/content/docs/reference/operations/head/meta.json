@@ -1,0 +1,17 @@
+{
+  "title": "head",
+  "pages": [
+    "send",
+    "configure",
+    "view",
+    "read",
+    "see",
+    "history",
+    "tree",
+    "move",
+    "compact",
+    "revise",
+    "hold",
+    "release"
+  ]
+}

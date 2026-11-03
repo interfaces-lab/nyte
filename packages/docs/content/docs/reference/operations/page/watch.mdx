@@ -1,0 +1,95 @@
+---
+title: page.watch
+description: Streams a page's URL, title and loading state each time they change.
+---
+
+Streams a page's view, the same value as [`page.view`](/docs/reference/operations/page/view), each
+time its URL, title or loading state changes.
+
+## When to call it
+
+To keep an address bar and loading indicator current.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `browser` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "page": "page-7"
+}
+```
+
+Each frame is a page view, as in the `page.view` example.
+
+## Errors
+
+- `unknown` when no open page has the id.
+- `unavailable` or `denied` when the workspace doesn't offer a browser.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `browser`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "page"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "page": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["id", "url", "title", "loading", "revision", "canGoBack", "canGoForward"],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "loading": {
+      "type": "boolean"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "canGoBack": {
+      "type": "boolean"
+    },
+    "canGoForward": {
+      "type": "boolean"
+    }
+  }
+}
+```
+
+{/* generated:end */}

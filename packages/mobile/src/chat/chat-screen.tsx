@@ -12,11 +12,11 @@ import type {
   HeadName,
   PartId,
   SessionId,
-  SessionView,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import type { DraftContent } from "../media/attachments.ts";
-import { spacing, tokens } from "../theme.ts";
+import { spacing, textStyles, tokens } from "../theme.ts";
 import type { AskedQuestion } from "../view-helpers.ts";
 import { Composer } from "./composer.tsx";
 import type { QueuedActions } from "./messages.tsx";
@@ -32,7 +32,10 @@ import {
 import { Timeline } from "./timeline.tsx";
 
 type ChatScreenProps = {
-  state: SessionView;
+  state: HeadView;
+  heads: readonly HeadName[];
+  health: string | undefined;
+  updated: string | undefined;
   sessionId: SessionId;
   workspace: WorkspaceId | undefined;
   head: string;
@@ -50,7 +53,7 @@ type ChatScreenProps = {
   onReport: (part: PartId, message: string) => void;
   onChooseHead: (head: HeadName) => void;
   delegateNames: ReadonlyMap<SessionId, string>;
-  changes: SessionView["changes"] | undefined;
+  changes: HeadView["changes"] | undefined;
   onAskMerge: () => void;
   /** Set for a subagent's conversation, which takes no messages of its own. */
   subagent: { parentName: string; onOpenParent: () => void } | undefined;
@@ -63,6 +66,9 @@ type ChatScreenProps = {
  */
 export function ChatScreen({
   state,
+  heads,
+  health,
+  updated,
   sessionId,
   workspace,
   head,
@@ -129,6 +135,20 @@ export function ChatScreen({
             prominent={answerable}
           />
           <View ref={composerRef} onLayout={onComposerLayout}>
+            {health === undefined && updated === undefined ? null : (
+              <html.div
+                style={[styles.connection, styles.gutters(layout.paddingLeft, layout.paddingRight)]}
+              >
+                {health === undefined ? null : (
+                  <html.p role="status" style={[textStyles.caption, styles.health]}>
+                    {health}
+                  </html.p>
+                )}
+                {updated === undefined ? null : (
+                  <html.p style={textStyles.caption}>{updated}</html.p>
+                )}
+              </html.div>
+            )}
             {changes !== undefined ? (
               <html.div style={styles.gutters(layout.paddingLeft, layout.paddingRight)}>
                 <ReviewStrip changes={changes} sessionId={sessionId} onAskMerge={onAskMerge} />
@@ -149,7 +169,7 @@ export function ChatScreen({
                   kind: "session",
                   sessionId,
                   head,
-                  heads: state.heads.map((entry) => entry.name),
+                  heads,
                   config: configuration,
                   workspace,
                   catalog: state.catalog,
@@ -182,4 +202,13 @@ const styles = css.create({
     backgroundColor: tokens.canvas,
   },
   gutters: (left: number, right: number) => ({ paddingLeft: left, paddingRight: right }),
+  connection: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    columnGap: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  health: { color: tokens.foreground },
 });

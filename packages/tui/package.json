@@ -3,9 +3,6 @@
   "version": "0.0.24",
   "private": true,
   "type": "module",
-  "exports": {
-    "./host-endpoint": "./src/host-endpoint.ts"
-  },
   "scripts": {
     "build": "bun scripts/build-binary.ts",
     "verify:targets": "bun scripts/verify-targets.ts",
@@ -23,6 +20,7 @@
     "@nyte-ai/canvas": "workspace:*",
     "@nyte-ai/connect": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
     "@nyte-ai/service": "workspace:*",

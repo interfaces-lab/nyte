@@ -1,0 +1,160 @@
+---
+title: head.move
+description: Moves a head to an earlier or other position in the chat.
+---
+
+Moves a head to another position: the start, or any commit. Moving onto a user message lands on
+its parent and hands the message's content back, so a client can put it in the composer. It
+answers a receipt; the move's outcome comes from
+[`receipt.settled`](/docs/reference/operations/receipt/settled): `moved` with the new revision and
+position, or `stale`, `busy`, `pending-input`, `missing-target` or `summary-failed`.
+
+`running` decides whether a live run is stopped or the move refused, `abandoned: { summarize }`
+leaves a summary of the commits left behind on the new path, and `expect` makes the move
+conditional on the head's revision.
+
+## When to call it
+
+To rewind a chat or switch to another branch of it. Pass `id` to retry safely: the same id and input
+return the first move.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "position": {
+    "kind": "commit",
+    "id": "a3f1c5e7b9d2f4a6c8e0b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3"
+  },
+  "options": { "running": "refuse", "expect": "2b4d6f8a-0c1e-4a3b-9d5f-7e9a1c3b5d7f" },
+  "id": "e9c7a5b3-1d2f-4e6a-8b0c-3d5f7a9c1e2b"
+}
+```
+
+Response:
+
+```json
+{ "receipt": "e9c7a5b3-1d2f-4e6a-8b0c-3d5f7a9c1e2b" }
+```
+
+## Errors
+
+- `unknown` when no session has the id.
+- `invalid` when the receipt id was used for different input.
+- `invalid` when main would move before its first message with nothing queued, which would leave
+  the chat empty. Send a replacement for that message with `head.send` and `replace` instead.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `receipt`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: `replay`
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head", "position"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "position": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "start"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "commit"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "running": {
+          "enum": ["refuse", "stop"]
+        },
+        "abandoned": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "keep"
+            },
+            {
+              "type": "object",
+              "required": ["summarize"],
+              "properties": {
+                "summarize": {
+                  "type": "object",
+                  "properties": {
+                    "instructions": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "expect": {
+          "type": "string"
+        }
+      }
+    },
+    "id": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["receipt"],
+  "properties": {
+    "receipt": {
+      "type": "string"
+    }
+  }
+}
+```
+
+{/* generated:end */}

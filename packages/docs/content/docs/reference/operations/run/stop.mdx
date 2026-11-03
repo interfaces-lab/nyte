@@ -1,0 +1,225 @@
+---
+title: run.stop
+description: Stops a run.
+---
+
+Asks a run to stop. It answers `requested` once the stop is recorded, `settled` with how the run
+ended when it had already ended, or `missing`. Child runs the run was waiting on stop too.
+
+## When to call it
+
+From a stop control on one run. Wait with [`run.settled`](/docs/reference/operations/run/settled)
+to know when it ended.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "run": "4e2a6c8f-1b3d-4f5a-9c7e-0a2b4d6f8c1e"
+}
+```
+
+Response:
+
+```json
+{ "kind": "requested" }
+```
+
+## Errors
+
+- `stale` when the write lost to concurrent writes several times in a row.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "run"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "run": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "requested"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "outcome"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "settled"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind", "usage"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "completed"
+                },
+                "usage": {
+                  "type": "object",
+                  "required": [
+                    "input",
+                    "output",
+                    "cacheRead",
+                    "cacheWrite",
+                    "reasoning",
+                    "total",
+                    "cost"
+                  ],
+                  "properties": {
+                    "input": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    },
+                    "cacheRead": {
+                      "type": "number"
+                    },
+                    "cacheWrite": {
+                      "type": "number"
+                    },
+                    "reasoning": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "cost": {
+                      "type": "object",
+                      "required": ["input", "output", "cacheRead", "cacheWrite", "total"],
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "cacheRead": {
+                          "type": "number"
+                        },
+                        "cacheWrite": {
+                          "type": "number"
+                        },
+                        "total": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "stopped"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "failure"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "failed"
+                },
+                "failure": {
+                  "type": "object",
+                  "required": ["class", "message"],
+                  "properties": {
+                    "class": {
+                      "enum": [
+                        "rate_limit",
+                        "auth",
+                        "quota",
+                        "context_window",
+                        "overloaded",
+                        "network",
+                        "aborted",
+                        "provider",
+                        "runner"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "retryAfterMs": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

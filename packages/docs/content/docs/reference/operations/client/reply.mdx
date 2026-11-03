@@ -1,0 +1,132 @@
+---
+title: client.reply
+description: Answers an action another client asked this one to perform, with a result or an error.
+---
+
+Answers a request another client made of this one with
+[`client.perform`](/docs/reference/operations/client/perform). `call` is the id the `perform` event
+carried. Send exactly one of `result`, any JSON value the requester receives as its answer, or
+`error`, `{ code, message }`, which the requester's call fails with. The host then delivers the next
+request waiting in this client's queue.
+
+## When to call it
+
+Once for each `perform` event the client receives, after it has acted or decided not to.
+
+## Access
+
+Any principal with `participant` authority, and only on the WebSocket, from the client the request
+was delivered to; over HTTP it answers `invalid`.
+
+## Example
+
+Input:
+
+```json
+{ "call": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f", "result": { "opened": true } }
+```
+
+Output:
+
+```json
+null
+```
+
+## Errors
+
+- `invalid` with both `result` and `error`, or neither: `A reply carries exactly one of result and
+error.`
+- `unknown` for a call this client doesn't hold, such as one that already timed out.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["call"],
+  "properties": {
+    "call": {
+      "type": "string"
+    },
+    "result": {
+      "$ref": "Json"
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "enum": [
+            "unauthenticated",
+            "denied",
+            "unknown",
+            "invalid",
+            "stale",
+            "unavailable",
+            "internal",
+            "not_supported",
+            "timeout"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

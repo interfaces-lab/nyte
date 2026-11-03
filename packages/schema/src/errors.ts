@@ -51,6 +51,8 @@ export const SdkErrorWireType = Type.Object({
     "stale",
     "unavailable",
     "internal",
+    "not_supported",
+    "timeout",
   ]),
   message: Type.String(),
   hostId: nullable(idSchema<"host">()),

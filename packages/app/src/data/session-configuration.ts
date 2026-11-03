@@ -2,7 +2,7 @@ import { mutationOptions } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
 import type { ConfigurationPatch, ModelRef, SessionId, SessionView, Thinking } from "@nyte-ai/sdk";
 import { connection } from "./connection.ts";
-import { sessionWatch } from "./watches.ts";
+import { chatStore } from "./chat-store.ts";
 
 export type ConfigureSessionPatch = Pick<ConfigurationPatch, "model" | "thinking">;
 
@@ -36,7 +36,7 @@ export function sessionConfigurationOptions({ sessionId }: { readonly sessionId:
     mutationKey: ["session", sessionId, "configure"],
     networkMode: "always",
     mutationFn: async (patch: ConfigureSessionPatch) => {
-      const next = sessionWatch(sessionId).next();
+      const next = chatStore(sessionId).next();
       const outcome = await connection().session(sessionId).configure(patch);
 
       if (outcome.kind !== "configured")

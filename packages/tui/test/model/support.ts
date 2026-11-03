@@ -5,7 +5,7 @@ import { reduce } from "../../src/model/reduce.ts";
 import type { Step } from "../../src/model/step.ts";
 import { initialState } from "../../src/model/state.ts";
 import type { State } from "../../src/model/state.ts";
-import { followed } from "../fixture/view.ts";
+import { followed, FRESH } from "../fixture/view.ts";
 
 export const NOW = 1_000_000;
 
@@ -93,7 +93,7 @@ export function ready(view: SessionView): State {
       info: session.info,
       selection: session.selection,
     },
-    { kind: "view", session: session.id, view },
+    { kind: "view", session: session.id, view, freshness: FRESH },
   ).state;
 }
 

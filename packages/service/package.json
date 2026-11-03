@@ -1,11 +1,15 @@
 {
   "name": "@nyte-ai/service",
   "private": true,
-  "description": "Nyte Connect sharing for a local Nyte process: the routes its own host listener serves and the relay election that lets one process at a time carry this machine's relay.",
+  "description": "A local Nyte process's host: the host thread and `serveHost` that `nyte host` and the desktop app's host run, the routes its own host listener serves for Nyte Connect, and the relay election that lets one process at a time carry this machine's relay.",
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./host-endpoint": "./src/host-endpoint.ts",
+    "./host-thread": "./src/host-thread.ts",
+    "./host-worker": "./src/host-worker.ts",
+    "./serve-host": "./src/serve-host.ts"
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
@@ -13,8 +17,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nyte-ai/ai": "workspace:*",
+    "@nyte-ai/canvas": "workspace:*",
     "@nyte-ai/connect": "workspace:*",
+    "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/host": "workspace:*",
+    "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
+    "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
     "typebox": "^1.4.2"
   },

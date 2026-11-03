@@ -4,6 +4,7 @@ import { isJson, isJsonObject } from "../../json.ts";
 import type { Json } from "../../json.ts";
 import type { Schema } from "../../schema.ts";
 import { BROWSER_OPERATIONS } from "./browser.ts";
+import { EVENT_OPERATIONS } from "./events.ts";
 import type { OperationRows } from "./fields.ts";
 import { FILE_OPERATIONS } from "./files.ts";
 import { GIT_OPERATIONS } from "./git.ts";
@@ -12,9 +13,14 @@ import { HOST_OPERATIONS, MAINTENANCE_OPERATIONS } from "./host.ts";
 import { SESSION_OPERATIONS } from "./session.ts";
 import { WORKSPACE_OPERATIONS } from "./workspace.ts";
 
-/** The operations table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability, recovery and wait, in the order the host lists them. */
+export const API_REVISION = 10;
+
+export const API_MIN_REVISION = 9;
+
+/** The operations table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability, recovery, wait, locality and MCP access, in the order the host lists them. */
 export const OPERATIONS = {
   ...HOST_OPERATIONS,
+  ...EVENT_OPERATIONS,
   ...SESSION_OPERATIONS,
   ...WORKSPACE_OPERATIONS,
   ...FILE_OPERATIONS,
@@ -47,6 +53,7 @@ export function describeOperations(names?: readonly string[]): readonly Operatio
         authority: row.authority,
         scope: row.scope,
         capability: row.capability,
+        local: row.local,
         input: wireJsonSchema(row.input),
         output: wireJsonSchema(row.output),
       },

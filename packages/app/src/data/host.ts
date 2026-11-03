@@ -1,5 +1,8 @@
+import { useSyncExternalStore } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { operationsDigest } from "@nyte-ai/sdk";
+import type { Health } from "@nyte-ai/sdk/client";
+import { currentLive, subscribeLive } from "./connection.ts";
 import { keys } from "./query-client.ts";
 import type { HostState, UpdateState } from "../contract/bridge.ts";
 import { nyte } from "../contract/nyte.ts";
@@ -50,8 +53,25 @@ export function useRemoteAccessState(active: boolean) {
   });
 }
 
-export function useHostLink() {
-  return useWatchSelect(hostWatch("host"), (state) => state.value?.link);
+function subscribeHealth(notice: () => void): () => void {
+  let stop = currentLive()?.health.subscribe(notice);
+
+  const leave = subscribeLive(() => {
+    stop?.();
+    stop = currentLive()?.health.subscribe(notice);
+    notice();
+  });
+
+  return () => {
+    stop?.();
+    leave();
+  };
+}
+
+const readHealth = (): Health | undefined => currentLive()?.health.snapshot();
+
+export function useHostHealth(): Health | undefined {
+  return useSyncExternalStore(subscribeHealth, readHealth, readHealth);
 }
 
 export function useHostRelease(): { readonly version: string } | undefined {

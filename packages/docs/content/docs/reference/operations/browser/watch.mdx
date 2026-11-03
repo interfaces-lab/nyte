@@ -1,0 +1,82 @@
+---
+title: browser.watch
+description: Streams the workspace's open pages each time they change.
+---
+
+Streams the workspace's open pages, the same list as
+[`browser.list`](/docs/reference/operations/browser/list), each time it changes.
+
+## When to call it
+
+To keep a list of open pages current.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `browser` capability.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Each frame is a page list, as in the `browser.list` example.
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer a browser.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `browser`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "url", "title", "holders"],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "holders": {
+        "type": "number"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

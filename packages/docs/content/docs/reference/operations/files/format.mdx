@@ -1,0 +1,119 @@
+---
+title: files.format
+description: Returns the given contents formatted for the file at that path, without writing it.
+---
+
+Formats contents as the file at that path would be formatted, without writing anything. A local
+workspace runs the project's formatter: `oxfmt`, `prettier` or `biome` from `node_modules/.bin`,
+then from the `PATH`, with the path for its config. It answers `formatted` with the new contents,
+`unchanged`, or `unavailable` with the reason when there is no formatter or it failed.
+
+## When to call it
+
+From a "format document" action or format on save, before writing the result with
+[`files.write`](/docs/reference/operations/files/write).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "src/date.ts",
+  "contents": "export const today=()=>new Date()\n"
+}
+```
+
+Response:
+
+```json
+{ "kind": "formatted", "contents": "export const today = () => new Date();\n" }
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer files. A missing or failing formatter
+  is the `unavailable` outcome, not an error.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "contents"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "contents": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "contents"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "formatted"
+        },
+        "contents": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unchanged"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unavailable"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

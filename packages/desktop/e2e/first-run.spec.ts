@@ -30,7 +30,7 @@ test("an empty home opens on a new chat with nothing listed", async () => {
   await expect(chats.getByRole("button", { name: /^(Unread )?.* now$/u })).toHaveCount(0);
 
   await openSettings(page, "Providers");
-  await expect(page.getByRole("button", { name: "E2E: Connected" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Anthropic: Connected" })).toBeVisible();
 
   expect(errors.pageErrors).toEqual([]);
   expect(errors.consoleErrors.filter((text) => !text.startsWith("DEV:"))).toEqual([]);

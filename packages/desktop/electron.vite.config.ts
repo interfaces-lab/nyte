@@ -1,29 +1,14 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig, type UserConfig } from "electron-vite";
+import { defineConfig, MainConfigFactory, type UserConfig } from "electron-vite";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { resolvePhotonWasmPath } from "@nyte-ai/host/images";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
-import { defaultClientConditions, type Plugin } from "vite";
+import { build, defaultClientConditions, type Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/lib/deferred-entries.ts";
 import { PICKER_SCRIPT } from "./src/main/browser/browser-picker-page.ts";
 import packageMetadata from "./package.json" with { type: "json" };
 import { deferredChunks, shareCentralIconBase, stylex } from "@nyte-ai/app/vite";
-
-const E2E_FIXTURES = new Map([
-  [resolve("src/host/models.ts"), resolve("src/host/fixtures/e2e-models.ts")],
-  [resolve("src/host/connections/tailnet.ts"), resolve("src/host/fixtures/e2e-tailnet.ts")],
-]);
-
-const e2eFixtures: Plugin = {
-  name: "nyte:e2e-fixtures",
-  enforce: "pre",
-  resolveId(source, importer) {
-    if (importer === undefined) return null;
-
-    return E2E_FIXTURES.get(resolve(importer, "..", source)) ?? null;
-  },
-};
 
 /**
  * The renderer. StyleX compiles @nyte-ai/ui from source here, so it resolves the
@@ -76,72 +61,94 @@ const renderer = {
   server: { host: "127.0.0.1", port: 5174, strictPort: true, forwardConsole: true },
 } satisfies UserConfig["renderer"];
 
-const config = (mode: string): UserConfig => ({
-  main: {
+const MAIN_ENTRIES = {
+  index: resolve("src/main/index.ts"),
+  "usage-worker": resolve("src/workers/usage-worker.ts"),
+};
+
+const HOST_ENTRIES = {
+  "nyte-host": resolve("src/workers/nyte-host.ts"),
+  "host-worker": resolve("src/workers/host-worker.ts"),
+  "codemode-worker": resolve("src/workers/codemode-worker.ts"),
+  "image-worker": resolve("src/workers/image-worker.ts"),
+};
+
+/** Main-process code: the app's main and its usage worker, or with `host` the host the app's executable runs as Node, built apart so main loads none of the host's modules. */
+const main = (mode: string, host: boolean) =>
+  ({
     define: {
       NYTE_BUILT_VERSION: JSON.stringify(
         process.env["NYTE_RELEASE_VERSION"] ?? packageMetadata.version,
       ),
+      NYTE_BUILT_CONNECT_ORIGIN: JSON.stringify(process.env["NYTE_CONNECT_ORIGIN"] ?? ""),
     },
-    plugins: [
-      ...(mode === "e2e" ? [e2eFixtures] : []),
-      {
-        name: "nyte:codemode-wasm",
-        async generateBundle() {
-          this.emitFile({
-            type: "asset",
-            fileName: "quickjs.wasm",
-            source: await readFile(resolveQuickJSWasmPath()),
-          });
-        },
-      } satisfies Plugin,
-      {
-        name: "nyte:photon-wasm",
-        async generateBundle() {
-          this.emitFile({
-            type: "asset",
-            fileName: "photon_rs_bg.wasm",
-            source: await readFile(resolvePhotonWasmPath()),
-          });
-        },
-      } satisfies Plugin,
-      {
-        name: "nyte:browser-picker-page",
-        generateBundle() {
-          this.emitFile({
-            type: "asset",
-            fileName: "browser-picker-page.js",
-            source: PICKER_SCRIPT,
-          });
-        },
-      } satisfies Plugin,
-    ],
+    plugins: host
+      ? [
+          {
+            name: "nyte:codemode-wasm",
+            async generateBundle() {
+              this.emitFile({
+                type: "asset",
+                fileName: "quickjs.wasm",
+                source: await readFile(resolveQuickJSWasmPath()),
+              });
+            },
+          } satisfies Plugin,
+          {
+            name: "nyte:photon-wasm",
+            async generateBundle() {
+              this.emitFile({
+                type: "asset",
+                fileName: "photon_rs_bg.wasm",
+                source: await readFile(resolvePhotonWasmPath()),
+              });
+            },
+          } satisfies Plugin,
+        ]
+      : [
+          {
+            name: "nyte:browser-picker-page",
+            generateBundle() {
+              this.emitFile({
+                type: "asset",
+                fileName: "browser-picker-page.js",
+                source: PICKER_SCRIPT,
+              });
+            },
+          } satisfies Plugin,
+          {
+            name: "nyte:host",
+            apply: "build",
+            async closeBundle() {
+              await build(
+                await new MainConfigFactory(
+                  main(mode, true),
+                  { mode, configFile: false },
+                  {},
+                ).build(),
+              );
+            },
+          } satisfies Plugin,
+        ],
+    resolve: { alias: { fflate: "fflate/browser" } },
     build: {
       ...(mode === "e2e" ? { outDir: "out-e2e/main" } : {}),
+      emptyOutDir: !host,
       externalizeDeps: { exclude: ["@clerk/electron"] },
       minify: true,
       target: "node24",
       rolldownOptions: {
-        input: {
-          index: resolve("src/main/index.ts"),
-          "host-entry": resolve("src/host/host-entry.ts"),
-          "usage-worker": resolve("src/workers/usage-worker.ts"),
-          "codemode-worker": resolve("src/workers/codemode-worker.ts"),
-          "codemode-runtime": resolve("src/workers/codemode-runtime.ts"),
-          "image-worker": resolve("src/workers/image-worker.ts"),
-          "image-runtime": resolve("src/workers/image-runtime.ts"),
-        },
+        input: host ? HOST_ENTRIES : MAIN_ENTRIES,
         output: {
           entryFileNames: "[name].js",
-          chunkFileNames: (chunk) =>
-            chunk.moduleIds.includes(resolve("src/workers/codemode-runtime.ts")) ||
-            chunk.moduleIds.includes(resolve("src/workers/image-runtime.ts"))
-              ? "[name]-[hash].js"
-              : "chunks/[name].js",
+          chunkFileNames: host ? "host-chunks/[name].js" : "chunks/[name].js",
         },
       },
     },
-  },
+  }) satisfies UserConfig["main"];
+
+const config = (mode: string): UserConfig => ({
+  main: main(mode, false),
   preload: {
     build: {
       externalizeDeps: false,

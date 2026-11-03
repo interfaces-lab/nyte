@@ -7,7 +7,7 @@ import type { DraftStatus, SessionViewStateStore } from "../../panes/session-vie
 import { readStartCatalog } from "../../data/catalog.ts";
 import { selectedWorkspaceId } from "../../data/workspaces.ts";
 import { connected } from "../../data/connection.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { selectedModelOption } from "./model-picker-state.ts";
 import { startComposerChat } from "./composer-send.ts";
 import type { ComposerSendPlan } from "./composer-send.ts";
@@ -87,7 +87,7 @@ export async function startDraft(
       },
       plan,
     );
-    await sessionWatch(id)
+    await chatStore(id)
       .next()
       .catch(() => undefined);
     actions.openDraftChat(draftId, id);

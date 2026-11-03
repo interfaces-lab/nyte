@@ -15,7 +15,7 @@ test(
     remote: {
       state: async () => ({
         kind: "off",
-        tailnet: { kind: "missing" },
+        tailnet: { state: "unavailable" },
         cloudflare: { kind: "unregistered" },
       }),
     },

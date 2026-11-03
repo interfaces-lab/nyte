@@ -1,0 +1,126 @@
+---
+title: heads.remove
+description: Deletes a named head.
+---
+
+Deletes a named head and its prompt override. Commits another head can still reach stay in the
+session's tree. It answers
+`removed`, `is-main` for main, `missing` when there is no head with the name, or `busy` while a run
+is live on it.
+
+## When to call it
+
+When the user drops a branch they don't want, or after merging it.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{ "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f", "name": "try-sqlite" }
+```
+
+Response:
+
+```json
+{ "kind": "removed" }
+```
+
+## Errors
+
+- `unknown` when no session has the id.
+- `stale` when `expect` doesn't match the head's revision: `Head <name> moved since <revision>.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "name"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "expect": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "removed"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "is-main"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "run"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "run": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

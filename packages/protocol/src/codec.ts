@@ -53,8 +53,6 @@ const INERT: Inert = { form: "inert" };
 
 const PRIMITIVE_TYPES = new Set(["string", "number", "integer", "boolean", "null"]);
 
-const VIEW_DEPTH = 2;
-
 const rows: {
   readonly [N in OperationName]: Declaration<OperationInput<N>, OperationOutput<N>>;
 } = OPERATIONS;
@@ -123,7 +121,7 @@ export function decodeOutput<N extends OperationName>(name: N, value: unknown): 
 
   if (!(result instanceof Promise) && result.issues === undefined) return result.value;
 
-  return validated(schema, known(plan(schema), value, name === "head.watch" ? VIEW_DEPTH : null));
+  return validated(schema, known(plan(schema), value));
 }
 
 function validated<T>(schema: Schema<T>, value: unknown): T {
@@ -354,13 +352,13 @@ function encode(plan: Plan, value: unknown): Json | undefined {
   return record;
 }
 
-function known(plan: Plan, value: unknown, positional: number | null): unknown {
+function known(plan: Plan, value: unknown): unknown {
   if (plan.form === "inert") return value;
 
   if (plan.form === "choice") {
     const member = select(plan, value);
 
-    return member === null ? value : known(member, value, positional);
+    return member === null ? value : known(member, value);
   }
 
   if (Guard.IsArray(value)) {
@@ -368,32 +366,30 @@ function known(plan: Plan, value: unknown, positional: number | null): unknown {
 
     if (items === null) return value;
     const { kinds, reads } = items;
-    const keeps = positional !== null && positional >= 0;
 
     return value.flatMap((item) => {
       const kind = readKind(item);
       const listed = kinds === null || kind === undefined || kinds.has(kind);
-      const read = listed ? known(items.plan, item, null) : item;
+      const read = listed ? known(items.plan, item) : item;
 
       if (listed && reads(read)) return [read];
       const raw = rawPart(item);
 
       if (raw !== null && reads(raw)) return [raw];
 
-      return keeps ? [read] : [];
+      return [];
     });
   }
 
   const { properties } = plan;
 
   if (typeof value !== "object" || value === null || properties === null) return value;
-  const inner = positional === null ? null : positional - 1;
 
   return Object.fromEntries(
     Object.entries(value).map(([key, field]) => {
       const property = properties.get(key);
 
-      return [key, property === undefined ? field : known(property, field, inner)];
+      return [key, property === undefined ? field : known(property, field)];
     }),
   );
 }
