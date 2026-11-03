@@ -7,7 +7,7 @@ test(
   async () => {
     expect(
       await testRenderer(
-        new URL("./new-chat-composer.browser-test.tsx", import.meta.url),
+        new URL("./blank-conversation.browser-test.tsx", import.meta.url),
         `window.nyte = { clientSurface: "desktop", platform: "linux", host: { setThemePreference() {} } };`,
       ),
     ).toBe("passed");

@@ -44,7 +44,7 @@
     "packages/connect": {
       "ignoreIssues": { "src/schemas.ts": ["duplicates"] },
     },
-    "packages/connect-worker": {
+    "packages/connect-broker": {
       "ignoreDependencies": ["cloudflare"],
     },
     "packages/desktop": {

@@ -2,7 +2,7 @@
 
 The contract for Nyte Connect, Nyte's account-based remote access. A host is a running Nyte that serves sessions: the desktop app, or the `nyte` CLI on a machine without a screen. Its operator links it to a Nyte account and turns sharing on. Any phone or browser signed in to the same account then lists the host, enrolls itself, and connects, with no approval step on the host. Users need no Tailscale, no shared network, no open port, and no Cloudflare account of their own. The operator (Nyte) runs one broker Worker, with a relay Durable Object per linked host, and one Clerk instance for everyone. The broker is served at `https://nyte-connect.daniel-fu90.workers.dev`; no DNS zone or custom domain is involved.
 
-This package holds the wire contract. The broker lives in `packages/connect-worker`; its README and `wrangler.jsonc` are authoritative for binding names and broker internals. Nothing in this repository creates, deploys, or configures a live resource. Every step below is manual. The user steps are in the [remote access guide](../docs/content/docs/remote-access.mdx).
+This package holds the wire contract. The broker lives in `packages/connect-broker`; its README and `wrangler.jsonc` are authoritative for binding names and broker internals. Nothing in this repository creates, deploys, or configures a live resource. Every step below is manual. The user steps are in the [remote access guide](../docs/content/docs/remote-access.mdx).
 
 | Entry | For | Contents |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ CORS is limited to listing environments, owner environment removal, enrollment, 
 
 - **Worker.** One Worker on its `workers.dev` subdomain. `CONNECT_ORIGIN` is that origin exactly, `https://nyte-connect.daniel-fu90.workers.dev`. It runs on the Workers Free plan; nothing here needs a paid plan.
 - **Relay.** A SQLite-backed Durable Object class, one object per environment, holding that host's socket with the WebSocket Hibernation API. The Free plan allows only SQLite-backed classes. Idle sockets cost no duration; pings are answered by `setWebSocketAutoResponse` without waking the object.
-- **D1.** One database bound as `DB`, with the migrations in `packages/connect-worker/migrations`.
+- **D1.** One database bound as `DB`, with the migrations in `packages/connect-broker/migrations`.
 - **Cron.** The Worker's schedule closes the relays of revoked environments, expires stale reservations, retries pending Clerk session revocations, and purges spent proof ids.
 
 No zone, DNS record, tunnel, or Cloudflare API token is involved.
@@ -123,7 +123,7 @@ The iOS app needs a new native build for Clerk: `@clerk/expo` raises the deploym
 
 ### Worker
 
-`packages/connect-worker/wrangler.jsonc` is authoritative. It needs:
+`packages/connect-broker/wrangler.jsonc` is authoritative. It needs:
 
 | Kind | Name | Notes |
 | --- | --- | --- |
@@ -155,7 +155,7 @@ node -e 'const { generateKeyPairSync, randomUUID } = require("node:crypto"); con
 3. `wrangler d1 migrations apply nyte-connect --remote`.
 4. Replace every placeholder var in `wrangler.jsonc`.
 5. Set each secret with `wrangler secret put`.
-6. `wrangler deploy` from `packages/connect-worker`.
+6. `wrangler deploy` from `packages/connect-broker`.
 7. Point the Clerk webhook at the deployed `/v1/clerk/webhook` and send a test event.
 8. Build the desktop, the CLI, the web app, and the iOS app with the public values above.
 9. Link a host, enroll a phone, revoke the phone from the desktop, and confirm its streams close within a minute.

@@ -1,5 +1,5 @@
 {
-  "name": "@nyte-ai/connect-worker",
+  "name": "@nyte-ai/connect-broker",
   "private": true,
   "description": "The Nyte Connect broker: a Cloudflare Worker over D1 that links desktops to Clerk accounts, leases device access, and relays phone requests to each desktop through a Durable Object.",
   "type": "module",

@@ -34,7 +34,7 @@ peers, for its renderers.
 | Package directories | Reason |
 | --- | --- |
 | `app`, `desktop`, `tui`, `mobile` | Product applications, distributed through their own builds |
-| `connect`, `connect-worker` | Product connection services |
+| `connect`, `connect-broker` | Product connection services |
 | `tailnet` | The host's embedded Tailscale node, a Go binary built for each platform |
 | `bench` | Test fixtures: scripted models, cassettes, scenarios, and the host simulation |
 | `ui` | Component library awaiting a separate release |

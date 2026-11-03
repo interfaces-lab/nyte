@@ -1,4 +1,4 @@
-# @nyte-ai/connect-worker
+# @nyte-ai/connect-broker
 
 The Nyte Connect broker: a Cloudflare Worker over D1 with one relay Durable Object per linked desktop. It links desktops to Clerk accounts, signs the short leases that decide which phones a desktop serves, and relays phone requests to each desktop over a WebSocket the desktop opened. Desktops need no inbound port and no tunnel. The wire contract lives in `@nyte-ai/connect`; the relay protocol (frames, flow control, close codes, limits) is described in `packages/connect/src/relay.ts`. This package implements the broker side.
 
@@ -104,6 +104,6 @@ To rotate, put the new key first and keep the old one second until no token sign
 
 ## Tests
 
-`pnpm --dir packages/connect-worker test` runs two kinds of test. Most run the broker in Node against a local D1 from wrangler's `getPlatformProxy` (`test/wrangler.jsonc`), with an injected clock and a fake relay that answers enrollments as a desktop would. `test/relay.test.ts` covers browser CORS, preflights, HTTP/SSE forwarding, and native behavior, and runs the whole Worker, the relay Durable Object, and D1 in local workerd through wrangler's `createTestHarness` (`test/workerd.ts`, `test/workerd.jsonc`), with real WebSockets and HTTP. Signatures are real everywhere; only Clerk's Backend API is fake. No test reads `.dev.vars`.
+`pnpm --dir packages/connect-broker test` runs two kinds of test. Most run the broker in Node against a local D1 from wrangler's `getPlatformProxy` (`test/wrangler.jsonc`), with an injected clock and a fake relay that answers enrollments as a desktop would. `test/relay.test.ts` covers browser CORS, preflights, HTTP/SSE forwarding, and native behavior, and runs the whole Worker, the relay Durable Object, and D1 in local workerd through wrangler's `createTestHarness` (`test/workerd.ts`, `test/workerd.jsonc`), with real WebSockets and HTTP. Signatures are real everywhere; only Clerk's Backend API is fake. No test reads `.dev.vars`.
 
 Local workerd delivers a phone's disconnect to the Worker about 10 seconds late, and leaves a client socket that never sent a frame in CLOSING when the relay closes it. Neither is relied on in production.

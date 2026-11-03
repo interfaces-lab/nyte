@@ -565,7 +565,7 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
 
-  packages/connect-worker:
+  packages/connect-broker:
     dependencies:
       '@clerk/backend':
         specifier: ^3.26.0

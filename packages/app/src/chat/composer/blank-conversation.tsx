@@ -239,7 +239,6 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
                 current={current}
                 thinkingLevel={choice?.thinking}
                 fast={selected?.fast === true}
-                disabled={held}
                 open={pickerOpen}
                 onOpenChange={setPickerOpen}
                 onChange={(change) => {
