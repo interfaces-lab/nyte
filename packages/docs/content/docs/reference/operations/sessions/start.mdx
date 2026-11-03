@@ -1,0 +1,431 @@
+---
+title: sessions.start
+description: Starts a chat with its first message.
+---
+
+Creates a chat and admits its first message in one commit, so no session exists without a
+message. It answers once the session's `before_send` hooks have decided the message, with the
+session id, the receipt and the message id. A hook that refuses, a failing hook, or a stop before
+the decision removes the session and fails the call.
+
+## When to call it
+
+When the user sends the first message of a new chat. Until then the chat is a draft only the
+client knows. [Send messages](/docs/sdk/guides/send-messages#start-a-chat-with-its-first-message)
+covers each input.
+
+`id` names the chat, its first message and its receipt. Mint it when the draft is created and send
+it with every retry: the same id with the same input returns the same start.
+
+## Access
+
+Any principal with `participant` authority. Host scope: the session doesn't exist yet. The
+workspace is `workspace`, else the parent's, else the host's default. A start that passes
+`configuration` from a client with `owner` authority, rather than from a tool call, also saves its
+model as the default.
+
+## Example
+
+Request body:
+
+```json
+{
+  "id": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "name": "Fix the flaky test",
+  "content": "Find out why the date test fails on CI"
+}
+```
+
+Response:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "receipt": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "message": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f"
+}
+```
+
+## Errors
+
+- `invalid` when the id names a chat started with other input: `Session <id> already exists.`
+- `invalid` when a `before_send` hook refuses the message, with the hook's reason, or when the
+  start was stopped before the hooks decided.
+- `invalid` when `configuration` doesn't fit the catalog: `No model is <provider>/<id>.`,
+  `No agent is registered as <agent>.`, or `The configuration is invalid: …` with its issues.
+- `unknown` when no workspace was named and the host has no default, when the workspace isn't
+  registered, or when `parent` names no session.
+- `unavailable` with `isolation: "worktree"` when the workspace isn't in git or its provider has no
+  worktrees, and when the host closes before the hooks decide.
+- `internal` when a `before_send` hook fails.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `receipt`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: `replay`
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["id", "content"],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "workspace": {
+      "type": "string"
+    },
+    "parent": {
+      "type": "string"
+    },
+    "configuration": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind", "model", "thinking", "agent", "settings", "settingsVersion"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "exact"
+            },
+            "model": {
+              "type": "object",
+              "required": ["provider", "id"],
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            },
+            "thinking": {
+              "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "settings": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "$ref": "Json"
+                }
+              }
+            },
+            "settingsVersion": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "object",
+              "required": ["provider", "id"],
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            },
+            "thinking": {
+              "anyOf": [
+                {
+                  "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "settings": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "$ref": "Json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "prompt": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "layer"
+            },
+            "text": {
+              "type": "string"
+            },
+            "order": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "replace"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "isolation": {
+      "type": "string",
+      "const": "worktree"
+    },
+    "contextFiles": {
+      "type": "boolean",
+      "const": false
+    },
+    "content": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "text"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "blob", "mime", "name"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "file"
+                  },
+                  "blob": {
+                    "type": "string"
+                  },
+                  "mime": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "path"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "reference"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "blob": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "name", "location"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "skill"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "location": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "source", "text"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "excerpt"
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "path", "side", "start", "end"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "diff"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "side": {
+                            "enum": ["old", "new"]
+                          },
+                          "start": {
+                            "type": "number"
+                          },
+                          "end": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "terminal"
+                          },
+                          "command": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "url", "selector"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "browser"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "selector": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "receipt", "message"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "receipt": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    }
+  }
+}
+```
+
+{/* generated:end */}

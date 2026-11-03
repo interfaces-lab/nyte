@@ -1,0 +1,94 @@
+---
+title: session.completeCommand
+description: Returns suggestions for the text after a plugin command.
+---
+
+Asks a plugin command what may follow the text typed after it so far. It answers the command's
+suggestions, each with the value to insert, a label and an optional description, or an empty list
+when the command suggests nothing, has no such name, or fails.
+
+## When to call it
+
+While the user types after a slash command, to show completions.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "name": "review",
+  "prefix": "src/a"
+}
+```
+
+Response:
+
+```json
+[{ "value": "src/app.ts", "label": "app.ts", "description": "src" }]
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "name", "prefix"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "prefix": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["value", "label"],
+    "properties": {
+      "value": {
+        "type": "string"
+      },
+      "label": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

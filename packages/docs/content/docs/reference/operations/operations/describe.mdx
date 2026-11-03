@@ -1,0 +1,147 @@
+---
+title: operations.describe
+description: Describes the operations this host serves, or the ones named, with their access and wire JSON Schemas.
+---
+
+Returns the operations this host serves, in table order, each with its summary, kind, authority,
+scope, capability, and its input and output as draft 2020-12 JSON Schemas of the wire form. Pass
+`names` to describe only those operations, in that order.
+
+## When to call it
+
+When a client builds requests from the table rather than from a pinned SDK, such as a generic
+tool caller or a protocol inspector. The answer comes from the connected host's own build, so it
+matches that host's version even when the client's differs.
+
+## Access
+
+Any principal with `participant` authority. Host scope. The answer lists every operation, whatever
+the caller's authority; calling one still needs its authority.
+
+## Example
+
+Request body:
+
+```json
+{ "names": ["session.info"] }
+```
+
+Response, with the input and output schemas shortened:
+
+```json
+[
+  {
+    "name": "session.info",
+    "summary": "Reads a session's name, state and other details.",
+    "kind": "query",
+    "authority": "participant",
+    "scope": "session",
+    "input": { "type": "object", "required": ["session"] },
+    "output": { "type": "object" }
+  }
+]
+```
+
+## Errors
+
+- `invalid` when a name in `names` isn't an operation: `No operation is named <names>.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["name", "summary", "kind", "authority", "scope", "input", "output"],
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "kind": {
+        "enum": ["query", "watch", "command", "receipt", "stream"]
+      },
+      "authority": {
+        "enum": ["participant", "owner", "maintenance"]
+      },
+      "scope": {
+        "enum": ["host", "session", "workspace"]
+      },
+      "capability": {
+        "enum": ["files", "git", "github", "browser"]
+      },
+      "input": {
+        "$ref": "Json"
+      },
+      "output": {
+        "$ref": "Json"
+      }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

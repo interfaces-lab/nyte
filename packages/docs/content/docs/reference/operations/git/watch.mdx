@@ -1,0 +1,206 @@
+---
+title: git.watch
+description: Streams the workspace's git status each time it changes.
+---
+
+Streams the workspace's git status, the same value as
+[`git.status`](/docs/reference/operations/git/status), first as it is and again each time its
+revision moves. A local workspace re-reads on file system events that can change it, coalesced over
+250 ms.
+
+## When to call it
+
+To keep a source control panel or a branch indicator current.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `git` capability.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Each frame is a git status, as in the `git.status` example.
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "none"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "root",
+        "head",
+        "branch",
+        "upstream",
+        "revision",
+        "staged",
+        "unstaged",
+        "untracked",
+        "conflicts"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "repository"
+        },
+        "root": {
+          "type": "string"
+        },
+        "head": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upstream": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["name", "ahead", "behind"],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "ahead": {
+                  "type": "number"
+                },
+                "behind": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "type": "string"
+        },
+        "staged": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "status", "added", "removed"],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "status": {
+                "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+              },
+              "added": {
+                "type": "number"
+              },
+              "removed": {
+                "type": "number"
+              },
+              "from": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "unstaged": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "status", "added", "removed"],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "status": {
+                "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+              },
+              "added": {
+                "type": "number"
+              },
+              "removed": {
+                "type": "number"
+              },
+              "from": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "untracked": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

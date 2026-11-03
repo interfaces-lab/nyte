@@ -1,0 +1,16 @@
+{
+  "title": "models",
+  "pages": [
+    "list",
+    "accounts",
+    "select-account",
+    "rename-account",
+    "usage",
+    "refresh",
+    "set-default",
+    "set-listing",
+    "verify",
+    "login",
+    "logout"
+  ]
+}

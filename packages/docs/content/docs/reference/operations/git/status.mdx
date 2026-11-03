@@ -1,0 +1,223 @@
+---
+title: git.status
+description: Reads the workspace's git status.
+---
+
+Reads the workspace's git status: the repository root, HEAD, branch and its upstream with ahead and
+behind counts, staged and unstaged changes with line counts, untracked files and conflicts. Outside
+a repository it answers `none`. `revision` moves whenever any of it changes, including an edit to a
+file that was already modified; pass it as `expect` to the git writes.
+
+## When to call it
+
+To show a source control panel once. To keep it current, use
+[`git.watch`](/docs/reference/operations/git/watch).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `git` capability. Paths are
+relative to the workspace, which may be a folder inside the repository.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response:
+
+```json
+{
+  "kind": "repository",
+  "root": "/Users/ada/code/shop",
+  "head": "3e1f9a2c4b6d8e0f1a3c5e7b9d2f4a6c8e0b1d3f",
+  "branch": "fix-date-test",
+  "upstream": { "name": "origin/fix-date-test", "ahead": 1, "behind": 0 },
+  "revision": "c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3",
+  "staged": [],
+  "unstaged": [{ "path": "src/date.ts", "status": "modified", "added": 1, "removed": 1 }],
+  "untracked": ["test/tz.test.ts"],
+  "conflicts": []
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "none"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "root",
+        "head",
+        "branch",
+        "upstream",
+        "revision",
+        "staged",
+        "unstaged",
+        "untracked",
+        "conflicts"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "repository"
+        },
+        "root": {
+          "type": "string"
+        },
+        "head": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upstream": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["name", "ahead", "behind"],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "ahead": {
+                  "type": "number"
+                },
+                "behind": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "type": "string"
+        },
+        "staged": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "status", "added", "removed"],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "status": {
+                "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+              },
+              "added": {
+                "type": "number"
+              },
+              "removed": {
+                "type": "number"
+              },
+              "from": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "unstaged": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "status", "added", "removed"],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "status": {
+                "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+              },
+              "added": {
+                "type": "number"
+              },
+              "removed": {
+                "type": "number"
+              },
+              "from": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "untracked": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

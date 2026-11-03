@@ -1,0 +1,362 @@
+---
+title: jobs.watch
+description: Streams the workspace's jobs as they change.
+---
+
+Streams the workspace's jobs. The first frame is the whole list as `jobs`; each later frame is one
+job that changed, as `job` with its new view, or `forgotten` with the id of one the list no longer
+keeps. While the reader is behind, a job's own changes coalesce into its latest.
+
+## When to call it
+
+To keep a jobs or terminals panel current.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+A frame after the first:
+
+```json
+{ "kind": "forgotten", "id": "8a0c2e4f-6b1d-4f3a-9c5e-7b9d1f3a5c7e" }
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "jobs"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "jobs"
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "command",
+              "title",
+              "session",
+              "pty",
+              "state",
+              "startedAt",
+              "endedAt",
+              "tail",
+              "foreground"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "session": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pty": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["columns", "rows", "shell"],
+                    "properties": {
+                      "columns": {
+                        "type": "number"
+                      },
+                      "rows": {
+                        "type": "number"
+                      },
+                      "shell": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["kind"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "running"
+                      }
+                    }
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "code", "reason"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "exited"
+                          },
+                          "code": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "enum": ["exited", "terminated", "expired", "host-lost"]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "lost"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "startedAt": {
+                "type": "number"
+              },
+              "endedAt": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tail": {
+                "type": "string"
+              },
+              "foreground": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "job"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "job"
+        },
+        "job": {
+          "type": "object",
+          "required": [
+            "id",
+            "command",
+            "title",
+            "session",
+            "pty",
+            "state",
+            "startedAt",
+            "endedAt",
+            "tail",
+            "foreground"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "command": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "session": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "pty": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["columns", "rows", "shell"],
+                  "properties": {
+                    "columns": {
+                      "type": "number"
+                    },
+                    "rows": {
+                      "type": "number"
+                    },
+                    "shell": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "running"
+                    }
+                  }
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": ["kind", "code", "reason"],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "exited"
+                        },
+                        "code": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "enum": ["exited", "terminated", "expired", "host-lost"]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["kind"],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "lost"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "startedAt": {
+              "type": "number"
+            },
+            "endedAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "tail": {
+              "type": "string"
+            },
+            "foreground": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "forgotten"
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

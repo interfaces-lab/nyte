@@ -1,0 +1,289 @@
+---
+title: workspace.patches
+description: Streams the patches of the given files that a run or session changed.
+---
+
+Streams the patches of the given paths over the same range
+[`workspace.changes`](/docs/reference/operations/workspace/changes) reads for the source. Each frame
+is a whole patch set: a revision and, per path, its patch. A text entry carries its unified diff
+with added and removed counts; others are binary, empty, too large or failed.
+
+## When to call it
+
+To show the diff of the files a user expands in a change list. Pass only the paths on screen.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "source": { "kind": "run", "run": "4e2a6c8f-1b3d-4f5a-9c7e-0a2b4d6f8c1e" },
+  "paths": ["test/date.test.ts"],
+  "options": { "ignoreWhitespace": true }
+}
+```
+
+A frame, with the patch text cut short:
+
+```json
+{
+  "revision": "f2a4c6e8b0d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3",
+  "entries": {
+    "test/date.test.ts": {
+      "path": "test/date.test.ts",
+      "status": "modified",
+      "digest": "9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c",
+      "kind": "text",
+      "added": 12,
+      "removed": 3,
+      "patch": "diff --git a/test/date.test.ts b/test/date.test.ts\n",
+      "fresh": true
+    }
+  }
+}
+```
+
+## Errors
+
+- `unavailable` as for `workspace.changes`.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `stream`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "source", "paths"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind", "run"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "run"
+            },
+            "run": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "session"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "session"
+            },
+            "session": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "ignoreWhitespace": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["revision", "entries"],
+  "properties": {
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "entries": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "path",
+                "status",
+                "digest",
+                "fresh",
+                "kind",
+                "added",
+                "removed",
+                "patch"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "fresh": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "text"
+                },
+                "added": {
+                  "type": "number"
+                },
+                "removed": {
+                  "type": "number"
+                },
+                "patch": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["path", "status", "digest", "fresh", "kind"],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "fresh": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "binary"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["path", "status", "digest", "fresh", "kind"],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "fresh": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "empty"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["path", "status", "digest", "fresh", "kind", "limit"],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "fresh": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "too-large"
+                },
+                "limit": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["path", "status", "digest", "fresh", "kind", "reason"],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": ["added", "modified", "deleted", "renamed", "untracked", "conflicted"]
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "fresh": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "failed"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

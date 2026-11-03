@@ -1,0 +1,126 @@
+---
+title: models.accounts
+description: Lists saved logins for one provider, or for every provider.
+---
+
+Lists the saved logins for one provider, or for every provider when `provider` is absent. Each
+account has its id, label, login method, and whether it is the provider's active one.
+
+## When to call it
+
+To show an account switcher, before calling
+[`models.selectAccount`](/docs/reference/operations/models/select-account) or
+[`models.renameAccount`](/docs/reference/operations/models/rename-account).
+
+## Access
+
+Needs `owner` authority. Host scope: logins belong to the host machine.
+
+## Example
+
+Request body:
+
+```json
+{ "provider": "anthropic" }
+```
+
+Response:
+
+```json
+[
+  {
+    "provider": "anthropic",
+    "id": "acct-1",
+    "label": "Work",
+    "method": { "kind": "oauth" },
+    "active": true
+  },
+  {
+    "provider": "anthropic",
+    "id": "acct-2",
+    "label": "Personal",
+    "method": { "kind": "key" },
+    "active": false
+  }
+]
+```
+
+## Errors
+
+- `unavailable` when the host was built without models.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["provider", "id", "label", "method", "active"],
+    "properties": {
+      "provider": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "label": {
+        "type": "string"
+      },
+      "method": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "oauth"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "key"
+              }
+            }
+          }
+        ]
+      },
+      "active": {
+        "type": "boolean"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

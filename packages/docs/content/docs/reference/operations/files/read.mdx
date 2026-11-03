@@ -1,0 +1,164 @@
+---
+title: files.read
+description: Reads a file as text or as a document with its version.
+---
+
+Reads a file in the workspace. A UTF-8 text file up to 1 MiB answers `text` with its contents and
+version; a larger one answers `large`, and images, PDFs and other binaries answer their kind with
+size and version but no contents. A path with nothing there answers `missing`. `scope` says whether
+the file's real path is inside the workspace (`workspace`) or reached through a link outside it
+(`external`).
+
+`as: "document"` reads an SVG as an image rather than as text. The version is a SHA-256 of the
+contents; pass it as `expect` to [`files.write`](/docs/reference/operations/files/write) to save only
+if nobody changed the file since.
+
+## When to call it
+
+To open a file in an editor or viewer. For binary contents, stream them with
+[`files.bytes`](/docs/reference/operations/files/bytes).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability. A
+relative path resolves against the workspace folder.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "src/date.ts"
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "text",
+  "path": "src/date.ts",
+  "scope": "workspace",
+  "mime": "text/typescript",
+  "contents": "export const today = () => new Date();\n",
+  "version": "4b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d"
+}
+```
+
+## Errors
+
+- `invalid` when the path is a directory.
+- `unavailable` or `denied` when the workspace doesn't offer files, with the reason after
+  `files:`. A workspace id the host doesn't have answers `unavailable`.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "options": {
+      "type": "object",
+      "required": ["as"],
+      "properties": {
+        "as": {
+          "enum": ["text", "document"]
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "path", "scope", "mime", "contents", "version"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "text"
+        },
+        "path": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": ["workspace", "external"]
+        },
+        "mime": {
+          "type": "string"
+        },
+        "contents": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "path", "scope", "mime", "size", "version"],
+      "properties": {
+        "kind": {
+          "enum": ["image", "pdf", "binary", "large"]
+        },
+        "path": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": ["workspace", "external"]
+        },
+        "mime": {
+          "type": "string"
+        },
+        "size": {
+          "type": "number"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

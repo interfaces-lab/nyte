@@ -1,0 +1,70 @@
+---
+title: models.refresh
+description: Refreshes the model list and credentials for one provider, or for every provider.
+---
+
+Fetches the model list and checks the credentials again for one provider, or for every provider
+when `provider` is absent. The catalog generation moves when it is done.
+
+## When to call it
+
+After the user changes something outside Nyte that affects models, such as an API key in the
+environment, or from a "refresh models" button.
+
+## Access
+
+Needs `owner` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{ "provider": "anthropic" }
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `unavailable` when refreshing failed for any provider. The message names each provider and its
+  error: `Refreshing models failed for <provider> (<message>).` It is also raised when the host
+  was built without models.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

@@ -1,0 +1,129 @@
+---
+title: job.output
+description: Streams the bytes of a job's output.
+---
+
+Streams a job's output as framed bytes. A reader starts with the last 1 MiB the job printed, then
+follows it live. Frames are output bytes (tagged `stderr` for a protocol pipe's error stream), a
+`gap` where the reader fell behind and output was dropped, and `exit` with the code last.
+
+A pty job pauses while its slowest open reader is far behind, so its readers miss nothing; a piped
+command never waits for readers.
+
+## When to call it
+
+To render a terminal or a command's log. See
+[Calling an operation](/docs/reference/operations#calling-an-operation) for the frame layout.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "job": "8a0c2e4f-6b1d-4f3a-9c5e-7b9d1f3a5c7e"
+}
+```
+
+The last control frame's JSON:
+
+```json
+{ "kind": "exit", "code": 0 }
+```
+
+## Errors
+
+- `unavailable` when the job isn't running in this host process; a chat's job reports its output
+  through its exit report instead.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `stream`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "job"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "job": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "data"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "bytes"
+        },
+        "data": {
+          "type": "string",
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        },
+        "stream": {
+          "type": "string",
+          "const": "stderr"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "gap"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "code"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "exit"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

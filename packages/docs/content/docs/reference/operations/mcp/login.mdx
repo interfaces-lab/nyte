@@ -1,0 +1,92 @@
+---
+title: mcp.login
+description: Starts an OAuth sign-in to an MCP server and returns its login id.
+---
+
+Starts an OAuth sign-in to a URL server and answers its login id at once. Read the sign-in with
+[`login.steps`](/docs/reference/operations/login/steps), passing the login id as `provider`: it
+yields `open` with the authorization page, `paste` for the redirect URL from the browser's address
+bar, then `done` or `failed`. Answer `paste` with
+[`login.answer`](/docs/reference/operations/login/answer) when the browser can't reach this machine,
+such as over SSH; a browser that can finishes on its own. The server reconnects once signed in.
+
+Starting another sign-in to the same server ends the first. A sign-in that isn't finished ends
+after 10 minutes.
+
+## When to call it
+
+For a server whose state is `needs-sign-in`.
+
+## Access
+
+Needs `owner` authority. Workspace scope. The sign-in belongs to the principal that started it.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "server": "docs"
+}
+```
+
+Response:
+
+```json
+{
+  "login": "[\"mcp\",\"9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0\",\"docs\"]"
+}
+```
+
+Treat the login id as opaque.
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors). An unknown workspace or a host without MCP fails when
+the steps are read.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "server"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "server": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["login"],
+  "properties": {
+    "login": {
+      "type": "string"
+    }
+  }
+}
+```
+
+{/* generated:end */}

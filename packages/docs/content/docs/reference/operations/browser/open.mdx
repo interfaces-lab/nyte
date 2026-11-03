@@ -1,0 +1,104 @@
+---
+title: browser.open
+description: Opens a page at a URL in the workspace's browser.
+---
+
+Opens a page at a URL in the workspace's browser and holds it for the caller. It answers the page's
+id, URL, title and how many holders keep it open. Pass `id` to retry safely: the same id and URL
+return the same page.
+
+## When to call it
+
+To show a page to the user or drive it, such as a local dev server. The browser comes from the
+environment; the desktop app provides one.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `browser` capability. A
+client's holds end when its connection closes.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "url": "http://localhost:5173/",
+  "id": "open-preview-1"
+}
+```
+
+Response:
+
+```json
+{
+  "id": "page-7",
+  "url": "http://localhost:5173/",
+  "title": "Shop",
+  "holders": 1
+}
+```
+
+## Errors
+
+- `invalid` when the id already opened a page with another URL: `The id <id> already opened another
+page.`
+- `unknown` when the page that id opened is closed: `The page the id <id> opened is closed.`
+- `unavailable` or `denied` when the workspace doesn't offer a browser, or the page didn't open.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `browser`
+- Recovery: `replay`
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "url"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["id", "url", "title", "holders"],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "holders": {
+      "type": "number"
+    }
+  }
+}
+```
+
+{/* generated:end */}

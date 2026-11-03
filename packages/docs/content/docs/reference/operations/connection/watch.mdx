@@ -1,0 +1,357 @@
+---
+title: connection.watch
+description: Streams the host's state, including its model catalog, each time it changes.
+---
+
+Streams the host's state: its name, platform and version, the catalog generation, loaded plugins
+and their issues, settings, part views, the default workspace, and the caller's principal and
+authority. The first frame is the current state; another follows each time any of it changes.
+
+## When to call it
+
+Open it once per connection and keep it open. It is how a client learns that plugins reloaded,
+a setting changed or the model catalog moved: `catalog` changes whenever saved models, logins or
+listings do, and a client then reads [`models.list`](/docs/reference/operations/models/list) again.
+
+## Access
+
+Any principal with `participant` authority. Host scope: the input is empty. The frame's
+`authority` and `principal` describe the connection that asked, so two clients see different
+values.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+First frame, with `plugins`, `settings` and `views` shortened to empty lists:
+
+```json
+{
+  "id": "3f6c2a1e-8d4b-4c1e-9a77-0b2d5e8f1c43",
+  "link": { "kind": "connected" },
+  "name": "studio-mac",
+  "platform": "darwin",
+  "version": "0.0.24",
+  "catalog": "6d2f8a1c-3b5e-4f7a-9c1d-2e4b6a8c0f13",
+  "plugins": [],
+  "settings": [],
+  "views": [],
+  "defaultWorkspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "authority": ["participant", "owner"],
+  "principal": "token"
+}
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": [
+    "id",
+    "link",
+    "name",
+    "platform",
+    "version",
+    "catalog",
+    "plugins",
+    "settings",
+    "views",
+    "defaultWorkspace",
+    "authority",
+    "principal"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "link": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "connected"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "since", "attempts"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "reconnecting"
+            },
+            "since": {
+              "type": "number"
+            },
+            "attempts": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "reason"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "closed"
+            },
+            "reason": {
+              "enum": ["client", "revoked", "host-gone"]
+            }
+          }
+        }
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "platform": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "catalog": {
+      "type": "string"
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "source", "path", "issues"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "enum": ["builtin", "user", "project", "inline"]
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["severity", "path", "message"],
+              "properties": {
+                "severity": {
+                  "enum": ["error", "warning"]
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "message": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "object",
+                  "required": ["plugin"],
+                  "properties": {
+                    "plugin": {
+                      "type": "string"
+                    },
+                    "file": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "owner", "scope", "label", "schema", "choices", "value", "from"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": ["host", "session"]
+          },
+          "label": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "object",
+            "patternProperties": {
+              "^.*$": {
+                "$ref": "Json"
+              }
+            }
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["value", "label"],
+                  "properties": {
+                    "value": {
+                      "$ref": "Json"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "badge": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "$ref": "Json"
+          },
+          "from": {
+            "enum": ["default", "host", "session"]
+          }
+        }
+      }
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "plugin", "runtime", "blob"],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "plugin": {
+            "type": "string"
+          },
+          "runtime": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "blob": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "defaultWorkspace": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "authority": {
+      "type": "array",
+      "items": {
+        "enum": ["participant", "owner", "maintenance"]
+      }
+    },
+    "principal": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

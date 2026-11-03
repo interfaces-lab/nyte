@@ -1,0 +1,158 @@
+---
+title: files.scan
+description: Streams the files and folders under a directory.
+---
+
+Streams the files and folders under a directory, breadth first, in frames of entries. It skips
+`.git`, and what `.gitignore` files ignore unless `ignored` is `include`. The stream ends with
+`complete`, or `incomplete` with the reason: `limit` after 50,000 entries, or `permission` after a
+folder it can't read. Entries carry no version.
+
+## When to call it
+
+To fill a file tree. `directory` defaults to the workspace folder.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "directory": "src"
+}
+```
+
+Frames:
+
+```json
+{
+  "kind": "entries",
+  "entries": [
+    { "path": "src/date.ts", "kind": "file", "size": 41, "version": null },
+    { "path": "src/util", "kind": "directory", "size": null, "version": null }
+  ]
+}
+```
+
+```json
+{ "kind": "complete" }
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer files.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `stream`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "directory": {
+      "type": "string"
+    },
+    "ignored": {
+      "enum": ["exclude", "include"]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "entries"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "entries"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "kind", "size", "version"],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": ["file", "directory", "symlink"]
+              },
+              "size": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "complete"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "incomplete"
+        },
+        "reason": {
+          "enum": ["limit", "changed", "permission"]
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

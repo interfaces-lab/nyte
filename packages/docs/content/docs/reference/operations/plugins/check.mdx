@@ -1,0 +1,201 @@
+---
+title: plugins.check
+description: Loads plugin files and reports their problems without activating them.
+---
+
+Loads plugin files and checks them without activating anything. Each plugin answers `activated`
+when it would load, or `rejected` with its issues, and `collisions` lists what two plugins both
+register.
+
+## When to call it
+
+Before [`plugins.replace`](/docs/reference/operations/plugins/replace), or in a plugin author's
+tools to show problems before reloading.
+
+## Access
+
+Needs `maintenance` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "plugins": [
+    { "path": "/Users/ada/.nyte/plugins/review.ts" },
+    { "path": "/Users/ada/.nyte/plugins/lint.ts" }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "plugins": [
+    { "kind": "activated", "id": "review", "issues": [] },
+    { "kind": "activated", "id": "lint", "issues": [] }
+  ],
+  "collisions": [
+    {
+      "severity": "warning",
+      "path": ["commands", "review"],
+      "message": "review from lint collides with the one from review.",
+      "source": { "plugin": "lint" }
+    }
+  ]
+}
+```
+
+## Errors
+
+- `unavailable` when the host has no plugin loader.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `maintenance`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["plugins"],
+  "properties": {
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["plugins", "collisions"],
+  "properties": {
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id", "issues"],
+        "properties": {
+          "kind": {
+            "enum": ["activated", "rejected", "kept-previous"]
+          },
+          "id": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["severity", "path", "message"],
+              "properties": {
+                "severity": {
+                  "enum": ["error", "warning"]
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "message": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "object",
+                  "required": ["plugin"],
+                  "properties": {
+                    "plugin": {
+                      "type": "string"
+                    },
+                    "file": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "collisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "path", "message"],
+        "properties": {
+          "severity": {
+            "enum": ["error", "warning"]
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "message": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "required": ["plugin"],
+            "properties": {
+              "plugin": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string"
+              },
+              "line": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

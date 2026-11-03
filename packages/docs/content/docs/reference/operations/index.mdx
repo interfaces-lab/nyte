@@ -1,0 +1,71 @@
+---
+title: Host operations
+description: Every operation a Nyte host serves, how to call it over HTTP, and what its declaration means.
+---
+
+A host serves one table of operations. The SDK calls them for you; these pages are for clients that
+speak to a host directly, and for reading what an SDK call does on the wire. Each page has a written
+section and a generated declaration with the operation's input and output JSON Schemas. The host
+answers the same table at run time through [`operations.describe`](/docs/reference/operations/operations/describe).
+
+## Calling an operation
+
+Send `POST /<name>`, such as `POST /head.send`, with the input as a JSON body and the credential in
+the `Authorization` header: `Bearer <token>` for a listener or device token, or `Pairing <code>` to
+redeem a pairing code. An empty body counts as `{}`. Input is checked strictly: a value that fails
+the schema, or a field the schema doesn't name, fails with `invalid`.
+
+How the host answers depends on the operation's kind:
+
+| Kind      | Answer                                                                                              |
+| --------- | --------------------------------------------------------------------------------------------------- |
+| `query`   | One JSON value. Reads, and waits that end with a value                                              |
+| `command` | One JSON value. Changes something                                                                   |
+| `receipt` | One JSON value naming a receipt for work that settles later                                         |
+| `watch`   | Server-sent events, one `data:` line per frame, the current value first                             |
+| `stream`  | Server-sent events of JSON frames, or bytes for `connection.blob`, `files.bytes` and `page.capture` |
+
+A byte stream answers `application/octet-stream`, with `X-Nyte-Mime` and `Content-Length` when
+known. `job.output` answers framed bytes instead: each frame is one tag byte (`0` for output
+bytes, `1` for a JSON control frame), a four-byte big-endian length, then the payload.
+
+`files.write`, `files.upload` and `job.write` take bytes: send them as the body, and the JSON input
+as base64url in the `X-Nyte-Input` header.
+
+A stream that fails ends with an `event: error` frame carrying the error. Closing the request ends
+any watch or stream and stops waiting on any wait.
+
+## The declaration
+
+| Field      | Meaning                                                                                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kind       | How the host answers, as above                                                                                                                           |
+| Authority  | What the caller's principal needs: `participant`, `owner` or `maintenance`                                                                               |
+| Scope      | What the input names: the host as a whole, one `session`, or one `workspace`                                                                             |
+| Capability | The workspace capability it needs, `files`, `git`, `github` or `browser`, or none                                                                        |
+| Recovery   | `replay`: resending the same input with the same id returns the first result. `never`: don't resend after a lost answer, since it may already have acted |
+| Wait       | Yes when the call blocks until something happens, and is safe to call again after a lost connection                                                      |
+
+[Shared concepts](/docs/sdk/reference/shared-concepts#authority) lists what each authority covers.
+A workspace operation that needs a capability fails with `denied` or `unavailable` when the
+workspace doesn't offer it; check first with `workspace.files`, `workspace.git`,
+`workspace.github` or `workspace.browser`.
+
+## Errors
+
+An error answers a JSON body `{ code, message, hostId, issues, correlation }` at the HTTP status of
+its code. Every operation can fail these ways:
+
+| Code              | Status | When                                                                                                     |
+| ----------------- | ------ | -------------------------------------------------------------------------------------------------------- |
+| `unauthenticated` | 401    | The credential is missing, wrong, revoked, or a pairing code is unknown or expired                       |
+| `denied`          | 403    | The principal lacks the operation's authority, or the origin may not call the host                       |
+| `unknown`         | 404    | No operation has that name, or an id in the input names nothing                                          |
+| `invalid`         | 400    | The input fails the schema. `issues` lists each problem with its path. A body over the limit answers 413 |
+| `stale`           | 409    | A write lost to concurrent writes, or a revision the call expected has moved                             |
+| `unavailable`     | 503    | The host, a provider or a capability can't serve the call now                                            |
+| `internal`        | 500    | The host failed. `correlation` names its log entry                                                       |
+
+Each page lists the errors particular to its operation. Many operations answer an expected result
+as an outcome with a `kind` instead of failing, such as `busy` or `stale`; those are part of the
+output schema.

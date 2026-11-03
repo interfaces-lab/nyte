@@ -1,0 +1,113 @@
+---
+title: mcp.remove
+description: Removes an MCP server from the user or project mcp.json.
+---
+
+Removes a server from one `mcp.json`, `user` or `project`. Its stored OAuth credentials stay. It
+answers `updated`, `missing` when that file has no server with the name, or `invalid`.
+
+## When to call it
+
+From a delete action on a server.
+
+## Access
+
+Needs `owner` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "server": "docs",
+  "scope": "user"
+}
+```
+
+Response:
+
+```json
+{ "kind": "missing" }
+```
+
+## Errors
+
+- `unavailable` when the host has no MCP servers.
+- `unknown` when no workspace has the id.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "server", "scope"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "server": {
+      "type": "string"
+    },
+    "scope": {
+      "enum": ["user", "project"]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "updated"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "invalid"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

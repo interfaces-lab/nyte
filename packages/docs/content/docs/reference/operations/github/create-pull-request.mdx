@@ -1,0 +1,220 @@
+---
+title: github.createPullRequest
+description: Opens a pull request for the workspace's pushed branch unless one is already open.
+---
+
+Opens a pull request for the checked-out branch, which must already be pushed. Without a title,
+`gh` fills the title and body from the branch's commits. It answers `created` with the URL, or
+`exists` with the pull request already open for the branch, and opens nothing then. It also answers
+the precondition that stopped it: `cli_missing`, `signed_out`, `no_remote`, `detached`, or `failed`
+with a message.
+
+## When to call it
+
+After [`git.push`](/docs/reference/operations/git/push), from a "create pull request" action.
+
+## Access
+
+Needs `owner` authority. Workspace scope, with the `github` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "input": { "title": "Fix the flaky date test", "draft": true }
+}
+```
+
+Response:
+
+```json
+{ "kind": "created", "url": "https://github.com/ada/shop/pull/42" }
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer GitHub.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: `github`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "input"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "draft": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "url"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "created"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "pullRequest"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "exists"
+        },
+        "pullRequest": {
+          "type": "object",
+          "required": [
+            "number",
+            "title",
+            "url",
+            "state",
+            "draft",
+            "headRefName",
+            "baseRefName",
+            "checks"
+          ],
+          "properties": {
+            "number": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "title": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "state": {
+              "enum": ["OPEN", "CLOSED", "MERGED"]
+            },
+            "draft": {
+              "type": "boolean"
+            },
+            "headRefName": {
+              "type": "string"
+            },
+            "baseRefName": {
+              "type": "string"
+            },
+            "checks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "state"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "enum": ["pending", "passed", "failed", "skipped"]
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "cli_missing"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signed_out"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "no_remote"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "detached"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "failed"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

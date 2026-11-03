@@ -1,0 +1,216 @@
+---
+title: receipt.landed
+description: Waits until a sent message lands or fails and returns where it landed.
+---
+
+Waits until a sent message has its place in history and answers where: `landed` with its commit,
+the run it started, and the message it replaced, if any. It answers `withdrawn` when the message
+was stopped first, or `stale`, `busy`, `pending-input`, `missing-target` or `summary-failed` when
+an edit couldn't land.
+
+## When to call it
+
+After [`head.send`](/docs/reference/operations/head/send), to know the message is in the transcript
+before the run ends. It is a wait, safe to call again after a lost connection.
+
+## Access
+
+Any principal with `participant` authority. Session scope. Only a send's receipt lands, so
+`session` can't be `null`.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "receipt": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b"
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "landed",
+  "commit": "c5e7a9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7",
+  "run": "4e2a6c8f-1b3d-4f5a-9c7e-0a2b4d6f8c1e",
+  "replaced": null
+}
+```
+
+## Errors
+
+- `invalid` when `session` is `null`: `Only a send's receipt has landed.`
+- `unknown` when no receipt has the id.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: yes
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "receipt"],
+  "properties": {
+    "session": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "receipt": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "commit", "run", "replaced"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "landed"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "run": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replaced": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["previous", "stopped"],
+              "properties": {
+                "previous": {
+                  "type": "string"
+                },
+                "stopped": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "withdrawn"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "run"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "run": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "messages"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "pending-input"
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing-target"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "summary-failed"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

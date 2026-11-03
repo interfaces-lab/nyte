@@ -1,0 +1,223 @@
+---
+title: models.usage
+description: Returns each provider's usage, refreshing entries that have expired.
+---
+
+Returns each provider's usage limits for its active account. Cached entries that have expired are
+fetched again; a provider that can't report usage says why.
+
+## When to call it
+
+To show how much of a plan's limits are used, such as a usage panel. Each entry's `state` is
+`ready` with its limits, or `unavailable` with a reason: `unsupported`, `unconfigured` or
+`failed`.
+
+## Access
+
+Needs `owner` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+[
+  {
+    "provider": "openai-codex",
+    "name": "OpenAI Codex",
+    "account": {
+      "provider": "openai-codex",
+      "id": "acct-1",
+      "label": "Work",
+      "method": { "kind": "oauth" },
+      "active": true
+    },
+    "state": {
+      "kind": "ready",
+      "limits": [{ "label": "5h", "used": 37, "limit": 100, "resetsAt": 1767254400000 }],
+      "observedAt": 1767240000000,
+      "stale": false,
+      "error": null
+    }
+  }
+]
+```
+
+When the active account changes while usage loads, that provider's entry answers `unavailable`
+with reason `failed` and the message `The active account changed. Reload usage.`
+
+## Errors
+
+- `unavailable` when the host was built without models. A provider whose usage fetch fails
+  answers its entry as `unavailable`, not an error.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["provider", "name", "account", "state"],
+    "properties": {
+      "provider": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "account": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["provider", "id", "label", "method", "active"],
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "method": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["kind"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "oauth"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "key"
+                      }
+                    }
+                  }
+                ]
+              },
+              "active": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "state": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind", "limits", "observedAt", "stale", "error"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "ready"
+              },
+              "limits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["label", "used", "limit", "resetsAt"],
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "used": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
+                    },
+                    "resetsAt": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "observedAt": {
+                "type": "number"
+              },
+              "stale": {
+                "type": "boolean"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "reason", "message"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "unavailable"
+              },
+              "reason": {
+                "enum": ["unsupported", "unconfigured", "failed"]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

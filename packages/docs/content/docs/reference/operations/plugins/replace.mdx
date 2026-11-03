@@ -1,0 +1,157 @@
+---
+title: plugins.replace
+description: Replaces the loaded plugins, for the whole host or one session.
+---
+
+Replaces the host's plugins with the plugin files at the given paths, or one session's plugins
+when `scope` names it. Live sessions reload. A plugin that fails its checks keeps its previous
+version (`kept-previous`) or is left out (`rejected`); the report lists each plugin's outcome and
+issues, with the new catalog generation.
+
+## When to call it
+
+From developer tools that reload plugins while they are being written. Most clients never call it.
+
+## Access
+
+Needs `maintenance` authority, which only the host's own processes hold. Host scope; with `scope`,
+the change applies to that session alone.
+
+## Example
+
+Request body:
+
+```json
+{ "plugins": [{ "path": "/Users/ada/.nyte/plugins/review.ts" }] }
+```
+
+Response:
+
+```json
+{
+  "generation": "a41c7e2b-9d3f-4b6a-8e1c-5f7d9b2a4c60",
+  "plugins": [{ "kind": "activated", "id": "review", "issues": [] }]
+}
+```
+
+## Errors
+
+- `unavailable` when the host has no plugin loader: `plugin files: this host has no plugin loader`.
+- `unknown` when `scope` names no session.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `maintenance`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["plugins"],
+  "properties": {
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "required": ["session"],
+      "properties": {
+        "session": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["generation", "plugins"],
+  "properties": {
+    "generation": {
+      "type": "string"
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id", "issues"],
+        "properties": {
+          "kind": {
+            "enum": ["activated", "rejected", "kept-previous"]
+          },
+          "id": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["severity", "path", "message"],
+              "properties": {
+                "severity": {
+                  "enum": ["error", "warning"]
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "message": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "object",
+                  "required": ["plugin"],
+                  "properties": {
+                    "plugin": {
+                      "type": "string"
+                    },
+                    "file": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

@@ -1,0 +1,17 @@
+{
+  "title": "files",
+  "pages": [
+    "read",
+    "bytes",
+    "stat",
+    "write",
+    "remove",
+    "batch",
+    "format",
+    "scan",
+    "find",
+    "search",
+    "watch",
+    "upload"
+  ]
+}

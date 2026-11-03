@@ -1,0 +1,246 @@
+---
+title: git.contents
+description: Reads a file's contents on both sides of a scope.
+---
+
+Reads a file's contents on both sides of a scope: `old` and `new`, each `text`, `truncated` with
+its first part when over 1 MiB, `binary`, or `absent`. A renamed file's old side is read at its old
+path.
+
+## When to call it
+
+For a side-by-side diff editor, which needs whole files rather than hunks.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `git` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "src/date.ts",
+  "scope": { "kind": "unstaged" }
+}
+```
+
+Response:
+
+```json
+{
+  "path": "src/date.ts",
+  "old": { "kind": "text", "text": "export const today = () => new Date();\n" },
+  "new": { "kind": "text", "text": "export const today = () => new Date(Date.now());\n" }
+}
+```
+
+## Errors
+
+- `unavailable` outside a repository, or when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path", "scope"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "worktree"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "staged"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unstaged"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "commit"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "commit"
+            },
+            "commit": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "base"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "branch"
+            },
+            "base": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["path", "old", "new"],
+  "properties": {
+    "path": {
+      "type": "string"
+    },
+    "old": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "absent"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "text"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "head"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "truncated"
+            },
+            "head": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "binary"
+            }
+          }
+        }
+      ]
+    },
+    "new": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "absent"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "text"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "head"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "truncated"
+            },
+            "head": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "binary"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+{/* generated:end */}

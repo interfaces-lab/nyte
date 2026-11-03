@@ -1,0 +1,157 @@
+---
+title: git.stage
+description: Stages the given files.
+---
+
+Stages the given paths, removals included. With `options.expect`, it acts only while the status
+revision still matches. It answers `applied` with the new revision, `unchanged` when nothing moved,
+`stale` with the current revision, `busy` while another git process holds the index lock, or
+`rejected` with git's message.
+
+## When to call it
+
+From a stage action in a changes list. Pass the revision from the status you showed as `expect`.
+
+## Access
+
+Needs `owner` authority. Workspace scope, with the `git` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "paths": ["src/date.ts"],
+  "options": { "expect": "c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3" }
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "applied",
+  "revision": "e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7"
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "paths"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "expect": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "applied"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unchanged"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "runs"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "rejected"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

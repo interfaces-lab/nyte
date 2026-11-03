@@ -1,0 +1,157 @@
+---
+title: github.signIn
+description: Starts a GitHub sign-in on the host machine and returns its one-time code.
+---
+
+Starts `gh auth login` on github.com, or joins the sign-in already running, and answers
+`signing_in` with the one-time code and the page to enter it at. An account already signed in
+answers `ready` and starts nothing. The sign-in ends when the code is entered, when it expires
+after 15 minutes, or on [`github.signOut`](/docs/reference/operations/github/sign-out).
+
+## When to call it
+
+From a "connect GitHub" button. Show the code and open the page, then poll
+[`github.account`](/docs/reference/operations/github/account) until it is `ready`.
+
+## Access
+
+Needs `owner` authority. Host scope: it signs in the whole machine.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+{
+  "kind": "signing_in",
+  "deviceCode": {
+    "userCode": "8F2C-4B1D",
+    "verificationUri": "https://github.com/login/device",
+    "expiresInSeconds": 900
+  }
+}
+```
+
+## Errors
+
+- `unavailable` when the host serves no GitHub login.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "cli_missing"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signed_out"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "deviceCode"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signing_in"
+        },
+        "deviceCode": {
+          "type": "object",
+          "required": ["userCode", "verificationUri"],
+          "properties": {
+            "userCode": {
+              "type": "string"
+            },
+            "verificationUri": {
+              "type": "string"
+            },
+            "expiresInSeconds": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "account"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "ready"
+        },
+        "account": {
+          "type": "object",
+          "required": ["login"],
+          "properties": {
+            "login": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "avatarUrl": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "error"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

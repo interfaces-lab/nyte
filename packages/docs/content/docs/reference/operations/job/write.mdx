@@ -1,0 +1,76 @@
+---
+title: job.write
+description: Sends the request body to a job's input.
+---
+
+Writes the request body to a job's input: its stdin, or the terminal for a pty job. Send the bytes
+as the body and the JSON input in the `X-Nyte-Input` header, base64url encoded.
+
+## When to call it
+
+For each keystroke or paste in a terminal, or to feed input to a piped command. It isn't safe to
+resend after a lost answer: the bytes may already have been written.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+`X-Nyte-Input` decodes to:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "job": "1f3a5c7e-9b2d-4f4a-8c6e-0b2d4f6a8c1e"
+}
+```
+
+The body is the bytes, here `ls\r`. Response:
+
+```json
+null
+```
+
+## Errors
+
+- `unknown` when this host process has no job with the id: `No job has the id <id>.`
+- `invalid` when the input header isn't base64url JSON.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: `never`
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "job"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "job": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

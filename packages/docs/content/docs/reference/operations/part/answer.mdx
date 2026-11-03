@@ -1,0 +1,124 @@
+---
+title: part.answer
+description: Waits until a part is answered and returns the action that answered it.
+---
+
+Waits until a modal part is answered and returns the action and input that answered it. It answers
+`null` when the part isn't a live modal part, or closes without an answer.
+
+## When to call it
+
+When a client created a modal part and needs the user's choice to continue. It is a wait: closing
+the request stops waiting, and it is safe to call again after a lost connection.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "part": "b2d4f6a8-0c1e-4b3d-9f5a-7c9e1b3d5f7a"
+}
+```
+
+Response:
+
+```json
+{ "action": "approve", "input": { "note": "Ship it" } }
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: yes
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "part"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "part": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["action", "input"],
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "input": {
+          "$ref": "Json"
+        }
+      }
+    },
+    {
+      "type": "null"
+    }
+  ],
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

@@ -1,0 +1,151 @@
+---
+title: files.write
+description: Writes a file, optionally only if it still has the expected version.
+---
+
+Writes the request body to a file. Send the bytes as the body and the JSON input in the
+`X-Nyte-Input` header, base64url encoded. With `expect`, the write happens only if the file still
+has that version, or with `"absent"`, only if nothing is there. Missing parent folders are created
+when `parents` is true.
+
+It answers `saved` with the new version, `stale` with the current version (or `null`) when
+`expect` doesn't match, or `missing-parent`. A local file is written through a temporary file
+renamed into place, keeping an existing file's mode.
+
+## When to call it
+
+To save a file from an editor. Pass the version you read as `expect` so you don't overwrite a change
+made in the meantime. To write several files together, use
+[`files.batch`](/docs/reference/operations/files/batch).
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+`X-Nyte-Input` decodes to:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "src/date.ts",
+  "options": { "expect": "4b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d" }
+}
+```
+
+The body is the new contents. Response:
+
+```json
+{
+  "kind": "saved",
+  "version": "7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b"
+}
+```
+
+## Errors
+
+- `invalid` when the input header isn't base64url JSON, or the body is over the host's limit
+  (8 MiB by default, answered with status 413).
+- `unavailable` or `denied` when the workspace doesn't offer files.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "expect": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "absent"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "parents": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "version"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "saved"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "current"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "current": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing-parent"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

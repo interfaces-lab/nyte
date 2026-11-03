@@ -1,0 +1,187 @@
+---
+title: run.settled
+description: Waits until a run ends and returns how it ended.
+---
+
+Waits until a run ends and answers how: `completed` with its usage, `stopped`, or `failed` with the
+failure's class and message.
+
+## When to call it
+
+To wait for a run started by a message, or after [`run.stop`](/docs/reference/operations/run/stop).
+It is a wait: it can block for as long as the run takes, closing the request stops waiting without
+stopping the run, and it is safe to call again after a lost connection.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "run": "4e2a6c8f-1b3d-4f5a-9c7e-0a2b4d6f8c1e"
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "failed",
+  "failure": { "class": "rate_limit", "message": "Rate limited", "retryAfterMs": 30000 }
+}
+```
+
+## Errors
+
+- `unknown` when no run has the id: `No run has the id <id>.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: yes
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "run"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "run": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "usage"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "completed"
+        },
+        "usage": {
+          "type": "object",
+          "required": ["input", "output", "cacheRead", "cacheWrite", "reasoning", "total", "cost"],
+          "properties": {
+            "input": {
+              "type": "number"
+            },
+            "output": {
+              "type": "number"
+            },
+            "cacheRead": {
+              "type": "number"
+            },
+            "cacheWrite": {
+              "type": "number"
+            },
+            "reasoning": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "total": {
+              "type": "number"
+            },
+            "cost": {
+              "type": "object",
+              "required": ["input", "output", "cacheRead", "cacheWrite", "total"],
+              "properties": {
+                "input": {
+                  "type": "number"
+                },
+                "output": {
+                  "type": "number"
+                },
+                "cacheRead": {
+                  "type": "number"
+                },
+                "cacheWrite": {
+                  "type": "number"
+                },
+                "total": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stopped"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "failure"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "failed"
+        },
+        "failure": {
+          "type": "object",
+          "required": ["class", "message"],
+          "properties": {
+            "class": {
+              "enum": [
+                "rate_limit",
+                "auth",
+                "quota",
+                "context_window",
+                "overloaded",
+                "network",
+                "aborted",
+                "provider",
+                "runner"
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "retryAfterMs": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

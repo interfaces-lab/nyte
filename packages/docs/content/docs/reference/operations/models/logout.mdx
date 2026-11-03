@@ -1,0 +1,73 @@
+---
+title: models.logout
+description: Removes a provider's active login and keeps its other saved accounts.
+---
+
+Removes the provider's active saved login. Its other saved accounts stay, and none of them becomes
+active.
+
+## When to call it
+
+When the user signs out of a provider. To switch accounts instead, use
+[`models.selectAccount`](/docs/reference/operations/models/select-account).
+
+## Access
+
+Needs `owner` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{ "provider": "anthropic" }
+```
+
+Response:
+
+```json
+null
+```
+
+A provider with no active login answers the same and changes nothing.
+
+## Errors
+
+- `internal` when the credential store can't be written. The models layer raises its own error,
+  which reaches the wire as `internal` with a `correlation`.
+- `unavailable` when the host was built without models.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["provider"],
+  "properties": {
+    "provider": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

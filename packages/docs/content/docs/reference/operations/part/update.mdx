@@ -1,0 +1,219 @@
+---
+title: part.update
+description: Replaces a part's state.
+---
+
+Replaces a part's state. Pass `options.version` to make the update conditional on the version you
+read. It answers `updated` with the new version, `invalid` with issues when the state fails the
+kind's schema or the part is a built-in one, `stale` when the version moved, or `missing`.
+
+## When to call it
+
+When the part's owner changes what it shows, such as a progress card moving to its next step.
+
+## Access
+
+Any principal with `participant` authority. Session scope. Built-in parts can't be changed from a
+client.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "part": "b2d4f6a8-0c1e-4b3d-9f5a-7c9e1b3d5f7a",
+  "next": { "environment": "production", "commit": "3e1f9a2" },
+  "options": { "version": 1 }
+}
+```
+
+Response:
+
+```json
+{ "kind": "updated", "version": 2 }
+```
+
+## Errors
+
+- `stale` when the write lost to concurrent writes several times in a row.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "part", "next"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "part": {
+      "type": "string"
+    },
+    "next": {
+      "$ref": "Json"
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "version"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "updated"
+        },
+        "version": {
+          "type": "number"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "issues"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "invalid"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "path", "message"],
+            "properties": {
+              "severity": {
+                "enum": ["error", "warning"]
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "message": {
+                "type": "string"
+              },
+              "source": {
+                "type": "object",
+                "required": ["plugin"],
+                "properties": {
+                  "plugin": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "closed"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

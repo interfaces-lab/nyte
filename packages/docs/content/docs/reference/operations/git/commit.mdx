@@ -1,0 +1,176 @@
+---
+title: git.commit
+description: Commits staged files, all changes or the given files with a message.
+---
+
+Commits with a message: the staged files, `all` changes to tracked files, or only the listed
+paths. It answers `applied` with the new revision, `unchanged` when there was nothing to commit,
+`stale`, `busy` or `rejected` with git's message, such as a failing hook.
+
+## When to call it
+
+From a commit box in a source control panel.
+
+## Access
+
+Needs `owner` authority. Workspace scope, with the `git` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "input": { "message": "Read the time zone from the test environment", "files": "staged" }
+}
+```
+
+Response:
+
+```json
+{
+  "kind": "applied",
+  "revision": "a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9"
+}
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "input"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "input": {
+      "type": "object",
+      "required": ["message", "files"],
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "files": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "staged"
+            },
+            {
+              "type": "string",
+              "const": "all"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "expect": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "applied"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unchanged"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "runs"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "rejected"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

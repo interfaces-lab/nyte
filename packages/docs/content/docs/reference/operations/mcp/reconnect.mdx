@@ -1,0 +1,110 @@
+---
+title: mcp.reconnect
+description: Reconnects an MCP server, for one that failed or after fixing its credentials.
+---
+
+Drops an MCP server's connection and connects again. It answers `updated`, `missing` when no
+server has the name, or `invalid` with a message when it can't.
+
+## When to call it
+
+For a server in `failed`, or after fixing its credentials or command. Watch
+[`mcp.watch`](/docs/reference/operations/mcp/watch) for the new state.
+
+## Access
+
+Needs `owner` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "server": "docs"
+}
+```
+
+Response:
+
+```json
+{ "kind": "updated" }
+```
+
+## Errors
+
+- `unavailable` when the host has no MCP servers.
+- `unknown` when no workspace has the id.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "server"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "server": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "updated"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "invalid"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

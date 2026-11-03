@@ -1,0 +1,70 @@
+---
+title: files.upload
+description: Uploads the request body and returns a blob id to use in a batch.
+---
+
+Uploads the request body into the host's store and answers its blob id. Send the bytes as the body
+and the JSON input in the `X-Nyte-Input` header, base64url encoded.
+
+## When to call it
+
+Before a [`files.batch`](/docs/reference/operations/files/batch) whose `put` carries binary or large
+contents, or to attach a file to a message's content.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+`X-Nyte-Input` decodes to:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+The body is the file's bytes. Response:
+
+```json
+"5d41402abc4b2a76b9719d911017c592ae8b6f4c1e0a7d3f2b9c8e1a0f6d5c4b"
+```
+
+## Errors
+
+- `invalid` when the input header isn't base64url JSON, or the body is over the host's limit.
+- `unavailable` or `denied` when the workspace doesn't offer files.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "string"
+}
+```
+
+{/* generated:end */}

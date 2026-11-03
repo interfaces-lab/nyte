@@ -1,0 +1,79 @@
+---
+title: head.release
+description: Releases a held message so it can be sent.
+---
+
+Releases a held message so it can start. Releasing a message that isn't the head's held one does
+nothing.
+
+## When to call it
+
+When the user closes the editor of a queued message, after saving or without changes. A hold that
+isn't renewed ends on its own after 20 seconds.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "message": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b"
+}
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `stale` when the write lost to concurrent writes several times in a row.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head", "message"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

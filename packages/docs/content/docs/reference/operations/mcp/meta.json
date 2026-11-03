@@ -1,0 +1,4 @@
+{
+  "title": "mcp",
+  "pages": ["watch", "reconnect", "set-enabled", "login", "logout", "add", "remove"]
+}
