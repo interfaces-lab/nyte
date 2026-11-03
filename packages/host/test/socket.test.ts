@@ -1,16 +1,13 @@
 import { Buffer } from "node:buffer";
-import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
-import { request } from "node:http";
-import type { IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Duplex } from "node:stream";
 import {
   API_REVISION,
   asId,
   backgroundRowKey,
+  catalogRowKey,
   compile,
   isJson,
   isJsonObject,
@@ -19,9 +16,18 @@ import {
   TextFrameType,
   withJson,
 } from "@nyte-ai/schema";
-import type { HeadName, Json, JsonSchema, SessionId, TextFrame } from "@nyte-ai/schema";
+import type {
+  BackgroundItem,
+  BackgroundRow,
+  HeadName,
+  Json,
+  JsonSchema,
+  SessionId,
+  TextFrame,
+} from "@nyte-ai/schema";
 import type { Listener } from "@nyte-ai/core";
 import type { ServedHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
 import { completed, createServerHost, livePart, publishPatch, setup } from "@nyte-ai/core/testing";
 import { decodeError, decodeOutput, openDirectoryStore, openSessionStore } from "@nyte-ai/protocol";
 import type { DirectoryStore, SessionStore } from "@nyte-ai/protocol";
@@ -31,6 +37,7 @@ import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { listen } from "../src/index.ts";
 import { fakeModels, open } from "./fixtures/fake-models.ts";
 import type { FakeModels } from "./fixtures/fake-models.ts";
+import { rawConnect } from "./fixtures/raw-socket.ts";
 
 const TOKEN = "a-token-of-at-least-16";
 
@@ -88,8 +95,8 @@ async function failureCode(pending: Promise<Json>): Promise<string | null> {
   );
 }
 
-async function compose(fake: FakeModels): Promise<Composed> {
-  const host = await open(fake);
+async function compose(fake: FakeModels, options?: Parameters<typeof open>[1]): Promise<Composed> {
+  const host = await open(fake, options);
   cleanups.push(() => host.close());
 
   return host;
@@ -227,6 +234,40 @@ async function freshSnapshot(client: Client, session: SessionId) {
   const before = client.frames.findIndex((frame) => frame.output === read);
 
   return { snapshot: openSessionStore(decodeOutput("head.read", read)).snapshot(), before };
+}
+
+async function watch(listener: Listener, session: SessionId): Promise<Client> {
+  const client = await connect(listener);
+  await client.call("events.subscribe", { scopes: [`session/${session}`] });
+
+  return client;
+}
+
+async function readAndDrop(listener: Listener, session: SessionId): Promise<SessionStore> {
+  const client = await watch(listener, session);
+  const store = openSessionStore(decodeOutput("head.read", await readWindow(client, session)));
+  client.socket.terminate();
+  await client.closed;
+
+  return store;
+}
+
+async function reconnect(listener: Listener, session: SessionId, store: SessionStore) {
+  const client = await watch(listener, session);
+  const resumed = decodeOutput("head.read", await readWindow(client, session, store));
+  store.resume(resumed);
+
+  return { complete: resumed.complete, fresh: (await freshSnapshot(client, session)).snapshot };
+}
+
+function childState(rows: Iterable<BackgroundRow> | undefined, child: SessionId) {
+  return Array.from(rows ?? []).find((row) => row.item.id === child)?.item.state;
+}
+
+function childReaches(client: Client, child: SessionId, state: BackgroundItem["state"]) {
+  return client.until(
+    (frame) => changes.Check(frame) && childState(frame.tables.background?.upsert, child) === state,
+  );
 }
 
 function hostChange(frame: JsonSchema): boolean {
@@ -431,6 +472,83 @@ describe("the host's WebSocket", () => {
     for (const child of children) await child.receipt.settled();
   });
 
+  it("resumes with the state a child reached while the client was away, without a complete read", async () => {
+    const fake = fakeModels();
+    const host = await compose(fake);
+    const listener = await serve(host);
+    const session = await startSession(host, fake);
+    const watcher = await watch(listener, session);
+    const gate = Promise.withResolvers<void>();
+    fake.reply({ content: [{ type: "text", text: "Done." }], until: gate.promise });
+    const started = await host.sessions.start({ parent: session, content: "One." });
+    const child = started.session.id;
+    await childReaches(watcher, child, "working");
+    const store = await readAndDrop(listener, session);
+
+    expect(childState(store.snapshot().rows.background.values(), child)).toBe("working");
+    gate.resolve();
+    await started.receipt.settled();
+    await childReaches(watcher, child, "done");
+    const resumed = await reconnect(listener, session, store);
+
+    expect(resumed.complete).toBe(false);
+    expect(childState(store.snapshot().rows.background.values(), child)).toBe("done");
+    expect(store.snapshot()).toEqual(resumed.fresh);
+  });
+
+  it("resumes without the child removed while the client was away", async () => {
+    const fake = fakeModels();
+    const host = await compose(fake);
+    const listener = await serve(host);
+    const session = await startSession(host, fake);
+    const watcher = await watch(listener, session);
+    fake.reply({ content: [{ type: "text", text: "Done." }] });
+    const started = await host.sessions.start({ parent: session, content: "One." });
+    const child = started.session.id;
+    await started.receipt.settled();
+    await childReaches(watcher, child, "done");
+    const store = await readAndDrop(listener, session);
+
+    expect(childState(store.snapshot().rows.background.values(), child)).toBe("done");
+    await host.session(child).remove();
+
+    await watcher.until(
+      (frame) =>
+        changes.Check(frame) &&
+        frame.tables.background?.drop.some((key) => key.endsWith(`/${child}`)) === true,
+    );
+
+    const resumed = await reconnect(listener, session, store);
+
+    expect(resumed.complete).toBe(false);
+    expect(childState(store.snapshot().rows.background.values(), child)).toBe(undefined);
+    expect(store.snapshot()).toEqual(resumed.fresh);
+  });
+
+  it("resumes with the plugin command a restarted host published while the client was away", async () => {
+    const fake = fakeModels();
+    const store = memoryStore();
+    const before = await compose(fake, { store });
+    const session = await startSession(before, fake);
+    const held = await readAndDrop(await serve(before), session);
+    const command = { name: "hello", title: "Hello", description: "Says hi.", run: () => "hi" };
+    const plugins = [{ id: "greeter", contribute: { commands: [command] } }];
+    const listener = await serve(await compose(fake, { store, plugins }));
+    const watcher = await watch(listener, session);
+
+    await vi.waitFor(async () => {
+      const read = decodeOutput("head.read", await readWindow(watcher, session));
+
+      expect(read.tables.catalog.upsert.map(catalogRowKey)).toContain("commands/hello");
+    });
+
+    const resumed = await reconnect(listener, session, held);
+
+    expect(resumed.complete).toBe(false);
+    expect(held.snapshot().rows.catalog.has("commands/hello")).toBe(true);
+    expect(held.snapshot()).toEqual(resumed.fresh);
+  });
+
   it("sends a streaming part's live text when the text channel opens, then its appends, adding up to the part's text", async () => {
     const harness = await setup();
     const listener = await serve({ ...harness.host, server: createServerHost(harness.kernel) });
@@ -483,7 +601,7 @@ describe("the host's WebSocket", () => {
     const host = await compose(fake);
     const listener = await serve(host);
     const session = await startSession(host, fake);
-    const raw = await rawConnect(listener);
+    const raw = await rawConnect(listener, TOKEN);
 
     raw.write(JSON.stringify(hello()));
     raw.write(
@@ -865,108 +983,10 @@ describe("clients as principals", () => {
   });
 });
 
-async function rawConnect(listener: Listener) {
-  const address = new URL(listener.address ?? "");
-
-  const upgraded = await new Promise<{ readonly socket: Duplex; readonly head: Buffer }>(
-    (done, failed) => {
-      const sent = request({
-        host: address.hostname,
-        port: address.port,
-        path: "/.nyte/ws",
-        headers: {
-          Authorization: `Bearer ${TOKEN}`,
-          Connection: "Upgrade",
-          Upgrade: "websocket",
-          "Sec-WebSocket-Version": "13",
-          "Sec-WebSocket-Key": randomBytes(16).toString("base64"),
-        },
-      });
-
-      sent.once("upgrade", (_response: IncomingMessage, socket: Duplex, head: Buffer) => {
-        socket.pause();
-        done({ socket, head });
-      });
-      sent.once("error", failed);
-      sent.end();
-    },
-  );
-
-  const socket = upgraded.socket;
-
-  return {
-    write(text: string): void {
-      socket.write(maskedFrame(Buffer.from(text, "utf8")));
-    },
-    async closing(): Promise<{ readonly code: number; readonly reason: string }> {
-      let buffered = upgraded.head;
-
-      for await (const chunk of socket) {
-        assert(Buffer.isBuffer(chunk));
-        buffered = Buffer.concat([buffered, chunk]);
-
-        for (;;) {
-          const frame = readFrame(buffered);
-
-          if (frame === null) break;
-          buffered = buffered.subarray(frame.size);
-
-          if (frame.opcode === 8)
-            return {
-              code: frame.payload.readUInt16BE(0),
-              reason: frame.payload.subarray(2).toString("utf8"),
-            };
-        }
-      }
-
-      return { code: 0, reason: "ended" };
-    },
-  };
-}
-
 function readText(data: RawData): string {
   if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
 
   if (data instanceof ArrayBuffer) return Buffer.from(data).toString("utf8");
 
   return data.toString("utf8");
-}
-
-function maskedFrame(payload: Buffer): Buffer {
-  const mask = randomBytes(4);
-
-  const header =
-    payload.length < 126
-      ? Buffer.from([0x81, 0x80 | payload.length])
-      : Buffer.from([0x81, 0x80 | 126, payload.length >> 8, payload.length & 0xff]);
-
-  const masked = Buffer.from(payload.map((byte, index) => byte ^ (mask[index % 4] ?? 0)));
-
-  return Buffer.concat([header, mask, masked]);
-}
-
-function readFrame(
-  buffered: Buffer,
-): { readonly opcode: number; readonly payload: Buffer; readonly size: number } | null {
-  if (buffered.length < 2) return null;
-  const opcode = (buffered[0] ?? 0) & 0x0f;
-  const short = (buffered[1] ?? 0) & 0x7f;
-  const offset = short === 126 ? 4 : short === 127 ? 10 : 2;
-
-  if (buffered.length < offset) return null;
-
-  const length =
-    short === 126
-      ? buffered.readUInt16BE(2)
-      : short === 127
-        ? Number(buffered.readBigUInt64BE(2))
-        : short;
-
-  if (buffered.length < offset + length) return null;
-
-  return {
-    opcode,
-    payload: buffered.subarray(offset, offset + length),
-    size: offset + length,
-  };
 }

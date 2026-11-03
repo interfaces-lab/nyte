@@ -139,6 +139,10 @@ export function readWindow(
         }),
         drop: tables.turns.drop,
       },
+      catalog: {
+        upsert: Array.from(catalogRows(state.catalog).values()),
+        drop: tables.catalog.drop,
+      },
       heads: { upsert: sent("heads", head) ? [row] : [], drop: tables.heads.drop },
       settings: {
         upsert: sent("settings", head) ? [readSettingsRow(state, head)] : [],
@@ -149,9 +153,7 @@ export function readWindow(
         drop: tables.usage.drop,
       },
       background: {
-        upsert: Array.from(backgroundRows(head, state.heads.get(head)?.background ?? [])).flatMap(
-          ([key, entry]) => (sent("background", key) ? [entry] : []),
-        ),
+        upsert: Array.from(backgroundRows(head, state.heads.get(head)?.background ?? []).values()),
         drop: tables.background.drop,
       },
     },

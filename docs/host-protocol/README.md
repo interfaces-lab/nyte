@@ -84,7 +84,7 @@ A connection that drops loses the events the host logged while it was gone. The 
 - it sends `from`, the first message id it holds, so the host knows the window it had;
 - it sends the window it wants now.
 
-The host answers with the window's `order`, `leadingPrompt`, the turn ids the window spans, and rows: every row of the window with `seq` above the client's, and every row of the window the client did not hold, because it was before `from` or in a table the client had not read. Live parts come whole. Rows that are in the client's store but not in the answer's order or turn list are rows the client drops.
+The host answers with the window's `order`, `leadingPrompt`, the turn ids the window spans, and rows: every row of the window with `seq` above the client's, and every row of the window the client did not hold, because it was before `from` or in a table the client had not read. Live parts come whole. So do the head's `background` rows and the session's `catalog` rows: a child's, job's or page's state and the catalog join a seq the client may already hold, so the client replaces the head's background rows and the catalog with the answer's. Rows that are in the client's store but not in the answer's order or turn list are rows the client drops.
 
 A `from` the host cannot place on the path any more, because the head was rewound or moved, answers a whole window as a first read does. So does a `seq` older than the log the host still holds, as when the host restored a fold checkpoint newer than the client.
 

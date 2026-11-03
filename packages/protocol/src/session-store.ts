@@ -95,6 +95,9 @@ export function openSessionStore(window: HeadWindow): SessionStore {
       stale = false;
 
       if (next.complete) rows = emptyRows();
+      rows.catalog.clear();
+
+      for (const [key, row] of rows.background) if (row.head === head) rows.background.delete(key);
       write(rows, next.tables);
 
       const kept = new Set<string>([
