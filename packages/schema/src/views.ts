@@ -16,7 +16,16 @@ import { PartStatusType, PartViewType } from "./parts.ts";
 import { BackgroundItemType, ExecutionType, RunEndType, WaitTargetType } from "./runs.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
-import { HeadInfoType, SessionCatalogViewType, SessionInfoType } from "./sessions.ts";
+import {
+  AgentInfoType,
+  CommandInfoType,
+  HeadInfoType,
+  SessionCatalogViewType,
+  SessionInfoType,
+  SettingInfoType,
+  SkillInfoType,
+  ToolInfoType,
+} from "./sessions.ts";
 import { nullable } from "./wire/nullable.ts";
 import { ActivationType } from "./workspaces.ts";
 
@@ -214,6 +223,111 @@ export const SessionsFrameType = Type.Object({
 
 /** One frame of `sessions.watch`: the list's session ids as the previous frame's ids spliced (a `list` splices from none and starts every stream), and the row of each id the splice takes; a row a client cannot read is left out. */
 export type SessionsFrame = Decoded<typeof SessionsFrameType>;
+
+export const HeadRowType = Type.Object({
+  name: idSchema<"head">(),
+  revision: nullable(idSchema<"revision">()),
+  execution: ExecutionType,
+  configuration: Type.Object({
+    selected: nullable(ConfigurationType),
+    effective: nullable(ConfigurationType),
+  }),
+  context: ContextViewType,
+  usage: UsageType,
+  reportsHeld: Type.Boolean(),
+  seenThrough: nullable(Type.Number()),
+  queue: Type.Array(idSchema<"message">()),
+});
+
+export type HeadRow = Decoded<typeof HeadRowType>;
+
+export const BackgroundRowType = Type.Object({
+  head: idSchema<"head">(),
+  item: BackgroundItemType,
+});
+
+export type BackgroundRow = Decoded<typeof BackgroundRowType>;
+
+export const CatalogRowType = Type.Union([
+  Type.Object({ kind: Type.Literal("commands"), entry: CommandInfoType }),
+  Type.Object({ kind: Type.Literal("settings"), entry: SettingInfoType }),
+  Type.Object({ kind: Type.Literal("skills"), entry: SkillInfoType }),
+  Type.Object({ kind: Type.Literal("agents"), entry: AgentInfoType }),
+  Type.Object({ kind: Type.Literal("tools"), entry: ToolInfoType }),
+]);
+
+export type CatalogRow = Decoded<typeof CatalogRowType>;
+
+function tableChange<T extends TSchema>(row: T) {
+  return Type.Object({ upsert: Type.Array(row), drop: Type.Array(Type.String()) });
+}
+
+export const TableChangesType = Type.Object({
+  messages: tableChange(MessageType),
+  turns: tableChange(TurnInfoType),
+  parts: tableChange(PartViewType),
+  changes: tableChange(FileChangeType),
+  catalog: tableChange(CatalogRowType),
+  heads: tableChange(HeadRowType),
+  background: tableChange(BackgroundRowType),
+});
+
+export type TableChanges = Decoded<typeof TableChangesType>;
+
+export const PathChangeType = Type.Object({
+  head: idSchema<"head">(),
+  after: nullable(idSchema<"message">()),
+  ids: Type.Array(idSchema<"message">()),
+});
+
+export type PathChange = Decoded<typeof PathChangeType>;
+
+export const SessionChangeType = Type.Object({
+  seq: SeqType,
+  tables: TableChangesType,
+  paths: Type.Array(PathChangeType),
+});
+
+export type SessionChange = Decoded<typeof SessionChangeType>;
+
+export const WindowSpecType = Type.Union([
+  Type.Object({ tail: Type.Number() }),
+  Type.Object({ from: idSchema<"message">() }),
+]);
+
+export type WindowSpec = Decoded<typeof WindowSpecType>;
+
+export const ResumeType = Type.Object({
+  seq: SeqType,
+  from: nullable(idSchema<"message">()),
+});
+
+export type Resume = Decoded<typeof ResumeType>;
+
+export const HeadWindowType = Type.Object({
+  seq: SeqType,
+  head: idSchema<"head">(),
+  order: Type.Array(idSchema<"message">()),
+  leadingPrompt: nullable(idSchema<"message">()),
+  tables: TableChangesType,
+  live: Type.Object({ activation: ActivationType }),
+});
+
+export type HeadWindow = Decoded<typeof HeadWindowType>;
+
+export function catalogRowKey(row: CatalogRow): string {
+  switch (row.kind) {
+    case "settings":
+    case "agents":
+      return `${row.kind}/${row.entry.id}`;
+    default:
+      return `${row.kind}/${row.entry.name}`;
+  }
+}
+
+export function backgroundRowKey(row: BackgroundRow): string {
+  return `${row.head}/${row.item.kind}/${row.item.id}`;
+}
 
 export const ViewOptionsSchema: Schema<ViewOptions> = standard(ViewOptionsType);
 

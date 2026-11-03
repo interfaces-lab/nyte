@@ -94,6 +94,8 @@ export type {
 
 export { holdMessage } from "./api/hold.ts";
 
+export { changesSince, readWindow } from "./fold/window.ts";
+
 export type {
   FoldCheckpoint,
   FoldCheckpoints,

@@ -100,7 +100,7 @@ export function holdsReports(execution: Execution): boolean {
   return execution.kind === "idle" && execution.lastRun?.end.kind !== "completed";
 }
 
-function readSeenThrough(state: FoldState, head: HeadName): number | null {
+export function readSeenThrough(state: FoldState, head: HeadName): number | null {
   const mark = state.seen.get(state.principal)?.get(head) ?? null;
 
   return mark === null ? null : (state.commits.get(mark)?.at ?? null);
@@ -202,7 +202,7 @@ function readQueue(state: FoldState, folded: FoldHead): readonly QueuedMessage[]
   return queue;
 }
 
-function belongsInQueue(message: Message, execution: Execution): message is QueuedMessage {
+export function belongsInQueue(message: Message, execution: Execution): message is QueuedMessage {
   if (message.kind !== "user" || message.status.kind !== "pending") return false;
 
   if (message.source.kind === "child" || message.source.kind === "job") return false;

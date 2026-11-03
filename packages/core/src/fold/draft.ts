@@ -1,6 +1,8 @@
-import { asId, compile } from "@nyte-ai/schema";
+import { asId, backgroundRowKey, catalogRowKey, compile } from "@nyte-ai/schema";
 import type {
   BackgroundItem,
+  BackgroundRow,
+  CatalogRow,
   CommitId,
   ContextView,
   Execution,
@@ -190,7 +192,7 @@ export function setChanges(draft: Draft, files: readonly FileChange[]): void {
 }
 
 export function setCatalog(draft: Draft, catalog: SessionCatalogView): void {
-  diffRows(draft, "catalog", catalogEntries(draft.catalog), catalogEntries(catalog));
+  diffRows(draft, "catalog", catalogRows(draft.catalog), catalogRows(catalog));
   draft.catalog = catalog;
 }
 
@@ -214,8 +216,8 @@ export function noteHead(
     diffRows(
       draft,
       "background",
-      backgroundEntries(name, current?.background ?? []),
-      backgroundEntries(name, next.background),
+      backgroundRows(name, current?.background ?? []),
+      backgroundRows(name, next.background),
     );
 
   if ((current?.info.execution.kind === "idle") !== (next.info.execution.kind === "idle"))
@@ -228,8 +230,7 @@ export function dropHead(draft: Draft, name: HeadName): void {
   if (head === undefined) return;
   dropRow(draft, "heads", name);
 
-  for (const key of backgroundEntries(name, head.background).keys())
-    dropRow(draft, "background", key);
+  for (const key of backgroundRows(name, head.background).keys()) dropRow(draft, "background", key);
   touchPath(draft, name, 0);
 }
 
@@ -277,21 +278,25 @@ function diffRows(
   for (const key of before.keys()) if (!after.has(key)) dropRow(draft, table, key);
 }
 
-function catalogEntries(catalog: SessionCatalogView): ReadonlyMap<string, unknown> {
-  return new Map<string, unknown>([
-    ...catalog.commands.map((entry) => [`commands/${entry.name}`, entry] as const),
-    ...catalog.settings.map((entry) => [`settings/${entry.id}`, entry] as const),
-    ...catalog.skills.map((entry) => [`skills/${entry.name}`, entry] as const),
-    ...catalog.agents.map((entry) => [`agents/${entry.id}`, entry] as const),
-    ...catalog.tools.map((entry) => [`tools/${entry.name}`, entry] as const),
-  ]);
+export function catalogRows(catalog: SessionCatalogView): ReadonlyMap<string, CatalogRow> {
+  const rows: readonly CatalogRow[] = [
+    ...catalog.commands.map((entry): CatalogRow => ({ kind: "commands", entry })),
+    ...catalog.settings.map((entry): CatalogRow => ({ kind: "settings", entry })),
+    ...catalog.skills.map((entry): CatalogRow => ({ kind: "skills", entry })),
+    ...catalog.agents.map((entry): CatalogRow => ({ kind: "agents", entry })),
+    ...catalog.tools.map((entry): CatalogRow => ({ kind: "tools", entry })),
+  ];
+
+  return new Map(rows.map((row) => [catalogRowKey(row), row]));
 }
 
-function backgroundEntries(
+export function backgroundRows(
   head: HeadName,
   items: readonly BackgroundItem[],
-): ReadonlyMap<string, BackgroundItem> {
-  return new Map(items.map((item) => [`${head}/${item.kind}/${item.id}`, item]));
+): ReadonlyMap<string, BackgroundRow> {
+  const rows = items.map((item) => ({ head, item }));
+
+  return new Map(rows.map((row) => [backgroundRowKey(row), row]));
 }
 
 function pending(message: Message | undefined): boolean {
