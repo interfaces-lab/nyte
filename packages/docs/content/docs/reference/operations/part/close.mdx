@@ -1,0 +1,75 @@
+---
+title: part.close
+description: Closes a part.
+---
+
+Closes a part. A modal part waiting for an answer closes without one, and its action in progress,
+if any, ends `closed`. Closing a part that is already gone does nothing.
+
+## When to call it
+
+When the part's owner is done with it, or the user dismisses a modal part.
+
+## Access
+
+Any principal with `participant` authority. Session scope. Built-in parts can't be closed from a
+client.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "part": "b2d4f6a8-0c1e-4b3d-9f5a-7c9e1b3d5f7a"
+}
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `denied` when the part is a built-in one: `<kind> is a built-in part.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "part"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "part": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

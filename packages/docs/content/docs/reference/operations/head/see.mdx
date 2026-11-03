@@ -1,0 +1,81 @@
+---
+title: head.see
+description: Marks a head as seen up to a commit.
+---
+
+Marks a head as seen by the calling principal up to a commit. A head's `unread` turns false once
+its tip is the commit seen, and the view's `seenThrough` moves to that commit's time. A mark
+already at or past the commit is left as it is.
+
+## When to call it
+
+When the user has looked at a chat, with the id of the last commit on screen, so other clients of
+the same principal stop showing it as unread.
+
+## Access
+
+Any principal with `participant` authority. Session scope. The mark belongs to the caller's
+principal.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "commit": "a3f1c5e7b9d2f4a6c8e0b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3"
+}
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head", "commit"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "commit": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

@@ -1,0 +1,116 @@
+---
+title: head.hold
+description: Holds a queued message so it is not sent while it is being edited.
+---
+
+Holds a queued message so no run starts with it while it is being edited. The hold lasts 20
+seconds; call again to renew it. While it holds, the messages queued behind it wait too, and it
+doesn't join a running turn.
+
+It answers `held`, `sent` when the message already started, or `missing` when it was withdrawn or
+isn't queued on this head.
+
+## When to call it
+
+When the user starts editing a queued message. Renew every few seconds while the editor is open,
+then save with [`head.revise`](/docs/reference/operations/head/revise) and let go with
+[`head.release`](/docs/reference/operations/head/release). A head holds one message at a time:
+holding another ends the first hold.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "message": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b"
+}
+```
+
+Response:
+
+```json
+{ "kind": "held" }
+```
+
+## Errors
+
+- `stale` when the write lost to concurrent writes several times in a row.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head", "message"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "held"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "sent"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

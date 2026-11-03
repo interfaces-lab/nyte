@@ -1,0 +1,284 @@
+---
+title: workspace.command
+description: Runs a workspace command without a chat, with the text typed after it.
+---
+
+Runs a command from [`workspace.catalog`](/docs/reference/operations/workspace/catalog) without a
+chat, with the text typed after it (`""` for none). A command that returns text answers `ran`. A
+command that answers with a prompt runs nothing more: the `prompt` outcome carries the first
+message of the chat it asks to start, which the client passes to
+[`sessions.start`](/docs/reference/operations/sessions/start).
+
+## When to call it
+
+When the user runs a slash command in the composer of a chat that hasn't started.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "name": "review",
+  "text": "src/app.ts"
+}
+```
+
+Response:
+
+```json
+{ "kind": "prompt", "content": "Review src/app.ts for bugs and missing tests." }
+```
+
+`unknown` answers that no command has the name; `failed` carries the message of a command that
+threw.
+
+## Errors
+
+- `unknown` when no workspace has the id.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "name", "text"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "output"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "ran"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "content"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "prompt"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["kind", "text"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "text"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "blob", "mime", "name"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "file"
+                      },
+                      "blob": {
+                        "type": "string"
+                      },
+                      "mime": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "path"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "reference"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "blob": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "name", "location"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "skill"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "location": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "source", "text"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "excerpt"
+                      },
+                      "source": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": ["kind", "path", "side", "start", "end"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "diff"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "side": {
+                                "enum": ["old", "new"]
+                              },
+                              "start": {
+                                "type": "number"
+                              },
+                              "end": {
+                                "type": "number"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "terminal"
+                              },
+                              "command": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "url", "selector"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "browser"
+                              },
+                              "url": {
+                                "type": "string"
+                              },
+                              "selector": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unknown"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "failed"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

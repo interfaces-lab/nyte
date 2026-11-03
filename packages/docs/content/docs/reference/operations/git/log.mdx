@@ -1,0 +1,133 @@
+---
+title: git.log
+description: Lists commit history from a commit, or from HEAD, one page at a time.
+---
+
+Lists commit history from `head`, or from HEAD when it is absent, one page at a time: each commit's
+id, subject, author, time and parents. `limit` defaults to 50. Pass `next` back as `cursor`, with
+the same `head`, for the following page.
+
+## When to call it
+
+For a history view, or to let the user pick a commit for a `commit` scope.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `git` capability. History is
+repository-wide.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "limit": 1
+}
+```
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "id": "3e1f9a2c4b6d8e0f1a3c5e7b9d2f4a6c8e0b1d3f",
+      "subject": "Read the time zone from the test environment",
+      "author": "Ada Lovelace",
+      "committedAt": 1767240000000,
+      "parents": ["8d0f2b4a6c8e0a1b3c5d7e9f1a2b4c6d8e0f1a3b"]
+    }
+  ],
+  "next": "1"
+}
+```
+
+## Errors
+
+- `unavailable` outside a repository, or when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "cursor": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "number"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["items", "next"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "subject", "author", "committedAt", "parents"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "committedAt": {
+            "type": "number"
+          },
+          "parents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "next": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}
+```
+
+{/* generated:end */}

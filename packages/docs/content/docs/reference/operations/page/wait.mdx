@@ -1,0 +1,203 @@
+---
+title: page.wait
+description: Waits until a page loads, text appears or disappears, or a delay passes.
+---
+
+Waits until a page finishes loading, until text appears (`present: true`) or disappears
+(`present: false`), or until a delay in milliseconds passes. It answers a page outcome as
+[`page.navigate`](/docs/reference/operations/page/navigate) does.
+
+## When to call it
+
+After an action that loads or changes the page, before reading its snapshot.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `browser` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "page": "page-7",
+  "condition": { "kind": "text", "text": "Order placed", "present": true }
+}
+```
+
+Response, with the snapshot shortened:
+
+```json
+{ "kind": "applied", "snapshot": { "revision": "19", "nodes": [] } }
+```
+
+## Errors
+
+- `unknown` when no open page has the id.
+- `unavailable` or `denied` when the workspace doesn't offer a browser.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `browser`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "page", "condition"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "page": {
+      "type": "string"
+    },
+    "condition": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "loaded"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "text", "present"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "text"
+            },
+            "text": {
+              "type": "string"
+            },
+            "present": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "ms"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "delay"
+            },
+            "ms": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "snapshot"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "applied"
+        },
+        "snapshot": {
+          "type": "object",
+          "required": ["revision", "nodes"],
+          "properties": {
+            "revision": {
+              "type": "string"
+            },
+            "nodes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["ref", "role", "name", "editable", "depth"],
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "editable": {
+                    "type": "boolean"
+                  },
+                  "depth": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "refused"
+        },
+        "reason": {
+          "enum": ["unknown-ref", "occluded", "not-visible", "policy"]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "closed"
+        },
+        "reason": {
+          "enum": ["released", "reclaimed", "crashed"]
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

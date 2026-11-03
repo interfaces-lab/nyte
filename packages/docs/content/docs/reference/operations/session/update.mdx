@@ -1,0 +1,138 @@
+---
+title: session.update
+description: Renames, pins, archives or moves a session to another workspace.
+---
+
+Changes a session's name, pinned or archived flag, or moves it to another workspace. A field left
+out keeps its value, and a `name` of `null` clears the name. A patch that changes nothing succeeds
+without writing.
+
+Moving to another workspace answers `busy` with the live runs while any run is live, and
+`unknown-workspace` when the workspace isn't registered. After a move, the session's environment
+detaches, its plugins reload, and a worktree it ran in is released.
+
+## When to call it
+
+From rename, pin, archive and "move to workspace" actions on a session.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "patch": { "name": "Fix the date test", "pinned": true }
+}
+```
+
+Response:
+
+```json
+{ "kind": "updated" }
+```
+
+## Errors
+
+- `unknown` when no session has the id.
+- `stale` when the write lost to concurrent writes several times in a row.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "patch"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "patch": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "workspace": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "updated"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "runs"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unknown-workspace"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

@@ -1,0 +1,118 @@
+---
+title: job.resize
+description: Resizes a job's terminal.
+---
+
+Resizes a pty job's terminal. It answers `resized`, `not-pty` for a piped command, or `missing`
+once the job is gone.
+
+## When to call it
+
+Each time a terminal view changes size.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "job": "1f3a5c7e-9b2d-4f4a-8c6e-0b2d4f6a8c1e",
+  "size": { "columns": 160, "rows": 40 }
+}
+```
+
+Response:
+
+```json
+{ "kind": "resized" }
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "job", "size"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "job": {
+      "type": "string"
+    },
+    "size": {
+      "type": "object",
+      "required": ["columns", "rows"],
+      "properties": {
+        "columns": {
+          "type": "number"
+        },
+        "rows": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "resized"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "not-pty"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

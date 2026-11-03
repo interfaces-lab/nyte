@@ -1,0 +1,114 @@
+---
+title: files.find
+description: Lists the files whose paths best match a query, best first.
+---
+
+Lists the files whose paths best match a query, best first: exact name, name prefix, name
+substring, path substring, then a fuzzy match, shorter paths first among equals. Matching ignores
+case. `limit` defaults to 20 and stops at 50.
+
+## When to call it
+
+For a "go to file" picker as the user types.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "query": "date",
+  "limit": 5
+}
+```
+
+Response:
+
+```json
+[
+  { "path": "src/date.ts", "kind": "file", "size": 41, "version": null },
+  { "path": "test/date.test.ts", "kind": "file", "size": 812, "version": null }
+]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer files.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "query"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "query": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "number"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["path", "kind", "size", "version"],
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "kind": {
+        "enum": ["file", "directory", "symlink"]
+      },
+      "size": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

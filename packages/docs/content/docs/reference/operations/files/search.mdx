@@ -1,0 +1,180 @@
+---
+title: files.search
+description: Streams matches for a text search across the workspace's files.
+---
+
+Streams the lines that match a text search across the workspace's files. The query is literal
+unless `regex`, case-insensitive while it has no capitals unless `caseSensitive` says otherwise,
+and matches whole words only with `wholeWord`. `include` and `exclude` are globs. A file listed in
+`drafts` is searched in the draft's contents instead of on disk, so unsaved edits are found.
+
+Each `match` frame has the path, the 1-based line and column, the match's length and the line's
+text. The stream ends with `complete`, or `truncated` at `limit` matches (200 by default).
+
+## When to call it
+
+For a project-wide search panel. Pass the editor's unsaved buffers as `drafts`.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `files` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "query": "new Date(",
+  "include": ["src/**"]
+}
+```
+
+Frames:
+
+```json
+{
+  "kind": "match",
+  "path": "src/date.ts",
+  "line": 1,
+  "column": 28,
+  "length": 9,
+  "text": "export const today = () => new Date();"
+}
+```
+
+```json
+{ "kind": "complete" }
+```
+
+## Errors
+
+- `invalid` when the regex or a glob can't be read.
+- `unavailable` or `denied` when the workspace doesn't offer files.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `stream`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `files`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "query"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "query": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "number"
+    },
+    "caseSensitive": {
+      "type": "boolean"
+    },
+    "wholeWord": {
+      "type": "boolean"
+    },
+    "regex": {
+      "type": "boolean"
+    },
+    "include": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "exclude": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "drafts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "contents"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "contents": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "path", "line", "column", "length", "text"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "match"
+        },
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "number"
+        },
+        "column": {
+          "type": "number"
+        },
+        "length": {
+          "type": "number"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "complete"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "limit"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "truncated"
+        },
+        "limit": {
+          "type": "number"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

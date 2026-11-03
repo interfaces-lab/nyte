@@ -1,0 +1,111 @@
+---
+title: git.blame
+description: Reads who last changed each line of a file.
+---
+
+Reads who last changed each line of the working tree's copy of a file: the commit, author and time
+per line.
+
+## When to call it
+
+For blame annotations in an editor's gutter.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `git` capability.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "path": "src/date.ts"
+}
+```
+
+Response:
+
+```json
+{
+  "path": "src/date.ts",
+  "lines": [
+    {
+      "line": 1,
+      "commit": "3e1f9a2c4b6d8e0f1a3c5e7b9d2f4a6c8e0b1d3f",
+      "author": "Ada Lovelace",
+      "at": 1767240000000
+    }
+  ]
+}
+```
+
+## Errors
+
+- `unavailable` outside a repository, or when the workspace doesn't offer git.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `git`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "path"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["path", "lines"],
+  "properties": {
+    "path": {
+      "type": "string"
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["line", "commit", "author", "at"],
+        "properties": {
+          "line": {
+            "type": "number"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "at": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

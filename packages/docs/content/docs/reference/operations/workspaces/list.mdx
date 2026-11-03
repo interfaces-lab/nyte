@@ -1,0 +1,258 @@
+---
+title: workspaces.list
+description: Lists the workspaces the host knows.
+---
+
+Lists the workspaces registered on the host, each with its target, identity, availability, trust,
+session count and the runs writing to it.
+
+## When to call it
+
+To show a workspace picker, or to find the workspace id for a folder. A workspace that registered
+and later went away still lists, with `availability` `unavailable`.
+
+## Access
+
+Any principal with `participant` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+[
+  {
+    "id": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+    "target": { "kind": "local", "path": "/Users/ada/code/shop" },
+    "identity": "e3a1c9f04b7d2e6a8c5f1b3d9e7a2c4f6b8d0e1a3c5f7b9d2e4a6c8f0b1d3e5a",
+    "availability": { "kind": "available" },
+    "projectResources": true,
+    "trusted": true,
+    "projectSources": [".nyte/plugins/review.ts", ".nyte/mcp.json"],
+    "addedBy": "local",
+    "sessions": 3,
+    "writers": [],
+    "isolation": null
+  }
+]
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "id",
+      "target",
+      "identity",
+      "availability",
+      "projectResources",
+      "trusted",
+      "projectSources",
+      "addedBy",
+      "sessions",
+      "writers",
+      "isolation"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "target": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind", "path"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "local"
+              },
+              "path": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "locator"],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "locator": {
+                "$ref": "Json"
+              }
+            }
+          }
+        ]
+      },
+      "identity": {
+        "type": "string"
+      },
+      "availability": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "available"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "reason"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "unavailable"
+              },
+              "reason": {
+                "enum": ["unsupported", "unreachable"]
+              }
+            }
+          }
+        ]
+      },
+      "projectResources": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "trusted": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "projectSources": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "addedBy": {
+        "type": "string"
+      },
+      "sessions": {
+        "type": "number"
+      },
+      "writers": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "isolation": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["kind", "source", "session", "branch", "base"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "worktree"
+              },
+              "source": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string"
+              },
+              "branch": {
+                "type": "string"
+              },
+              "base": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

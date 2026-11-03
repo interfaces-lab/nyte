@@ -1,0 +1,394 @@
+---
+title: head.send
+description: Sends a message to a head and returns its receipt.
+---
+
+Sends a message to a head and answers its receipt once the session's `before_send` hooks have
+accepted it. The message id is the receipt id. What happens next depends on `delivery`: `steer`
+(the default) reaches a live run at its next boundary, `queue` waits for the run to end and starts
+the next one, and `attach` joins the next turn without starting one. `steer` and `queue` start a
+run when nothing is running.
+
+With `replace`, the message edits an earlier one: the new content takes its place, and the messages
+after it leave the head's path while staying in the session's tree. `running` decides whether a live run is stopped (`stop`, the default) or
+the edit refused (`refuse`), `abandoned` whether the replaced messages are summarized, and `expect`
+makes the edit conditional on the head's revision.
+
+## When to call it
+
+Each time the user sends a message to an existing chat. To start a chat, use
+[`sessions.start`](/docs/reference/operations/sessions/start).
+[Send messages](/docs/sdk/guides/send-messages) covers delivery, edits and waiting.
+
+Mint `options.id` before the first attempt and send it with every retry: the same id and input
+return the first admission instead of sending twice. Then wait with
+[`receipt.landed`](/docs/reference/operations/receipt/landed) or
+[`receipt.settled`](/docs/reference/operations/receipt/settled).
+
+## Access
+
+Any principal with `participant` authority. Session scope; `head` names the head, `main` for the
+chat's own.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "head": "main",
+  "content": "Then add a regression test",
+  "options": { "delivery": "queue", "id": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b" }
+}
+```
+
+Response:
+
+```json
+{
+  "receipt": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b",
+  "message": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b"
+}
+```
+
+## Errors
+
+- `unknown` when no session has the id, or the session has no such head:
+  `Session <id> has no head <head>.`
+- `invalid` when the receipt id was used for different input: `Receipt <id> was used for another
+command.`
+- `invalid` when a `before_send` hook refuses the message, with the hook's reason.
+- `invalid` with `replace` when the message it names is still being decided.
+- `internal` when a `before_send` hook fails.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `receipt`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: `replay`
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "head", "content"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "head": {
+      "type": "string"
+    },
+    "content": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "text"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "blob", "mime", "name"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "file"
+                  },
+                  "blob": {
+                    "type": "string"
+                  },
+                  "mime": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "path"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "reference"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "blob": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "name", "location"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "skill"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "location": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "source", "text"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "excerpt"
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["kind", "path", "side", "start", "end"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "diff"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "side": {
+                            "enum": ["old", "new"]
+                          },
+                          "start": {
+                            "type": "number"
+                          },
+                          "end": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "terminal"
+                          },
+                          "command": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "url", "selector"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "browser"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "selector": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "delivery": {
+          "enum": ["steer", "queue", "attach"]
+        },
+        "replace": {
+          "type": "string"
+        },
+        "running": {
+          "enum": ["refuse", "stop"]
+        },
+        "abandoned": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "keep"
+            },
+            {
+              "type": "object",
+              "required": ["summarize"],
+              "properties": {
+                "summarize": {
+                  "type": "object",
+                  "properties": {
+                    "instructions": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "expect": {
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "last"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "message"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "before"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "user"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "session", "end"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "child"
+                },
+                "session": {
+                  "type": "string"
+                },
+                "end": {
+                  "enum": ["completed", "stopped", "failed"]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "job"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "job"
+                },
+                "job": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "shell"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "label"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "action"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "command": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["receipt", "message"],
+  "properties": {
+    "receipt": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    }
+  }
+}
+```
+
+{/* generated:end */}

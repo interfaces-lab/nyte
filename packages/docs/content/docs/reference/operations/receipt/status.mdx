@@ -1,0 +1,150 @@
+---
+title: receipt.status
+description: Checks whether a receipt is pending, settled or missing.
+---
+
+Answers a receipt's state at once: `pending`, `settled` with its outcome, or `missing`. With
+`session` `null`, the receipt is a file batch's from
+[`files.batch`](/docs/reference/operations/files/batch), which this host process holds.
+
+## When to call it
+
+To check a receipt without waiting, such as after a reload. To wait, use
+[`receipt.settled`](/docs/reference/operations/receipt/settled).
+
+## Access
+
+Any principal with `participant` authority. Session scope, or none for a batch receipt.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "receipt": "7c1e9a3b-2d4f-4a6c-8e0b-1f3d5a7c9e2b"
+}
+```
+
+Response:
+
+```json
+{ "kind": "settled", "outcome": { "kind": "stopped" } }
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "receipt"],
+  "properties": {
+    "session": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "receipt": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "pending"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "outcome"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "settled"
+        },
+        "outcome": {
+          "$ref": "Json"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

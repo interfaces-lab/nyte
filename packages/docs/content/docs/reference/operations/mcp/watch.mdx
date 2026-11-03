@@ -1,0 +1,306 @@
+---
+title: mcp.watch
+description: Streams the workspace's MCP servers and their state as they change.
+---
+
+Streams the MCP servers the workspace sees, sorted by name, with where each is defined, its
+transport, exposure and connection state, and the problems found reading the `mcp.json` files. The
+first frame comes at once; another follows whenever a server connects, fails, asks for sign-in, or
+an `mcp.json` changes.
+
+Reading the stream keeps the workspace's server connections open. A server in `needs-sign-in`
+waits for [`mcp.login`](/docs/reference/operations/mcp/login).
+
+## When to call it
+
+To show an MCP settings panel, and to keep servers connected while it is open.
+
+## Access
+
+Needs `owner` authority. Workspace scope. Project servers come from the workspace's
+`.nyte/mcp.json` only when the folder is trusted.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+First frame:
+
+```json
+{
+  "servers": [
+    {
+      "name": "docs",
+      "scope": "user",
+      "path": "/Users/ada/.nyte/mcp.json",
+      "override": null,
+      "transport": { "kind": "http", "url": "https://docs.example.com/mcp" },
+      "exposure": "code",
+      "description": null,
+      "state": { "kind": "needs-sign-in" }
+    }
+  ],
+  "issues": []
+}
+```
+
+## Errors
+
+- `unavailable` when the host has no MCP servers: `This host has no MCP servers.`
+- `unknown` when no workspace has the id.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `owner`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["servers", "issues"],
+  "properties": {
+    "servers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "scope",
+          "path",
+          "override",
+          "transport",
+          "exposure",
+          "description",
+          "state"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": ["user", "project"]
+          },
+          "path": {
+            "type": "string"
+          },
+          "override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transport": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "command", "args"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "stdio"
+                  },
+                  "command": {
+                    "type": "string"
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "url"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "http"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "exposure": {
+            "enum": ["model", "deferred", "code", "hidden"]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "disabled"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "connecting"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "tools"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "connected"
+                  },
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["name", "description", "exposure"],
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "exposure": {
+                          "enum": ["model", "deferred", "code", "hidden"]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "needs-sign-in"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "message", "stderr"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "failed"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "stderr": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "path", "message"],
+        "properties": {
+          "severity": {
+            "enum": ["error", "warning"]
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "message": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "required": ["plugin"],
+            "properties": {
+              "plugin": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string"
+              },
+              "line": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

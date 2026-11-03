@@ -1,0 +1,110 @@
+---
+title: job.settled
+description: Waits until a job ends and returns how it ended.
+---
+
+Waits until a job ends and answers how: `exited` with its code (`null` after a signal) and whether
+it ended on its own (`exited`) or was stopped (`terminated`), or `lost` when this host process no
+longer has it.
+
+## When to call it
+
+To wait for a command a client started. It is a wait: closing the request stops waiting without
+stopping the job, and it is safe to call again after a lost connection.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "job": "8a0c2e4f-6b1d-4f3a-9c5e-7b9d1f3a5c7e"
+}
+```
+
+Response:
+
+```json
+{ "kind": "exited", "code": 1, "reason": "exited" }
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: yes
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "job"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "job": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "code", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "exited"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "enum": ["exited", "terminated", "expired", "host-lost"]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "lost"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

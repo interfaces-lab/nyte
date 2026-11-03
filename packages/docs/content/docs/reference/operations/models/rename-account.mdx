@@ -1,0 +1,76 @@
+---
+title: models.renameAccount
+description: Renames a saved login; the name must not be empty.
+---
+
+Renames a saved login. The new label is trimmed and must not be empty.
+
+## When to call it
+
+When the user edits an account's name in an account switcher.
+
+## Access
+
+Needs `owner` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{ "provider": "anthropic", "account": "acct-2", "label": "Side project" }
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `internal` when the label is empty after trimming, or the provider or account is unknown. The
+  models layer raises these as its own errors, which reach the wire as `internal` with a
+  `correlation`.
+- `unavailable` when the host was built without models.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["provider", "account", "label"],
+  "properties": {
+    "provider": {
+      "type": "string"
+    },
+    "account": {
+      "type": "string"
+    },
+    "label": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

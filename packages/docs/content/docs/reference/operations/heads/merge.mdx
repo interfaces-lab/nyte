@@ -1,0 +1,174 @@
+---
+title: heads.merge
+description: Merges a named head into main.
+---
+
+Moves the head's parent, main, to the head's tip, keeping the head. It answers `merged` with the
+new revision, or changes nothing and answers `is-main` for main itself, `busy` while a run is live
+on main, `diverged` with the base when main moved since the head was based on it, or `stale` when
+`expect` doesn't match the head's revision.
+
+## When to call it
+
+When the user keeps what a named head did. Pass the head's revision from its view as `expect` so a
+change made meanwhile isn't merged unseen.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "name": "try-sqlite",
+  "options": { "expect": "2b4d6f8a-0c1e-4a3b-9d5f-7e9a1c3b5d7f" }
+}
+```
+
+Response:
+
+```json
+{ "kind": "merged", "revision": "8d0f2b4a-6c8e-4a1b-9c3d-5e7f9a1b3c5d" }
+```
+
+## Errors
+
+- `unknown` when no session has the id, or it has no head with the name:
+  `Session <id> has no head <name>.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "name"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "expect": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "merged"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "revision"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "stale"
+        },
+        "revision": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "base"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "diverged"
+        },
+        "base": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "start"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "id"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "commit"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "is-main"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "run"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "run": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

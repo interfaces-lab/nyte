@@ -1,0 +1,74 @@
+---
+title: login.answer
+description: Sends a code the user pasted to a provider sign-in in progress.
+---
+
+Sends what the user pasted or chose to a sign-in waiting on a `paste` or `choose` step.
+
+## When to call it
+
+After [`login.steps`](/docs/reference/operations/login/steps) yields a `paste` step (send the code
+or key) or a `choose` step (send the chosen option's `id`).
+
+## Access
+
+Needs `owner` authority. Host scope. Only the principal that started the sign-in can answer it.
+
+## Example
+
+Request body:
+
+```json
+{ "provider": "anthropic", "code": "c0d3-fr0m-br0wser#state" }
+```
+
+Response:
+
+```json
+null
+```
+
+## Errors
+
+- `unknown` when no sign-in for the provider is in progress.
+- `invalid` when no step is waiting for an answer, or the answer isn't one of a `choose` step's
+  options. An MCP sign-in also answers `invalid` before its steps were read:
+  `Read the login's steps before answering.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["provider", "code"],
+  "properties": {
+    "provider": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "null"
+}
+```
+
+{/* generated:end */}

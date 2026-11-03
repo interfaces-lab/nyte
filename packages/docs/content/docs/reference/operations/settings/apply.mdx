@@ -1,0 +1,181 @@
+---
+title: settings.apply
+description: Sets a setting to a new value and returns whether it was applied.
+---
+
+Sets a setting declared by the host or a loaded plugin to a new value. The value is checked
+against the setting's schema and saved as the host's value. It answers `applied`, `invalid` with issues, or `unknown` when no
+setting has the id.
+
+## When to call it
+
+From a settings screen. The settings and their schemas come from `settings` on
+[`connection.watch`](/docs/reference/operations/connection/watch).
+
+## Access
+
+Needs `owner` authority. Host scope: the value applies host-wide. To change a session's settings,
+use [`head.configure`](/docs/reference/operations/head/configure).
+
+## Example
+
+Request body:
+
+```json
+{ "id": "worktrees.idleDays", "value": 14 }
+```
+
+Response:
+
+```json
+{ "kind": "applied" }
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors). A value the schema rejects is the `invalid` outcome.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["id", "value"],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "value": {
+      "$ref": "Json"
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "applied"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "issues"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "invalid"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "path", "message"],
+            "properties": {
+              "severity": {
+                "enum": ["error", "warning"]
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              "message": {
+                "type": "string"
+              },
+              "source": {
+                "type": "object",
+                "required": ["plugin"],
+                "properties": {
+                  "plugin": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "unknown"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

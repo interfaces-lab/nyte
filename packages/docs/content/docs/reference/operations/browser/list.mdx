@@ -1,0 +1,85 @@
+---
+title: browser.list
+description: Lists the open pages in the workspace's browser.
+---
+
+Lists the open pages in the workspace's browser, each with its id, URL, title and holder count.
+
+## When to call it
+
+To show open pages, such as tabs an agent opened while working.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope, with the `browser` capability.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Response:
+
+```json
+[{ "id": "page-7", "url": "http://localhost:5173/", "title": "Shop", "holders": 1 }]
+```
+
+## Errors
+
+- `unavailable` or `denied` when the workspace doesn't offer a browser.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: `browser`
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "url", "title", "holders"],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "holders": {
+        "type": "number"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

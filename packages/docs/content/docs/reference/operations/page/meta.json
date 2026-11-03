@@ -1,0 +1,22 @@
+{
+  "title": "page",
+  "pages": [
+    "view",
+    "watch",
+    "snapshot",
+    "navigate",
+    "back",
+    "forward",
+    "reload",
+    "stop-loading",
+    "click",
+    "type",
+    "press",
+    "scroll",
+    "wait",
+    "console",
+    "capture",
+    "evaluate",
+    "close"
+  ]
+}

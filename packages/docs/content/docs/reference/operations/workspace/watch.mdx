@@ -1,0 +1,243 @@
+---
+title: workspace.watch
+description: Streams the workspace's info each time it changes.
+---
+
+Streams one workspace's info, the same value as
+[`workspace.info`](/docs/reference/operations/workspace/info), first as it is and again each time
+it changes, such as when a session starts or a run begins writing. The stream ends when the
+workspace is forgotten, and at once, without a frame, for an id the host doesn't have.
+
+## When to call it
+
+To keep a workspace header current, such as its trust state and active writers.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{ "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0" }
+```
+
+Each frame is a workspace info object, as in the `workspace.info` example.
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `watch`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": [
+    "id",
+    "target",
+    "identity",
+    "availability",
+    "projectResources",
+    "trusted",
+    "projectSources",
+    "addedBy",
+    "sessions",
+    "writers",
+    "isolation"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "target": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "local"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "locator"],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "locator": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ]
+    },
+    "identity": {
+      "type": "string"
+    },
+    "availability": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "available"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "reason"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unavailable"
+            },
+            "reason": {
+              "enum": ["unsupported", "unreachable"]
+            }
+          }
+        }
+      ]
+    },
+    "projectResources": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "trusted": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "projectSources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "addedBy": {
+      "type": "string"
+    },
+    "sessions": {
+      "type": "number"
+    },
+    "writers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "isolation": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind", "source", "session", "branch", "base"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "worktree"
+            },
+            "source": {
+              "type": "string"
+            },
+            "session": {
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "base": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

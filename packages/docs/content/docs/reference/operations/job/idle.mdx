@@ -1,0 +1,74 @@
+---
+title: job.idle
+description: Checks whether a job's terminal has nothing running, such as a shell back at its prompt.
+---
+
+Answers whether a pty job's shell has nothing running, such as a shell back at its prompt. It is
+`false` for a piped command and for a job this host process no longer has.
+
+## When to call it
+
+Before closing a terminal tab, to ask the user only when something is still running in it.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "job": "1f3a5c7e-9b2d-4f4a-8c6e-0b2d4f6a8c1e"
+}
+```
+
+Response:
+
+```json
+true
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "job"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "job": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "boolean"
+}
+```
+
+{/* generated:end */}

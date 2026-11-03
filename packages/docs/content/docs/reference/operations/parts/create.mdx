@@ -1,0 +1,185 @@
+---
+title: parts.create
+description: Creates a part in a session with its initial state and placement.
+---
+
+Creates a part in a session from a part kind a loaded plugin registered, with its initial state and
+placement. `transcript` places it in the chat as a `step`, `answer` or `note`; `modal` shows it
+apart from the transcript until an action answers it or it closes. The state is checked against
+the kind's schema.
+
+## When to call it
+
+When a client or tool shows interactive UI a plugin defined, such as a form or approval card.
+Pass `input.id` to retry safely: the same id with the same kind and state returns the same part.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f",
+  "kind": "deploy-approval",
+  "input": {
+    "state": { "environment": "staging", "commit": "3e1f9a2" },
+    "placement": { "kind": "modal" },
+    "id": "b2d4f6a8-0c1e-4b3d-9f5a-7c9e1b3d5f7a"
+  }
+}
+```
+
+Response:
+
+```json
+{ "part": "b2d4f6a8-0c1e-4b3d-9f5a-7c9e1b3d5f7a" }
+```
+
+## Errors
+
+- `unknown` when the session's plugins register no part kind with the name:
+  `No part definition has the kind <kind>.`
+- `invalid` when the state fails the kind's schema, with its issues.
+- `invalid` when the id names a part with another kind or state.
+- `unknown` when no session has the id.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: `replay`
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session", "kind", "input"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "input": {
+      "type": "object",
+      "required": ["state", "placement"],
+      "properties": {
+        "state": {
+          "$ref": "Json"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind", "role"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "transcript"
+                },
+                "role": {
+                  "enum": ["step", "answer", "note"]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "modal"
+                }
+              }
+            },
+            {
+              "allOf": [
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {
+                      "$ref": "Json"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["part"],
+  "properties": {
+    "part": {
+      "type": "string"
+    }
+  }
+}
+```
+
+{/* generated:end */}

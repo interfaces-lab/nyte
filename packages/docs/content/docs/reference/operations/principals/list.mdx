@@ -1,0 +1,91 @@
+---
+title: principals.list
+description: Lists the clients paired with this host.
+---
+
+Lists the clients paired with this host: each principal's id, label, authority and when it paired.
+Listener tokens and the local principal aren't paired, so they aren't listed.
+
+## When to call it
+
+To show paired devices with a way to revoke each, as the desktop's remote access settings do.
+
+## Access
+
+Needs `maintenance` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+[
+  {
+    "id": "c2a9e4f1-7b3d-4e5a-8c6f-1d0e9b8a7c6d",
+    "label": "Ada's phone",
+    "authority": ["participant"],
+    "pairedAt": 1767240000000
+  }
+]
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `maintenance`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "label", "authority", "pairedAt"],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "label": {
+        "type": "string"
+      },
+      "authority": {
+        "type": "array",
+        "items": {
+          "enum": ["participant", "owner", "maintenance"]
+        }
+      },
+      "pairedAt": {
+        "type": "number"
+      }
+    }
+  }
+}
+```
+
+{/* generated:end */}

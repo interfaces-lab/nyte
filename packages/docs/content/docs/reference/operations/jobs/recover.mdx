@@ -1,0 +1,273 @@
+---
+title: jobs.recover
+description: Finds a job again by its key, or reports how it ended or that it is gone.
+---
+
+Finds a running pty job again by the key [`jobs.start`](/docs/reference/operations/jobs/start)
+gave it. It answers the job's view with its key while it runs, `ended` with how it ended, or
+`missing` when this host process no longer has it.
+
+## When to call it
+
+When a terminal tab reopens after a reload and has its job's key saved.
+
+## Access
+
+Any principal with `participant` authority. Workspace scope; a key from another workspace answers
+`missing`.
+
+## Example
+
+Request body:
+
+```json
+{
+  "workspace": "9b1f0c7e5a2d48e3b6c4f1a0d9e8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0",
+  "key": "6b8d0f2a-4c1e-4a3b-9d5f-7e9a1c3b5d70"
+}
+```
+
+Response:
+
+```json
+{ "kind": "ended", "end": { "kind": "exited", "code": 0, "reason": "exited" } }
+```
+
+## Errors
+
+Only the [errors every operation can raise](/docs/reference/operations#errors).
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `workspace`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["workspace", "key"],
+  "properties": {
+    "workspace": {
+      "type": "string"
+    },
+    "key": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": [
+        "id",
+        "command",
+        "title",
+        "session",
+        "pty",
+        "state",
+        "startedAt",
+        "endedAt",
+        "tail",
+        "foreground",
+        "key"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "session": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pty": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["columns", "rows", "shell"],
+              "properties": {
+                "columns": {
+                  "type": "number"
+                },
+                "rows": {
+                  "type": "number"
+                },
+                "shell": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "running"
+                }
+              }
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "code", "reason"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "exited"
+                    },
+                    "code": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "enum": ["exited", "terminated", "expired", "host-lost"]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "lost"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "startedAt": {
+          "type": "number"
+        },
+        "endedAt": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tail": {
+          "type": "string"
+        },
+        "foreground": {
+          "type": "boolean"
+        },
+        "key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "end"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "ended"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind", "code", "reason"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "exited"
+                },
+                "code": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reason": {
+                  "enum": ["exited", "terminated", "expired", "host-lost"]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "lost"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

@@ -1,0 +1,248 @@
+---
+title: workspaces.inspect
+description: Reads a folder or other target before it is added as a workspace.
+---
+
+Reads a target, such as a local folder, through its environment provider without registering it:
+its identity, availability, the project sources it would load, and the id of the workspace already
+registered for it, if any.
+
+## When to call it
+
+Before [`workspaces.add`](/docs/reference/operations/workspaces/add), to show the user what they
+are adding and whether it is already there. Pass the identity it returns to `workspaces.add` as
+`expect` so the add fails if the folder changed in between.
+
+## Access
+
+Needs `owner` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{ "target": { "kind": "local", "path": "/Users/ada/code/shop" } }
+```
+
+Response:
+
+```json
+{
+  "target": { "kind": "local", "path": "/Users/ada/code/shop" },
+  "identity": "e3a1c9f04b7d2e6a8c5f1b3d9e7a2c4f6b8d0e1a3c5f7b9d2e4a6c8f0b1d3e5a",
+  "availability": { "kind": "available" },
+  "projectSources": [".nyte/plugins/review.ts"],
+  "registered": null
+}
+```
+
+## Errors
+
+- `unavailable` when no environment provider serves the target's kind:
+  `No environment provider serves <kind>.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["target"],
+  "properties": {
+    "target": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "local"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "locator"],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "locator": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["target", "identity", "availability", "projectSources", "registered"],
+  "properties": {
+    "target": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "local"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "locator"],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "locator": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ]
+    },
+    "identity": {
+      "type": "string"
+    },
+    "availability": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "available"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "reason"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unavailable"
+            },
+            "reason": {
+              "enum": ["unsupported", "unreachable"]
+            }
+          }
+        }
+      ]
+    },
+    "projectSources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "registered": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}
