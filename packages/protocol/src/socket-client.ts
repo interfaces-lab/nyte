@@ -75,6 +75,8 @@ export async function openHostSocket(input: {
   const ended = Promise.withResolvers<SocketClosed>();
   let calls = 0;
 
+  greeted.promise.catch(() => undefined);
+
   socket.addEventListener("message", (message) => {
     const value = typeof message.data === "string" ? readJson(message.data) : undefined;
 

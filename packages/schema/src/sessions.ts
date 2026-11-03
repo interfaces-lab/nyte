@@ -41,6 +41,8 @@ export const SessionInfoType = Type.Object({
 
 export type SessionInfo = Decoded<typeof SessionInfoType>;
 
+export const SESSIONS_LIMIT = 50;
+
 export const SessionsReadType = Type.Object({
   seq: Type.Number(),
   ids: Type.Array(idSchema<"session">()),

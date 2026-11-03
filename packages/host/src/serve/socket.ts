@@ -26,9 +26,7 @@ import type {
   Seq,
   SessionChange,
   SessionId,
-  SessionInfo,
   SessionsChange,
-  SessionsRead,
   TailnetStatus,
   WelcomeFrame,
 } from "@nyte-ai/schema";
@@ -399,52 +397,22 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
         void feed.return?.();
       },
     });
-    forwardSessions(feed, first.value).catch(() =>
-      close(1011, "The host could not read its sessions."),
-    );
+    forwardSessions(feed).catch(() => close(1011, "The host could not read its sessions."));
   };
 
-  const forwardSessions = async (
-    feed: AsyncIterator<SessionsRead>,
-    first: SessionsRead,
-  ): Promise<void> => {
-    const upsert = new Map<SessionId, SessionInfo>();
-    const drop = new Set<SessionId>();
-    let sent = first.seq;
-    let ids = new Set(first.ids);
-
+  const forwardSessions = async (feed: AsyncIterator<SessionsChange>): Promise<void> => {
     for (;;) {
       const next = await feed.next();
 
       if (next.done === true) return;
-      const read = next.value;
-      const now = new Set(read.ids);
-
-      for (const id of ids)
-        if (!now.has(id)) {
-          drop.add(id);
-          upsert.delete(id);
-        }
-
-      for (const row of read.rows) {
-        upsert.set(row.id, row);
-        drop.delete(row.id);
-      }
-
-      ids = now;
-
-      if (read.seq <= sent) continue;
-      sent = read.seq;
       outbox.event({
         c: "e",
         type: "event",
         scope: "host",
-        seq: read.seq,
+        seq: next.value.seq,
         kind: "change",
-        tables: { sessions: { upsert: [...upsert.values()], drop: [...drop] } },
+        tables: next.value.tables,
       });
-      upsert.clear();
-      drop.clear();
     }
   };
 
@@ -540,6 +508,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       api_revision: Math.min(API_REVISION, value.api_revision ?? API_REVISION),
       api_min_revision: API_MIN_REVISION,
       api_server_revision: API_REVISION,
+      host_id: peer.connection.hostId,
       client_id: id,
       limits: SOCKET_LIMITS,
     });

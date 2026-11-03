@@ -65,6 +65,7 @@ export const WelcomeFrameType = Type.Object({
   api_revision: Type.Integer(),
   api_min_revision: Type.Integer(),
   api_server_revision: Type.Integer(),
+  host_id: idSchema<"host">(),
   client_id: idSchema<"client">(),
   limits: Type.Object({ backlogBytes: Type.Integer(), maxFrameBytes: Type.Integer() }),
 });
@@ -104,6 +105,18 @@ export const EventFrameType = Type.Object({
 });
 
 export type EventFrame = Decoded<typeof EventFrameType>;
+
+export const PerformEventType = Type.Object({
+  scope: Type.String(),
+  seq: Type.Integer({ minimum: 1 }),
+  kind: Type.Literal("perform"),
+  call: Type.String(),
+  requester: Type.Object({ client: idSchema<"client">(), principal: idSchema<"principal">() }),
+  action: Type.String(),
+  input: JsonType,
+});
+
+export type PerformEvent = Decoded<typeof PerformEventType>;
 
 export const TextFrameType = Type.Union([
   Type.Object({

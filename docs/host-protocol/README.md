@@ -88,7 +88,7 @@ A `from` the host cannot place on the path any more, because the head was rewoun
 
 A whole window says so with `complete: true`. It holds every row the window needs, so the client replaces its tables with it instead of merging: a row the host dropped while the client was away, which no drop the host still knows of names, goes with them. A first read is complete too.
 
-The sessions table resumes the same way with `seq` alone: the host answers the ids of every session the client may read, and every row with `seq` above the client's.
+The sessions table resumes the same way with `seq` alone: the host answers the ids of every session the client may read, and every row with `seq` above the client's. Between reads, a host subscriber receives every session row that changes, inside its window or not, and derives a list's order from its rows: filter by `parent`, sort by `lastActivityAt` descending then id, take the limit.
 
 The model's `ResumeSendsUnheld` mutant shows what happens when the host sends only rows changed since the client's seq: a row that was written before the client first attached and that its old window did not cover never arrives.
 
@@ -136,7 +136,7 @@ The host advertises both limits in its welcome.
 
 The host speaks a range of API revisions. A revision is an integer; every change to an operation, a row, or an event kind that an older client could not ignore bumps it.
 
-The client's hello carries `api_min_revision`, the oldest revision it can use, and may carry `api_revision`, the newest it speaks, so a host can tell a client too old for it. The welcome carries `api_revision`, the newest the two share, `api_min_revision`, the oldest the host serves, and `api_server_revision`, the host's own. A host and a client with no revision in common close the connection, and the close reason names the side to update.
+The client's hello carries `api_min_revision`, the oldest revision it can use, and may carry `api_revision`, the newest it speaks, so a host can tell a client too old for it. The welcome carries `api_revision`, the newest the two share, `api_min_revision`, the oldest the host serves, `api_server_revision`, the host's own, and `host_id`, so a client keys its connection by the host rather than the address it dialed. A host and a client with no revision in common close the connection, and the close reason names the side to update.
 
 The operations table and the row and event schemas have a digest. CI records the digest next to the revision and fails when the digest moves without the revision, or an operation changes without its docs page.
 
