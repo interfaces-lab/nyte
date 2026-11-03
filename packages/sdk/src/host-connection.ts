@@ -515,6 +515,22 @@ function socketUrl(address: string): string {
   return url.href;
 }
 
+type HeaderSocket = new (
+  url: string,
+  init: { readonly headers: Readonly<Record<string, string>> },
+) => SocketLike;
+
 function openGlobalSocket(request: SocketRequest): SocketLike {
-  return new WebSocket(request.url, { headers: request.headers });
+  const Socket: unknown = globalThis.WebSocket;
+
+  if (!webSocketClass(Socket))
+    throw new SdkError("not_supported", "This runtime has no WebSocket; pass a socket factory.");
+
+  return new Socket(request.url, { headers: request.headers });
+}
+
+function webSocketClass(value: unknown): value is HeaderSocket {
+  if (typeof value !== "function") return false;
+
+  return "CONNECTING" in value;
 }
