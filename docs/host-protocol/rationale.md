@@ -184,7 +184,8 @@ The sketch deletes the first four before adding anything.
 3. Background counts stay host-computed in the head row; a child's run restamps its parent's row.
 4. The local socket is a unix socket in the host's state directory, mode 0600. Loopback TCP is not local, because Tailscale Serve forwards network traffic to it.
 5. Both channels ride one WebSocket. pi uses WebSocket only; opencode uses SSE for its one-way event stream because browsers cannot set headers on an upgrade, and gives its sockets a one-time ticket. Nyte does the same for browsers and needs no SSE on the new channel.
-6. Open: the fold-code hash still covers every file in `fold/`, so a change with no fold semantics, such as `commit.ts`, invalidates every checkpoint.
+6. Terminals stay on `@lydell/node-pty`, and the desktop's launchd host runs on the app's own Node (`ELECTRON_RUN_AS_NODE`), as the embedded host did. The Bun-compiled `nyte` cannot load node-pty: the require path lands in `/$bunfs`, and Bun 1.4.4 breaks node-pty's JavaScript (oven-sh/bun#25822). Bun's built-in PTY worked but meant two backends and no backpressure, so it was reverted. opencode ships the same two-backend split (`bun-pty` under Bun, `@lydell/node-pty` under Node, chosen by package `imports` conditions) and is moving terminals into a daemon (`opencode-pty`: portable-pty and libghostty-vt, one owner, a ticket handoff so terminals survive a server restart). A terminal daemon in our Go sidecar is the shape to reach for when terminals must outlive a host restart.
+7. Open: the fold-code hash still covers every file in `fold/`, so a change with no fold semantics, such as `commit.ts`, invalidates every checkpoint.
 
 ## Measured since
 
