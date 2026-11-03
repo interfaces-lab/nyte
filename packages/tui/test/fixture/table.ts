@@ -143,6 +143,7 @@ export function tableInput(spec: TableSpec): TableInput {
         : {
             session: asId(spec.question === "head" ? "s1" : "s9"),
             part: asId("q1"),
+            late: false,
             questions: [
               {
                 question: "Pick one",

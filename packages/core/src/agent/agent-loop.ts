@@ -296,7 +296,10 @@ async function* run<P extends PreparedRequest>(
 
     const asked = landed.some(
       (input) =>
-        input.delivery !== "attach" || input.source.kind === "child" || input.source.kind === "job",
+        input.delivery !== "attach" ||
+        input.source.kind === "child" ||
+        input.source.kind === "job" ||
+        input.source.kind === "answer",
     );
 
     if (calls.length === 0 && !asked) return yield* end({ reason: "done", usage });

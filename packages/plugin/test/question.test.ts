@@ -1,5 +1,6 @@
 import { isPart, tool } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
+import { asId } from "@nyte-ai/schema";
 import { assert, expect, it } from "vitest";
 import questionPlugin, { question } from "../src/question/question.ts";
 import { openQuestions } from "../src/question/schema.ts";
@@ -52,9 +53,9 @@ it("parks on one grouped modal and resumes with all selected, custom and unanswe
 
   expect(asked).toMatchObject({
     placement: { kind: "modal" },
-    state: { questions, answers: null },
+    state: { call: expect.any(String), questions, phase: { kind: "asking" } },
   });
-  expect(openQuestions(await session.view())).toEqual([{ part: asked.id, questions }]);
+  expect(openQuestions(await session.view())).toEqual([{ part: asked.id, questions, late: false }]);
   expect(fake.requests).toHaveLength(1);
   expect(
     await session
@@ -77,7 +78,6 @@ it("parks on one grouped modal and resumes with all selected, custom and unanswe
     content: [
       { kind: "text", text: "Deploy?: No\nWhich clients?: Desktop, Terminal\nWhen?: Unanswered" },
     ],
-    output: { answers: [["No"], ["Desktop", "Terminal"], []] },
     parts: [asked.id],
   });
   expect(openQuestions(await session.view())).toEqual([]);
@@ -128,7 +128,6 @@ it("resumes a grouped request answered by a cold host sharing the durable store"
     content: [
       { kind: "text", text: "Deploy?: Yes\nWhich clients?: Mobile\nWhen?: After the review" },
     ],
-    output: { answers: [["Yes"], ["Mobile"], ["After the review"]] },
   });
 });
 
@@ -137,7 +136,7 @@ it("rejects invalid submissions and keeps the first answer across same-set retri
   const { session } = await host.sessions.start({ content: "Hi." });
 
   const part = await session.parts.create(question, {
-    state: { questions, answers: null },
+    state: { call: asId<"call">("asked"), questions, phase: { kind: "asking" } },
     placement: { kind: "modal" },
   });
 
@@ -150,7 +149,7 @@ it("rejects invalid submissions and keeps the first answer across same-set retri
     expect(await part.act("answer", { answers })).toMatchObject({ kind: "rejected" });
   }
 
-  expect(openQuestions(await session.view())).toEqual([{ part: part.id, questions }]);
+  expect(openQuestions(await session.view())).toEqual([{ part: part.id, questions, late: false }]);
   expect(await part.act("answer", { answers: [["Yes"], ["Terminal", "Desktop"], []] })).toEqual({
     kind: "ok",
     output: undefined,
@@ -167,8 +166,9 @@ it("rejects invalid submissions and keeps the first answer across same-set retri
   });
   expect((await session.view()).parts.find((candidate) => candidate.id === part.id)?.state).toEqual(
     {
+      call: "asked",
       questions,
-      answers: [["Yes"], ["Desktop", "Terminal"], []],
+      phase: { kind: "answered", answers: [["Yes"], ["Desktop", "Terminal"], []], head: null },
     },
   );
   expect(openQuestions(await session.view())).toEqual([]);

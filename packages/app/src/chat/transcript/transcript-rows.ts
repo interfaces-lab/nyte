@@ -1,4 +1,5 @@
 import type { Message, SessionView } from "@nyte-ai/sdk";
+import { showsAnswer, showsReport, showsTool } from "@nyte-ai/plugin/client/presentation";
 import type {
   failureNotice,
   TextMessage,
@@ -95,10 +96,7 @@ function runState(view: SessionView | undefined) {
 
 function readWorking(running: boolean, held: boolean, prompts: readonly UserMessage[]): boolean {
   return (
-    running ||
-    prompts.some(
-      (message) => !held || (message.source.kind !== "child" && message.source.kind !== "job"),
-    )
+    running || prompts.some((message) => !held || (!showsReport(message) && !showsAnswer(message)))
   );
 }
 
@@ -124,9 +122,7 @@ export function conversationMessages(view: SessionView | undefined) {
 
 /** A user's prompt is drawn sticky from the moment it is sent, so its row keeps one DOM shape when it joins its turn; only inside a turn does it stick. */
 function sticksToTop(message: Message): boolean {
-  return (
-    message.kind === "user" && message.source.kind !== "child" && message.source.kind !== "job"
-  );
+  return message.kind === "user" && !showsReport(message) && !showsAnswer(message);
 }
 
 /** A prompt joining a running run lands in that run's turn, so only a prompt that opens its own turn takes the footer. */
@@ -194,8 +190,7 @@ function turnRows(
           key: `step:${first.id}`,
           ...layout,
           messages: item.messages,
-          added: ends ? turn.info.summary.added : 0,
-          removed: ends ? turn.info.summary.removed : 0,
+          ...stepChanges(item.messages),
           running: ends && place.working && item.messages.some(inFlight),
         });
         break;
@@ -244,6 +239,20 @@ function turnRows(
     });
 
   return rows;
+}
+
+/** A group counts only its own calls' changes; the turn's summary also holds the turn's earlier groups. */
+function stepChanges(messages: readonly StepMessage[]) {
+  const changes = messages.flatMap((message) =>
+    showsTool(message) && message.state.phase === "settled" && message.state.changes !== null
+      ? [message.state.changes]
+      : [],
+  );
+
+  return {
+    added: changes.reduce((sum, change) => sum + change.added, 0),
+    removed: changes.reduce((sum, change) => sum + change.removed, 0),
+  };
 }
 
 function inFlight(message: StepMessage): boolean {
@@ -522,9 +531,10 @@ function withMessage(row: TranscriptRow, slot: TranscriptSlot): TranscriptRow | 
     case "part":
       return { ...row, message: slot.message };
     case "step":
-      return slot.kind === "step"
-        ? { ...row, messages: replaced(row.messages, slot.message) }
-        : undefined;
+      if (slot.kind !== "step") return undefined;
+      const messages = replaced(row.messages, slot.message);
+
+      return { ...row, messages, ...stepChanges(messages) };
     case "agents":
       return slot.kind === "agents"
         ? { ...row, messages: replaced(row.messages, slot.message) }

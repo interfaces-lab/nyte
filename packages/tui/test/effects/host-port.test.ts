@@ -143,7 +143,8 @@ test("answer settles a question part once; a different answer afterwards is refu
           ],
         },
       ],
-      answers: null,
+      call: asId<"call">("call-pick"),
+      phase: { kind: "asking" },
     },
     placement: { kind: "modal" },
   });
@@ -155,7 +156,7 @@ test("answer settles a question part once; a different answer afterwards is refu
   expect(await session.answer(part.id, [["A"]])).toBe(true);
   const answered = await viewWhere(session, (view) => openQuestions(view).length === 0);
   expect(answered.parts.find((candidate) => candidate.id === part.id)).toMatchObject({
-    state: { answers: [["A"]] },
+    state: { phase: { kind: "answered", answers: [["A"]], head: null } },
   });
 
   expect(await session.answer(part.id, [["A"]])).toBe(true);

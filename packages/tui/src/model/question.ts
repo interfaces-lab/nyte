@@ -8,6 +8,8 @@ import type { QuestionDraft, QuestionFieldDraft, QuestionLocal, QuestionRequest 
 
 export interface QuestionModel extends QuestionRequest {
   readonly questions: readonly QuestionInfo[];
+  /** The agent stopped waiting and carried on; an answer still reaches it. */
+  readonly late: boolean;
   readonly field: QuestionInfo;
   readonly index: number;
   readonly owner: { readonly kind: "head" } | { readonly kind: "child"; readonly short: string };
@@ -215,7 +217,7 @@ export function questionPanel(
     kind: "list",
     id: `question:${question.part}`,
     purpose: { kind: "question", session: question.session, part: question.part },
-    title: `${progress}${questionTitle(question)}`,
+    title: `${question.late ? "Agent continued · " : ""}${progress}${questionTitle(question)}`,
     choices: { kind: "ready", items: [...options, ...actions] },
     query: "",
     highlighted: local.highlighted,

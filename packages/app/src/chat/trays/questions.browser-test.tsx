@@ -24,7 +24,7 @@ const field = {
 };
 
 const dock: QuestionDock = {
-  request: { part: asId("part-question"), questions: [field] },
+  request: { part: asId("part-question"), questions: [field], late: false },
   field,
   origin: undefined,
   current: 0,
@@ -72,7 +72,7 @@ const asked: SessionView = {
       id: asId<"part">("part-question"),
       partKind: "ask/question",
       placement: { kind: "modal" },
-      state: { questions: [field], answers: null },
+      state: { call: "call-question", questions: [field], phase: { kind: "asking" } },
       version: 1,
       status: { kind: "live", run: asId<"run">("run") },
       owner: "question",
@@ -98,14 +98,16 @@ installConnection(
       part: (part) => ({
         id: part,
         update: async () => ({ kind: "missing" }),
-        act: async () => ({ kind: "rejected", reason: REFUSED }),
+        act: async (action) => {
+          if (action === "skip") throw new Error(UNREACHABLE);
+
+          return { kind: "rejected", reason: REFUSED };
+        },
         answer: async () => null,
         watch: async function* () {
           yield* [];
         },
-        close: async () => {
-          throw new Error(UNREACHABLE);
-        },
+        close: async () => undefined,
       }),
     }),
   }).connection,

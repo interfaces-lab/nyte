@@ -90,6 +90,7 @@ export const MessageSourceType = Type.Union([
     label: Type.String(),
     command: Type.Optional(Type.String()),
   }),
+  Type.Object({ kind: Type.Literal("answer"), part: idSchema<"part">(), label: Type.String() }),
 ]);
 
 export type MessageSource = Decoded<typeof MessageSourceType>;

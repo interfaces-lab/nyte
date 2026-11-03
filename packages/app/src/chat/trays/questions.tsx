@@ -149,6 +149,11 @@ function QuestionCard({
         {dock.origin !== undefined && (
           <QuestionnaireDescription>Asked by {dock.origin}</QuestionnaireDescription>
         )}
+        {dock.request.late && (
+          <QuestionnaireDescription>
+            The agent kept going. Your answer still reaches it.
+          </QuestionnaireDescription>
+        )}
         <QuestionnaireChoices
           hidden={collapsed || dock.field.options.length === 0}
           role={multiple ? "group" : "radiogroup"}
