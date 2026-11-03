@@ -270,7 +270,7 @@ export function foldCheckpointing(
   };
 }
 
-function encodeFoldCheckpoint(state: FoldState): string | null {
+export function encodeFoldCheckpoint(state: FoldState): string | null {
   const index = state[INDEX];
 
   for (const [name, folded] of index.heads) {
@@ -339,7 +339,7 @@ function encodeFoldCheckpoint(state: FoldState): string | null {
   return JSON.stringify(body);
 }
 
-function decodeFoldCheckpoint(
+export function decodeFoldCheckpoint(
   text: string,
   session: SessionId,
   principal: PrincipalId,

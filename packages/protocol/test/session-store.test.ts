@@ -1,5 +1,5 @@
 import { changesSince, readWindow } from "@nyte-ai/core";
-import { emptyFold, fold } from "@nyte-ai/core/testing";
+import { decodeFoldCheckpoint, emptyFold, encodeFoldCheckpoint, fold } from "@nyte-ai/core/testing";
 import { asId, backgroundRowKey, catalogRowKey } from "@nyte-ai/schema";
 import type { HeadName, HeadWindow, SessionEvent, WindowSpec } from "@nyte-ai/schema";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -9,6 +9,8 @@ import { interleave, random, recordLong, recordSessions } from "./sessions.ts";
 import type { Recorded } from "./sessions.ts";
 
 type FoldState = ReturnType<typeof emptyFold>;
+
+type Log = { readonly recorded: Recorded; readonly events: readonly SessionEvent[] };
 
 const SEED = 20_261_102;
 
@@ -34,7 +36,7 @@ type Client = {
   connected: boolean;
 };
 
-let logs: readonly { readonly recorded: Recorded; readonly events: readonly SessionEvent[] }[] = [];
+let logs: readonly Log[] = [];
 
 beforeAll(async () => {
   const recorded = [...(await recordSessions()), await recordLong(80)];
@@ -49,38 +51,124 @@ beforeAll(async () => {
 describe("session store", () => {
   it("holds what a fresh read holds after any attach, changes, drop and resume", () => {
     const next = random(SEED + 1);
-    const failures: string[] = [];
-    let schedules = 0;
 
-    for (const [index, log] of logs.entries()) {
-      const clients = Array.from({ length: CLIENTS }, (_, client) =>
-        open(plan(`${log.recorded.name}#${index}/${client}`, log, next)),
-      );
-
-      schedules += clients.length;
-      let state = emptyFold({ session: log.recorded.session, principal: asId(PRINCIPAL) });
-
-      for (let point = 0; point <= log.events.length; point += 1) {
-        if (point > 0) state = fold(state, log.events[point - 1]);
-
-        for (const client of clients) {
-          const failure = step(client, state, point, next);
-
-          if (failure !== null) failures.push(failure);
-        }
-      }
-    }
+    const failures = logs.flatMap((log, index) =>
+      simulate(
+        log,
+        Array.from({ length: CLIENTS }, (_, client) =>
+          plan(`${log.recorded.name}#${index}/${client}`, log, next),
+        ),
+        null,
+        next,
+      ),
+    );
 
     expect(failures.slice(0, 3)).toEqual([]);
-    expect(schedules).toBeGreaterThanOrEqual(2_000);
+    expect(logs.length * CLIENTS).toBeGreaterThanOrEqual(2_000);
+  });
+
+  it("holds what a fresh read holds after the host restores a checkpoint newer than the store", () => {
+    const next = random(SEED + 2);
+
+    const failures = logs.flatMap((log, index) => {
+      const restore = pickRestore(log, next);
+
+      return simulate(
+        log,
+        Array.from({ length: CLIENTS }, (_, client) =>
+          restarted(
+            plan(`${log.recorded.name}#${index}/${client}@${restore}`, log, next),
+            restore,
+            next,
+          ),
+        ),
+        restore,
+        next,
+      );
+    });
+
+    expect(failures.slice(0, 3)).toEqual([]);
   });
 });
 
-function plan(
-  id: string,
-  log: { readonly recorded: Recorded; readonly events: readonly SessionEvent[] },
+function simulate(
+  log: Log,
+  schedules: readonly Schedule[],
+  restore: number | null,
   next: () => number,
-): Schedule {
+): readonly string[] {
+  const clients = schedules.map(open);
+  const failures: string[] = [];
+  let state = emptyFold({ session: log.recorded.session, principal: asId(PRINCIPAL) });
+
+  for (let point = 0; point <= log.events.length; point += 1) {
+    if (point > 0) state = fold(state, log.events[point - 1]);
+
+    if (point === restore) state = restoreCheckpoint(state);
+
+    for (const client of clients) {
+      const failure = step(client, state, point, next);
+
+      if (failure !== null) failures.push(failure);
+    }
+  }
+
+  return failures;
+}
+
+function restoreCheckpoint(state: FoldState): FoldState {
+  const body = encodeFoldCheckpoint(state);
+
+  const restored =
+    body === null ? null : decodeFoldCheckpoint(body, state.session, state.principal);
+
+  if (restored === null) throw new Error(`The fold at seq ${state.seq} does not round-trip.`);
+
+  return restored;
+}
+
+function pickRestore(log: Log, next: () => number): number {
+  const length = log.events.length;
+  const settled: number[] = [];
+  let state = emptyFold({ session: log.recorded.session, principal: asId(PRINCIPAL) });
+
+  for (const [index, event] of log.events.entries()) {
+    state = fold(state, event);
+    const point = index + 1;
+
+    if (
+      point > 1 &&
+      point < length &&
+      [...state.heads.values()].every(
+        (head) => head.info.execution.kind === "idle" && head.live.length === 0,
+      )
+    )
+      settled.push(point);
+  }
+
+  const point = settled[Math.floor(next() * settled.length)];
+
+  if (point === undefined) throw new Error(`${log.recorded.name} never settles.`);
+
+  return point;
+}
+
+function restarted(schedule: Schedule, restore: number, next: () => number): Schedule {
+  const attach = Math.floor(next() * restore);
+  const check = Math.max(schedule.check, restore + 1);
+  const dropped = attach + 1 + Math.floor(next() * (restore - attach));
+  const resumed = restore + 1 + Math.floor(next() * (check - restore));
+
+  return {
+    ...schedule,
+    attach,
+    check,
+    emits: new Set([...schedule.emits].filter((point) => point > attach && point <= check)),
+    drops: new Map([[dropped, resumed]]),
+  };
+}
+
+function plan(id: string, log: Log, next: () => number): Schedule {
   const length = log.events.length;
   const attach = Math.floor(next() * length);
   const check = attach + 1 + Math.floor(next() * (length - attach));

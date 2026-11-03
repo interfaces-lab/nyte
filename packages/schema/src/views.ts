@@ -316,6 +316,7 @@ export const HeadWindowType = Type.Object({
   head: idSchema<"head">(),
   order: Type.Array(idSchema<"message">()),
   leadingPrompt: nullable(idSchema<"message">()),
+  complete: Type.Boolean(),
   tables: TableChangesType,
   live: Type.Object({ activation: ActivationType }),
 });

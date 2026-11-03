@@ -80,7 +80,9 @@ A connection that drops loses the events the host logged while it was gone. The 
 
 The host answers with the window's `order`, `leadingPrompt`, the turn ids the window spans, and rows: every row of the window with `seq` above the client's, and every row of the window the client did not hold, because it was before `from` or in a table the client had not read. Live parts come whole. Rows that are in the client's store but not in the answer's order or turn list are rows the client drops.
 
-A `from` the host cannot place on the path any more, because the head was rewound or moved, answers a whole window as a first read does. So does a `seq` older than the log the host still holds.
+A `from` the host cannot place on the path any more, because the head was rewound or moved, answers a whole window as a first read does. So does a `seq` older than the log the host still holds, as when the host restored a fold checkpoint newer than the client.
+
+A whole window says so with `complete: true`. It holds every row the window needs, so the client replaces its tables with it instead of merging: a row the host dropped while the client was away, which no drop the host still knows of names, goes with them. A first read is complete too.
 
 The sessions table resumes the same way with `seq` alone: the host answers the ids of every session the client may read, and every row with `seq` above the client's.
 

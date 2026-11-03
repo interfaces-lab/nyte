@@ -44,17 +44,7 @@ export interface SessionStore {
 export function openSessionStore(window: HeadWindow): SessionStore {
   const head = window.head;
 
-  const rows: SessionRows = {
-    messages: new Map(),
-    turns: new Map(),
-    parts: new Map(),
-    changes: new Map(),
-    catalog: new Map(),
-    heads: new Map(),
-    settings: new Map(),
-    background: new Map(),
-  };
-
+  let rows = emptyRows();
   let seq = window.seq;
   let order: readonly MessageId[] = window.order;
   let leadingPrompt = window.leadingPrompt;
@@ -102,6 +92,8 @@ export function openSessionStore(window: HeadWindow): SessionStore {
       order = next.order;
       leadingPrompt = next.leadingPrompt;
       stale = false;
+
+      if (next.complete) rows = emptyRows();
       write(rows, next.tables);
 
       const kept = new Set<string>([
@@ -116,6 +108,19 @@ export function openSessionStore(window: HeadWindow): SessionStore {
       for (const id of rows.turns.keys()) if (!turns.has(id)) rows.turns.delete(id);
     },
     snapshot: () => ({ order, leadingPrompt, rows }),
+  };
+}
+
+function emptyRows(): SessionRows {
+  return {
+    messages: new Map(),
+    turns: new Map(),
+    parts: new Map(),
+    changes: new Map(),
+    catalog: new Map(),
+    heads: new Map(),
+    settings: new Map(),
+    background: new Map(),
   };
 }
 

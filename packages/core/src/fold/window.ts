@@ -95,6 +95,7 @@ export function readWindow(
     head,
     order: shown.map((entry) => entry.message.id),
     leadingPrompt: leading?.id ?? null,
+    complete: held === null,
     tables: {
       ...tables,
       messages: {
