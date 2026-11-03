@@ -2,7 +2,7 @@
 
 How a Nyte host and its clients share state. One contract for the desktop, the TUI, mobile, the CLI, and agents over MCP. The host folds its event log into tables; a client attaches to a window of rows, applies changes by id, and resumes from the last seq it saw. Nothing is re-projected and nothing is diffed by identity.
 
-`rationale.md` holds the measurements this rests on, the audit of the code it replaces, and the shapes rejected. `model/` holds the TLA+ model of attach and resume; `node docs/host-protocol/model/check.mjs` runs it.
+`machine-server.md` describes the three tiers on a machine: the Go server that owns the front door, terminals, jobs and the tailnet node, the TypeScript host it supervises, and the clients. `rationale.md` holds the measurements this rests on, the audit of the code it replaces, and the shapes rejected. `model/` holds the TLA+ model of attach and resume; `node docs/host-protocol/model/check.mjs` runs it.
 
 ## Scopes and seqs
 
