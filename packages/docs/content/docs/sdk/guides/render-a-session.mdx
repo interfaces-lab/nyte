@@ -3,9 +3,9 @@ title: Render a session
 description: Read a session's view once or live, draw its messages, and page in older history.
 ---
 
-The host folds a session's events into a `SessionView`: the messages in order, the turns they belong
-to, what is running now, and the files that changed. Your client draws the view. It never replays
-events or merges streamed text itself.
+Use this page to show a chat on screen. The host turns a session's history into a `SessionView`:
+the messages in order, what is running now, what is queued, and the files that changed. Your client
+draws the view as it is. It never replays events or stitches streamed text together itself.
 
 ## Read it once, or follow its rows
 
@@ -13,9 +13,11 @@ events or merges streamed text itself.
 const view = await session.view({ tail: 100 });
 ```
 
-`view` returns one snapshot. To keep a chat on screen current, open the host's rows with `openHost`
-from `@nyte-ai/sdk/client`. It holds one socket per host address, and each `head` store on it
-follows one head's rows:
+`view` returns one snapshot. `tail` limits how many recent messages it carries, and the view always
+includes the turns those messages belong to.
+
+To redraw on every change, open the host's rows with `openHost` from `@nyte-ai/sdk/client`. It
+holds one socket per host address, and each `head` store on it follows one head's rows:
 
 ```ts
 import { headView, openHost, streamText, withStreamedText } from "@nyte-ai/sdk/client";
@@ -43,12 +45,15 @@ const stopText = live.text((update) => {
 });
 ```
 
-`subscribe` and `snapshot` make the store the shape React's `useSyncExternalStore`, Svelte, Vue and
-Solid read; [Build an agent app](/docs/build/composition#add-the-files) shows each. `snapshot()` is
-`null` until the first read arrives. `headView` turns a snapshot into a view, the same shape
-`session.view()` returns without `seq`, and returns the same view for the same snapshot. Text a part
-is still streaming arrives on `live.text`; `streamText` keeps it and `withStreamedText` lays it over
-the view.
+`subscribe` and `snapshot` are the store shape that React's `useSyncExternalStore`, Svelte, Vue and
+Solid read. [Build an agent app](/docs/build/composition#build-the-chat) shows each one.
+
+- `snapshot()` is `null` until the first read arrives.
+- `headView` turns a snapshot into a view, the same shape `session.view()` returns without `seq`,
+  and returns the same view for the same snapshot.
+- Text a part is still streaming arrives on `live.text`. `streamText` keeps it, and
+  `withStreamedText` lays it over the view.
+- Keep the store you subscribe to. Each `live.head(...)` call opens a new one.
 
 A send still in the connection's journal is not a row yet. `session.view()` shows it as `unsent`;
 over a store, `unsentSends(connection, session.id, session.name)` does the same: `lay(view, seq)`
@@ -63,12 +68,10 @@ pass `socket: ticketSocket()`, since a page can't put headers on a WebSocket.
 `live.directory({ parents: { kind: "roots" } })` is the same kind of store for a session list: its
 snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`.
 
-`tail` limits how many recent messages the view carries. The view always includes the turns those
-messages belong to.
-
 ## Draw the messages
 
-A message is either something the user sent or a part the agent produced.
+A message is either something a user sent or a part the agent produced: text, thinking, a tool call
+or a plugin's own kind.
 
 ```ts
 import { isPart, text, thinking, tool } from "@nyte-ai/plugin/client";
@@ -76,10 +79,10 @@ import type { Message } from "@nyte-ai/sdk";
 
 function describe(message: Message): string | null {
   if (message.kind === "user") {
-    const status = message.status.kind === "landed" ? "" : ` (${message.status.kind})`;
-    return typeof message.content === "string"
-      ? `You: ${message.content}${status}`
-      : `You: …${status}`;
+    const words = typeof message.content === "string" ? message.content : "[attachments]";
+    return message.status.kind === "landed"
+      ? `You: ${words}`
+      : `You: ${words} (${message.status.kind})`;
   }
 
   if (isPart(message, text)) return message.state.markdown;
@@ -94,44 +97,58 @@ function describe(message: Message): string | null {
 }
 ```
 
-`isPart` checks the part's kind and validates its state against the definition, so
-`message.state` is typed inside the branch. Parts from plugins you don't render still have a
-`partKind`, a `state` and a `status`. Fall back to something plain rather than dropping them.
+`isPart` checks the part's kind and validates its state, so `message.state` is typed inside the
+branch. Parts from plugins you don't render still have a `partKind`, a `state` and a `status`. Show
+something plain for them rather than dropping them.
+
+Each part also has a `role`: `answer` for the model's text, `step` for thinking and tool calls, and
+`note` for compaction and branch summaries. Use it to fold the work away and keep the answers in
+view.
+
+The built-in parts:
+
+| Part       | State                                                            |
+| ---------- | ---------------------------------------------------------------- |
+| `text`     | `markdown`, the model's answer                                   |
+| `thinking` | `markdown`, the model's reasoning                                |
+| `tool`     | `name`, `args` and `phase`: `calling`, `running`, then `settled` |
+
+A settled tool part has an `outcome.kind` of `ok`, `failed`, `interrupted`, `rejected` or `stopped`.
 
 A user message moves through three statuses:
 
-| Status    | Meaning                                                     |
-| --------- | ----------------------------------------------------------- |
-| `unsent`  | In your client's journal, not yet acknowledged by the host  |
-| `pending` | Admitted by the host, waiting for a run to take it          |
-| `landed`  | Part of history, with its `commit` and the `run` it started |
+| Status    | Meaning                                                                  |
+| --------- | ------------------------------------------------------------------------ |
+| `unsent`  | Your client hasn't reached the host yet. `retrying` says why, when it is |
+| `pending` | The host has it, and it is waiting for a run to take it                  |
+| `landed`  | Part of the history, with its `commit` and the `run` it started          |
 
-A message you just sent is in the view at once as `unsent`. There is no separate optimistic state
-to keep.
-
-The built-in parts are `text` for answers, `thinking` for reasoning, and `tool` for tool calls. A
-tool part goes through `calling`, `running` and `settled`; once settled, `outcome.kind` is `ok`,
-`failed`, `interrupted`, `rejected` or `stopped`.
+A message you just sent is in the view right away as `unsent`, so there is no separate optimistic
+state to keep.
 
 ## Draw the queue
 
-`view.queue` holds the messages waiting for a later run, oldest first. They are never in
-`messages`, so draw `messages` as the transcript and `queue` beside the composer, without working
-out which list a message belongs in.
+`view.queue` holds the messages waiting for a later run, oldest first. They are never in `messages`.
+Draw `messages` as the transcript and `queue` beside the composer, and you never need to work out
+which list a message belongs in.
 
-A `steer` sent while a run works stays in `messages` as `pending` until the run takes it at its
-next step. One the run can't take, because its model takes no messages mid-turn, the run is
-stopping or the send changes the configuration, waits in `queue` instead. A `queue` sent while a
-run works waits in `queue` and stays there after that run ends, until the next run takes it. An
-`attach` waits in `queue` for the next run. A `steer` or `queue` sent to an idle head opens the next
-turn, so it shows in `messages` at once. Reports from child sessions and jobs are never queued.
+Where a message shows depends on its delivery and on whether a run is live:
 
-A send that is still `unsent` waits in `queue` while it retries, or while a run is live and it isn't
-a `steer`. Otherwise it shows in `messages`.
+| Sent as  | While a run is live                                                       | While the head is idle        |
+| -------- | ------------------------------------------------------------------------- | ----------------------------- |
+| `steer`  | In `messages` as `pending` until the run takes it. In `queue` if it can't | In `messages`, starting a run |
+| `queue`  | In `queue` until the next run takes it                                    | In `messages`, starting a run |
+| `attach` | In `queue` until the next run                                             | In `queue` until the next run |
 
-`view.reportsHeld` is `true` when the head is idle and its last run didn't complete, or it hasn't
-run yet. A report from a child session or a job then waits for the next prompt instead of starting
-a run, so you can tell the user why nothing is happening.
+A run can't take a steer when its model takes no messages mid-run, when the run is stopping, or when
+the send changes the configuration.
+
+An `unsent` message waits in `queue` while the SDK retries it, or while a run is live and it isn't a
+steer. Otherwise it shows in `messages`.
+
+Reports from child sessions and background jobs are never queued. `view.reportsHeld` is `true` when
+the head is idle and its last run didn't complete, or it hasn't run yet. A report then waits for the
+next message instead of starting a run, so you can tell the user why nothing is happening.
 
 ## Show what is running
 
@@ -141,7 +158,7 @@ a run, so you can tell the user why nothing is happening.
 import type { SessionView } from "@nyte-ai/sdk";
 
 function status(view: SessionView): string {
-  const { execution } = view;
+  const execution = view.execution;
 
   switch (execution.kind) {
     case "idle":
@@ -156,9 +173,20 @@ function status(view: SessionView): string {
 }
 ```
 
-A live run is `responding` while the model streams and `executing` while tools run. A waiting run is
-parked on a part, a run, a job or a timer. When a run failed, `lastRun.end.failure` carries a
-`class` such as `rate_limit` or `auth` and a message to show.
+| Kind       | Meaning                                                           |
+| ---------- | ----------------------------------------------------------------- |
+| `idle`     | Nothing is running. `lastRun` holds how the last run ended        |
+| `live`     | `responding` while the model streams, `executing` while tools run |
+| `waiting`  | Parked on a part, another run, a job or a timer, named in `on`    |
+| `retrying` | The model request failed and will be tried again at `until`       |
+
+When a run failed, `lastRun.end.failure` has a `class` and a `message` to show. The classes are
+`rate_limit`, `auth`, `quota`, `context_window`, `overloaded`, `network`, `aborted`, `provider` and
+`runner`.
+
+A run waiting on a part is often waiting on the user.
+[Answer approvals and questions](/docs/sdk/guides/answer-approvals-and-questions) shows how to find
+and answer those parts.
 
 ## Load older messages
 
@@ -171,6 +199,12 @@ if (oldest !== undefined) {
   const page = await session.history({ before: oldest.id, limit: 50 });
 }
 ```
+
+A page has `messages`, the `turns` they belong to, and `leadingPrompt`.
+
+A turn can start before the first message you hold. `leadingPrompt` is then the user message that
+started that turn, so you can show what the agent was answering. It is `null` when the prompt is
+already among the messages. Views carry `leadingPrompt` too.
 
 For a scrolling transcript, `pagedViews` does the bookkeeping. It takes a source of views and
 `history`, and keeps the pages you loaded at the front of every view it yields:
@@ -187,16 +221,17 @@ for await (const view of paged) draw(view);
 const loaded = await paged.earlier(50);
 ```
 
-`earlier` resolves with how many messages it added, and `0` once the first message of the chat is
-showing. Iterate a `pagedViews` once.
+`earlier` resolves with how many messages it added, and `0` once the chat's first message is
+showing. Iterate a `pagedViews` once. When the head moves, or the window jumps past the loaded pages,
+the pages are dropped.
 
 ## Mark a chat read
 
 Each entry in `SessionInfo.heads`, from `session.info()` or a directory row, has `unread`, which
 stays `true` until the connection's principal has read up to that head's tip. Reading or following
 a head never marks it read, so a preloaded preview or a background store leaves the chat unread.
-Your client marks it while the chat is on screen in a window that has focus, with the tip of the
-head it drew:
+
+Mark it while the chat is on screen in a window that has focus, with the tip of the head you drew:
 
 ```ts
 const tip = (await session.info()).heads.find((head) => head.name === session.name)?.tip;
@@ -204,25 +239,29 @@ const tip = (await session.info()).heads.find((head) => head.name === session.na
 if (tip?.kind === "commit" && document.hasFocus()) await session.see(tip.id);
 ```
 
-Call `see` again each time you draw a newer tip. A commit at or before the one already marked
-changes nothing, and the SDK skips a call for the commit it last sent for that head. The view's
-`seenThrough` is the time of the commit the principal last saw, so a message whose `at` is after it
-arrived unseen.
+Call `see` again each time you draw a newer tip. Marking a commit at or before the one already
+marked changes nothing, and the SDK skips a repeat call for the same commit.
+
+`view.seenThrough` is the time of the last commit this principal saw on the head, or `null`. A
+message whose `at` is later arrived unseen, which is where a "new messages" divider goes.
 
 ## The rest of the view
 
-| Field           | What it holds                                                              |
-| --------------- | -------------------------------------------------------------------------- |
-| `revision`      | The head's current revision, for `expect` on edits and moves               |
-| `messages`      | User messages and parts, oldest first                                      |
-| `queue`         | Messages waiting for a later run, oldest first                             |
-| `turns`         | One entry per turn, with its state, step count and a summary of tool calls |
-| `parts`         | Every part with its placement, including modal ones outside the transcript |
-| `usage`         | Tokens and cost summed over every completed run in the head's history      |
-| `execution`     | Idle, live, waiting or retrying                                            |
-| `reportsHeld`   | Whether reports from children and jobs wait for the next prompt            |
-| `background`    | Child sessions, jobs and browser pages, with whether each is still working |
-| `configuration` | The `selected` configuration and the `effective` one after defaults        |
-| `context`       | Tokens in the model's context and the size of its window                   |
-| `changes`       | Files the session changed in its workspace                                 |
-| `catalog`       | The commands, settings, skills, agents and tools this session can use      |
+| Field           | What it holds                                                                         |
+| --------------- | ------------------------------------------------------------------------------------- |
+| `revision`      | The head's current revision, for `expect` on edits and moves. `null` if empty         |
+| `messages`      | User messages and parts, oldest first                                                 |
+| `queue`         | Messages waiting for a later run, oldest first                                        |
+| `leadingPrompt` | The prompt of the earliest turn when it is older than `messages`                      |
+| `turns`         | One entry per turn, with its state, step count and a summary of tool calls            |
+| `parts`         | Every part with its placement, including modal ones outside the transcript            |
+| `usage`         | Tokens and cost summed over every completed run in the head's history                 |
+| `execution`     | Idle, live, waiting or retrying                                                       |
+| `reportsHeld`   | Whether reports from children and jobs wait for the next message                      |
+| `background`    | Child sessions, jobs and browser pages, each `working`, `waiting`, `done` or `failed` |
+| `configuration` | The `selected` configuration and the `effective` one after defaults                   |
+| `context`       | Tokens in the model's context and the size of its window                              |
+| `changes`       | Files the session changed in its workspace                                            |
+| `catalog`       | The commands, settings, skills, agents and tools this session can use                 |
+| `activation`    | Whether the session's workspace is `active`, `inactive`, `unavailable` or `failed`    |
+| `seenThrough`   | The time of the last commit this principal saw on the head                            |

@@ -3,54 +3,94 @@ title: Remote access
 description: Use Nyte on your computer from your phone or a browser.
 ---
 
-Your computer does the work. A phone or browser sends messages and shows the answers. Sessions, folders, and model credentials stay on the computer, so closing the app on your phone doesn't stop work the computer already accepted. The computer has to stay awake, with Nyte running.
+Your computer does the work. A phone or browser sends messages and shows the answers. Sessions, folders and model credentials stay on the computer, so closing the app on your phone doesn't stop work the computer already accepted. The computer has to stay awake, with Nyte running.
 
-A Nyte account connects from any network. A direct address needs no account, but your phone has to reach the computer, for example over Tailscale.
+There are three ways in:
 
-## Desktop
+| Way                                     | What you need                                     | Who can connect                                |
+| --------------------------------------- | ------------------------------------------------- | ---------------------------------------------- |
+| [Nyte account](#account)                | A Nyte account, on the computer and the device    | Devices signed in to that account, any network |
+| [Tailscale](#tailscale)                 | A Tailscale account, and Tailscale on the device  | Your devices on the same tailnet               |
+| [Cloudflare Tunnel](#cloudflare-tunnel) | `cloudflared`, your own named tunnel and a domain | Each device you pair, from any network         |
+
+## Share with your Nyte account [#account]
 
 1. Open **Settings > Server**. Under **Nyte account**, click **Link This Mac…**.
 2. Click **Sign In and Link…** and sign in. If you're already signed in, the button says **Link This Mac**.
-3. Turn on **Remote access**, then click **Done**.
+3. Turn on **Remote Access**, then click **Done**.
 
-While Remote access is on, any device signed in to that Nyte account can connect. Remote access starts in the folder open in Nyte. If you haven't trusted that folder yet, Nyte asks you to first.
+While **Remote access** is on, any device signed in to that Nyte account can connect, with nothing to approve on the computer. The devices are listed under **Nyte account**.
 
-## Connect a device
+Everything you send through your account passes through Nyte's relay. It isn't end-to-end encrypted, so the relay can read prompts, files and answers on the way through. Tailscale and Cloudflare Tunnel keep Nyte out of the path.
 
-Open the Nyte iOS app or the Nyte web app. Sign in with the same Nyte account and pick the computer. The device adds itself, and there's nothing to approve on the computer.
+### From a terminal [#terminal]
+
+On a machine without the desktop app, `nyte account` links it to your account and shares it until you press Ctrl-C.
+
+```sh
+nyte account
+```
+
+It prints a link and a code. Open the link in a browser signed in to your Nyte account, enter the code, and check that the fingerprint matches before you approve. The request expires after five minutes.
+
+`nyte account status` prints the link and its devices. `nyte account unlink` removes the machine from the account.
+
+## Connect a device [#connect]
+
+Open the Nyte iOS app, or the web app at `app.nyte.sh`. Sign in with the same Nyte account and pick the computer. The device adds itself.
 
 In the web app, the bar above Nyte has **Switch Desktop** to pick another computer and **Sign Out**. A browser connected with an address and token has **Disconnect** there instead.
 
-## Connect without an account
+## Connect without an account [#without-an-account]
 
-On the desktop, open **Settings > Server** and turn on **Serve over Tailscale**. Nyte puts the computer on your tailnet as a device of its own, so the Tailscale app doesn't have to be installed. The first time, click **Sign In…** and sign in to Tailscale; if your tailnet approves new devices, an admin approves it in the Tailscale admin console. Once it runs, the page shows its address, `https://nyte.<your tailnet>.ts.net`. Devices on your tailnet signed in as you open that address, with no token. **Sign Out** takes the computer off the tailnet.
+The computer serves over Tailscale, Cloudflare Tunnel or both. Both are under **Settings > Server**.
+
+### Tailscale [#tailscale]
+
+Turn on **Serve over Tailscale**. Nyte puts the computer on your tailnet as a device of its own, so the Tailscale app doesn't have to be installed. The first time, click **Sign In…** and sign in to Tailscale; if your tailnet approves new devices, an admin approves it in the Tailscale admin console. Once it runs, the page shows its address, `https://nyte.<your tailnet>.ts.net`. Devices on your tailnet signed in as you open that address, with no token. **Sign Out** takes the computer off the tailnet.
 
 The page says when the node stopped and why: another Nyte host holds it, its version doesn't match Nyte's (reinstall Nyte), it didn't answer or connect in time, or it exited. Nyte restarts it unless reinstalling is the fix.
 
-**Cloudflare Tunnel** needs your own named tunnel and domain. Click **Set Up Tunnel…**, turn on **Serve over Cloudflare Tunnel**, then click **Pair…** to give each device its own code.
+### Cloudflare Tunnel [#cloudflare-tunnel]
 
-## Use another host
+Cloudflare Tunnel needs `cloudflared` on the computer, and a named tunnel on your own domain.
 
-To list another Nyte host's chats in the sidebar, open **Settings > Server**, click **Connect to Host…** under **Remote host**, and enter its `https://` address and token. **Disconnect…** removes it. Its chats keep running on that host.
+1. Click **Set Up Tunnel…**. Enter the tunnel's public hostname, a local port (5182 unless you change it) and the tunnel token from Cloudflare.
+2. In Cloudflare, give the tunnel one public hostname whose service is `http://127.0.0.1:<port>`, and no private network routes.
+3. Turn on **Serve over Cloudflare Tunnel**.
+4. Once the tunnel connects, click **Pair…** and name the device. Scan the QR code in the iOS app, or open the pairing link in a browser.
 
-## Stop or remove access
+Each device gets its own code, so you can remove one without the others. A code expires after 10 minutes if no device uses it. Up to 20 devices can be paired. They're listed under **Paired devices**, each with **Remove**.
 
-| Action                                      | Result                                                                                                   |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Turn off **Remote access**                  | Devices are refused until you turn it back on. The link and the device list stay.                        |
-| Sign out of Nyte on the desktop             | Remote access doesn't change. The link, its devices, and the Remote access setting stay as they were.    |
-| **Unlink This Mac…**                        | The computer leaves the account and every device loses access. Link again to come back.                  |
-| **Revoke…** next to a device on the desktop | That device loses access right away, and the Nyte sign-in it used ends. It must sign in again to return. |
-| Sign out of Nyte on the device              | Disconnects the device and asks Nyte to remove its access.                                               |
-| Turn off **Serve over Tailscale**           | The computer leaves the tailnet until you turn it back on. It stays signed in.                           |
-| **Stop Sharing…** next to **This Mac**      | Tailscale and Cloudflare Tunnel stop serving and Remote access turns off. Chats already running go on.   |
+## Use another host [#another-host]
 
-## Troubleshooting
+To list another Nyte host's chats in the sidebar, open **Settings > Server** and click **Connect to Host…** under **Remote host**. Enter its `https://` address and token. Nyte stores the token in `~/.nyte/server.json`.
+
+**Change Host…** points it at another address. **Disconnect…** removes it. Its chats keep running on that host.
+
+## Stop or remove access [#stop]
+
+| Action                                 | Result                                                                                                     |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Turn off **Remote access**             | Account devices are refused until you turn it back on. The link and the device list stay.                  |
+| Sign out of Nyte on the desktop        | Remote access doesn't change. The link, its devices and the **Remote access** setting stay as they were.   |
+| **Unlink This Mac…**                   | The computer leaves the account and every account device loses access. Link again to come back.            |
+| **Revoke…** next to an account device  | That device loses access right away, and the Nyte sign-in it used ends. It must sign in again to return.   |
+| Sign out of Nyte on the device         | Disconnects the device and asks Nyte to remove its access.                                                 |
+| Turn off **Serve over Tailscale**      | The computer leaves the tailnet until you turn it back on. It stays signed in.                             |
+| **Remove** next to a paired device     | That device can no longer connect through the tunnel.                                                      |
+| **Remove Tunnel…**                     | Nyte forgets the hostname and tunnel token, and every paired device loses access.                          |
+| **Stop Sharing…** next to **This Mac** | Tailscale and Cloudflare Tunnel stop serving and **Remote access** turns off. Chats already running go on. |
+
+## Troubleshooting [#troubleshooting]
 
 | What you see                                  | What to do                                                                                                                     |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Devices can't see a linked Mac                | Turn on **Remote access**. It starts off.                                                                                      |
-| The computer isn't listed, or doesn't answer  | Wake it. Check that Nyte is open with Remote access on.                                                                        |
-| The desktop shows **Offline**                 | The computer can't reach Nyte to verify itself, so it refuses devices. Check its internet connection.                          |
+| The computer isn't listed, or doesn't answer  | Wake it. Check that Nyte is open with **Remote access** on.                                                                    |
+| **Offline** next to **Remote access**         | The computer can't reach Nyte to verify itself, so it refuses devices. Check its internet connection.                          |
+| **Not reachable** next to **Remote access**   | Another Nyte connection replaced this one. Turn **Remote access** off, then on again.                                          |
+| **Account disabled**                          | The Nyte account is locked or disabled, so every device is refused.                                                            |
+| **Pair…** for the tunnel is greyed out        | The tunnel hasn't connected yet. Wait for **Connected**.                                                                       |
 | The token is refused                          | A manual token ends when you stop serving. Turn serving on again and scan the new code. A revoked device has to sign in again. |
-| **Different host**, with **Pair as New Host** | The address answered with a different host key. Pair again only if you reinstalled Nyte or reset its profile on that computer. |
+| **Different host**, with **Pair as New Host** | The address answered as a different computer. Pair again only if you reinstalled Nyte or reset its profile on that computer.   |

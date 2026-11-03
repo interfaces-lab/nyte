@@ -3,7 +3,21 @@ title: Build an agent app
 description: A chat app in the framework you already use, backed by a Nyte host on your machine.
 ---
 
-## Create the project
+This page builds a chat page in the web framework you already use, with Nyte's agent answering
+from your machine. The agent can read and change the project folder, so you can ask it about your
+code or have it make changes.
+
+The app runs as two processes:
+
+- `server.ts` starts a host with `sdk.open`. The host signs in to the model, runs the agent and its
+  tools, keeps the chats in `agent.db`, and serves all of it over HTTP.
+- The page connects to that host with `sdk.connect`, starts a chat and draws the answer as it
+  streams in.
+
+You need Node 26.4 or later and pnpm. The model is OpenAI's `openai-codex` provider, which signs in
+with a ChatGPT Plus or Pro account.
+
+## Create the project [#create-the-project]
 
 <CodeBlockTabs defaultValue="Vite" groupId="framework">
 <CodeBlockTabsList>
@@ -70,7 +84,7 @@ pnpm add @nyte-ai/sdk @nyte-ai/host @nyte-ai/plugin @nyte-ai/schema
 </CodeBlockTab>
 </CodeBlockTabs>
 
-## Add the files
+## Build the chat [#build-the-chat]
 
 <GroupPanel groupId="framework" value="Vite" defaultValue="Vite">
 
@@ -197,7 +211,7 @@ import type { HeadStore, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: the host lets this page in by its origin.
+// No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 export interface OpenChat {
@@ -349,7 +363,7 @@ import type { HeadStore, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: the host lets this page in by its origin.
+// No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 export interface OpenChat {
@@ -497,7 +511,7 @@ import type { HeadStore, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: the host lets this page in by its origin.
+// No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 export interface OpenChat {
@@ -649,7 +663,7 @@ import type { HeadStore, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: the host lets this page in by its origin.
+// No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 export interface OpenChat {
@@ -801,7 +815,7 @@ import type { HeadStore, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: the host lets this page in by its origin.
+// No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 export interface OpenChat {
@@ -967,7 +981,7 @@ import type { HeadStore, Session } from "@nyte-ai/sdk/client";
 
 // The address `node server.ts` printed.
 const url = "http://127.0.0.1:PORT";
-// No headers: the host lets this page in by its origin.
+// No headers: authorize in server.ts lets every request in.
 const credentials = { kind: "custom", headers: () => ({}) } as const;
 
 export interface OpenChat {
@@ -993,7 +1007,7 @@ export async function startChat(content: string): Promise<OpenChat> {
 
 </GroupPanel>
 
-## Run it
+## Run it [#run-it]
 
 The host needs Node 26.4 or later:
 
@@ -1046,9 +1060,12 @@ this online, replace `authorize` with your own sign-in; see [Before you deploy](
 This chat draws your messages and the text answers. Tool calls and other parts are skipped here;
 [Render a session](/docs/sdk/guides/render-a-session#draw-the-messages) shows how to draw them.
 
-## Or a terminal app
+## Or a terminal app [#terminal-app]
 
-The store works outside a browser too, where the socket takes headers and the text a part streams arrives on `live.text`. Run this beside the host, with your question as the argument:
+`subscribe` and `snapshot` work outside a browser too, where the socket takes headers and the text
+a part streams arrives on `live.text`. This script asks the host one question and reprints the
+latest answer each time it changes. Run it beside `server.ts`, with your question as the argument,
+and press Ctrl+C when you're done:
 
 ```ts title="tui.ts"
 import process from "node:process";
@@ -1092,9 +1109,10 @@ live.text((update) => {
 node tui.ts "What does this project do?"
 ```
 
-## The folder it works in
+## The folder it works in [#the-folder-it-works-in]
 
-The agent works in the folder you start the host from. It isn't a sandbox. Pass `workspace: { kind: "local", path }` to `sdk.open` to pick another
+The agent works in the folder you start the host from. It isn't a sandbox: its commands run as
+you, with your files. Pass `workspace: { kind: "local", path }` to `sdk.open` to pick another
 folder.
 
 Context files (`AGENTS.md`, `CLAUDE.md`) load from the folder and its ancestors without trust;
@@ -1109,12 +1127,14 @@ if (added.kind === "added" || added.kind === "exists") {
 }
 ```
 
-The decision is saved for the folder and the folders below it. Tool calls run without approval by
-default. Apply `host.settings.apply("permissions", "ask")` to ask before commands and file changes.
-The `server.ts` above explicitly applies `"full"` because this chat can't show approval requests.
-The desktop app and the terminal can.
+The decision is saved for the folder and the folders below it.
 
-## Before you deploy
+Tool calls run without approval by default. `host.settings.apply("permissions", "ask")` makes the
+agent ask before commands and file changes. The `server.ts` above applies `"full"` because this
+chat can't show approval requests; [Ask before tool calls](/docs/sdk/examples#ask-before-tool-calls)
+shows how a client answers them.
+
+## Before you deploy [#before-you-deploy]
 
 - Replace `authorize` with your own sign-in. It receives each `Request`, so it can read your session
   cookie and return that user as the principal, or `{ deny: "unauthorized" }`.
@@ -1125,16 +1145,19 @@ The desktop app and the terminal can.
 The host is a long-running process. A serverless function can't be one, because it stops when the
 request ends; for serverless, start from the Vercel template below.
 
-## Deploy it
+## Deploy it [#deploy-it]
 
 | Template                                                                                              | What runs                                                       |
 | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | [Cloudflare](https://github.com/interfaces-lab/nyte/blob/main/packages/examples/cloudflare/README.md) | One host in a SQLite-backed Durable Object, chat only           |
 | [Vercel](https://github.com/interfaces-lab/nyte/blob/main/packages/examples/vercel/README.md)         | A Nitro app over PostgreSQL, with tools in a sandbox you supply |
 
-## Extend it
+## Extend it [#extend-it]
 
-Plugins change what the agent can do and how clients draw it. A core plugin adds tools, parts,
-commands, settings and hooks, and loads in the host. A client plugin adds renderers, commands,
-settings and keybindings, and loads in the app.
-[Give the agent a tool](/docs/sdk/examples#give-the-agent-a-tool) is a complete core plugin.
+Plugins change what the agent can do and how clients draw it. A core plugin loads in the host and
+adds tools, parts, skills, commands, settings and hooks. A client plugin loads in the app and adds
+renderers, commands, settings and keybindings. Pass core plugins to `sdk.open({ plugins })`.
+
+[Plugins](/docs/plugins) explains both kinds.
+[Give the agent a tool](/docs/sdk/examples#give-the-agent-a-tool) is a complete core plugin in one
+file.

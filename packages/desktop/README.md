@@ -1,6 +1,6 @@
 # @nyte-ai/desktop
 
-The Electron desktop client of the Nyte host. Main-process code lives in `src/main`, the preload bridge in `src/preload`, and the renderer entry in `src/renderer`. The React interface itself is [`@nyte-ai/app`](../renderer/README.md). Shared session behavior belongs in core.
+The Electron desktop client of the Nyte host. Main-process code lives in `src/main`, the preload bridge in `src/preload`, and the renderer entry in `src/renderer`. The React interface itself is [`@nyte-ai/app`](../app/README.md). Shared session behavior belongs in core.
 
 The host is the one `nyte host` serves (`serveHost` in `@nyte-ai/service`), run by launchd as a login agent, so it keeps running after the app quits. It runs on the app's own Node: the app's executable with `ELECTRON_RUN_AS_NODE=1` on `out/main/nyte-host.js`, which main's build bundles apart from main, so terminals open through the `@lydell/node-pty` the app ships (the Bun-compiled `nyte host` cannot load it and answers a pty start with `unavailable`). It starts in the home folder, its default workspace, and runs the bundled `nyte-tailnet` (`--tailnet <path>` in a development build). The packaged app registers `Contents/Library/LaunchAgents/ai.nyte.desktop.host.plist` through SMAppService, which finds the entry from the executable's resources; a development build writes `~/Library/LaunchAgents/ai.nyte.desktop.dev.host.plist` for its Electron and its own entry, with `packages/tui/dist/nyte-tailnet` as the sidecar, and bootstraps it. `pgrep -f nyte-host.js` finds the host. `NYTE_DESKTOP_HOST_LABEL` picks another label for a development build. The host serves `$NYTE_HOME/host.sock` (default `~/.nyte`, mode 0600), and main connects there. A window reaches the host over a MessagePort that main bridges to the socket, never learning its path or a token. `src/shared/host-port.ts` carries each fetch the SDK makes as numbered exchanges with per-exchange flow control. A window has no per-origin connection cap, its uploads stream, and a host restart fails open requests as a dropped connection does, so the SDK reconnects. Main is also the app's client on the host's event channel, a WebSocket on the same socket: it offers the host the agents' browser and canvas previews as client actions, which the host asks for with `client.perform`, and it pauses the host's runs while the Mac sleeps with `host.execution.pause`.
 
@@ -61,10 +61,8 @@ Read [AGENTS.md](AGENTS.md) for process boundaries, [UPDATES.md](UPDATES.md) for
 
 ## Testing a deployed server
 
-Deploy the [Vercel example](../demo/server/vercel/README.md) with `NYTE_TOKEN`
-and a model credential from its
-[Provider credentials](../demo/server/vercel/README.md#provider-credentials)
-section, then `run deploy`. Test from this checkout:
+Deploy the [Vercel example](../examples/vercel/README.md) with `NYTE_TOKEN`
+and a model credential, then `run deploy`. Test from this checkout:
 
 1. Run `pnpm dev:desktop` from the repository root.
 2. Open Settings › Server, click **Connect to Host…**, enter the production domain and its

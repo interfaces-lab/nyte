@@ -1,118 +1,20 @@
 ---
 title: Examples
-description: Short programs that compose a host from a store, an environment and plugins.
+description: Short programs that stream answers, add tools, answer approvals, stop runs and serve a host.
 ---
 
-A host is three choices: where sessions are stored, where the agent works, and which plugins it
-loads. Each has a default, so `sdk.open({})` runs. Every example below changes one of them or uses
-one more handle.
+Each example is a file you can run with `node`. Most open a host with `sdk.open({})`, which works in
+the current folder and needs a model you're signed in to;
+[Build an agent app](/docs/build/composition#build-the-chat) shows the sign-in.
 
-## Stream the answer
+A host is three choices: where chats are stored, where the agent works, and which plugins it loads.
+Each has a default. The examples below change one of them or use one more handle.
+
+## Stream the answer [#stream-the-answer]
 
 The host serves its rows on a local listener, and `openHost` follows them: a head store for the
-chat's rows and `live.text` for the text a part streams. Print what's new in each text part of this
-run.
-
-```ts title="stream.ts"
-import process from "node:process";
-import { isPart, text } from "@nyte-ai/plugin/core";
-import { sdk } from "@nyte-ai/sdk";
-import type { SendReceipt, Session } from "@nyte-ai/sdk";
-import { headView, openHost, streamText, withStreamedText } from "@nyte-ai/sdk/client";
-import type { HostConnection, StreamedText } from "@nyte-ai/sdk/client";
-
-export async function print(live: HostConnection, session: Session, receipt: SendReceipt) {
-  const landed = await receipt.landed();
-  const run = landed.kind === "landed" ? landed.run : null;
-  const written = new Map<string, number>();
-  const store = live.head(session.id, session.name, { tail: 20 });
-  const done = Promise.withResolvers<void>();
-  let texts: StreamedText = new Map();
-
-  const show = () => {
-    const snapshot = store.snapshot();
-
-    if (snapshot === null) return;
-    const view = withStreamedText(headView(snapshot), texts);
-    const turns = new Set(view.turns.filter((turn) => turn.run === run).map((turn) => turn.id));
-
-    for (const message of view.messages) {
-      if (!turns.has(message.turn) || !isPart(message, text)) continue;
-      const { markdown } = message.state;
-      process.stdout.write(markdown.slice(written.get(message.id) ?? 0));
-      written.set(message.id, markdown.length);
-    }
-
-    if (view.execution.kind === "idle" && view.execution.lastRun?.id === run) done.resolve();
-  };
-
-  const stopRows = store.subscribe(show);
-
-  const stopText = live.text((update) => {
-    texts = streamText(texts, update);
-    show();
-  });
-
-  show();
-  await done.promise;
-  stopText();
-  stopRows();
-  store.close();
-}
-
-const host = await sdk.open({});
-const token = crypto.randomUUID();
-
-const listener = await host.listen({
-  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
-  auth: { kind: "token", token },
-});
-
-const live = openHost(listener.address ?? "", {
-  credentials: { kind: "token", token },
-  client: { kind: "other", name: "stream", version: "1.0.0" },
-});
-
-const { session, receipt } = await host.sessions.start({ content: "Explain this repository" });
-
-await print(live, session, receipt);
-live.release();
-await host.close();
-```
-
-## Chat in a terminal
-
-The first message starts the session. Every message after that is a `send`.
-
-```ts tab="chat.ts"
-import process from "node:process";
-import { createInterface } from "node:readline/promises";
-import { sdk } from "@nyte-ai/sdk";
-import { openHost } from "@nyte-ai/sdk/client";
-import { print } from "./stream";
-
-const host = await sdk.open({});
-const token = crypto.randomUUID();
-
-const listener = await host.listen({
-  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
-  auth: { kind: "token", token },
-});
-
-const live = openHost(listener.address ?? "", {
-  credentials: { kind: "token", token },
-  client: { kind: "other", name: "chat", version: "1.0.0" },
-});
-
-const prompt = createInterface({ input: process.stdin, output: process.stdout });
-
-let { session, receipt } = await host.sessions.start({ content: await prompt.question("> ") });
-
-while (true) {
-  await print(live, session, receipt);
-  receipt = await session.send(await prompt.question("\n> "));
-}
-```
+chat's rows and `live.text` for the text a part streams. `print` writes the new end of each text
+part from this message's run, and stops when that run ends.
 
 ```ts tab="stream.ts"
 import process from "node:process";
@@ -161,9 +63,72 @@ export async function print(live: HostConnection, session: Session, receipt: Sen
 }
 ```
 
-## Give the agent a tool
+```ts tab="answer.ts"
+import { sdk } from "@nyte-ai/sdk";
+import { openHost } from "@nyte-ai/sdk/client";
+import { print } from "./stream";
 
-A tool is an object with a schema and an `execute` function. A plugin carries it into every session.
+const host = await sdk.open({});
+const token = crypto.randomUUID();
+
+const listener = await host.listen({
+  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  auth: { kind: "token", token },
+});
+
+const live = openHost(listener.address ?? "", {
+  credentials: { kind: "token", token },
+  client: { kind: "other", name: "stream", version: "1.0.0" },
+});
+
+const { session, receipt } = await host.sessions.start({ content: "Explain this repository" });
+
+await print(live, session, receipt);
+live.release();
+await host.close();
+```
+
+`landed()` resolves once the message reaches the chat, with the run that answers it.
+`tail: 20` keeps the view to the last 20 messages.
+
+## Chat in a terminal [#chat-in-a-terminal]
+
+The first message starts the chat. Every message after that is a `send`. This uses `print` from
+`stream.ts` above.
+
+```ts title="chat.ts"
+import process from "node:process";
+import { createInterface } from "node:readline/promises";
+import { sdk } from "@nyte-ai/sdk";
+import { openHost } from "@nyte-ai/sdk/client";
+import { print } from "./stream";
+
+const host = await sdk.open({});
+const token = crypto.randomUUID();
+
+const listener = await host.listen({
+  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  auth: { kind: "token", token },
+});
+
+const live = openHost(listener.address ?? "", {
+  credentials: { kind: "token", token },
+  client: { kind: "other", name: "chat", version: "1.0.0" },
+});
+
+const prompt = createInterface({ input: process.stdin, output: process.stdout });
+
+let { session, receipt } = await host.sessions.start({ content: await prompt.question("> ") });
+
+while (true) {
+  await print(live, session, receipt);
+  receipt = await session.send(await prompt.question("\n> "));
+}
+```
+
+## Give the agent a tool [#give-the-agent-a-tool]
+
+A tool is an object with a schema and an `execute` function. A plugin carries it into every chat.
 
 ```ts title="weather.ts"
 import type { Plugin } from "@nyte-ai/plugin/core";
@@ -194,11 +159,147 @@ await receipt.settled();
 ```
 
 `effects: "none"` says the tool doesn't write files, so the host skips the snapshot around it.
-`replay: "safe"` says running the call twice does no harm, so the host may repeat it after a crash.
+`replay: "safe"` says running the call twice does no harm, so the host may run it again after a
+crash. [Plugins](/docs/plugins) covers the rest of what a plugin can add.
 
-## Chat without a folder
+## Ask before tool calls [#ask-before-tool-calls]
 
-Swap the environment for one with no files or processes, and keep sessions in your own store.
+With the `permissions` setting on `ask`, the agent waits for an answer before it runs a command or
+changes a file. Each request shows up in the chat's view, here followed through a head store as in
+[Stream the answer](#stream-the-answer). `openApprovals` lists the ones nobody has answered, and
+`act` answers one.
+
+```ts title="approve.ts"
+import process from "node:process";
+import { createInterface } from "node:readline/promises";
+import { approvalPrompt, openApprovals } from "@nyte-ai/plugin/approvals/schema";
+import { sdk } from "@nyte-ai/sdk";
+import { headView, openHost } from "@nyte-ai/sdk/client";
+
+const host = await sdk.open({});
+const token = crypto.randomUUID();
+
+const listener = await host.listen({
+  transport: { kind: "http", hostname: "127.0.0.1", port: 0 },
+  auth: { kind: "token", token },
+});
+
+const live = openHost(listener.address ?? "", {
+  credentials: { kind: "token", token },
+  client: { kind: "other", name: "approve", version: "1.0.0" },
+});
+
+const prompt = createInterface({ input: process.stdin, output: process.stdout });
+
+await host.settings.apply("permissions", "ask");
+
+const { session, receipt } = await host.sessions.start({
+  content: "Run the tests and fix what fails",
+});
+const landed = await receipt.landed();
+const run = landed.kind === "landed" ? landed.run : null;
+const store = live.head(session.id, session.name, { tail: 20 });
+const asked = new Set<string>();
+const done = Promise.withResolvers<void>();
+let answering = Promise.resolve();
+
+const check = () => {
+  const snapshot = store.snapshot();
+
+  if (snapshot === null) return;
+  const view = headView(snapshot);
+
+  for (const request of openApprovals(view)) {
+    if (asked.has(request.part)) continue;
+    asked.add(request.part);
+
+    answering = answering.then(async () => {
+      const { title, detail } = approvalPrompt(request);
+      const answer = await prompt.question(`${title}\n${detail}\nAllow? [y/N] `);
+
+      await session.part(request.part).act(answer === "y" ? "once" : "deny", {});
+    });
+  }
+
+  if (view.execution.kind === "idle" && view.execution.lastRun?.id === run) done.resolve();
+};
+
+const stopRows = store.subscribe(check);
+
+check();
+await done.promise;
+stopRows();
+store.close();
+live.release();
+prompt.close();
+await host.close();
+```
+
+`approvalPrompt` returns the same question and detail the desktop app shows, such as "Run this
+command?" and the command. The answers are `once`, `session`, which allows that tool for the rest
+of the chat, and `deny`. The setting is saved in the store, so later chats ask too until you apply
+`"full"` again. `"auto-edit"` lets the agent edit files in the folder and asks before commands,
+edits outside it and other tools.
+
+## Stop a run that takes too long [#stop-a-run]
+
+`receipt.stop()` stops the work behind a message: it withdraws the message if it's still queued,
+or stops the run answering it.
+
+```ts title="deadline.ts"
+import { sdk } from "@nyte-ai/sdk";
+
+const host = await sdk.open({});
+const { receipt } = await host.sessions.start({ content: "Find every flaky test" });
+
+const timer = setTimeout(() => void receipt.stop(), 5 * 60_000);
+const end = await receipt.settled();
+
+clearTimeout(timer);
+console.log(end.kind);
+await host.close();
+```
+
+`settled()` resolves either way. A run that finished gives `completed`, and one cut short gives
+`stopped`. To stop everything in a chat at once, see
+[Stop everything](/docs/sdk/guides/send-messages#stop-everything).
+
+## Read token usage [#read-token-usage]
+
+A completed run reports the tokens it used and their cost. `models.usage()` reads how much of each
+signed-in account's plan limits is used.
+
+```ts title="usage.ts"
+import { sdk } from "@nyte-ai/sdk";
+
+const host = await sdk.open({});
+const { receipt } = await host.sessions.start({
+  content: "Write a changelog entry for the last commit",
+});
+const end = await receipt.settled();
+
+if (end.kind === "completed") {
+  const { input, output, total, cost } = end.usage;
+  console.log(`${input} in, ${output} out, ${total} tokens, cost ${cost.total}`);
+}
+
+for (const provider of await host.models.usage()) {
+  if (provider.state.kind !== "ready") continue;
+  for (const limit of provider.state.limits) {
+    console.log(`${provider.name} ${limit.label}: ${limit.used} of ${limit.limit}`);
+  }
+}
+
+await host.close();
+```
+
+`usage` also has `cacheRead`, `cacheWrite` and `reasoning`. `models.usage()` needs owner authority,
+which a host from `sdk.open` has.
+
+## Chat without a folder [#chat-without-a-folder]
+
+Swap the environment for one with no files or processes, and keep chats in your own store. The
+agent can still answer, but it has no folder to read or commands to run.
 
 ```ts title="chat-only.ts"
 import { sqliteStore } from "@nyte-ai/host";
@@ -211,9 +312,16 @@ const host = await sdk.open({
   plugins: [{ id: "chat-only", environment: chatOnlyProvider() }],
   workspace: { kind: "chat-only", locator: null },
 });
+const { receipt } = await host.sessions.start({ content: "Draft a polite reminder email" });
+
+await receipt.settled();
+await host.close();
+await store.close();
 ```
 
-## Work on a branch of its own
+A store you pass stays yours, so close it after the host.
+
+## Work on a branch of its own [#work-on-a-branch]
 
 `isolation: "worktree"` gives the chat a git worktree on a new branch, with your uncommitted changes
 copied in. Your checkout stays as it was.
@@ -231,11 +339,11 @@ await receipt.settled();
 ```
 
 Removing the chat removes the worktree. It keeps the folder while it has uncommitted changes, and
-the branch once it has commits.
+the branch once it has commits. A folder outside git throws `SdkError("unavailable")`.
 
-## Ask several questions at once
+## Ask several questions at once [#ask-several-questions]
 
-Sessions are independent, so `Promise.all` runs them side by side.
+Chats are independent, so `Promise.all` runs them side by side.
 
 ```ts title="survey.ts"
 import { isPart, text } from "@nyte-ai/plugin/core";
@@ -249,12 +357,21 @@ const answers = await Promise.all(
     const { session, receipt } = await host.sessions.start({ content });
     await receipt.settled();
     const { messages } = await session.view();
-    return messages.findLast((message) => isPart(message, text));
+    return messages.findLast((message) => isPart(message, text))?.state.markdown ?? "";
   }),
 );
+
+for (const [index, question] of questions.entries()) {
+  console.log(`# ${question}\n\n${answers[index]}\n`);
+}
+
+await host.close();
 ```
 
-## List sessions as they change
+## List chats as they change [#list-chats]
+
+`live.directory` is a store of the chat list, and its listener runs each time the list changes.
+`limit` caps it at 20 chats.
 
 ```ts title="sessions.ts"
 import { sdk } from "@nyte-ai/sdk";
@@ -283,7 +400,7 @@ sessions.subscribe(() => {
 });
 ```
 
-## Serve it and connect from anywhere
+## Serve it and connect from anywhere [#serve-it]
 
 Every example above works over the network. Put the host on HTTP, then swap `sdk.open` for
 `sdk.connect` in the client.
@@ -310,4 +427,9 @@ const connection = await sdk.connect({
 });
 ```
 
-[Build an agent app](/docs/build/composition#build-the-chat) puts the same host behind a chat in Vite, Next.js, Svelte, Vue, Nuxt or Solid.
+Set `NYTE_TOKEN` to the same secret of at least 16 characters in both. The token grants full access
+to the host; to give each device its own revocable credential, use
+[pairing](/docs/sdk/guides/choose-an-entry-point#give-each-device-its-own-credential).
+
+[Build an agent app](/docs/build/composition#build-the-chat) puts a host behind a chat page in Vite,
+Next.js, Svelte, Vue, Nuxt or Solid.

@@ -1,67 +1,155 @@
 ---
 title: Entry points
-description: Options for sdk.open, sdk.connect and openHost, and the helpers the SDK exports beside them.
+description: Options for sdk.open, host.listen, sdk.connect and openHost, and the helpers the SDK exports beside them.
 ---
 
-## sdk.open
+Three calls get you a host to talk to. `sdk.open` runs one in your Node process, `host.listen`
+serves it over HTTP, and `sdk.connect` reaches one from another process.
+[Choose an entry point](/docs/sdk/guides/choose-an-entry-point) helps you pick.
+
+| Import                | Has                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------- |
+| `@nyte-ai/sdk`        | `sdk.open`, `sdk.connect`, `createSendJournal`, `pagedViews`, `SdkError` and the SDK's types              |
+| `@nyte-ai/sdk/client` | The same without `sdk.open`, plus [`openHost`](#open-host) and its row stores, so it never loads the host |
+
+In a browser or React Native bundle, `@nyte-ai/sdk` resolves to a build without the host, and its
+`sdk.open` rejects with `SdkError("unavailable")`.
+
+## sdk.open [#sdk-open]
 
 ```ts
 sdk.open(options: OpenHostOptions): Promise<Host>
 ```
 
-Composes a host in this Node process and returns it. Available from `@nyte-ai/sdk` in Node only;
-elsewhere it rejects with `SdkError("unavailable")`.
+Starts a host in this Node process and returns it. A `Host` is a
+[`Connection`](/docs/sdk/reference/connection) with all three authorities and
+[a few more members](/docs/sdk/reference/connection#host). Every option is optional, so
+`sdk.open({})` works.
 
-| Option      | Type                              | Default                                                      |
-| ----------- | --------------------------------- | ------------------------------------------------------------ |
-| `store`     | `Store`                           | SQLite at `<home>/.nyte/nyte.db`, closed with the host       |
-| `workspace` | `WorkspaceTarget`                 | `{ kind: "local", path: process.cwd() }`                     |
-| `models`    | `Models` from `@nyte-ai/ai`       | Nyte's catalog over credentials encrypted in the store       |
-| `plugins`   | `Plugin<"core">[]`                | `[]`                                                         |
-| `home`      | `string`                          | `os.homedir()`. Its `.nyte` holds settings, plugins and keys |
-| `secrets`   | `{ key(): Promise<Uint8Array> }`  | The key in `<home>/.nyte`                                    |
-| `execution` | `run`, `admit-only` or `dispatch` | `run`, covering every session                                |
-| `mcp`       | `McpHubFactory`                   | The host's MCP hub                                           |
-| `github`    | `GitHubAccountApi`                | The machine's `gh` login, with the default local provider    |
-| `shell`     | `() => string \| null`            | `$SHELL`, for terminal jobs                                  |
+| Option             | Default                                                                   | What it sets                                                                    |
+| ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `store`            | SQLite at the path in `NYTE_DB`, else `<home>/.nyte/nyte.db`              | Where sessions live. The host closes a store it opened, not yours               |
+| `workspace`        | `{ kind: "local", path: process.cwd() }`                                  | The default workspace, used when `sessions.start` names none                    |
+| `models`           | Nyte's model catalog over logins encrypted in the store                   | The models and provider logins                                                  |
+| `plugins`          | `[]`                                                                      | Your core plugins                                                               |
+| `home`             | `os.homedir()`                                                            | Where `.nyte` lives, with settings, plugins, keys and the store                 |
+| `secrets`          | The key in `<home>/.nyte/secret.key`                                      | `{ key() }`, the key that encrypts saved logins                                 |
+| `execution`        | `{ kind: "run", coverage: { kind: "all" } }`                              | Who runs the sessions. See [execution](#execution)                              |
+| `mcp`              | A hub over `<home>/.nyte/mcp.json` and trusted projects' `.nyte/mcp.json` | The MCP servers chats use                                                       |
+| `github`           | The machine's `gh` login                                                  | What `connection.github` serves                                                 |
+| `images`           | The host's own image resizer                                              | Shrinks attached images to fit model limits                                     |
+| `shell`            | `$SHELL`, else `/bin/sh`                                                  | `() => string \| null`, the login shell terminal jobs start                     |
+| `label`            | `"nyte"`                                                                  | The name this process goes by among processes that share the store              |
+| `onRevoked`        | None                                                                      | Called when another process sharing the store has taken this one's place        |
+| `onStoreMigration` | None                                                                      | Called before the default store migrates existing data, which blocks the thread |
+| `pluginImport`     | Node's import with a resolve hook                                         | How plugin files are imported. A Bun host passes its own                        |
 
-The host always loads the first-party plugins and the plugin files in `<home>/.nyte/plugins`.
-`plugins` come after the first-party ones; one with a first-party plugin's `id` replaces it, and one
-that provides the `local` environment replaces the default local provider.
+The host always loads the first-party plugins and the plugin files in `<home>/.nyte/plugins`. Your
+`plugins` come after the first-party ones. One with a first-party plugin's `id` replaces it. One
+that provides the `local` environment replaces the default local provider, and then `github` has no
+default.
 
-`execution` decides who runs the sessions this host admits. `run` runs them here. `admit-only`
-stores messages and leaves running to another process. `dispatch` calls your function with each
-session and head that has work, for a queue or workflow engine to pick up.
+### execution [#execution]
 
-`host.close()` stops watching plugin files, closes listeners, closes the host, then closes the store
-if the host opened it.
+`execution` decides who runs the sessions this host accepts messages for:
 
-## sdk.connect
+| Value                                    | Who runs them                                                                                                         |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `{ kind: "run", coverage }`              | This process. `coverage` is `{ kind: "all" }`, `{ kind: "workspace", workspace }` or `{ kind: "sessions", sessions }` |
+| `{ kind: "admit-only" }`                 | Another process. This one stores messages and runs nothing                                                            |
+| `{ kind: "dispatch", dispatch(target) }` | Your queue or workflow engine                                                                                         |
+
+With `dispatch`, the host calls your function with `{ session, head }` each time a head has work.
+Hand the target to a worker, which calls `host.execution.advance(target)` and acts on the report:
+
+```ts
+const report = await host.execution.advance(target);
+```
+
+| Report                         | Next step                                                             |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `continue`                     | Call `advance` again                                                  |
+| `waiting` with `until`         | Call again at `until`, or wait for the next dispatch when it's `null` |
+| `retry` or `busy` with `until` | Call again at `until`                                                 |
+| `idle`                         | Nothing left to do                                                    |
+| `fenced`                       | Another process runs this head now. Stop                              |
+
+[Stores and execution](/docs/host/stores-and-execution#execution) covers the modes in use.
+
+### close [#close]
+
+`host.close()` closes the host's listeners, then the host, stops watching plugin files, and closes
+the store if the host opened it. `await using host = await sdk.open({})` calls it for you.
+
+## host.listen [#host-listen]
+
+```ts
+host.listen(options: ListenOptions): Promise<Listener>
+```
+
+Serves the host to other processes. Clients reach it with `sdk.connect`, or through the
+[HTTP API](/docs/sdk/reference/connection#http-api). [Serve a host](/docs/host/serve) walks through
+auth, pairing and origins.
+
+| Option         | What it does                                                                                                                                                                           |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `transport`    | `{ kind: "http", hostname?, port? }` binds a socket, by default on `127.0.0.1` and a free port. `{ kind: "fetch" }` binds nothing; call `listener.fetch(request)` from your own server |
+| `auth`         | `{ kind: "token", token, authority? }` or `{ kind: "custom", authorize(request) }`                                                                                                     |
+| `origins`      | Browser origins allowed to call it, such as `https://app.example.com` or `https://*.example.com`                                                                                       |
+| `execution`    | `{ kind: "run", coverage }` (default: all sessions) or `{ kind: "admit-only" }`                                                                                                        |
+| `maxBodyBytes` | The largest request body. Default 8 MiB                                                                                                                                                |
+| `identity`     | `{ id, sign(nonce) }`, the signed answer that lets `connect({ expect })` check it's this host. `sdk.open` supplies one                                                                 |
+| `describe`     | `() => { name, platform, version }`, served at `GET /.nyte/describe`. `sdk.open` supplies one                                                                                          |
+| `before`       | `(request) => Response \| undefined`. Runs first; return a response to answer the request yourself                                                                                     |
+
+A `token` must be at least 16 characters. It grants participant and owner authority unless you pass
+`authority`. Grant `maintenance` only to a token your own processes use, never one you hand to
+someone else.
+
+`custom` auth maps each request to `{ principal, authority }`, or to `{ deny: "unauthorized" }` or
+`{ deny: "forbidden" }`.
+
+`https://*.example.com` allows every subdomain of `example.com`, but not `example.com` itself.
+
+The `Listener` it returns has:
+
+| Member                | What it does                                                |
+| --------------------- | ----------------------------------------------------------- |
+| `address`             | The URL it listens on, or `null` with the `fetch` transport |
+| `fetch(request)`      | Answers one request                                         |
+| `disconnectClients()` | Drops every open request and watch. Clients reconnect       |
+| `close()`             | Disconnects clients and stops listening                     |
+
+## sdk.connect [#sdk-connect]
 
 ```ts
 sdk.connect(options: ConnectOptions): Promise<Connection>
 ```
 
-Connects to a host over HTTP and resolves once the host has sent its first view. Available from
-`@nyte-ai/sdk` everywhere, and from `@nyte-ai/sdk/client` without the host code.
+Connects to a host over HTTP and resolves once the host has sent its first view, so a wrong URL or
+token fails here rather than on the first call.
 
-| Option        | Type                                                     | Notes                                                |
-| ------------- | -------------------------------------------------------- | ---------------------------------------------------- |
-| `url`         | `string`                                                 | The listener's address                               |
-| `credentials` | `CredentialSource`                                       | See below                                            |
-| `expect`      | `{ hostId: HostId }`                                     | Throws `SdkError("stale")` when another host answers |
-| `journal`     | `RequestJournal`                                         | Where unsent messages wait. Default: in memory       |
-| `fetch`       | `(url: string, init?: RequestInit) => Promise<Response>` | Replaces the global `fetch`                          |
+| Option        | What it does                                                                                  |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| `url`         | The listener's address                                                                        |
+| `credentials` | How to sign in. See below                                                                     |
+| `expect`      | `{ hostId }`. Throws `SdkError("stale")` when a different host answers                        |
+| `journal`     | Where unsent messages wait. Default: in memory. See [createSendJournal](#create-send-journal) |
+| `fetch`       | `(url, init?) => Promise<Response>`, used instead of the global `fetch`                       |
 
 `credentials` is one of:
 
-- `{ kind: "token", token }` for a listener token or a device token from pairing.
+- `{ kind: "token", token }` for a listener token, or a device token from pairing.
 - `{ kind: "pairing", code }` for a code from `principals.pair`. After connecting,
   `connection.credential` holds the device token to save.
-- `{ kind: "custom", headers() }` to compute request headers yourself, for a listener with custom
-  auth.
+- `{ kind: "custom", headers() }` to compute request headers yourself, for a listener with
+  `custom` auth.
 
-## createSendJournal
+With `expect`, `connect` first asks the host to sign a random challenge and checks the signature
+and host id, then checks the id again on the first view. A host that doesn't answer the challenge
+is checked on the first view alone.
+
+## createSendJournal [#create-send-journal]
 
 ```ts
 createSendJournal(): RequestJournal
@@ -79,9 +167,9 @@ interface RequestJournal {
 ```
 
 `connect` calls `load` once and resends what it returns. `send` calls `put` before the request and
-`remove` once the host has acknowledged it. A `JournalEntry` is JSON, so any key-value store works.
+`remove` once the host has answered. A `JournalEntry` is plain JSON, so any key-value store works.
 
-## pagedViews
+## pagedViews [#paged-views]
 
 ```ts
 pagedViews<V>(
@@ -90,16 +178,17 @@ pagedViews<V>(
 ): PagedViews<V>
 ```
 
-Reads the views the `watch` you pass yields and keeps older messages you load at the front of each
-one. `PagedViews` is an `AsyncIterable<V>` with one more method:
+Reads the views the `watch` you pass yields and keeps the older messages you load at the front of
+each one. `PagedViews` is an `AsyncIterable<V>` with one more method:
 
-- `earlier(limit)` loads up to `limit` messages before the oldest one shown through `head.history`
-  and resolves with how many came, `0` once the chat's first message is shown. A call while one is
+- `earlier(limit)` loads up to `limit` messages before the oldest one shown through `head.history`,
+  and resolves with how many came: `0` once the chat's first message is shown. A call while one is
   loading waits for it.
 
 If the head moves past the loaded pages, the next view drops them. Iterate it once.
+[Load older messages](/docs/sdk/guides/render-a-session#load-older-messages) shows it in use.
 
-## openHost
+## openHost [#open-host]
 
 ```ts
 openHost(address: string, options: HostOptions): HostConnection
@@ -129,16 +218,7 @@ input)` for any other operation.
 Each store has `subscribe(listener)`, which returns the unsubscribe, `snapshot()`, `freshness()`,
 `stale` while the socket is down or a read failed, and `close()`.
 
-## SdkError
+## SdkError [#sdk-error]
 
-```ts
-class SdkError extends Error {
-  readonly code: SdkErrorCode;
-  readonly hostId: HostId | null;
-  readonly issues: readonly ValidationIssue[];
-  readonly correlation: string | null;
-}
-```
-
-The one error the SDK throws. [Shared concepts](/docs/sdk/reference/shared-concepts#errors-and-outcomes)
-lists the codes.
+The one error the SDK throws. [Errors](/docs/sdk/reference/errors) lists its codes and what to do
+about each.

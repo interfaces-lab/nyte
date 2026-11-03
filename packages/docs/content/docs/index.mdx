@@ -20,11 +20,17 @@ The desktop app includes its own host, so there is nothing else to install.
 
 ## <PlatformIcon name="IconConsole" /> Terminal [#terminal]
 
-For macOS and Linux, on arm64 and x64. The installer puts `nyte` on your PATH.
+For macOS on Apple silicon, and Linux on arm64 or x64. The installer puts `nyte` in
+`~/.local/bin` and adds that folder to your PATH.
 
 ```sh
 curl -fsSL https://nyte.sh/install | sh
 ```
+
+<small>
+  Add `-s -- --version 0.2.0` after `sh` for a specific release, or `-s -- --no-modify-path` to
+  leave your shell files alone. With npm, run `npx nyte-ai` or `npm install --global nyte-ai`.
+</small>
 
 Sign in, then start a session:
 
@@ -37,11 +43,8 @@ nyte
 first `nyte` starts the host in the background, and it keeps running after you quit. A host that's
 already running doesn't see an API key you export only in your shell; save it with `nyte login`.
 
-<small>
-  Run `nyte -p "your prompt"` for a single answer without the interface. The [CLI
-  guide](https://github.com/interfaces-lab/nyte/blob/main/packages/cli/docs/README.md) covers
-  commands and configuration.
-</small>
+[Terminal client](/docs/cli) covers commands, flags and settings. For a single answer without the
+interface, such as in a script, see [Print mode](/docs/cli/print-mode).
 
 ## Updates [#updates]
 
