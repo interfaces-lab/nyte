@@ -2,7 +2,13 @@ import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { alignedRows, ansiEnabled, statusGlyph } from "./cli-style.ts";
-import { findRunningHost, hostFilePath, publishHost, withdrawHost } from "./host-endpoint.ts";
+import {
+  findRunningHost,
+  findStaleHost,
+  hostFilePath,
+  publishHost,
+  withdrawHost,
+} from "./host-endpoint.ts";
 import type { RunningHost } from "./host-endpoint.ts";
 import { OWN_TOKEN_AUTHORITY, startHostThread } from "./hosting.ts";
 
@@ -24,16 +30,22 @@ export async function hostCommand(
   const running = await findRunningHost(path);
 
   if (running !== null) throw new Error(alreadyRunning(running, path));
-  const token = randomBytes(32).toString("base64url");
+  const previous = await findStaleHost(path);
+  const token = previous?.token ?? randomBytes(32).toString("base64url");
   const socket = process.platform === "win32" ? undefined : join(dirname(path), "host.sock");
-
-  const thread = await startHostThread({
+  const command = {
     kind: "local",
     port: 0,
     token,
     authority: OWN_TOKEN_AUTHORITY,
     socket,
-  });
+  } as const;
+
+  const thread = await (previous === null
+    ? startHostThread(command)
+    : startHostThread({ ...command, port: Number(new URL(previous.url).port) }).catch(() =>
+        startHostThread(command),
+      ));
 
   try {
     const published = await publishHost(path, {

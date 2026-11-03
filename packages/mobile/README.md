@@ -3,8 +3,9 @@
 Nyte's iOS app. It controls a running Nyte host: the desktop app, or `nyte` on
 another computer linked with `nyte account`. The host owns sessions, folders, model credentials, and tool
 execution, and keeps working after the app closes. The app reads the host through
-`@nyte-ai/client` and `@nyte-ai/protocol`, including the Node-free
-`SessionObserver` that holds transcript state and recovers a dropped watch.
+`@nyte-ai/sdk`: one host connection per host, over React Native's WebSocket, holds
+the live chat and session-list stores and reconnects on its own, and requests go
+over the SDK's HTTP connection.
 
 User steps are in the [remote access guide](../docs/content/docs/remote-access.mdx).
 This README covers how the app works, how to build it, and how it is published.
@@ -458,11 +459,13 @@ protocol validation, and `runs.reply` with the exact wait identity; the app neve
 invents a reply outcome. Desktop and iOS share the `sessionMark` projection for
 execution status.
 
-`SessionObserver` owns bootstrap, watch recovery, and metadata refreshes. One
-observer per host client and session is shared by the conversation, review, and
-changed-files screens, and closes with its last consumer or when the app goes to
-the background. Transcript rows and change summaries depend on the committed
-transcript, so text deltas don't rebuild them.
+The host connection holds every live store: a chat's head store, drawn through
+`headView` with streamed text and unsent sends laid over it, and the directory
+store behind the session list. A store is shared by the screens that read it and
+closes with its last reader. The SDK's supervisor reconnects and resumes the
+stores, the app wakes it when it comes forward, and the connection's health and a
+stale store's "Updated" time show as separate states. Transcript rows and change
+summaries depend on the committed transcript, so text deltas don't rebuild them.
 
 The model menu reads `provider.models.list()`; the host filters credentials,
 account restrictions, and hidden models. Choosing a model queues

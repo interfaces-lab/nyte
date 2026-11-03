@@ -199,7 +199,7 @@ describe("toolCard", () => {
         pinned: false,
         archived: false,
         activation: { kind: "active" },
-        heads: [],
+        heads: childView.heads,
         createdAt: 0,
         lastActivityAt: 0,
       },
@@ -222,6 +222,8 @@ describe("toolCard", () => {
       running: true,
     });
 
+    const working = buildView((v) => v.turn("c1", (t) => t.user("look around")).live());
+
     const task: Task = {
       kind: "agent",
       id: asId("child-1"),
@@ -234,11 +236,11 @@ describe("toolCard", () => {
         pinned: false,
         archived: false,
         activation: { kind: "active" },
-        heads: [],
+        heads: working.heads,
         createdAt: 0,
         lastActivityAt: 0,
       },
-      view: buildView((v) => v.turn("c1", (t) => t.user("look around")).live()),
+      view: working,
     };
 
     expect(text(toolCard(create, [task], false))).toBe("● explorer  model · medium · worktree");

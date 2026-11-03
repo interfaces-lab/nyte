@@ -4,9 +4,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { css, html } from "react-strict-dom";
 import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import type { PartId, SessionId } from "@nyte-ai/sdk";
-import { describeHostError } from "../connection/connection.ts";
 import { useHost } from "../connection/host-context.tsx";
-import { useWatch } from "../connection/use-watch.ts";
+import { healthMessage, useChat, useHealth } from "../connection/live.ts";
 import { tokens, useTheme } from "../theme.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { CanvasWebView } from "./canvas-frame.tsx";
@@ -14,35 +13,31 @@ import { CanvasWebView } from "./canvas-frame.tsx";
 const FILL = { kind: "fill" } as const;
 
 /**
- * One canvas filling the screen under its title. It watches the part itself rather than the chat's
- * view, so it finds a canvas past the messages the chat holds and redraws when the agent replaces it.
+ * One canvas filling the screen under its title. It reads the part from the session's parts, which
+ * hold every part rather than the chat's window, so it finds a canvas past the messages the chat
+ * holds and redraws when the agent replaces it.
  */
 export function CanvasScreen({ sessionId, part }: { sessionId: SessionId; part: PartId }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { client, newerHost } = useHost();
+  const { client, live } = useHost();
   const handle = client.session(sessionId).part(part);
-  const [watched] = useWatch(handle);
+  const chat = useChat(live, client, sessionId, undefined);
+  const unavailable = healthMessage(useHealth(live));
 
-  const view =
-    watched.kind === "ready" ? watched.value : watched.kind === "failed" ? watched.last : undefined;
+  if (chat === undefined && unavailable !== undefined)
+    return <EmptyState title="Couldn't load the canvas" description={unavailable} />;
 
-  if (view === undefined && watched.kind === "failed")
-    return (
-      <EmptyState
-        title="Couldn't load the canvas"
-        description={describeHostError(watched.error, newerHost)}
-      />
-    );
-
-  if (view === undefined)
+  if (chat === undefined)
     return (
       <html.div style={styles.loading}>
         <ActivityIndicator color={theme.muted} />
       </html.div>
     );
 
-  if (view === null)
+  const view = chat.view.parts.find((candidate) => candidate.id === part);
+
+  if (view === undefined)
     return <EmptyState title="Canvas not found" description="It's no longer in this chat." />;
 
   const checked = canvas.state["~standard"].validate(view.state);

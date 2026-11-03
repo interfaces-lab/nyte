@@ -12,16 +12,20 @@ import {
 import type { Simulation } from "@nyte-ai/bench";
 import { sdk } from "@nyte-ai/sdk";
 import type { Store } from "../../src/app/store.ts";
-import { startTui } from "../harness/tui.ts";
+import { simulationEndpoint, startTui } from "../harness/tui.ts";
 
 const idle = (store: Store): boolean => store.screen().run.kind === "idle";
 
 async function listen(simulation: Simulation) {
-  const outcome = await simulation.drive({ kind: "listen" });
+  const endpoint = await simulationEndpoint(simulation);
 
-  if (outcome.kind !== "listening") throw new Error(`Expected listening, got ${outcome.kind}.`);
-
-  return sdk.connect({ url: outcome.url, credentials: { kind: "token", token: outcome.token } });
+  return {
+    endpoint,
+    connection: await sdk.connect({
+      url: endpoint.url,
+      credentials: { kind: "token", token: endpoint.token },
+    }),
+  };
 }
 
 async function rootNames(simulation: Simulation): Promise<readonly (string | null)[]> {
@@ -35,7 +39,10 @@ test("a tool call replayed from an Anthropic Messages cassette reads the file, d
   await using player = await playCassette({ cassette });
   await using simulation = await simulate({ models: player.models });
   await writeFile(join(simulation.workspace, "notes.txt"), "buy oat milk\ncall the landlord\n");
-  await using tui = await startTui({ host: simulation.host });
+  await using tui = await startTui({
+    host: simulation.host,
+    endpoint: await simulationEndpoint(simulation),
+  });
   await tui.ready();
 
   await tui.send(cassette.prompt);
@@ -58,8 +65,9 @@ test("follows its host through a kill and a restart on the same store and endpoi
   });
 
   await using simulation = await simulate({ models: fake.models });
-  await using connection = await listen(simulation);
-  await using tui = await startTui({ host: connection });
+  const served = await listen(simulation);
+  await using connection = served.connection;
+  await using tui = await startTui({ host: connection, endpoint: served.endpoint });
   await tui.ready();
 
   await tui.send("before the restart");

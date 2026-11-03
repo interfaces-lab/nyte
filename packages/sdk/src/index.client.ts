@@ -4,6 +4,18 @@ export { createSendJournal } from "./journal.ts";
 
 export { openHost } from "./host-connection.ts";
 
+export { headView } from "./head-view.ts";
+
+export type { HeadView } from "./head-view.ts";
+
+export { streamText, withStreamedText } from "./streamed-text.ts";
+
+export type { StreamedPart, StreamedText } from "./streamed-text.ts";
+
+export { unsentSends } from "./unsent.ts";
+
+export type { UnsentSends } from "./unsent.ts";
+
 export type {
   ActionHandler,
   Health,

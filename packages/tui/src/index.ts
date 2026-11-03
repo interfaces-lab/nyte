@@ -29,6 +29,7 @@ import { describeUpdateOutcome, latestReleaseText, selfUpdate } from "./update.t
 import { addFolder, flagConfiguration, targetSession, trustFolder } from "./run.ts";
 import { hostCommand } from "./host-command.ts";
 import { connectHost } from "./local-host.ts";
+import { openLiveHost } from "./live-host.ts";
 import type { HostSource } from "./local-host.ts";
 import { onEnding } from "./lifecycle.ts";
 import { printRun } from "./print.ts";
@@ -306,7 +307,11 @@ async function status(): Promise<void> {
 
 async function print(flags: RunFlags, source: HostSource): Promise<PrintOutcome> {
   signal.throwIfAborted();
-  const host = await openHost(source);
+  const local = await connectHost(source);
+  invocation.defer(() => local.close());
+  const host = local.connection;
+  const live = openLiveHost(local.endpoint, "cli");
+  invocation.defer(() => live.release());
   signal.throwIfAborted();
 
   if (availableModels(await host.models.list()).length === 0)
@@ -346,7 +351,15 @@ async function print(flags: RunFlags, source: HostSource): Promise<PrintOutcome>
 
   invocation.sessionId = session.id;
 
-  return printRun({ session, receipt, json: flags.json, quiet: flags.quiet, output, signal });
+  return printRun({
+    session,
+    live,
+    receipt,
+    json: flags.json,
+    quiet: flags.quiet,
+    output,
+    signal,
+  });
 }
 
 async function main(): Promise<PrintOutcome | undefined> {

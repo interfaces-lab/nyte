@@ -332,7 +332,7 @@ test("a handler that throws writes the crash log and answers effect-failed; late
   expect(app.ports.terminal.copies).toEqual(["kept"]);
 });
 
-test("follow opens the session, forwards views, and a watch that ends becomes watch-ended without hanging", async () => {
+test("follow opens the session and forwards views with their freshness", async () => {
   const app = harness(buildState(null));
   const session = app.ports.host.addSession("s1");
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
@@ -342,12 +342,9 @@ test("follow opens the session, forwards views, and a watch that ends becomes wa
   session.push(PENDING);
   const view = await app.received("view");
   expect(view.view).toBe(PENDING);
+  expect(view.freshness).toEqual({ kind: "fresh", seq: 1 });
   await until(() => (app.ports.plugins.switches.length > 0 ? true : undefined));
   expect(app.ports.plugins.switches).toEqual([{ previous: null, next: asId("s1") }]);
-
-  session.end(null);
-  const ended = await app.received("watch-ended");
-  expect(ended).toEqual({ kind: "watch-ended", session: asId("s1"), failure: null });
   expect(app.ports.log.entries).toEqual([]);
 });
 
@@ -369,19 +366,17 @@ test("with nothing selected, the shown selection follows the view's effective co
   });
 });
 
-test("a watch that throws is logged and reported once, even when it ends before any view", async () => {
+test("a watch that throws is logged once, even when it ends before any view", async () => {
   const app = harness(buildState(null));
   const session = app.ports.host.addSession("s1");
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
   await app.runner.settled();
   session.end("link lost");
-  const ended = await app.received("watch-ended");
-  expect(ended).toEqual({ kind: "watch-ended", session: asId("s1"), failure: "link lost" });
+  await until(() => (app.ports.log.entries.length > 0 ? true : undefined));
+  await Bun.sleep(10);
   expect(app.ports.log.entries).toMatchObject([
     { origin: "watch", error: { message: "link lost" } },
   ]);
-  await Bun.sleep(10);
-  expect(app.dispatched.filter((msg) => msg.kind === "watch-ended")).toHaveLength(1);
 });
 
 test("following another session stops the previous watch; its late views are dropped", async () => {
@@ -398,7 +393,6 @@ test("following another session stops the previous watch; its late views are dro
   expect(view).toMatchObject({ session: asId("s2") });
   await Bun.sleep(10);
   expect(app.dispatched.filter((msg) => msg.kind === "view")).toHaveLength(1);
-  expect(app.dispatched.filter((msg) => msg.kind === "watch-ended")).toHaveLength(0);
 });
 
 test("configure goes through the configurator: the session port receives the patch and the selection fact leads", async () => {

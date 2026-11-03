@@ -120,7 +120,7 @@ export function watchHead(
         const view = hold.view();
 
         if (view === null) return;
-        journal.landed(session, head, view);
+        journal.landed(session, head, view, view.seq);
         const next = withUnsent(view, journal.unsent(session, head));
 
         if (next === shown) return;
@@ -184,7 +184,9 @@ export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterab
   );
 }
 
-export function withUnsent(view: SessionView, unsent: readonly QueuedMessage[]): SessionView {
+export function withUnsent<
+  V extends Pick<SessionView, "messages" | "queue" | "leadingPrompt" | "execution">,
+>(view: V, unsent: readonly QueuedMessage[]): V {
   const lead = view.leadingPrompt?.id;
   const held = unsent.filter((message) => message.id !== lead);
 

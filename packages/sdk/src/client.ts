@@ -42,6 +42,8 @@ type Bound = {
 
 const MAIN = asId<"head">("main");
 
+export const journals = new WeakMap<Connection, JournalLoop>();
+
 export function createClient(transport: Transport, context: ClientContext): Connection {
   const link = createLink();
   const rows = createRows(transport, link);
@@ -62,7 +64,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     link.close("client");
   };
 
-  return {
+  const connection: Connection = {
     hostId: context.hostId,
     principal: context.principal,
     credential: context.credential,
@@ -158,6 +160,10 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     close,
     [Symbol.asyncDispose]: close,
   };
+
+  journals.set(connection, bound.journal);
+
+  return connection;
 }
 
 function sessionHandle(bound: Bound, session: SessionId): Session {
@@ -236,7 +242,7 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
     configure: (patch) => rows.call("head.configure", { session, head, patch }),
     async view(options) {
       const view = await rows.call("head.view", { session, head, options });
-      journal.landed(session, head, view);
+      journal.landed(session, head, view, view.seq);
 
       return withUnsent(view, journal.unsent(session, head));
     },

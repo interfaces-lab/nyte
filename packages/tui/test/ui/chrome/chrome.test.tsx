@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import { describe, expect, mock, test } from "bun:test";
 import { RGBA } from "@opentui/core";
 import { testRender } from "@opentui/solid";
@@ -70,7 +70,7 @@ describe("hints", () => {
 });
 
 describe("notice line", () => {
-  test("shows the notice, a failure with its log path, and a retry for a failed watch", async () => {
+  test("shows the notice, a failure with its log path, and the host's health apart from the chat's freshness", async () => {
     const state = play(
       ready(idle),
       { kind: "refuse", reason: "Already sent", tone: "warning" },
@@ -78,21 +78,24 @@ describe("notice line", () => {
         kind: "failure",
         failure: { origin: "effect", message: "boom", logPath: "/home/.nyte/logs/tui.log" },
       },
-      { kind: "watch-ended", session: S1, failure: "socket closed" },
+      {
+        kind: "health",
+        health: { kind: "blocked", reason: "auth", error: new SdkError("unauthenticated", "no") },
+      },
+      {
+        kind: "view",
+        session: S1,
+        view: idle,
+        freshness: { kind: "stale", since: 1_000, error: null },
+      },
     ).state;
 
     await using app = await mount(state, () => <NoticeLine />, { width: 100, height: 4 });
     const frame = app.captureCharFrame();
 
-    expect(frame).toContain("Chat updates stopped · socket closed · retry");
+    expect(frame).toMatch(/Sign in again · updated \d\d:\d\d/u);
     expect(frame).toContain("Something failed in effect: boom · /home/.nyte/logs/tui.log");
     expect(frame).toContain("Already sent");
-
-    const row = frame.split("\n").findIndex((line) => line.includes("retry"));
-    const column = (frame.split("\n")[row] ?? "").split("retry")[0]?.length ?? -1;
-    await app.mockMouse.click(column + 1, row);
-
-    expect(app.dispatched).toContainEqual({ kind: "retry-watch" });
   });
 
   test("a two-line notice shows both lines, a confirmation in the ok colour", async () => {

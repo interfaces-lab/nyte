@@ -9,7 +9,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import { availableModels, findModel } from "../lib/catalog.ts";
-import { errorMessage, shortId } from "../lib/format.ts";
+import { shortId } from "../lib/format.ts";
 import { indexedMention } from "../model/completion.ts";
 import { chatFolder, followedSession } from "../model/state.ts";
 import type { BlankChat, Selection, State, WorkspaceFacts } from "../model/state.ts";
@@ -129,8 +129,9 @@ export async function follow(
   });
   let first = true;
 
-  const views = each(port.watch(), controller.signal, (view) => {
-    dispatch({ kind: "view", session: id, view });
+  const views = each(port.watch(), controller.signal, (update) => {
+    const view = update.view;
+    dispatch({ kind: "view", session: id, view, freshness: update.freshness });
     const selected = readRunChoice(view.configuration.selected ?? view.configuration.effective);
 
     if (selected !== null) configurator.observeSelected(selected);
@@ -160,18 +161,10 @@ export async function follow(
     dispatch({ kind: "tasks", session: id, tasks: list });
   });
 
-  const ended = (failure: string | null): void => {
-    if (controller.signal.aborted) return;
-    controller.abort();
-    dispatch({ kind: "watch-ended", session: id, failure });
-  };
-
   for (const loop of [views, tasks]) {
     const tracked: Promise<void> = loop
-      .then(() => ended(null))
       .catch((error: unknown) => {
         ports.log.write("watch", error);
-        ended(errorMessage(error));
       })
       .finally(() => {
         scope.watches.delete(tracked);
@@ -232,15 +225,19 @@ export async function watchHost(context: HandlerContext): Promise<void> {
       });
   });
 
-  const renames = each(ports.host.sessionInfos(), context.signal, (sessions) => {
+  const infos = each(ports.host.sessionInfos(), context.signal, (sessions) => {
     const followed = followedSession(read());
     const info = sessions.find((candidate) => candidate.id === followed?.id);
 
-    if (followed === null || info === undefined || info.name === followed.info.name) return;
+    if (followed === null || info === undefined || info === followed.info) return;
     dispatch({ kind: "session-info", session: followed.id, info });
   });
 
-  await Promise.all([catalogs, renames]);
+  const health = each(ports.host.health(), context.signal, (next) => {
+    dispatch({ kind: "health", health: next });
+  });
+
+  await Promise.all([catalogs, infos, health]);
 }
 
 export async function refreshWorkspace(

@@ -6,13 +6,13 @@ import type {
   RunId,
   SessionId,
   SessionInfo,
-  SessionView,
   SettingInfo,
   Thinking,
   ModelRef,
   WorkspaceCatalogView,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import type { Freshness, HeadView, Health } from "@nyte-ai/sdk/client";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
 import type { ThemeMode } from "../lib/theme.ts";
@@ -31,6 +31,7 @@ export interface State {
 
 export interface Facts {
   readonly host: "opening" | "open";
+  readonly health: Health;
   readonly chat: Chat | null;
   readonly catalog: CatalogFacts;
   readonly hostSettings: readonly SettingInfo[];
@@ -61,10 +62,8 @@ export interface FollowedSession {
   readonly kind: "session";
   readonly id: SessionId;
   readonly info: SessionInfo;
-  readonly view: SessionView | null;
-  readonly watch:
-    | { readonly kind: "live" }
-    | { readonly kind: "failed"; readonly failure: string | null };
+  readonly view: HeadView | null;
+  readonly freshness: Freshness | null;
   readonly selection: Selection;
 }
 
@@ -268,6 +267,7 @@ export function initialState(bootstrap: Bootstrap): State {
   return {
     facts: {
       host: "opening",
+      health: { kind: "connecting" },
       chat: bootstrap.chat,
       catalog: { generation: -1, catalog: null },
       hostSettings: [],

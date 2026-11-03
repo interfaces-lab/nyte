@@ -1,4 +1,5 @@
-import type { SessionId, SessionView } from "@nyte-ai/sdk";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { HeadView } from "@nyte-ai/sdk/client";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import type { QuestionAnswers, QuestionInfo } from "@nyte-ai/plugin/question/schema";
 import { shortId } from "../lib/format.ts";
@@ -100,7 +101,7 @@ export function collectQuestionAnswers(draft: QuestionDraft): QuestionAnswers {
 }
 
 export function currentQuestion(
-  head: { readonly id: SessionId; readonly view: SessionView | null } | null,
+  head: { readonly id: SessionId; readonly view: HeadView | null } | null,
   tasks: readonly Task[],
   local: QuestionLocal,
 ): QuestionModel | null {

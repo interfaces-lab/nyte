@@ -11,16 +11,16 @@ import type { SessionId, SessionView } from "@nyte-ai/schema";
  * receipt id); a part joins the submit the session last followed. With
  * tracing off when called, returns `views` as they are.
  */
-export function tracePaints(
-  views: AsyncIterable<SessionView>,
+export function tracePaints<V extends Pick<SessionView, "messages" | "queue">>(
+  views: AsyncIterable<V>,
   session: SessionId,
   painted: () => Promise<void>,
-): AsyncIterable<SessionView> {
+): AsyncIterable<V> {
   if (!tracing.enabled) return views;
 
   return {
     [Symbol.asyncIterator]() {
-      let shown: SessionView | null = null;
+      let shown: V | null = null;
 
       return mapped(views, (view) => {
         if (view.messages === shown?.messages && view.queue === shown.queue) return view;

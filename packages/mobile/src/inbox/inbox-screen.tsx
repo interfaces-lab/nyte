@@ -97,7 +97,7 @@ function SessionSection({
  */
 export function InboxScreen() {
   const theme = useTheme();
-  const { client } = useHost();
+  const { live } = useHost();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
   const [searchActive, setSearchActive] = useState(false);
@@ -107,7 +107,7 @@ export function InboxScreen() {
   const [creating, setCreating] = useState(false);
   const [composerHeight, setComposerHeight] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const { list, busy, error, refresh, more } = useSessionList(client, search);
+  const { list, busy, error, updated, refresh, more } = useSessionList(live, search);
   const [pulled, setPulled] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [filterCards] = useFilterCards();
@@ -330,6 +330,9 @@ export function InboxScreen() {
           <html.p role="alert" style={[textStyles.error, styles.listError]}>
             {error}
           </html.p>
+        )}
+        {updated !== undefined && (
+          <html.p style={[textStyles.caption, styles.listError]}>{updated}</html.p>
         )}
       </ScrollView>
       <KeyboardStickyView

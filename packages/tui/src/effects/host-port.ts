@@ -1,7 +1,9 @@
 import { homedir } from "node:os";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
 import { asId, SdkError } from "@nyte-ai/schema";
+import { mapped } from "@nyte-ai/protocol";
 import { followTrace, pagedViews, traced, tracePaints } from "@nyte-ai/sdk/client";
+import type { HeadView, HostConnection } from "@nyte-ai/sdk/client";
 import type { Connection, MessageId, PagedViews, Session, WorkspaceId } from "@nyte-ai/sdk";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../lib/tasks.ts";
@@ -9,16 +11,18 @@ import { follow } from "../lib/view-helpers.ts";
 import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
 import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
 import { TaskIndex } from "../services/task-index.ts";
-import type { HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.ts";
+import { chatSends, chatViews, healthUpdates, openChat, sessionLists } from "../live-host.ts";
+import type { ChatUpdate, HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.ts";
 
 export function hostPort(
   host: Connection,
+  live: HostConnection,
   folder: string | null,
   painted: () => Promise<void> = () => Promise.resolve(),
   starts: { readonly contextFiles?: false } = {},
 ): HostPort {
   return {
-    session: (id) => sessionPort(host, host.session(id), painted),
+    session: (id) => sessionPort(host, live, host.session(id), painted),
     workspace: (id) => workspacePort(host, id),
     async openFolder(path) {
       const opened = path ?? folder;
@@ -65,7 +69,8 @@ export function hostPort(
     },
     rootSessions: () => rootSessions(host),
     catalog: () => host.watch(),
-    sessionInfos: () => host.sessions.watch({ parents: { kind: "all" } }),
+    sessionInfos: () => sessionLists(live, { parents: { kind: "all" } }),
+    health: () => healthUpdates(live),
     listModels: () => host.models.list(),
     accounts: (provider) => host.models.accounts(provider ?? undefined),
     selectAccount: (provider, account) => host.models.selectAccount(provider, account),
@@ -175,7 +180,10 @@ export function hostPort(
                   if (closed) return;
 
                   const opened = new TaskIndex(info, {
-                    connection: host,
+                    children: sessionLists(live, {
+                      parents: { kind: "children", session: info.id },
+                    }),
+                    views: (child) => chatViews(live, openChat(live, child), null),
                     jobs: host.workspace(info.workspace).jobs.watch(),
                     onChange() {
                       latest = opened.tasks;
@@ -277,6 +285,7 @@ function workspacePort(host: Connection, id: WorkspaceId): WorkspacePort {
 
 function sessionPort(
   host: Connection,
+  live: HostConnection,
   session: Session,
   painted: () => Promise<void>,
 ): SessionPort {
@@ -285,14 +294,22 @@ function sessionPort(
   const readWorkspace = async (): Promise<WorkspacePort> =>
     workspacePort(host, (await session.info()).workspace);
 
-  let views: PagedViews | null = null;
+  let views: PagedViews<HeadView> | null = null;
 
   return {
     id: session.id,
     watch() {
-      views = pagedViews(session);
+      const store = openChat(live, session.id);
 
-      return tracePaints(views, session.id, painted);
+      views = pagedViews({
+        watch: () => chatViews(live, store, chatSends(host, session.id)),
+        history: (query) => session.history(query),
+      });
+
+      return mapped(tracePaints(views, session.id, painted), (view): ChatUpdate => ({
+        view,
+        freshness: store.freshness(),
+      }));
     },
     earlier: (limit) => views?.earlier(limit) ?? Promise.resolve(0),
     see: (commit) => session.see(commit),
@@ -444,6 +461,7 @@ function sessionPort(
 
 export async function pluginsPort(
   host: Connection,
+  live: HostConnection,
   options: {
     readonly notify: (title: string, body: string, sound: boolean) => void;
     readonly report: (plugin: string, message: string) => void;
@@ -467,7 +485,7 @@ export async function pluginsPort(
   });
 
   const stopDirectory = follow(
-    host.sessions.watch({ parents: { kind: "all" } }),
+    sessionLists(live, { parents: { kind: "all" } }),
     (sessions) => plugins.sessionsChanged(sessions),
     (cause) =>
       options.report("notifications", cause instanceof Error ? cause.message : String(cause)),

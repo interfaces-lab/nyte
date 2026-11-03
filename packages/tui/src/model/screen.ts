@@ -1,3 +1,4 @@
+import type { Health } from "@nyte-ai/sdk/client";
 import {
   ANSWER_COMPOSER_PLACEHOLDER,
   BUSY_COMPOSER_PLACEHOLDER,
@@ -36,7 +37,8 @@ export interface ScreenModel {
   readonly opening: boolean;
   /** The text of each message sent to a new chat while it waits for the host to open, oldest first. */
   readonly waiting: readonly string[];
-  readonly watch: WatchModel | null;
+  readonly health: HealthNotice | null;
+  readonly updated: number | null;
   readonly run: RunModel;
   readonly question: QuestionModel | null;
   readonly draft: DraftModel;
@@ -71,9 +73,11 @@ export interface PreviewModel {
   readonly part: DraftPart;
 }
 
-export interface WatchModel {
-  readonly failure: string | null;
-}
+export type HealthNotice =
+  | { readonly kind: "reconnecting"; readonly at: number }
+  | { readonly kind: "unreachable" }
+  | { readonly kind: "signed-out" }
+  | { readonly kind: "outdated" };
 
 interface TasksLine {
   readonly text: string;
@@ -182,7 +186,11 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   return {
     opening: view === null && (blank === null || (starting && waiting.length === 0)),
     waiting,
-    watch: session?.watch.kind === "failed" ? { failure: session.watch.failure } : null,
+    health: healthNotice(state.facts.health),
+    updated:
+      session?.view !== null && session?.freshness?.kind === "stale"
+        ? session.freshness.since
+        : null,
     run: input.run,
     question,
     draft: input.draft,
@@ -224,6 +232,36 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     selectionActive: state.facts.terminal.selection,
     fileRoot: state.facts.terminal.hyperlinks ? state.facts.workspace.cwd : null,
   };
+}
+
+function healthNotice(health: Health): HealthNotice | null {
+  switch (health.kind) {
+    case "connecting":
+    case "open":
+      return null;
+    case "retrying":
+      return { kind: "reconnecting", at: health.at };
+    case "blocked":
+      switch (health.reason) {
+        case "offline":
+          return { kind: "unreachable" };
+        case "auth":
+          return { kind: "signed-out" };
+        case "version":
+          return { kind: "outdated" };
+        default: {
+          const _exhaustive: never = health.reason;
+
+          return _exhaustive;
+        }
+      }
+
+    default: {
+      const _exhaustive: never = health;
+
+      return _exhaustive;
+    }
+  }
 }
 
 /** What waits on the user, even behind a menu: a sign-in step, then an approval, then a question. */

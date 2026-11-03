@@ -10,11 +10,11 @@ import type {
   Revision,
   SessionId,
   SessionInfo,
-  SessionView,
   SettingInfo,
   WorkspaceCatalogView,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import type { Freshness, HeadView, Health } from "@nyte-ai/sdk/client";
 import type { ChatCommand } from "../lib/constants.ts";
 import type { McpAction, TrustAsk } from "./effect.ts";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
@@ -93,7 +93,6 @@ export type Intent =
       readonly session: SessionId | "new";
       readonly announce: boolean;
     }
-  | { readonly kind: "retry-watch" }
   | { readonly kind: "change-directory"; readonly path: string }
   | { readonly kind: "reload" }
   | { readonly kind: "compact"; readonly instructions: string | null }
@@ -170,8 +169,13 @@ export type Fact =
     }
   | { readonly kind: "blank-opened"; readonly chat: BlankChat }
   | { readonly kind: "blank-folder"; readonly session: SessionId; readonly workspace: WorkspaceId }
-  | { readonly kind: "view"; readonly session: SessionId; readonly view: SessionView }
-  | { readonly kind: "watch-ended"; readonly session: SessionId; readonly failure: string | null }
+  | {
+      readonly kind: "view";
+      readonly session: SessionId;
+      readonly view: HeadView;
+      readonly freshness: Freshness;
+    }
+  | { readonly kind: "health"; readonly health: Health }
   | { readonly kind: "session-info"; readonly session: SessionId; readonly info: SessionInfo }
   | { readonly kind: "selection"; readonly session: SessionId; readonly selection: Selection }
   | { readonly kind: "catalog"; readonly generation: number; readonly catalog: ModelCatalogView }
