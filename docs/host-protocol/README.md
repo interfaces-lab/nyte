@@ -70,6 +70,8 @@ A client attaches to a scope in two steps, in this order:
 1. **Subscribe.** The client asks for the scope's events. From here on, every change in the scope reaches the client, in seq order, on the connection's event channel.
 2. **Read.** The client reads the rows it wants: a head's window, or the sessions table. The answer carries the `seq` the rows are current through.
 
+A client may pipeline the two, sending the read right behind the subscribe without waiting for its answer: the host handles a connection's frames in arrival order, and a read waits for a subscribe to its scope sent before it on the same connection.
+
 Events can arrive before the read's answer. The client holds them, applies the answer, then applies every held and later event whose seq is above the answer's. An event at or below the answer's seq is already in the answer and is skipped. Applying an event twice would be harmless anyway, because an event carries whole rows, not patches to them.
 
 Reading first and subscribing second loses every change between the two. The model's `SubscribeBeforeRead` mutant shows the trace.
