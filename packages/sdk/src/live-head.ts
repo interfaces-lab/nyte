@@ -13,6 +13,7 @@ export type HeadRows = {
 };
 
 export interface HeadSnapshot {
+  readonly head: HeadName;
   readonly order: readonly MessageId[];
   readonly leadingPrompt: MessageId | null;
   readonly activation: Activation;
@@ -57,7 +58,7 @@ export function openHeadStore(
       return;
     }
 
-    const next = rebuild(current, snapshot);
+    const next = rebuild(input.head, current, snapshot);
     const seq = current.store.seq;
     const moved = freshness.kind === "stale" || freshness.seq !== seq;
 
@@ -159,7 +160,7 @@ export function openHeadStore(
   };
 }
 
-function rebuild(current: Held, previous: HeadSnapshot | null): HeadSnapshot {
+function rebuild(head: HeadName, current: Held, previous: HeadSnapshot | null): HeadSnapshot {
   const source = current.store.snapshot();
   const rows = keepTables(source.rows, previous?.rows);
 
@@ -180,7 +181,7 @@ function rebuild(current: Held, previous: HeadSnapshot | null): HeadSnapshot {
   )
     return previous;
 
-  return { order, leadingPrompt: source.leadingPrompt, activation, rows };
+  return { head, order, leadingPrompt: source.leadingPrompt, activation, rows };
 }
 
 function keepTables(source: SessionRows, previous: HeadRows | undefined): HeadRows {
