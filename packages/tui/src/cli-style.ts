@@ -107,6 +107,7 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   { label: "nyte mcp <add|remove|list|login|logout>", detail: "manage MCP servers" },
   { label: "nyte host [--json]", detail: "serve your chats for --host-url to attach to" },
   { label: "nyte api <list|describe>", detail: "print the operations a host serves" },
+  { label: "nyte skill <setup|status|remove>", detail: "teach Claude Code and Codex to use nyte" },
   { label: "nyte doctor [--json]", detail: "check this install and print what to fix" },
   { label: "nyte triage [<problem>]", detail: "start an agent on doctor's report and logs" },
   { label: "nyte --version", detail: "print the installed version" },
@@ -152,7 +153,17 @@ export function renderHelp(color: boolean = ansiEnabled()): string {
 }
 
 export function renderCommandHelp(
-  command: "login" | "logout" | "update" | "status" | "account" | "mcp" | "host" | "api" | "doctor",
+  command:
+    | "login"
+    | "logout"
+    | "update"
+    | "status"
+    | "account"
+    | "mcp"
+    | "host"
+    | "api"
+    | "skill"
+    | "doctor",
 ): string {
   switch (command) {
     case "login":
@@ -249,6 +260,21 @@ export function renderCommandHelp(
         "--host-url asks a running host instead, so the answer matches its version; the token is",
         "read from NYTE_HOST_TOKEN. --json prints the descriptions, schemas included, as JSON.",
         "Examples: nyte api list | nyte api describe head.send | nyte api list --json",
+      ].join("\n");
+    case "skill":
+      return [
+        "Usage: nyte skill <command>",
+        "  setup [--agent claude|codex|all]   install the nyte skill and a session-start hook",
+        "  status [--json]                    print each agent's skill and hook",
+        "  remove [--agent claude|codex|all]  remove only what setup installed",
+        "  hook                               print the context the session-start hook adds",
+        "",
+        "The skill goes to <agent home>/skills/nyte/SKILL.md. The hook runs `nyte skill hook` from",
+        "Claude Code's settings.json and Codex's hooks.json; other keys and hooks stay as they were.",
+        "Agent homes are ~/.claude and ~/.codex, or CLAUDE_CONFIG_DIR and CODEX_HOME when set.",
+        "--agent all, the default, means the agents whose home exists. Running setup again changes nothing.",
+        "Codex runs a new hook only after you approve it with /hooks.",
+        "Example: nyte skill setup",
       ].join("\n");
     default: {
       const _exhaustive: never = command;

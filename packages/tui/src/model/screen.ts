@@ -6,7 +6,7 @@ import {
 import { backgroundLabel } from "@nyte-ai/plugin/client/presentation";
 import { approvalPrompt } from "@nyte-ai/plugin/approvals/schema";
 import { readProgramStatus } from "../lib/program-status.ts";
-import type { ProgramStatus } from "../lib/program-status.ts";
+import type { ProgramState, ProgramStatus } from "../lib/program-status.ts";
 import { unfinishedTask } from "../lib/tasks.ts";
 import type { Task } from "../lib/tasks.ts";
 import { promptMessages } from "../lib/view-helpers.ts";
@@ -212,7 +212,10 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     tasksLine: tasksLine(state, question),
     notice: state.local.notice,
     failure: state.local.failures.at(-1) ?? null,
-    program: blockedStatus(state, question) ?? readProgramStatus(execution, state.local.watchedRun),
+    program: {
+      ...(blockedStatus(state, question) ?? readProgramStatus(execution, state.local.watchedRun)),
+      title: session?.info.name ?? null,
+    },
     welcome:
       (blank !== null ||
         (view !== null && view.turns.length === 0 && promptMessages(view).length === 0)) &&
@@ -224,7 +227,7 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
 }
 
 /** What waits on the user, even behind a menu: a sign-in step, then an approval, then a question. */
-function blockedStatus(state: State, question: QuestionModel | null): ProgramStatus | null {
+function blockedStatus(state: State, question: QuestionModel | null): ProgramState | null {
   const auth = state.local.dialogs.findLast((dialog) => dialog.kind === "auth");
 
   if (auth?.step.kind === "link")

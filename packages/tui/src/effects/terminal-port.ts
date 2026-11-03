@@ -1,5 +1,6 @@
 import process from "node:process";
 import {
+  CliRenderEvents,
   createClipboard,
   createHostClipboard,
   createRendererClipboardAdapter,
@@ -19,9 +20,25 @@ export function terminalPort(
     terminal: createRendererClipboardAdapter(renderer),
   });
 
+  let programStatus: string | null = null;
+  let reporting = renderer.capabilities?.program_status === true;
+
+  const detected = (): void => {
+    if (reporting || renderer.capabilities?.program_status !== true) return;
+    reporting = true;
+
+    if (programStatus !== null) options.write(programStatus);
+  };
+
+  renderer.on(CliRenderEvents.CAPABILITIES, detected);
+
   return {
     setTitle: (title) => renderer.setTerminalTitle(title),
-    programStatus: (encoded) => options.write(encoded),
+    programStatus(encoded) {
+      programStatus = encoded;
+
+      if (reporting) options.write(encoded);
+    },
     notify(title, body, sound) {
       renderer.triggerNotification(body, title);
 
@@ -72,6 +89,10 @@ export function terminalPort(
     open(target) {
       void open(target).catch(() => undefined);
     },
-    dispose: () => clipboard.dispose(),
+    dispose() {
+      renderer.off(CliRenderEvents.CAPABILITIES, detected);
+
+      return clipboard.dispose();
+    },
   };
 }
