@@ -221,7 +221,7 @@ export function ConnectionForm({
             {mode.kind === "connect" ? (
               <html.p style={[textStyles.body, styles.lead]}>
                 {method === "tailscale"
-                  ? "Turn on Tailscale on your iPhone and the computer, then enter the address and device token Nyte shows there."
+                  ? `Turn on Tailscale on your iPhone, then enter the address the computer shows in Nyte › ${SHARE_LOCATION}. Tailscale tells Nyte who you are, so the token can be any text.`
                   : `In the desktop app, copy these from ${SHARE_LOCATION}.`}
               </html.p>
             ) : null}
@@ -365,7 +365,7 @@ export function ConnectionForm({
             </html.div>
             <html.p style={[textStyles.caption, styles.footnote]}>
               {method === "tailscale"
-                ? `Find these in Nyte › ${SHARE_LOCATION} on your Mac.`
+                ? `Find the address in Nyte › ${SHARE_LOCATION} on your Mac.`
                 : "A 127.0.0.1 address works in the simulator on your Mac."}
             </html.p>
           </html.div>

@@ -81,7 +81,7 @@ function ConnectDialog({ onOpenChange }: { readonly onOpenChange: (open: boolean
     <SettingsFormDialog
       open
       title="Connect to Host"
-      description="List another Nyte host's chats in the sidebar. A Mac shows its address and token under Pair… in Settings > Server."
+      description="List another Nyte host's chats in the sidebar. For a host behind Cloudflare Tunnel, copy both from the pairing link under Pair… in its Settings > Server. A host on your tailnet ignores the token, so enter any text."
       submitLabel="Connect"
       canSubmit={address.trim() !== "" && token.trim() !== ""}
       pending={connect.isPending}
