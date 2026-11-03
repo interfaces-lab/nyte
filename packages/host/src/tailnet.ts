@@ -10,7 +10,6 @@ import { Type } from "typebox";
 import { asId, compile, SdkError, TailnetSettingsType, TailnetStatusType } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
 import type { Authority, TailnetSettings, TailnetStatus } from "@nyte-ai/schema";
-import { dev } from "@nyte-ai/core";
 import { TOKEN_AUTHORITY } from "@nyte-ai/core/server";
 import type { ServedHost, Verdict } from "@nyte-ai/core/server";
 import type { OperationInput } from "@nyte-ai/protocol";
@@ -40,11 +39,23 @@ const LAST_RESTART_MS = 30_000;
 
 const STOP_GRACE_MS = 10_000;
 
+const PROTOCOL = 1;
+
+const HELLO_MS = 10_000;
+
+const READY_MS = 120_000;
+
+const STDERR_TAIL_BYTES = 4096;
+
 const PARTICIPANT: ReadonlySet<Authority> = new Set<Authority>(["participant"]);
 
 const settingsCheck = compile(TailnetSettingsType);
 
 const statusCheck = compile(TailnetStatusType);
+
+const helloCheck = compile(
+  Type.Object({ type: Type.Literal("hello"), protocol: Type.Number(), version: Type.String() }),
+);
 
 const principalCheck = compile(
   Type.Object({
@@ -56,6 +67,8 @@ const principalCheck = compile(
     owner: Type.Boolean(),
   }),
 );
+
+type Ending = { readonly status: TailnetStatus; readonly restart: boolean };
 
 export async function openTailnet(options: {
   readonly host: ServedHost;
@@ -80,6 +93,18 @@ export async function openTailnet(options: {
     current = status;
     server.reportTailnet(status);
   };
+
+  const stopped = (
+    reason: NonNullable<TailnetStatus["reason"]>,
+    detail: string,
+  ): TailnetStatus => ({
+    state: "stopped",
+    https: "unavailable",
+    access: settings.access,
+    tags: settings.tags,
+    reason,
+    detail,
+  });
 
   const authorize = (request: Request): Verdict | { readonly deny: "unauthorized" } => {
     const principal = readPrincipal(request.headers.get(TAILNET_PRINCIPAL_HEADER));
@@ -144,6 +169,9 @@ export async function openTailnet(options: {
     );
 
     const keyPipe = started.stdio[3];
+    let greeted = false;
+    let stderr = Buffer.alloc(0);
+    let ending: Ending | null = null;
 
     node = started;
     started.stdin.on("error", () => undefined);
@@ -155,35 +183,116 @@ export async function openTailnet(options: {
 
     publish({ state: "starting", https: "pending", access: settings.access, tags: settings.tags });
 
+    const fail = (
+      reason: NonNullable<TailnetStatus["reason"]>,
+      detail: string,
+      restart: boolean,
+    ): void => {
+      ending ??= { status: stopped(reason, detail), restart };
+      void terminate(started);
+    };
+
+    const helloTimer = setTimeout(
+      () =>
+        fail(
+          "hello_timeout",
+          `nyte-tailnet sent no hello within ${String(HELLO_MS / 1000)} s.`,
+          true,
+        ),
+      HELLO_MS,
+    );
+
+    const readyTimer = setTimeout(
+      () =>
+        fail(
+          "start_timeout",
+          `nyte-tailnet didn't reach running or ask for a login within ${String(READY_MS / 1000)} s.`,
+          true,
+        ),
+      READY_MS,
+    );
+
+    helloTimer.unref();
+    readyTimer.unref();
+
+    const greet = (line: string): void => {
+      const hello = parseJson(line);
+
+      if (!helloCheck.Check(hello)) {
+        logSidecar(`nyte-tailnet began with ${line} instead of a hello`);
+        fail("invalid_status", "nyte-tailnet's first line wasn't a hello.", true);
+
+        return;
+      }
+
+      if (hello.protocol !== PROTOCOL) {
+        fail(
+          "protocol",
+          `nyte-tailnet ${hello.version} speaks protocol ${String(hello.protocol)}, but this host speaks ${String(PROTOCOL)}.`,
+          false,
+        );
+
+        return;
+      }
+
+      greeted = true;
+      clearTimeout(helloTimer);
+    };
+
     createInterface({ input: started.stdout }).on("line", (line) => {
+      if (node !== started || ending !== null) return;
+
+      if (!greeted) {
+        greet(line);
+
+        return;
+      }
+
       const status = readStatus(line);
 
-      if (node !== started || status === null) return;
+      if (status === null) {
+        logSidecar(`nyte-tailnet sent a status the host can't read: ${line}`);
+        fail("invalid_status", "nyte-tailnet sent a status the host can't read.", true);
+
+        return;
+      }
+
+      if (status.state !== "starting") clearTimeout(readyTimer);
 
       if (status.state === "running") failures = 0;
+
+      if (status.state === "stopped" && status.reason !== undefined)
+        ending = { status: { ...status, https: "unavailable" }, restart: true };
       publish(status);
     });
 
     createInterface({ input: started.stderr }).on("line", (line) => {
-      dev("tailnet", "node", { line });
+      logSidecar(line);
     });
 
-    const ended = (): void => {
+    started.stderr.on("data", (chunk: Buffer) => {
+      stderr = Buffer.concat([stderr, chunk]).subarray(-STDERR_TAIL_BYTES);
+    });
+
+    const ended = (detail: string): void => {
+      clearTimeout(helloTimer);
+      clearTimeout(readyTimer);
+
       if (node !== started) return;
       node = null;
-      publish({
-        state: "stopped",
-        https: "unavailable",
-        access: settings.access,
-        tags: settings.tags,
-      });
-      scheduleRestart();
+      const stop = ending ?? { status: stopped("exited", detail), restart: true };
+      const tail = stderr.toString("utf8");
+
+      publish(tail === "" ? stop.status : { ...stop.status, stderr: tail });
+
+      if (stop.restart) scheduleRestart();
     };
 
-    started.once("exit", ended);
+    started.once("close", (code, signal) => {
+      ended(`nyte-tailnet exited with ${signal ?? `code ${String(code)}`}.`);
+    });
     started.once("error", (error) => {
-      dev("tailnet", "node failed", { error: error.message });
-      ended();
+      ended(`nyte-tailnet couldn't run: ${error.message}`);
     });
   };
 
@@ -334,6 +443,10 @@ function withoutCredentials(request: Request): Request {
   headers.delete("Authorization");
 
   return new Request(request, { headers });
+}
+
+function logSidecar(line: string): void {
+  process.emitWarning(line, { code: "NYTE_TAILNET" });
 }
 
 function terminate(running: ChildProcess): Promise<void> {

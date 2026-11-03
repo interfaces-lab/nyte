@@ -27,6 +27,16 @@ type options struct {
 	logout     bool
 }
 
+const protocol = 1
+
+var version = "dev"
+
+type hello struct {
+	Type     string `json:"type"`
+	Protocol int    `json:"protocol"`
+	Version  string `json:"version"`
+}
+
 var credentialVariables = []string{
 	"TS_AUTHKEY",
 	"TS_AUTH_KEY",
@@ -71,6 +81,10 @@ func serveNode(ctx context.Context, opts options, lease io.Reader, out io.Writer
 		cancel()
 		time.AfterFunc(time.Second, func() { os.Exit(0) })
 	}()
+
+	if err := writeLine(out, hello{Type: "hello", Protocol: protocol, Version: version}); err != nil {
+		return err
+	}
 
 	lock, err := lockState(opts.dir)
 	var locked *lockedError

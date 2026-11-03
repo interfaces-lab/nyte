@@ -70,6 +70,12 @@ export const TailnetStatusType = Type.Object({
   https: Type.Enum(["pending", "available", "unavailable"]),
   access: TailnetAccessType,
   tags: Type.Array(Type.String()),
+  reason: Type.Optional(
+    Type.Enum(["locked", "protocol", "hello_timeout", "start_timeout", "invalid_status", "exited"]),
+  ),
+  holder: Type.Optional(Type.Number()),
+  detail: Type.Optional(Type.String()),
+  stderr: Type.Optional(Type.String()),
 });
 
 export type TailnetStatus = Decoded<typeof TailnetStatusType>;
