@@ -28,7 +28,7 @@ import {
   parseStoredRecord,
   parseText,
 } from "./store-rows.ts";
-import { sessionIndexChanges, sqlSessionIndex } from "./session-index.ts";
+import { sessionIndexChanges, sqlSessionIndex, stampDirectory } from "./session-index.ts";
 
 /** Returns one value Durable Object SQL binds and answers: text, a number, a blob as an `ArrayBuffer`, or null. */
 export type SqlValue = ArrayBuffer | string | number | null;
@@ -191,6 +191,8 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
             updateSessionIndex(storage, ref.name, ref.target, ref.revision);
           }
 
+        for (const statement of change.indexed) rows(statement);
+
         rows(
           "INSERT INTO store_meta (id, version) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET version = excluded.version",
           change.to,
@@ -313,6 +315,7 @@ function connect(storage: DurableObjectSql): StoreConnection {
             };
 
           const replaced = replacedTargets(updates, before);
+          const stamp = stampDirectory(updates, (text, values) => rows(text, ...values));
           const touched = new Map<SessionId, Revision>();
           const revisions = updates.map((update) => {
             const revision = mintRevision();
@@ -343,6 +346,7 @@ function connect(storage: DurableObjectSql): StoreConnection {
               id,
             );
 
+          const host = stamp();
           const at = Date.now();
           const tails = new Map<SessionId, number>();
 
@@ -360,7 +364,7 @@ function connect(storage: DurableObjectSql): StoreConnection {
             return asSeq(seq);
           });
 
-          return { kind: "set", logged: appended, at, revisions };
+          return { kind: "set", logged: appended, at, revisions, host };
         });
       },
       async log(session, after, limit) {

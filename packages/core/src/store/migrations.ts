@@ -27,15 +27,17 @@ import {
   trustTarget,
 } from "./refs.ts";
 import { headBackground } from "./head-background.ts";
+import { orderedSessionIndex, sessionIndex, sessionSeqs } from "./session-index-steps.ts";
 import { waitIndex, wokenIndex } from "./wait-index.ts";
 
 type StoreDialect = "sqlite" | "postgres";
 
 /** Adds structure or rebuilds tables derived from refs and objects; a change to stored records is a `RewriteStep`. */
-interface SchemaStep {
+export interface SchemaStep {
   readonly kind: "schema";
   readonly name: string;
   readonly sql: { readonly [D in StoreDialect]: readonly string[] };
+  readonly indexed?: { readonly [D in StoreDialect]: readonly string[] };
 }
 
 /** Rewrites stored records (`rewrite`, one record or null to keep it), logged events (`rewriteLog`, one session's events in seq order, each rewritten or null to keep it), or derives new refs from a record (`adds`, the names of refs to create at the record the ref `name` holds, after every step's rewrite; one that exists is kept). */
@@ -123,6 +125,7 @@ export interface StoreChange {
   readonly relogs: readonly Relog[];
   /** Rebuild the session read index from current refs inside the migration transaction. */
   readonly reindexSessions: boolean;
+  readonly indexed: readonly string[];
 }
 
 export type CommitOutcome = "committed" | "moved" | "conflict";
@@ -218,38 +221,6 @@ const recordFields: RewriteStep = {
       default:
         return null;
     }
-  },
-};
-
-const sessionIndex: SchemaStep = {
-  kind: "schema",
-  name: "2026-10-14-session-index",
-  sql: {
-    sqlite: [
-      "CREATE TABLE session_index (name TEXT PRIMARY KEY, session TEXT NOT NULL UNIQUE, parent TEXT NULL, sort_at REAL NOT NULL, version TEXT NOT NULL)",
-      "CREATE INDEX session_index_activity ON session_index(sort_at, session)",
-      "CREATE INDEX session_index_parent_activity ON session_index(parent, sort_at, session)",
-      "CREATE TABLE pending_work (name TEXT PRIMARY KEY, session TEXT NOT NULL, kind TEXT NOT NULL)",
-      "CREATE INDEX pending_work_session ON pending_work(session, kind, name)",
-      "CREATE INDEX pending_work_kind ON pending_work(kind, session, name)",
-    ],
-    postgres: [
-      'CREATE TABLE session_index (name TEXT COLLATE "C" PRIMARY KEY, session TEXT COLLATE "C" NOT NULL UNIQUE, parent TEXT COLLATE "C" NULL, sort_at DOUBLE PRECISION NOT NULL, version TEXT NOT NULL)',
-      "CREATE INDEX session_index_activity ON session_index(sort_at, session)",
-      "CREATE INDEX session_index_parent_activity ON session_index(parent, sort_at, session)",
-      'CREATE TABLE pending_work (name TEXT COLLATE "C" PRIMARY KEY, session TEXT COLLATE "C" NOT NULL, kind TEXT NOT NULL)',
-      "CREATE INDEX pending_work_session ON pending_work(session, kind, name)",
-      "CREATE INDEX pending_work_kind ON pending_work(kind, session, name)",
-    ],
-  },
-};
-
-const orderedSessionIndex: SchemaStep = {
-  kind: "schema",
-  name: "2026-10-14-session-index-order",
-  sql: {
-    sqlite: ["DROP TABLE session_index", "DROP TABLE pending_work", ...sessionIndex.sql.sqlite],
-    postgres: ["DROP TABLE session_index", "DROP TABLE pending_work", ...sessionIndex.sql.postgres],
   },
 };
 
@@ -821,6 +792,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   refTargetIndex,
   headBackground,
   escapedWaitIndex,
+  sessionSeqs,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
@@ -880,6 +852,9 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
       creates: [...created, ...recovered],
       relogs: relogged,
       reindexSessions: steps.includes(sessionIndex) || steps.includes(orderedSessionIndex),
+      indexed: steps.flatMap((step) =>
+        step.kind === "schema" ? (step.indexed?.[target.dialect] ?? []) : [],
+      ),
     });
 
     if (outcome === "committed") return;

@@ -38,7 +38,7 @@ import {
 } from "./store-rows.ts";
 import { sqliteWorkers } from "./sqlite-workers.ts";
 import { compactStore } from "./store-compaction.ts";
-import { sessionIndexChanges, sqlSessionIndex } from "./session-index.ts";
+import { sessionIndexChanges, sqlSessionIndex, stampDirectory } from "./session-index.ts";
 
 const BUSY_TIMEOUT_MS = 5_000;
 
@@ -269,6 +269,8 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
             updateSessionIndex(database, ref.name, ref.target, ref.revision);
           }
 
+        for (const statement of change.indexed) database.exec(statement);
+
         database
           .prepare(
             "INSERT INTO store_meta (id, version) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET version = excluded.version",
@@ -498,6 +500,9 @@ function connect(
           }
 
           const replaced = replacedTargets(updates, before);
+          const stamp = stampDirectory(updates, (text, values) =>
+            database.prepare(text).all(...values),
+          );
           const touched = new Map<SessionId, Revision>();
           const current = new Map([...before].map(([name, row]) => [name, row?.revision ?? null]));
 
@@ -531,6 +536,7 @@ function connect(
 
           for (const id of replaced) dropReplaced.run(id);
 
+          const host = stamp();
           const at = Date.now();
           const tails = new Map<SessionId, number>();
 
@@ -545,7 +551,7 @@ function connect(
           database.exec("COMMIT");
           workers?.check();
 
-          return { kind: "set", logged: appended, at, revisions };
+          return { kind: "set", logged: appended, at, revisions, host };
         } catch (error) {
           if (database.isTransaction) database.exec("ROLLBACK");
 

@@ -14,6 +14,20 @@ const moved: DurableEvent = { head: null, kind: "head", from: null, to: null, re
 
 const removed: DurableEvent = { head: null, kind: "head", from: null, to: null, reason: "removed" };
 
+const stopping: DurableEvent = {
+  head: asId("main"),
+  kind: "run",
+  run: asId("r1"),
+  change: "stopping",
+};
+
+const configured: DurableEvent = {
+  head: null,
+  kind: "configured",
+  selected: null,
+  effective: null,
+};
+
 export function storeConformance(name: string, open: () => Promise<Store>): void {
   describe(name, () => {
     const stores: Store[] = [];
@@ -89,6 +103,149 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       expect(
         (await sessions.list({ parents: { kind: "roots" }, limit: 10 })).map((row) => row.ref.name),
       ).toEqual(["sessions/b"]);
+    });
+
+    const root = async (
+      connection: StoreConnection,
+      id: string,
+      at: number,
+      parent: string | null = null,
+    ) =>
+      connection.objects.put(
+        envelope(
+          "session",
+          {
+            id,
+            name: null,
+            parent,
+            origin: null,
+            workspace: "w",
+            pinned: false,
+            archived: false,
+            createdAt: 1,
+            lastActivityAt: at,
+            heads: [],
+            prompt: null,
+          },
+          1,
+        ),
+      );
+
+    const seqs = async (connection: StoreConnection) =>
+      Object.fromEntries(
+        (await connection.sessions.list({ parents: { kind: "all" }, limit: 10 })).map((row) => [
+          row.ref.name,
+          row.seq,
+        ]),
+      );
+
+    it("stamps the directory rows a set changes with one host seq per set", async () => {
+      const connection = await connect();
+      const target = await connection.objects.put({});
+
+      expect(
+        await connection.refs.set([
+          { name: "sessions/a", target: await root(connection, "a", 10) },
+          { name: "sessions/b", target: await root(connection, "b", 20) },
+        ]),
+      ).toMatchObject({ kind: "set", host: { seq: 1, sessions: ["a", "b"] } });
+      expect(await seqs(connection)).toEqual({ "sessions/a": 1, "sessions/b": 1 });
+      expect(
+        await connection.refs.set([
+          { name: "sessions/a/heads/main", target, events: [created, moved] },
+          { name: "sessions/b/heads/main", target, events: [created] },
+          { name: "sessions/a/inbox/main", target },
+        ]),
+      ).toMatchObject({ host: { seq: 2, sessions: ["a", "b"] } });
+      expect(
+        await connection.refs.set([
+          { name: "sessions/a/configured", target, events: [configured] },
+          { name: "sessions/a/inbox/main", target: null },
+          { name: "sessions/ghost/heads/main", target, events: [created] },
+        ]),
+      ).toMatchObject({ kind: "set", host: null });
+      expect(
+        await connection.refs.set([{ name: "sessions/a/seen/device/main", target }]),
+      ).toMatchObject({ host: { seq: 3, sessions: ["a"] } });
+      expect(
+        await connection.refs.set([
+          { name: "sessions/b/heads/main", target: null, events: [removed], expect: "absent" },
+        ]),
+      ).toMatchObject({ kind: "stale" });
+      expect(
+        await connection.refs.set([{ name: "sessions/b/notes", target, events: [moved] }]),
+      ).toMatchObject({ host: { seq: 4, sessions: ["b"] } });
+      expect(await seqs(connection)).toEqual({ "sessions/a": 3, "sessions/b": 4 });
+    });
+
+    it("restamps a child's parent when the child's run or root changes, and names a dropped root", async () => {
+      const connection = await connect();
+      const target = await connection.objects.put({});
+
+      await connection.refs.set([
+        { name: "sessions/p", target: await root(connection, "p", 10) },
+        { name: "sessions/c", target: await root(connection, "c", 20, "p") },
+        { name: "sessions/o", target: await root(connection, "o", 30) },
+      ]);
+
+      expect(
+        await connection.refs.set([{ name: "sessions/c/runs/r1", target, events: [stopping] }]),
+      ).toMatchObject({ host: { seq: 2, sessions: ["c", "p"] } });
+      expect(await seqs(connection)).toEqual({
+        "sessions/c": 2,
+        "sessions/o": 1,
+        "sessions/p": 2,
+      });
+
+      expect(await connection.refs.set([{ name: "sessions/c", target: null }])).toMatchObject({
+        host: { seq: 3, sessions: ["c", "p"] },
+      });
+      expect(await seqs(connection)).toEqual({ "sessions/o": 1, "sessions/p": 3 });
+    });
+
+    it("answers the host seq, the ids a filter selects, and exactly the rows written since a seq", async () => {
+      const connection = await connect();
+      const target = await connection.objects.put({});
+
+      expect(
+        await connection.sessions.changed({ since: 0, parents: { kind: "all" }, limit: 10 }),
+      ).toEqual({ seq: 0, ids: [], rows: [] });
+
+      await connection.refs.set([
+        { name: "sessions/a", target: await root(connection, "a", 10) },
+        { name: "sessions/b", target: await root(connection, "b", 20) },
+        { name: "sessions/c", target: await root(connection, "c", 30, "a") },
+      ]);
+      await connection.refs.set([{ name: "sessions/b/heads/main", target, events: [created] }]);
+      await connection.refs.set([{ name: "sessions/a/heads/main", target, events: [created] }]);
+
+      const all = await connection.sessions.changed({
+        since: 0,
+        parents: { kind: "all" },
+        limit: 10,
+      });
+      expect(all.seq).toBe(3);
+      expect(all.ids).toEqual(["c", "b", "a"]);
+      expect(all.rows).toEqual(
+        await connection.sessions.list({ parents: { kind: "all" }, limit: 10 }),
+      );
+
+      const since = await connection.sessions.changed({
+        since: 1,
+        parents: { kind: "all" },
+        limit: 10,
+      });
+      expect(since.ids).toEqual(["c", "b", "a"]);
+      expect(since.rows.map((row) => [row.ref.name, row.seq])).toEqual([
+        ["sessions/b", 2],
+        ["sessions/a", 3],
+      ]);
+      expect(
+        await connection.sessions.changed({ since: 1, parents: { kind: "roots" }, limit: 1 }),
+      ).toMatchObject({ seq: 3, ids: ["b"], rows: [{ ref: { name: "sessions/b" }, seq: 2 }] });
+      expect(
+        await connection.sessions.changed({ since: 3, parents: { kind: "all" }, limit: 10 }),
+      ).toEqual({ seq: 3, ids: ["c", "b", "a"], rows: [] });
     });
 
     it("finds only outstanding work, including archived sessions, and removes settled receipts atomically", async () => {
