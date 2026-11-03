@@ -31,6 +31,7 @@
     "clean": "rm -rf node_modules .turbo",
     "typecheck": "tsc --noEmit",
     "test": "vitest --run",
+    "bench:gate": "node bench/changes.bench.ts",
     "build:package": "bun ../../scripts/sdk-packages.mjs build protocol"
   },
   "dependencies": {
