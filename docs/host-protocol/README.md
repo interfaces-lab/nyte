@@ -118,7 +118,7 @@ A connection has an event channel and a text channel.
 
 The **event channel** carries requests, their answers, and every event above. It is the channel the seqs are about: on one connection, events of one scope arrive in seq order with no gaps, or the connection closes.
 
-The **text channel** carries what a model is streaming: `{ part, run, version, text }` with a part's whole text, then `{ part, run, version, append }` for what it streams, and `{ part, progress }` for a tool. None of it is durable, so none of it has a seq. When a client opens the text channel, the host sends the whole live suffix of every part streaming in the sessions the client subscribes to, then appends as they come. The host may merge queued appends for one part into a longer append; it never reorders them. A part's row in `parts` holds its text as of the last durable write, and its `version` tells the client where the live suffix starts.
+The **text channel** carries what a model is streaming: `{ part, run, version, text }` with a part's whole text, then `{ part, run, version, append }` for what it streams, and `{ part, run, progress }` for a tool. None of it is durable, so none of it has a seq. When a client opens the text channel, the host sends the whole live suffix of every part streaming in the sessions the client subscribes to, then appends as they come. The host may merge queued appends for one part into a longer append; it never reorders them. A part's row in `parts` holds its text as of the last durable write, and its `version` tells the client where the live suffix starts.
 
 Keeping text off the event channel keeps the byte budget and the seqs honest: a slow consumer of a fast model does not lose a durable change.
 

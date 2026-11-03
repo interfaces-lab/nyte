@@ -59,13 +59,21 @@ export type SocketPeer = {
   leave(): void;
 };
 
-export type TextEntry = {
-  readonly part: string;
-  readonly run: string | null;
-  readonly version: number;
-  readonly whole: boolean;
-  readonly body: string;
-};
+export type TextEntry =
+  | {
+      readonly kind: "text";
+      readonly part: string;
+      readonly run: string | null;
+      readonly version: number;
+      readonly whole: boolean;
+      readonly body: string;
+    }
+  | {
+      readonly kind: "progress";
+      readonly part: string;
+      readonly run: string | null;
+      readonly progress: Json;
+    };
 
 type EventOut =
   | WelcomeFrame
@@ -126,10 +134,25 @@ type Outbox = {
 type Subscription = {
   readonly attachment: SessionAttachment | null;
   readonly sent: Map<string, StreamingPart>;
+  readonly progress: Map<string, string>;
   release(): void;
 };
 
-type Queued = { part: string; run: string | null; version: number; whole: boolean; body: string };
+type Queued =
+  | {
+      readonly kind: "text";
+      readonly part: string;
+      readonly run: string | null;
+      version: number;
+      readonly whole: boolean;
+      body: string;
+    }
+  | {
+      readonly kind: "progress";
+      readonly part: string;
+      readonly run: string | null;
+      readonly progress: Json;
+    };
 
 const PING_MS = 30_000;
 
@@ -171,7 +194,10 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   const outbox = openOutbox(socket, close, () => {
     textOpen = false;
 
-    for (const subscription of subscriptions.values()) subscription.sent.clear();
+    for (const subscription of subscriptions.values()) {
+      subscription.sent.clear();
+      subscription.progress.clear();
+    }
   });
 
   const stream = (subscription: Subscription): void => {
@@ -195,6 +221,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
       if (!appended || body !== "")
         outbox.text({
+          kind: "text",
           part: part.part,
           run: part.run,
           version: part.version,
@@ -205,6 +232,19 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     for (const part of subscription.sent.keys())
       if (!kept.has(part)) subscription.sent.delete(part);
+    const running = new Set<string>();
+
+    for (const entry of subscription.attachment.progress()) {
+      running.add(entry.part);
+      const progress = JSON.stringify(entry.progress);
+
+      if (subscription.progress.get(entry.part) === progress) continue;
+      subscription.progress.set(entry.part, progress);
+      outbox.text({ kind: "progress", part: entry.part, run: entry.run, progress: entry.progress });
+    }
+
+    for (const part of subscription.progress.keys())
+      if (!running.has(part)) subscription.progress.delete(part);
   };
 
   const attachSession = async (scope: string, id: SessionId): Promise<void> => {
@@ -270,6 +310,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     const subscription: Subscription = {
       attachment,
       sent: new Map(),
+      progress: new Map(),
       release() {
         unsubscribe();
         attachment.release();
@@ -349,6 +390,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     subscriptions.set("host", {
       attachment: null,
       sent: new Map(),
+      progress: new Map(),
       release() {
         for (const stop of stops) stop();
         void feed.return?.();
@@ -410,6 +452,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     subscriptions.set(`client/${client.id}`, {
       attachment: null,
       sent: new Map(),
+      progress: new Map(),
       release: () => membership.listen(false),
     });
     membership.listen(true);
@@ -450,6 +493,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     for (const subscription of subscriptions.values()) {
       subscription.sent.clear();
+      subscription.progress.clear();
       stream(subscription);
     }
   };
@@ -654,12 +698,15 @@ function openOutbox(
       return JSON.stringify({ c: "t", type: "closed" });
     }
 
-    const first = texts.values().next();
+    const first = texts.entries().next();
 
     if (first.done === true) return undefined;
-    const entry = first.value;
-    texts.delete(entry.part);
-    textBytes -= Buffer.byteLength(entry.body);
+    const entry = first.value[1];
+    texts.delete(first.value[0]);
+    textBytes -= textCost(entry);
+
+    if (entry.kind === "progress")
+      return JSON.stringify({ c: "t", part: entry.part, run: entry.run, progress: entry.progress });
     const head = { c: "t", part: entry.part, run: entry.run, version: entry.version };
 
     return JSON.stringify(
@@ -710,18 +757,18 @@ function openOutbox(
     },
     text(entry) {
       if (!open) return;
-      const queued = texts.get(entry.part);
-      const bytes = Buffer.byteLength(entry.body);
+      const key = entry.kind === "text" ? entry.part : `progress/${entry.part}`;
+      const queued = texts.get(key);
 
-      if (queued !== undefined && !entry.whole) {
+      if (queued?.kind === "text" && entry.kind === "text" && !entry.whole) {
         queued.body += entry.body;
         queued.version = entry.version;
       } else {
-        if (queued !== undefined) textBytes -= Buffer.byteLength(queued.body);
-        texts.set(entry.part, { ...entry });
+        if (queued !== undefined) textBytes -= textCost(queued);
+        texts.set(key, { ...entry });
       }
 
-      textBytes += bytes;
+      textBytes += textCost(entry);
 
       if (textBytes > SOCKET_LIMITS.backlogBytes) {
         texts.clear();
@@ -733,6 +780,10 @@ function openOutbox(
       pump();
     },
   };
+}
+
+function textCost(entry: TextEntry): number {
+  return Buffer.byteLength(entry.kind === "text" ? entry.body : JSON.stringify(entry.progress));
 }
 
 function readScope(

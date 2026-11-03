@@ -10,7 +10,7 @@ export { checkPlugins } from "./extend/plugin-runtime.ts";
 
 export { pollStore, publishSet } from "./fold/watch.ts";
 
-export { main, setup } from "./harness.ts";
+export { completed, livePart, main, setup } from "./harness.ts";
 
 export type { Script, Turn } from "./harness.ts";
 

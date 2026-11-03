@@ -11,6 +11,7 @@ import type {
   HostView,
   JobId,
   JobView,
+  Json,
   MessageId,
   MoveOptions,
   MoveOutcome,
@@ -161,6 +162,12 @@ export interface StreamingPart {
   readonly markdown: string;
 }
 
+export interface PartProgress {
+  readonly part: PartId;
+  readonly run: RunId | null;
+  readonly progress: Json;
+}
+
 export interface SessionAttachment {
   ready(): Promise<void>;
   seq(): Seq;
@@ -168,6 +175,7 @@ export interface SessionAttachment {
   read(head: HeadName, window: WindowSpec, resume: Resume | null): HeadWindow;
   changesSince(seq: Seq): SessionChange;
   streaming(): readonly StreamingPart[];
+  progress(): readonly PartProgress[];
   subscribe(listener: () => void): Disposer;
   release(): void;
 }
