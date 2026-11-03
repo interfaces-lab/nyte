@@ -192,11 +192,16 @@ function viewArrived(state: State, session: FollowedSession, view: SessionView, 
 
   const latest = latestRun(view.execution);
 
-  if (
-    latest !== null &&
-    (view.execution.kind !== "idle" || (before !== null && latest !== latestRun(before.execution)))
-  )
+  const ended =
+    before !== null &&
+    view.execution.kind === "idle" &&
+    (before.execution.kind !== "idle" || latest !== latestRun(before.execution));
+
+  if (latest !== null && view.execution.kind !== "idle")
     next = withLocal(next, { watchedRun: latest });
+
+  if (latest !== null && ended)
+    next = withLocal(next, { watchedRun: state.facts.focused ? null : latest });
   next = questionMoved(state, next);
   let step: Step = stay(next);
 
