@@ -233,11 +233,13 @@ export async function watchHost(context: HandlerContext): Promise<void> {
     dispatch({ kind: "session-info", session: followed.id, info });
   });
 
-  const health = each(ports.host.health(), context.signal, (next) => {
-    dispatch({ kind: "health", health: next });
-  });
+  await Promise.all([catalogs, infos]);
+}
 
-  await Promise.all([catalogs, infos, health]);
+export function watchHealth(context: HandlerContext): Promise<void> {
+  return each(context.ports.host.health(), context.signal, (health) => {
+    context.dispatch({ kind: "health", health });
+  });
 }
 
 export async function refreshWorkspace(

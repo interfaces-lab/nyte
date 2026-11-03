@@ -2,11 +2,13 @@ import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { alignedRows, ansiEnabled, statusGlyph } from "./cli-style.ts";
+import { portConflict, probePort } from "@nyte-ai/service";
 import {
   findRunningHost,
-  findStaleHost,
   hostFilePath,
   publishHost,
+  readHostAddress,
+  saveHostAddress,
   withdrawHost,
 } from "./host-endpoint.ts";
 import type { RunningHost } from "./host-endpoint.ts";
@@ -30,22 +32,29 @@ export async function hostCommand(
   const running = await findRunningHost(path);
 
   if (running !== null) throw new Error(alreadyRunning(running, path));
-  const previous = await findStaleHost(path);
-  const token = previous?.token ?? randomBytes(32).toString("base64url");
+  const addressPath = join(dirname(path), "host-address.json");
+  const saved = await readHostAddress(addressPath);
+  const token = saved?.token ?? randomBytes(32).toString("base64url");
   const socket = process.platform === "win32" ? undefined : join(dirname(path), "host.sock");
-  const command = {
+  const conflict =
+    saved === null ? undefined : portConflict(saved.port, await probePort(saved.port));
+
+  const thread = await startHostThread({
     kind: "local",
-    port: 0,
+    port: saved === null || conflict !== undefined ? 0 : saved.port,
     token,
     authority: OWN_TOKEN_AUTHORITY,
     socket,
-  } as const;
+  });
 
-  const thread = await (previous === null
-    ? startHostThread(command)
-    : startHostThread({ ...command, port: Number(new URL(previous.url).port) }).catch(() =>
-        startHostThread(command),
-      ));
+  const port = Number(new URL(thread.address).port);
+
+  if (conflict !== undefined)
+    process.stderr.write(
+      `${conflict} Listening on port ${String(port)} instead; clients that knew the old address need ${thread.address}.\n`,
+    );
+
+  await saveHostAddress(addressPath, { port, token });
 
   try {
     const published = await publishHost(path, {

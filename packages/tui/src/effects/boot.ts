@@ -14,6 +14,7 @@ import {
   PLACEHOLDER_SELECTION,
   sameSelection,
   settleFolder,
+  watchHealth,
   watchHost,
 } from "./session.ts";
 
@@ -47,6 +48,14 @@ export function launchChat(options: BootOptions, recorded: Selection | null): Bl
 
 export async function boot(options: BootOptions, context: HandlerContext): Promise<void> {
   const { dispatch, ports, scope } = context;
+
+  const health: Promise<void> = watchHealth(context)
+    .catch((cause: unknown) => {
+      ports.log.write("watch", cause);
+    })
+    .finally(() => scope.watches.delete(health));
+
+  scope.watches.add(health);
   const catalog = await ports.host.listModels();
   const { settings } = context.read().facts;
   dispatch({ kind: "catalog", generation: (scope.catalogGeneration += 1), catalog });

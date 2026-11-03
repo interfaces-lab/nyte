@@ -113,6 +113,43 @@ export function healthUpdates(live: HostConnection): AsyncIterable<Health> {
   }));
 }
 
+export async function whenOpen<T>(live: HostConnection, ask: () => Promise<T>): Promise<T> {
+  for (;;) {
+    const since = await openSince(live);
+
+    const answer = await ask().then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+
+    if ("value" in answer) return answer.value;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const health = live.health.snapshot();
+
+    if (health.kind === "open" && health.since === since) throw answer.error;
+  }
+}
+
+function openSince(live: HostConnection): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const check = (): boolean => {
+      const health = live.health.snapshot();
+
+      if (health.kind === "open") resolve(health.since);
+      else if (health.kind === "blocked") reject(health.error);
+      else return false;
+
+      return true;
+    };
+
+    if (check()) return;
+
+    const stop = live.health.subscribe(() => {
+      if (check()) stop();
+    });
+  });
+}
+
 function liveValues<T>(open: (changed: () => void) => Opened<T>): AsyncIterable<T> {
   return {
     [Symbol.asyncIterator]() {

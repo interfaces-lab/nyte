@@ -27,7 +27,7 @@ The boundaries test enforces:
 ## Hosts
 
 - Each command starts its own host on a worker thread over the shared `~/.nyte/nyte.db`, and talks to it through `sdk.connect` for requests and one `openHost` connection for chats, the session list, streamed text and health. The SDK's supervisor is the only reconnect; the TUI keeps none of its own.
-- `nyte host` serves one host and publishes `~/.nyte/host.json`. `--host-url` with `NYTE_HOST_TOKEN` attaches to it instead (`HostSource`). An attached TUI never starts a local host.
+- `nyte host` serves one host and publishes `~/.nyte/host.json`. It keeps its port and token across restarts, clean or not, so attached clients resume; a port another process holds gets a new one and a line on stderr. `--host-url` with `NYTE_HOST_TOKEN` attaches to it instead (`HostSource`). An attached TUI never starts a local host.
 
 ## Theme tokens
 
