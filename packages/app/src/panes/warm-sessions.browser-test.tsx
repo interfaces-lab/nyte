@@ -288,7 +288,7 @@ async function checkRules(): Promise<string> {
     await painted();
     expectRule(!seen.includes(`${C}-tip-1`), "warming an unread chat marked it read");
     const a = await show(container, A);
-    expectRule(!d.viewport.checkVisibility(), "a hidden session stays visible");
+    expectRule(!d.viewport.isConnected, "a chat the pane left stayed mounted");
     await moveTip(D, 2);
     await moveTip(A, 2);
     await until(() => seen.includes(`${A}-tip-2`), "the shown chat's new tip to be marked read");
@@ -300,7 +300,8 @@ async function checkRules(): Promise<string> {
 
     const b = await show(container, B);
     await painted();
-    expectRule(chatStore(A).active, "a hidden hot session released its watch");
+    expectRule(!a.viewport.isConnected, "a chat the pane left stayed mounted");
+    expectRule(chatStore(A).active, "a chat the pane left dropped its rows");
     const aSnapshot = readScroll(A);
     expectRule(
       aSnapshot?.kind === "anchor",
@@ -314,8 +315,6 @@ async function checkRules(): Promise<string> {
     );
 
     const back = await show(container, A);
-    expectRule(back.viewport === a.viewport, "switching back remounted the transcript");
-    expectRule(back.composer === a.composer, "switching back remounted the composer");
     expectRule(
       back.editor.textContent?.includes("Draft for A") === true,
       `switching back lost the draft: ${JSON.stringify(back.editor.textContent)}`,
@@ -332,17 +331,13 @@ async function checkRules(): Promise<string> {
 
     const dSnapshot = readScroll(D);
     await show(container, C);
-    expectRule(!d.viewport.isConnected, "the least recent session stayed mounted");
-    expectRule(!d.composer.isConnected, "the least recent composer stayed mounted");
-    expectRule(readScroll(D) === dSnapshot, "evicting a hidden session wrote its scroll snapshot");
-    expectRule(readScroll(B) === bSnapshot, "a hidden session wrote its scroll snapshot");
-    expectRule(a.viewport.isConnected && b.viewport.isConnected, "a hot session was unmounted");
+    expectRule(!back.viewport.isConnected, "a chat the pane left stayed mounted");
+    expectRule(
+      readScroll(D) === dSnapshot,
+      "a chat the pane left long ago wrote its scroll snapshot",
+    );
+    expectRule(readScroll(B) === bSnapshot, "a chat the pane left wrote its scroll snapshot again");
     expectRule(chatStore(D).active, "an unmounted chat dropped the rows it had opened");
-
-    listed.push([A, C, D].map((id) => sessionRow(id)));
-    await until(() => !b.viewport.isConnected, "the deleted hidden session to unmount");
-    expectRule(!b.composer.isConnected, "a deleted hidden session kept its composer mounted");
-    expectRule(a.viewport.isConnected, "deleting another session unmounted a hot one");
 
     const home = workbenchViewKey(undefined);
     workbench.dispatch(home, { kind: "toggle" });
