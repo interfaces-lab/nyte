@@ -344,7 +344,7 @@ async function sessionCatalog(
 ): Promise<SessionCatalogView | null> {
   const runtime = kernel.plugins.runtimes().get(session);
 
-  if (runtime === undefined) return null;
+  if (runtime === undefined || runtime.outcomes().length === 0) return null;
   const { registries } = runtime;
 
   return {
