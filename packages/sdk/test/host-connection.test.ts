@@ -297,6 +297,42 @@ describe("a sessions store", () => {
   });
 });
 
+describe("a sessions store's order", () => {
+  it("moves a session from outside the limit into its ids, adds a new one and drops a removed one, without a read", async () => {
+    const served = await serve();
+    const older = await startSession(served);
+    const middle = await startSession(served);
+    const newer = await startSession(served);
+    const reads: string[] = [];
+
+    const connection = attach(served.listener, (request) => {
+      const socket = global(request);
+      const send = socket.send.bind(socket);
+
+      return Object.assign(socket, {
+        send(data: string) {
+          if (data.includes('"op":"sessions.read"')) reads.push(data);
+          send(data);
+        },
+      });
+    });
+
+    const sessions = connection.directory({ limit: 2 });
+    cleanups.push(async () => sessions.close());
+    const ids = () => sessions.snapshot()?.ids;
+
+    await vi.waitFor(() => expect(ids()).toEqual([newer, middle]));
+    await send(served, older, "Back again.");
+    await vi.waitFor(() => expect(ids()).toEqual([older, newer]));
+
+    const added = await startSession(served);
+    await vi.waitFor(() => expect(ids()).toEqual([added, older]));
+    await served.host.session(added).remove();
+    await vi.waitFor(() => expect(ids()).toEqual([older, newer]));
+    expect(reads).toHaveLength(1);
+  });
+});
+
 describe("offer", () => {
   it("answers another connection's client.perform with what the handler returns", async () => {
     const served = await serve();

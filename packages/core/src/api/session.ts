@@ -1,4 +1,4 @@
-import { asId, SdkError } from "@nyte-ai/schema";
+import { asId, SdkError, SESSIONS_LIMIT } from "@nyte-ai/schema";
 import type {
   Configuration,
   ConfigurationPatch,
@@ -60,7 +60,7 @@ import { createHead, headHandle, mergeHead, removeHead } from "./head.ts";
 import { createPart, partHandle } from "./part.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
-const DEFAULT_LIMIT = 50;
+const DEFAULT_LIMIT = SESSIONS_LIMIT;
 
 export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: SessionId): Session {
   return {

@@ -64,7 +64,7 @@ export function openSessions(window: SessionsWindow, join: Join): SessionsStore 
 
       if (socket !== attached) return;
 
-      if (store === null) store = openDirectoryStore(answer);
+      if (store === null) store = openDirectoryStore(answer, window);
       else store.resume(answer);
 
       reading = false;
