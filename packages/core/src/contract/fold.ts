@@ -166,6 +166,7 @@ export interface Step extends Touched {
 export interface Ring {
   readonly steps: Step[];
   from: Seq;
+  amended: number;
 }
 
 export interface Path {

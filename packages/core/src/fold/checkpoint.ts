@@ -439,7 +439,7 @@ export function decodeFoldCheckpoint(
     thinking: new Map(body.thinking),
     paths,
     stamps: emptyStamps(),
-    ring: { steps: [], from: body.seq },
+    ring: { steps: [], from: body.seq, amended: 0 },
   };
 
   return {
