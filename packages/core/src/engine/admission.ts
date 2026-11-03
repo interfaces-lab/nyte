@@ -218,7 +218,7 @@ export function selectRunStart(
 
   const report = inputs
     .flatMap((input) =>
-      input.source.kind === "child" || input.source.kind === "job"
+      input.source.kind === "child" || input.source.kind === "job" || input.source.kind === "answer"
         ? [{ origin: { kind: "continuation", from: input.source.kind } as const, input }]
         : [],
     )

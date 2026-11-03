@@ -5,16 +5,16 @@ import type {
   Failure,
   HeadInfo,
   Message,
-  MessageSource,
   RunEnd,
   RunId,
   SessionInfo,
   ToolClass,
   ToolPartState,
-  UserContent,
 } from "@nyte-ai/schema";
 
 export { jobTaskState } from "@nyte-ai/schema";
+export { showsAnswer, showsReport, shownContent } from "./user-messages.ts";
+export type { AnswerMessage, ReportMessage } from "./user-messages.ts";
 
 /**
  * A message the user sent, or one a child, job or action delivered for them.
@@ -50,15 +50,6 @@ export type TextMessage = PartMessage & { readonly state: PartState<typeof text>
  * @category presentation
  */
 export type ThinkingMessage = PartMessage & { readonly state: PartState<typeof thinking> };
-
-/**
- * A user message a child session or background job delivered as its report.
- *
- * @category presentation
- */
-export type ReportMessage = UserMessage & {
-  readonly source: Extract<MessageSource, { readonly kind: "child" | "job" }>;
-};
 
 /**
  * Narrows to a tool call's part.
@@ -111,24 +102,6 @@ export function readRawPart(message: PartMessage): RawPart {
   }
 
   return { format: "json", body: state === undefined ? "null" : JSON.stringify(state, null, 2) };
-}
-
-/**
- * Narrows to the report a child or job delivered; a person or an action sent the rest.
- *
- * @category presentation
- */
-export function showsReport(message: UserMessage): message is ReportMessage {
-  return message.source.kind === "child" || message.source.kind === "job";
-}
-
-/**
- * What a user message shows: an action's label in place of the prompt it sent.
- *
- * @category presentation
- */
-export function shownContent(message: UserMessage): UserContent {
-  return message.source.kind === "action" ? message.source.label : message.content;
 }
 
 /**

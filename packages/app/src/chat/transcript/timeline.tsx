@@ -5,6 +5,7 @@ import { useState } from "react";
 // oxlint-disable-next-line no-restricted-imports -- TranscriptContent's uncompiled virtualizer calls renderRow on every scroll update, so each row needs its own memo boundary
 import { memo } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { showsAnswer } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { preferences, useSetting } from "../../preferences/index.ts";
 import type { ToolCallDensity } from "../../preferences/index.ts";
@@ -16,6 +17,7 @@ import { MarkerContent, MarkerIcon } from "@nyte-ai/ui/marker";
 import { TranscriptSkeleton } from "./transcript-skeleton.tsx";
 import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
 import { SubagentReportLine } from "../tools/subagent-call.tsx";
+import { AnswerLine } from "./answer-line.tsx";
 import { TranscriptContent, useTranscriptScope } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
 import { ChangesFooter, TurnItemView } from "./turn-view.tsx";
@@ -170,6 +172,13 @@ const TranscriptRowView = memo(function TranscriptRowView({
           </div>
         );
 
+      if (showsAnswer(row.message))
+        return (
+          <div {...props(liveTurnStyles.root)}>
+            <AnswerLine message={row.message} held={row.held} />
+          </div>
+        );
+
       return <TurnItemView row={row} running={false} density={density} cwd={cwd} />;
     }
 
@@ -180,7 +189,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
         </StatusMarker>
       );
     case "live":
-      return <LiveTurn working={row.working || navigating} />;
+      return <LiveTurn state={navigating && row.state === "idle" ? "planning" : row.state} />;
     default: {
       const _exhaustive: never = row;
 

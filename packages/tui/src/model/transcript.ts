@@ -1,10 +1,9 @@
 import type { Failure, Message, TurnId, TurnInfo } from "@nyte-ai/sdk";
 import type { HeadView } from "@nyte-ai/sdk/client";
-import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { runMark, runStatus, showsTool, taskLabel } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { MIN_REPORTED_DURATION_MS } from "../lib/constants.ts";
-import { promptMessages, pendingReports } from "../lib/view-helpers.ts";
+import { pendingAnswers, promptMessages, pendingReports } from "../lib/view-helpers.ts";
 import type { ShellJob, TranscriptLocal } from "./state.ts";
 import { mountWindow } from "./window.ts";
 import type { MountWindow } from "./window.ts";
@@ -185,7 +184,7 @@ function turnRows(view: HeadView): readonly Row[] {
 
   const pending = view.execution.kind !== "idle";
 
-  for (const message of [...promptMessages(view), ...pendingReports(view)])
+  for (const message of [...promptMessages(view), ...pendingReports(view), ...pendingAnswers(view)])
     rows.push(messageRow(message, pending));
 
   return rows;
@@ -351,7 +350,7 @@ export function turnStatus(
     }
 
     case "waiting":
-      return info.state.on.kind === "part" || openQuestions(view).length > 0
+      return info.state.on.kind === "part"
         ? { kind: "waiting", question: true }
         : { kind: "working", activity: taskLabel(runMark(runStatus(execution))), startedAt };
     case "working": {

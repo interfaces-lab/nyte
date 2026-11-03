@@ -8,12 +8,7 @@ import { build, defaultClientConditions, type Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/lib/deferred-entries.ts";
 import { PICKER_SCRIPT } from "./src/main/browser/browser-picker-page.ts";
 import packageMetadata from "./package.json" with { type: "json" };
-import {
-  deferredChunks,
-  dropInlinedGhosttyWasm,
-  shareCentralIconBase,
-  stylex,
-} from "@nyte-ai/app/vite";
+import { deferredChunks, shareCentralIconBase, stylex } from "@nyte-ai/app/vite";
 
 /**
  * The renderer. StyleX compiles @nyte-ai/ui from source here, so it resolves the
@@ -29,7 +24,6 @@ const renderer = {
       },
     }),
     shareCentralIconBase(),
-    dropInlinedGhosttyWasm(),
     stylex.vite({
       useCSSLayers: true,
       lightningcssOptions: { targets: { chrome: 152 << 16 } },

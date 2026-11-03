@@ -40,7 +40,8 @@ const states: Readonly<Record<string, Json>> = {
         ],
       },
     ],
-    answers: null,
+    call: "c1",
+    phase: { kind: "asking" },
   },
 };
 
@@ -149,7 +150,8 @@ it("draws terminal question summaries with descriptions and committed answers", 
         options: [{ label: "Today", description: "Ship today." }],
       },
     ],
-    answers: [["After review"], []],
+    call: "c1",
+    phase: { kind: "answered", answers: [["After review"], []], head: null },
   });
 
   expect(JSON.stringify(answered)).toContain("Answer: After review");
@@ -180,7 +182,8 @@ it("draws committed React answers without stale draft controls", () => {
       { header: "Timing", question: "When?", options: [] },
       { header: "Scope", question: "What should change?", options: [] },
     ],
-    answers: [["No"], ["After review"], []],
+    call: "c1",
+    phase: { kind: "answered", answers: [["No"], ["After review"], []], head: null },
   });
 
   const rendered = JSON.stringify(answered);

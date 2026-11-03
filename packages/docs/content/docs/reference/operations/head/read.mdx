@@ -336,6 +336,22 @@ Output, with the tables shortened:
                                               "type": "string"
                                             }
                                           }
+                                        },
+                                        {
+                                          "type": "object",
+                                          "required": ["kind", "session", "title"],
+                                          "properties": {
+                                            "kind": {
+                                              "type": "string",
+                                              "const": "chat"
+                                            },
+                                            "session": {
+                                              "type": "string"
+                                            },
+                                            "title": {
+                                              "type": "string"
+                                            }
+                                          }
                                         }
                                       ]
                                     },
@@ -412,6 +428,22 @@ Output, with the tables shortened:
                                 "type": "string"
                               },
                               "command": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": ["kind", "part", "label"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "answer"
+                              },
+                              "part": {
+                                "type": "string"
+                              },
+                              "label": {
                                 "type": "string"
                               }
                             }
@@ -2099,7 +2131,7 @@ Output, with the tables shortened:
                                         "const": "continuation"
                                       },
                                       "from": {
-                                        "enum": ["child", "job", "wake"]
+                                        "enum": ["child", "job", "answer", "wake"]
                                       }
                                     }
                                   }
@@ -2163,7 +2195,7 @@ Output, with the tables shortened:
                                         "const": "continuation"
                                       },
                                       "from": {
-                                        "enum": ["child", "job", "wake"]
+                                        "enum": ["child", "job", "answer", "wake"]
                                       }
                                     }
                                   }
@@ -2292,7 +2324,7 @@ Output, with the tables shortened:
                                         "const": "continuation"
                                       },
                                       "from": {
-                                        "enum": ["child", "job", "wake"]
+                                        "enum": ["child", "job", "answer", "wake"]
                                       }
                                     }
                                   }

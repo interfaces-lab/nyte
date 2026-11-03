@@ -205,6 +205,7 @@ async function describeSession(
     archived: record.archived,
     activation: kernel.sessions.activation(id),
     heads,
+    ...(record.side === true ? { side: true } : {}),
     createdAt: record.createdAt,
     lastActivityAt: record.lastActivityAt,
     ...(record.mcp === undefined ? {} : { mcp: record.mcp }),
@@ -306,6 +307,7 @@ async function start(
     ...described,
     ...(input.isolation === undefined ? {} : { isolation: input.isolation }),
     ...(input.contextFiles === undefined ? {} : { contextFiles: input.contextFiles }),
+    ...(input.side === undefined ? {} : { side: input.side }),
   });
 
   const trace = (origin === null ? null : followedTrace(origin.session)) ?? receipt;
@@ -322,6 +324,9 @@ async function start(
       }
       const parent =
         input.parent === undefined ? null : await requireSession(kernel.store, input.parent);
+
+      if (input.side === true && parent === null)
+        throw new SdkError("invalid", "A side chat needs the chat it sits beside as its parent.");
       const named =
         input.workspace ?? parent?.record.workspace ?? kernel.host.current().defaultWorkspace;
 
@@ -369,6 +374,7 @@ async function start(
         prompt: input.prompt ?? null,
         ...(input.contextFiles === undefined ? {} : { contextFiles: input.contextFiles }),
         ...(mcp === undefined ? {} : { mcp }),
+        ...(input.side === undefined ? {} : { side: input.side }),
       };
 
       const outcome = await commit(kernel, [

@@ -206,6 +206,22 @@ Response:
                             "type": "string"
                           }
                         }
+                      },
+                      {
+                        "type": "object",
+                        "required": ["kind", "session", "title"],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "chat"
+                          },
+                          "session": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
                       }
                     ]
                   },

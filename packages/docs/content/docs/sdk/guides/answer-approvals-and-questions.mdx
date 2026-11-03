@@ -1,0 +1,192 @@
+---
+title: Answer approvals and questions
+description: Find the requests waiting on the user in a session's view, and answer them from your client.
+---
+
+Sometimes the agent stops and waits for a person. It asks before a tool call when the host's
+permissions say so, and it can ask the user questions at any time. Use this page to show those
+requests in your client and send the answers back.
+
+Both kinds arrive the same way: as a part in `view.parts` with a modal placement, so they never
+appear in `view.messages`. An approval holds the run until someone answers or the run is stopped. A
+question holds it for up to a minute; after that the agent carries on and the question stays open,
+so an answer can still come later. Any client watching the session can answer, and the request
+survives a restart of the host.
+
+## Turn on approvals
+
+Tool calls run without asking by default. Change the host's `permissions` setting to make them ask:
+
+```ts
+await connection.settings.apply("permissions", "ask");
+```
+
+| Value            | The agent asks before                                                      |
+| ---------------- | -------------------------------------------------------------------------- |
+| `ask`            | Shell commands, file edits and other tools that may change the workspace   |
+| `auto-edit`      | Shell commands, edits outside the workspace and tools with unknown effects |
+| `full` (default) | Nothing                                                                    |
+
+Reading and listing files never asks. Under `auto-edit`, editing a file in `.claude`, `.git` or
+`.nyte` still asks, because those folders configure what runs there. The setting applies to every
+session from its next tool call, including runs already going. Changing it needs owner authority.
+
+## Answer an approval
+
+`openApprovals` from `@nyte-ai/plugin/approvals/schema` returns the approvals nobody has answered
+yet, oldest first. `approvalPrompt` gives the words to show for one. Follow the session's head
+store, opened on `live` as [Render a session](/docs/sdk/guides/render-a-session) shows, and ask
+about each request once:
+
+```ts
+import { approvalPrompt, openApprovals } from "@nyte-ai/plugin/approvals/schema";
+import { headView } from "@nyte-ai/sdk/client";
+
+const store = live.head(session.id, session.name, { tail: 100 });
+const asked = new Set<string>();
+
+store.subscribe(async () => {
+  const snapshot = store.snapshot();
+
+  if (snapshot === null) return;
+
+  for (const request of openApprovals(headView(snapshot))) {
+    if (asked.has(request.part)) continue;
+    asked.add(request.part);
+    const prompt = approvalPrompt(request);
+    const decision = await ask(prompt.title, prompt.detail);
+    const outcome = await session.part(request.part).act(decision, {});
+
+    if (outcome.kind !== "ok") console.error(outcome.kind);
+  }
+});
+```
+
+`prompt.title` is a question such as "Run this command?" and `prompt.detail` is the command, path
+or label it is about. Each request also has the `tool` name, its `class` and the `reason` it asks:
+`shell`, `edit`, `outside` for an edit outside the workspace, or `tool`.
+
+The decision is one of three actions:
+
+| Action    | Effect                                                                                                     |
+| --------- | ---------------------------------------------------------------------------------------------------------- |
+| `once`    | Runs this call                                                                                             |
+| `session` | Runs this call and allows the tool for the rest of the session, which also answers its other waiting calls |
+| `deny`    | Skips the call and tells the model the user denied it                                                      |
+
+`APPROVAL_ACTIONS` from the same module lists them in order with the labels Nyte's own clients use.
+
+Only a principal with owner authority can allow a call. Anyone who can chat can deny one.
+
+## Answer a question
+
+The agent asks with its `question` tool, one or more questions at a time. Each question has a
+short `header`, the `question`, `options` with a `label` and a `description`, and `multiple` when
+the user may pick several.
+
+```ts
+import { openQuestions } from "@nyte-ai/plugin/question/schema";
+
+for (const request of openQuestions(view)) {
+  const answers: string[][] = [];
+
+  for (const item of request.questions) {
+    answers.push(
+      await choose(
+        item.question,
+        item.options.map((option) => option.label),
+      ),
+    );
+  }
+
+  await session.part(request.part).act("answer", { answers });
+}
+```
+
+Answer every question of a request in one call. `answers` holds one list per question, in order.
+Each list holds the chosen labels, or the user's own words, since a user may answer outside the
+options. An empty list leaves that question unanswered. A list with more than one answer for a
+question that isn't `multiple`, a blank answer or a repeated one is rejected with a `reason`.
+
+To decline instead, send `skip`. The agent goes on without an answer:
+
+```ts
+await session.part(request.part).act("skip", {});
+```
+
+### When the agent has moved on
+
+The agent waits a minute for an answer. If none comes, its `question` call returns, the agent
+carries on with its best guess, and the request stays in `openQuestions` with `late: true`. Show it
+the same way. An answer sent then reaches the agent as an attached message whose `source.kind` is
+`"answer"`: it joins the live run at its next boundary, or continues the agent if it has finished,
+without opening a turn as a prompt. Mark it with `showsAnswer` from
+`@nyte-ai/plugin/client/presentation` rather than drawing it as something the user typed; the
+question's part already shows the answer. A `skip` sent then closes the request without telling the
+agent anything.
+
+## Show a question in the transcript
+
+A question is a tool call in `view.messages` whose `state.name` is `QUESTION_TOOL`, from the same
+module. Its request part records where the request stands, so draw the call from the part rather
+than from the tool's result. `findQuestionPart` finds the part a call made and `readQuestion` reads its state:
+
+```ts
+import { findQuestionPart, readQuestion } from "@nyte-ai/plugin/question/schema";
+
+const part = findQuestionPart(view.parts, message.state.call);
+const asked = part === undefined ? null : readQuestion(part);
+```
+
+`asked.phase` is one of:
+
+| `kind`     | Meaning                                                                        |
+| ---------- | ------------------------------------------------------------------------------ |
+| `asking`   | The agent is waiting for the answer                                            |
+| `open`     | The agent moved on. An answer still reaches it, as a message in `head`         |
+| `answered` | `answers` holds the reply. `head` is null when the waiting call got it in time |
+| `skipped`  | The user declined. `late` is true when that came after the agent moved on      |
+
+A request whose run stopped first keeps its phase and its part's `status.kind` is `failed`.
+
+## What `act` answers
+
+`act` returns an outcome rather than throwing for anything a user can cause:
+
+| Outcome          | Meaning                                                                     |
+| ---------------- | --------------------------------------------------------------------------- |
+| `ok`             | The answer was accepted                                                     |
+| `rejected`       | The answer doesn't fit, or someone answered or skipped first. See `reason`  |
+| `closed`         | The request ended, for example because its run was stopped                  |
+| `failed`         | The answer wasn't accepted. `message` says why, such as a missing authority |
+| `no-owner`       | The plugin that made the request isn't loaded on the host                   |
+| `unknown-action` | The request has no action by that name                                      |
+
+Input that doesn't match the action's schema throws `SdkError("invalid")`, and a part id the session
+doesn't have throws `SdkError("unknown")`. Both are bugs in the client, not answers.
+
+The first answer stands. Sending the same answer again returns `ok`, and a different one returns
+`rejected`, so it's safe to show a request in several windows at once. For a question, the first of
+`answer` and `skip` stands: skipping an answered question, or answering a skipped one, returns
+`rejected`.
+
+## Requests from subagents
+
+A subagent works in a child session of its own, so its requests are in the child's view, not the
+parent's. The parent's `view.background` lists its child sessions. A child whose `state` is
+`waiting` is blocked, often on a request like these, and the state passes up through every ancestor.
+A child that asked a question and moved on is working again, not waiting, so read `openQuestions`
+from its view to find a late question:
+
+```ts
+import { asId } from "@nyte-ai/schema";
+
+const children = view.background.filter((item) => item.kind === "child");
+
+for (const item of children) {
+  const child = await connection.session(asId<"session">(item.id)).view();
+  console.log(openApprovals(child), openQuestions(child));
+}
+```
+
+A child's `id` is its session id. Answer its requests through its own `Session` handle.

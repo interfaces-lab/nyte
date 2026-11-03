@@ -27,6 +27,8 @@ export const conversation = defineConsts({
   composerNewChatRadius: "var(--nyte-composer-new-chat-radius)",
   composerExpandedRadius: "var(--nyte-composer-expanded-radius)",
   composerFooterSegmentMaxWidth: "var(--nyte-composer-footer-segment-max-width)",
+  /** The anchor name a chat's composer dock takes, so what floats over the transcript can sit above it. */
+  composerDock: "--nyte-composer-dock",
 });
 
 export const tray = defineConsts({

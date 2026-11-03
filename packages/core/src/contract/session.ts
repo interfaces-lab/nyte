@@ -156,6 +156,8 @@ export interface Sessions {
     readonly isolation?: "worktree";
     /** `false` reads no context files (`AGENTS.md`, `CLAUDE.md` and the like) for the chat: not the user's, the ancestors' or the folder's own. The chat keeps it for good, across reloads, resumes and other hosts. */
     readonly contextFiles?: false;
+    /** `true` starts a side chat of `parent`: a chat a person keeps beside it. It never reports to the parent or shows as the parent's background work, and `SessionInfo.side` marks it. Without `parent` it is refused as invalid. */
+    readonly side?: true;
     readonly content: UserContent;
   }): Promise<{ readonly session: Session; readonly receipt: SendReceipt }>;
 

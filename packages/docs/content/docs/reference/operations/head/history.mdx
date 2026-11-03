@@ -243,6 +243,22 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                                       "type": "string"
                                     }
                                   }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": ["kind", "session", "title"],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "chat"
+                                    },
+                                    "session": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  }
                                 }
                               ]
                             },
@@ -319,6 +335,22 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                         "type": "string"
                       },
                       "command": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "part", "label"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "answer"
+                      },
+                      "part": {
+                        "type": "string"
+                      },
+                      "label": {
                         "type": "string"
                       }
                     }
@@ -888,6 +920,22 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                                     "type": "string"
                                   }
                                 }
+                              },
+                              {
+                                "type": "object",
+                                "required": ["kind", "session", "title"],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "const": "chat"
+                                  },
+                                  "session": {
+                                    "type": "string"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                }
                               }
                             ]
                           },
@@ -964,6 +1012,22 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                       "type": "string"
                     },
                     "command": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "part", "label"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "answer"
+                    },
+                    "part": {
+                      "type": "string"
+                    },
+                    "label": {
                       "type": "string"
                     }
                   }

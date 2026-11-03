@@ -522,7 +522,7 @@ Response, with the row shortened:
                                       "const": "continuation"
                                     },
                                     "from": {
-                                      "enum": ["child", "job", "wake"]
+                                      "enum": ["child", "job", "answer", "wake"]
                                     }
                                   }
                                 }
@@ -586,7 +586,7 @@ Response, with the row shortened:
                                       "const": "continuation"
                                     },
                                     "from": {
-                                      "enum": ["child", "job", "wake"]
+                                      "enum": ["child", "job", "answer", "wake"]
                                     }
                                   }
                                 }
@@ -715,7 +715,7 @@ Response, with the row shortened:
                                       "const": "continuation"
                                     },
                                     "from": {
-                                      "enum": ["child", "job", "wake"]
+                                      "enum": ["child", "job", "answer", "wake"]
                                     }
                                   }
                                 }
@@ -781,6 +781,10 @@ Response, with the row shortened:
                 ]
               }
             }
+          },
+          "side": {
+            "type": "boolean",
+            "const": true
           }
         }
       }

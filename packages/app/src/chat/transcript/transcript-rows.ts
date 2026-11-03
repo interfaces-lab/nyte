@@ -1,4 +1,5 @@
 import type { Message, SessionView } from "@nyte-ai/sdk";
+import { showsAnswer, showsReport, showsTool } from "@nyte-ai/plugin/client/presentation";
 import type {
   failureNotice,
   TextMessage,
@@ -69,12 +70,15 @@ export type TranscriptRow =
   | EarlierRow
   | PromptRow
   | (RowLayout & { readonly kind: "retry"; readonly message: string })
-  | (RowLayout & { readonly kind: "live"; readonly working: boolean })
+  | (RowLayout & { readonly kind: "live"; readonly state: LiveRowState })
   | (RowLayout & {
       readonly kind: "changes";
       readonly state: "pending" | "ready";
       readonly files: SessionView["changes"];
     });
+
+/** A `grouped` live row says nothing until planning runs slow, because the turn's active step group already shows the run working. */
+export type LiveRowState = "idle" | "planning" | "grouped";
 
 /** Belongs to the reader's visit, not the view, so the transcript inserts it into the projected rows. */
 export type DividerRow = RowLayout & { readonly kind: "divider" };
@@ -96,10 +100,7 @@ function runState(view: ProjectedView | undefined) {
 
 function readWorking(running: boolean, held: boolean, prompts: readonly UserMessage[]): boolean {
   return (
-    running ||
-    prompts.some(
-      (message) => !held || (message.source.kind !== "child" && message.source.kind !== "job"),
-    )
+    running || prompts.some((message) => !held || (!showsReport(message) && !showsAnswer(message)))
   );
 }
 
@@ -125,9 +126,7 @@ export function conversationMessages(view: ProjectedView | undefined) {
 
 /** A user's prompt is drawn sticky from the moment it is sent, so its row keeps one DOM shape when it joins its turn; only inside a turn does it stick. */
 function sticksToTop(message: Message): boolean {
-  return (
-    message.kind === "user" && message.source.kind !== "child" && message.source.kind !== "job"
-  );
+  return message.kind === "user" && !showsReport(message) && !showsAnswer(message);
 }
 
 /** A prompt joining a running run lands in that run's turn, so only a prompt that opens its own turn takes the footer. */
@@ -140,12 +139,14 @@ function opensTurn(message: UserMessage): boolean {
   );
 }
 
+/** The last step group stays active through the gap before its run's next step. A waiting or retrying run keeps it active only for a call still in flight, such as one awaiting approval. */
 function turnRows(
   turn: TurnMessages,
   place: {
     readonly group: string;
     readonly leads: boolean;
     readonly working: boolean;
+    readonly retrying: boolean;
     readonly latest: boolean;
   },
 ) {
@@ -159,6 +160,7 @@ function turnRows(
 
   if (turn.messages.length === 0 && state.kind !== "ended") return rows;
   const display = displayTranscriptParts(turn.messages);
+  const stepping = state.kind === "working" && !place.retrying;
 
   for (const [index, item] of display.entries()) {
     if (item.kind === "part") {
@@ -195,9 +197,8 @@ function turnRows(
           key: `step:${first.id}`,
           ...layout,
           messages: item.messages,
-          added: ends ? turn.info.summary.added : 0,
-          removed: ends ? turn.info.summary.removed : 0,
-          running: ends && place.working && item.messages.some(inFlight),
+          ...stepChanges(item.messages),
+          running: ends && place.working && (stepping || item.messages.some(inFlight)),
         });
         break;
       case "agents":
@@ -245,6 +246,20 @@ function turnRows(
     });
 
   return rows;
+}
+
+/** A group counts only its own calls' changes; the turn's summary also holds the turn's earlier groups. */
+function stepChanges(messages: readonly StepMessage[]) {
+  const changes = messages.flatMap((message) =>
+    showsTool(message) && message.state.phase === "settled" && message.state.changes !== null
+      ? [message.state.changes]
+      : [],
+  );
+
+  return {
+    added: changes.reduce((sum, change) => sum + change.added, 0),
+    removed: changes.reduce((sum, change) => sum + change.removed, 0),
+  };
 }
 
 function inFlight(message: StepMessage): boolean {
@@ -321,6 +336,7 @@ export function transcriptRows({
       group,
       leads,
       working: working && turn === last,
+      retrying: retrying !== undefined,
       latest: turn === last,
     });
 
@@ -345,7 +361,16 @@ export function transcriptRows({
   if (retrying !== undefined)
     rows.push({ kind: "retry", key: "row:retry", ...OUTSIDE, message: retrying });
 
-  rows.push({ kind: "live", key: "row:live", ...OUTSIDE, working });
+  rows.push({
+    kind: "live",
+    key: "row:live",
+    ...OUTSIDE,
+    state: !working
+      ? "idle"
+      : rows.some((row) => row.kind === "step" && row.running)
+        ? "grouped"
+        : "planning",
+  });
 
   if (owner !== undefined)
     rows.push({
@@ -525,9 +550,10 @@ function withMessage(row: TranscriptRow, slot: TranscriptSlot): TranscriptRow | 
     case "part":
       return { ...row, message: slot.message };
     case "step":
-      return slot.kind === "step"
-        ? { ...row, messages: replaced(row.messages, slot.message) }
-        : undefined;
+      if (slot.kind !== "step") return undefined;
+      const messages = replaced(row.messages, slot.message);
+
+      return { ...row, messages, ...stepChanges(messages) };
     case "agents":
       return slot.kind === "agents"
         ? { ...row, messages: replaced(row.messages, slot.message) }

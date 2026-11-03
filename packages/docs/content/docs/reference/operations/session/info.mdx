@@ -485,7 +485,7 @@ Response:
                                 "const": "continuation"
                               },
                               "from": {
-                                "enum": ["child", "job", "wake"]
+                                "enum": ["child", "job", "answer", "wake"]
                               }
                             }
                           }
@@ -549,7 +549,7 @@ Response:
                                 "const": "continuation"
                               },
                               "from": {
-                                "enum": ["child", "job", "wake"]
+                                "enum": ["child", "job", "answer", "wake"]
                               }
                             }
                           }
@@ -678,7 +678,7 @@ Response:
                                 "const": "continuation"
                               },
                               "from": {
-                                "enum": ["child", "job", "wake"]
+                                "enum": ["child", "job", "answer", "wake"]
                               }
                             }
                           }
@@ -744,6 +744,10 @@ Response:
           ]
         }
       }
+    },
+    "side": {
+      "type": "boolean",
+      "const": true
     }
   }
 }

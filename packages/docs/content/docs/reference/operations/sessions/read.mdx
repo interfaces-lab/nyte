@@ -542,7 +542,7 @@ None of its own.
                                       "const": "continuation"
                                     },
                                     "from": {
-                                      "enum": ["child", "job", "wake"]
+                                      "enum": ["child", "job", "answer", "wake"]
                                     }
                                   }
                                 }
@@ -606,7 +606,7 @@ None of its own.
                                       "const": "continuation"
                                     },
                                     "from": {
-                                      "enum": ["child", "job", "wake"]
+                                      "enum": ["child", "job", "answer", "wake"]
                                     }
                                   }
                                 }
@@ -735,7 +735,7 @@ None of its own.
                                       "const": "continuation"
                                     },
                                     "from": {
-                                      "enum": ["child", "job", "wake"]
+                                      "enum": ["child", "job", "answer", "wake"]
                                     }
                                   }
                                 }
@@ -801,6 +801,10 @@ None of its own.
                 ]
               }
             }
+          },
+          "side": {
+            "type": "boolean",
+            "const": true
           }
         }
       }

@@ -23,7 +23,8 @@ function part(id: string, change: Partial<PartView> = {}): PartView {
           ],
         },
       ],
-      answers: null,
+      call: "call-question",
+      phase: { kind: "asking" },
     },
     version: 1,
     status: { kind: "live", run: asId<"run">("run") },
@@ -49,7 +50,8 @@ test("every unanswered question part is waiting; answered, stopped, foreign and 
               options: [{ label: "Yes", description: "Proceed." }],
             },
           ],
-          answers: [["Yes"]],
+          call: "call-answered",
+          phase: { kind: "answered", answers: [["Yes"]], head: null },
         },
       }),
       part("stopped", {
@@ -67,6 +69,7 @@ test("every unanswered question part is waiting; answered, stopped, foreign and 
   assert.deepEqual(questions, [
     {
       part: asId<"part">("open"),
+      late: false,
       questions: [
         {
           header: "Pick",

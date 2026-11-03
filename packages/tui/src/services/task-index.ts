@@ -28,7 +28,11 @@ export class TaskIndex {
     this.options = options;
 
     this.stops.push(
-      follow(options.children, (children) => this.syncChildren(children), options.onError),
+      follow(
+        options.children,
+        (children) => this.syncChildren(children.filter((child) => child.side !== true)),
+        options.onError,
+      ),
       follow(
         options.jobs,
         (jobs) => {

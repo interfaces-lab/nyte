@@ -26,7 +26,7 @@ export const deferredEntries = {
   },
   ghostty: {
     module: new URL("../workbench/terminal/ghostty.deferred.ts", import.meta.url).href,
-    packages: ["ghostty-web/"],
+    packages: [],
   },
   pdf: {
     module: new URL("../workbench/files/pdf/pdf.deferred.ts", import.meta.url).href,

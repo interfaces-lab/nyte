@@ -127,6 +127,7 @@ const connection: Connection = {
 installConnection(connection, scriptedSet.live);
 
 function sink() {
+  const decoder = new TextDecoder();
   let contents = "";
 
   return {
@@ -136,8 +137,8 @@ function sink() {
     reset() {
       contents = "";
     },
-    write(data: string) {
-      contents += data;
+    write(data: Uint8Array) {
+      contents += decoder.decode(data, { stream: true });
     },
     update(_tab: Parameters<TerminalOutput["update"]>[0]) {},
     visible: () => false,
@@ -202,9 +203,9 @@ describe("shell terminals", () => {
     const id = tabId();
     const starting = terminalActions.create({ id, workspacePath: "/workspace" });
 
-    await terminalActions.write(id, "ls\r");
+    await terminalActions.write(id, new TextEncoder().encode("ls\r"));
     await starting;
-    await terminalActions.write(id, "pwd\r");
+    await terminalActions.write(id, new TextEncoder().encode("pwd\r"));
 
     assert.equal(getTerminal(id)?.state.kind, "running");
     await terminalActions.close(id);
@@ -256,7 +257,7 @@ describe("shell terminals", () => {
     const output = sink();
     attachTerminalOutput(id, output);
     await vi.waitFor(() => assert.equal(output.contents, "$ "));
-    await terminalActions.write(id, "ls\r");
+    await terminalActions.write(id, new TextEncoder().encode("ls\r"));
     await terminalActions.resize(id, 120, 40);
 
     expect(job.written).toEqual(["ls\r"]);
@@ -373,7 +374,7 @@ describe("agent job terminals", () => {
     attachTerminalOutput(id, output);
     next.print("starting\n");
     await vi.waitFor(() => assert.equal(output.contents, "starting\n"));
-    await terminalActions.write(id, "ignored");
+    await terminalActions.write(id, new TextEncoder().encode("ignored"));
     expect(next.written).toEqual([]);
 
     terminalActions.syncJobs(workspace, [{ ...job, command: "Updated title" }]);

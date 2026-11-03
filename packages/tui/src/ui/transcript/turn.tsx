@@ -7,12 +7,14 @@ import { createMemo, Match, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
 import {
   agentGroupSummary,
+  showsAnswer,
   showsReport,
   showsText,
   showsThinking,
   showsTool,
 } from "@nyte-ai/plugin/client/presentation";
 import type {
+  AnswerMessage,
   PartMessage,
   ReportMessage,
   ToolMessage,
@@ -27,6 +29,7 @@ import { Keyed } from "./keyed.tsx";
 import { Marker } from "./marker.tsx";
 import { PluginPart } from "./plugin-part.tsx";
 import { ReportBlock } from "./report.tsx";
+import { AnswerBlock } from "./answer.tsx";
 import { useTranscript } from "./scope.tsx";
 import { Thought } from "./thought.tsx";
 import { ToolCard } from "./tool-card.tsx";
@@ -176,11 +179,17 @@ export function TurnView(props: {
 }
 
 function readUser(message: Message): UserMessage | undefined {
-  return message.kind === "user" && !showsReport(message) ? message : undefined;
+  return message.kind === "user" && !showsReport(message) && !showsAnswer(message)
+    ? message
+    : undefined;
 }
 
 function readReport(message: Message): ReportMessage | undefined {
   return message.kind === "user" && showsReport(message) ? message : undefined;
+}
+
+function readAnswer(message: Message): AnswerMessage | undefined {
+  return message.kind === "user" && showsAnswer(message) ? message : undefined;
 }
 
 function readTool(message: Message): ToolMessage | undefined {
@@ -214,6 +223,9 @@ export function MessageView(props: {
     <Switch>
       <Match when={readReport(props.message())}>
         {(report: Accessor<ReportMessage>) => <ReportBlock message={report()} />}
+      </Match>
+      <Match when={readAnswer(props.message())}>
+        {(answer: Accessor<AnswerMessage>) => <AnswerBlock message={answer()} />}
       </Match>
       <Match when={readUser(props.message())}>
         {(user: Accessor<UserMessage>) => (

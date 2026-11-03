@@ -1,3 +1,4 @@
+import type { ExcerptSource } from "@nyte-ai/schema";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -17,6 +18,13 @@ import { useReferenceOpener } from "../../references/reference-opener.tsx";
 import { FileTypeIcon } from "../../components/file-type-icon.tsx";
 import { composerStyles } from "./composer.stylex.ts";
 
+const EXCERPT_ICONS = {
+  diff: "diff",
+  terminal: "console",
+  browser: "code-brackets",
+  chat: "bubble-question",
+} as const satisfies Record<ExcerptSource["kind"], IconName>;
+
 function referenceIcon(reference: MessageReference): IconName {
   switch (reference.kind) {
     case "file":
@@ -28,11 +36,7 @@ function referenceIcon(reference: MessageReference): IconName {
     case "clipboard":
       return "copy";
     case "excerpt":
-      return reference.source.kind === "diff"
-        ? "diff"
-        : reference.source.kind === "terminal"
-          ? "console"
-          : "code-brackets";
+      return EXCERPT_ICONS[reference.source.kind];
     default: {
       const exhaustive: never = reference;
 

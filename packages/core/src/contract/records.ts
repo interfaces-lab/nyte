@@ -101,6 +101,8 @@ const SessionRecordType = record({
   contextFiles: Type.Optional(Type.Literal(false)),
   /** The MCP grant that started the session, or the session it descends from, and the approval ceiling it set; absent for every other session. A revoke leaves it in place. */
   mcp: Type.Optional(typed<McpCeiling>()(McpCeilingType)),
+  /** `true` for a side chat of `parent` (`Sessions.start`): it never reports to its parent or counts as its background work. */
+  side: Type.Optional(Type.Literal(true)),
 });
 
 export type SessionRecord = Static<typeof SessionRecordType>;

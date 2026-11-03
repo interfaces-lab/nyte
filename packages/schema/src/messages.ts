@@ -17,6 +17,7 @@ export const ExcerptSourceType = Type.Union([
   }),
   Type.Object({ kind: Type.Literal("terminal"), command: Type.Optional(Type.String()) }),
   Type.Object({ kind: Type.Literal("browser"), url: Type.String(), selector: Type.String() }),
+  Type.Object({ kind: Type.Literal("chat"), session: idSchema<"session">(), title: Type.String() }),
 ]);
 
 /**
@@ -24,7 +25,8 @@ export const ExcerptSourceType = Type.Union([
  * lines `start` to `end` on one side of its change: `new` counts in the file
  * as it is now, `old` as it was before. A `terminal` selection names the
  * command line its output followed, when one is known. A `browser` element
- * names the page `url` and a CSS `selector` that finds it there.
+ * names the page `url` and a CSS `selector` that finds it there. A `chat` is a side chat brought
+ * back into its parent: the side chat's `session` and `title`, its conversation as the text.
  */
 export type ExcerptSource = Decoded<typeof ExcerptSourceType>;
 
@@ -88,6 +90,7 @@ export const MessageSourceType = Type.Union([
     label: Type.String(),
     command: Type.Optional(Type.String()),
   }),
+  Type.Object({ kind: Type.Literal("answer"), part: idSchema<"part">(), label: Type.String() }),
 ]);
 
 export type MessageSource = Decoded<typeof MessageSourceType>;

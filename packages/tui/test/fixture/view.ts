@@ -261,7 +261,14 @@ export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionVie
         id: asId(extra?.id ?? `q${parts.length + 1}`),
         partKind: "ask/question",
         placement: { kind: "modal" },
-        state: { questions: [...questions], answers: extra?.answers ?? null },
+        state: {
+          call: `call-${extra?.id ?? String(parts.length + 1)}`,
+          questions: [...questions],
+          phase:
+            extra?.answers === undefined
+              ? { kind: "asking" }
+              : { kind: "answered", answers: extra.answers, head: null },
+        },
         version: 1,
         status,
         owner: "question",

@@ -276,6 +276,7 @@ export const HOST_OPERATIONS = {
       prompt: Type.Optional(PromptOverrideType),
       isolation: Type.Optional(Type.Literal("worktree")),
       contextFiles: Type.Optional(Type.Literal(false)),
+      side: Type.Optional(Type.Literal(true)),
       content: UserContentType,
     }),
     output: wireObject({

@@ -137,16 +137,21 @@ export const questionRenderers: readonly Renderer[] = [
     question,
     "react",
     (state, act) => {
-      const answers = state.answers;
+      const phase = state.phase;
 
-      if (answers !== null)
+      if (phase.kind === "answered" || phase.kind === "skipped")
         return (
           <div data-part="ask/question" aria-label="Answers">
             {state.questions.map((item, index) => (
               <section key={index}>
                 <h3>{item.header}</h3>
                 <p>{item.question}</p>
-                <p>Answer: {answers[index].join(", ") || "Unanswered"}</p>
+                <p>
+                  Answer:{" "}
+                  {phase.kind === "answered"
+                    ? phase.answers[index].join(", ") || "Unanswered"
+                    : "Skipped"}
+                </p>
               </section>
             ))}
           </div>

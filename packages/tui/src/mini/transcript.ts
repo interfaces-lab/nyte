@@ -3,6 +3,7 @@ import {
   failureNotice,
   formatDuration,
   readRawPart,
+  showsAnswer,
   showsReport,
   showsText,
   showsThinking,
@@ -87,7 +88,7 @@ function messageEntry(message: Message, tasks: readonly Task[]): MiniEntry | nul
   if (message.kind === "user") {
     const text = userText(shownContent(message));
 
-    const mark = showsReport(message) ? GLYPHS.report : GLYPHS.said;
+    const mark = showsReport(message) || showsAnswer(message) ? GLYPHS.report : GLYPHS.said;
 
     return text === "" ? null : { key: message.id, kind: "user", mark, text };
   }

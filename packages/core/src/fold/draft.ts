@@ -355,7 +355,12 @@ function queued(message: Message | undefined, head: FoldHead): boolean {
 export function belongsInQueue(message: Message, execution: Execution): message is QueuedMessage {
   if (message.kind !== "user" || message.status.kind !== "pending") return false;
 
-  if (message.source.kind === "child" || message.source.kind === "job") return false;
+  if (
+    message.source.kind === "child" ||
+    message.source.kind === "job" ||
+    message.source.kind === "answer"
+  )
+    return false;
   const schedule = message.status.schedule;
 
   return (

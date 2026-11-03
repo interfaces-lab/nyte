@@ -20,9 +20,15 @@ export const questionRenderers: readonly Renderer[] = [
             ...item.options.map((option) =>
               Text({ content: `${option.label}: ${option.description}` }),
             ),
-            ...(state.answers === null
-              ? []
-              : [Text({ content: `Answer: ${state.answers[index].join(", ") || "Unanswered"}` })]),
+            ...(state.phase.kind === "answered"
+              ? [
+                  Text({
+                    content: `Answer: ${state.phase.answers[index].join(", ") || "Unanswered"}`,
+                  }),
+                ]
+              : state.phase.kind === "skipped"
+                ? [Text({ content: "Skipped" })]
+                : []),
           ),
         ),
       ),

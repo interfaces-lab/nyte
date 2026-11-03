@@ -65,6 +65,7 @@ export const composerStyles = create({
     position: "absolute",
     insetInline: 0,
     bottom: 0,
+    anchorName: conversation.composerDock,
     zIndex: layer.stickyContent,
     pointerEvents: "none",
   },

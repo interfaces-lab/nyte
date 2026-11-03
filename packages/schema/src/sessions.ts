@@ -37,8 +37,10 @@ export const SessionInfoType = Type.Object({
   createdAt: Type.Number(),
   lastActivityAt: Type.Number(),
   mcp: Type.Optional(McpCeilingType),
+  side: Type.Optional(Type.Literal(true)),
 });
 
+/** `side` marks a side chat of `parent`, which a person started beside it; absent for every other chat. */
 export type SessionInfo = Decoded<typeof SessionInfoType>;
 
 export const SESSIONS_LIMIT = 50;
@@ -88,6 +90,7 @@ export const CLIENT_COMMAND_NAMES = [
   "resume",
   "sessions",
   "settings",
+  "sidechat",
   "skills",
   "tasks",
   "tree",
