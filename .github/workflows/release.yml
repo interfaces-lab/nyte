@@ -193,6 +193,10 @@ jobs:
         with:
           node-version: 26
           cache: pnpm
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: packages/tailnet/go.mod
+          cache-dependency-path: packages/tailnet/go.sum
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -247,12 +251,16 @@ jobs:
           # On Blacksmith macOS, restoring the pnpm store takes as long as installing without it,
           # and saving it after a lockfile change adds over a minute.
           cache: ${{ runner.os != 'macOS' && 'pnpm' || '' }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: packages/tailnet/go.mod
+          cache-dependency-path: packages/tailnet/go.sum
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:tui
-      - name: Sign and notarize nyte
+      - name: Sign and notarize nyte and nyte-tailnet
         if: matrix.target == 'darwin-arm64'
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -272,11 +280,15 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           codesign --force --sign "Developer ID Application" --keychain "$keychain" --options runtime --timestamp --entitlements packages/tui/entitlements.plist packages/tui/dist/nyte
+          codesign --force --sign "Developer ID Application" --keychain "$keychain" --options runtime --timestamp packages/tui/dist/nyte-tailnet
           codesign --verify --strict --verbose=2 packages/tui/dist/nyte
+          codesign --verify --strict --verbose=2 packages/tui/dist/nyte-tailnet
           key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
           printf '%s' "$APPLE_API_KEY_CONTENT" > "$key"
           chmod 600 "$key"
-          ditto -c -k --keepParent packages/tui/dist/nyte "$RUNNER_TEMP/nyte.zip"
+          mkdir "$RUNNER_TEMP/notarize"
+          cp packages/tui/dist/nyte packages/tui/dist/nyte-tailnet "$RUNNER_TEMP/notarize/"
+          ditto -c -k --keepParent "$RUNNER_TEMP/notarize" "$RUNNER_TEMP/nyte.zip"
           xcrun notarytool submit "$RUNNER_TEMP/nyte.zip" --key "$key" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait --output-format json > "$RUNNER_TEMP/notarization.json"
           cat "$RUNNER_TEMP/notarization.json"
           node -e 'const { status } = require(process.argv[1]); if (status !== "Accepted") throw new Error(`Notarization ended ${status}.`);' "$RUNNER_TEMP/notarization.json"
@@ -331,6 +343,11 @@ jobs:
           node-version: 26
           # See the tui job.
           cache: ${{ runner.os != 'macOS' && 'pnpm' || '' }}
+      - if: matrix.target != 'windows-x64'
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: packages/tailnet/go.mod
+          cache-dependency-path: packages/tailnet/go.sum
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest

@@ -1,5 +1,5 @@
 name: Set up Nyte
-description: Install Node, pnpm and the workspace, with optional Bun and test dependencies.
+description: Install Node, pnpm, Go and the workspace, with optional Bun and test dependencies.
 
 inputs:
   bun:
@@ -17,6 +17,10 @@ runs:
       with:
         node-version: 26
         cache: pnpm
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: packages/tailnet/go.mod
+        cache-dependency-path: packages/tailnet/go.sum
     - if: inputs.bun == 'true'
       uses: oven-sh/setup-bun@v2
       with:

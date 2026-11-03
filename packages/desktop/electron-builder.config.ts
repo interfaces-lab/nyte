@@ -17,6 +17,7 @@ const productName = updateTest ? "Nyte Update Test" : "Nyte";
 
 const CLI = [
   { from: "../tui/dist/nyte", to: "nyte" },
+  { from: "../tui/dist/nyte-tailnet", to: "nyte-tailnet" },
   { from: "../tui/dist/nyte.version", to: "nyte.version" },
 ];
 
@@ -74,24 +75,27 @@ async function verifyBundledCli(context: AfterPackContext): Promise<void> {
   if (context.electronPlatformName === "win32") return;
   const arch = Arch[context.arch];
   const resources = context.packager.getResourcesDir(context.appOutDir);
-  const cli = join(resources, "nyte");
-  const images = nativeImages(await readFile(cli));
-  const wrong = images.filter((image) => image.arch !== arch);
-
-  if (images[0]?.offset !== 0) throw new Error(`The bundled ${cli} is not a native executable.`);
-
-  if (wrong.length > 0)
-    throw new Error(
-      `The bundled ${cli} must hold only ${arch} code, but has ${wrong.map((image) => `${image.arch} at byte ${String(image.offset)}`).join(", ")}.`,
-    );
   const version = context.packager.appInfo.version;
   const stated = (await readFile(join(resources, "nyte.version"), "utf8")).trim();
-  const reported = execFileSync(cli, ["--version"], { encoding: "utf8" }).trim();
 
-  if (stated !== version || reported !== version)
-    throw new Error(
-      `The bundled nyte is ${reported} and its nyte.version says ${stated}, but Nyte is ${version}.`,
-    );
+  for (const name of ["nyte", "nyte-tailnet"]) {
+    const cli = join(resources, name);
+    const images = nativeImages(await readFile(cli));
+    const wrong = images.filter((image) => image.arch !== arch);
+
+    if (images[0]?.offset !== 0) throw new Error(`The bundled ${cli} is not a native executable.`);
+
+    if (wrong.length > 0)
+      throw new Error(
+        `The bundled ${cli} must hold only ${arch} code, but has ${wrong.map((image) => `${image.arch} at byte ${String(image.offset)}`).join(", ")}.`,
+      );
+    const reported = execFileSync(cli, ["--version"], { encoding: "utf8" }).trim();
+
+    if (stated !== version || reported !== version)
+      throw new Error(
+        `The bundled ${name} is ${reported} and its nyte.version says ${stated}, but Nyte is ${version}.`,
+      );
+  }
 }
 
 const mac = {
@@ -112,8 +116,11 @@ const mac = {
       optionsForFile: (file) => {
         const defaults = options.optionsForFile?.(file) ?? {};
 
-        return file === join(options.app, "Contents", "Resources", "nyte")
-          ? { ...defaults, entitlements: CLI_ENTITLEMENTS }
+        if (file === join(options.app, "Contents", "Resources", "nyte"))
+          return { ...defaults, entitlements: CLI_ENTITLEMENTS };
+
+        return file === join(options.app, "Contents", "Resources", "nyte-tailnet")
+          ? { ...defaults, entitlements: [] }
           : defaults;
       },
     }),

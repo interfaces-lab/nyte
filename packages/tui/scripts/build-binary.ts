@@ -16,6 +16,8 @@ const packages = fileURLToPath(new URL("../../", import.meta.url));
 
 const name = process.platform === "win32" ? "nyte.exe" : "nyte";
 
+const tailnet = process.platform === "win32" ? null : "nyte-tailnet";
+
 const version = process.env["NYTE_RELEASE_VERSION"] ?? VERSION;
 
 const started = performance.now();
@@ -63,10 +65,26 @@ try {
     if (signed.status !== 0) throw new Error(`codesign failed: ${signed.stderr.toString()}`);
   }
 
+  if (tailnet !== null) {
+    const built = spawnSync(
+      process.execPath,
+      [join(packages, "tailnet", "build.mjs"), join(directory, tailnet)],
+      {
+        env: { ...process.env, NYTE_RELEASE_VERSION: version },
+        stdio: ["ignore", "inherit", "inherit"],
+      },
+    );
+
+    if (built.error) throw built.error;
+
+    if (built.status !== 0) throw new Error(`Building ${tailnet} failed.`);
+    await rename(join(directory, tailnet), join(destination, tailnet));
+  }
+
   await rename(executable, join(destination, name));
   await writeFile(join(destination, "nyte.version"), `${version}\n`);
   process.stdout.write(
-    `Built packages/tui/dist/${name} in ${((performance.now() - started) / 1000).toFixed(1)}s\n`,
+    `Built packages/tui/dist/${name}${tailnet === null ? "" : ` and ${tailnet}`} in ${((performance.now() - started) / 1000).toFixed(1)}s\n`,
   );
 } catch (cause) {
   process.stderr.write(`Build failed: ${describe(cause)}\n`);

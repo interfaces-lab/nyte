@@ -14,6 +14,8 @@ import (
 
 type status struct {
 	State   string   `json:"state"`
+	Reason  string   `json:"reason,omitempty"`
+	Holder  int      `json:"holder,omitempty"`
 	AuthURL string   `json:"authUrl,omitempty"`
 	DNSName string   `json:"dnsName,omitempty"`
 	HTTPS   string   `json:"https"`
@@ -87,4 +89,14 @@ func (r *reporter) update(change func(now *status)) {
 	if _, err := r.out.Write(append(line, '\n')); err != nil {
 		log.Printf("writing status: %v", err)
 	}
+}
+
+func writeLine(out io.Writer, value any) error {
+	line, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+
+	_, err = out.Write(append(line, '\n'))
+	return err
 }

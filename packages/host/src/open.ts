@@ -204,10 +204,12 @@ async function composeOpen(
   const listeners = new Set<Listener>();
   let identity: ReturnType<typeof identitySigner> | null = null;
 
-  const tailnet =
-    options.tailnet === undefined
-      ? undefined
-      : await openTailnet({ host, home, binary: options.tailnet.binary });
+  const tailnet = await openTailnet({
+    host,
+    home,
+    binary: options.tailnet?.binary ?? join(dirname(process.execPath), "nyte-tailnet"),
+    version: description.version,
+  });
 
   const mcpServer = openMcpServer({
     server: host.server,
@@ -236,7 +238,7 @@ async function composeOpen(
   const close = (): Promise<void> => {
     closing ??= (async () => {
       for (const listener of listeners) await listener.close();
-      await tailnet?.close();
+      await tailnet.close();
       await host.close();
       loader.close();
       await owned?.close();

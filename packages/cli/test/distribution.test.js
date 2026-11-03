@@ -130,6 +130,8 @@ releaseTest(
     try {
       const binary = join(fixture, "fixture-binary");
       await writeFile(binary, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      const tailnet = join(fixture, "nyte-tailnet");
+      await writeFile(tailnet, "#!/bin/sh\necho tailnet\n", { mode: 0o755 });
       const output = join(fixture, "release");
       const target = platformTarget();
       assert.ok(target);
@@ -141,6 +143,10 @@ releaseTest(
       assert.equal((await readFile(join(output, "VERSION"), "utf8")).trim(), metadata.version);
       await checkDocs(join(output, "docs"));
       assert.equal(await readFile(join(output, "nyte"), "utf8"), await readFile(binary, "utf8"));
+      assert.equal(
+        await readFile(join(output, "nyte-tailnet"), "utf8"),
+        await readFile(tailnet, "utf8"),
+      );
       execFileSync("shasum", ["-a", "256", "-c", `${asset}.tar.gz.sha256`], { cwd: output });
 
       const cachedBinary = await ensureBinary({
@@ -150,6 +156,10 @@ releaseTest(
           new Response(await readFile(join(output, new URL(url).pathname.split("/").pop()))),
       });
       await checkDocs(join(dirname(cachedBinary), "docs"));
+      assert.equal(
+        await readFile(join(dirname(cachedBinary), "nyte-tailnet"), "utf8"),
+        await readFile(tailnet, "utf8"),
+      );
 
       const fakeBin = await fakeCurl(join(fixture, "fake-bin"));
       const installDir = join(fixture, "custom prefix/bin");
@@ -177,6 +187,10 @@ releaseTest(
       assert.equal(
         await readFile(join(installDir, "nyte"), "utf8"),
         await readFile(binary, "utf8"),
+      );
+      assert.equal(
+        await readFile(join(installDir, "nyte-tailnet"), "utf8"),
+        await readFile(tailnet, "utf8"),
       );
       assert.ok(installed.includes(`/share/nyte/${metadata.version}/docs/README.md`));
       await writeFile(join(installDir, "nyte"), "existing executable\n");
@@ -217,6 +231,7 @@ releaseTest(
 async function installerFixture(fixture) {
   const binary = join(fixture, "fixture-binary");
   await writeFile(binary, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  await writeFile(join(fixture, "nyte-tailnet"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   const output = join(fixture, "release");
   execFileSync("sh", [join(repo, "scripts/assemble-release.sh"), binary, output, platformTarget()]);
   const metadata = JSON.parse(await readFile(join(cli, "package.json"), "utf8"));
