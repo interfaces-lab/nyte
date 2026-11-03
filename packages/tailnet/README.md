@@ -12,7 +12,7 @@ pnpm --dir packages/tailnet test    # the test control integration test
 The host starts it; nobody else should.
 
 ```sh
-nyte-tailnet --dir <state> --socket <host.sock> --hostname nyte --access owner [--tag tag:name]... [--auth-key-fd 0] [--control-url URL]
+nyte-tailnet --dir <state> --socket <host.sock> --hostname nyte --access owner [--tag tag:name]... [--auth-key-fd 3] [--control-url URL]
 nyte-tailnet --dir <state> --logout
 ```
 
@@ -23,9 +23,13 @@ nyte-tailnet --dir <state> --logout
 | `--hostname` | The device name: the node answers at `https://<hostname>.<tailnet>.ts.net`. |
 | `--access` | `owner` admits only the Tailscale user who owns this node. `tailnet` admits anyone the tailnet's access rules let through. |
 | `--tag` | Advertised at first enrollment. A tagged node has no owner, so a tag needs `--access tailnet`. The auth key must be allowed to grant it. |
-| `--auth-key-fd` | Reads a one-time auth key from this file descriptor (`0` for stdin) until it closes. There is no flag for the key itself, and `TS_AUTHKEY` and the other credential variables are cleared at start, so the key never shows in the process list or the environment. |
+| `--auth-key-fd` | Reads a one-time auth key from this file descriptor until it closes; the host writes it to fd 3 and closes the pipe. There is no flag for the key itself, and `TS_AUTHKEY` and the other credential variables are cleared at start, so the key never shows in the process list or the environment. |
 | `--control-url` | A control server other than Tailscale's, such as Headscale. |
 | `--logout` | Signs the node out and exits. |
+
+Stdin is the host's lease: the host keeps the pipe open for the sidecar's life and never writes to it. When it reads end of file, because the host closed it or died, even by `SIGKILL`, the sidecar shuts the node down and exits within a second.
+
+One node runs per state directory. Before starting `tsnet` the sidecar takes an exclusive `flock` on `<dir>/nyte-tailnet.lock` and writes its pid and a random instance id there; `--logout` takes it too. A second sidecar on the same directory prints `{ "state": "stopped", "reason": "locked", "holder": <pid>, ... }` and exits 1. The kernel drops the lock when the holder exits.
 
 The node serves HTTPS with `ListenTLS("tcp", ":443")` once it is running, after fetching its certificate; the tailnet needs MagicDNS and HTTPS certificates on.
 

@@ -53,17 +53,45 @@ func main() {
 	if opts.logout {
 		err = logout(ctx, opts)
 	} else {
-		var authKey string
-		authKey, err = readAuthKey(opts.authKeyFD)
-		if err == nil {
-			err = run(ctx, opts, authKey, os.Stdout, listenTLS)
-		}
+		err = serveNode(ctx, opts, os.Stdin, os.Stdout)
 	}
 
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "nyte-tailnet:", err)
 		os.Exit(1)
 	}
+}
+
+func serveNode(ctx context.Context, opts options, lease io.Reader, out io.Writer) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	go func() {
+		io.Copy(io.Discard, lease)
+		cancel()
+		time.AfterFunc(time.Second, func() { os.Exit(0) })
+	}()
+
+	lock, err := lockState(opts.dir)
+	var locked *lockedError
+	if errors.As(err, &locked) {
+		tags := opts.tags
+		if tags == nil {
+			tags = []string{}
+		}
+		writeLine(out, status{State: "stopped", Reason: "locked", Holder: locked.holder, HTTPS: "unavailable", Access: opts.access, Tags: tags})
+	}
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+
+	authKey, err := readAuthKey(opts.authKeyFD)
+	if err != nil {
+		return err
+	}
+
+	return run(ctx, opts, authKey, out, listenTLS)
 }
 
 func parseOptions(args []string) (options, error) {
@@ -143,6 +171,12 @@ func newNode(opts options, authKey string) *tsnet.Server {
 }
 
 func logout(ctx context.Context, opts options) error {
+	lock, err := lockState(opts.dir)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+
 	node := newNode(opts, "")
 	defer node.Close()
 

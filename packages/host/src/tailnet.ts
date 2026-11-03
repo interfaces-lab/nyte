@@ -5,6 +5,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline";
+import { Writable } from "node:stream";
 import { Type } from "typebox";
 import { asId, compile, SdkError, TailnetSettingsType, TailnetStatusType } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
@@ -137,14 +138,21 @@ export async function openTailnet(options: {
         "--access",
         settings.access,
         ...settings.tags.flatMap((tag) => ["--tag", tag]),
-        ...(authKey === undefined ? [] : ["--auth-key-fd", "0"]),
+        ...(authKey === undefined ? [] : ["--auth-key-fd", "3"]),
       ],
-      { stdio: ["pipe", "pipe", "pipe"] },
+      { stdio: ["pipe", "pipe", "pipe", "pipe"] },
     );
+
+    const keyPipe = started.stdio[3];
 
     node = started;
     started.stdin.on("error", () => undefined);
-    started.stdin.end(authKey ?? "");
+
+    if (keyPipe instanceof Writable) {
+      keyPipe.on("error", () => undefined);
+      keyPipe.end(authKey ?? "");
+    }
+
     publish({ state: "starting", https: "pending", access: settings.access, tags: settings.tags });
 
     createInterface({ input: started.stdout }).on("line", (line) => {
