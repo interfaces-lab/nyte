@@ -7,8 +7,8 @@ Streams a job's output as framed bytes. A reader starts with the last 1 MiB the 
 follows it live. Frames are output bytes (tagged `stderr` for a protocol pipe's error stream), a
 `gap` where the reader fell behind and output was dropped, and `exit` with the code last.
 
-A pty job keeps up to 8 MiB for readers that fall behind; past that it drops the oldest output and
-they get a `gap`. Neither a pty job nor a piped command ever waits for readers.
+A pty job pauses while its slowest open reader is far behind, so its readers miss nothing; a piped
+command never waits for readers.
 
 ## When to call it
 

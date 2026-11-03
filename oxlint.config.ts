@@ -423,7 +423,7 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/host/src/local/pty.ts"],
+      files: ["packages/host/src/local/jobs.ts"],
       rules: {
         "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
       },
