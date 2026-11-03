@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline";
@@ -48,6 +48,8 @@ const READY_MS = 120_000;
 
 const STDERR_TAIL_BYTES = 4096;
 
+const LOG_CAP_BYTES = 1024 * 1024;
+
 const PARTICIPANT: ReadonlySet<Authority> = new Set<Authority>(["participant"]);
 
 const settingsCheck = compile(TailnetSettingsType);
@@ -80,6 +82,7 @@ export async function openTailnet(options: {
   const folder = join(options.home, ".nyte");
   const settingsPath = join(folder, "tailnet.json");
   const stateDir = join(folder, "tailnet");
+  const logSidecar = openSidecarLog(join(stateDir, "sidecar.log"));
   const socket = join(folder, "tailnet.sock");
   const server = options.host.server;
   const changes = serial();
@@ -468,8 +471,21 @@ function withoutCredentials(request: Request): Request {
   return new Request(request, { headers });
 }
 
-function logSidecar(line: string): void {
-  process.emitWarning(line, { code: "NYTE_TAILNET" });
+function openSidecarLog(path: string): (line: string) => void {
+  const writes = serial();
+
+  return (line) => {
+    void writes.run(() => appendLog(path, line)).catch(() => undefined);
+  };
+}
+
+async function appendLog(path: string, line: string): Promise<void> {
+  await appendFile(path, `${line}\n`, { mode: 0o600 });
+
+  if ((await stat(path)).size <= LOG_CAP_BYTES) return;
+  const text = await readFile(path);
+  const newer = text.subarray(text.length - LOG_CAP_BYTES / 2);
+  await writeFile(path, newer.subarray(newer.indexOf(10) + 1), { mode: 0o600 });
 }
 
 function terminate(running: ChildProcess): Promise<void> {
