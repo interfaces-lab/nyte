@@ -125,6 +125,7 @@ export type RelayMethod = Static<typeof RelayMethod>;
 export const RELAY_OPERATIONS = [
   "connection.watch",
   "connection.blob",
+  "operations.describe",
   "models.list",
   "models.accounts",
   "models.selectAccount",
