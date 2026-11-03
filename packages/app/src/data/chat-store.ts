@@ -10,7 +10,7 @@ import type {
   StreamedText,
 } from "@nyte-ai/sdk/client";
 import { countWork } from "../lib/work-counts.ts";
-import { connection } from "./connection.ts";
+import { connection, registries } from "./connection.ts";
 import { createTextPacer } from "./paced-text.ts";
 import { sessionActivityProjector } from "./session-activity.ts";
 import type { SessionActivity } from "./session-activity.ts";
@@ -141,6 +141,29 @@ function laidViews(
       },
     };
   });
+}
+
+const KEPT_CHATS = 8;
+
+const kept = new Map<SessionId, () => void>();
+
+registries.add({
+  clear() {
+    for (const release of kept.values()) release();
+    kept.clear();
+  },
+});
+
+export function keepChat(session: SessionId): void {
+  const held = kept.get(session) ?? chatStore(session).subscribe(() => undefined);
+  kept.delete(session);
+  kept.set(session, held);
+
+  for (const [oldest, release] of kept) {
+    if (kept.size <= KEPT_CHATS) break;
+    kept.delete(oldest);
+    release();
+  }
 }
 
 const WARM_SESSIONS = 3;

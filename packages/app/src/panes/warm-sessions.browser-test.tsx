@@ -337,7 +337,7 @@ async function checkRules(): Promise<string> {
     expectRule(readScroll(D) === dSnapshot, "evicting a hidden session wrote its scroll snapshot");
     expectRule(readScroll(B) === bSnapshot, "a hidden session wrote its scroll snapshot");
     expectRule(a.viewport.isConnected && b.viewport.isConnected, "a hot session was unmounted");
-    await until(() => !chatStore(D).active, "the evicted session to release its watch");
+    expectRule(chatStore(D).active, "an unmounted chat dropped the rows it had opened");
 
     listed.push([A, C, D].map((id) => sessionRow(id)));
     await until(() => !b.viewport.isConnected, "the deleted hidden session to unmount");

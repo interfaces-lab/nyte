@@ -26,7 +26,7 @@ import type { PaneId } from "../panes/pane-layout.ts";
 import { useCatalog } from "../data/catalog.ts";
 import { useRenameSession, useSessionChoice } from "../data/sessions.ts";
 import { useSessionActions } from "../data/session-actions.ts";
-import { chatStore, loadEarlierMessages } from "../data/chat-store.ts";
+import { chatStore, keepChat, loadEarlierMessages } from "../data/chat-store.ts";
 import { connection } from "../data/connection.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import type { WatchStore } from "../data/watch-store.ts";
@@ -252,6 +252,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
 function ConversationScreen(conversation: SessionConversationProps): ReactElement {
   useCommitCount("render:conversation");
   const { paneId, presentation, sessionId } = conversation;
+  useMountEffect(() => keepChat(sessionId));
   const cwd = useChatFolder()?.path;
   const { layout } = usePaneControllerSnapshot();
 
