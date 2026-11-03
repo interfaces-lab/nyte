@@ -3,7 +3,9 @@ import type { Head } from "@nyte-ai/core";
 import { pushed } from "./watch.ts";
 
 /** A head's views with its older messages paged in on demand: each view's `messages` are the pages `earlier` loaded, then the messages the watch carries, its `turns` the pages' turns before the watch's, and its `leadingPrompt` the prompt of the turn its first message belongs to when that prompt is not among its messages. A view whose messages and turns are the ones the view before it carried keeps that view's arrays. Iterate it once. */
-export interface PagedViews extends AsyncIterable<SessionView> {
+type Pageable = Pick<SessionView, "messages" | "turns" | "leadingPrompt">;
+
+export interface PagedViews<V extends Pageable = SessionView> extends AsyncIterable<V> {
   /** Loads up to `limit` messages before the oldest one shown into the views, and resolves how many came: 0 once the head's first message is shown, asking the host only the first time. A call while one loads waits for that one. */
   earlier(limit: number): Promise<number>;
 }
@@ -14,20 +16,20 @@ export interface PagedViews extends AsyncIterable<SessionView> {
  * leave the watch's window stay; a view whose first message was never shown
  * (the head moved, or the window jumped past the pages) drops the pages.
  */
-export function pagedViews(
-  head: Pick<Head, "watch" | "history">,
+export function pagedViews<V extends Pageable = SessionView>(
+  head: { watch(options?: ViewOptions): AsyncIterable<V> } & Pick<Head, "history">,
   options?: ViewOptions,
-): PagedViews {
+): PagedViews<V> {
   let pages: readonly Message[] = [];
   let turns: readonly TurnInfo[] = [];
   let leadingPrompt: SessionView["leadingPrompt"] = null;
-  let latest: SessionView | null = null;
-  let shown: SessionView | null = null;
-  let push: ((view: SessionView) => void) | null = null;
+  let latest: V | null = null;
+  let shown: V | null = null;
+  let push: ((view: V) => void) | null = null;
   let loading: Promise<number> | null = null;
   let exhausted: Message["id"] | null = null;
 
-  const show = (view: SessionView): void => {
+  const show = (view: V): void => {
     const first = view.messages[0];
     const moved = first === undefined || first.id !== latest?.messages[0]?.id;
     const previous = moved || latest === null || shown === null ? null : { view: latest, shown };
@@ -76,7 +78,7 @@ export function pagedViews(
 
   return {
     [Symbol.asyncIterator]: () =>
-      pushed<SessionView>((sink) => {
+      pushed<V>((sink) => {
         const views = head.watch(options)[Symbol.asyncIterator]();
         push = (view) => sink.next(view);
 
@@ -110,11 +112,11 @@ export function pagedViews(
   };
 }
 
-function withPages(
-  view: SessionView,
+function withPages<V extends Pageable>(
+  view: V,
   paged: Pick<SessionView, "turns" | "leadingPrompt"> & { readonly pages: readonly Message[] },
-  previous: { readonly view: SessionView; readonly shown: SessionView } | null,
-): SessionView {
+  previous: { readonly view: V; readonly shown: V } | null,
+): V {
   return {
     ...view,
     messages:
