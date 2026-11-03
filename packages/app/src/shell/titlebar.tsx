@@ -20,7 +20,8 @@ import { nyte } from "../contract/nyte.ts";
 import { chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
 import { useWorkbenchView, workbench } from "../workbench/store.ts";
-import { useStagePage } from "../tabs/shell-state.ts";
+import { attachSidebarWidth, useStagePage } from "../tabs/shell-state.ts";
+import { attachActiveWorkbenchWidth } from "../workbench/width.ts";
 import { useSidebar } from "../sidebar/use-sidebar.ts";
 import {
   clientActionAriaShortcut,
@@ -119,6 +120,7 @@ export function Titlebar(): ReactElement {
 
   const sidebarSlot = (
     <span
+      ref={attachSidebarWidth}
       {...props(titlebarStyles.sidebarSlot, !sidebarVisible && titlebarStyles.sidebarSlotHidden)}
     >
       <span {...props(titlebarStyles.actionTrack)}>
@@ -197,6 +199,7 @@ export function Titlebar(): ReactElement {
         </span>
         {workspaceVisible && (
           <div
+            ref={attachActiveWorkbenchWidth}
             {...props(
               titlebarStyles.workbenchSlot,
               workbenchOpen && titlebarStyles.workbenchSlotOpen,

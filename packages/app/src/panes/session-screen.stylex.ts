@@ -29,6 +29,8 @@ export const sessionScreenStyles = create({
     minHeight: 0,
     overflow: "clip",
   },
+  /** Under the maximized workbench: skips their rendering and keeps their layout and scroll. */
+  panesCovered: { contentVisibility: "hidden" },
   splitRight: { flexDirection: "row" },
   splitDown: { flexDirection: "column" },
   pane: {
@@ -41,9 +43,10 @@ export const sessionScreenStyles = create({
   },
   paneSingle: { flex: 1 },
   paneLeading: (ratio: number) => ({
+    "--nyte-pane-split-ratio": String(ratio),
     flexGrow: 0,
     flexShrink: 0,
-    flexBasis: `calc((100% - ${pane.sashSize}) * var(--_drag-ratio, ${String(ratio)}))`,
+    flexBasis: `calc((100% - ${pane.sashSize}) * var(--nyte-pane-split-ratio))`,
   }),
   paneTrailing: { flex: 1 },
   screen: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },

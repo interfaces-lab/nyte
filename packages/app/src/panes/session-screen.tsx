@@ -99,10 +99,12 @@ function SessionDropPreview({ layout }: { readonly layout: PaneLayout }): ReactE
 function SessionPanes({
   viewKey,
   maximized,
+  covered,
   floatingMount,
 }: {
   readonly viewKey: WorkbenchViewKey;
   readonly maximized: boolean;
+  readonly covered: boolean;
   readonly floatingMount: HTMLDivElement | null;
 }): ReactElement {
   const [availableWidth, setAvailableWidth] = useState(Number.NaN);
@@ -118,12 +120,14 @@ function SessionPanes({
       id={`${viewKey}-panel-${WORKBENCH_CHAT_TAB}`}
       role={maximized ? "tabpanel" : undefined}
       aria-labelledby={maximized ? `${viewKey}-tab-${WORKBENCH_CHAT_TAB}` : undefined}
+      inert={covered ? true : undefined}
       {...props(
         sessionScreenStyles.panes,
         layout.kind === "split" &&
           (layout.direction === "right"
             ? sessionScreenStyles.splitRight
             : sessionScreenStyles.splitDown),
+        covered && sessionScreenStyles.panesCovered,
       )}
     >
       <PaneHost
@@ -177,7 +181,12 @@ export function SessionScreen(): ReactElement {
   return (
     <div {...props(sessionScreenStyles.stage)}>
       <FileTypeIconSprite />
-      <SessionPanes viewKey={viewKey} maximized={maximized} floatingMount={paneFloatingMount} />
+      <SessionPanes
+        viewKey={viewKey}
+        maximized={maximized}
+        covered={covered}
+        floatingMount={paneFloatingMount}
+      />
       <Workbench workspacePath={workspacePath} />
       <div ref={setFloatingMount} {...props(sessionScreenStyles.floatingMount)} />
     </div>

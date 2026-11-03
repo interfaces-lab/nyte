@@ -74,13 +74,16 @@ export function SplitSash({
     return clampRatio((pixels - laneSize / 2) / size, availableWidth);
   };
 
+  const leadingPane = (): HTMLElement | null | undefined =>
+    containerRef.current?.querySelector<HTMLElement>(":scope > [data-nyte-pane-id]");
+
   const showDragRatio = (sash: HTMLDivElement, dragRatio: number): void => {
-    containerRef.current?.style.setProperty("--_drag-ratio", String(dragRatio));
+    leadingPane()?.style.setProperty("--nyte-pane-split-ratio", String(dragRatio));
     sash.setAttribute("aria-valuenow", String(Math.round(dragRatio * 100)));
   };
 
   const clearDragRatio = (sash: HTMLDivElement): void => {
-    containerRef.current?.style.removeProperty("--_drag-ratio");
+    leadingPane()?.style.removeProperty("--nyte-pane-split-ratio");
     sash.setAttribute("aria-valuenow", String(Math.round(ratio * 100)));
   };
 

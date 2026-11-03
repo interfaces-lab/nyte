@@ -10,7 +10,12 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { preferences, SIDEBAR_WIDTH, useSetting } from "../preferences/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { occludes } from "../components/overlay-occlusion.ts";
-import { applySidebarWidth, clampSidebarWidth, shellActions } from "../tabs/shell-state.ts";
+import {
+  applySidebarWidth,
+  attachSidebarWidth,
+  clampSidebarWidth,
+  shellActions,
+} from "../tabs/shell-state.ts";
 import { useSidebar } from "./use-sidebar.ts";
 
 const FLOAT_OMEGA = (2 * Math.PI) / 0.18;
@@ -223,9 +228,16 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
   };
 
   return (
-    <div {...props(styles.seat, !docked && styles.seatHidden, floating && styles.seatFloating)}>
+    <div
+      ref={attachSidebarWidth}
+      {...props(styles.seat, !docked && styles.seatHidden, floating && styles.seatFloating)}
+    >
       <motion.div
-        ref={rail}
+        ref={(element: HTMLDivElement | null) => {
+          rail.current = element;
+
+          return attachSidebarWidth(element);
+        }}
         data-state={presentation}
         aria-hidden={away}
         inert={away ? true : undefined}
@@ -253,6 +265,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
       </motion.div>
       {docked && (
         <div
+          ref={attachSidebarWidth}
           role="separator"
           tabIndex={0}
           aria-label="Resize sidebar"

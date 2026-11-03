@@ -328,9 +328,15 @@ test("the panes journey", async ({ desktop }) => {
     const after = await box(panel);
     expect(after.width).toBeCloseTo(before.width + 80, -1);
 
-    const active = await page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue("--nyte-active-workbench-width"),
-    );
+    const active = await page
+      .getByRole("button", { name: "Close workbench panel" })
+      .evaluate((button) => {
+        const slot = button.closest("[style*='--nyte-active-workbench-width']");
+
+        return slot === null
+          ? ""
+          : getComputedStyle(slot).getPropertyValue("--nyte-active-workbench-width");
+      });
 
     expect(Number.parseFloat(active)).toBeCloseTo(after.width, 0);
     await page.getByRole("button", { name: "Close workbench panel" }).click();

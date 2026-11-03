@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import type { AppInfo } from "../contract/bridge.ts";
+import { elementVariable } from "../lib/element-variable.ts";
 import { preferences, SIDEBAR_WIDTH } from "../preferences/index.ts";
 import { activeTab } from "./model.ts";
 import type { Page } from "./model.ts";
@@ -12,11 +13,17 @@ export function clampSidebarWidth(width: number): number {
   return Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, Math.round(width)));
 }
 
-export function applySidebarWidth(width: number): void {
-  document.documentElement.style.setProperty("--nyte-sidebar-width", `${String(width)}px`);
-}
+const sidebarWidth = elementVariable(
+  "--nyte-sidebar-width",
+  `${String(preferences.sidebarWidth.get())}px`,
+);
 
-applySidebarWidth(preferences.sidebarWidth.get());
+/** A ref for each element that reads the sidebar width. */
+export const attachSidebarWidth = sidebarWidth.attach;
+
+export function applySidebarWidth(width: number): void {
+  sidebarWidth.set(`${String(width)}px`);
+}
 
 preferences.sidebarWidth.subscribe(() => applySidebarWidth(preferences.sidebarWidth.get()));
 

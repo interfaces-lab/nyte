@@ -46,6 +46,12 @@ const KEPT_MARKS = 200;
 /** Command output mirrors into its textarea for screen readers at most this often. */
 const MIRROR_MS = 250;
 
+/**
+ * A drag changes the grid on every frame. The shell hears the size once it holds this long, so a
+ * running program redraws once instead of once per column.
+ */
+const RESIZE_SETTLE_MS = 100;
+
 function notifySelection(id: string): void {
   for (const listener of selectionListeners.get(id) ?? []) listener();
 }
@@ -82,6 +88,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
   let attached = false;
   let focused = false;
   let mirrorTimer: ReturnType<typeof setTimeout> | undefined;
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined;
   let lastSize = "";
   let inputAt = "";
 
@@ -133,7 +140,8 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
     },
     resized() {
       inputAt = "";
-      syncSize();
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(syncSize, RESIZE_SETTLE_MS);
     },
   });
 
@@ -288,6 +296,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
     visible: () => attached && element.checkVisibility(),
     dispose() {
       clearTimeout(mirrorTimer);
+      clearTimeout(resizeTimer);
       element.removeEventListener("focus", focusInput);
       element.removeEventListener("keydown", acknowledge, true);
       stopInput();

@@ -11,9 +11,9 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { useHostState } from "../data/host.ts";
 import {
   clampWorkbenchWidthToBounds,
-  WORKBENCH_ACTIVE_WIDTH_VARIABLE,
   WORKBENCH_CENTER_WIDTH_MIN,
   WORKBENCH_SHARE_DEFAULT,
+  setActiveWorkbenchWidth,
   workbenchPanelWidth,
   workbenchWidthBounds,
 } from "./width.ts";
@@ -52,10 +52,6 @@ interface ResizeState {
   readonly startX: number;
   readonly startWidth: number;
   nextWidth: number;
-}
-
-function setActiveWidth(width: number): void {
-  document.documentElement.style.setProperty(WORKBENCH_ACTIVE_WIDTH_VARIABLE, `${String(width)}px`);
 }
 
 function prefetchWorkbench(): () => void {
@@ -272,7 +268,7 @@ function WorkbenchViewHost({
 
     if (panel !== null) {
       panel.style.width = `${String(resize.nextWidth)}px`;
-      setActiveWidth(resize.nextWidth);
+      setActiveWorkbenchWidth(resize.nextWidth);
     }
   };
 
@@ -317,12 +313,12 @@ function WorkbenchViewHost({
     if (!panelVisible || panel === null) return undefined;
 
     if (chatShowing) {
-      setActiveWidth(stageWidth);
+      setActiveWorkbenchWidth(stageWidth);
 
       return undefined;
     }
 
-    const update = (): void => setActiveWidth(panel.getBoundingClientRect().width);
+    const update = (): void => setActiveWorkbenchWidth(panel.getBoundingClientRect().width);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(panel);
