@@ -1,9 +1,9 @@
-import { ALERT_OFFERS, ALERT_SETTING } from "@nyte-ai/plugin/core/desktop-settings";
+import { ALERT_OFFERS, ALERT_SETTING } from "@nyte-ai/plugin/desktop-settings/schema";
 import type {
   AlertChannel,
   AlertState,
   DesktopSettings,
-} from "@nyte-ai/plugin/core/desktop-settings";
+} from "@nyte-ai/plugin/desktop-settings/schema";
 
 export {
   ALERT_CHANNELS,
@@ -11,13 +11,13 @@ export {
   ALERT_SETTING,
   DEFAULT_DESKTOP_SETTINGS,
   DESKTOP_SETTING_SCHEMAS,
-} from "@nyte-ai/plugin/core/desktop-settings";
+} from "@nyte-ai/plugin/desktop-settings/schema";
 
 export type {
   AlertChannel,
   AlertState,
   DesktopSettings,
-} from "@nyte-ai/plugin/core/desktop-settings";
+} from "@nyte-ai/plugin/desktop-settings/schema";
 
 export type AlertSettings = Pick<
   DesktopSettings,

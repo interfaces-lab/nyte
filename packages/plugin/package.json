@@ -27,7 +27,7 @@
     "./core/canvas-preview": "./src/canvas/canvas-preview.ts",
     "./core/claude-code-sdk": "./src/claude-code-sdk/index.ts",
     "./core/codemode": "./src/codemode.ts",
-    "./core/desktop-settings": "./src/desktop-settings.ts",
+    "./core/desktop-settings": "./src/desktop-settings/desktop-settings.ts",
     "./core/codemode-runtime": "./src/codemode-runtime.ts",
     "./core/codemode-worker": "./src/codemode-worker.ts",
     "./core/openai-astra-context": "./src/openai-astra-context.ts",
@@ -49,6 +49,7 @@
     "./approvals/schema": "./src/approvals/schema.ts",
     "./canvas/protocol": "./src/canvas/canvas-protocol.ts",
     "./canvas/schema": "./src/canvas/schema.ts",
+    "./desktop-settings/schema": "./src/desktop-settings/schema.ts",
     "./question/schema": "./src/question/schema.ts"
   },
   "publishConfig": {
@@ -110,8 +111,8 @@
         "import": "./dist/src/codemode-worker.js"
       },
       "./core/desktop-settings": {
-        "types": "./dist/src/desktop-settings.d.ts",
-        "import": "./dist/src/desktop-settings.js"
+        "types": "./dist/src/desktop-settings/desktop-settings.d.ts",
+        "import": "./dist/src/desktop-settings/desktop-settings.js"
       },
       "./core/openai-astra-context": {
         "types": "./dist/src/openai-astra-context.d.ts",
@@ -188,6 +189,10 @@
       "./canvas/schema": {
         "types": "./dist/src/canvas/schema.d.ts",
         "import": "./dist/src/canvas/schema.js"
+      },
+      "./desktop-settings/schema": {
+        "types": "./dist/src/desktop-settings/schema.d.ts",
+        "import": "./dist/src/desktop-settings/schema.js"
       },
       "./question/schema": {
         "types": "./dist/src/question/schema.d.ts",
