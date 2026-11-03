@@ -8,8 +8,6 @@ export * from "./stream-channel.ts";
 
 export * from "./wire.ts";
 
-export * from "./view-frames.ts";
-
 export * from "./session-store.ts";
 
 export * from "./directory-store.ts";

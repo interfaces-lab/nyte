@@ -86,7 +86,7 @@ it("compacts in the middle of scenario D's run and goes on to the answer with th
   const { session, receipt: earlier } = await host.sessions.start({ content: EARLIER });
 
   await earlier.settled();
-  const watched = watchViews(session);
+  const watched = await watchViews(simulation, session);
   const started = performance.now();
   const { trace, receipt } = await submit(session, CI_PROMPT);
   const end = await receipt.settled();

@@ -2,11 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { asId } from "@nyte-ai/schema";
-import type { CommitId, DurableEvent, HeadName, Json, SessionId } from "@nyte-ai/schema";
+import type { CommitId, DurableEvent, HeadName, SessionId } from "@nyte-ai/schema";
 import { envelope, headRef } from "@nyte-ai/core/store";
 import type { CommitRecord } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core";
-import { decodeOutput, parseSse } from "@nyte-ai/protocol";
+import { decodeOutput, parseJson } from "@nyte-ai/protocol";
 import { afterAll, assert, expect, it } from "vitest";
 import { sqliteStore } from "../../src/index.ts";
 import { post, served } from "./fakes.ts";
@@ -131,31 +131,20 @@ function tallied(store: Store) {
 async function attach(store: Store, session: SessionId) {
   const { store: counted, tally } = tallied(store);
   const { handler, host } = await served({ store: counted });
-  const aborted = new AbortController();
-  const response = await post(handler, "head.watch", { session, head: main }, {}, aborted.signal);
-  assert(response.body !== null);
-  let first: Json = null;
-
-  for await (const frame of parseSse(response.body)) {
-    first = frame;
-    break;
-  }
-
+  const response = await post(handler, "head.read", { session, head: main, window: { tail: 200 } });
+  const body = await response.text();
   const read = tally.events;
-  aborted.abort();
   await host.close();
-  const frame = decodeOutput("head.watch", first);
-  assert(frame.kind === "view");
 
   return {
     read,
-    bytes: new TextEncoder().encode(JSON.stringify(first)).byteLength,
-    messages: frame.view.messages.length,
+    bytes: new TextEncoder().encode(body).byteLength,
+    messages: decodeOutput("head.read", parseJson(body)).order.length,
   };
 }
 
 it(
-  "attaches to a 10,000-message chat from its checkpoint, reading fewer log events than a 100-message one replays, its first frame within the tail's byte budget",
+  "attaches to a 10,000-message chat from its checkpoint, reading fewer log events than a 100-message one replays, its first read within the tail's byte budget",
   { timeout: 120_000 },
   async () => {
     const folder = await mkdtemp(join(tmpdir(), "nyte-attach-"));

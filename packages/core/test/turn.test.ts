@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import { getSystemMessageText } from "@nyte-ai/schema/model";
-import type { Infer, Message } from "@nyte-ai/schema";
+import type { Infer } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { isPart, text, thinking, tool } from "../src/index.ts";
 import {
@@ -869,30 +869,21 @@ describe("turn", () => {
     expect(sent(fake, 1)).toEqual(["system", "user:Go."]);
   });
 
-  it("shows a watch that starts mid-stream the text streamed before it", async () => {
+  it("shows a view read mid-stream the text streamed before it", async () => {
     const fake = fakeModels({ models: [testModel("model")] });
     fake.reply({ content: [{ type: "text", text: "A partial answer" }], hold: true });
     await using host = await open(fake);
     const { session, receipt } = await host.sessions.start({ content: "Go." });
-    const early = session.watch()[Symbol.asyncIterator]();
-    let live: Message | undefined;
 
-    while (live === undefined) {
-      const next = await early.next();
-
-      assert(next.done !== true);
-      live = next.value.messages.find(
+    const live = await until(async () =>
+      (await session.view()).messages.find(
         (entry) => isPart(entry, text) && entry.state.markdown !== "",
-      );
-    }
+      ),
+    );
 
-    await early.return?.();
-    const late = session.watch()[Symbol.asyncIterator]();
-    const first = await late.next();
-    await late.return?.();
+    const first = await session.view();
 
-    assert(first.done !== true);
-    expect(first.value.messages.find((message) => message.id === live?.id)).toMatchObject({
+    expect(first.messages.find((message) => message.id === live.id)).toMatchObject({
       status: { kind: "live" },
       state: { markdown: "A partia" },
     });
@@ -907,19 +898,12 @@ describe("turn", () => {
     fake.reply({ content: [{ type: "text", text: "A partial answer" }], hold: true });
     await using host = await open(fake);
     const { session, receipt } = await host.sessions.start({ content: "Go." });
-    const watching = session.watch()[Symbol.asyncIterator]();
-    let live: Message | undefined;
 
-    while (live === undefined) {
-      const next = await watching.next();
-
-      assert(next.done !== true);
-      live = next.value.messages.find(
+    const live = await until(async () =>
+      (await session.view()).messages.find(
         (entry) => isPart(entry, text) && entry.state.markdown !== "",
-      );
-    }
-
-    await watching.return?.();
+      ),
+    );
 
     assert(live.kind === "part" && live.status.kind === "live" && live.status.run !== null);
     expect(live.state).toMatchObject({ markdown: "A partia" });
@@ -929,7 +913,7 @@ describe("turn", () => {
     const view = await session.view();
 
     expect(view.execution).toMatchObject({ kind: "idle", lastRun: { end: { kind: "stopped" } } });
-    expect(view.messages.find((message) => message.id === live?.id)).toMatchObject({
+    expect(view.messages.find((message) => message.id === live.id)).toMatchObject({
       status: { kind: "failed", failure: { class: "aborted" } },
     });
     expect(fake.requests[0].options?.signal?.aborted).toBe(true);

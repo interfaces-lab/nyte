@@ -18,7 +18,7 @@ import { idSchema } from "../../ids.ts";
 import { JsonType, JsonValueSchema } from "../../json.ts";
 import { PositionType, UserContentType } from "../../messages.ts";
 import { nullable } from "../nullable.ts";
-import { actOutcomeSchema, PartViewType, PlacementType } from "../../parts.ts";
+import { actOutcomeSchema, PlacementType } from "../../parts.ts";
 import { RunEndSchema, RunEndType, stopOutcomeSchema } from "../../runs.ts";
 import {
   CommandCompletionsSchema,
@@ -33,7 +33,6 @@ import {
   ResumeType,
   SessionViewSchema,
   UserStatusType,
-  ViewFrameSchema,
   ViewOptionsType,
   WindowSpecType,
 } from "../../views.ts";
@@ -170,13 +169,6 @@ export const SESSION_OPERATIONS = {
       resume: Type.Optional(ResumeType),
     }),
     output: wireSchema(HeadWindowType),
-  },
-  "head.watch": {
-    ...PARTICIPANT,
-    summary: "Streams the transcript and state of a head each time it changes.",
-    kind: "watch",
-    input: wireObject({ ...HEAD, options: Type.Optional(ViewOptionsType) }),
-    output: ViewFrameSchema,
   },
   "head.see": {
     ...PARTICIPANT,
@@ -386,13 +378,6 @@ export const SESSION_OPERATIONS = {
     wait: true,
     input: ON_PART,
     output: wireSchema(nullable(Type.Object({ action: Type.String(), input: JsonType }))),
-  },
-  "part.watch": {
-    ...PARTICIPANT,
-    summary: "Streams a part's view each time it changes.",
-    kind: "watch",
-    input: ON_PART,
-    output: wireSchema(nullable(PartViewType)),
   },
   "part.close": {
     ...PARTICIPANT,

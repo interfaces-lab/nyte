@@ -81,7 +81,7 @@ async function runPlaces(home: ScenarioHome) {
   const { host } = simulation;
   const started = performance.now();
   const { trace, session, receipt } = await start(host, RESTAURANT_PROMPT);
-  const watched = watchViews(session);
+  const watched = await watchViews(simulation, session);
   const end = await receipt.settled();
   const wall = Math.round(performance.now() - started);
   const final = await expectSettledViews(session, watched);
@@ -143,7 +143,7 @@ it("stops a slow places call when the user stops the run, leaving nothing workin
   const { host } = simulation;
   const started = performance.now();
   const { trace, session, receipt } = await start(host, RESTAURANT_PROMPT);
-  const watched = watchViews(session);
+  const watched = await watchViews(simulation, session);
 
   const progress = await until(
     async () =>

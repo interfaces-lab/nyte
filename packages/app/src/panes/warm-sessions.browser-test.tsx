@@ -45,7 +45,7 @@ function head(session: string, tip: number): HeadInfo {
   };
 }
 
-function view(session: string, tip = 1): SessionView {
+function view(session: string): SessionView {
   const messages: Message[] = [];
   const turns = [];
 
@@ -100,7 +100,6 @@ function view(session: string, tip = 1): SessionView {
     background: [],
     configuration: { selected: null, effective: null },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [head(session, tip)],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -128,7 +127,7 @@ installScripted(
 
 async function moveTip(session: SessionId, tip: number): Promise<void> {
   const moved = chatStore(session).next();
-  streams.get(session)?.push(view(session, tip));
+  streams.get(session)?.push(view(session));
   listed.push(
     (listed.latest() ?? []).map((row) =>
       row.id === session ? { ...row, heads: [head(session, tip)] } : row,

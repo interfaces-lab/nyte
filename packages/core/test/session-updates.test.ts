@@ -1,6 +1,8 @@
 import { asId, asSeq } from "@nyte-ai/schema";
+import type { SessionInfo, SessionsChange } from "@nyte-ai/schema";
 import { assert, expect, it } from "vitest";
-import { watchSessions } from "../src/api/session.ts";
+import { readSessions } from "../src/api/session.ts";
+import { sessionChanges } from "../src/api/session-changes.ts";
 import { pollStore } from "../src/fold/watch.ts";
 import { envelope, headRef, memoryStore, seenRef, sessionRef } from "../src/store.ts";
 import { fakeModels, open } from "./fake-models.ts";
@@ -35,42 +37,67 @@ it("updates directory rows from another host while keeping unread state specific
   const reader = await setup({ store, poll: 5 });
   const unpoll = pollStore(reader.kernel);
   const { session } = await writer.host.sessions.start({ name: "Shared", content: "Hi." });
-  const local = watchSessions(reader.kernel, asId("local"))[Symbol.asyncIterator]();
-  const other = watchSessions(reader.kernel, asId("other"))[Symbol.asyncIterator]();
+  const local = sessionChanges(reader.kernel, asId("local"))[Symbol.asyncIterator]();
+  const other = sessionChanges(reader.kernel, asId("other"))[Symbol.asyncIterator]();
+  const shared = (rows: readonly SessionInfo[]) => rows.filter((row) => row.id === session.id);
 
   try {
-    expect((await local.next()).value).toMatchObject([{ name: "Shared", archived: false }]);
-    expect((await other.next()).value).toMatchObject([{ name: "Shared", archived: false }]);
-    const archived = local.next();
+    await Promise.all([local.next(), other.next()]);
+    expect((await readSessions(reader.kernel, asId("local"))).rows).toMatchObject([
+      { name: "Shared", archived: false },
+    ]);
     await session.update({ archived: true });
-    expect((await archived).value).toMatchObject([{ name: "Shared", archived: true }]);
-    expect((await other.next()).value).toMatchObject([{ archived: true }]);
+    expect(shared(await changed(local, (row) => row.archived))).toMatchObject([
+      { name: "Shared", archived: true },
+    ]);
+    expect(shared(await changed(other, (row) => row.archived))).toMatchObject([{ archived: true }]);
     const root = await store.refs.get(sessionRef(session.id));
     const commit = await store.objects.put({ message: "A new tip" });
-    const unread = local.next();
     await store.refs.set([{ name: headRef(session.id, main), target: commit }]);
-    expect((await unread).value).toMatchObject([{ heads: [{ unread: true }] }]);
-    expect((await other.next()).value).toMatchObject([{ heads: [{ unread: true }] }]);
-    const read = local.next();
+    expect(shared(await changed(local, (row) => row.heads[0]?.unread === true))).toMatchObject([
+      { heads: [{ unread: true }] },
+    ]);
+    expect(shared(await changed(other, (row) => row.heads[0]?.unread === true))).toMatchObject([
+      { heads: [{ unread: true }] },
+    ]);
     await store.refs.set([
       {
         name: seenRef(session.id, asId("local"), main),
         target: await store.objects.put(envelope("seen", { commit }, 1)),
       },
     ]);
-    expect((await read).value).toMatchObject([{ heads: [{ unread: false }] }]);
+    expect(shared(await changed(local, (row) => row.heads[0]?.unread === false))).toMatchObject([
+      { heads: [{ unread: false }] },
+    ]);
     expect(await store.refs.get(sessionRef(session.id))).toEqual(root);
     const { session: newSession } = await writer.host.sessions.start({
       name: "Second",
       content: "Hi.",
     });
-    const changed = await other.next();
-    assert(!changed.done);
-    expect(changed.value.find((row) => row.id === session.id)?.heads[0]?.unread).toBe(true);
-    expect(changed.value.find((row) => row.id === newSession.id)?.name).toBe("Second");
+
+    const added = await changed(other, (row) => row.id === newSession.id);
+
+    expect(added.find((row) => row.id === newSession.id)?.name).toBe("Second");
+    expect(
+      (await readSessions(reader.kernel, asId("other"))).rows.find((row) => row.id === session.id)
+        ?.heads[0]?.unread,
+    ).toBe(true);
   } finally {
     unpoll();
     await local.return?.();
     await other.return?.();
   }
 });
+
+async function changed(
+  feed: AsyncIterator<SessionsChange>,
+  accept: (row: SessionInfo) => boolean,
+): Promise<readonly SessionInfo[]> {
+  for (;;) {
+    const next = await feed.next();
+    assert(!next.done);
+    const rows = next.value.tables.sessions?.upsert ?? [];
+
+    if (rows.some(accept)) return rows;
+  }
+}

@@ -30,7 +30,7 @@ import type {
   Receipt,
 } from "@nyte-ai/core";
 import type { ServerHost } from "@nyte-ai/core/server";
-import { mapped, sessionsFrames, viewFrames } from "@nyte-ai/protocol";
+import { mapped } from "@nyte-ai/protocol";
 import type {
   ByteName,
   CallName,
@@ -277,7 +277,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "workspaces.forget": ({ id }) => connection.workspaces.forget(id),
     "workspaces.cleanWorktrees": () => connection.workspaces.cleanWorktrees(),
 
-    "sessions.watch": async (input) => sessionsFrames(connection.sessions.watch(input)),
     "sessions.start": async (input) => {
       const { session, receipt } = await connection.sessions.start(input);
 
@@ -343,11 +342,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       } finally {
         attachment.release();
       }
-    },
-    "head.watch": async ({ session: id, head, options }) => {
-      await session(id).info();
-
-      return viewFrames(session(id).head(head).watch(options));
     },
     "head.see": async ({ session: id, head, commit }) => {
       await session(id).head(head).see(commit);
@@ -423,11 +417,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       return answer === null
         ? null
         : { action: String(answer.action), input: toJson(answer.input) };
-    },
-    "part.watch": async ({ session: id, part }) => {
-      await session(id).info();
-
-      return session(id).part(part).watch();
     },
     "part.close": async ({ session: id, part }) => {
       await session(id).part(part).close();

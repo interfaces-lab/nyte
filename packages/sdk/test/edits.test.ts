@@ -4,7 +4,7 @@ import type { Connection } from "@nyte-ai/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";
-import { BASE, TOKEN_SECRET, readOperation, served, until } from "./served.ts";
+import { BASE, TOKEN_SECRET, readOperation, served } from "./served.ts";
 import type { Served } from "./served.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -129,10 +129,14 @@ describe("edits", () => {
     });
 
     const again = await client(host, undefined, journal);
-    const watching = again.session(session.id).watch()[Symbol.asyncIterator]();
-    await watching.next();
-    await expect.poll(async () => (await journal.load()).length).toBe(0);
-    await watching.return?.();
+
+    await expect
+      .poll(async () => {
+        await again.session(session.id).view();
+
+        return (await journal.load()).length;
+      })
+      .toBe(0);
     const after = await host.view(session.id);
 
     expect(posts).toBe(3);
@@ -141,7 +145,7 @@ describe("edits", () => {
     expect(host.fake.requests.length).toBe(requests);
   });
 
-  it("shows an edit of a landed message unsent in its place in view() and watch() while it retries (ADV C N1 = A N7, probe /tmp/adversarial-c2-probe J2)", async () => {
+  it("shows an edit of a landed message unsent in its place in view() while it retries (ADV C N1 = A N7, probe /tmp/adversarial-c2-probe J2)", async () => {
     const host = await open();
     const journal = createSendJournal();
     const connection = await client(host, undefined, journal);
@@ -158,12 +162,15 @@ describe("edits", () => {
     await expect.poll(async () => (await journal.load()).length).toBe(1);
 
     expect(users(await session.view())).toEqual(["Final.#unsent"]);
-    expect(users(await until(session.watch(), () => true))).toEqual(["Final.#unsent"]);
     host.intercept(null);
     await (await edit).settled();
-    expect(users(await until(session.watch(), (view) => view.execution.kind === "idle"))).toEqual([
-      "Final.#landed",
-    ]);
+    await expect
+      .poll(async () => {
+        const view = await session.view();
+
+        return view.execution.kind === "idle" ? users(view) : [];
+      })
+      .toEqual(["Final.#landed"]);
   });
 
   it("keeps an edit of a landed message unsent in its place across a revoke and a re-pair, until it lands (ADV C N1, probe /tmp/adversarial-c2-probe J2b)", async () => {
@@ -193,10 +200,13 @@ describe("edits", () => {
 
     expect(users(await second.session(session.id).view())).toEqual(["Hi.#landed", "Final.#unsent"]);
     host.intercept(null);
-    await until(
-      second.session(session.id).watch(),
-      (view) => users(view).join() === "Hi.#landed,Final.#landed" && view.execution.kind === "idle",
-    );
+    await expect
+      .poll(async () => {
+        const view = await second.session(session.id).view();
+
+        return view.execution.kind === "idle" ? users(view) : [];
+      })
+      .toEqual(["Hi.#landed", "Final.#landed"]);
     expect(users(await host.view(session.id))).toEqual(["Hi.#landed", "Final.#landed"]);
   });
 

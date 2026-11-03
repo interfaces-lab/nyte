@@ -83,28 +83,6 @@ async function readErrorCode(response: Response): Promise<string> {
   return decodeError(JSON.parse(await response.text()), response.status).code;
 }
 
-function readKind(frame: Json): string | null {
-  return typeof frame === "object" &&
-    frame !== null &&
-    "kind" in frame &&
-    typeof frame.kind === "string"
-    ? frame.kind
-    : null;
-}
-
-async function until(response: Response, done: (frame: Json) => boolean): Promise<readonly Json[]> {
-  const frames: Json[] = [];
-  assert(response.body !== null);
-
-  for await (const frame of parseSse(response.body)) {
-    frames.push(frame);
-
-    if (done(frame)) break;
-  }
-
-  return frames;
-}
-
 async function sent(
   target: Listener | string,
 ): Promise<{ readonly session: SessionId; readonly receipt: ReceiptId }> {
@@ -211,19 +189,9 @@ describe("listen", () => {
     expect([revoked.status, await readErrorCode(revoked)]).toEqual([401, "unauthenticated"]);
   });
 
-  it("ends a revoked principal's open head.watch at once, unauthenticated, while another principal's keeps flowing", async () => {
+  it("ends a revoked principal's open connection.watch at once, unauthenticated, while another principal's keeps flowing", async () => {
     const host = await compose(fakeModels());
     const listener = await serve(host);
-    const created = await json(
-      await post(listener, "sessions.start", { id: crypto.randomUUID(), content: "Hi." }),
-    );
-    assert(
-      typeof created === "object" &&
-        created !== null &&
-        "session" in created &&
-        typeof created.session === "string",
-    );
-    const session = created.session;
 
     const watching = async (label: string) => {
       const { code } = await host.principals.pair({
@@ -246,10 +214,10 @@ describe("listen", () => {
         headers: async () => ({ Authorization: `Bearer ${token}` }),
         fetch: async (input, init) => listener.fetch(new Request(input, init)),
       });
-      const frames = transport
-        .frames("head.watch", { session, head: main })
-        [Symbol.asyncIterator]();
-      expect(readKind((await frames.next()).value ?? null)).toBe("view");
+
+      const frames = transport.frames("connection.watch", {})[Symbol.asyncIterator]();
+
+      expect((await frames.next()).done).toBe(false);
 
       return frames;
     };
@@ -261,23 +229,28 @@ describe("listen", () => {
     await host.principals.revoke(id);
 
     expect(await within(drainFrames(revoked), 100)).toBe("unauthenticated");
-    await post(listener, "head.send", { session, head: main, content: "Still here." });
+    host.server.report({
+      id: "still-here",
+      source: "inline",
+      path: null,
+      issues: [{ severity: "warning", path: [], message: "Still here." }],
+    });
 
     const delivered = within(
       (async () => {
         for (let next = await kept.next(); next.done !== true; next = await kept.next())
-          if (JSON.stringify(next.value).includes("Still here.")) return readKind(next.value);
+          if (JSON.stringify(next.value).includes("still-here")) return "delivered";
 
         return "ended";
       })(),
       1_000,
     );
 
-    expect(await delivered).toBe("delta");
+    expect(await delivered).toBe("delivered");
     await kept.return?.(undefined);
   });
 
-  it("re-reads a remembered device token when another host commits, so its revoke there ends an open head.watch here (ADV C 3)", async () => {
+  it("re-reads a remembered device token when another host commits, so its revoke there ends an open connection.watch here (ADV C 3)", async () => {
     const store = memoryStore();
     const host = await open(fakeModels(), { store, poll: 10 });
     cleanups.push(() => host.close());
@@ -297,12 +270,11 @@ describe("listen", () => {
     const device = { Authorization: `Bearer ${token}` };
 
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    const { session: created } = await host.sessions.start({ content: "Hi." });
-    const watch = await post(listener, "head.watch", { session: created.id, head: main }, device);
+    const watch = await post(listener, "connection.watch", {}, device);
 
     assert(watch.body !== null);
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
-    expect(readKind((await frames.next()).value ?? null)).toBe("view");
+    expect((await frames.next()).done).toBe(false);
 
     const ended = drainFrames(frames);
     const [paired] = await other.principals.list();
@@ -314,26 +286,25 @@ describe("listen", () => {
     expect([revoked.status, await readErrorCode(revoked)]).toEqual([401, "unauthenticated"]);
   });
 
-  it("ends a head.watch opened by its own pairing request once another host's revoke commits (ADV C-3 N2, probe N2r)", async () => {
+  it("ends a connection.watch opened by its own pairing request once another host's revoke commits (ADV C-3 N2, probe N2r)", async () => {
     const store = memoryStore();
     const host = await open(fakeModels(), { store, poll: 10 });
     cleanups.push(() => host.close());
     const other = await open(fakeModels(), { store });
     cleanups.push(() => other.close());
     const listener = await serve(host);
-    const { session } = await host.sessions.start({ content: "Hi." });
 
     const watch = await post(
       listener,
-      "head.watch",
-      { session: session.id, head: main },
+      "connection.watch",
+      {},
       { Authorization: `Pairing ${await pair(other, ["participant"])}` },
     );
 
     expect(watch.headers.get("X-Nyte-Credential")).not.toBeNull();
     assert(watch.body !== null);
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
-    expect(readKind((await frames.next()).value ?? null)).toBe("view");
+    expect((await frames.next()).done).toBe(false);
 
     const ended = drainFrames(frames);
     const [paired] = await other.principals.list();
@@ -585,7 +556,7 @@ describe("listen", () => {
     expect([response.status, await readErrorCode(response)]).toEqual([413, "invalid"]);
   });
 
-  it("serves a head.watch over node:http, the head's whole view first", async () => {
+  it("serves a head.view over node:http", async () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Hello there." }] });
     const listener = await serve(await compose(fake), { transport: { kind: "http" } });
@@ -597,38 +568,31 @@ describe("listen", () => {
     const settled = await post(address, "receipt.settled", { session, receipt });
     expect(await json(settled)).toMatchObject({ kind: "completed" });
 
-    const [first] = await until(
-      await post(address, "head.watch", { session, head: main }),
-      () => true,
-    );
-
-    expect(first).toMatchObject({
-      kind: "view",
-      view: { messages: [{ kind: "user", content: "Hi." }, { kind: "part" }] },
+    expect(await json(await post(address, "head.view", { session, head: main }))).toMatchObject({
+      messages: [{ kind: "user", content: "Hi." }, { kind: "part" }],
     });
   });
 
   it("streams events as they happen over node:http without buffering, and disconnects clients", async () => {
-    const fake = fakeModels();
-    let release = (): void => undefined;
-
-    const hold = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-
-    fake.reply({ content: [{ type: "text", text: "Held reply." }], until: hold });
-    const listener = await serve(await compose(fake), { transport: { kind: "http" } });
+    const host = await compose(fakeModels());
+    const listener = await serve(host, { transport: { kind: "http" } });
     const address = listener.address;
     assert(address !== null);
-    const { session } = await sent(address);
-    const watch = await post(address, "head.watch", { session, head: main });
+    const watch = await post(address, "connection.watch", {});
 
     expect(watch.headers.get("Content-Type")).toBe("text/event-stream");
     assert(watch.body !== null);
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
+    expect((await frames.next()).done).toBe(false);
+    host.server.report({
+      id: "streamed",
+      source: "inline",
+      path: null,
+      issues: [{ severity: "warning", path: [], message: "Streamed." }],
+    });
     let seen = (await frames.next()).value;
 
-    while (seen !== undefined && !JSON.stringify(seen).includes('"kind":"live"'))
+    while (seen !== undefined && !JSON.stringify(seen).includes("streamed"))
       seen = (await frames.next()).value;
     expect(seen).toBeDefined();
 
@@ -644,7 +608,6 @@ describe("listen", () => {
 
     expect(ended).toBe(true);
     expect((await post(address, "sessions.list", {})).status).toBe(200);
-    release();
   });
 
   it("closes once: the socket refuses, fetch answers unavailable, coverage released", async () => {

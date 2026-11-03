@@ -95,7 +95,6 @@ const view: SessionView = {
   background: [],
   configuration: { selected: configuration, effective: configuration },
   context: { tokens: 0, window: 0, lastRequest: null },
-  heads: [],
   changes: [],
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 };

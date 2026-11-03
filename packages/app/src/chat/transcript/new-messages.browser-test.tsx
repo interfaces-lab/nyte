@@ -98,7 +98,6 @@ function view(count: number, last?: string): SessionView {
     background: [],
     configuration: { selected: null, effective: null },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   };
@@ -125,7 +124,6 @@ function coldView(): SessionView {
   return {
     ...view(TURNS),
     seenThrough: coldSeen ? TURNS * 10 + 5 : SEEN_THROUGH,
-    heads: [coldHead()],
   };
 }
 

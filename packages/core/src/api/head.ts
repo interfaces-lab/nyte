@@ -26,7 +26,7 @@ import { configure } from "../extend/settings.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
 import { advanceSeen } from "../fold/seen.ts";
-import { historyHead, viewHead, watchHead } from "../fold/view.ts";
+import { historyHead, viewHead } from "../fold/view.ts";
 import { headRef, promptRef, sessionRef } from "../store/refs.ts";
 import {
   attempt,
@@ -47,7 +47,6 @@ import {
   toCommitObjectId,
   walkCommitPath,
 } from "../store/session.ts";
-import { watchStore } from "../util/iterable.ts";
 import { extractUserText } from "../util/text.ts";
 import { holdMessage } from "./hold.ts";
 
@@ -66,9 +65,6 @@ export function headHandle(
   activation = false,
 ): Head {
   const { principal } = context;
-
-  const watch: Head["watch"] = (options) =>
-    watchHead(kernel, { session, head, principal, options });
 
   const revise: Head["revise"] = (message, content, options) =>
     reviseQueued(kernel, { session, head, context, message, content, options }, activation);
@@ -103,9 +99,7 @@ export function headHandle(
       return outcome;
     },
     view: (options) => viewHead(kernel, { session, head, principal, options }),
-    watch,
     see: (tip) => advanceSeen(kernel, { session, head, principal, commit: tip }),
-    ...watchStore(() => watch()),
     history: (input) =>
       historyHead(kernel, { session, head, principal, before: input.before, limit: input.limit }),
     tree: () => tree(kernel, session, head),

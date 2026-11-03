@@ -1,6 +1,6 @@
 ---
 title: Entry points
-description: Options for sdk.open and sdk.connect, and the helpers @nyte-ai/sdk exports beside them.
+description: Options for sdk.open, sdk.connect and openHost, and the helpers the SDK exports beside them.
 ---
 
 ## sdk.open
@@ -84,31 +84,50 @@ interface RequestJournal {
 ## pagedViews
 
 ```ts
-pagedViews(head: Head, options?: ViewOptions): PagedViews
+pagedViews<V>(
+  head: { watch(options?: ViewOptions): AsyncIterable<V> } & Pick<Head, "history">,
+  options?: ViewOptions,
+): PagedViews<V>
 ```
 
-Watches `head` and keeps older messages you load at the front of each view. `PagedViews` is an
-`AsyncIterable<SessionView>` with one more method:
+Reads the views the `watch` you pass yields and keeps older messages you load at the front of each
+one. `PagedViews` is an `AsyncIterable<V>` with one more method:
 
-- `earlier(limit)` loads up to `limit` messages before the oldest one shown and resolves with how
-  many came, `0` once the chat's first message is shown. A call while one is loading waits for it.
+- `earlier(limit)` loads up to `limit` messages before the oldest one shown through `head.history`
+  and resolves with how many came, `0` once the chat's first message is shown. A call while one is
+  loading waits for it.
 
 If the head moves past the loaded pages, the next view drops them. Iterate it once.
 
-## watchStore
+## openHost
 
 ```ts
-watchStore<T>(open: () => AsyncIterable<T>): WatchStore<T>
+openHost(address: string, options: HostOptions): HostConnection
 ```
 
-Turns a watch into the store every head already is: `subscribe(listener)` returns the unsubscribe,
-and `current()` returns the latest value, or `undefined` before the first. The first listener calls
-`open()`, and the last one to leave closes that watch, keeping the value it saw. Once a watch fails,
-`current()` throws its error until a new first listener opens another.
+From `@nyte-ai/sdk/client`. Opens the host's socket at `address` and keeps its rows current, the
+way Nyte's own clients read a host. Every caller with the same address shares one connection;
+`release()` lets go of it, and the last release closes the socket.
 
-```ts
-const sessions = watchStore(() => connection.sessions.watch());
-```
+- `credentials`: a `token` or `custom` headers, as for `sdk.connect`. A pairing code goes through
+  `sdk.connect` first.
+- `client`: the `kind`, `name` and `version` other clients see for this one.
+- `socket`: how to open the WebSocket. The default passes the credentials as headers, which Node
+  and Bun take; in a browser pass `ticketSocket()`, which trades them for a one-use ticket first.
+
+A `HostConnection` has:
+
+- `head(session, head, { tail })`, a store of one head's last `tail` messages and the rows they
+  need. `snapshot()` is `null` before the first read; `headView(snapshot)` turns one into a view.
+- `directory(window?)`, a store of the session list `sessions.read` takes `window` for. Its
+  snapshot holds the listed `ids` in order and each one's `SessionInfo` in `rows`.
+- `text(listener)`, the text streaming parts append; `streamText` keeps it and `withStreamedText`
+  lays it over a view.
+- `health`, whether the socket is `connecting`, `open`, `retrying` or `blocked`, and `call(name,
+input)` for any other operation.
+
+Each store has `subscribe(listener)`, which returns the unsubscribe, `snapshot()`, `freshness()`,
+`stale` while the socket is down or a read failed, and `close()`.
 
 ## SdkError
 

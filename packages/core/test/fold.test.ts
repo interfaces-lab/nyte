@@ -16,7 +16,7 @@ import type {
 } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
 import { emptyFold, fold } from "../src/fold/fold.ts";
-import { project } from "../src/fold/project.ts";
+import { readView } from "../src/fold/window.ts";
 import type { FoldState } from "../src/contract/fold.ts";
 
 const session: SessionId = asId("s1");
@@ -337,12 +337,12 @@ describe("fold", () => {
       },
     );
 
-    expect(project(running, main).execution).toMatchObject({
+    expect(readView(running, main).execution).toMatchObject({
       kind: "live",
       phase: "responding",
       stopping: false,
     });
-    expect(project(running, main).turns[0]?.state).toEqual({
+    expect(readView(running, main).turns[0]?.state).toEqual({
       kind: "working",
       activity: "Exploring",
     });
@@ -376,7 +376,7 @@ describe("fold", () => {
       lastRun: { id: "r1", end: { kind: "completed", usage }, endedAt: 17 },
     };
 
-    expect(project(done, main)).toEqual({
+    expect(readView(done, main)).toEqual({
       revision: null,
       seq: done.seq,
       activation: { kind: "inactive" },
@@ -461,22 +461,12 @@ describe("fold", () => {
       background: [],
       configuration: { selected: configuration, effective: configuration },
       context: { tokens: 120, window: 1000, lastRequest: usage },
-      heads: [
-        {
-          name: "main",
-          tip: { kind: "commit", id: "c3" },
-          stack: null,
-          execution,
-          unread: true,
-          background: { working: 0, waiting: 0 },
-        },
-      ],
       changes: [],
       catalog,
     });
   });
 
-  it("keeps every untouched message, turn and field when a token arrives", () => {
+  it("keeps every untouched message and record when a token arrives", () => {
     const before = play(
       emptyFold({ session, principal: ada }),
       opened(main, side),
@@ -489,29 +479,24 @@ describe("fold", () => {
       append("r1:1:0", "Hel"),
     );
 
-    const earlier = project(before, main);
+    const earlier = readView(before, main);
     const after = fold(before, append("r1:1:0", "lo."));
-    const later = project(after, main);
+    const later = readView(after, main);
 
     expect(ids(later)).toEqual(["m0", "r0:1:0", "m1", "r1:1:0"]);
     expect(later.messages[3]).toMatchObject({
       state: { markdown: "Hello.", signature: null },
       version: 3,
     });
-    expect(later).not.toBe(earlier);
-    expect(later.messages).not.toBe(earlier.messages);
     expect(later.messages.slice(0, 3)).toEqual(earlier.messages.slice(0, 3));
     later.messages
       .slice(0, 3)
       .forEach((message, index) => expect(message).toBe(earlier.messages[index]));
     expect(later.messages[3]).not.toBe(earlier.messages[3]);
-    expect(later.turns).toBe(earlier.turns);
-    expect(later.heads).toBe(earlier.heads);
-    expect(later.catalog).toBe(earlier.catalog);
+    expect(later.turns).toEqual(earlier.turns);
     expect(after.commits).toBe(before.commits);
     expect(after.turns).toBe(before.turns);
     expect(after.heads.get(side)).toBe(before.heads.get(side));
-    expect(project(after, main)).toBe(later);
 
     const elsewhere = fold(after, {
       seq: asSeq(after.seq + 1),
@@ -521,13 +506,12 @@ describe("fold", () => {
       item: { kind: "job", id: "j1", title: "Dev server", state: "working", startedBy: null },
     });
 
-    const moved = project(elsewhere, main);
+    const moved = readView(elsewhere, main);
 
     expect(moved.seq).toBe(elsewhere.seq);
-    expect(moved.messages).toBe(later.messages);
-    expect(moved.turns).toBe(later.turns);
-    expect(project(elsewhere, main)).toBe(moved);
-    expect(project(elsewhere, side).background).toHaveLength(1);
+    expect(moved.messages).toEqual(later.messages);
+    expect(moved.turns).toEqual(later.turns);
+    expect(readView(elsewhere, side).background).toHaveLength(1);
     expect(fold(elsewhere, append("missing", "x"))).toBe(elsewhere);
   });
 
@@ -539,28 +523,30 @@ describe("fold", () => {
       ...turn("m2", "r2", "c-r1:1:0"),
     );
 
-    const whole = project(state, main);
-    const lead = (tail: number) => project(state, main, { tail }).leadingPrompt?.id ?? null;
+    const whole = readView(state, main);
+    const lead = (tail: number) => readView(state, main, { tail }).leadingPrompt?.id ?? null;
 
     expect(ids(whole)).toEqual(["m1", "r1:1:0", "m2", "r2:1:0"]);
     expect(whole.leadingPrompt).toBeNull();
-    expect(ids(project(state, main, { tail: 3 }))).toEqual(["r1:1:0", "m2", "r2:1:0"]);
+    expect(ids(readView(state, main, { tail: 3 }))).toEqual(["r1:1:0", "m2", "r2:1:0"]);
     expect(lead(3)).toBe("m1");
-    expect(ids(project(state, main, { tail: 2 }))).toEqual(["m2", "r2:1:0"]);
+    expect(ids(readView(state, main, { tail: 2 }))).toEqual(["m2", "r2:1:0"]);
     expect(lead(2)).toBeNull();
-    expect(ids(project(state, main, { tail: 1 }))).toEqual(["r2:1:0"]);
+    expect(ids(readView(state, main, { tail: 1 }))).toEqual(["r2:1:0"]);
     expect(lead(1)).toBe("m2");
-    expect(project(state, main, { tail: 1 }).leadingPrompt).toBe(whole.messages[2]);
+    expect(readView(state, main, { tail: 1 }).leadingPrompt).toBe(whole.messages[2]);
     expect(whole.turns.map((info) => info.id)).toEqual(["m1", "m2"]);
-    expect(project(state, main, { tail: 3 }).turns).toBe(whole.turns);
-    expect(project(state, main, { tail: 2 }).turns).toEqual([whole.turns[1]]);
-    expect(project(state, main, { tail: 2 })).toBe(project(state, main, { tail: 2 }));
-    expect(project(state, main, { tail: 0 })).toMatchObject({
+    expect(readView(state, main, { tail: 3 }).turns).toEqual(whole.turns);
+    expect(readView(state, main, { tail: 2 }).turns).toEqual([whole.turns[1]]);
+    expect(readView(state, main, { tail: 0 })).toMatchObject({
       messages: [],
       leadingPrompt: null,
       turns: [],
     });
-    expect(project(state, side, { tail: 40 })).toMatchObject({ messages: [], leadingPrompt: null });
+    expect(readView(state, side, { tail: 40 })).toMatchObject({
+      messages: [],
+      leadingPrompt: null,
+    });
     expect(whole.usage).toEqual({ ...usage, input: 20, output: 10, total: 30 });
   });
 
@@ -579,8 +565,8 @@ describe("fold", () => {
         ...longTurn("m2", "r2", "c-r1:1:0", size, false),
       );
 
-      const view = project(state, main, { tail: 40 });
-      const every = ids(project(state, main, { tail: 1_000 }));
+      const view = readView(state, main, { tail: 40 });
+      const every = ids(readView(state, main, { tail: 1_000 }));
 
       expect(every).toHaveLength(size + 2);
       expect(view.messages).toHaveLength(40);
@@ -603,7 +589,7 @@ describe("fold", () => {
     );
 
     const window = (tail: number) => {
-      const view = project(state, main, { tail });
+      const view = readView(state, main, { tail });
 
       return {
         first: view.messages[0]?.id,
@@ -640,7 +626,7 @@ describe("fold", () => {
       ...answers("r2", 5, "c-r1:1:0"),
     );
 
-    const view = project(state, main, { tail: 3 });
+    const view = readView(state, main, { tail: 3 });
 
     expect(ids(view)).toEqual(["r2:3:0", "r2:4:0", "r2:5:0"]);
     expect(view.leadingPrompt).toBeNull();
@@ -661,17 +647,17 @@ describe("fold", () => {
     );
 
     const grown = play(streaming, append("r1:live", "lo."));
-    const before = project(streaming, main, { tail: 40 });
-    const after = project(grown, main, { tail: 40 });
+    const before = readView(streaming, main, { tail: 40 });
+    const after = readView(grown, main, { tail: 40 });
 
     expect(before.messages[0]?.id).toBe("r1:563:0");
     expect(after.messages.at(-1)).toMatchObject({ id: "r1:live", state: { markdown: "Hello." } });
     expect(after.leadingPrompt?.id).toBe("m1");
     expect(after.leadingPrompt).toBe(before.leadingPrompt);
-    expect(after.leadingPrompt).toBe(project(opening, main, { tail: 40 }).leadingPrompt);
+    expect(after.leadingPrompt).toBe(readView(opening, main, { tail: 40 }).leadingPrompt);
   });
 
-  it("marks a head unread for the fold's principal only", () => {
+  it("marks the time the fold's principal saw a head through, and no one else's", () => {
     const tip = play(
       emptyFold({ session, principal: ada }),
       opened(main),
@@ -680,23 +666,16 @@ describe("fold", () => {
       userCommit("c1", "m1", null),
     );
 
-    const unread = (state: FoldState) => project(state, main).heads[0]?.unread;
+    const through = (state: FoldState) => readView(state, main).seenThrough;
+    const read = play(tip, seen(ada, "c1"));
 
-    expect(unread(tip)).toBe(true);
-    expect(unread(play(tip, seen(bob, "c1")))).toBe(true);
+    expect(through(tip)).toBeNull();
+    expect(through(play(tip, seen(bob, "c1")))).toBeNull();
     expect(play(tip, seen(bob, "c1")).headInfos).toBe(tip.headInfos);
-    expect(unread(play(tip, seen(ada, "c1")))).toBe(false);
+    expect(through(read)).toBe(read.commits.get(asId("c1"))?.at);
     expect(
-      unread(
-        play(
-          tip,
-          seen(ada, "c1"),
-          admitted("m2"),
-          landed("m2", "c2", null),
-          userCommit("c2", "m2", "c1"),
-        ),
-      ),
-    ).toBe(true);
+      through(play(read, admitted("m2"), landed("m2", "c2", null), userCommit("c2", "m2", "c1"))),
+    ).toBe(through(read));
 
     const other = play(
       emptyFold({ session, principal: bob }),
@@ -707,7 +686,7 @@ describe("fold", () => {
       seen(bob, "c1"),
     );
 
-    expect(unread(other)).toBe(false);
+    expect(through(other)).toBe(other.commits.get(asId("c1"))?.at);
   });
 
   it("drops withdrawn and superseded inputs and reorders the pending ones", () => {
@@ -718,9 +697,9 @@ describe("fold", () => {
       admitted("m2", "queue"),
     );
 
-    expect(ids(project(pending, main))).toEqual(["m1", "m2"]);
-    expect(project(pending, main).turns).toEqual([]);
-    expect(project(pending, main).messages[1]).toMatchObject({
+    expect(ids(readView(pending, main))).toEqual(["m1", "m2"]);
+    expect(readView(pending, main).turns).toEqual([]);
+    expect(readView(pending, main).messages[1]).toMatchObject({
       turn: "pending:m2",
       status: { kind: "pending", schedule: { kind: "next-turn", reason: "idle" }, covered: true },
     });
@@ -732,8 +711,8 @@ describe("fold", () => {
       change: "withdrawn",
     });
 
-    expect(ids(project(withdrawn, main))).toEqual(["m2"]);
-    expect(project(withdrawn, main).turns).toEqual([]);
+    expect(ids(readView(withdrawn, main))).toEqual(["m2"]);
+    expect(readView(withdrawn, main).turns).toEqual([]);
     expect(withdrawn.inputs.has(asId("m1"))).toBe(false);
 
     const superseded = play(withdrawn, admitted("m3"), {
@@ -744,7 +723,7 @@ describe("fold", () => {
       by: asId("m3"),
     });
 
-    expect(ids(project(superseded, main))).toEqual(["m3"]);
+    expect(ids(readView(superseded, main))).toEqual(["m3"]);
     expect(superseded.turns.has(asId("pending:m2"))).toBe(false);
 
     const reordered = play(superseded, admitted("m4"), {
@@ -756,8 +735,8 @@ describe("fold", () => {
       position: 0,
     });
 
-    expect(ids(project(reordered, main))).toEqual(["m3"]);
-    expect(project(reordered, main).queue).toMatchObject([
+    expect(ids(readView(reordered, main))).toEqual(["m3"]);
+    expect(readView(reordered, main).queue).toMatchObject([
       {
         id: "m4",
         status: { kind: "pending", schedule: { kind: "next-turn", reason: "requested" } },
@@ -786,8 +765,8 @@ describe("fold", () => {
       { head: main, kind: "part", part, change: "failed", failure },
     );
 
-    expect(project(stopping, main).execution).toMatchObject({ kind: "live", stopping: true });
-    expect(project(stopping, main).messages[1]).toMatchObject({
+    expect(readView(stopping, main).execution).toMatchObject({ kind: "live", stopping: true });
+    expect(readView(stopping, main).messages[1]).toMatchObject({
       status: { kind: "failed", run: "r1", failure },
     });
 
@@ -800,12 +779,12 @@ describe("fold", () => {
       userCommit("c4", "m2", null, ["c1"]),
     );
 
-    expect(ids(project(edited, main))).toEqual(["m2"]);
-    expect(project(edited, main).execution).toEqual({
+    expect(ids(readView(edited, main))).toEqual(["m2"]);
+    expect(readView(edited, main).execution).toEqual({
       kind: "idle",
       lastRun: { id: "r1", end: { kind: "stopped" }, endedAt: 11 },
     });
-    expect(project(edited, main).messages[0]).toMatchObject({
+    expect(readView(edited, main).messages[0]).toMatchObject({
       status: {
         kind: "landed",
         commit: "c4",
@@ -823,8 +802,8 @@ describe("fold", () => {
       reason: "moved",
     });
 
-    expect(ids(project(back, main))).toEqual(["m1"]);
-    expect(project(back, main).messages[0]).toMatchObject({
+    expect(ids(readView(back, main))).toEqual(["m1"]);
+    expect(readView(back, main).messages[0]).toMatchObject({
       siblings: { index: 0, count: 2, ids: ["c1", "c4"] },
     });
   });
@@ -845,7 +824,7 @@ describe("fold", () => {
 
     const status = { kind: "settled", commit: "c2", endedAt: 7 };
 
-    expect(project(committed, main).messages[1]).toMatchObject({ id: part, status });
+    expect(readView(committed, main).messages[1]).toMatchObject({ id: part, status });
 
     const failed = play(committed, {
       head: main,
@@ -855,7 +834,7 @@ describe("fold", () => {
       end: { kind: "failed", failure: { class: "aborted", message: "Lost." } },
     });
 
-    expect(project(failed, main).messages[1]).toMatchObject({ id: part, status });
+    expect(readView(failed, main).messages[1]).toMatchObject({ id: part, status });
   });
 
   it("leaves execution and the turn alone when a run that is not the head's stops", () => {
@@ -867,7 +846,7 @@ describe("fold", () => {
       ...turn("m1", "r1", null),
     );
 
-    const before = project(idle, main);
+    const before = readView(idle, main);
 
     const after = play(
       idle,
@@ -875,8 +854,8 @@ describe("fold", () => {
       { head: main, kind: "run", run, change: "phase", phase: "executing" },
     );
 
-    expect(project(after, main).execution).toBe(before.execution);
-    expect(project(after, main).execution).toMatchObject({ kind: "idle", lastRun: { id: "r1" } });
-    expect(project(after, main).turns).toBe(before.turns);
+    expect(readView(after, main).execution).toBe(before.execution);
+    expect(readView(after, main).execution).toMatchObject({ kind: "idle", lastRun: { id: "r1" } });
+    expect(readView(after, main).turns).toEqual(before.turns);
   });
 });

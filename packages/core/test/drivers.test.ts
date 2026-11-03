@@ -1,6 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import type { CallId, HeadName, Json, RunId, SessionId, WaitTarget } from "@nyte-ai/schema";
 import { assert, describe, expect, it, vi } from "vitest";
+import { attachSession } from "../src/api/attach.ts";
 import { driveInProcess } from "../src/drive/execution.ts";
 import { runStep } from "../src/engine/durable.ts";
 import { endRun } from "../src/engine/runs.ts";
@@ -429,13 +430,13 @@ describe("dispatch (§42p, §42s)", () => {
 });
 
 describe("poll (§42h, §42u)", () => {
-  it("brings another instance's commits to a polling kernel's head watch, with their revisions", async () => {
+  it("brings another instance's commits to a polling kernel's held fold, with their revisions", async () => {
     const store = await memoryStore().open();
     const writer = await setup({ store });
     const reader = await setup({ store, poll: 10 });
     const { session } = await writer.host.sessions.start({ content: "Hi." });
-    const views = reader.host.session(session.id).watch()[Symbol.asyncIterator]();
-    await views.next();
+    const attached = attachSession(reader.kernel, session.id, reader.host.principal);
+    await attached.ready();
     const unpoll = pollStore(reader.kernel);
 
     await session.send("Hello.");
@@ -443,20 +444,21 @@ describe("poll (§42h, §42u)", () => {
     (await writer.script.started(1)).finish();
     await step;
     const tip = await store.refs.get(headRef(session.id, main));
-    let view = await views.next();
 
-    while (
-      view.done !== true &&
-      (view.value.heads[0]?.tip.kind !== "commit" || view.value.revision !== tip?.revision)
-    )
-      view = await views.next();
+    const view = await until(async () => {
+      const shown = await reader.host.session(session.id).view();
 
-    assert(view.done !== true);
-    expect(view.value.messages.map((message) => message.kind)).toContain("user");
-    expect(view.value.heads[0]?.tip).toEqual({ kind: "commit", id: tip?.target });
+      return shown.revision === tip?.revision ? shown : undefined;
+    });
+
+    expect(view.messages.map((message) => message.kind)).toContain("user");
+    expect((await reader.host.session(session.id).info()).heads[0]?.tip).toEqual({
+      kind: "commit",
+      id: tip?.target,
+    });
 
     unpoll();
-    await views.return?.();
+    attached.release();
   });
 
   it("wakes a wait parked in a polling kernel once another instance ends its target", async () => {
@@ -496,21 +498,17 @@ describe("poll (§42h, §42u)", () => {
     const b = await setup({ store, execution: { kind: "admit-only" } });
     const { session } = await b.host.sessions.start({ content: "From B." });
     const unpoll = pollStore(a.kernel);
-    const watch = a.host.session(session.id).head(main).watch()[Symbol.asyncIterator]();
-    let shown = -1;
-
-    void (async () => {
-      for (;;) {
-        const next = await watch.next();
-
-        if (next.done) return;
-        shown = next.value.messages.length;
-      }
-    })();
-
-    await until(() => (shown >= 0 ? true : undefined));
+    const attached = attachSession(a.kernel, session.id, a.host.principal);
+    await attached.ready();
     await a.host.session(session.id).send("From A.", { delivery: "queue" });
-    await until(() => (shown === 2 ? true : undefined), 3000);
+
+    await until(
+      async () =>
+        (await a.host.session(session.id).head(main).view()).messages.length === 2
+          ? true
+          : undefined,
+      3000,
+    );
 
     expect((await a.host.session(session.id).head(main).view()).messages).toHaveLength(2);
 
@@ -525,7 +523,7 @@ describe("poll (§42h, §42u)", () => {
     expect(await second).toEqual({ kind: "idle" });
     expect(a.script.turns).toHaveLength(2);
     unpoll();
-    await watch.return?.();
+    attached.release();
   });
 
   it("aborts a polling kernel's turn once another instance stops its run", async () => {

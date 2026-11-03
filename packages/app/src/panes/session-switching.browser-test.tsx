@@ -164,7 +164,6 @@ function chat(name: Name): Chat {
     background: [],
     configuration: { selected: configuration, effective: configuration },
     context: { tokens: 0, window: 1_000, lastRequest: null },
-    heads: [],
     changes: [],
     catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
   } as const satisfies Omit<SessionView, "messages">;
@@ -219,31 +218,6 @@ installScripted(
       if (entry === undefined) return {};
 
       return {
-        watch: async function* (options) {
-          fetches.push(`${entry.name}:watch`);
-          await roundTrip();
-
-          const initial = entry.view(entry.live);
-
-          const start = Math.max(
-            0,
-            initial.messages.length - (options?.tail ?? initial.messages.length),
-          );
-
-          const first = initial.turns.findIndex(
-            (turn) => turn.id === initial.messages[start]?.turn,
-          );
-
-          const turns = initial.turns.slice(Math.max(0, first));
-
-          for await (const view of entry.stream.watch())
-            yield {
-              ...view,
-              messages: view.messages.slice(start),
-              leadingPrompt: leadingPrompt(view, start),
-              turns,
-            };
-        },
         history: async ({ before, limit }) => {
           fetches.push(`${entry.name}:history`);
           await roundTrip();

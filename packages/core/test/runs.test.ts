@@ -130,7 +130,7 @@ describe("runs", () => {
     hold.release();
   });
 
-  it("shows a live text part emptied before a watch opened, so its next append is not added to stale text (ADV F-2 F4, probe P7)", async () => {
+  it("shows a live text part emptied before a view was read, so its next append is not added to stale text (ADV F-2 F4, probe P7)", async () => {
     const { kernel, host, script: turns } = await setup();
     const { session } = await host.sessions.start({ content: "Write it." });
     const step = host.execution.advance({ session: session.id, head: main });
@@ -139,12 +139,9 @@ describe("runs", () => {
     const part = asId<"part">(`${run}:1:0`);
     await livePart(kernel, session.id, run, part, "A");
     publishPatch(kernel, session.id, run, { kind: "patch", part, markdown: "" });
-    const views = session.watch()[Symbol.asyncIterator]();
 
     const shown = async (): Promise<string | null> => {
-      const next = await views.next();
-      assert(next.done !== true);
-      const message = next.value.messages.find(
+      const message = (await session.view()).messages.find(
         (candidate) => isPart(candidate, text) && candidate.part === part,
       );
 
@@ -154,7 +151,6 @@ describe("runs", () => {
     expect(await shown()).toBe("");
     publishPatch(kernel, session.id, run, { kind: "patch", part, append: "B" });
     expect(await shown()).toBe("B");
-    await views.return?.();
     turn.finish(completed);
     await step;
   });

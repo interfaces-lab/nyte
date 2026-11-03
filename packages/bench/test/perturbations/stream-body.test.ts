@@ -32,7 +32,6 @@ it("serves a shared stream whose request body arrives after its headers", async 
   });
 
   assert(listener.address !== null);
-  const { session } = await host.sessions.start({ content: "Hi." });
   const authorization = `Bearer ${token}`;
 
   const opened = await fetch(`${listener.address}/${CHANNEL_PATH}`, {
@@ -47,14 +46,14 @@ it("serves a shared stream whose request body arrives after its headers", async 
   const stream = crypto.randomUUID();
 
   const status = await postLate(
-    new URL(`${listener.address}/head.watch`),
+    new URL(`${listener.address}/connection.watch`),
     {
       authorization,
       "content-type": "application/json",
       [CHANNEL_HEADER]: channel,
       [STREAM_HEADER]: stream,
     },
-    JSON.stringify({ session: session.id, head: "main" }),
+    "{}",
   );
 
   expect(status).toBe(202);

@@ -1,4 +1,4 @@
-import { SdkError, watchStore } from "@nyte-ai/sdk";
+import { SdkError } from "@nyte-ai/sdk";
 import type {
   Connection,
   GitApi,
@@ -104,11 +104,6 @@ async function* refused(): AsyncIterable<never> {
   throw new SdkError("unavailable", "Not scripted.");
 }
 
-async function* replay<T>(values: readonly T[]): AsyncIterable<T> {
-  yield* values;
-  await new Promise<never>(() => undefined);
-}
-
 /** A session's handle also stands for its heads, so `head()` returns what the script changes on it. */
 export function scriptedConnection(script: ConnectionScript = {}): {
   readonly connection: Connection;
@@ -147,9 +142,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
 
         return last;
       },
-      watch: () => stream?.watch() ?? replay(views ?? []),
       see: async () => undefined,
-      ...watchStore(() => stream?.watch() ?? replay(views ?? [])),
       history: refuse,
       tree: refuse,
       move: refuse,
@@ -174,7 +167,6 @@ export function scriptedConnection(script: ConnectionScript = {}): {
         update: refuse,
         act: refuse,
         answer: refuse,
-        watch: refused,
         close: refuse,
       }),
     };
@@ -257,14 +249,6 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     principal: asId<"principal">("tester"),
     credential: { kind: "token", token: "scripted-token-0000" },
     sessions: {
-      watch: (input) => {
-        const parents = input?.parents;
-
-        if (parents?.kind === "children")
-          return replay([script.children?.get(parents.session) ?? []]);
-
-        return "watch" in listed ? listed.watch() : replay([rows]);
-      },
       start: refuse,
       list: async () => ({ items: rows, next: null }),
       read: async () => ({ seq: 0, ids: rows.map((row) => row.id), rows }),

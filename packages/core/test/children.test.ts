@@ -2,6 +2,7 @@ import { asId, standard } from "@nyte-ai/schema";
 import type { BackgroundItem, HeadName, Json, RunId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
+import { attachSession } from "../src/api/attach.ts";
 import { runStep } from "../src/engine/durable.ts";
 import { pollStore } from "../src/fold/watch.ts";
 import { main, setup, until } from "../src/harness.ts";
@@ -114,7 +115,7 @@ describe("child background items", () => {
     expect(await askUser(kernel, host, turns, grandchild, 2)).toEqual({ kind: "parked" });
     expect(await childState(child, grandchild.id, "waiting")).toBe("waiting");
     expect(await childState(root, child.id, "waiting")).toBe("waiting");
-    expect((await root.view()).heads[0]?.background).toEqual({ working: 0, waiting: 1 });
+    expect((await root.info()).heads[0]?.background).toEqual({ working: 0, waiting: 1 });
   });
 
   it("links a child from the store after a restart, so its parked question reaches the parent", async () => {
@@ -135,7 +136,10 @@ describe("child background items", () => {
     const view = await after.host.session(parent.id).view();
 
     expect(view.background).toMatchObject([{ kind: "child", id: child.id, state: "waiting" }]);
-    expect(view.heads[0]?.background).toEqual({ working: 0, waiting: 1 });
+    expect((await after.host.session(parent.id).info()).heads[0]?.background).toEqual({
+      working: 0,
+      waiting: 1,
+    });
   });
 
   it("shows a done child's question from another host to its watched parent", async () => {
@@ -152,10 +156,10 @@ describe("child background items", () => {
     (await there.script.started(1)).finish();
     await step;
     const parent = here.host.session(started.id);
-    const views = parent.watch()[Symbol.asyncIterator]();
+    const attached = attachSession(here.kernel, started.id, here.host.principal);
 
     try {
-      await views.next();
+      await attached.ready();
 
       expect(await childState(parent, child.id, "done")).toBe("done");
       await child.send("Ask me.");
@@ -166,7 +170,7 @@ describe("child background items", () => {
       expect(await childState(parent, child.id, "waiting")).toBe("waiting");
     } finally {
       unpoll();
-      await views.return?.();
+      attached.release();
     }
   });
 
@@ -204,10 +208,10 @@ describe("child background items", () => {
       await step;
     }
 
-    const views = parent.watch()[Symbol.asyncIterator]();
+    const attached = attachSession(kernel, parent.id, host.principal);
 
     try {
-      await views.next();
+      await attached.ready();
       await kernel.folds.refresh();
       reads.objects = 0;
       reads.lists = 0;
@@ -216,7 +220,7 @@ describe("child background items", () => {
       expect(reads).toEqual({ objects: 0, lists: 0 });
       expect(kernel.children.background(parent.id)).toHaveLength(3);
     } finally {
-      await views.return?.();
+      attached.release();
     }
   });
 
@@ -249,10 +253,10 @@ describe("child background items", () => {
     const first = host.execution.advance({ session: child.id, head: main });
     (await turns.started(1)).finish();
     await first;
-    const views = parent.watch()[Symbol.asyncIterator]();
+    const attached = attachSession(kernel, parent.id, host.principal);
 
     try {
-      await views.next();
+      await attached.ready();
       await kernel.folds.refresh();
       await child.send("Again.");
       held = `sessions/${child.id}/runs/`;
@@ -274,7 +278,7 @@ describe("child background items", () => {
       await second;
     } finally {
       release.resolve();
-      await views.return?.();
+      attached.release();
     }
   });
 });

@@ -10,7 +10,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { HeadSnapshot } from "./live-head.ts";
 
-export type HeadView = Omit<SessionView, "heads" | "seq">;
+export type HeadView = Omit<SessionView, "seq">;
 
 type Built = { readonly snapshot: HeadSnapshot; readonly view: HeadView };
 

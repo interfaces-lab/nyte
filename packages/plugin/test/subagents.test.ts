@@ -70,7 +70,6 @@ describe("subagents", () => {
         startedBy: expect.stringMatching(/:call-task$/),
       },
     ]);
-    expect(waiting.heads[0].background).toEqual({ working: 1, waiting: 0 });
     expect((await parent.info()).heads[0].background).toEqual({ working: 1, waiting: 0 });
 
     gate.resolve();
@@ -98,7 +97,7 @@ describe("subagents", () => {
     const state = settledCall(view.messages, "call-task");
 
     expect(view.background).toMatchObject([{ kind: "child", id: child.id, state: "done" }]);
-    expect(view.heads[0].background).toEqual({ working: 0, waiting: 0 });
+    expect((await parent.info()).heads[0].background).toEqual({ working: 0, waiting: 0 });
 
     expect(state.class).toEqual({ kind: "delegate", child: null, role: "task", title: "Finder" });
     expect(state.outcome).toMatchObject({ kind: "ok", content: [{ kind: "text", text: report }] });

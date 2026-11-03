@@ -54,8 +54,8 @@ A `Host`, which `sdk.open` returns, is a `Connection` plus `listen`, `inspect` a
 
 | Import                    | What it has                                                                            |
 | ------------------------- | -------------------------------------------------------------------------------------- |
-| `@nyte-ai/sdk`            | `sdk.open`, `sdk.connect`, `SdkError`, `watchStore`, `pagedViews`, `createSendJournal` |
-| `@nyte-ai/sdk/client`     | `sdk.connect` alone, so importing it never loads the host                              |
+| `@nyte-ai/sdk`            | `sdk.open`, `sdk.connect`, `SdkError`, `pagedViews`, `createSendJournal`               |
+| `@nyte-ai/sdk/client`     | `sdk.connect` and `openHost` with its row stores, so importing it never loads the host |
 | `@nyte-ai/host`           | `sqliteStore`, `localProvider` and the deploy targets                                  |
 | `@nyte-ai/host/providers` | `chatOnlyProvider`, for a host with no folder                                          |
 | `@nyte-ai/plugin/core`    | `isPart`, `definePart`, the built-in parts and the core `Plugin` type                  |
