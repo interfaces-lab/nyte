@@ -31,13 +31,12 @@ import { PaneController } from "../../panes/pane-controller.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
 import { useSessionView } from "../../data/sessions.ts";
-import { installConnection } from "../../data/connection.ts";
 import { SessionScreen } from "../../panes/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import { scriptedConnection } from "../../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection } from "../../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../../test/view-fixtures.ts";
 import { preferences } from "../../preferences/index.ts";
 import { Composer } from "./composer.tsx";
@@ -616,7 +615,7 @@ const HEIGHT = 560;
 
 const stateSession = (state: ComposerState) => asId<"session">(`composer-${state.name}`);
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: STATES.map((state) =>
       sessionRow(stateSession(state), { name: `Composer ${state.name}` }),
@@ -637,7 +636,7 @@ installConnection(
         return { kind: "revised" };
       },
     }),
-  }).connection,
+  }),
 );
 
 function seedQueries(): void {

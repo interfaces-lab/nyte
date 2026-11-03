@@ -1,5 +1,6 @@
 import type { TailnetStatus } from "@nyte-ai/schema";
 import type { CredentialSource, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
+import type { OpenSocket } from "@nyte-ai/sdk/client";
 import type { ConnectionProblem, HostEndpoint } from "./connection.ts";
 import { clientActions } from "./client-actions.ts";
 
@@ -512,6 +513,7 @@ export interface HostBridge {
   readonly restore?: (input: { readonly session: string }) => Promise<HostState>;
   endpoint(): Promise<HostEndpoint>;
   readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
+  readonly socket?: OpenSocket;
   readonly remember?: (credential: CredentialSource) => void;
   fonts(): Promise<LocalFontCatalog>;
   openWorkspace(input: { path: string }): Promise<OpenWorkspaceOutcome>;

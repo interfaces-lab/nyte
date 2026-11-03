@@ -20,6 +20,7 @@ export const RELAY_OPERATIONS = {
   connect: "/connect",
   /** One HTTP exchange, opened as a channel on the authenticated socket. */
   forward: "/forward",
+  socket: "/socket",
   /** End open channels: one device's, or every one. The socket stays. */
   reset: "/reset",
   /** The environment was revoked: close every socket with `RELAY_CLOSE.revoked`. */
@@ -72,6 +73,21 @@ export function forwardRequest(input: {
     headers,
     body: input.method === "GET" ? null : input.body,
     signal: input.signal,
+  });
+}
+
+export function socketRequest(input: {
+  readonly environmentId: string;
+  readonly channel: string;
+  readonly path: string;
+}): Request {
+  return new Request(internalUrl("socket"), {
+    headers: {
+      upgrade: "websocket",
+      [RELAY_HEADERS.environment]: input.environmentId,
+      [RELAY_HEADERS.channel]: input.channel,
+      [RELAY_HEADERS.path]: input.path,
+    },
   });
 }
 

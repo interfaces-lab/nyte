@@ -23,6 +23,7 @@ import {
   RELAY_PONG,
   RelayMethod,
   RelayPath,
+  RelaySocketPath,
   decodeChunk,
   parseDesktopFrame,
   relayRefusal,
@@ -41,6 +42,7 @@ import { Refusal } from "./http.ts";
 import { consoleLogger, errorName } from "./log.ts";
 import { verifyRelayProof } from "./proof.ts";
 import { RelayChannel } from "./relay-channel.ts";
+import { SocketChannel } from "./socket-channel.ts";
 import { RELAY_HEADERS, RELAY_INTERNAL_ORIGIN, RELAY_OPERATIONS } from "./relay-stub.ts";
 import { attachRelay, detachRelay } from "./store/environments.ts";
 
@@ -98,7 +100,7 @@ function closeSocket(socket: WebSocket, code: number, reason: string): void {
 }
 
 export class EnvironmentRelay extends DurableObject<Env> {
-  readonly #channels = new Map<string, RelayChannel>();
+  readonly #channels = new Map<string, RelayChannel | SocketChannel>();
   /** Sessions whose `auth` frame is being checked. */
   readonly #verifying = new Set<string>();
   /** Orders socket takeovers and their D1 writes, so the latest proof always wins. */
@@ -121,6 +123,8 @@ export class EnvironmentRelay extends DurableObject<Env> {
         return this.#connect(environmentId);
       case RELAY_OPERATIONS.forward:
         return this.#forward(request);
+      case RELAY_OPERATIONS.socket:
+        return this.#socket(request);
       case RELAY_OPERATIONS.reset: {
         const deviceId = request.headers.get(RELAY_HEADERS.device);
         const id = request.headers.get(RELAY_HEADERS.channel);
@@ -129,8 +133,10 @@ export class EnvironmentRelay extends DurableObject<Env> {
           if (
             (deviceId === null || channel.deviceId === deviceId) &&
             (id === null || channel.id === id)
-          )
-            channel.reset("closed");
+          ) {
+            if (channel instanceof SocketChannel) channel.reset();
+            else channel.reset("closed");
+          }
 
         return new Response(null, { status: 204 });
       }
@@ -351,9 +357,17 @@ export class EnvironmentRelay extends DurableObject<Env> {
       return;
     }
 
-    const channel = this.#channels.get(frame.ch);
+    const found = this.#channels.get(frame.ch);
 
-    if (channel === undefined || channel.session !== attachment.session) return;
+    if (found === undefined || found.session !== attachment.session) return;
+
+    if (found instanceof SocketChannel) {
+      if (!this.#socketFrame(found, frame)) this.#close(socket, "invalid");
+
+      return;
+    }
+
+    const channel = found;
     let kept: boolean;
 
     switch (frame.t) {
@@ -375,6 +389,10 @@ export class EnvironmentRelay extends DurableObject<Env> {
       case "reset":
         channel.onReset();
         kept = true;
+        break;
+      case "message":
+      case "close":
+        kept = false;
         break;
       default: {
         const _exhaustive: never = frame;
@@ -428,6 +446,68 @@ export class EnvironmentRelay extends DurableObject<Env> {
     return channel.response;
   }
 
+  #socketFrame(
+    channel: SocketChannel,
+    frame: Exclude<DesktopFrame, { t: "auth" | "ping" }>,
+  ): boolean {
+    switch (frame.t) {
+      case "message":
+        return channel.onMessage(frame);
+      case "close":
+        return channel.onClose(frame);
+      case "credit":
+        return channel.onCredit(frame.bytes);
+      case "reset":
+        channel.onReset();
+
+        return true;
+      case "head":
+      case "data":
+      case "end":
+        return false;
+      default: {
+        const _exhaustive: never = frame;
+
+        return _exhaustive;
+      }
+    }
+  }
+
+  #socket(request: Request): Response {
+    const path = request.headers.get(RELAY_HEADERS.path);
+    const id = request.headers.get(RELAY_HEADERS.channel);
+
+    if (
+      request.headers.get("upgrade")?.toLowerCase() !== "websocket" ||
+      !Value.Check(RelaySocketPath, path) ||
+      !Value.Check(ChannelId, id)
+    )
+      return relayRefusal("not_found");
+    const desktop = this.#sockets().find(({ attachment }) => attachment.state === "ready");
+
+    if (desktop === undefined || this.#channels.has(id)) return relayRefusal("closed");
+    const { session } = desktop.attachment;
+    let open = 0;
+
+    for (const channel of this.#channels.values()) if (channel.session === session) open += 1;
+
+    if (open >= RELAY_CHANNEL_LIMIT) return relayRefusal("closed");
+    const pair = new WebSocketPair();
+    pair[1].accept();
+    const channel = new SocketChannel({
+      id,
+      session,
+      phone: pair[1],
+      send: (frame) => send(desktop.socket, frame),
+      onDone: () => this.#channels.delete(id),
+    });
+
+    this.#channels.set(id, channel);
+    channel.start(path);
+
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+
   /** Close a socket with a contract code and end everything it carried. */
   #close(socket: WebSocket, reason: CloseReason): void {
     closeSocket(socket, RELAY_CLOSE[reason], reason);
@@ -440,8 +520,12 @@ export class EnvironmentRelay extends DurableObject<Env> {
 
     if (attachment === undefined) return;
 
-    for (const channel of this.#channels.values())
-      if (channel.session === attachment.session) channel.fail("closed");
+    for (const channel of this.#channels.values()) {
+      if (channel.session !== attachment.session) continue;
+
+      if (channel instanceof SocketChannel) channel.fail();
+      else channel.fail("closed");
+    }
 
     if (attachment.state !== "ready") return;
     const context = this.#context();

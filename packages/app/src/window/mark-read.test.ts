@@ -2,8 +2,7 @@ import { expect, test, vi } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import { toast } from "@nyte-ai/ui/toast";
 import { chatDirectory, subscribeChats } from "../chats/index.ts";
-import { installConnection } from "../data/connection.ts";
-import { scriptedConnection } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 import { chatWindow } from "./index.ts";
 
@@ -21,7 +20,7 @@ const unread = sessionRow("unread", {
 });
 
 test("a chat that can't be marked read says so once, whoever marked it", async () => {
-  installConnection(
+  installScripted(
     scriptedConnection({
       sessions: [unread],
       session: () => ({
@@ -29,7 +28,7 @@ test("a chat that can't be marked read says so once, whoever marked it", async (
           throw new Error("Disk unavailable");
         },
       }),
-    }).connection,
+    }),
   );
   const leave = subscribeChats(() => undefined);
   await vi.waitFor(() =>

@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { Message, SessionView } from "@nyte-ai/sdk";
 import { asId, asSeq } from "@nyte-ai/schema";
-import { installConnection } from "./connection.ts";
-import { loadEarlierMessages, sessionWatch } from "./watches.ts";
-import { scriptedConnection } from "../../test/scripted-connection.ts";
+import { chatStore, loadEarlierMessages } from "./chat-store.ts";
+import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
 import { COMPLETED, USAGE } from "../../test/view-fixtures.ts";
 
 function prompt(id: string): Message {
@@ -47,16 +46,16 @@ function view(messages: readonly Message[]): SessionView {
 test("a chat pages in earlier messages while it is watched, and none once nobody watches it", async () => {
   const session = asId<"session">("paged");
 
-  installConnection(
+  installScripted(
     scriptedConnection({
       views: new Map([[session, [view([prompt("latest")])]]]),
       session: () => ({
         history: async () => ({ messages: [prompt("older")], leadingPrompt: null, turns: [] }),
       }),
-    }).connection,
+    }),
   );
 
-  const store = sessionWatch(session);
+  const store = chatStore(session);
   const leave = store.subscribe(() => undefined);
   await store.first();
   const paged = store.next();

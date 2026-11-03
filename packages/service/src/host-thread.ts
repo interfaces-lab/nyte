@@ -16,6 +16,8 @@ const HostCommandType = Type.Object({
   socket: Type.Optional(Type.String()),
   /** The `nyte-tailnet` sidecar the host runs; default the one beside the process's executable. */
   tailnet: Type.Optional(Type.String()),
+  /** The folder the host registers as its default workspace; the process's working directory without one. */
+  workspace: Type.Optional(Type.String()),
 });
 
 export type HostCommand = Static<typeof HostCommandType>;

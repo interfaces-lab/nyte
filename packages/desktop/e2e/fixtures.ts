@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prepareHome } from "./baseline.ts";
-import type { PreparedHome } from "./baseline.ts";
+import type { ExtraChats, PreparedHome } from "./baseline.ts";
 import { launchDesktop } from "./launch.ts";
 
 interface Desktop extends PreparedHome {
@@ -16,6 +16,7 @@ interface Desktop extends PreparedHome {
 
 interface WorkerFixtures {
   readonly chapter: string;
+  readonly extraChats: ExtraChats;
   readonly desktop: Desktop;
 }
 
@@ -25,13 +26,14 @@ interface TestFixtures {
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   chapter: ["", { scope: "worker", option: true }],
+  extraChats: [{}, { scope: "worker", option: true }],
   desktop: [
-    async ({ chapter }, use) => {
+    async ({ chapter, extraChats }, use) => {
       if (chapter === "") throw new Error("A desktop spec must declare test.use({ chapter }).");
       const parent = await realpath(await mkdtemp(join(tmpdir(), `nyte-e2e-${chapter}-`)));
       await using stack = new AsyncDisposableStack();
       stack.defer(() => rm(parent, { recursive: true, force: true }));
-      const prepared = await prepareHome(parent);
+      const prepared = await prepareHome(parent, extraChats);
       const downloads = join(parent, "downloads");
       await mkdir(downloads);
 

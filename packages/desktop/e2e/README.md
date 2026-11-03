@@ -19,6 +19,7 @@ Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwrig
 | `transcript.spec.ts` | A 36-turn chat: virtualised window, scroll to top and back |
 | `chat-rendering.spec.ts` | Chat switching, native history scrolling, latest-turn footer handoff, and message edit/cancel/save; observes row coverage and identity through transitions and saves a video, screenshots and accessibility snapshots |
 | `subagent-load.spec.ts` | Only with `NYTE_PERF_DIR`: typing while five agents stream, a child chat open, and the agents row evicted/remounted. Gates keydown-to-paint p99 at 50 ms and maximum at 100 ms, whole-run render work p99 at 16.67 ms, and no renderer task over 50 ms after typing starts through completion. Saves trace, frame cadence, latency, row churn and work counts |
+| `chat-switching.spec.ts` | Only with `NYTE_PERF_DIR`: six seeded 120-turn chats switched in a fixed order 20 times in one launch; each switch from the click to the new chat's last message painted. Saves `chat-switching.json` (median, p95, each switch's main-thread time by kind and its hottest functions) and the CPU profile |
 | `workbench.spec.ts` | The panel, Files, Changes, Terminal, Browser tabs, Expand, closing tabs |
 | `browser.spec.ts` | The integrated browser against a local HTTP server |
 | `remote-access.spec.ts` | Settings > Server reading the host's own Tailscale node |

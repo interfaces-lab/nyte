@@ -1,5 +1,6 @@
 import { isJsonObject } from "@nyte-ai/schema";
 import type { PrincipalId, SessionId } from "@nyte-ai/schema";
+import { INDEX } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { PartProgress, SessionAttachment, StreamingPart } from "../contract/server.ts";
 import { changesSince, readWindow } from "../fold/window.ts";
@@ -14,6 +15,7 @@ export function attachSession(
   return {
     ready: () => hold.ready(),
     seq: () => hold.state().seq,
+    amended: () => hold.state()[INDEX].ring.amended,
     activation: () => hold.state().activation,
     read: (head, window, resume) => readWindow(hold.state(), head, window, resume),
     changesSince: (seq) => changesSince(hold.state(), seq),

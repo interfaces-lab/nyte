@@ -31,7 +31,8 @@ import {
 import { useHostState } from "../data/host.ts";
 import { keys } from "../data/query-client.ts";
 import { connected } from "../data/connection.ts";
-import { hostWatch, mcpWatch, sessionWatch } from "../data/watches.ts";
+import { hostWatch, mcpWatch } from "../data/watches.ts";
+import { chatStore } from "../data/chat-store.ts";
 import { useWatch, useWatchSelect } from "../data/watch-store.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { settingsStyles as page } from "../settings/settings.stylex.ts";
@@ -530,7 +531,7 @@ export function CustomizeSurface({
   const mcp = useWatch(workspace === undefined ? undefined : mcpWatch(workspace));
 
   const catalog = useWatchSelect(
-    sessionId === undefined ? undefined : sessionWatch(sessionId),
+    sessionId === undefined ? undefined : chatStore(sessionId),
     (state) => state.value?.catalog,
   );
 

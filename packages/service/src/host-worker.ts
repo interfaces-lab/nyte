@@ -187,6 +187,8 @@ function openLocalHost(
     onRevoked: revoked,
     shell,
     tailnet: command.tailnet === undefined ? undefined : { binary: command.tailnet },
+    workspace:
+      command.workspace === undefined ? undefined : { kind: "local", path: command.workspace },
   });
 }
 

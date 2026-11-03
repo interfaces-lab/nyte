@@ -13,12 +13,15 @@ import { activePane } from "../../panes/pane-layout.ts";
 import { windowTabs } from "../../tabs/window-tabs.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { installConnection } from "../../data/connection.ts";
 import { SessionScreen } from "../../panes/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
+import {
+  installScripted,
+  scriptedConnection,
+  viewStream,
+} from "../../../test/scripted-connection.ts";
 import {
   COMPLETED,
   USAGE,
@@ -246,14 +249,14 @@ const parent = viewStream(
   ),
 );
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: agents.map((agent) => agent.row),
     views: new Map([
       [PARENT, parent] as const,
       ...agents.map((agent) => [asId<"session">(agent.key), agent.stream] as const),
     ]),
-  }).connection,
+  }),
 );
 
 const catalog = {

@@ -210,6 +210,10 @@ export class RelayDesktop {
         channel.creditArrived?.();
         this.served.delete(frame.ch);
         break;
+      case "socket":
+      case "message":
+      case "close":
+        return false;
       default: {
         const _exhaustive: never = frame;
         return _exhaustive;

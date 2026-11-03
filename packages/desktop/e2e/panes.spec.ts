@@ -158,7 +158,7 @@ function tabs(page: Page): Locator {
 }
 
 /** Each pane's floor in the app's pane layout. */
-const PANE_WIDTH_MIN = 256;
+const PANE_WIDTH_MIN = 320;
 
 test("the panes journey", async ({ desktop }) => {
   const { page } = desktop;
@@ -224,8 +224,9 @@ test("the panes journey", async ({ desktop }) => {
     expect(floor, "the window leaves room to resize").toBeLessThan(0.42);
     const target = (floor + 0.5) / 2;
     const handle = await center(sash);
+    const lane = (await box(sash)).width;
 
-    await drag(page, handle, { x: leading.x + width * target, y: handle.y });
+    await drag(page, handle, { x: leading.x + width * target + lane / 2, y: handle.y });
     expect(await leadingShare(page)).toBeCloseTo(target, 1);
     expect(Number(await sash.getAttribute("aria-valuenow"))).toBeCloseTo(target * 100, -0.5);
 
@@ -308,7 +309,7 @@ test("the panes journey", async ({ desktop }) => {
     await expect(handle).toHaveAttribute("aria-valuenow", "400");
     await handle.focus();
     await page.keyboard.press("Home");
-    await expect(handle).toHaveAttribute("aria-valuenow", "210");
+    await expect(handle).toHaveAttribute("aria-valuenow", "214");
   });
 
   await test.step("the workbench's handle resizes it and the title bar follows", async () => {

@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
+import type { OpenSocket } from "@nyte-ai/sdk/client";
 
 export const HOST_PORT_ORIGIN = "http://127.0.0.1";
 
@@ -38,6 +39,10 @@ const PortMessageType = Type.Union([
   Type.Object({ kind: Type.Literal("end"), id: Id }),
   Type.Object({ kind: Type.Literal("credit"), id: Id, bytes: Type.Integer({ minimum: 1 }) }),
   Type.Object({ kind: Type.Literal("reset"), id: Id }),
+  Type.Object({ kind: Type.Literal("socket"), id: Id, path: Type.String() }),
+  Type.Object({ kind: Type.Literal("opened"), id: Id }),
+  Type.Object({ kind: Type.Literal("frame"), id: Id, text: Type.String() }),
+  Type.Object({ kind: Type.Literal("shut"), id: Id, code: Type.Integer(), reason: Type.String() }),
 ]);
 
 export type PortMessage = Static<typeof PortMessageType>;
@@ -49,6 +54,25 @@ export interface PortEnd {
 }
 
 type Post = (message: PortMessage) => void;
+
+export type SocketLike = ReturnType<OpenSocket>;
+
+type SocketMessage = Extract<PortMessage, { kind: "socket" | "opened" | "frame" | "shut" }>;
+
+type ExchangeMessage = Exclude<PortMessage, SocketMessage>;
+
+export type DialSocket = (path: string) => SocketLike;
+
+export interface HostPort {
+  readonly fetch: (url: string, init?: RequestInit) => Promise<Response>;
+  readonly socket: (request: { readonly url: string }) => SocketLike;
+}
+
+type SocketListener = (event: {
+  readonly data: unknown;
+  readonly code: number;
+  readonly reason: string;
+}) => void;
 
 export function messagePortEnd(port: MessagePort): PortEnd {
   return {
@@ -65,6 +89,10 @@ export function messagePortEnd(port: MessagePort): PortEnd {
 export function portFetch(
   connect: () => Promise<PortEnd>,
 ): (url: string, init?: RequestInit) => Promise<Response> {
+  return hostPort(connect).fetch;
+}
+
+export function hostPort(connect: () => Promise<PortEnd>): HostPort {
   let current: Promise<Client> | undefined;
 
   const client = (): Promise<Client> => {
@@ -87,39 +115,116 @@ export function portFetch(
     return opening;
   };
 
-  return async (url, init) => {
-    const request = new Request(url, init);
-    request.signal.throwIfAborted();
-    const aborted = Promise.withResolvers<never>();
-    const abort = (): void => aborted.reject(request.signal.reason);
-    request.signal.addEventListener("abort", abort, { once: true });
+  return {
+    fetch: async (url, init) => {
+      const request = new Request(url, init);
+      request.signal.throwIfAborted();
+      const aborted = Promise.withResolvers<never>();
+      const abort = (): void => aborted.reject(request.signal.reason);
+      request.signal.addEventListener("abort", abort, { once: true });
 
-    try {
-      return (await Promise.race([client(), aborted.promise])).send(request);
-    } finally {
-      request.signal.removeEventListener("abort", abort);
-    }
+      try {
+        return (await Promise.race([client(), aborted.promise])).send(request);
+      } finally {
+        request.signal.removeEventListener("abort", abort);
+      }
+    },
+    socket: (request) => {
+      const target = new URL(request.url);
+
+      return portSocket(client, `${target.pathname}${target.search}`);
+    },
   };
 }
 
-export function servePort(port: PortEnd, fetch: (request: Request) => Promise<Response>): void {
+/** A WebSocket over the window's host port. As with a WebSocket, an abnormal closure (1006, such as a dial the host refused) fires `error` first, since `openHostSocket` waits for `open` or `error` and never sees a bare `close`. */
+function portSocket(client: () => Promise<Client>, path: string): SocketLike {
+  const listeners = new Map<string, Set<SocketListener>>();
+  let opened: OpenedSocket | null = null;
+  let shut = false;
+
+  const emit = (type: string, data: unknown, code = 0, reason = ""): void => {
+    for (const listener of listeners.get(type) ?? []) listener({ data, code, reason });
+  };
+
+  const close = (code: number, reason: string): void => {
+    if (shut) return;
+    shut = true;
+    emit("close", undefined, code, reason);
+  };
+
+  void client().then(
+    (connected) => {
+      if (shut) return;
+      opened = connected.dial(path, {
+        opened: () => emit("open", undefined),
+        frame: (text) => emit("message", text),
+        shut: (code, reason) => {
+          if (code === 1006) emit("error", undefined);
+          close(code, reason);
+        },
+      });
+    },
+    (cause: unknown) => {
+      emit("error", undefined);
+      close(1006, cause instanceof Error ? cause.message : String(cause));
+    },
+  );
+
+  return {
+    send(data) {
+      if (opened === null || shut) throw new TypeError("The Nyte host's socket is not open.");
+      opened.send(data);
+    },
+    close(code, reason) {
+      opened?.close(code ?? 1000, reason ?? "");
+      close(code ?? 1000, reason ?? "");
+    },
+    addEventListener(type: string, listener: SocketListener) {
+      const known = listeners.get(type) ?? new Set<SocketListener>();
+      known.add(listener);
+      listeners.set(type, known);
+    },
+  };
+}
+
+interface OpenedSocket {
+  send(text: string): void;
+  close(code: number, reason: string): void;
+}
+
+interface SocketHandlers {
+  readonly opened: () => void;
+  readonly frame: (text: string) => void;
+  readonly shut: (code: number, reason: string) => void;
+}
+
+export function servePort(
+  port: PortEnd,
+  fetch: (request: Request) => Promise<Response>,
+  dial?: DialSocket,
+): void {
   const exchanges = new Map<
     number,
-    { receive: (message: PortMessage) => void; abandon: () => void }
+    { receive: (message: ExchangeMessage) => void; abandon: () => void }
   >();
 
+  const sockets = new Map<number, SocketLike>();
   const post: Post = (message) => port.post(message);
 
   const shut = (): void => {
     for (const exchange of exchanges.values()) exchange.abandon();
     exchanges.clear();
+
+    for (const socket of sockets.values()) socket.close(1001, "The window closed.");
+    sockets.clear();
   };
 
   port.open({
     message(data) {
       const message = readMessage(data);
 
-      if (message === undefined || message.kind === "response") {
+      if (message === undefined || message.kind === "response" || message.kind === "opened") {
         port.close();
         shut();
 
@@ -132,10 +237,55 @@ export function servePort(port: PortEnd, fetch: (request: Request) => Promise<Re
         return;
       }
 
+      if (message.kind === "socket" || message.kind === "frame" || message.kind === "shut") {
+        relaySocket(message);
+
+        return;
+      }
+
       exchanges.get(message.id)?.receive(message);
     },
     closed: shut,
   });
+
+  function relaySocket(
+    message: Extract<SocketMessage, { kind: "socket" | "frame" | "shut" }>,
+  ): void {
+    const id = message.id;
+
+    if (message.kind === "frame") {
+      sockets.get(id)?.send(message.text);
+
+      return;
+    }
+
+    if (message.kind === "shut") {
+      sockets.get(id)?.close(sendableCode(message.code), message.reason);
+      sockets.delete(id);
+
+      return;
+    }
+
+    if (sockets.has(id) || dial === undefined) {
+      post({ kind: "shut", id, code: 1011, reason: "The host's socket is not served here." });
+
+      return;
+    }
+
+    const socket = dial(message.path);
+    sockets.set(id, socket);
+    socket.addEventListener("open", () => post({ kind: "opened", id }));
+    socket.addEventListener("message", (event) => {
+      if (typeof event.data === "string") post({ kind: "frame", id, text: event.data });
+      else if (event.data instanceof Uint8Array || event.data instanceof ArrayBuffer)
+        post({ kind: "frame", id, text: new TextDecoder().decode(event.data) });
+    });
+    socket.addEventListener("close", (event) => {
+      if (sockets.get(id) !== socket) return;
+      sockets.delete(id);
+      post({ kind: "shut", id, code: event.code, reason: event.reason });
+    });
+  }
 
   function answer(message: Extract<PortMessage, { kind: "request" }>): void {
     const { id } = message;
@@ -241,14 +391,16 @@ export function servePort(port: PortEnd, fetch: (request: Request) => Promise<Re
 
 interface Client {
   send(request: Request): Promise<Response>;
+  dial(path: string, handlers: SocketHandlers): OpenedSocket;
 }
 
 function openClient(port: PortEnd, lost: () => void): Client {
   const exchanges = new Map<
     number,
-    { receive: (message: PortMessage) => void; fail: (reason: unknown) => void }
+    { receive: (message: ExchangeMessage) => void; fail: (reason: unknown) => void }
   >();
 
+  const sockets = new Map<number, SocketHandlers>();
   const post: Post = (message) => port.post(message);
   let next = 0;
   let closed = false;
@@ -261,15 +413,38 @@ function openClient(port: PortEnd, lost: () => void): Client {
 
     for (const exchange of exchanges.values()) exchange.fail(reason);
     exchanges.clear();
+
+    for (const socket of sockets.values()) socket.shut(1006, reason.message);
+    sockets.clear();
   };
 
   port.open({
     message(data) {
       const message = readMessage(data);
 
-      if (message === undefined || message.kind === "request") {
+      if (message === undefined || message.kind === "request" || message.kind === "socket") {
         port.close();
         shut();
+
+        return;
+      }
+
+      if (message.kind === "opened") {
+        sockets.get(message.id)?.opened();
+
+        return;
+      }
+
+      if (message.kind === "frame") {
+        sockets.get(message.id)?.frame(message.text);
+
+        return;
+      }
+
+      if (message.kind === "shut") {
+        const socket = sockets.get(message.id);
+        sockets.delete(message.id);
+        socket?.shut(message.code, message.reason);
 
         return;
       }
@@ -280,6 +455,26 @@ function openClient(port: PortEnd, lost: () => void): Client {
   });
 
   return {
+    dial(path, handlers) {
+      const id = next++;
+
+      if (closed) {
+        queueMicrotask(() => handlers.shut(1006, "The Nyte host's port closed."));
+
+        return { send: () => undefined, close: () => undefined };
+      }
+
+      sockets.set(id, handlers);
+      post({ kind: "socket", id, path });
+
+      return {
+        send: (text) => post({ kind: "frame", id, text }),
+        close(code, reason) {
+          if (!sockets.delete(id)) return;
+          post({ kind: "shut", id, code, reason });
+        },
+      };
+    },
     send(request) {
       if (closed) return Promise.reject(new TypeError("The Nyte host's port closed."));
       const id = next++;
@@ -304,7 +499,7 @@ function openClient(port: PortEnd, lost: () => void): Client {
         fail(request.signal.reason);
       };
 
-      const receive = (message: PortMessage): void => {
+      const receive = (message: ExchangeMessage): void => {
         switch (message.kind) {
           case "response": {
             body = message.body
@@ -543,4 +738,8 @@ function wholeBuffer(bytes: Uint8Array): Uint8Array {
 
 function readMessage(data: unknown): PortMessage | undefined {
   return Value.Check(PortMessageType, data) ? data : undefined;
+}
+
+function sendableCode(code: number): number {
+  return code === 1000 || (code >= 3000 && code <= 4999) ? code : 1000;
 }

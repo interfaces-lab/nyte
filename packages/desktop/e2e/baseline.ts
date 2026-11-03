@@ -53,7 +53,10 @@ const READER_TOKEN = "e2e-baseline-reader";
 
 const ManifestSchema = Type.Object({
   sessions: Type.Record(Type.String(), idSchema<"session">()),
+  extra: Type.Optional(Type.Record(Type.String(), idSchema<"session">())),
 });
+
+export type ExtraChats = Readonly<Record<string, readonly string[]>>;
 
 type Manifest = Type.Static<typeof ManifestSchema>;
 
@@ -70,7 +73,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
     .sort();
 }
 
-async function fingerprint(): Promise<string> {
+async function fingerprint(extra: ExtraChats): Promise<string> {
   const files = [
     join(import.meta.dirname, "baseline.ts"),
     join(REPO_ROOT, "packages/desktop/src/host/fixtures/e2e-models.ts"),
@@ -83,6 +86,7 @@ async function fingerprint(): Promise<string> {
   ];
 
   const hash = createHash("sha256");
+  hash.update(JSON.stringify(extra));
 
   for (const file of files) {
     hash.update(file);
@@ -120,7 +124,7 @@ async function readAsDesktop(host: Host, session: SessionId): Promise<void> {
 
   try {
     const chat = reader.session(session);
-    const tip = (await chat.view()).heads.find((head) => head.name === "main")?.tip;
+    const tip = (await chat.info()).heads.find((head) => head.name === "main")?.tip;
 
     if (tip?.kind !== "commit") throw new Error(`Chat ${session} has no tip to read`);
     await chat.see(tip.id);
@@ -129,7 +133,7 @@ async function readAsDesktop(host: Host, session: SessionId): Promise<void> {
   }
 }
 
-async function seed(home: string): Promise<Manifest> {
+async function seed(home: string, extra: ExtraChats): Promise<Manifest> {
   await mkdir(home, { recursive: true, mode: 0o700 });
   const host = await openOffline(home);
 
@@ -164,14 +168,34 @@ async function seed(home: string): Promise<Manifest> {
       }
     }
 
-    return { sessions };
+    const seeded: Record<string, SessionId> = {};
+
+    for (const [name, prompts] of Object.entries(extra)) {
+      const [first, ...rest] = prompts;
+
+      if (first === undefined) throw new Error(`${name} has no first message`);
+      const { session, receipt } = await host.sessions.start({ name, content: first });
+      seeded[name] = session.id;
+      await settleExtra(name, first, receipt);
+
+      for (const text of rest) await settleExtra(name, text, await session.send(text));
+    }
+
+    return { sessions, extra: seeded };
   } finally {
     await host.close();
   }
 }
 
-async function ensureBaseline(): Promise<string> {
-  const published = join(CACHE_ROOT, await fingerprint());
+async function settleExtra(name: string, text: string, receipt: SendReceipt): Promise<void> {
+  const outcome = await receipt.settled();
+
+  if (outcome.kind !== "completed")
+    throw new Error(`Seeding ${name} failed on ${text}: ${outcome.kind}`);
+}
+
+async function ensureBaseline(extra: ExtraChats): Promise<string> {
+  const published = join(CACHE_ROOT, await fingerprint(extra));
   const manifest = join(published, "manifest.json");
 
   if (
@@ -185,7 +209,7 @@ async function ensureBaseline(): Promise<string> {
   const building = join(CACHE_ROOT, `building-${randomUUID()}`);
 
   try {
-    const seeded = await seed(join(building, "home"));
+    const seeded = await seed(join(building, "home"), extra);
     await writeFile(join(building, "manifest.json"), JSON.stringify(seeded, null, 2));
     await rename(building, published).catch(async (cause: NodeJS.ErrnoException) => {
       if (cause.code !== "EEXIST" && cause.code !== "ENOTEMPTY") throw cause;
@@ -204,8 +228,8 @@ export interface PreparedHome {
   readonly sessions: Readonly<Record<Fixture, SessionId>>;
 }
 
-export async function prepareHome(parent: string): Promise<PreparedHome> {
-  const baseline = await ensureBaseline();
+export async function prepareHome(parent: string, extra: ExtraChats = {}): Promise<PreparedHome> {
+  const baseline = await ensureBaseline(extra);
   const home = join(parent, "home");
   await cp(join(baseline, "home"), home, { recursive: true });
 
@@ -225,7 +249,7 @@ export async function prepareHome(parent: string): Promise<PreparedHome> {
 
     if (current === undefined) throw new Error(`The home workspace is not listed for ${home}`);
 
-    for (const id of Object.values(manifest.sessions))
+    for (const id of [...Object.values(manifest.sessions), ...Object.values(manifest.extra ?? {})])
       await host.session(id).update({ workspace: current.id });
 
     for (const workspace of workspaces)

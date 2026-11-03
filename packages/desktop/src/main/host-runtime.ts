@@ -117,7 +117,7 @@ export function startHostRuntime(options: HostRuntimeOptions): HostRuntime {
 
 export function bridgeHostPort(link: HostLink): MessagePortMain {
   const channel = new MessageChannelMain();
-  servePort(mainPortEnd(channel.port1), link.fetch);
+  servePort(mainPortEnd(channel.port1), link.fetch, link.dial);
 
   return channel.port2;
 }

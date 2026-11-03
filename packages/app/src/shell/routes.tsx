@@ -17,7 +17,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { queryClient } from "../data/query-client.ts";
 import { readSession, sessionRows } from "../data/session-rows.ts";
 import { routeSessionExists } from "./route-session.ts";
-import { sessionsWatch } from "../data/watches.ts";
+import { sessionList } from "../data/directory.ts";
 import { preferences } from "../preferences/index.ts";
 import { loadHostSettings } from "../preferences/host.ts";
 import type { ShellSearch } from "../tabs/search.ts";
@@ -118,7 +118,7 @@ function lastSession(directory: readonly SessionInfo[]): SessionId | undefined {
 }
 
 function openLastChatOnArrival(router: AppRouter): void {
-  const directory = sessionsWatch("roots");
+  const directory = sessionList("roots");
   const controller = new AbortController();
   const options = { capture: true, signal: controller.signal } as const;
   const stop = (): void => controller.abort();
@@ -194,7 +194,7 @@ function leaveMissingSession(router: AppRouter): void {
 }
 
 async function readDirectory(): Promise<readonly SessionInfo[]> {
-  const directory = sessionsWatch("roots");
+  const directory = sessionList("roots");
   const answered = Promise.withResolvers<void>();
 
   const leave = directory.subscribe(() => {

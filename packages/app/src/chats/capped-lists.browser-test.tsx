@@ -5,10 +5,9 @@ import { createRoot } from "react-dom/client";
 import { asId } from "@nyte-ai/schema";
 import type { BackgroundItem, Execution, HeadInfo, SessionId, SessionView } from "@nyte-ai/sdk";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { scriptedConnection } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
 import { sessionRow, sessionView } from "../../test/view-fixtures.ts";
 import { useQuestionDock } from "../chat/trays/questions-state.ts";
-import { installConnection } from "../data/connection.ts";
 import { queryClient } from "../data/query-client.ts";
 import { liveRun } from "../panes/session-screen-render.fixtures.ts";
 import { useChatTasks, useChildTasks } from "./index.ts";
@@ -103,7 +102,7 @@ const views = new Map<SessionId, readonly SessionView[]>([
   ],
 ]);
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: [...others, sessionRow("root", { name: "Root" })],
     children: new Map([
@@ -111,7 +110,7 @@ installConnection(
       [MIDDLE, [leaf]],
     ]),
     views,
-  }).connection,
+  }),
 );
 
 function line(task: ChildTask): string {

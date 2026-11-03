@@ -30,7 +30,7 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../lib/use-debounced-value.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useNowMinute } from "../lib/use-now-minute.ts";
-import { sessionWatch, warmSession } from "../data/watches.ts";
+import { chatStore, warmSession } from "../data/chat-store.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { useChatWindow } from "../window/index.ts";
 import { TaskMark } from "../components/task-mark.tsx";
@@ -379,7 +379,7 @@ export function NeighbourWarm({
   readonly neighbours: readonly SessionId[];
 }): null {
   useMountEffect(() => {
-    const opened = sessionWatch(active);
+    const opened = chatStore(active);
     let leave: (() => void) | undefined;
     let frame: number | undefined;
     let idle: number | undefined;

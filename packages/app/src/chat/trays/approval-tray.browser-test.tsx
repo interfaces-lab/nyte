@@ -23,12 +23,15 @@ import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { PaneController } from "../../panes/pane-controller.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
-import { installConnection } from "../../data/connection.ts";
 import { SessionScreen } from "../../panes/session-screen.tsx";
 import { createAppRouter } from "../../shell/routes.tsx";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
+import {
+  installScripted,
+  scriptedConnection,
+  viewStream,
+} from "../../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow } from "../../../test/view-fixtures.ts";
 
 const SESSION = asId<"session">("approvals");
@@ -140,7 +143,7 @@ const host: HostView = {
   authority: new Set(),
 };
 
-installConnection(
+installScripted(
   scriptedConnection({
     host: viewStream(host),
     sessions: [sessionRow(SESSION, { name: "Approvals" })],
@@ -163,7 +166,7 @@ installConnection(
         close: async () => undefined,
       }),
     }),
-  }).connection,
+  }),
 );
 
 function Stage(): ReactElement {

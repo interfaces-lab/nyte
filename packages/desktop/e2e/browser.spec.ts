@@ -265,6 +265,7 @@ test("the integrated browser journey", async ({ desktop }) => {
     }, HOST_EVENT_CHANNEL);
     const notice = page.locator('[data-slot="toast"]').filter({ hasText: "Saved" });
     await expect(notice).toBeVisible();
+    await notice.hover();
     await page.evaluate(async () => {
       for (let frame = 0; frame < 10; frame += 1)
         await new Promise((done) => requestAnimationFrame(done));
@@ -285,7 +286,6 @@ test("the integrated browser journey", async ({ desktop }) => {
         toastBox.y < composerBox.y + composerBox.height &&
         composerBox.y < toastBox.y + toastBox.height,
     ).toBe(false);
-    await notice.hover();
     await notice.getByRole("button", { name: "Dismiss notification" }).click();
     await expect(notice).toHaveCount(0);
   });

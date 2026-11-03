@@ -12,11 +12,10 @@ import { PaneControllerProvider } from "../panes/pane-context.tsx";
 import { PaneController } from "../panes/pane-controller.ts";
 import { SessionDndProvider } from "../panes/session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
-import { installConnection } from "../data/connection.ts";
 import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
-import { scriptedConnection } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection } from "../../test/scripted-connection.ts";
 import { sessionRow } from "../../test/view-fixtures.ts";
 
 const FOLDER = asId<"workspace">("folder");
@@ -52,7 +51,7 @@ const status: GitStatus = {
 
 const chat = sessionRow("chat", { name: "Fix the scroll restore", workspace: FOLDER });
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: [chat],
     workspaces: [folder],
@@ -73,7 +72,7 @@ installConnection(
         pullRequest: { kind: "none" },
       }),
     },
-  }).connection,
+  }),
 );
 
 const rail: RailRows = {
