@@ -1,4 +1,6 @@
-import { API_MIN_REVISION, API_REVISION } from "@nyte-ai/schema";
+import { API_MIN_REVISION, API_REVISION, asId } from "@nyte-ai/schema";
+import type { HeadName, SessionId } from "@nyte-ai/schema";
+import { openDirectoryStore, openSessionStore } from "@nyte-ai/protocol";
 import type { Listener } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
@@ -8,10 +10,15 @@ import type { FakeModels } from "@nyte-ai/bench";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openHost } from "../src/host-connection.ts";
 import type { Health, HostConnection, OpenSocket, SocketRequest } from "../src/host-connection.ts";
+import type { HeadStore } from "../src/live-head.ts";
 
 const TOKEN = "a-token-of-at-least-16";
 
 const CLIENT = { kind: "other", name: "sdk-test", version: "1" } as const;
+
+const MAIN: HeadName = asId("main");
+
+const TAIL = 50;
 
 const cleanups: (() => Promise<void>)[] = [];
 
@@ -69,10 +76,14 @@ function global(request: SocketRequest): WebSocket {
   return new WebSocket(request.url, { headers: request.headers });
 }
 
-function attach(listener: Listener, socket: OpenSocket): HostConnection {
-  const connection = openHost(listener.address ?? "", {
+function attach(
+  listener: Listener,
+  socket: OpenSocket = global,
+  input: { readonly name?: string; readonly address?: string } = {},
+): HostConnection {
+  const connection = openHost(input.address ?? listener.address ?? "", {
     credentials: { kind: "token", token: TOKEN },
-    client: CLIENT,
+    client: { ...CLIENT, name: input.name ?? CLIENT.name },
     socket,
   });
 
@@ -126,5 +137,160 @@ describe("openHost", () => {
     connection.retry();
     await vi.waitFor(() => expect(transport.opened).toHaveLength(2));
     expect(await until(connection, "blocked")).toMatchObject({ reason: "version" });
+  });
+});
+
+type Served = Awaited<ReturnType<typeof serve>>;
+
+async function startSession(served: Served): Promise<SessionId> {
+  served.fake.reply({ content: [{ type: "text", text: "Hello." }] });
+  const started = await served.host.sessions.start({ content: "Hi." });
+  await started.receipt.settled();
+
+  return started.session.id;
+}
+
+async function send(served: Served, session: SessionId, text: string): Promise<void> {
+  served.fake.reply({ content: [{ type: "text", text: `Re: ${text}` }] });
+  await (await served.host.session(session).head(MAIN).send(text)).settled();
+}
+
+function watched(connection: HostConnection, session: SessionId): HeadStore {
+  const store = connection.head(session, MAIN, { tail: TAIL });
+  cleanups.push(async () => store.close());
+
+  return store;
+}
+
+async function matchesRead(connection: HostConnection, store: HeadStore, session: SessionId) {
+  await vi.waitFor(
+    async () => {
+      const window = await connection.call("head.read", {
+        session,
+        head: MAIN,
+        window: { tail: TAIL },
+      });
+
+      const snapshot = store.snapshot();
+
+      expect(store.freshness()).toMatchObject({ kind: "fresh" });
+      expect({
+        order: snapshot?.order,
+        leadingPrompt: snapshot?.leadingPrompt,
+        rows: snapshot?.rows,
+        activation: snapshot?.activation,
+      }).toEqual({ ...openSessionStore(window).snapshot(), activation: window.live.activation });
+    },
+    { timeout: 4_000 },
+  );
+}
+
+describe("a head store", () => {
+  it("ends equal to a fresh head.read after the head moves, and keeps unchanged rows", async () => {
+    const served = await serve();
+    const session = await startSession(served);
+    const connection = attach(served.listener);
+    const store = watched(connection, session);
+    const notified: number[] = [];
+    store.subscribe(() => notified.push(notified.length));
+
+    await matchesRead(connection, store, session);
+    const before = store.snapshot();
+    await send(served, session, "More.");
+    await matchesRead(connection, store, session);
+
+    const after = store.snapshot();
+    const first = before?.order[0];
+
+    expect(after?.order.length).toBeGreaterThan(before?.order.length ?? 0);
+    expect(first === undefined ? undefined : after?.rows.messages.get(first)).toBe(
+      first === undefined ? undefined : before?.rows.messages.get(first),
+    );
+    expect(notified.length).toBeGreaterThan(1);
+  });
+
+  it("goes stale when the host drops the socket and fresh again once it resumes on the next one", async () => {
+    const served = await serve();
+    const session = await startSession(served);
+    const connection = attach(served.listener);
+    const store = watched(connection, session);
+
+    await matchesRead(connection, store, session);
+    served.listener.disconnectClients();
+
+    await vi.waitFor(() => {
+      expect(connection.health.snapshot()).toMatchObject({ kind: "retrying", attempt: 1 });
+      expect(store.freshness().kind).toBe("stale");
+    });
+
+    await send(served, session, "While away.");
+    await until(connection, "open");
+    await matchesRead(connection, store, session);
+  });
+});
+
+describe("a sessions store", () => {
+  it("resumes the host's session rows after a drop and ends equal to a fresh sessions.read", async () => {
+    const served = await serve();
+    const first = await startSession(served);
+    const connection = attach(served.listener);
+    const sessions = connection.directory();
+    cleanups.push(async () => sessions.close());
+
+    const matches = () =>
+      vi.waitFor(
+        async () => {
+          const fresh = openDirectoryStore(await connection.call("sessions.read", {})).snapshot();
+
+          expect(sessions.freshness()).toMatchObject({ kind: "fresh" });
+          expect({ ids: sessions.snapshot()?.ids, rows: sessions.snapshot()?.rows }).toEqual(fresh);
+        },
+        { timeout: 4_000 },
+      );
+
+    await matches();
+    expect(sessions.snapshot()?.ids).toEqual([first]);
+    served.listener.disconnectClients();
+    await vi.waitFor(() => expect(sessions.freshness().kind).toBe("stale"));
+
+    const second = await startSession(served);
+    await until(connection, "open");
+    await matches();
+    expect(sessions.snapshot()?.ids).toEqual([second, first]);
+  });
+});
+
+describe("offer", () => {
+  it("answers another connection's client.perform with what the handler returns", async () => {
+    const served = await serve();
+
+    const offerer = attach(served.listener, global, { name: "offerer" });
+    offerer.offer({ name: "open", summary: "Opens a thing.", input: {} }, (input, requester) => ({
+      opened: input,
+      by: requester.client,
+    }));
+
+    const asker = attach(served.listener, global, {
+      name: "asker",
+      address: `${served.listener.address ?? ""}/`,
+    });
+
+    expect(asker).not.toBe(offerer);
+    const clients = asker.clients();
+    cleanups.push(async () => clients.close());
+
+    await vi.waitFor(() =>
+      expect(
+        [...clients.snapshot().values()].find((row) => row.name === "offerer")?.actions,
+      ).toEqual([{ name: "open", summary: "Opens a thing.", input: {} }]),
+    );
+
+    const target = [...clients.snapshot().values()].find((row) => row.name === "offerer");
+    const self = [...clients.snapshot().values()].find((row) => row.name === "asker");
+
+    expect(await asker.perform(target?.id ?? asId("none"), "open", { n: 1 })).toEqual({
+      opened: { n: 1 },
+      by: self?.id,
+    });
   });
 });

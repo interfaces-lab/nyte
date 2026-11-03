@@ -106,6 +106,18 @@ export const EventFrameType = Type.Object({
 
 export type EventFrame = Decoded<typeof EventFrameType>;
 
+export const PerformEventType = Type.Object({
+  scope: Type.String(),
+  seq: Type.Integer({ minimum: 1 }),
+  kind: Type.Literal("perform"),
+  call: Type.String(),
+  requester: Type.Object({ client: idSchema<"client">(), principal: idSchema<"principal">() }),
+  action: Type.String(),
+  input: JsonType,
+});
+
+export type PerformEvent = Decoded<typeof PerformEventType>;
+
 export const TextFrameType = Type.Union([
   Type.Object({
     c: Type.Literal("t"),

@@ -5,14 +5,24 @@ export { createSendJournal } from "./journal.ts";
 export { openHost } from "./host-connection.ts";
 
 export type {
+  ActionHandler,
   Health,
   HostConnection,
   HostCredentials,
   HostOptions,
-  Live,
   OpenSocket,
+  Requester,
   SocketRequest,
+  TextUpdate,
 } from "./host-connection.ts";
+
+export type { ClientsStore } from "./live-clients.ts";
+
+export type { SessionsStore, SessionsSnapshot, SessionsWindow } from "./live-sessions.ts";
+
+export type { HeadRows, HeadSnapshot, HeadStore } from "./live-head.ts";
+
+export type { Freshness, Live } from "./live.ts";
 
 export * from "./surface.ts";
 

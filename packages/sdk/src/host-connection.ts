@@ -1,7 +1,35 @@
-import { SdkError, SOCKET_PATH } from "@nyte-ai/schema";
-import type { ClientInfo, CredentialSource, Disposer, HostId } from "@nyte-ai/schema";
+import { compile, PerformEventType, SdkError, SOCKET_PATH, withJson } from "@nyte-ai/schema";
+import type {
+  ActionDeclaration,
+  Awaitable,
+  ClientId,
+  ClientInfo,
+  CredentialSource,
+  Disposer,
+  HeadName,
+  HostId,
+  Json,
+  PerformEvent,
+  SessionId,
+  TextFrame,
+} from "@nyte-ai/schema";
 import { asSdkError, openHostSocket } from "@nyte-ai/protocol";
-import type { HostSocket, SocketClosed, SocketLike } from "@nyte-ai/protocol";
+import type {
+  CallName,
+  HostSocket,
+  OperationInput,
+  OperationOutput,
+  SocketClosed,
+  SocketLike,
+} from "@nyte-ai/protocol";
+import { openClientsStore } from "./live-clients.ts";
+import type { ClientsStore } from "./live-clients.ts";
+import { openSessions } from "./live-sessions.ts";
+import type { SessionsStore, SessionsWindow } from "./live-sessions.ts";
+import { openHeadStore } from "./live-head.ts";
+import type { HeadStore } from "./live-head.ts";
+import { listenerSet, request } from "./live.ts";
+import type { Attachment, Live } from "./live.ts";
 
 export type Health =
   | { readonly kind: "connecting" }
@@ -35,10 +63,11 @@ export interface HostOptions {
   readonly online?: () => boolean;
 }
 
-export interface Live<T> {
-  subscribe(listener: () => void): Disposer;
-  snapshot(): T;
-}
+export type TextUpdate = Exclude<TextFrame, { readonly type: "closed" }>;
+
+export type Requester = PerformEvent["requester"];
+
+export type ActionHandler = (input: Json, requester: Requester) => Awaitable<Json>;
 
 export interface HostConnection {
   readonly address: string;
@@ -47,6 +76,18 @@ export interface HostConnection {
   retry(): void;
   wake(): void;
   release(): void;
+  call<N extends CallName>(name: N, input: OperationInput<N>): Promise<OperationOutput<N>>;
+  head(session: SessionId, head: HeadName, options: { readonly tail: number }): HeadStore;
+  directory(window?: SessionsWindow): SessionsStore;
+  text(listener: (update: TextUpdate) => void): Disposer;
+  clients(): ClientsStore;
+  perform(
+    client: ClientId,
+    action: string,
+    input: Json,
+    options?: { readonly timeoutMs?: number },
+  ): Promise<Json>;
+  offer(action: ActionDeclaration, handler: ActionHandler): Disposer;
 }
 
 type Owned = { readonly connection: HostConnection; hold(): void };
@@ -55,11 +96,19 @@ type Registry = { named(host: HostId): void; closed(): void };
 
 type Attempt = { refusal: number | null; closed: SocketClosed | null };
 
+type Joined = { readonly scope: string; readonly attachment: Attachment };
+
+type Waiter = { resolve(socket: HostSocket): void; reject(error: SdkError): void };
+
+type Offered = { readonly action: ActionDeclaration; readonly handler: ActionHandler };
+
 const RETRY_BASE_MS = 1_000;
 
 const RETRY_MAX_MS = 30_000;
 
 const STABLE_MS = 30_000;
+
+const performs = compile(withJson(PerformEventType));
 
 const hosts = new Map<string, Owned>();
 
@@ -99,12 +148,19 @@ export function openHost(address: string, options: HostOptions): HostConnection 
 function superviseHost(address: string, options: HostOptions, registry: Registry): Owned {
   const openSocket = options.socket ?? openGlobalSocket;
   const online = options.online ?? (() => true);
-  const healthListeners = new Set<() => void>();
+  const healthListeners = listenerSet();
+  const joined = new Set<Joined>();
+  const scopes = new Map<string, number>();
+  const waiters = new Set<Waiter>();
+  const texts = new Set<(update: TextUpdate) => void>();
+  const offers = new Map<string, Offered>();
+  let subscribed = new Map<string, Promise<void>>();
   let health: Health = { kind: "connecting" };
   let holders = 1;
   let attempt = 0;
   let generation = 0;
   let released = false;
+  let declared = "[]";
   let current: HostSocket | null = null;
   let host: HostId | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -113,8 +169,15 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   const show = (next: Health): void => {
     health = next;
 
-    for (const listener of healthListeners) listener();
+    if (next.kind === "retrying" || next.kind === "blocked")
+      for (const waiter of waiters.values()) waiter.reject(next.error);
+
+    if (next.kind !== "connecting") waiters.clear();
+    healthListeners.notify();
   };
+
+  const actions = (): readonly ActionDeclaration[] =>
+    Array.from(offers.values(), (offered) => offered.action);
 
   const connect = async (): Promise<void> => {
     generation += 1;
@@ -151,9 +214,12 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
         seen.closed = { code: event.code, reason: event.reason };
       });
 
+      const hello = actions();
+      declared = JSON.stringify(hello);
+
       const socket = await openHostSocket({
         socket: raw,
-        client: { ...options.client, actions: [] },
+        client: { ...options.client, actions: hello },
       });
 
       if (mine !== generation) {
@@ -170,15 +236,40 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
 
   const opened = (socket: HostSocket): void => {
     current = socket;
+    subscribed = new Map();
     host = socket.welcome.host_id;
     registry.named(host);
-    show({ kind: "open", since: Date.now() });
 
     stableTimer = setTimeout(() => {
       attempt = 0;
     }, STABLE_MS);
 
     void socket.closed.then((closed) => dropped(socket, closed));
+
+    if (declared !== JSON.stringify(actions())) {
+      socket.close();
+
+      return;
+    }
+
+    for (const waiter of waiters) waiter.resolve(socket);
+    show({ kind: "open", since: Date.now() });
+    socket.onText((frame) => {
+      if ("type" in frame) openText(socket);
+      else for (const listener of texts) listener(frame);
+    });
+
+    if (offers.size > 0) {
+      const scope = `client/${socket.welcome.client_id}`;
+      socket.onEvent((event) => {
+        if (event.scope === scope && performs.Check(event)) void answer(socket, event);
+      });
+      void subscribe(socket, scope);
+    }
+
+    for (const entry of joined) entry.attachment.attach(socket, subscribe(socket, entry.scope));
+
+    if (texts.size > 0) openText(socket);
   };
 
   const dropped = (socket: HostSocket, closed: SocketClosed): void => {
@@ -186,7 +277,15 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     current = null;
     clearTimeout(stableTimer);
 
+    for (const entry of joined) entry.attachment.detach();
+
     if (released) return;
+
+    if (declared !== JSON.stringify(actions())) {
+      void connect();
+
+      return;
+    }
 
     schedule(
       new SdkError(
@@ -234,21 +333,92 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     if (health.kind === "retrying" || health.kind === "blocked") void connect();
   };
 
+  const subscribe = (socket: HostSocket, scope: string): Promise<void> => {
+    const known = subscribed.get(scope);
+
+    if (known !== undefined) return known;
+
+    const held = subscribed;
+    const made = request(socket, "events.subscribe", { scopes: [scope] }).then(() => undefined);
+    made.catch(() => held.delete(scope));
+    held.set(scope, made);
+
+    return made;
+  };
+
+  const join = (scope: string, attachment: Attachment): Disposer => {
+    const entry = { scope, attachment };
+    joined.add(entry);
+    scopes.set(scope, (scopes.get(scope) ?? 0) + 1);
+
+    if (current !== null) attachment.attach(current, subscribe(current, scope));
+
+    return () => {
+      if (!joined.delete(entry)) return;
+      attachment.detach();
+      const left = (scopes.get(scope) ?? 1) - 1;
+
+      if (left > 0) {
+        scopes.set(scope, left);
+
+        return;
+      }
+
+      scopes.delete(scope);
+
+      if (current === null || !subscribed.delete(scope)) return;
+      request(current, "events.unsubscribe", { scopes: [scope] }).catch(() => undefined);
+    };
+  };
+
+  const ready = (): Promise<HostSocket> => {
+    if (current !== null) return Promise.resolve(current);
+
+    if (health.kind === "retrying" || health.kind === "blocked")
+      return Promise.reject(health.error);
+
+    if (released)
+      return Promise.reject(new SdkError("unavailable", "This host connection was released."));
+
+    return new Promise((resolve, reject) => waiters.add({ resolve, reject }));
+  };
+
+  const openText = (socket: HostSocket): void => {
+    request(socket, "text.open", {}).catch(() => undefined);
+  };
+
+  const answer = async (socket: HostSocket, event: PerformEvent): Promise<void> => {
+    const offered = offers.get(event.action);
+
+    const outcome = await Promise.resolve()
+      .then(() => {
+        if (offered === undefined)
+          throw new SdkError("not_supported", `This client no longer offers ${event.action}.`);
+
+        return offered.handler(event.input, event.requester);
+      })
+      .then(
+        (result) => ({ result }),
+        (error) => {
+          const failure = asSdkError(error);
+
+          return { error: { code: failure.code, message: failure.message } };
+        },
+      );
+
+    await request(socket, "client.reply", { call: event.call, ...outcome }).catch(() => undefined);
+  };
+
+  const reoffer = (): void => {
+    if (current !== null && declared !== JSON.stringify(actions())) current.close();
+  };
+
   const connection: HostConnection = {
     address,
     get hostId() {
       return host;
     },
-    health: {
-      subscribe(listener) {
-        healthListeners.add(listener);
-
-        return () => {
-          healthListeners.delete(listener);
-        };
-      },
-      snapshot: () => health,
-    },
+    health: { subscribe: healthListeners.subscribe, snapshot: () => health },
     retry: restart,
     wake: restart,
     release() {
@@ -259,9 +429,45 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
       generation += 1;
       clearTimeout(retryTimer);
       clearTimeout(stableTimer);
+
+      for (const waiter of waiters)
+        waiter.reject(new SdkError("unavailable", "This host connection was released."));
+      waiters.clear();
       current?.close();
-      current = null;
       registry.closed();
+    },
+    async call(name, input) {
+      return request(await ready(), name, input);
+    },
+    head: (session, head, view) => openHeadStore({ session, head, tail: view.tail }, join),
+    directory: (window) => openSessions(window ?? {}, join),
+    text(listener) {
+      texts.add(listener);
+
+      if (texts.size === 1 && current !== null) openText(current);
+
+      return () => {
+        texts.delete(listener);
+      };
+    },
+    clients: () => openClientsStore(join),
+    perform: (client, action, input, perform) =>
+      connection.call("client.perform", {
+        client,
+        action,
+        input,
+        timeoutMs: perform?.timeoutMs,
+      }),
+    offer(action, handler) {
+      const offered = { action, handler };
+      offers.set(action.name, offered);
+      reoffer();
+
+      return () => {
+        if (offers.get(action.name) !== offered) return;
+        offers.delete(action.name);
+        reoffer();
+      };
     },
   };
 
