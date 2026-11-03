@@ -75,6 +75,9 @@ import { DESKTOP_APP_IDS } from "../shared/host-agent-job.ts";
 import { throwForRenderer } from "../host/desktop-host.ts";
 import type { DesktopHost } from "../host/desktop-host.ts";
 import { bridgeHostPort, startHostRuntime } from "./host-runtime.ts";
+import { createHostTray } from "./host-tray.ts";
+import type { HostTray } from "./host-tray.ts";
+import { clientActions } from "@nyte-ai/app/contract/client-actions.ts";
 import type { HostRuntime } from "./host-runtime.ts";
 import type { HostWindow } from "../shared/host-window.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "@nyte-ai/app/contract/desktop-settings.ts";
@@ -101,6 +104,8 @@ const windows = new Map<HostWindow, NyteWindow>();
 let desktopHost: DesktopHost | undefined;
 
 let hostRuntime: HostRuntime | undefined;
+
+let hostTray: HostTray | undefined;
 
 let account: AccountSession | undefined;
 
@@ -458,6 +463,8 @@ function startHost(): DesktopHost {
     },
     alert: (delivery) => alerts.agent(delivery),
     badge: (count) => alerts.badge(count),
+    linkChanged: () => hostTray?.refresh(),
+    registrationChanged: () => hostTray?.refresh(),
   });
 
   hostRuntime = runtime;
@@ -820,6 +827,22 @@ function restoreWindows(): NyteWindow {
   return first;
 }
 
+function showHostTray(): void {
+  if (process.platform !== "darwin" || hostRuntime === undefined) return;
+
+  hostTray = createHostTray({
+    agent: hostRuntime.agent,
+    link: hostRuntime.link,
+    launchState,
+    checkForUpdates: () => void updates?.click(),
+    openSettings: () => {
+      app.focus({ steal: true });
+      const window = currentWindow() ?? restoreWindows();
+      window.menuCommands.dispatch({ kind: "action", action: clientActions.settings.id });
+    },
+  });
+}
+
 let quitting = false;
 
 const SHUTDOWN_LIMIT_MS = 5_000;
@@ -929,6 +952,7 @@ if (!hasSingleInstanceLock) {
       });
 
     updatesReady.resolve();
+    showHostTray();
     restoreWindows();
 
     const cli =
@@ -963,7 +987,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+    if (process.platform !== "darwin" && !launchState.menuBarOnly()) app.quit();
   });
 
   app.on("activate", () => {

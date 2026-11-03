@@ -132,7 +132,11 @@ const mac = {
   forceCodeSigning: true,
   entitlements: "build/entitlements.mac.plist",
   entitlementsInherit: "build/entitlements.mac.plist",
-  extraResources: CLI,
+  extraResources: [
+    ...CLI,
+    { from: "resources/trayTemplate.png", to: "trayTemplate.png" },
+    { from: "resources/trayTemplate@2x.png", to: "trayTemplate@2x.png" },
+  ],
   sign: (options) =>
     sign({
       ...options,
