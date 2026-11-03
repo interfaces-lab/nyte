@@ -1466,6 +1466,9 @@ importers:
       '@nyte-ai/plugin':
         specifier: workspace:*
         version: link:../plugin
+      '@nyte-ai/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema

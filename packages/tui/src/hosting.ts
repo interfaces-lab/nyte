@@ -14,6 +14,7 @@ const HostCommandType = Type.Object({
   token: Type.String(),
   /** What `token` grants on the listener; `maintenance` only for a token this process minted for itself. */
   authority: Type.Array(AuthorityType),
+  socket: Type.Optional(Type.String()),
 });
 
 export type HostCommand = Static<typeof HostCommandType>;

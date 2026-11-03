@@ -36,6 +36,8 @@ const USAGE =
 
 const STAMP = "nyte-skill-version:";
 
+const SKILL_REVISION = 2;
+
 const HOOK_COMMAND = "nyte skill hook";
 
 const HOOK_BUDGET_MS = 2_000;
@@ -127,7 +129,7 @@ function skillText(): string {
 name: nyte
 description: Drive Nyte, the durable agent chat host, from the shell with the nyte CLI. Use when the user mentions Nyte or its chats, or asks to run a prompt through Nyte or look up its API.
 metadata:
-  ${STAMP} "${VERSION}"
+  ${STAMP} "${VERSION}+${SKILL_REVISION}"
 ---
 
 # Nyte
@@ -139,7 +141,14 @@ metadata:
 - \`nyte api list --json\` prints a JSON array, one object per operation: \`name\`, \`summary\`, \`kind\` (\`query\`, \`command\`, \`receipt\`, \`stream\` or \`watch\`), \`authority\`, \`scope\`, and the \`input\` and \`output\` JSON Schemas.
 - \`nyte api describe <operation> --json\` prints one of them, for example \`nyte api describe head.send --json\`.
 
-Both read this build's table and start no host. The CLI has no command that calls an operation; to act, run a prompt.
+Both read this build's table and start no host.
+
+## Call operations and watch events
+
+These reach the host \`nyte host\` runs, over its local socket \`~/.nyte/host.sock\` when there is one; \`--host-url <url>\` with \`NYTE_HOST_TOKEN\` reaches another. Without a running host they fail; start one with \`nyte host\` in another terminal.
+
+- \`nyte api call <operation> [json-input]\` calls one query, command or receipt and prints its output as JSON, for example \`nyte api call sessions.list '{}'\`. Pass the input as the argument; without one it reads stdin to its end, and an empty stdin means \`{}\`. On failure it prints the wire error, \`{"code":...,"message":...}\`, and exits 1.
+- \`nyte events [--scope <scope>]... --json\` subscribes and prints one JSON event per line, \`{"scope":...,"seq":...,"kind":...}\`, until interrupted. A scope is \`host\` (the default: connected clients and what they performed) or \`session/<id>\` (a chat's row changes and its activation). Run it in the background and read its output; stop it when done.
 
 ## Run a prompt
 

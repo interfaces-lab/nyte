@@ -2,6 +2,8 @@ import process from "node:process";
 import type { Connection, LoginMethod } from "@nyte-ai/sdk";
 import { accountCommand } from "./account-command.ts";
 import { apiCommand } from "./api-command.ts";
+import { eventsCommand } from "./events-command.ts";
+import { connectHostSocket } from "./host-socket.ts";
 import { doctorCommand } from "./doctor-command.ts";
 import { mcpCommand } from "./mcp-command.ts";
 import { skillCommand } from "./skill-command.ts";
@@ -374,6 +376,7 @@ async function main(): Promise<PrintOutcome | undefined> {
     command === "mcp" ||
     command === "host" ||
     command === "api" ||
+    command === "events" ||
     command === "skill"
   ) {
     const serverCommandStart = invocationArgs.indexOf("--");
@@ -436,6 +439,19 @@ async function main(): Promise<PrintOutcome | undefined> {
     process.exitCode = await apiCommand({
       args: invocationArgs.slice(1),
       attach: (url) => openHost(attachedSource(url)),
+      connect: (hostUrl) => connectHostSocket({ hostUrl, name: "nyte api" }),
+      stdin: () => readStdin(signal),
+      output,
+    });
+
+    return undefined;
+  }
+
+  if (command === "events") {
+    process.exitCode = await eventsCommand({
+      args: invocationArgs.slice(1),
+      connect: (hostUrl) => connectHostSocket({ hostUrl, name: "nyte events" }),
+      signal: untilInterrupted(),
       output,
     });
 

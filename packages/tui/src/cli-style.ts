@@ -106,7 +106,11 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   { label: "nyte account [status|unlink]", detail: "share this machine with your Nyte account" },
   { label: "nyte mcp <add|remove|list|login|logout>", detail: "manage MCP servers" },
   { label: "nyte host [--json]", detail: "serve your chats for --host-url to attach to" },
-  { label: "nyte api <list|describe>", detail: "print the operations a host serves" },
+  { label: "nyte api <list|describe|call>", detail: "print or call the operations a host serves" },
+  {
+    label: "nyte events [--scope <scope>]...",
+    detail: "print a running host's events as JSON lines",
+  },
   { label: "nyte skill <setup|status|remove>", detail: "teach Claude Code and Codex to use nyte" },
   { label: "nyte doctor [--json]", detail: "check this install and print what to fix" },
   { label: "nyte triage [<problem>]", detail: "start an agent on doctor's report and logs" },
@@ -162,6 +166,7 @@ export function renderCommandHelp(
     | "mcp"
     | "host"
     | "api"
+    | "events"
     | "skill"
     | "doctor",
 ): string {
@@ -253,13 +258,25 @@ export function renderCommandHelp(
     case "api":
       return [
         "Usage: nyte api <command> [--json] [--host-url <url>]",
-        "  list                     print every operation with its summary",
-        "  describe <operation>     print one operation's access and input and output JSON Schemas",
+        "  list                         print every operation with its summary",
+        "  describe <operation>         print one operation's access and input and output JSON Schemas",
+        "  call <operation> [json]      call an operation on a running host and print its output as JSON",
         "",
-        "Without --host-url it reads this build's operations, the ones this nyte serves; no host starts.",
-        "--host-url asks a running host instead, so the answer matches its version; the token is",
-        "read from NYTE_HOST_TOKEN. --json prints the descriptions, schemas included, as JSON.",
-        "Examples: nyte api list | nyte api describe head.send | nyte api list --json",
+        "Without --host-url, list and describe read this build's operations, the ones this nyte serves;",
+        "no host starts. --host-url asks a running host instead, so the answer matches its version; the",
+        "token is read from NYTE_HOST_TOKEN. --json prints the descriptions, schemas included, as JSON.",
+        "call reads its input from the argument, else stdin to its end ({} when empty), and reaches `nyte host`",
+        "runs, over its local socket when there is one. A failure prints the wire error and exits 1.",
+        "Examples: nyte api list | nyte api describe head.send | nyte api call sessions.list '{}'",
+      ].join("\n");
+    case "events":
+      return [
+        "Usage: nyte events [--scope <scope>]... [--json] [--host-url <url>]",
+        "Subscribes to a running host's events and prints each as one JSON line until Ctrl+C.",
+        "A scope is host (the default), session/<id> or client/<id>. Output is JSON lines with or",
+        "without --json. Without --host-url it reaches the host `nyte host` runs, over its local socket",
+        "when there is one.",
+        "Example: nyte events --scope host --scope session/<id>",
       ].join("\n");
     case "skill":
       return [

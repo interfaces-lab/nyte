@@ -12,6 +12,8 @@ export * from "./view-frames.ts";
 
 export * from "./session-store.ts";
 
+export * from "./socket-client.ts";
+
 export { parseJson } from "./json.ts";
 
 export { streamBuffer } from "./stream-buffer.ts";

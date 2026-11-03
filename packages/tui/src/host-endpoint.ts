@@ -10,9 +10,10 @@ const RunningHostType = Type.Object({
   url: Type.String(),
   token: Type.String(),
   pid: Type.Integer(),
+  socket: Type.Optional(Type.String()),
 });
 
-/** What `nyte host` writes to `host.json` while it serves: where it listens, its token and its process. */
+/** What `nyte host` writes to `host.json` while it serves: where it listens, its token, its process and its local socket. */
 export type RunningHost = Static<typeof RunningHostType>;
 
 const runningHosts = Compile(RunningHostType);

@@ -87,6 +87,13 @@ async function open(command: HostCommand): Promise<Opened> {
     });
 
     if (listener.address === null) throw new Error("The listener bound no address.");
+
+    if (command.socket !== undefined)
+      await host.listen({
+        transport: { kind: "socket", path: command.socket },
+        auth: { kind: "token", token: command.token, authority: new Set(command.authority) },
+      });
+
     sharing.start();
 
     return {

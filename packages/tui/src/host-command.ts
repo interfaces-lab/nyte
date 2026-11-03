@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { dirname, join } from "node:path";
 import process from "node:process";
 import { alignedRows, ansiEnabled, statusGlyph } from "./cli-style.ts";
 import { findRunningHost, hostFilePath, publishHost, withdrawHost } from "./host-endpoint.ts";
@@ -24,24 +25,31 @@ export async function hostCommand(
 
   if (running !== null) throw new Error(alreadyRunning(running, path));
   const token = randomBytes(32).toString("base64url");
+  const socket = process.platform === "win32" ? undefined : join(dirname(path), "host.sock");
 
   const thread = await startHostThread({
     kind: "local",
     port: 0,
     token,
     authority: OWN_TOKEN_AUTHORITY,
+    socket,
   });
 
   try {
-    const published = await publishHost(path, { url: thread.address, token, pid: process.pid });
+    const published = await publishHost(path, {
+      url: thread.address,
+      token,
+      pid: process.pid,
+      socket,
+    });
 
     if (published.kind === "taken") throw new Error(alreadyRunning(published.by, path));
 
     try {
       output.write(
         json
-          ? `${JSON.stringify({ type: "listening", url: thread.address, endpoint: path, pid: process.pid })}\n`
-          : listening(thread.address, path),
+          ? `${JSON.stringify({ type: "listening", url: thread.address, socket, endpoint: path, pid: process.pid })}\n`
+          : listening(thread.address, path, socket),
       );
 
       const stopped = await Promise.race([
@@ -61,12 +69,13 @@ export async function hostCommand(
   }
 }
 
-function listening(url: string, path: string): string {
+function listening(url: string, path: string, socket: string | undefined): string {
   const color = ansiEnabled();
 
   const rows = alignedRows(
     [
       { label: "endpoint", detail: path },
+      ...(socket === undefined ? [] : [{ label: "socket", detail: socket }]),
       { label: "stop", detail: "Ctrl+C" },
     ],
     color,

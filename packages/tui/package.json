@@ -23,6 +23,7 @@
     "@nyte-ai/canvas": "workspace:*",
     "@nyte-ai/connect": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/sdk": "workspace:*",
     "@nyte-ai/service": "workspace:*",
