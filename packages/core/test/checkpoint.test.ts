@@ -1,6 +1,6 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HeadName, Seq } from "@nyte-ai/schema";
-import { assert, expect, it } from "vitest";
+import { afterEach, assert, expect, it, vi } from "vitest";
 import { until } from "../src/harness.ts";
 import { memoryStore } from "../src/store.ts";
 import type { Plugin, StoreConnection } from "../src/index.ts";
@@ -11,6 +11,10 @@ import { echo } from "./turn-support.ts";
 const main: HeadName = asId("main");
 
 const echoing: Plugin<"core"> = { id: "echoing", contribute: { tools: [echo] } };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function reading(connection: StoreConnection, after: Seq[]) {
   return {
@@ -30,6 +34,7 @@ function reading(connection: StoreConnection, after: Seq[]) {
 }
 
 it("restores a settled fold from its checkpoint and replays only the log past it", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
   const store = memoryStore();
   const connection = await store.open();
   const fake = fakeModels({ models: [testModel("model", { contextWindow: 10_000_000 })] });
@@ -55,9 +60,11 @@ it("restores a settled fold from its checkpoint and replays only the log past it
   const { session, receipt } = await writer.sessions.start({ content: "Echo a lot." });
   await receipt.settled();
 
-  const checkpoint = await until(
-    async () => (await connection.checkpoints?.read(session.id)) ?? undefined,
-  );
+  const checkpoint = await until(async () => {
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    return (await connection.checkpoints?.read(session.id)) ?? undefined;
+  });
 
   await (await session.head(main).send("Echo again.")).settled();
   await writer.close();
@@ -109,6 +116,7 @@ it("folds the log from its start past a checkpoint it cannot read", async () => 
 });
 
 it("counts no background work on a head restored from a checkpoint taken while a job ran", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
   const store = memoryStore();
   const connection = await store.open();
   const disk = createDisk();
@@ -132,7 +140,11 @@ it("counts no background work on a head restored from a checkpoint taken while a
   await (await session.head(main).send("x".repeat(1_100_000))).settled();
 
   expect((await session.info()).heads[0]?.background).toEqual({ working: 1, waiting: 0 });
-  await until(async () => (await connection.checkpoints?.read(session.id)) ?? undefined);
+  await until(async () => {
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    return (await connection.checkpoints?.read(session.id)) ?? undefined;
+  });
   await writer.close();
 
   await using reader = await open(fakeModels(), { store, plugins: [environment] });
@@ -143,4 +155,40 @@ it("counts no background work on a head restored from a checkpoint taken while a
     working: 0,
     waiting: 0,
   });
+});
+
+it("writes a settled run's checkpoint when its host closes within the delay, and none after", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const connection = await memoryStore().open();
+  assert(connection.checkpoints !== undefined);
+  const checkpoints = connection.checkpoints;
+  let writes = 0;
+
+  const store = {
+    open: async (): Promise<StoreConnection> => ({
+      ...connection,
+      checkpoints: {
+        ...checkpoints,
+        write: (session, checkpoint) => {
+          writes += 1;
+
+          return checkpoints.write(session, checkpoint);
+        },
+      },
+    }),
+    close: async () => undefined,
+  };
+
+  const fake = fakeModels();
+  fake.reply({ content: [{ type: "text", text: "Read it." }] });
+  const writer = await open(fake, { store });
+  const { session, receipt } = await writer.sessions.start({ content: "x".repeat(1_100_000) });
+  await receipt.settled();
+  const settled = await session.head(main).view();
+  await writer.close();
+  const closed = writes;
+
+  expect((await checkpoints.read(session.id))?.seq).toBeGreaterThanOrEqual(settled.seq);
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(writes).toBe(closed);
 });

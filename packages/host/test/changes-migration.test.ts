@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { STORE_VERSION } from "@nyte-ai/core/store";
 import { composeHost } from "@nyte-ai/core/server";
 import type { FileChange, SessionId } from "@nyte-ai/schema";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import { sqliteStore } from "../src/index.ts";
 import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
@@ -88,16 +88,10 @@ it("shows a 0.0.18 chat's whole changed-files list after the store migrates", as
       session,
     );
 
-  await withHost(path, async (host) => {
-    expect((await host.session(session).view()).changes).toEqual([file("a", 2), file("c", 1)]);
-    await vi.waitFor(
-      () =>
-        expect(
-          query(path, "SELECT session FROM fold_checkpoints WHERE session = ?", session),
-        ).toHaveLength(1),
-      { timeout: 5_000 },
-    );
-  });
+  expect(await viewChanges(path, session)).toEqual([file("a", 2), file("c", 1)]);
+  expect(
+    query(path, "SELECT session FROM fold_checkpoints WHERE session = ?", session),
+  ).toHaveLength(1);
 
   query(path, "UPDATE store_meta SET version = ? RETURNING version", "20");
 

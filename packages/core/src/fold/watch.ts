@@ -36,6 +36,7 @@ import { dev } from "../util/dev-log.ts";
 import { followedTrace, startSpan, tracing } from "../util/trace.ts";
 import { backgroundItems } from "./background.ts";
 import { foldCheckpointing } from "./checkpoint.ts";
+import type { FoldCheckpointing } from "./checkpoint.ts";
 import { emptyFold, fold } from "./fold.ts";
 import { withPair } from "./project.ts";
 
@@ -44,6 +45,7 @@ type Entry = {
   holders: number;
   linger: ReturnType<typeof setTimeout> | undefined;
   feed: FoldFeed;
+  readonly checkpoints: FoldCheckpointing;
   readonly listeners: Set<(state: FoldState) => void>;
 };
 
@@ -133,6 +135,7 @@ export function createFoldCache(kernel: Feeds): FoldCache {
           for (const listener of entry.listeners) listener(next);
         },
       ),
+      checkpoints,
       listeners: new Set(),
     };
 
@@ -205,6 +208,9 @@ export function createFoldCache(kernel: Feeds): FoldCache {
     folding: (session) => entries.has(session),
     async refresh() {
       await Promise.all(Array.from(entries.values(), (entry) => entry.feed.refresh()));
+    },
+    async close() {
+      await Promise.all(Array.from(entries.values(), (entry) => entry.checkpoints.close()));
     },
   };
 }

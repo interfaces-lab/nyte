@@ -175,6 +175,8 @@ export interface FoldCheckpointing {
   restore(principal: PrincipalId): Promise<FoldState | null>;
   /** Offers the fold for a checkpoint about a second later, written when no head runs, nothing streams and the replay budget is spent; offers made while one is written wait for it and run once. */
   settle(): void;
+  /** Writes the offered checkpoint now instead of after the delay and waits for any write in flight; offers after it do nothing. */
+  close(): Promise<void>;
 }
 
 /** Returns the checkpointing of `session`'s fold over the kernel's store, inert where the store keeps no checkpoints. `folded` reads the fold as it stands, its maps changing in place under each event, so a checkpoint encodes it in the same tick it reads it; `streaming` tells whether a part of the session streams. */
@@ -189,6 +191,9 @@ export function foldCheckpointing(
   let restored = false;
   let offered = false;
   let writing = false;
+  let closed = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let draining = Promise.resolve();
 
   const settled = (): FoldState | null => {
     const state = folded();
@@ -239,6 +244,12 @@ export function foldCheckpointing(
     }
   };
 
+  const start = (): void => {
+    clearTimeout(timer);
+    timer = undefined;
+    draining = drain();
+  };
+
   return {
     async restore(principal) {
       const found = await (async () => {
@@ -260,14 +271,20 @@ export function foldCheckpointing(
       return found?.state ?? null;
     },
     settle() {
-      if (store === undefined) return;
+      if (store === undefined || closed) return;
       offered = true;
 
       if (writing) return;
       writing = true;
-      const timer = setTimeout(() => void drain(), SETTLE_DELAY);
+      timer = setTimeout(start, SETTLE_DELAY);
 
       if (typeof timer === "object") timer.unref();
+    },
+    async close() {
+      closed = true;
+
+      if (timer !== undefined) start();
+      await draining;
     },
   };
 }

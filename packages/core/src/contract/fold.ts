@@ -274,6 +274,9 @@ export interface FoldCache {
 
   /** Reads each fold's log past it and publishes what it finds on the bus: what another process logged since. */
   refresh(): Promise<void>;
+
+  /** Writes each fold's offered checkpoint now and waits for the writes in flight; no fold offers one after. */
+  close(): Promise<void>;
 }
 
 export interface LiveStream {

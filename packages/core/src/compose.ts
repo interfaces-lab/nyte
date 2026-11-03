@@ -649,6 +649,7 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
   for (const session of sessions) await kernel.environments.detach(session);
 
   for (const workspace of workspaces) await kernel.environments.detachWorkspace(workspace);
+  await kernel.folds.close();
   const state = kernel.executionState;
 
   await kernel.presence?.close(
