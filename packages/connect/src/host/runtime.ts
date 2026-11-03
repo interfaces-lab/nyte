@@ -190,35 +190,35 @@ export class ConnectRuntime {
     readonly enabled: boolean;
     readonly share: ConnectShare | null;
   }): Promise<ConnectView> {
-    await this.requireUsable();
+    if (!input.enabled) this.denyAll();
+    await this.operations.run(async () => {
+      await this.requireUsable();
 
-    if (!input.enabled) {
-      this.denyAll();
-      await this.operations.run(async () => {
+      if (!input.enabled) {
         await this.stopServing();
         await this.store.change((file) => (file.enabled ? { ...file, enabled: false } : file));
-      });
-    } else {
-      await this.operations.run(async () => {
-        if (this.closed) throw closed();
 
-        const file = await this.store.ready();
+        return;
+      }
 
-        if (file.link === null) throw notLinked();
-        await this.store.change((current) =>
-          current.enabled ? current : { ...current, enabled: true },
-        );
+      if (this.closed) throw closed();
 
-        try {
-          if (input.share !== null) await this.startServing(input.share);
-        } catch (cause) {
-          await this.store
-            .change((current) => ({ ...current, enabled: false }))
-            .catch(() => undefined);
-          throw cause;
-        }
-      });
-    }
+      const file = await this.store.ready();
+
+      if (file.link === null) throw notLinked();
+      await this.store.change((current) =>
+        current.enabled ? current : { ...current, enabled: true },
+      );
+
+      try {
+        if (input.share !== null) await this.startServing(input.share);
+      } catch (cause) {
+        await this.store
+          .change((current) => ({ ...current, enabled: false }))
+          .catch(() => undefined);
+        throw cause;
+      }
+    });
 
     this.changed();
 
