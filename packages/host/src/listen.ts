@@ -1,15 +1,20 @@
+import { Buffer } from "node:buffer";
 import { chmod, mkdir, rm } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, STATUS_CODES } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { dirname } from "node:path";
 import process from "node:process";
-import { SdkError } from "@nyte-ai/schema";
+import type { Duplex } from "node:stream";
+import { SdkError, SOCKET_LIMITS, SOCKET_PATH } from "@nyte-ai/schema";
 import type { ListenOptions, Listener } from "@nyte-ai/core";
 import type { ServedHost } from "@nyte-ai/core/server";
-import { encodeError, errorStatus } from "@nyte-ai/protocol";
+import { asSdkError, encodeError, errorStatus } from "@nyte-ai/protocol";
+import { WebSocketServer } from "ws";
 import { listenFetch } from "./listen-fetch.ts";
 import { readErrorCode } from "./local/tree.ts";
+import { serveSession } from "./serve/socket.ts";
+import type { SocketPeer } from "./serve/socket.ts";
 import type { TailnetControl } from "./tailnet.ts";
 
 export type HostListenOptions = ListenOptions & { readonly tailnet?: TailnetControl };
@@ -28,10 +33,12 @@ export async function listen(host: ServedHost, options: HostListenOptions): Prom
 
   const fetch = (request: Request): Promise<Response> => inner.fetch(request);
 
+  const admit = (request: Request): Promise<SocketPeer> => inner.admit(request);
+
   const served = await (
     transport.kind === "socket"
-      ? serveSocket(transport.path, fetch, "http")
-      : serveNode(fetch, "http", (server) => listenPort(server, transport))
+      ? serveSocket(transport.path, fetch, "http", admit)
+      : serveNode(fetch, "http", (server) => listenPort(server, transport), admit)
   ).catch(async (error: unknown) => {
     await inner.close();
 
@@ -73,28 +80,55 @@ type Served = {
   close(): Promise<void>;
 };
 
+type Admit = (request: Request) => Promise<SocketPeer>;
+
 export function serveSocket(
   path: string,
   fetch: (request: Request) => Promise<Response>,
   scheme: "http" | "https",
+  admit: Admit,
 ): Promise<Served> {
-  return serveNode(fetch, scheme, async (server) => {
-    await listenSocket(server, path);
+  return serveNode(
+    fetch,
+    scheme,
+    async (server) => {
+      await listenSocket(server, path);
 
-    return { address: path, origin: `${scheme}://localhost` };
-  });
+      return { address: path, origin: `${scheme}://localhost` };
+    },
+    admit,
+  );
 }
 
 async function serveNode(
   fetch: (request: Request) => Promise<Response>,
   scheme: "http" | "https",
   start: (server: Server) => Promise<{ readonly address: string; readonly origin: string }>,
+  admit: Admit,
 ): Promise<Served> {
   const responses = new Set<ServerResponse>();
+  const sockets = new WebSocketServer({
+    noServer: true,
+    maxPayload: SOCKET_LIMITS.maxFrameBytes,
+  });
   let origin = "";
 
   const server = createServer({ noDelay: true }, (incoming, outgoing) => {
     void respond(incoming, outgoing, { scheme, origin }, fetch, responses);
+  });
+
+  server.on("upgrade", (incoming: IncomingMessage, socket: Duplex, head: Buffer) => {
+    void upgrade(incoming, socket, { scheme, origin }, admit).then((peer) => {
+      if (peer === null) return;
+
+      if (socket.destroyed) {
+        peer.leave();
+
+        return;
+      }
+
+      sockets.handleUpgrade(incoming, socket, head, (opened) => serveSession(opened, peer));
+    });
   });
 
   const started = await start(server);
@@ -104,13 +138,55 @@ async function serveNode(
     address: started.address,
     disconnect() {
       for (const response of responses) response.destroy();
+
+      for (const opened of sockets.clients) opened.terminate();
     },
     close: () =>
       new Promise<void>((done) => {
+        for (const opened of sockets.clients) opened.terminate();
+        sockets.close();
         server.close(() => done());
         server.closeAllConnections();
       }),
   };
+}
+
+async function upgrade(
+  incoming: IncomingMessage,
+  socket: Duplex,
+  origin: { readonly scheme: "http" | "https"; readonly origin: string },
+  admit: Admit,
+): Promise<SocketPeer | null> {
+  socket.on("error", () => socket.destroy());
+
+  try {
+    const request = readRequest(incoming, origin, new AbortController().signal);
+    const path = new URL(request.url).pathname;
+
+    if (path !== SOCKET_PATH) throw new SdkError("unknown", `No socket answers ${path}.`);
+
+    return await admit(request);
+  } catch (error) {
+    refuse(socket, asSdkError(error));
+
+    return null;
+  }
+}
+
+function refuse(socket: Duplex, error: SdkError): void {
+  const body = JSON.stringify(encodeError(error));
+  const status = errorStatus[error.code];
+
+  socket.end(
+    [
+      `HTTP/1.1 ${status} ${STATUS_CODES[status] ?? ""}`,
+      "Content-Type: application/json",
+      `Content-Length: ${Buffer.byteLength(body)}`,
+      "Connection: close",
+      "",
+      body,
+    ].join("\r\n"),
+  );
 }
 
 async function listenPort(

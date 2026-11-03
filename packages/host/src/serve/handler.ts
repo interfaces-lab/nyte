@@ -51,7 +51,7 @@ export type HandlerOptions = BindingOptions & {
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
-const UPLOADS: ReadonlySet<string> = new Set([
+export const UPLOADS: ReadonlySet<string> = new Set([
   "files.write",
   "job.write",
   "files.upload",
@@ -179,7 +179,10 @@ async function serve(
     const body = limited(request, limit);
 
     return json(
-      await call(binding, name, readInputHeader(request) ?? {}, { body, signal: request.signal }),
+      await callBinding(binding, name, readInputHeader(request) ?? {}, {
+        body,
+        signal: request.signal,
+      }),
     );
   }
 
@@ -196,7 +199,7 @@ async function answer(
 ): Promise<Response> {
   const context: BindingRequest = { body: null, signal };
 
-  if (answersOnce(name)) return json(await call(binding, name, value, context));
+  if (answersOnce(name)) return json(await callBinding(binding, name, value, context));
 
   if (name === "job.output")
     return new Response(
@@ -215,7 +218,7 @@ async function answer(
   });
 }
 
-async function call<N extends CallName>(
+export async function callBinding<N extends CallName>(
   binding: CallBinding,
   name: N,
   value: Json,

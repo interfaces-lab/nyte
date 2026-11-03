@@ -49,6 +49,8 @@ export * from "./schema.ts";
 
 export * from "./sessions.ts";
 
+export * from "./socket.ts";
+
 export * from "./store.ts";
 
 export * from "./tools.ts";
