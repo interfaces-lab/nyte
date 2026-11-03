@@ -34,6 +34,19 @@ function keyInput(event: KeyboardEvent, action: KeyInput["action"], mac: boolean
   };
 }
 
+/**
+ * Ghostty's macOS text-editing keys, sent as the legacy bytes shells bind by default: Command+Left
+ * and Command+Right go to the line's start and end, Command+Backspace deletes back to its start,
+ * and Option+Left and Option+Right move by word. Keyed by physical key and the exact modifier.
+ */
+const MAC_EDITING = new Map([
+  ["Meta+ArrowLeft", "\u0001"],
+  ["Meta+ArrowRight", "\u0005"],
+  ["Meta+Backspace", "\u0015"],
+  ["Alt+ArrowLeft", "\u001bb"],
+  ["Alt+ArrowRight", "\u001bf"],
+]);
+
 function appChord(event: KeyboardEvent, mac: boolean): boolean {
   if (mac) return event.metaKey;
 
@@ -70,7 +83,21 @@ export function attachInput(host: InputHost): () => void {
       return;
     }
 
-    if (!host.shell || !host.takesInput() || appChord(event, mac)) return;
+    if (!host.shell || !host.takesInput()) return;
+
+    const editing =
+      mac && event.metaKey !== event.altKey && !event.ctrlKey && !event.shiftKey
+        ? MAC_EDITING.get(`${event.metaKey ? "Meta" : "Alt"}+${event.code}`)
+        : undefined;
+
+    if (editing !== undefined) {
+      event.preventDefault();
+      emit(encoder.encode(editing));
+
+      return;
+    }
+
+    if (appChord(event, mac)) return;
     const bytes = host.terminal.key(keyInput(event, event.repeat ? "repeat" : "press", mac));
 
     if (bytes.length === 0) return;

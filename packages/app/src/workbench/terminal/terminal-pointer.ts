@@ -1,4 +1,5 @@
 import type { CellSize, MouseButton, MouseInput, SelectionInput, Terminal } from "@nyte-ai/vt";
+import type { CellPoint, TerminalLink } from "./terminal-links.ts";
 
 export interface PointerHost {
   readonly terminal: Terminal;
@@ -10,6 +11,11 @@ export interface PointerHost {
   selecting(): void;
   settled(): void;
   scrolled(): void;
+  /** Whether the event holds the key that turns links on: Command on macOS, Control elsewhere. */
+  linkModifier(event: MouseEvent | KeyboardEvent): boolean;
+  link(at: CellPoint): TerminalLink | null;
+  showLink(link: TerminalLink | null): void;
+  openLink(url: string): void;
 }
 
 interface Point {
@@ -29,6 +35,7 @@ export function attachPointer(host: PointerHost): () => void {
   let pressed: MouseButton | null = null;
   let remainderX = 0;
   let remainderY = 0;
+  let pointer: Point | null = null;
 
   const point = (event: MouseEvent): Point => {
     const box = canvas.getBoundingClientRect();
@@ -101,9 +108,42 @@ export function attachPointer(host: PointerHost): () => void {
     pressed = null;
   };
 
+  const linkAt = (at: Point, modifier: MouseEvent | KeyboardEvent): TerminalLink | null => {
+    const cell = host.cell();
+    const column = Math.floor(at.x / cell.width);
+    const row = Math.floor(at.y / cell.height);
+
+    if (!host.linkModifier(modifier) || column < 0 || row < 0) return null;
+
+    if (column >= terminal.cols || row >= terminal.rows) return null;
+
+    return host.link({ row, column });
+  };
+
+  const showLink = (link: TerminalLink | null): void => {
+    host.showLink(link);
+    canvas.style.cursor = link === null ? "" : "pointer";
+  };
+
+  const modifierChanged = (event: KeyboardEvent): void => {
+    if (pointer !== null && dragging === null) showLink(linkAt(pointer, event));
+  };
+
+  const leave = (): void => {
+    pointer = null;
+    showLink(null);
+  };
+
   const down = (event: MouseEvent): void => {
     event.preventDefault();
     host.focus();
+    const link = event.button === 0 && dragging === null ? linkAt(point(event), event) : null;
+
+    if (link !== null) {
+      host.openLink(link.url);
+
+      return;
+    }
 
     if (dragging !== null) return;
     const button = BUTTONS[event.button] ?? null;
@@ -125,6 +165,10 @@ export function attachPointer(host: PointerHost): () => void {
   };
 
   const hover = (event: MouseEvent): void => {
+    pointer = point(event);
+
+    if (dragging === null) showLink(linkAt(pointer, event));
+
     if (dragging === null && host.tracking()) report(event, "motion", null);
   };
 
@@ -191,11 +235,19 @@ export function attachPointer(host: PointerHost): () => void {
 
   canvas.addEventListener("mousedown", down);
   canvas.addEventListener("mousemove", hover);
+  canvas.addEventListener("mouseleave", leave);
   canvas.addEventListener("wheel", wheel, { passive: false });
+  page.addEventListener("keydown", modifierChanged);
+  page.addEventListener("keyup", modifierChanged);
+  page.defaultView?.addEventListener("blur", leave);
 
   return () => {
     canvas.removeEventListener("mousedown", down);
     canvas.removeEventListener("mousemove", hover);
+    canvas.removeEventListener("mouseleave", leave);
+    page.removeEventListener("keydown", modifierChanged);
+    page.removeEventListener("keyup", modifierChanged);
+    page.defaultView?.removeEventListener("blur", leave);
     canvas.removeEventListener("wheel", wheel);
     page.removeEventListener("mousemove", move);
     page.removeEventListener("mouseup", up);

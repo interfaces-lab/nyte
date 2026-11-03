@@ -1,7 +1,8 @@
 import { createTerminal } from "@nyte-ai/vt";
-import type { CellSize, Cursor, Engine, Terminal } from "@nyte-ai/vt";
+import type { CellSize, Cursor, Engine, Row, Terminal } from "@nyte-ai/vt";
 import { preferences } from "../../preferences/index.ts";
 import { colorScheme, terminalAppearance } from "./terminal-appearance.ts";
+import type { TerminalLink } from "./terminal-links.ts";
 import { createRenderer, measureCell } from "./terminal-renderer.ts";
 
 const BLINK_MS = 600;
@@ -26,6 +27,10 @@ export interface TerminalSurface {
   focus(focused: boolean): void;
   /** Shows the cursor and restarts its blink, as typing does. */
   restartBlink(): void;
+  /** Underlines `link`, or nothing, from the next paint. */
+  showLink(link: TerminalLink | null): void;
+  /** The row on screen at viewport row `y`. */
+  row(y: number): Row | undefined;
   dispose(): void;
 }
 
@@ -67,6 +72,7 @@ export async function openTerminalSurface(
   let full = true;
   let blinkTimer: ReturnType<typeof setInterval> | undefined;
   let blinkOn = true;
+  let link: TerminalLink | null = null;
   let heldTimer: ReturnType<typeof setTimeout> | undefined;
 
   const cell = (): CellSize => ({ width: metrics.width / ratio, height: metrics.height / ratio });
@@ -123,7 +129,7 @@ export async function openTerminalSurface(
           ? "focused"
           : "unfocused";
 
-    renderer.paint(next, { cursor: shownCursor, selection: appearance.selection });
+    renderer.paint(next, { cursor: shownCursor, selection: appearance.selection, link });
     const blinks = active && options.cursor !== "none" && next.cursor?.blinking === true;
 
     if (blinks !== (blinkTimer !== undefined)) {
@@ -264,6 +270,12 @@ export async function openTerminalSurface(
       focused = value;
       draw(false);
     },
+    showLink(next) {
+      if (JSON.stringify(next) === JSON.stringify(link)) return;
+      link = next;
+      draw(false);
+    },
+    row: (y) => renderer.row(y),
     restartBlink() {
       if (blinkTimer !== undefined) startBlink();
       draw(false);

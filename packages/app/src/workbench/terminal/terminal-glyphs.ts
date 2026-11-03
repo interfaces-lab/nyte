@@ -90,6 +90,10 @@ export function drawGlyph(context: CanvasRenderingContext2D, text: string, box: 
 
   if (code >= 0xe0b0 && code <= 0xe0b3) return drawPowerline(context, code, box);
 
+  if (code >= 0xe0b4 && code <= 0xe0b7) return drawPowerlineRound(context, code, box);
+
+  if (code >= 0xe0b8 && code <= 0xe0bf) return drawPowerlineSlant(context, code, box);
+
   return false;
 }
 
@@ -344,6 +348,115 @@ function drawPowerline(context: CanvasRenderingContext2D, code: number, box: Box
 
   context.lineWidth = box.thickness;
   context.lineJoin = "miter";
+  context.strokeStyle = context.fillStyle;
+  context.stroke();
+
+  return true;
+}
+
+/** U+E0B4–E0B7: a half ellipse spanning the cell, solid or outlined, bulging right or left. */
+function drawPowerlineRound(context: CanvasRenderingContext2D, code: number, box: Box): boolean {
+  const solid = code === 0xe0b4 || code === 0xe0b6;
+  const bulgesRight = code === 0xe0b4 || code === 0xe0b5;
+  const inset = solid ? 0 : box.thickness / 2;
+  context.beginPath();
+  context.ellipse(
+    bulgesRight ? box.x : box.x + box.width,
+    box.y + box.height / 2,
+    box.width - inset,
+    box.height / 2 - inset,
+    0,
+    -Math.PI / 2,
+    Math.PI / 2,
+    !bulgesRight,
+  );
+
+  if (solid) {
+    context.closePath();
+    context.fill();
+
+    return true;
+  }
+
+  context.lineWidth = box.thickness;
+  context.strokeStyle = context.fillStyle;
+  context.stroke();
+
+  return true;
+}
+
+type Point = readonly [x: number, y: number];
+
+/** Each slanted separator's triangle and its hypotenuse, as fractions of the cell: U+E0B8, E0BA, E0BC, E0BE draw the triangle and the code after each draws the line. */
+const SLANTS: readonly { readonly corners: readonly Point[]; readonly line: readonly Point[] }[] = [
+  {
+    corners: [
+      [0, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    line: [
+      [0, 0],
+      [1, 1],
+    ],
+  },
+  {
+    corners: [
+      [1, 0],
+      [1, 1],
+      [0, 1],
+    ],
+    line: [
+      [1, 0],
+      [0, 1],
+    ],
+  },
+  {
+    corners: [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+    ],
+    line: [
+      [1, 0],
+      [0, 1],
+    ],
+  },
+  {
+    corners: [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+    ],
+    line: [
+      [0, 0],
+      [1, 1],
+    ],
+  },
+];
+
+function drawPowerlineSlant(context: CanvasRenderingContext2D, code: number, box: Box): boolean {
+  const slant = SLANTS[(code - 0xe0b8) >> 1];
+
+  if (slant === undefined) return false;
+  const solid = (code - 0xe0b8) % 2 === 0;
+  context.beginPath();
+  (solid ? slant.corners : slant.line).forEach((point, index) => {
+    const x = box.x + point[0] * box.width;
+    const y = box.y + point[1] * box.height;
+
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  });
+
+  if (solid) {
+    context.closePath();
+    context.fill();
+
+    return true;
+  }
+
+  context.lineWidth = box.thickness;
   context.strokeStyle = context.fillStyle;
   context.stroke();
 

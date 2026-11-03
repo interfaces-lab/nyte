@@ -5,6 +5,8 @@ import { props } from "@stylexjs/stylex";
 import { addToChat } from "../../references/add-to-chat.ts";
 import type { ExcerptReference } from "../../references/message-references.ts";
 import { errorMessage } from "../../contract/errors.ts";
+import { nyte } from "../../contract/nyte.ts";
+import { openExternal } from "../../lib/open-external.ts";
 import {
   attachTerminalOutput,
   getTerminal,
@@ -14,6 +16,7 @@ import {
 import type { TerminalTab } from "./terminal-store.ts";
 import { loadGhostty } from "./ghostty.ts";
 import { attachInput } from "./terminal-input.ts";
+import { findLink } from "./terminal-links.ts";
 import { attachPointer } from "./terminal-pointer.ts";
 import { openTerminalSurface } from "./terminal-surface.ts";
 import type { TerminalSurface } from "./terminal-surface.ts";
@@ -221,6 +224,15 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
     selecting: () => surface.draw(true),
     settled: () => setTimeout(() => notifySelection(id)),
     scrolled: () => surface.draw(true),
+    linkModifier: (event) => (nyte.platform === "darwin" ? event.metaKey : event.ctrlKey),
+    link: (at) =>
+      findLink(
+        at,
+        (y) => surface.row(y),
+        (cell) => terminal.hyperlink(cell.column, cell.row),
+      ),
+    showLink: (link) => surface.showLink(link),
+    openLink: (url) => openExternal(url),
   });
 
   element.addEventListener("focus", focusInput);
