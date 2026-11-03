@@ -119,7 +119,8 @@ export type RelayMethod = Static<typeof RelayMethod>;
 
 /**
  * The operations a phone may call, each at exactly `POST /<name>`: every row
- * of protocol's declarations table. The names are spelled out so the Worker
+ * of protocol's declarations table but the `local` ones, which the host
+ * answers only on its local socket. The names are spelled out so the Worker
  * does not bundle protocol; a connect test holds them equal to the table.
  */
 export const RELAY_OPERATIONS = [

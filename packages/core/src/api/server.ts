@@ -30,6 +30,7 @@ export function createServerHost(kernel: Kernel): ServerHost {
     tick: (now) => kernel.waits.tick(now),
     onWake: (listener) => kernel.wakes.subscribe(listener),
     report: (row) => kernel.host.report(row),
+    reportTailnet: (status) => kernel.host.update({ tailnet: status }),
     pluginRows: () => kernel.host.current().plugins,
     wire: {
       move: (session, head, position, options) => move(kernel, session, head, position, options),

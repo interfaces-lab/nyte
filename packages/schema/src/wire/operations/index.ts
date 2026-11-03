@@ -16,7 +16,7 @@ export const API_REVISION = 1;
 
 export const API_MIN_REVISION = 1;
 
-/** The operations table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability, recovery and wait, in the order the host lists them. */
+/** The operations table, keyed by Connection path: every served operation's wire schemas, kind, authority, scope, capability, recovery, wait and locality, in the order the host lists them. */
 export const OPERATIONS = {
   ...HOST_OPERATIONS,
   ...SESSION_OPERATIONS,
@@ -51,6 +51,7 @@ export function describeOperations(names?: readonly string[]): readonly Operatio
         authority: row.authority,
         scope: row.scope,
         capability: row.capability,
+        local: row.local,
         input: wireJsonSchema(row.input),
         output: wireJsonSchema(row.output),
       },

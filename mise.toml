@@ -1,5 +1,6 @@
 [tools]
 node = "26"
+go = "1.27"
 pnpm = "latest"
 bun = "latest"
 "npm:wrangler" = "4"

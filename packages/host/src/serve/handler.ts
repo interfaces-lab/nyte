@@ -46,6 +46,7 @@ export type HandlerOptions = BindingOptions & {
   }>;
   readonly maxBodyBytes?: number;
   readonly origins?: readonly string[];
+  readonly local?: boolean;
 };
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -64,7 +65,7 @@ const tooLarge = new WeakSet<SdkError>();
 
 const cancellations = compile(Type.Object({ channel: Type.String(), stream: Type.String() }));
 
-/** Returns the whole protocol as one fetch handler: `POST /<name>` per row (anything else `unknown`), CORS for `origins`, the row's authority over the connection the request authenticates to, and the body limit (413). Calls answer JSON, watches and JSON streams server-sent events, byte rows an octet stream and `job.output` framed octets (§40h, §40w); the request's abort ends every stream. An error answers its encoded `SdkError` at the status `errorStatus` gives its code. */
+/** Returns the whole protocol as one fetch handler: `POST /<name>` per row (anything else `unknown`), CORS for `origins`, a `local` row refused off the local socket before authentication, the row's authority over the connection the request authenticates to, and the body limit (413). Calls answer JSON, watches and JSON streams server-sent events, byte rows an octet stream and `job.output` framed octets (§40h, §40w); the request's abort ends every stream. An error answers its encoded `SdkError` at the status `errorStatus` gives its code. */
 export function createHandler(options: HandlerOptions): (request: Request) => Promise<Response> {
   const limit = options.maxBodyBytes ?? MAX_BODY_BYTES;
   const bindings = new WeakMap<Connection, Binding>();
@@ -104,6 +105,14 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
         request.method === "POST" && (path === CHANNEL_PATH || path === CANCEL_PATH)
           ? path
           : readOperation(request);
+
+      if (
+        name !== CHANNEL_PATH &&
+        name !== CANCEL_PATH &&
+        "local" in OPERATIONS[name] &&
+        options.local !== true
+      )
+        throw new SdkError("denied", `${name} answers only on the host's local socket.`);
 
       const authenticated = await options.connection(request);
 

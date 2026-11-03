@@ -38,6 +38,7 @@ import type {
   OperationInput,
   OperationOutput,
 } from "@nyte-ai/protocol";
+import type { TailnetControl } from "../tailnet.ts";
 
 /** Returns what a row's binding receives besides its input: the request's body (the bytes of `files.write`, `job.write` and `files.upload`) and the client's abort signal. */
 export type BindingRequest = {
@@ -86,9 +87,10 @@ type OutputBinding = {
 /** Returns the server side of the table for one connection: each row takes its decoded input and the request's body and abort signal, and answers its output, its frames, or a byte reader; setup failures (authority, capability, unknown ids) reject before any frame. */
 export type Binding = CallBinding & FrameBinding & ByteBinding & OutputBinding;
 
-/** Describes what a binding needs beyond the connection: the server port, for the rows that carry a wire-only id (§40o) and `parts.create`. */
+/** Describes what a binding needs beyond the connection: the server port, for the rows that carry a wire-only id (§40o) and `parts.create`, and the tailnet node, for the `host.tailnet.*` rows. */
 export type BindingOptions = {
   readonly server: ServerHost;
+  readonly tailnet?: TailnetControl;
 };
 
 const LOGIN_LIFETIME = 10 * 60 * 1000;
@@ -125,6 +127,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
   const browser = async (id: WorkspaceId): Promise<BrowserApi> =>
     available(await workspace(id).browser(), "browser");
+
+  const tailnet = (): TailnetControl =>
+    options.tailnet ?? fail("unavailable", "This host runs no tailnet node.");
 
   const findLogin = (provider: string): Attempt =>
     logins.get(principalKey(principal, provider)) ??
@@ -269,6 +274,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       return { session: session.id, receipt: receipt.id, message: receipt.message };
     },
     "sessions.list": (input) => connection.sessions.list(input),
+    "host.tailnet.status": async () => tailnet().status(),
+    "host.tailnet.configure": (input) => tailnet().configure(input),
+    "host.tailnet.logout": () => tailnet().logout(),
 
     "session.info": ({ session: id }) => session(id).info(),
     "session.update": ({ session: id, patch }) => session(id).update(patch),

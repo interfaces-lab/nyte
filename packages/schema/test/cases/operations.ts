@@ -851,4 +851,38 @@ export const operations = {
     {},
   ),
   "principals.revoke output": operation(OPERATIONS["principals.revoke"].output, null, true),
+  "host.tailnet.status input": operation(OPERATIONS["host.tailnet.status"].input, {}, 1),
+  "host.tailnet.status output": operation(
+    OPERATIONS["host.tailnet.status"].output,
+    {
+      state: "needs_login",
+      authUrl: "https://login.tailscale.com/a/1",
+      https: "pending",
+      access: "owner",
+      tags: [],
+    },
+    { state: "online", https: "pending", access: "owner", tags: [] },
+  ),
+  "host.tailnet.configure input": operation(
+    OPERATIONS["host.tailnet.configure"].input,
+    { enabled: true, hostname: "nyte", tags: ["tag:nyte"], access: "tailnet", authKey: "tskey" },
+    { enabled: true, hostname: "Not A Name", tags: [], access: "owner" },
+  ),
+  "host.tailnet.configure output": operation(
+    OPERATIONS["host.tailnet.configure"].output,
+    {
+      state: "running",
+      dnsName: "nyte.example.ts.net",
+      https: "available",
+      access: "tailnet",
+      tags: ["tag:nyte"],
+    },
+    { state: "running", https: "maybe", access: "tailnet", tags: [] },
+  ),
+  "host.tailnet.logout input": operation(OPERATIONS["host.tailnet.logout"].input, {}, null),
+  "host.tailnet.logout output": operation(
+    OPERATIONS["host.tailnet.logout"].output,
+    { state: "disabled", https: "unavailable", access: "owner", tags: [] },
+    { state: "disabled" },
+  ),
 } satisfies Record<string, Case>;
