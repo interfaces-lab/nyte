@@ -1365,6 +1365,9 @@ importers:
         specifier: ^1.4.2
         version: 1.4.2
     devDependencies:
+      '@nyte-ai/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5

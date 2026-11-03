@@ -1,0 +1,274 @@
+import { changesSince, readWindow } from "@nyte-ai/core";
+import { emptyFold, fold } from "@nyte-ai/core/testing";
+import { asId, backgroundRowKey, catalogRowKey } from "@nyte-ai/schema";
+import type { HeadName, HeadWindow, SessionEvent, WindowSpec } from "@nyte-ai/schema";
+import { beforeAll, describe, expect, it } from "vitest";
+import { openSessionStore } from "../src/index.ts";
+import type { SessionSnapshot, SessionStore } from "../src/index.ts";
+import { interleave, random, recordLong, recordSessions } from "./sessions.ts";
+import type { Recorded } from "./sessions.ts";
+
+type FoldState = ReturnType<typeof emptyFold>;
+
+const SEED = 20_261_102;
+
+const CLIENTS = 300;
+
+const PRINCIPAL = "local";
+
+type Schedule = {
+  readonly id: string;
+  readonly head: HeadName;
+  readonly spec: "from" | number;
+  readonly attach: number;
+  readonly check: number;
+  readonly emits: ReadonlySet<number>;
+  readonly drops: ReadonlyMap<number, number>;
+};
+
+type Client = {
+  readonly schedule: Schedule;
+  readonly trace: string[];
+  spec: WindowSpec;
+  store: SessionStore | null;
+  connected: boolean;
+};
+
+let logs: readonly { readonly recorded: Recorded; readonly events: readonly SessionEvent[] }[] = [];
+
+beforeAll(async () => {
+  const recorded = [...(await recordSessions()), await recordLong(80)];
+  const next = random(SEED);
+
+  logs = recorded.flatMap((entry) => [
+    { recorded: entry, events: interleave(entry, next, PRINCIPAL) },
+    { recorded: entry, events: interleave(entry, next, PRINCIPAL) },
+  ]);
+}, 60_000);
+
+describe("session store", () => {
+  it("holds what a fresh read holds after any attach, changes, drop and resume", () => {
+    const next = random(SEED + 1);
+    const failures: string[] = [];
+    let schedules = 0;
+
+    for (const [index, log] of logs.entries()) {
+      const clients = Array.from({ length: CLIENTS }, (_, client) =>
+        open(plan(`${log.recorded.name}#${index}/${client}`, log, next)),
+      );
+
+      schedules += clients.length;
+      let state = emptyFold({ session: log.recorded.session, principal: asId(PRINCIPAL) });
+
+      for (let point = 0; point <= log.events.length; point += 1) {
+        if (point > 0) state = fold(state, log.events[point - 1]);
+
+        for (const client of clients) {
+          const failure = step(client, state, point, next);
+
+          if (failure !== null) failures.push(failure);
+        }
+      }
+    }
+
+    expect(failures.slice(0, 3)).toEqual([]);
+    expect(schedules).toBeGreaterThanOrEqual(2_000);
+  });
+});
+
+function plan(
+  id: string,
+  log: { readonly recorded: Recorded; readonly events: readonly SessionEvent[] },
+  next: () => number,
+): Schedule {
+  const length = log.events.length;
+  const attach = Math.floor(next() * length);
+  const check = attach + 1 + Math.floor(next() * (length - attach));
+  const rate = next() < 0.1 ? 0 : 0.02 + next() * 0.5;
+
+  const emits = new Set(
+    Array.from({ length: check - attach }, (_, offset) => attach + 1 + offset).filter(
+      () => next() < rate,
+    ),
+  );
+
+  const drops = new Map<number, number>();
+
+  for (let count = Math.floor(next() * 3); count > 0 && check - attach > 2; count -= 1) {
+    const from = attach + 1 + Math.floor(next() * (check - attach - 1));
+    drops.set(from, from + 1 + Math.floor(next() * (check - from)));
+  }
+
+  const heads = log.recorded.heads;
+  const choice = next();
+
+  return {
+    id,
+    head: heads[Math.floor(next() * heads.length)],
+    spec: choice < 0.25 ? "from" : choice < 0.5 ? 200 : 1 + Math.floor(next() * 12),
+    attach,
+    check,
+    emits,
+    drops,
+  };
+}
+
+function open(schedule: Schedule): Client {
+  return { schedule, trace: [], spec: { tail: 200 }, store: null, connected: false };
+}
+
+function step(client: Client, state: FoldState, point: number, next: () => number): string | null {
+  const schedule = client.schedule;
+
+  if (point === schedule.attach) {
+    client.spec = pickSpec(state, schedule, next);
+    client.store = openSessionStore(
+      structuredClone(readWindow(state, schedule.head, client.spec, null)),
+    );
+    client.connected = true;
+    client.trace.push(`attach@${point} ${JSON.stringify(client.spec)}`);
+
+    return null;
+  }
+
+  const store = client.store;
+
+  if (store === null || point <= schedule.attach || point > schedule.check) return null;
+
+  if ([...schedule.drops.keys()].includes(point) && client.connected) {
+    client.connected = false;
+    client.trace.push(`drop@${point}`);
+  }
+
+  if ([...schedule.drops.values()].includes(point) && !client.connected)
+    resume(client, store, state, point);
+
+  if (client.connected && (schedule.emits.has(point) || point === schedule.check)) {
+    const change = structuredClone(changesSince(state, store.seq));
+    store.apply(change);
+
+    if (next() < 0.1) store.apply(change);
+    client.trace.push(`apply@${point}`);
+
+    if (store.stale) resume(client, store, state, point);
+  }
+
+  if (point !== schedule.check) return null;
+
+  if (!client.connected) resume(client, store, state, point);
+
+  return compare(client, store.snapshot(), state);
+}
+
+function resume(client: Client, store: SessionStore, state: FoldState, point: number): void {
+  const snapshot = store.snapshot();
+
+  const window = readWindow(state, client.schedule.head, client.spec, {
+    seq: store.seq,
+    from: snapshot.order[0] ?? null,
+  });
+
+  store.resume(structuredClone(window));
+  client.connected = true;
+  client.trace.push(`resume@${point}`);
+}
+
+function pickSpec(state: FoldState, schedule: Schedule, next: () => number): WindowSpec {
+  if (schedule.spec !== "from") return { tail: schedule.spec };
+  const order = readWindow(state, schedule.head, { tail: 1_000_000 }, null).order;
+  const from = order[Math.floor(next() * order.length)];
+
+  return from === undefined ? { tail: 200 } : { from };
+}
+
+function compare(client: Client, snapshot: SessionSnapshot, state: FoldState): string | null {
+  const head = client.schedule.head;
+  const first = snapshot.order[0];
+
+  const expected = readWindow(
+    state,
+    head,
+    first === undefined ? client.spec : { from: first },
+    null,
+  );
+
+  const failure = differ(snapshot, expected, head);
+
+  return failure === null
+    ? null
+    : `${client.schedule.id} at seq ${state.seq}: ${failure} [${client.trace.join(" ")}]`;
+}
+
+function differ(snapshot: SessionSnapshot, expected: HeadWindow, head: HeadName): string | null {
+  if (JSON.stringify(snapshot.order) !== JSON.stringify(expected.order))
+    return `order ${JSON.stringify(snapshot.order)} != ${JSON.stringify(expected.order)}`;
+
+  if (snapshot.leadingPrompt !== expected.leadingPrompt)
+    return `leadingPrompt ${snapshot.leadingPrompt} != ${expected.leadingPrompt}`;
+  const rows = snapshot.rows;
+  const tables = expected.tables;
+
+  return (
+    rowsDiffer(
+      "messages",
+      rows.messages,
+      tables.messages.upsert.map((row) => [row.id, row]),
+      false,
+    ) ??
+    rowsDiffer(
+      "turns",
+      rows.turns,
+      tables.turns.upsert.map((row) => [row.id, row]),
+      false,
+    ) ??
+    rowsDiffer(
+      "parts",
+      rows.parts,
+      tables.parts.upsert.map((row) => [row.id, row]),
+      true,
+    ) ??
+    rowsDiffer(
+      "changes",
+      rows.changes,
+      tables.changes.upsert.map((row) => [row.path, row]),
+      true,
+    ) ??
+    rowsDiffer(
+      "catalog",
+      rows.catalog,
+      tables.catalog.upsert.map((row) => [catalogRowKey(row), row]),
+      true,
+    ) ??
+    rowsDiffer(
+      "heads",
+      new Map([...rows.heads].filter(([key]) => key === head)),
+      tables.heads.upsert.map((row) => [row.name, row]),
+      true,
+    ) ??
+    rowsDiffer(
+      "background",
+      new Map([...rows.background].filter(([key]) => key.startsWith(`${head}/`))),
+      tables.background.upsert.map((row) => [backgroundRowKey(row), row]),
+      true,
+    )
+  );
+}
+
+function rowsDiffer(
+  table: string,
+  held: ReadonlyMap<string, unknown>,
+  expected: readonly (readonly [string, unknown])[],
+  exact: boolean,
+): string | null {
+  for (const [key, row] of expected) {
+    const have = held.get(key);
+
+    if (JSON.stringify(have) !== JSON.stringify(row))
+      return `${table} ${key}: ${JSON.stringify(have)} != ${JSON.stringify(row)}`;
+  }
+
+  if (!exact || held.size === expected.length) return null;
+  const keys = new Set(expected.map((entry) => entry[0]));
+
+  return `${table} holds ${[...held.keys()].filter((key) => !keys.has(key)).join(", ")}`;
+}
