@@ -513,45 +513,63 @@ describe("the host's WebSocket", () => {
     expect(closed.reason).toMatch(/^Update the host/);
   });
 
-  it("answers a local operation only on the unix socket", async () => {
-    const host = await compose(fakeModels());
-    const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-socket-")));
-    cleanups.push(() => rm(home, { recursive: true, force: true }));
+  it.skipIf(process.platform === "win32")(
+    "answers a local operation only on the unix socket",
+    async () => {
+      const host = await compose(fakeModels());
+      const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-socket-")));
+      cleanups.push(() => rm(home, { recursive: true, force: true }));
 
-    const routes = [
-      { route: "http", listener: await serve(host), code: "denied" },
-      { route: "unix", listener: await serve(host, join(home, "host.sock")), code: "unavailable" },
-    ];
+      const routes = [
+        { route: "http", listener: await serve(host), code: "denied" },
+        {
+          route: "unix",
+          listener: await serve(host, join(home, "host.sock")),
+          code: "unavailable",
+        },
+      ];
 
-    const answers = await Promise.all(
-      routes.map(async (entry) => {
-        const client = await connect(entry.listener);
+      const answers = await Promise.all(
+        routes.map(async (entry) => {
+          const client = await connect(entry.listener);
 
-        const failure = await client.call("host.tailnet.status", {}).then(
-          () => null,
-          (error: Error) => error,
-        );
+          const failure = await client.call("host.tailnet.status", {}).then(
+            () => null,
+            (error: Error) => error,
+          );
 
-        return {
-          route: entry.route,
-          code: failure !== null && "code" in failure ? failure.code : null,
-        };
-      }),
-    );
+          return {
+            route: entry.route,
+            code: failure !== null && "code" in failure ? failure.code : null,
+          };
+        }),
+      );
 
-    expect(answers).toEqual(routes.map((entry) => ({ route: entry.route, code: entry.code })));
-  });
+      expect(answers).toEqual(routes.map((entry) => ({ route: entry.route, code: entry.code })));
+    },
+  );
 
   it("negotiates permessage-deflate only with a peer that addressed the host off loopback", async () => {
     const host = await compose(fakeModels());
     const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-socket-")));
     cleanups.push(() => rm(home, { recursive: true, force: true }));
     const tcp = await serve(host);
-    const unix = await serve(host, join(home, "host.sock"));
+
+    const unix =
+      process.platform === "win32"
+        ? []
+        : [
+            {
+              route: "unix",
+              listener: await serve(host, join(home, "host.sock")),
+              headers: {},
+              extensions: "",
+            },
+          ];
 
     const routes = [
       { route: "loopback", listener: tcp, headers: {}, extensions: "" },
-      { route: "unix", listener: unix, headers: {}, extensions: "" },
+      ...unix,
       {
         route: "named",
         listener: tcp,
