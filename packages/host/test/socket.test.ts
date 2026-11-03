@@ -291,6 +291,55 @@ describe("the host's WebSocket", () => {
     expect(store.snapshot()).toEqual(fresh.snapshot);
   });
 
+  it("misses no event above head.read's seq when the read follows the subscribe without waiting for it", async () => {
+    const fake = fakeModels();
+    const host = await compose(fake);
+    const session = await startSession(host, fake);
+    const attaching = Promise.withResolvers<void>();
+    const attach = Promise.withResolvers<void>();
+    let held = false;
+
+    const listener = await serve({
+      ...host,
+      server: {
+        ...host.server,
+        wire: {
+          ...host.server.wire,
+          attach(id, principal) {
+            const attachment = host.server.wire.attach(id, principal);
+
+            if (held) return attachment;
+            held = true;
+
+            return {
+              ...attachment,
+              async ready() {
+                attaching.resolve();
+                await attach.promise;
+                await attachment.ready();
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const client = await connect(listener);
+    const subscribing = client.start("events.subscribe", { scopes: [`session/${session}`] });
+    const reading = client.start("head.read", { session, head: main, window: WINDOW });
+    await attaching.promise;
+    await (await send(host, fake, session, "While the subscribe attaches.")).settled();
+    attach.resolve();
+    await subscribing.settled;
+    const store = openSessionStore(decodeOutput("head.read", await reading.settled));
+    await (await send(host, fake, session, "After the read.")).settled();
+    const fresh = await freshSnapshot(client, session);
+    applyChanges(store, client.frames.slice(0, fresh.before));
+
+    expect(store.stale).toBe(false);
+    expect(store.snapshot()).toEqual(fresh.snapshot);
+  });
+
   it("resumes a dropped connection from its seq and first message and ends equal to a fresh read", async () => {
     const fake = fakeModels();
     const host = await compose(fake);

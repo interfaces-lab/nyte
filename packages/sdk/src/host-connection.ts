@@ -12,6 +12,7 @@ import type {
   PerformEvent,
   SessionId,
   TextFrame,
+  WelcomeFrame,
 } from "@nyte-ai/schema";
 import { asSdkError, openHostSocket } from "@nyte-ai/protocol";
 import type {
@@ -218,7 +219,7 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
         return;
       }
 
-      opened(socket);
+      opened(socket, seen);
     } catch (error) {
       if (mine !== generation) return;
 
@@ -228,14 +229,11 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     }
   };
 
-  const opened = (socket: HostSocket): void => {
+  const opened = (socket: HostSocket, seen: Attempt): void => {
     current = socket;
     subscribed = new Map();
-    host = socket.welcome.host_id;
-    registry.named(host);
-    attempt = 0;
 
-    void socket.closed.then((closed) => dropped(socket, closed));
+    void socket.closed.then((closed) => dropped(socket, closed, seen));
 
     if (declared !== JSON.stringify(actions())) {
       socket.close();
@@ -244,27 +242,39 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
     }
 
     for (const waiter of waiters) waiter.resolve(socket);
-    show({ kind: "open", since: Date.now() });
+    waiters.clear();
     socket.onText((frame) => {
       if ("type" in frame) openText(socket);
       else for (const listener of texts) listener(frame);
     });
 
+    for (const entry of joined)
+      entry.attachment.attach(socket, () => subscribe(socket, entry.scope));
+
+    if (texts.size > 0) openText(socket);
+    void socket.welcome.then(
+      (welcome) => welcomed(socket, welcome),
+      () => undefined,
+    );
+  };
+
+  const welcomed = (socket: HostSocket, welcome: WelcomeFrame): void => {
+    if (current !== socket) return;
+    host = welcome.host_id;
+    registry.named(host);
+    attempt = 0;
+    show({ kind: "open", since: Date.now() });
+
     if (offers.size > 0) {
-      const scope = `client/${socket.welcome.client_id}`;
+      const scope = `client/${welcome.client_id}`;
       socket.onEvent((event) => {
         if (event.scope === scope && performs.Check(event)) void answer(socket, event);
       });
       void subscribe(socket, scope);
     }
-
-    for (const entry of joined)
-      entry.attachment.attach(socket, () => subscribe(socket, entry.scope));
-
-    if (texts.size > 0) openText(socket);
   };
 
-  const dropped = (socket: HostSocket, closed: SocketClosed): void => {
+  const dropped = (socket: HostSocket, closed: SocketClosed, seen: Attempt): void => {
     if (current !== socket) return;
     current = null;
 
@@ -278,11 +288,12 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
       return;
     }
 
-    schedule(
+    failed(
       new SdkError(
         "unavailable",
         closed.reason === "" ? `The host closed the socket (${closed.code}).` : closed.reason,
       ),
+      seen,
     );
   };
 
@@ -312,8 +323,8 @@ function superviseHost(address: string, options: HostOptions, registry: Registry
   const schedule = (error: SdkError): void => {
     const delay = retryDelay(attempt);
     attempt += 1;
-    show({ kind: "retrying", attempt, at: Date.now() + delay, error });
     retryTimer = setTimeout(() => void connect(), delay);
+    show({ kind: "retrying", attempt, at: Date.now() + delay, error });
   };
 
   const restart = (): void => {

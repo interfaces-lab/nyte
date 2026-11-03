@@ -192,6 +192,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   };
 
   const subscriptions = new Map<string, Subscription>();
+  const joining = new Map<string, Promise<void>>();
   let textOpen = false;
 
   const outbox = openOutbox(socket, close, () => {
@@ -262,7 +263,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       throw error;
     }
 
-    if (closed || subscriptions.has(scope)) {
+    if (closed || !joining.has(scope) || subscriptions.has(scope)) {
       attachment.release();
 
       return;
@@ -330,20 +331,40 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   const subscribe = async (scopes: readonly string[]): Promise<void> => {
     const targets = scopes.map((scope) => readScope(scope, client?.id ?? null));
 
-    for (const target of targets) {
-      if (subscriptions.has(target.scope)) continue;
+    await Promise.all(targets.map(join));
+  };
 
-      if (target.kind === "session") await attachSession(target.scope, target.session);
-      else if (target.kind === "host") await observeHost();
-      else listenAsClient();
-    }
+  const join = (target: ReturnType<typeof readScope>): Promise<void> => {
+    if (subscriptions.has(target.scope)) return Promise.resolve();
+    const known = joining.get(target.scope);
+
+    if (known !== undefined) return known;
+
+    const joined = start(target).finally(() => {
+      if (joining.get(target.scope) === joined) joining.delete(target.scope);
+    });
+
+    joining.set(target.scope, joined);
+
+    return joined;
+  };
+
+  const start = async (target: ReturnType<typeof readScope>): Promise<void> => {
+    if (target.kind === "session") return attachSession(target.scope, target.session);
+
+    if (target.kind === "host") return observeHost();
+    listenAsClient();
+  };
+
+  const subscribed = async (scope: string): Promise<void> => {
+    await joining.get(scope)?.catch(() => undefined);
   };
 
   const observeHost = async (): Promise<void> => {
     const feed = peer.server.wire.sessions(peer.principal)[Symbol.asyncIterator]();
     const first = await feed.next();
 
-    if (closed || subscriptions.has("host") || first.done === true) {
+    if (closed || !joining.has("host") || subscriptions.has("host") || first.done === true) {
       void feed.return?.();
 
       return;
@@ -460,6 +481,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     for (const scope of scopes) {
       subscriptions.get(scope)?.release();
       subscriptions.delete(scope);
+      joining.delete(scope);
     }
   };
 
@@ -564,6 +586,10 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
       return null;
     }
+
+    if (op === "head.read") await subscribed(`session/${decodeInput(op, input).session}`);
+
+    if (op === "sessions.read") await subscribed("host");
 
     if (op === "text.open") {
       decodeInput(op, input);
