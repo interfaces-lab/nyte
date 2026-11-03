@@ -118,6 +118,26 @@ Response:
       "items": {
         "type": "string"
       }
+    },
+    "reason": {
+      "enum": [
+        "locked",
+        "protocol",
+        "version",
+        "hello_timeout",
+        "start_timeout",
+        "invalid_status",
+        "exited"
+      ]
+    },
+    "holder": {
+      "type": "number"
+    },
+    "detail": {
+      "type": "string"
+    },
+    "stderr": {
+      "type": "string"
     }
   }
 }

@@ -1,0 +1,118 @@
+---
+title: host.tailnet.logout
+description: Signs the embedded tailnet node out and turns it off.
+---
+
+Stops the embedded tailnet node, signs it out of its tailnet and saves it as off, so the next
+[`host.tailnet.configure`](/docs/reference/operations/host/tailnet.configure) that turns it on asks
+for a new login. The answer is the node's status after it stopped, `disabled`.
+
+## When to call it
+
+When the user signs this host out of Tailscale, for example to move it to another tailnet or
+account.
+
+## Access
+
+Needs `owner` authority, and answers only on the host's local socket. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{}
+```
+
+Response:
+
+```json
+{ "state": "disabled", "https": "unavailable", "access": "owner", "tags": [] }
+```
+
+## Errors
+
+- `denied` off the local socket: `host.tailnet.logout answers only on the host's local socket.`
+- `unavailable` when the host runs no tailnet node: `This host runs no tailnet node.`
+- `unavailable` when the node stopped but couldn't sign out: `The tailnet node is off but couldn't sign out. Try again.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `owner`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["state", "https", "access", "tags"],
+  "properties": {
+    "state": {
+      "enum": [
+        "disabled",
+        "starting",
+        "needs_login",
+        "needs_machine_approval",
+        "running",
+        "stopped"
+      ]
+    },
+    "authUrl": {
+      "type": "string"
+    },
+    "dnsName": {
+      "type": "string"
+    },
+    "https": {
+      "enum": ["pending", "available", "unavailable"]
+    },
+    "access": {
+      "enum": ["owner", "tailnet"]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reason": {
+      "enum": [
+        "locked",
+        "protocol",
+        "version",
+        "hello_timeout",
+        "start_timeout",
+        "invalid_status",
+        "exited"
+      ]
+    },
+    "holder": {
+      "type": "number"
+    },
+    "detail": {
+      "type": "string"
+    },
+    "stderr": {
+      "type": "string"
+    }
+  }
+}
+```
+
+{/* generated:end */}

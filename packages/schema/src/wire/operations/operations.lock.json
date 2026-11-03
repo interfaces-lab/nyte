@@ -1,7 +1,7 @@
 {
-  "revision": 7,
+  "revision": 8,
   "operations": {
-    "connection.watch": "38887a11ce30c305",
+    "connection.watch": "231c9971fb65c2af",
     "connection.blob": "d661f9695af8afc2",
     "operations.describe": "b17e90a432520966",
     "models.list": "349ced98ae1f011e",
@@ -27,9 +27,9 @@
     "sessions.start": "a30ef840361d0792",
     "sessions.list": "cb56a272894e2a86",
     "sessions.read": "b391cc99d4ab025a",
-    "host.tailnet.status": "ad7904ae72cfeb65",
-    "host.tailnet.configure": "deeaec9d81edc09b",
-    "host.tailnet.logout": "dbf9605bc5c97503",
+    "host.tailnet.status": "1064e33d9eb8164a",
+    "host.tailnet.configure": "b2d2c85351a29473",
+    "host.tailnet.logout": "ccad092113beb678",
     "host.execution.pause": "d662fe4fe2018933",
     "host.execution.resume": "6b60c8bcc1812efa",
     "mcp.approve": "e71e9810430d586e",
