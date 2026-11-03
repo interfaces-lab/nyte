@@ -8,12 +8,11 @@ import { derivedStore } from "./derived-store.ts";
 import type { StoreSource } from "./derived-store.ts";
 import { keys, queryClient } from "./query-client.ts";
 import { appSessionActions } from "./session-actions.ts";
-import { childrenWatch, openViews, sessionsWatch, subscribeOpenViews } from "./watches.ts";
-import type { OpenView } from "./watches.ts";
+import { childList, sessionList } from "./directory.ts";
 
 export interface SessionRows {
   readonly rows: ReadonlyMap<SessionId, SessionInfo>;
-  /** Each row as the host lists it, before open views and pending actions: what the host still has. */
+  /** Each row as the host lists it, before pending actions: what the host still has. */
   readonly hosted: ReadonlyMap<SessionId, SessionInfo>;
   /** The root chats in the host's order; until the host lists them, the copy the last window kept. */
   readonly roots: readonly SessionInfo[] | undefined;
@@ -145,10 +144,10 @@ const unlisted: StoreSource<Unlisted> = {
     };
 
     const sync = (): void => {
-      const all = sessionsWatch("all").value;
+      const all = sessionList("all").value;
 
       const listed = new Set(
-        [...(all ?? []), ...(sessionsWatch("roots").value ?? [])].map((session) => session.id),
+        [...(all ?? []), ...(sessionList("roots").value ?? [])].map((session) => session.id),
       );
 
       const wanted = new Set(
@@ -176,8 +175,8 @@ const unlisted: StoreSource<Unlisted> = {
     askListeners.add(sync);
 
     const leave = [
-      sessionsWatch("all").subscribeByFrame(sync),
-      sessionsWatch("roots").subscribeByFrame(sync),
+      sessionList("all").subscribeByFrame(sync),
+      sessionList("roots").subscribeByFrame(sync),
     ];
 
     sync();
@@ -203,7 +202,7 @@ const children: StoreSource<readonly SessionInfo[]> = {
     const watched = new Map<SessionId, () => void>();
 
     const collect = (): void => {
-      const rows = [...watched.keys()].flatMap((parent) => childrenWatch(parent).value ?? []);
+      const rows = [...watched.keys()].flatMap((parent) => childList(parent).value ?? []);
 
       if (rows.length === childRows.length && rows.every((row, index) => row === childRows[index]))
         return;
@@ -219,8 +218,7 @@ const children: StoreSource<readonly SessionInfo[]> = {
         }
 
       for (const parent of askedParents.keys())
-        if (!watched.has(parent))
-          watched.set(parent, childrenWatch(parent).subscribeByFrame(collect));
+        if (!watched.has(parent)) watched.set(parent, childList(parent).subscribeByFrame(collect));
 
       collect();
     };
@@ -239,12 +237,12 @@ const children: StoreSource<readonly SessionInfo[]> = {
 
 const sources = {
   all: {
-    read: () => sessionsWatch("all").value,
-    subscribe: (notice: () => void) => sessionsWatch("all").subscribeByFrame(notice),
+    read: () => sessionList("all").value,
+    subscribe: (notice: () => void) => sessionList("all").subscribeByFrame(notice),
   },
   roots: {
-    read: () => sessionsWatch("roots").value,
-    subscribe: (notice: () => void) => sessionsWatch("roots").subscribeByFrame(notice),
+    read: () => sessionList("roots").value,
+    subscribe: (notice: () => void) => sessionList("roots").subscribeByFrame(notice),
   },
   recorded: {
     read: () => queryClient.getQueryData<readonly SessionInfo[]>(keys.firstFrameRoots),
@@ -256,7 +254,6 @@ const sources = {
   },
   children,
   unlisted,
-  views: { read: openViews, subscribe: subscribeOpenViews },
   pending: {
     read: () => appSessionActions().getSnapshot(),
     subscribe: (notice: () => void) => appSessionActions().subscribe(notice),
@@ -281,7 +278,6 @@ const store = derivedStore(
       {
         lists: [read.all.read(), roots, read.children.read(), read.unlisted.read().rows],
         roots,
-        views: read.views.read(),
         project: (session) => appSessionActions().projectSession(session, pending),
       },
       previous,
@@ -305,8 +301,6 @@ export interface RowSources {
   /** Most complete first: a session takes its row from the first list that has it. */
   readonly lists: readonly (readonly SessionInfo[] | undefined)[];
   readonly roots: readonly SessionInfo[] | undefined;
-  /** Each open view's heads replace the listed ones. */
-  readonly views: ReadonlyMap<SessionId, OpenView>;
   /** The session as pending renames, pins, archives and deletes leave it; null once deleted. */
   readonly project: (session: SessionInfo) => SessionInfo | null;
 }
@@ -329,11 +323,7 @@ export function mergeSessionRows(
 
   const rows = new Map(
     [...merged.values()].flatMap((listed) => {
-      const view = sources.views.get(listed.id);
-
-      const session = sources.project(
-        view === undefined ? listed : { ...listed, heads: view.heads },
-      );
+      const session = sources.project(listed);
 
       return session === null
         ? []

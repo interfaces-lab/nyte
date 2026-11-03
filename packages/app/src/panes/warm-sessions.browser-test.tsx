@@ -19,8 +19,7 @@ import { PaneControllerProvider } from "./pane-context.tsx";
 import type { ScrollViewState } from "./session-view-state.ts";
 import { SessionDndProvider } from "./session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
-import { installConnection } from "../data/connection.ts";
-import { sessionWatch, warmSession } from "../data/watches.ts";
+import { chatStore, warmSession } from "../data/chat-store.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { workbenchViewKey } from "../workbench/paths.ts";
 import { workbench } from "../workbench/store.ts";
@@ -28,7 +27,7 @@ import { SessionScreen } from "./session-screen.tsx";
 import { createAppRouter } from "../shell/routes.tsx";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
-import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
 
 const TURNS = 24;
@@ -115,7 +114,7 @@ const streams = new Map([A, B, C, D].map((id) => [id, viewStream(view(id))] as c
 
 const seen: string[] = [];
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: listed,
     views: streams,
@@ -124,12 +123,17 @@ installConnection(
         seen.push(commit);
       },
     }),
-  }).connection,
+  }),
 );
 
 async function moveTip(session: SessionId, tip: number): Promise<void> {
-  const moved = sessionWatch(session).next();
+  const moved = chatStore(session).next();
   streams.get(session)?.push(view(session, tip));
+  listed.push(
+    (listed.latest() ?? []).map((row) =>
+      row.id === session ? { ...row, heads: [head(session, tip)] } : row,
+    ),
+  );
   await moved;
   await painted();
   await painted();
@@ -280,11 +284,11 @@ async function checkRules(): Promise<string> {
     const d = await show(container, D);
     await until(() => seen.includes(`${D}-tip-1`), "the shown chat to be marked read");
     warmSession(C);
-    await until(() => sessionWatch(C).value !== undefined, "warming an unread chat to open it");
+    await until(() => chatStore(C).value !== undefined, "warming an unread chat to open it");
     await painted();
     expectRule(!seen.includes(`${C}-tip-1`), "warming an unread chat marked it read");
     const a = await show(container, A);
-    expectRule(!d.viewport.checkVisibility(), "a hidden session stays visible");
+    expectRule(!d.viewport.isConnected, "a chat the pane left stayed mounted");
     await moveTip(D, 2);
     await moveTip(A, 2);
     await until(() => seen.includes(`${A}-tip-2`), "the shown chat's new tip to be marked read");
@@ -296,7 +300,8 @@ async function checkRules(): Promise<string> {
 
     const b = await show(container, B);
     await painted();
-    expectRule(sessionWatch(A).active, "a hidden hot session released its watch");
+    expectRule(!a.viewport.isConnected, "a chat the pane left stayed mounted");
+    expectRule(chatStore(A).active, "a chat the pane left dropped its rows");
     const aSnapshot = readScroll(A);
     expectRule(
       aSnapshot?.kind === "anchor",
@@ -310,8 +315,6 @@ async function checkRules(): Promise<string> {
     );
 
     const back = await show(container, A);
-    expectRule(back.viewport === a.viewport, "switching back remounted the transcript");
-    expectRule(back.composer === a.composer, "switching back remounted the composer");
     expectRule(
       back.editor.textContent?.includes("Draft for A") === true,
       `switching back lost the draft: ${JSON.stringify(back.editor.textContent)}`,
@@ -328,17 +331,13 @@ async function checkRules(): Promise<string> {
 
     const dSnapshot = readScroll(D);
     await show(container, C);
-    expectRule(!d.viewport.isConnected, "the least recent session stayed mounted");
-    expectRule(!d.composer.isConnected, "the least recent composer stayed mounted");
-    expectRule(readScroll(D) === dSnapshot, "evicting a hidden session wrote its scroll snapshot");
-    expectRule(readScroll(B) === bSnapshot, "a hidden session wrote its scroll snapshot");
-    expectRule(a.viewport.isConnected && b.viewport.isConnected, "a hot session was unmounted");
-    await until(() => !sessionWatch(D).active, "the evicted session to release its watch");
-
-    listed.push([A, C, D].map((id) => sessionRow(id)));
-    await until(() => !b.viewport.isConnected, "the deleted hidden session to unmount");
-    expectRule(!b.composer.isConnected, "a deleted hidden session kept its composer mounted");
-    expectRule(a.viewport.isConnected, "deleting another session unmounted a hot one");
+    expectRule(!back.viewport.isConnected, "a chat the pane left stayed mounted");
+    expectRule(
+      readScroll(D) === dSnapshot,
+      "a chat the pane left long ago wrote its scroll snapshot",
+    );
+    expectRule(readScroll(B) === bSnapshot, "a chat the pane left wrote its scroll snapshot again");
+    expectRule(chatStore(D).active, "an unmounted chat dropped the rows it had opened");
 
     const home = workbenchViewKey(undefined);
     workbench.dispatch(home, { kind: "toggle" });

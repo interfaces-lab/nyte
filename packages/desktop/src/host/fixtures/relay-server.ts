@@ -11,6 +11,7 @@ import {
   RELAY_WINDOW_BYTES,
   decodeChunk,
   encodeChunks,
+  encodeMessage,
   hasNullBody,
   parseDesktopFrame,
   publicRelayTarget,
@@ -39,6 +40,21 @@ interface Exchange {
   status: number | undefined;
   ended: boolean;
   reset: boolean;
+}
+
+export interface RelayedSocket {
+  readonly ch: string;
+  readonly messages: string[];
+  readonly closed: PromiseWithResolvers<{ readonly code: number; readonly reason: string }>;
+  send(text: string): void;
+  close(code: number, reason: string): void;
+  next(): Promise<string>;
+}
+
+interface Bridge {
+  readonly socket: RelayedSocket;
+  readonly parts: Uint8Array[];
+  readonly waiters: Set<() => void>;
 }
 
 function decodeFrame(data: RawData): string {
@@ -77,6 +93,7 @@ export class RelayServer {
   private socket: ServerSocket | undefined;
   private environmentId: string | undefined;
   private readonly exchanges = new Map<string, Exchange>();
+  private readonly bridges = new Map<string, Bridge>();
 
   private constructor(server: WebSocketServer, options: RelayServerOptions) {
     this.server = server;
@@ -177,6 +194,34 @@ export class RelayServer {
     return exchange.head.promise;
   }
 
+  openSocket(path: string): RelayedSocket {
+    const ch = randomId();
+    const waiters = new Set<() => void>();
+    const messages: string[] = [];
+
+    const socket: RelayedSocket = {
+      ch,
+      messages,
+      closed: Promise.withResolvers(),
+      send: (text) => {
+        for (const chunk of encodeMessage(text)) this.frame({ t: "message", ch, ...chunk });
+      },
+      close: (code, reason) => this.frame({ t: "close", ch, code, reason }),
+      next: async () => {
+        const seen = messages.length;
+
+        while (messages.length === seen) await new Promise<void>((resolve) => waiters.add(resolve));
+
+        return messages[seen] ?? "";
+      },
+    };
+
+    this.bridges.set(ch, { socket, parts: [], waiters });
+    this.frame({ t: "socket", ch, path });
+
+    return socket;
+  }
+
   send(data: string | Buffer): void {
     this.socket?.send(data);
   }
@@ -260,9 +305,57 @@ export class RelayServer {
     });
   }
 
+  private bridgeFrame(
+    bridge: Bridge,
+    frame: Exclude<DesktopFrame, { t: "auth" } | { t: "ping" }>,
+  ): string | undefined {
+    switch (frame.t) {
+      case "message": {
+        const bytes = decodeChunk(frame.data);
+
+        if (bytes === undefined) return "an undecodable message";
+        bridge.parts.push(bytes);
+        this.frame({ t: "credit", ch: frame.ch, bytes: bytes.byteLength });
+
+        if (!frame.fin) return undefined;
+        bridge.socket.messages.push(Buffer.concat(bridge.parts.splice(0)).toString("utf8"));
+
+        for (const resolve of bridge.waiters) resolve();
+        bridge.waiters.clear();
+
+        return undefined;
+      }
+
+      case "close":
+        this.bridges.delete(frame.ch);
+        bridge.socket.closed.resolve({ code: frame.code, reason: frame.reason });
+
+        return undefined;
+      case "reset":
+        this.bridges.delete(frame.ch);
+        bridge.socket.closed.resolve({ code: 1006, reason: "reset" });
+
+        return undefined;
+      case "credit":
+        return undefined;
+      case "head":
+      case "data":
+      case "end":
+        return `${frame.t} on a socket channel`;
+      default: {
+        const _exhaustive: never = frame;
+
+        return _exhaustive;
+      }
+    }
+  }
+
   private desktopFrame(
     frame: Exclude<DesktopFrame, { t: "auth" } | { t: "ping" }>,
   ): string | undefined {
+    const bridge = this.bridges.get(frame.ch);
+
+    if (bridge !== undefined) return this.bridgeFrame(bridge, frame);
     const exchange = this.exchanges.get(frame.ch);
 
     if (exchange === undefined) return undefined;
@@ -310,6 +403,9 @@ export class RelayServer {
         this.end(exchange);
 
         return undefined;
+      case "message":
+      case "close":
+        return `${frame.t} on an exchange`;
       default: {
         const _exhaustive: never = frame;
 

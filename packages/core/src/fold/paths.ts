@@ -64,20 +64,26 @@ function record(ring: Ring, draft: Draft): void {
     return;
   }
 
+  let amended = draft.touched.paths.size > 0;
+
   for (const table of TABLES) {
     for (const key of draft.touched.upsert[table]) {
       last.upsert[table].add(key);
       last.drop[table].delete(key);
+      amended = true;
     }
 
     for (const key of draft.touched.drop[table]) {
       last.drop[table].add(key);
       last.upsert[table].delete(key);
+      amended = true;
     }
   }
 
   for (const [head, position] of draft.touched.paths)
     last.paths.set(head, Math.min(position, last.paths.get(head) ?? position));
+
+  if (amended) ring.amended += 1;
 }
 
 const TABLES: readonly Table[] = [

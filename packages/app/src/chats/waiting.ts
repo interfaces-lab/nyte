@@ -1,13 +1,14 @@
 import { runStatus } from "@nyte-ai/plugin/client/presentation";
 import { asId } from "@nyte-ai/schema";
-import type { SessionId, SessionView } from "@nyte-ai/sdk";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { ChatView } from "../data/chat-store.ts";
 import type { DerivedStore } from "../data/derived-store.ts";
-import { sessionWatch } from "../data/watches.ts";
+import { chatStore } from "../data/chat-store.ts";
 
 export interface WaitingChat {
   readonly id: SessionId;
   readonly title: string;
-  readonly view: SessionView;
+  readonly view: ChatView;
 }
 
 interface WaitingChild {
@@ -37,7 +38,7 @@ export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat
 
   const read = (): readonly WaitingChat[] => {
     const next = waitingChildren(root).flatMap((child) => {
-      const view = sessionWatch(child.id).value;
+      const view = chatStore(child.id).value;
 
       return view !== undefined && runStatus(view.execution).kind === "waiting-for-approval"
         ? [{ ...child, view }]
@@ -67,8 +68,7 @@ export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat
         watched.delete(id);
       }
 
-    for (const id of walked)
-      if (!watched.has(id)) watched.set(id, sessionWatch(id).subscribe(follow));
+    for (const id of walked) if (!watched.has(id)) watched.set(id, chatStore(id).subscribe(follow));
     notify();
   };
 
@@ -96,7 +96,7 @@ export function waitingBelow(root: SessionId): DerivedStore<readonly WaitingChat
 }
 
 function waitingChildren(session: SessionId): readonly WaitingChild[] {
-  return (sessionWatch(session).value?.background ?? []).flatMap((item) => {
+  return (chatStore(session).value?.background ?? []).flatMap((item) => {
     if (item.kind !== "child" || item.state !== "waiting") return [];
     const id = asId<"session">(item.id);
 

@@ -20,11 +20,10 @@ import { PaneControllerProvider } from "./pane-context.tsx";
 import { PaneController } from "./pane-controller.ts";
 import { SessionDndProvider } from "./session-dnd.tsx";
 import { keys, queryClient } from "../data/query-client.ts";
-import { installConnection } from "../data/connection.ts";
 import { SessionScreen } from "./session-screen.tsx";
 import { createAppRouter } from "../shell/routes.tsx";
 import "../theme/tokens.stylex.ts";
-import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
+import { installScripted, scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import type { ViewStream } from "../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow, settledTool } from "../../test/view-fixtures.ts";
 
@@ -210,7 +209,7 @@ function leadingPrompt(view: SessionView, start: number): SessionView["leadingPr
 /** Each round trip a chat cost, as `<chat>:<call>`, in the order they started. */
 const fetches: string[] = [];
 
-installConnection(
+installScripted(
   scriptedConnection({
     sessions: NAMES.map((name) => sessionRow(name, { name })),
     views: new Map([...chats.values()].map((entry) => [entry.id, entry.stream])),
@@ -262,7 +261,7 @@ installConnection(
         },
       };
     },
-  }).connection,
+  }),
 );
 
 const catalog = {

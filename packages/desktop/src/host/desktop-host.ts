@@ -41,7 +41,7 @@ import type { SavedServer } from "./connections/server-settings.ts";
 export interface DesktopHostDependencies {
   readonly home: string;
   open(): Promise<Connection>;
-  readonly client: Pick<HostConnection, "call">;
+  readonly client: Pick<HostConnection, "call" | "directory">;
   readonly usageScan?: UsageScanReader;
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
@@ -289,7 +289,7 @@ export class DesktopHost {
         this.#tailnet = tailnet;
         this.#settings = desktopSettings(view);
         this.#deps.settingsChanged?.(this.#settings);
-        this.#followRows(opened);
+        this.#followRows();
         this.#holdAwake();
 
         if (this.#seen !== undefined) this.#attend();
@@ -298,17 +298,31 @@ export class DesktopHost {
     );
   }
 
-  #followRows(opened: Connection): void {
-    if (this.#rowsFollowed) return;
+  #followRows(): void {
+    if (this.#rowsFollowed || this.#watching.signal.aborted) return;
     this.#rowsFollowed = true;
-    void follow(
-      () => opened.sessions.watch({ parents: { kind: "all" } }),
-      (rows) => {
-        this.#rows = rows;
-        this.#holdAwake();
-        this.#attend();
+    const directory = this.#deps.client.directory({ parents: { kind: "all" } });
+
+    const stop = directory.subscribe(() => {
+      const snapshot = directory.snapshot();
+
+      if (snapshot === null) return;
+      this.#rows = snapshot.ids.flatMap((id) => {
+        const row = snapshot.rows.get(id);
+
+        return row === undefined ? [] : [row];
+      });
+      this.#holdAwake();
+      this.#attend();
+    });
+
+    this.#watching.signal.addEventListener(
+      "abort",
+      () => {
+        stop();
+        directory.close();
       },
-      this.#watching.signal,
+      { once: true },
     );
   }
 

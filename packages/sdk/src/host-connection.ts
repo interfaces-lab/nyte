@@ -490,12 +490,10 @@ async function credentialHeaders(
 
 async function loginStatus(address: string, options: HostOptions): Promise<number | null> {
   const send = options.fetch ?? fetch;
-  const url = new URL(address);
-  url.protocol = url.protocol === "wss:" || url.protocol === "https:" ? "https:" : "http:";
 
   const response = await credentialHeaders(options.credentials)
     .then((headers) =>
-      send(`${url.origin}/clients.read`, {
+      send(hostUrl(address, "/clients.read", "http"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
         body: "{}",
@@ -509,8 +507,16 @@ async function loginStatus(address: string, options: HostOptions): Promise<numbe
 }
 
 function socketUrl(address: string): string {
-  const url = new URL(SOCKET_PATH, address);
-  url.protocol = url.protocol === "https:" || url.protocol === "wss:" ? "wss:" : "ws:";
+  return hostUrl(address, SOCKET_PATH, "ws");
+}
+
+export function hostUrl(address: string, path: string, scheme: "http" | "ws"): string {
+  const url = new URL(address);
+  const secure = url.protocol === "https:" || url.protocol === "wss:";
+  url.protocol = `${scheme}${secure ? "s" : ""}:`;
+  url.pathname = `${url.pathname.replace(/\/+$/u, "")}${path}`;
+  url.search = "";
+  url.hash = "";
 
   return url.href;
 }

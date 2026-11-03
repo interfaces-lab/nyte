@@ -154,28 +154,31 @@ function connect(ids: readonly SessionId[]): void {
     }),
   });
 
-  installConnection({
-    ...scripted.connection,
-    sessions: {
-      ...scripted.connection.sessions,
-      start: async (input) => {
-        const id = input.id ?? asId<"session">("unnamed");
-        starts.push(id);
+  installConnection(
+    {
+      ...scripted.connection,
+      sessions: {
+        ...scripted.connection.sessions,
+        start: async (input) => {
+          const id = input.id ?? asId<"session">("unnamed");
+          starts.push(id);
 
-        return {
-          session: scripted.connection.session(id),
-          receipt: {
-            id: asId<"receipt">(id),
-            message: asId<"message">(id),
-            status: refuse,
-            settled: refuse,
-            stop: refuse,
-            landed: refuse,
-          },
-        };
+          return {
+            session: scripted.connection.session(id),
+            receipt: {
+              id: asId<"receipt">(id),
+              message: asId<"message">(id),
+              status: refuse,
+              settled: refuse,
+              stop: refuse,
+              landed: refuse,
+            },
+          };
+        },
       },
     },
-  });
+    scripted.live,
+  );
 }
 
 async function checkSends(): Promise<string> {

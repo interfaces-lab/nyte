@@ -99,10 +99,12 @@ let next = fakeJob("first");
 
 let running = new Map<string, Job>();
 
-const scripted = scriptedConnection({
+const scriptedSet = scriptedConnection({
   workspaces: [folder],
   sessions: [sessionRow(firstSession, { workspace })],
-}).connection;
+});
+
+const scripted = scriptedSet.connection;
 
 const connection: Connection = {
   ...scripted,
@@ -122,7 +124,7 @@ const connection: Connection = {
   }),
 };
 
-installConnection(connection);
+installConnection(connection, scriptedSet.live);
 
 function sink() {
   let contents = "";

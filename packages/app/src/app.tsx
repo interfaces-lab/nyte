@@ -18,7 +18,7 @@ import { workspacePathForView } from "./workbench/paths.ts";
 import { workbench } from "./workbench/store.ts";
 import { reattachShells } from "./workbench/terminal/terminal-store.ts";
 import { watchClientPlugins } from "./canvas/client-plugins.tsx";
-import { paceTranscripts } from "./data/watches.ts";
+import { paceTranscripts } from "./data/chat-store.ts";
 import { chatWindow, followStage } from "./window/index.ts";
 import { useHostEvents } from "./shell/host-events.ts";
 

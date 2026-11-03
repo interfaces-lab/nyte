@@ -13,7 +13,8 @@ import {
   subscribeSessionRows,
   useSessionRow,
 } from "../data/session-rows.ts";
-import { jobsWatch, sessionWatch } from "../data/watches.ts";
+import { jobsWatch } from "../data/watches.ts";
+import { chatStore } from "../data/chat-store.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { workspacesQuery } from "../data/workspaces.ts";
 import { describeChats } from "./directory.ts";
@@ -67,7 +68,7 @@ const NO_ITEMS: readonly BackgroundItem[] = [];
 export function useChatTasks(session: SessionId | undefined): readonly Task[] {
   const background =
     useWatchSelect(
-      session === undefined ? undefined : sessionWatch(session),
+      session === undefined ? undefined : chatStore(session),
       (state) => state.value?.background,
     ) ?? NO_ITEMS;
 
@@ -86,7 +87,7 @@ export function useChatTasks(session: SessionId | undefined): readonly Task[] {
 
 export function useTask(session: SessionId | undefined, key: TaskKey): Task | undefined {
   const item = useWatchSelect(
-    session === undefined ? undefined : sessionWatch(session),
+    session === undefined ? undefined : chatStore(session),
     (state) => state.value?.background.find((candidate) => matchesKey(candidate, key)),
     sameItem,
   );

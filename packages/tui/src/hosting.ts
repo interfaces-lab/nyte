@@ -15,6 +15,8 @@ const HostCommandType = Type.Object({
   /** What `token` grants on the listener; `maintenance` only for a token this process minted for itself. */
   authority: Type.Array(AuthorityType),
   socket: Type.Optional(Type.String()),
+  /** The folder the host registers as its default workspace; the process's working directory without one. */
+  workspace: Type.Optional(Type.String()),
 });
 
 export type HostCommand = Static<typeof HostCommandType>;

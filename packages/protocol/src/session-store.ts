@@ -82,7 +82,7 @@ export function openSessionStore(window: HeadWindow): SessionStore {
       return stale;
     },
     apply(change) {
-      if (change.seq <= seq) return;
+      if (change.seq < seq) return;
       seq = change.seq;
       write(rows, change.tables);
 

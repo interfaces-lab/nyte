@@ -75,6 +75,8 @@ export const RELAY_BODY_LIMIT_BYTES = 8_388_608;
 /** Longest frame text either side parses. */
 export const RELAY_FRAME_CHARS = 65_536;
 
+export const RELAY_MESSAGE_LIMIT_BYTES = 1_048_576;
+
 /** The desktop sends `RELAY_PING` this often and reconnects when no pong arrives within the next interval. */
 export const RELAY_PING_INTERVAL_MS = 20_000;
 
@@ -291,6 +293,11 @@ export const RELAY_STREAMS = {
   cancel: "/.nyte/streams/cancel",
 } as const;
 
+export const RELAY_SOCKET = {
+  socket: "/.nyte/ws",
+  ticket: "/.nyte/ws/ticket",
+} as const;
+
 const literal = (text: string) => text.replaceAll(".", "\\.");
 const OPERATION = RELAY_OPERATIONS.map(literal).join("|");
 const QUERY = "\\?(?:[A-Za-z0-9*._~+=&-]|%[0-9A-Fa-f]{2})*";
@@ -303,7 +310,12 @@ const QUERY = "\\?(?:[A-Za-z0-9*._~+=&-]|%[0-9A-Fa-f]{2})*";
  */
 export const RelayPath = Type.String({
   maxLength: 2048,
-  pattern: `^(?:/(?:${OPERATION})|${literal(RELAY_DISCOVERY.identity)}(?:${QUERY})?|${literal(RELAY_DISCOVERY.describe)}|${literal(RELAY_STREAMS.channel)}|${literal(RELAY_STREAMS.cancel)}|${DESKTOP_ROUTES.device}|${DESKTOP_ROUTES.enroll})$`,
+  pattern: `^(?:/(?:${OPERATION})|${literal(RELAY_DISCOVERY.identity)}(?:${QUERY})?|${literal(RELAY_DISCOVERY.describe)}|${literal(RELAY_STREAMS.channel)}|${literal(RELAY_STREAMS.cancel)}|${literal(RELAY_SOCKET.ticket)}|${DESKTOP_ROUTES.device}|${DESKTOP_ROUTES.enroll})$`,
+});
+
+export const RelaySocketPath = Type.String({
+  maxLength: 256,
+  pattern: `^${literal(RELAY_SOCKET.socket)}\\?ticket=[A-Za-z0-9_-]{1,128}$`,
 });
 
 const HEADER_VALUE = "^[\\x20-\\x7e]*$";
@@ -345,6 +357,18 @@ const ChannelData = strict({ t: Type.Literal("data"), ch: ChannelId, data: Chunk
 const ChannelEnd = strict({ t: Type.Literal("end"), ch: ChannelId });
 const ChannelCredit = strict({ t: Type.Literal("credit"), ch: ChannelId, bytes: Credit });
 const ChannelReset = strict({ t: Type.Literal("reset"), ch: ChannelId });
+const SocketMessage = strict({
+  t: Type.Literal("message"),
+  ch: ChannelId,
+  data: Chunk,
+  fin: Type.Boolean(),
+});
+const SocketClose = strict({
+  t: Type.Literal("close"),
+  ch: ChannelId,
+  code: Type.Integer({ minimum: 1000, maximum: 4999 }),
+  reason: Type.String({ maxLength: 123 }),
+});
 
 /** What the relay sends a desktop. */
 export const RelayFrame = Type.Union([
@@ -357,10 +381,13 @@ export const RelayFrame = Type.Union([
     path: RelayPath,
     headers: RelayRequestHeaders,
   }),
+  strict({ t: Type.Literal("socket"), ch: ChannelId, path: RelaySocketPath }),
   ChannelData,
   ChannelEnd,
   ChannelCredit,
   ChannelReset,
+  SocketMessage,
+  SocketClose,
 ]);
 
 export type RelayFrame = Static<typeof RelayFrame>;
@@ -379,6 +406,8 @@ export const DesktopFrame = Type.Union([
   ChannelEnd,
   ChannelCredit,
   ChannelReset,
+  SocketMessage,
+  SocketClose,
 ]);
 
 export type DesktopFrame = Static<typeof DesktopFrame>;
@@ -423,6 +452,16 @@ export function decodeChunk(data: string): Uint8Array | undefined {
   return bytes === undefined || bytes.byteLength === 0 || bytes.byteLength > RELAY_CHUNK_BYTES
     ? undefined
     : bytes;
+}
+
+export function encodeMessage(text: string): { readonly data: string; readonly fin: boolean }[] {
+  const chunks = encodeChunks(new TextEncoder().encode(text));
+
+  return chunks.map((data, index) => ({ data, fin: index === chunks.length - 1 }));
+}
+
+export function sendableCloseCode(code: number): number {
+  return code === 1000 || (code >= 3000 && code <= 4999) ? code : 1000;
 }
 
 /** Statuses whose response has no body: `head` is followed by `end` alone. */
@@ -483,7 +522,7 @@ export function relayResponseHeaders(headers: Headers): RelayResponseHeaders {
  * `release` is the phone dropping its own credential and takes `DELETE`.
  */
 interface PublicRelayTarget {
-  readonly kind: "api" | "discovery" | "release";
+  readonly kind: "api" | "discovery" | "release" | "socket";
   readonly environmentId: string;
   /** Path and query as the desktop receives them. */
   readonly path: string;
@@ -493,6 +532,7 @@ export const PUBLIC_RELAY_METHODS = {
   api: ["POST"],
   discovery: ["GET"],
   release: ["DELETE"],
+  socket: ["GET"],
 } as const satisfies Record<PublicRelayTarget["kind"], readonly RelayMethod[]>;
 
 /**
@@ -507,6 +547,7 @@ export const PUBLIC_RELAY_BEARER = {
   api: "active",
   discovery: "none",
   release: "reserved-or-active",
+  socket: "none",
 } as const satisfies Record<PublicRelayTarget["kind"], "none" | "active" | "reserved-or-active">;
 
 const PUBLIC_URL = new RegExp(`^${RELAY_PREFIX}(${UUID_PATTERN.slice(1, -1)})(/.*)$`, "u");
@@ -522,6 +563,9 @@ export function publicRelayTarget(url: URL): PublicRelayTarget | undefined {
   if (match === null || url.hash !== "") return undefined;
   const [, environmentId = "", route = ""] = match;
   const path = `${route}${url.search}`;
+
+  if (route === RELAY_SOCKET.socket)
+    return Value.Check(RelaySocketPath, path) ? { kind: "socket", environmentId, path } : undefined;
 
   if (!Value.Check(RelayPath, path) || route === DESKTOP_ROUTES.enroll) return undefined;
 

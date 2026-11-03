@@ -14,12 +14,15 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../../theme/tokens.stylex.ts";
 import "../../theme/global.css";
-import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
+import {
+  installScripted,
+  scriptedConnection,
+  viewStream,
+} from "../../../test/scripted-connection.ts";
 import { USAGE } from "../../../test/view-fixtures.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
 import { PaneController } from "../../panes/pane-controller.ts";
-import { installConnection } from "../../data/connection.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import { LiveTurn } from "./live-turn.tsx";
 import { TranscriptProvider } from "./transcript.tsx";
 
@@ -148,13 +151,13 @@ const quiet = viewStream(view([]));
 
 const busy = viewStream(view([text("answer", "Reading", true)]));
 
-installConnection(
+installScripted(
   scriptedConnection({
     views: new Map([
       [QUIET, quiet],
       [BUSY, busy],
     ]),
-  }).connection,
+  }),
 );
 
 const panes = new PaneController({ storageKey: "live-turn-test" });
@@ -304,11 +307,11 @@ async function streamingHidesIt(box: HTMLElement) {
 export async function run(): Promise<string> {
   const sessions = [QUIET, BUSY];
 
-  for (const session of sessions) sessionWatch(session).subscribe(() => undefined);
+  for (const session of sessions) chatStore(session).subscribe(() => undefined);
 
   for (
     let index = 0;
-    sessions.some((session) => sessionWatch(session).getState().value === undefined);
+    sessions.some((session) => chatStore(session).getState().value === undefined);
     index += 1
   ) {
     check(index < 120, "Both sessions' views arrive before their live rows mount");
@@ -353,7 +356,7 @@ export async function run(): Promise<string> {
     `Switching to another chat and back keeps the slow label: ${timeline(quietLabels.changes, mounted)}`,
   );
 
-  const quietActivity = () => sessionWatch(QUIET).getState().value?.activity.kind;
+  const quietActivity = () => chatStore(QUIET).getState().value?.activity.kind;
   quietRow.render("hidden");
   await settle();
   quiet.push(view([text("hidden", ANSWER, true)]));

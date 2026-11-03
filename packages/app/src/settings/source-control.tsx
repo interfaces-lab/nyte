@@ -11,7 +11,7 @@ import type { Setting } from "../preferences/index.ts";
 import { pluginSetting } from "../preferences/plugin.ts";
 import { useWorkspaces } from "../data/workspaces.ts";
 import { connected } from "../data/connection.ts";
-import { sessionsWatch } from "../data/watches.ts";
+import { sessionList } from "../data/directory.ts";
 import { useWatch } from "../data/watch-store.ts";
 import { NumberRow, SettingsRow, SettingsSection, TextRow } from "./rows.tsx";
 
@@ -94,7 +94,7 @@ function WorktreesSection(): ReactElement {
     workspace.worktree === null ? [] : [{ ...workspace, worktree: workspace.worktree }],
   );
 
-  const sessions = useWatch(sessionsWatch("all")).value ?? [];
+  const sessions = useWatch(sessionList("all")).value ?? [];
   const now = useState(Date.now)[0];
 
   const rows = worktrees

@@ -19,7 +19,7 @@ import { errorMessage } from "../../contract/errors.ts";
 import { COMPACT_COMMAND } from "../../data/plugins.ts";
 import { workspaceFiles } from "../../data/files.ts";
 import { connected } from "../../data/connection.ts";
-import { sessionWatch } from "../../data/watches.ts";
+import { chatStore } from "../../data/chat-store.ts";
 import type { ComposerSubmission } from "./composer-document.ts";
 import type { ContentPart } from "../../references/message-references.ts";
 import { messageFiles } from "../transcript/message-content.tsx";
@@ -174,7 +174,7 @@ interface ComposerEdit {
 
 async function draftCommands(sessionId: SessionId, text: string): Promise<DraftCommands> {
   if (!/^\/\S/.test(text.trim())) return { kind: "loaded", commands: NO_COMMANDS };
-  const store = sessionWatch(sessionId);
+  const store = chatStore(sessionId);
   const shown = store.value;
 
   return (shown === undefined ? store.next() : Promise.resolve(shown)).then(

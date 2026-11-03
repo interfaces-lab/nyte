@@ -171,6 +171,7 @@ export interface PartProgress {
 export interface SessionAttachment {
   ready(): Promise<void>;
   seq(): Seq;
+  amended(): number;
   activation(): Activation;
   read(head: HeadName, window: WindowSpec, resume: Resume | null): HeadWindow;
   changesSince(seq: Seq): SessionChange;

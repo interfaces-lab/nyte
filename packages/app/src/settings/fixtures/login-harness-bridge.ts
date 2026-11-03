@@ -1,8 +1,11 @@
 import type { HostView, ModelCatalogView } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { HostBridge } from "../../contract/bridge.ts";
-import { installConnection } from "../../data/connection.ts";
-import { scriptedConnection, viewStream } from "../../../test/scripted-connection.ts";
+import {
+  installScripted,
+  scriptedConnection,
+  viewStream,
+} from "../../../test/scripted-connection.ts";
 
 export type HarnessStep =
   | { readonly kind: "open"; readonly url: string; readonly code?: string }
@@ -128,7 +131,7 @@ function flow(): AsyncIterable<HarnessStep> {
   };
 }
 
-installConnection(
+installScripted(
   scriptedConnection({
     host,
     models: {
@@ -147,7 +150,7 @@ installConnection(
         calls.push({ path: "models.logout", input: provider });
       },
     },
-  }).connection,
+  }),
 );
 
 const bridgeHost: Pick<HostBridge, "endpoint" | "openExternal" | "setThemePreference" | "onEvent"> =

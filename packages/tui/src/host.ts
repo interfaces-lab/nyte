@@ -15,7 +15,10 @@ import { bunPluginImport } from "./plugin-import.ts";
 
 /** Opens the host this process serves. With `clients`, the browser tools and canvas previews are the ones a connected Nyte.app offers, and previews fall back to Chromium while none does. */
 export function openTerminalHost(
-  options: Pick<OpenHostOptions, "execution" | "label" | "onRevoked" | "shell" | "plugins"> & {
+  options: Pick<
+    OpenHostOptions,
+    "execution" | "label" | "onRevoked" | "shell" | "plugins" | "workspace"
+  > & {
     readonly clients?: boolean;
   } = {},
 ): Promise<Host> {
@@ -37,5 +40,6 @@ export function openTerminalHost(
     label: options.label,
     onRevoked: options.onRevoked,
     shell: options.shell,
+    workspace: options.workspace,
   });
 }
