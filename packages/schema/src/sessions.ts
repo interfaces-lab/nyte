@@ -47,6 +47,20 @@ export const SessionsReadType = Type.Object({
 
 export type SessionsRead = Decoded<typeof SessionsReadType>;
 
+export const SessionsChangeType = Type.Object({
+  seq: Type.Number(),
+  tables: Type.Object({
+    sessions: Type.Optional(
+      Type.Object({
+        upsert: Type.Array(SessionInfoType),
+        drop: Type.Array(idSchema<"session">()),
+      }),
+    ),
+  }),
+});
+
+export type SessionsChange = Decoded<typeof SessionsChangeType>;
+
 /**
  * The slash names Nyte's own clients keep for their built-in commands and
  * aliases. The host refuses a plugin command that takes one, so a client never

@@ -25,6 +25,10 @@ import type {
   Seq,
   SessionChange,
   SessionId,
+  SessionInfo,
+  SessionsChange,
+  SessionsRead,
+  TailnetStatus,
   WelcomeFrame,
 } from "@nyte-ai/schema";
 import type { Connection } from "@nyte-ai/core";
@@ -42,6 +46,7 @@ import { bindConnection } from "./binding.ts";
 import { sharedClients } from "./clients.ts";
 import type { HostEvent, PerformEvent } from "./clients.ts";
 import { callBinding, UPLOADS } from "./handler.ts";
+import { sharedListeners } from "./listeners.ts";
 
 export type SocketPeer = {
   readonly connection: Connection;
@@ -54,13 +59,21 @@ export type SocketPeer = {
   leave(): void;
 };
 
-export type TextEntry = {
-  readonly part: string;
-  readonly run: string | null;
-  readonly version: number;
-  readonly whole: boolean;
-  readonly body: string;
-};
+export type TextEntry =
+  | {
+      readonly kind: "text";
+      readonly part: string;
+      readonly run: string | null;
+      readonly version: number;
+      readonly whole: boolean;
+      readonly body: string;
+    }
+  | {
+      readonly kind: "progress";
+      readonly part: string;
+      readonly run: string | null;
+      readonly progress: Json;
+    };
 
 type EventOut =
   | WelcomeFrame
@@ -84,6 +97,33 @@ type EventOut =
       readonly seq: null;
       readonly kind: "live";
       readonly activation: Activation;
+    }
+  | {
+      readonly c: "e";
+      readonly type: "event";
+      readonly scope: "host";
+      readonly seq: number;
+      readonly kind: "change";
+      readonly tables: SessionsChange["tables"];
+    }
+  | {
+      readonly c: "e";
+      readonly type: "event";
+      readonly scope: "host";
+      readonly seq: null;
+      readonly kind: "live";
+      readonly activations: { readonly [session: string]: Activation };
+    }
+  | {
+      readonly c: "e";
+      readonly type: "event";
+      readonly scope: "host";
+      readonly seq: null;
+      readonly kind: "status";
+      readonly version: string;
+      readonly startedAt: number;
+      readonly listeners: readonly string[];
+      readonly tailnet: TailnetStatus | null;
     };
 
 type Outbox = {
@@ -94,10 +134,25 @@ type Outbox = {
 type Subscription = {
   readonly attachment: SessionAttachment | null;
   readonly sent: Map<string, StreamingPart>;
+  readonly progress: Map<string, string>;
   release(): void;
 };
 
-type Queued = { part: string; run: string | null; version: number; whole: boolean; body: string };
+type Queued =
+  | {
+      readonly kind: "text";
+      readonly part: string;
+      readonly run: string | null;
+      version: number;
+      readonly whole: boolean;
+      body: string;
+    }
+  | {
+      readonly kind: "progress";
+      readonly part: string;
+      readonly run: string | null;
+      readonly progress: Json;
+    };
 
 const PING_MS = 30_000;
 
@@ -139,7 +194,10 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
   const outbox = openOutbox(socket, close, () => {
     textOpen = false;
 
-    for (const subscription of subscriptions.values()) subscription.sent.clear();
+    for (const subscription of subscriptions.values()) {
+      subscription.sent.clear();
+      subscription.progress.clear();
+    }
   });
 
   const stream = (subscription: Subscription): void => {
@@ -163,6 +221,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
       if (!appended || body !== "")
         outbox.text({
+          kind: "text",
           part: part.part,
           run: part.run,
           version: part.version,
@@ -173,6 +232,19 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     for (const part of subscription.sent.keys())
       if (!kept.has(part)) subscription.sent.delete(part);
+    const running = new Set<string>();
+
+    for (const entry of subscription.attachment.progress()) {
+      running.add(entry.part);
+      const progress = JSON.stringify(entry.progress);
+
+      if (subscription.progress.get(entry.part) === progress) continue;
+      subscription.progress.set(entry.part, progress);
+      outbox.text({ kind: "progress", part: entry.part, run: entry.run, progress: entry.progress });
+    }
+
+    for (const part of subscription.progress.keys())
+      if (!running.has(part)) subscription.progress.delete(part);
   };
 
   const attachSession = async (scope: string, id: SessionId): Promise<void> => {
@@ -238,6 +310,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     const subscription: Subscription = {
       attachment,
       sent: new Map(),
+      progress: new Map(),
       release() {
         unsubscribe();
         attachment.release();
@@ -256,12 +329,46 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       if (subscriptions.has(target.scope)) continue;
 
       if (target.kind === "session") await attachSession(target.scope, target.session);
-      else if (target.kind === "host") observeHost();
+      else if (target.kind === "host") await observeHost();
       else listenAsClient();
     }
   };
 
-  const observeHost = (): void => {
+  const observeHost = async (): Promise<void> => {
+    const feed = peer.server.wire.sessions(peer.principal)[Symbol.asyncIterator]();
+    const first = await feed.next();
+
+    if (closed || subscriptions.has("host") || first.done === true) {
+      void feed.return?.();
+
+      return;
+    }
+
+    const listeners = sharedListeners(peer.server);
+
+    const activations = (): void =>
+      outbox.event({
+        c: "e",
+        type: "event",
+        scope: "host",
+        seq: null,
+        kind: "live",
+        activations: Object.fromEntries(peer.server.wire.activations()),
+      });
+
+    const status = (): void =>
+      outbox.event({
+        c: "e",
+        type: "event",
+        scope: "host",
+        seq: null,
+        kind: "status",
+        version: peer.server.version,
+        startedAt: peer.server.startedAt,
+        listeners: listeners.addresses(),
+        tailnet: peer.authority.has("owner") ? (peer.tailnet?.status() ?? null) : null,
+      });
+
     outbox.event({
       c: "e",
       type: "event",
@@ -270,8 +377,72 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
       kind: "live",
       clients: clients.rows(),
     });
-    const stop = clients.observe((event) => outbox.event(event));
-    subscriptions.set("host", { attachment: null, sent: new Map(), release: stop });
+    activations();
+    status();
+
+    const stops = [
+      clients.observe((event) => outbox.event(event)),
+      peer.server.wire.onActivation(activations),
+      listeners.observe(status),
+      peer.tailnet?.subscribe(status) ?? (() => undefined),
+    ];
+
+    subscriptions.set("host", {
+      attachment: null,
+      sent: new Map(),
+      progress: new Map(),
+      release() {
+        for (const stop of stops) stop();
+        void feed.return?.();
+      },
+    });
+    forwardSessions(feed, first.value).catch(() =>
+      close(1011, "The host could not read its sessions."),
+    );
+  };
+
+  const forwardSessions = async (
+    feed: AsyncIterator<SessionsRead>,
+    first: SessionsRead,
+  ): Promise<void> => {
+    const upsert = new Map<SessionId, SessionInfo>();
+    const drop = new Set<SessionId>();
+    let sent = first.seq;
+    let ids = new Set(first.ids);
+
+    for (;;) {
+      const next = await feed.next();
+
+      if (next.done === true) return;
+      const read = next.value;
+      const now = new Set(read.ids);
+
+      for (const id of ids)
+        if (!now.has(id)) {
+          drop.add(id);
+          upsert.delete(id);
+        }
+
+      for (const row of read.rows) {
+        upsert.set(row.id, row);
+        drop.delete(row.id);
+      }
+
+      ids = now;
+
+      if (read.seq <= sent) continue;
+      sent = read.seq;
+      outbox.event({
+        c: "e",
+        type: "event",
+        scope: "host",
+        seq: read.seq,
+        kind: "change",
+        tables: { sessions: { upsert: [...upsert.values()], drop: [...drop] } },
+      });
+      upsert.clear();
+      drop.clear();
+    }
   };
 
   const listenAsClient = (): void => {
@@ -281,6 +452,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
     subscriptions.set(`client/${client.id}`, {
       attachment: null,
       sent: new Map(),
+      progress: new Map(),
       release: () => membership.listen(false),
     });
     membership.listen(true);
@@ -321,6 +493,7 @@ export function serveSession(socket: WebSocket, peer: SocketPeer): void {
 
     for (const subscription of subscriptions.values()) {
       subscription.sent.clear();
+      subscription.progress.clear();
       stream(subscription);
     }
   };
@@ -526,12 +699,15 @@ function openOutbox(
       return JSON.stringify({ c: "t", type: "closed" });
     }
 
-    const first = texts.values().next();
+    const first = texts.entries().next();
 
     if (first.done === true) return undefined;
-    const entry = first.value;
-    texts.delete(entry.part);
-    textBytes -= Buffer.byteLength(entry.body);
+    const entry = first.value[1];
+    texts.delete(first.value[0]);
+    textBytes -= textCost(entry);
+
+    if (entry.kind === "progress")
+      return JSON.stringify({ c: "t", part: entry.part, run: entry.run, progress: entry.progress });
     const head = { c: "t", part: entry.part, run: entry.run, version: entry.version };
 
     return JSON.stringify(
@@ -582,18 +758,18 @@ function openOutbox(
     },
     text(entry) {
       if (!open) return;
-      const queued = texts.get(entry.part);
-      const bytes = Buffer.byteLength(entry.body);
+      const key = entry.kind === "text" ? entry.part : `progress/${entry.part}`;
+      const queued = texts.get(key);
 
-      if (queued !== undefined && !entry.whole) {
+      if (queued?.kind === "text" && entry.kind === "text" && !entry.whole) {
         queued.body += entry.body;
         queued.version = entry.version;
       } else {
-        if (queued !== undefined) textBytes -= Buffer.byteLength(queued.body);
-        texts.set(entry.part, { ...entry });
+        if (queued !== undefined) textBytes -= textCost(queued);
+        texts.set(key, { ...entry });
       }
 
-      textBytes += bytes;
+      textBytes += textCost(entry);
 
       if (textBytes > SOCKET_LIMITS.backlogBytes) {
         texts.clear();
@@ -605,6 +781,10 @@ function openOutbox(
       pump();
     },
   };
+}
+
+function textCost(entry: TextEntry): number {
+  return Buffer.byteLength(entry.kind === "text" ? entry.body : JSON.stringify(entry.progress));
 }
 
 function readScope(

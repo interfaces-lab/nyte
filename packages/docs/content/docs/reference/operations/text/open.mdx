@@ -6,8 +6,9 @@ description: "Opens the socket's text channel: the whole text of every part stre
 Opens the text channel of the host's WebSocket. For every text or thinking part streaming in the
 sessions the connection subscribes to, the host sends the part's whole text so far,
 `{ c: "t", part, run, version, text }`, then `{ c: "t", part, run, version, append }` for each piece
-it streams, `version` being the part's version after it. A session subscribed later sends its
-streaming parts whole too.
+it streams, `version` being the part's version after it. For every tool part that is running and
+has reported progress, it sends `{ c: "t", part, run, progress }`, the latest progress whole, on open
+and each time the tool reports more. A session subscribed later sends its streaming parts whole too.
 
 The host merges queued appends for one part into a longer one and never reorders them. When the
 queued text still passes the backlog budget the host drops it and sends `{ c: "t", type: "closed" }`;

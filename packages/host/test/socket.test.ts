@@ -14,12 +14,16 @@ import {
   isJson,
   isJsonObject,
   SessionChangeType,
+  SessionsChangeType,
+  TextFrameType,
   withJson,
 } from "@nyte-ai/schema";
-import type { HeadName, Json, JsonSchema, SessionId } from "@nyte-ai/schema";
+import type { HeadName, Json, JsonSchema, SessionId, TextFrame } from "@nyte-ai/schema";
 import type { Listener } from "@nyte-ai/core";
-import { decodeError, decodeOutput, openSessionStore } from "@nyte-ai/protocol";
-import type { SessionStore } from "@nyte-ai/protocol";
+import type { ServedHost } from "@nyte-ai/core/server";
+import { completed, createServerHost, livePart, publishPatch, setup } from "@nyte-ai/core/testing";
+import { decodeError, decodeOutput, openDirectoryStore, openSessionStore } from "@nyte-ai/protocol";
+import type { DirectoryStore, SessionStore } from "@nyte-ai/protocol";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
@@ -34,6 +38,10 @@ const main: HeadName = asId("main");
 const WINDOW = { tail: 50 } as const;
 
 const changes = compile(withJson(SessionChangeType));
+
+const sessionsChanges = compile(withJson(SessionsChangeType));
+
+const textFrames = compile(withJson(TextFrameType));
 
 const cleanups: (() => Promise<void>)[] = [];
 
@@ -86,7 +94,7 @@ async function compose(fake: FakeModels): Promise<Composed> {
   return host;
 }
 
-async function serve(host: Composed, path?: string): Promise<Listener> {
+async function serve(host: ServedHost, path?: string): Promise<Listener> {
   const listener = await listen(host, {
     transport: path === undefined ? { kind: "http" } : { kind: "socket", path },
     auth: { kind: "token", token: TOKEN },
@@ -220,6 +228,29 @@ async function freshSnapshot(client: Client, session: SessionId) {
   return { snapshot: openSessionStore(decodeOutput("head.read", read)).snapshot(), before };
 }
 
+function hostChange(frame: JsonSchema): boolean {
+  return frame.scope === "host" && frame.kind === "change";
+}
+
+function applySessions(store: DirectoryStore, frames: readonly JsonSchema[]): number {
+  let applied = 0;
+
+  for (const frame of frames)
+    if (hostChange(frame) && sessionsChanges.Check(frame)) {
+      store.apply(frame);
+      applied += 1;
+    }
+
+  return applied;
+}
+
+async function readDirectory(client: Client, seq?: number) {
+  const read = await client.call("sessions.read", seq === undefined ? {} : { resume: { seq } });
+  const answered = client.frames.findIndex((frame) => frame.output === read);
+
+  return { read: decodeOutput("sessions.read", read), answered };
+}
+
 async function startSession(host: Composed, fake: FakeModels): Promise<SessionId> {
   fake.reply({ content: [{ type: "text", text: "Hello." }] });
   const started = await host.sessions.start({ content: "Hi." });
@@ -267,7 +298,16 @@ describe("the host's WebSocket", () => {
     const first = await connect(listener);
 
     await first.call("events.subscribe", { scopes: [`session/${session}`] });
-    const store = openSessionStore(decodeOutput("head.read", await readWindow(first, session)));
+    const read = await readWindow(first, session);
+    const attached = first.frames.findIndex((frame) => frame.output === read);
+    const store = openSessionStore(decodeOutput("head.read", read));
+    const attachedSeq = store.seq;
+    await (await send(host, fake, session, "Before the drop.")).settled();
+    const before = await freshSnapshot(first, session);
+    applyChanges(store, first.frames.slice(attached + 1, before.before));
+
+    expect(store.seq).toBeGreaterThan(attachedSeq);
+    expect(store.snapshot()).toEqual(before.snapshot);
     first.socket.terminate();
     await first.closed;
 
@@ -279,10 +319,59 @@ describe("the host's WebSocket", () => {
 
     expect(resumed.complete).toBe(false);
     store.resume(resumed);
+    await (await send(host, fake, session, "After the resume.")).settled();
     const fresh = await freshSnapshot(second, session);
     applyChanges(store, second.frames.slice(answered, fresh.before));
 
+    expect(store.seq).toBeGreaterThan(resumed.seq);
     expect(store.snapshot()).toEqual(fresh.snapshot);
+  });
+
+  it("sends a streaming part's live text when the text channel opens, then its appends, adding up to the part's text", async () => {
+    const harness = await setup();
+    const listener = await serve({ ...harness.host, server: createServerHost(harness.kernel) });
+    const started = await harness.host.sessions.start({ content: "Write it." });
+    const session = started.session.id;
+    const step = harness.host.execution.advance({ session, head: main });
+    const turn = await harness.script.started(1);
+    const run = turn.input.run.id;
+    const part = asId<"part">(`${run}:1:0`);
+    await livePart(harness.kernel, session, run, part, "Draft");
+    publishPatch(harness.kernel, session, run, { kind: "patch", part, append: " one" });
+
+    const client = await connect(listener);
+    await client.call("events.subscribe", { scopes: [`session/${session}`] });
+    await client.call("text.open", {});
+
+    const texts = (): TextFrame[] =>
+      client.frames.filter(
+        (frame): frame is TextFrame & JsonSchema =>
+          textFrames.Check(frame) && "part" in frame && frame.part === part,
+      );
+
+    const written = (): string =>
+      texts()
+        .map((frame) => ("text" in frame ? frame.text : "append" in frame ? frame.append : ""))
+        .join("");
+
+    await client.until(() => texts().length > 0);
+
+    for (const piece of [" two", " three"])
+      publishPatch(harness.kernel, session, run, { kind: "patch", part, append: piece });
+    await client.until(() => written().endsWith(" three"));
+    const view = await harness.host.session(session).view();
+
+    expect(texts()[0]).toMatchObject({ run, text: "Draft one" });
+    expect(
+      texts()
+        .slice(1)
+        .every((frame) => "append" in frame),
+    ).toBe(true);
+    expect(
+      view.messages.find((message) => message.kind === "part" && message.part === part),
+    ).toMatchObject({ state: { markdown: written() } });
+    turn.finish(completed);
+    await step;
   });
 
   it("closes a connection that never reads its socket with backlog", async () => {
@@ -347,6 +436,86 @@ describe("the host's WebSocket", () => {
     );
 
     expect(answers).toEqual(routes.map((entry) => ({ route: entry.route, code: entry.code })));
+  });
+});
+
+describe("the host scope", () => {
+  it("applies the session rows that arrive before sessions.read's answer and ends equal to a fresh read", async () => {
+    const fake = fakeModels();
+    const host = await compose(fake);
+    const listener = await serve(host);
+    const session = await startSession(host, fake);
+    const client = await connect(listener);
+
+    await client.call("events.subscribe", { scopes: ["host"] });
+    const receipt = await send(host, fake, session, "More.");
+    await client.until(hostChange);
+
+    const first = await readDirectory(client);
+    const store = openDirectoryStore(first.read);
+
+    expect(applySessions(store, client.frames.slice(0, first.answered))).toBeGreaterThan(0);
+    await receipt.settled();
+    const added = await startSession(host, fake);
+    const fresh = await readDirectory(client);
+    await client.until((frame) => hostChange(frame) && Number(frame.seq) >= fresh.read.seq);
+    applySessions(store, client.frames.slice(first.answered + 1));
+
+    expect(store.seq).toBe(fresh.read.seq);
+    expect(store.snapshot().rows.has(added)).toBe(true);
+    expect(store.snapshot().rows).toEqual(openDirectoryStore(fresh.read).snapshot().rows);
+  });
+
+  it("resumes the sessions table from its seq, dropping a session removed while away, and ends equal to a fresh read", async () => {
+    const fake = fakeModels();
+    const host = await compose(fake);
+    const listener = await serve(host);
+    const kept = await startSession(host, fake);
+    const removed = await startSession(host, fake);
+    const first = await connect(listener);
+
+    await first.call("events.subscribe", { scopes: ["host"] });
+    const store = openDirectoryStore((await readDirectory(first)).read);
+    first.socket.terminate();
+    await first.closed;
+
+    await (await send(host, fake, kept, "While away.")).settled();
+    const added = await startSession(host, fake);
+    await host.session(removed).remove();
+    const second = await connect(listener);
+    await second.call("events.subscribe", { scopes: ["host"] });
+    const resumed = await readDirectory(second, store.seq);
+
+    expect(resumed.read.rows.map((row) => row.id).toSorted()).toEqual([added, kept].toSorted());
+    store.resume(resumed.read);
+    const fresh = await readDirectory(second);
+    applySessions(store, second.frames.slice(resumed.answered + 1, fresh.answered));
+
+    expect(store.snapshot().rows.has(removed)).toBe(false);
+    expect(store.snapshot()).toEqual(openDirectoryStore(fresh.read).snapshot());
+  });
+
+  it("sends host subscribers the host's status and the sessions' activations whole on subscribe", async () => {
+    const listener = await serve(await compose(fakeModels()));
+    const client = await connect(listener);
+    await client.call("events.subscribe", { scopes: ["host"] });
+
+    expect(client.frames.find((frame) => frame.kind === "status")).toEqual({
+      c: "e",
+      type: "event",
+      scope: "host",
+      seq: null,
+      kind: "status",
+      version: expect.any(String),
+      startedAt: expect.any(Number),
+      listeners: [listener.address],
+      tailnet: null,
+    });
+    expect(client.frames.find((frame) => frame.activations !== undefined)).toMatchObject({
+      scope: "host",
+      seq: null,
+      kind: "live",
+    });
   });
 });
 

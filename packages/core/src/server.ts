@@ -7,6 +7,7 @@ export type { ComposeOptions } from "./compose.ts";
 export { TOKEN, TOKEN_AUTHORITY } from "./contract/host.ts";
 
 export type {
+  PartProgress,
   ServedHost,
   ServerHost,
   SessionAttachment,

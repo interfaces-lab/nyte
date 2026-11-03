@@ -1,7 +1,7 @@
 import { isJsonObject } from "@nyte-ai/schema";
 import type { PrincipalId, SessionId } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
-import type { SessionAttachment, StreamingPart } from "../contract/server.ts";
+import type { PartProgress, SessionAttachment, StreamingPart } from "../contract/server.ts";
 import { changesSince, readWindow } from "../fold/window.ts";
 
 export function attachSession(
@@ -33,6 +33,18 @@ export function attachSession(
                 markdown: state.markdown,
               },
             ]
+          : [];
+      }),
+    progress: () =>
+      Array.from(hold.state().parts.values()).flatMap((part): PartProgress[] => {
+        const state = part.state;
+
+        return (part.status.kind === "live" || part.status.kind === "waiting") &&
+          isJsonObject(state) &&
+          state.phase === "running" &&
+          state.progress !== undefined &&
+          state.progress !== null
+          ? [{ part: part.id, run: part.status.run, progress: state.progress }]
           : [];
       }),
     subscribe: (listener) => hold.subscribe(() => listener()),

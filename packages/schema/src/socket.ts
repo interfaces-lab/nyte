@@ -4,6 +4,7 @@ import { idSchema } from "./ids.ts";
 import type { Id } from "./ids.ts";
 import { JsonType } from "./json.ts";
 import type { Decoded } from "./schema.ts";
+import { ToolProgressType } from "./tools.ts";
 
 export const SOCKET_PATH = "/.nyte/ws";
 
@@ -119,6 +120,12 @@ export const TextFrameType = Type.Union([
     run: Type.Union([idSchema<"run">(), Type.Null()]),
     version: Type.Number(),
     append: Type.String(),
+  }),
+  Type.Object({
+    c: Type.Literal("t"),
+    part: idSchema<"part">(),
+    run: Type.Union([idSchema<"run">(), Type.Null()]),
+    progress: ToolProgressType,
   }),
   Type.Object({ c: Type.Literal("t"), type: Type.Literal("closed") }),
 ]);
