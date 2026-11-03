@@ -411,13 +411,17 @@ function ptyFrom(load: () => unknown): PtyModule {
     const required = load();
 
     if (fitsPtyModule(required)) return required;
-    throw new Error("it exports no spawn");
   } catch (cause) {
-    throw new SdkError(
-      "unavailable",
-      `Terminals need @lydell/node-pty, which did not load: ${cause instanceof Error ? cause.message.split("\n", 1)[0] : String(cause)}`,
-    );
+    throw ptyUnavailable(cause instanceof Error ? cause.message.split("\n", 1)[0] : String(cause));
   }
+  throw ptyUnavailable("it exports no spawn");
+}
+
+function ptyUnavailable(reason: string): SdkError {
+  return new SdkError(
+    "unavailable",
+    `Terminals need @lydell/node-pty, which did not load: ${reason}`,
+  );
 }
 
 /** Whether a required module exports `spawn`, as `@lydell/node-pty` does. */
