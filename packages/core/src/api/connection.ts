@@ -27,6 +27,7 @@ import {
   readWorkspaceCatalog,
   runWorkspaceCommand,
 } from "../extend/workspace-commands.ts";
+import { readCatalog } from "../store/catalogs.ts";
 import { inspect } from "../store/inspect.ts";
 import { forwarded } from "../util/iterable.ts";
 import { watchHost } from "./host.ts";
@@ -154,6 +155,15 @@ export function createConnection(
       if (reader === null) throw new SdkError("unknown", `No blob has the id ${id}.`);
 
       return reader;
+    },
+    catalogs: {
+      async read(id) {
+        const catalog = await readCatalog(kernel.store, id);
+
+        if (catalog === null) throw new SdkError("unknown", `No catalog has the id ${id}.`);
+
+        return catalog;
+      },
     },
     models: gated("models", models, authority, {
       login(input) {

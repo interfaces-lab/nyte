@@ -9,6 +9,8 @@ import type {
 } from "@nyte-ai/schema";
 import { INDEX } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
+import { readCatalog } from "../store/catalogs.ts";
+import { EMPTY_CATALOG } from "./fold.ts";
 import { findLeadingPrompt, showMessage } from "./project.ts";
 import { readView } from "./window.ts";
 
@@ -25,8 +27,11 @@ export async function viewHead(
 
   try {
     await hold.ready();
+    const state = hold.state();
+    const id = state.catalogId;
+    const catalog = id === null ? null : await readCatalog(kernel.store, id);
 
-    return readView(hold.state(), input.head, input.options);
+    return { ...readView(state, input.head, input.options), catalog: catalog ?? EMPTY_CATALOG };
   } finally {
     hold.release();
   }

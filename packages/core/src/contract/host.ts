@@ -6,6 +6,7 @@ import type {
   BlobId,
   ByteReader,
   CallId,
+  CatalogId,
   CredentialSource,
   Cursor,
   DecodedObjectView,
@@ -38,6 +39,7 @@ import type {
   RepairPage,
   RunId,
   Seq,
+  SessionCatalogView,
   SessionEvent,
   SessionId,
   SettingOutcome,
@@ -206,6 +208,7 @@ export interface Connection {
   watch(): AsyncIterable<HostView>;
 
   blob(id: BlobId): Promise<ByteReader>;
+  readonly catalogs: CatalogsApi;
   readonly models: ModelsApi;
   readonly settings: SettingsApi;
   readonly plugins: PluginsApi<PluginFile>;
@@ -217,6 +220,10 @@ export interface Connection {
   close(): Promise<void>;
 
   [Symbol.asyncDispose](): Promise<void>;
+}
+
+export interface CatalogsApi {
+  read(id: CatalogId): Promise<SessionCatalogView>;
 }
 
 export interface OperationsApi {

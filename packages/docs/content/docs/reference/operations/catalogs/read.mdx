@@ -1,0 +1,355 @@
+---
+title: catalogs.read
+description: Reads the commands, settings, skills, agents and tools of a chat's catalog by the id its session rows carry.
+---
+
+Reads a chat's catalog: the commands, settings, skills, agents and tools its plugins offer. A
+session's rows carry only the catalog's id, the first 16 hex digits of the SHA-256 of its JSON, and
+this operation returns the content behind it. The host stores each catalog once under its id and
+never changes it, so chats with the same plugins share one catalog and a client can keep what it
+read for as long as it stays connected.
+
+## When to call it
+
+When a session's `catalog` row from [`head.read`](/docs/reference/operations/head/read) or a
+`change` event names an id the client hasn't read yet. A catalog survives a host restart, so a
+client reads it without the chat's plugins running.
+
+## Access
+
+Any principal with `participant` authority. Host scope: catalogs belong to the host's store and
+are shared by every chat that has the same one.
+
+## Example
+
+Request body:
+
+```json
+{ "id": "3f8a1c2b9d0e4f71" }
+```
+
+Response:
+
+```json
+{
+  "commands": [
+    {
+      "name": "hello",
+      "owner": "greeter",
+      "side": "core",
+      "title": "Hello",
+      "description": "Says hi.",
+      "takesText": false,
+      "completes": false
+    }
+  ],
+  "settings": [],
+  "skills": [],
+  "agents": [],
+  "tools": []
+}
+```
+
+## Errors
+
+- `unknown` when no catalog has the id: `No catalog has the id <id>.`
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `query`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": ["commands", "settings", "skills", "agents", "tools"],
+  "properties": {
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "owner", "side", "title", "description", "takesText", "completes"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "side": {
+            "enum": ["core", "client"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "takesText": {
+            "type": "boolean"
+          },
+          "completes": {
+            "type": "boolean"
+          },
+          "category": {
+            "type": "string"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "owner", "scope", "label", "schema", "choices", "value", "from"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": ["host", "session"]
+          },
+          "label": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "object",
+            "patternProperties": {
+              "^.*$": {
+                "$ref": "Json"
+              }
+            }
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["value", "label"],
+                  "properties": {
+                    "value": {
+                      "$ref": "Json"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "badge": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "$ref": "Json"
+          },
+          "from": {
+            "enum": ["default", "host", "session"]
+          }
+        }
+      }
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "owner", "description", "location"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "owner", "description", "model", "mode"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["provider", "id"],
+                "properties": {
+                  "provider": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "enum": ["primary", "subagent", "all"]
+          }
+        }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "owner",
+          "namespace",
+          "description",
+          "parameters",
+          "output",
+          "exposure"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "object",
+            "patternProperties": {
+              "^.*$": {
+                "$ref": "Json"
+              }
+            }
+          },
+          "output": {
+            "anyOf": [
+              {
+                "type": "object",
+                "patternProperties": {
+                  "^.*$": {
+                    "$ref": "Json"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exposure": {
+            "enum": ["model", "model-only", "deferred", "code", "hidden"]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Json": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "Json"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "$ref": "Json"
+            }
+          }
+        }
+      ],
+      "$id": "Json"
+    }
+  }
+}
+```
+
+{/* generated:end */}

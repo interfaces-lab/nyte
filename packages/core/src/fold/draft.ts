@@ -1,8 +1,8 @@
-import { asId, backgroundRowKey, catalogRowKey, compile } from "@nyte-ai/schema";
+import { asId, backgroundRowKey, compile } from "@nyte-ai/schema";
 import type {
   BackgroundItem,
   BackgroundRow,
-  CatalogRow,
+  CatalogId,
   CommitId,
   ContextView,
   Execution,
@@ -13,7 +13,6 @@ import type {
   PartId,
   PartView,
   QueuedMessage,
-  SessionCatalogView,
   SessionView,
   TurnId,
   TurnInfo,
@@ -216,9 +215,12 @@ export function setChanges(draft: Draft, files: readonly FileChange[]): void {
   draft.changes = files;
 }
 
-export function setCatalog(draft: Draft, catalog: SessionCatalogView): void {
-  diffRows(draft, "catalog", catalogRows(draft.catalog), catalogRows(catalog));
-  draft.catalog = catalog;
+export function setCatalogId(draft: Draft, id: CatalogId): void {
+  if (draft.catalogId === id) return;
+
+  if (draft.catalogId !== null) dropRow(draft, "catalog", draft.catalogId);
+  touchRow(draft, "catalog", id);
+  draft.catalogId = id;
 }
 
 export function noteHead(
@@ -314,18 +316,6 @@ function diffRows(
   }
 
   for (const key of before.keys()) if (!after.has(key)) dropRow(draft, table, key);
-}
-
-export function catalogRows(catalog: SessionCatalogView): ReadonlyMap<string, CatalogRow> {
-  const rows: readonly CatalogRow[] = [
-    ...catalog.commands.map((entry): CatalogRow => ({ kind: "commands", entry })),
-    ...catalog.settings.map((entry): CatalogRow => ({ kind: "settings", entry })),
-    ...catalog.skills.map((entry): CatalogRow => ({ kind: "skills", entry })),
-    ...catalog.agents.map((entry): CatalogRow => ({ kind: "agents", entry })),
-    ...catalog.tools.map((entry): CatalogRow => ({ kind: "tools", entry })),
-  ];
-
-  return new Map(rows.map((row) => [catalogRowKey(row), row]));
 }
 
 export function backgroundRows(

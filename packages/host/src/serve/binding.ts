@@ -192,6 +192,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
   return {
     "connection.watch": async () => mapped(connection.watch(), (view) => hostWire(view, principal)),
     "connection.blob": async ({ id }) => ({ reader: await connection.blob(id) }),
+    "catalogs.read": ({ id }) => connection.catalogs.read(id),
 
     "models.list": () => connection.models.list(),
     "models.accounts": ({ provider }) => connection.models.accounts(provider),

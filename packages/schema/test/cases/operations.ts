@@ -54,6 +54,14 @@ export const operations = {
     "not base64!",
     Uint8Array.of(104, 105),
   ),
+  "catalogs.read input": operation(
+    OPERATIONS["catalogs.read"].input,
+    { id: asId("3f8a1c2b9d0e4f71") },
+    { id: 7 },
+  ),
+  "catalogs.read output": operation(OPERATIONS["catalogs.read"].output, catalog, {
+    commands: [],
+  }),
   "operations.describe input": operation(
     OPERATIONS["operations.describe"].input,
     { names: ["head.send"] },
@@ -284,7 +292,7 @@ export const operations = {
         turns: { upsert: [turnInfo], drop: [] },
         parts: { upsert: [], drop: [] },
         changes: { upsert: [], drop: [] },
-        catalog: { upsert: [], drop: [] },
+        catalog: { upsert: [{ id: asId("3f8a1c2b9d0e4f71") }], drop: [] },
         heads: { upsert: [], drop: [] },
         settings: { upsert: [], drop: [] },
         usage: { upsert: [], drop: [] },

@@ -97,6 +97,7 @@ export function createClient(transport: Transport, context: ClientContext): Conn
       return watchHost(rows, opened);
     },
     blob: (id) => rows.bytes("connection.blob", { id }),
+    catalogs: { read: (id) => rows.call("catalogs.read", { id }) },
     models: {
       list: () => rows.call("models.list", {}),
       accounts: (provider) => rows.call("models.accounts", { provider }),

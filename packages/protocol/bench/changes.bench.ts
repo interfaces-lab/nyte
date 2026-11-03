@@ -174,14 +174,18 @@ function measure(log: Recorded, size: number) {
 function weigh(log: Recorded): readonly Weighed[] {
   let state = emptyFold({ session: log.session, principal: PRINCIPAL });
 
-  return log.events.map((event) => {
+  return log.events.flatMap((event) => {
     const seq = state.seq;
     state = fold(state, event);
 
-    return {
-      kind: classify(event),
-      change: byteLength(JSON.stringify(changesSince(state, seq))),
-    };
+    return event.kind === "catalog"
+      ? []
+      : [
+          {
+            kind: classify(event),
+            change: byteLength(JSON.stringify(changesSince(state, seq))),
+          },
+        ];
   });
 }
 

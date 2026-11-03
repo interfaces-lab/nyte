@@ -228,7 +228,7 @@ function play(state: FoldState, ...events: readonly (DurableEvent | PatchEvent)[
   return current;
 }
 
-function ids(view: SessionView): readonly string[] {
+function ids(view: Pick<SessionView, "messages">): readonly string[] {
   return view.messages.map((message) => message.id);
 }
 
@@ -292,25 +292,10 @@ describe("fold", () => {
   it("folds a scripted turn into the view a client draws", () => {
     const empty = emptyFold({ session, principal: ada });
 
-    const catalog = {
-      commands: [],
-      settings: [],
-      skills: [
-        {
-          name: "review",
-          owner: "inputs",
-          description: "Review code.",
-          location: "/skills/review.md",
-        },
-      ],
-      agents: [],
-      tools: [],
-    };
-
     const running = play(
       empty,
       opened(main),
-      { head: null, kind: "catalog", catalog },
+      { head: null, kind: "catalog", id: asId("3f8a1c2b9d0e4f71") },
       { head: main, kind: "configured", selected: configuration, effective: configuration },
       admitted("m1"),
       landed("m1", "c1", "r1"),
@@ -462,7 +447,6 @@ describe("fold", () => {
       configuration: { selected: configuration, effective: configuration },
       context: { tokens: 120, window: 1000, lastRequest: usage },
       changes: [],
-      catalog,
     });
   });
 

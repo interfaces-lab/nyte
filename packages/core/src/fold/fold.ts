@@ -54,7 +54,7 @@ import {
   openTurn,
   partView,
   pendingTurn,
-  setCatalog,
+  setCatalogId,
   setChanges,
   setMessage,
   setTurn,
@@ -213,8 +213,8 @@ function apply(draft: Draft, event: SessionEvent): void {
 
       return;
     case "catalog":
-      if ("catalog" in event) return setCatalog(draft, event.catalog);
-      draft.catalogId = event.id;
+      if ("id" in event) return setCatalogId(draft, event.id);
+      draft.catalog = event.catalog;
 
       return;
   }

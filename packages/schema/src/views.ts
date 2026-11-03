@@ -16,14 +16,7 @@ import { PartStatusType, PartViewType } from "./parts.ts";
 import { BackgroundItemType, ExecutionType, RunEndType, WaitTargetType } from "./runs.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
-import {
-  AgentInfoType,
-  CommandInfoType,
-  SessionCatalogViewType,
-  SettingInfoType,
-  SkillInfoType,
-  ToolInfoType,
-} from "./sessions.ts";
+import { SessionCatalogViewType } from "./sessions.ts";
 import { nullable } from "./wire/nullable.ts";
 import { ActivationType } from "./workspaces.ts";
 
@@ -204,13 +197,7 @@ export const BackgroundRowType = Type.Object({
 
 export type BackgroundRow = Decoded<typeof BackgroundRowType>;
 
-export const CatalogRowType = Type.Union([
-  Type.Object({ kind: Type.Literal("commands"), entry: CommandInfoType }),
-  Type.Object({ kind: Type.Literal("settings"), entry: SettingInfoType }),
-  Type.Object({ kind: Type.Literal("skills"), entry: SkillInfoType }),
-  Type.Object({ kind: Type.Literal("agents"), entry: AgentInfoType }),
-  Type.Object({ kind: Type.Literal("tools"), entry: ToolInfoType }),
-]);
+export const CatalogRowType = Type.Object({ id: idSchema<"catalog">() });
 
 export type CatalogRow = Decoded<typeof CatalogRowType>;
 
@@ -275,13 +262,7 @@ export const HeadWindowType = Type.Object({
 export type HeadWindow = Decoded<typeof HeadWindowType>;
 
 export function catalogRowKey(row: CatalogRow): string {
-  switch (row.kind) {
-    case "settings":
-    case "agents":
-      return `${row.kind}/${row.entry.id}`;
-    default:
-      return `${row.kind}/${row.entry.name}`;
-  }
+  return row.id;
 }
 
 export function backgroundRowKey(row: BackgroundRow): string {

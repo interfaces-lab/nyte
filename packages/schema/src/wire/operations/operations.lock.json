@@ -1,8 +1,9 @@
 {
-  "revision": 10,
+  "revision": 11,
   "operations": {
     "connection.watch": "231c9971fb65c2af",
     "connection.blob": "d661f9695af8afc2",
+    "catalogs.read": "f19aae90f2575f24",
     "operations.describe": "b17e90a432520966",
     "models.list": "349ced98ae1f011e",
     "models.accounts": "e459b850b5ce6fa2",
@@ -50,7 +51,7 @@
     "head.send": "e287051c94664055",
     "head.configure": "24b15dbbf3a0394d",
     "head.view": "e158311cf9636bc8",
-    "head.read": "55b5e27f0a8e2c14",
+    "head.read": "a4d8f4129f587629",
     "head.see": "10d92f97a2b9100f",
     "head.history": "4b850450e6d00b03",
     "head.tree": "5fe8ad00dfe40cef",

@@ -25,7 +25,7 @@ import {
 } from "../../models.ts";
 import { PromptOverrideType } from "../../plugins.ts";
 import { pagedSchema, ParentFilterType } from "../../primitives.ts";
-import { SessionInfoType, SessionsReadType } from "../../sessions.ts";
+import { SessionCatalogViewSchema, SessionInfoType, SessionsReadType } from "../../sessions.ts";
 import {
   AddOutcomeSchema,
   ForgetOutcomeSchema,
@@ -67,6 +67,14 @@ export const HOST_OPERATIONS = {
     kind: "stream",
     input: wireObject({ id: idSchema<"blob">() }),
     output: BYTES,
+  },
+  "catalogs.read": {
+    ...PARTICIPANT,
+    summary:
+      "Reads the commands, settings, skills, agents and tools of a chat's catalog by the id its session rows carry.",
+    kind: "query",
+    input: wireObject({ id: idSchema<"catalog">() }),
+    output: SessionCatalogViewSchema,
   },
   "operations.describe": {
     ...PARTICIPANT,

@@ -1,6 +1,5 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type {
-  CatalogRow,
   Execution,
   HeadName,
   HeadRow,
@@ -13,7 +12,6 @@ import type {
   PathChange,
   Resume,
   Seq,
-  SessionCatalogView,
   SessionChange,
   SessionView,
   TableChanges,
@@ -34,7 +32,6 @@ import { ZERO_USAGE } from "../util/usage.ts";
 import {
   backgroundRows,
   belongsInQueue,
-  catalogRows,
   emptyHead,
   IDLE,
   newTouched,
@@ -140,7 +137,7 @@ export function readWindow(
         drop: tables.turns.drop,
       },
       catalog: {
-        upsert: Array.from(catalogRows(state.catalog).values()),
+        upsert: state.catalogId === null ? [] : [{ id: state.catalogId }],
         drop: tables.catalog.drop,
       },
       heads: { upsert: sent("heads", head) ? [row] : [], drop: tables.heads.drop },
@@ -161,7 +158,11 @@ export function readWindow(
   };
 }
 
-export function readView(state: FoldState, head: HeadName, options?: ViewOptions): SessionView {
+export function readView(
+  state: FoldState,
+  head: HeadName,
+  options?: ViewOptions,
+): Omit<SessionView, "catalog"> {
   const window = readWindow(state, head, { tail: options?.tail ?? DEFAULT_TAIL }, null);
   const tables = window.tables;
   const messages = new Map(tables.messages.upsert.map((message) => [message.id, message]));
@@ -194,7 +195,6 @@ export function readView(state: FoldState, head: HeadName, options?: ViewOptions
     configuration: settings?.configuration ?? UNCONFIGURED,
     context: settings?.context ?? NO_CONTEXT,
     changes: tables.changes.upsert,
-    catalog: groupCatalog(tables.catalog.upsert),
     seenThrough: row?.seenThrough ?? null,
   };
 }
@@ -371,7 +371,7 @@ function everything(state: FoldState): Touched {
 
   for (const file of state.changes) touched.upsert.changes.add(file.path);
 
-  for (const key of catalogRows(state.catalog).keys()) touched.upsert.catalog.add(key);
+  if (state.catalogId !== null) touched.upsert.catalog.add(state.catalogId);
 
   return touched;
 }
@@ -398,10 +398,10 @@ function readTables(state: FoldState, touched: Touched): TableChanges {
 
       return (key) => files.get(key);
     }),
-    catalog: readTable(touched, "catalog", () => {
-      const rows = catalogRows(state.catalog);
+    catalog: readTable(touched, "catalog", () => (key) => {
+      const id = state.catalogId;
 
-      return (key) => rows.get(key);
+      return id !== null && key === id ? { id } : undefined;
     }),
     heads: readTable(touched, "heads", () => (key) => {
       const name = asId<"head">(key);
@@ -475,15 +475,5 @@ function readTable<Row>(
   return {
     upsert: rows.flatMap((entry) => (entry.row === undefined ? [] : [entry.row])),
     drop: rows.flatMap((entry) => (entry.row === undefined ? [entry.key] : [])),
-  };
-}
-
-function groupCatalog(rows: readonly CatalogRow[]): SessionCatalogView {
-  return {
-    commands: rows.flatMap((row) => (row.kind === "commands" ? [row.entry] : [])),
-    settings: rows.flatMap((row) => (row.kind === "settings" ? [row.entry] : [])),
-    skills: rows.flatMap((row) => (row.kind === "skills" ? [row.entry] : [])),
-    agents: rows.flatMap((row) => (row.kind === "agents" ? [row.entry] : [])),
-    tools: rows.flatMap((row) => (row.kind === "tools" ? [row.entry] : [])),
   };
 }
