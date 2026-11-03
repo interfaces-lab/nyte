@@ -264,7 +264,7 @@ function healthNotice(health: Health): HealthNotice | null {
   }
 }
 
-/** What waits on the user, even behind a menu: a sign-in step, then an approval, then a question. */
+/** What waits on the user, even behind a menu: a sign-in step, then an approval, then a question the agent still waits on. */
 function blockedStatus(state: State, question: QuestionModel | null): ProgramState | null {
   const auth = state.local.dialogs.findLast((dialog) => dialog.kind === "auth");
 
@@ -287,7 +287,7 @@ function blockedStatus(state: State, question: QuestionModel | null): ProgramSta
       msg: `${approvalHeading(approval)} ${approvalPrompt(approval).detail}`,
     };
 
-  return question === null
+  return question === null || question.late
     ? null
     : { state: "blocked", kind: "question", msg: questionTitle(question) };
 }

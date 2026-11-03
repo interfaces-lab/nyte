@@ -280,6 +280,41 @@ describe("footer and status", () => {
     });
     expect(deriveScreen(ready(working), null).program).toMatchObject({ state: "working" });
 
+    const continued = buildView((v) =>
+      v
+        .turn("t1", (t) => t.user("hi"))
+        .question(
+          [{ question: "Pick", header: "Question", options: [{ label: "A", description: "" }] }],
+          { id: "q1" },
+        )
+        .live(),
+    );
+
+    const late: SessionView = {
+      ...continued,
+      parts: continued.parts.map((part) =>
+        part.id === "q1"
+          ? {
+              ...part,
+              state: {
+                call: "call-q1",
+                questions: [
+                  {
+                    question: "Pick",
+                    header: "Question",
+                    options: [{ label: "A", description: "" }],
+                  },
+                ],
+                phase: { kind: "open", head: "main" },
+              },
+            }
+          : part,
+      ),
+    };
+
+    expect(deriveScreen(ready(late), null).question).toMatchObject({ late: true });
+    expect(deriveScreen(ready(late), null).program).toMatchObject({ state: "working" });
+
     const done = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi").tool("bash").ended("completed"))
