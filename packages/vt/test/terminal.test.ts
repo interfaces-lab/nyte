@@ -1,8 +1,12 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { openTerminal, screenText } from "./harness.ts";
 
 describe("terminal", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   test("keeps the configured scrollback instead of the default byte cap", async () => {
     const session = await openTerminal({ cols: 160, rows: 40, scrollback: 10_000 });
 
@@ -49,11 +53,14 @@ describe("terminal", () => {
 
   test("gives up on a synchronized frame held longer than a second", async () => {
     const session = await openTerminal({ cols: 20, rows: 2 });
+    vi.useFakeTimers({ toFake: ["performance"] });
 
     session.write("BASE\u001b[?2026h\u001b[H\u001b[2Jstuck");
-    expect(screenText(session.terminal.frame(true))[0]).toBe("BASE");
-    await new Promise((resolve) => setTimeout(resolve, 1_050));
-    expect(screenText(session.terminal.frame(true))[0]).toBe("stuck");
+    const held = session.terminal.frame(true);
+    expect([screenText(held)[0], held.held]).toEqual(["BASE", true]);
+    vi.advanceTimersByTime(1_050);
+    const released = session.terminal.frame(true);
+    expect([screenText(released)[0], released.held]).toEqual(["stuck", false]);
     session.write("\u001b[H\u001b[2Jlive");
     expect(screenText(session.terminal.frame(true))[0]).toBe("live");
   });

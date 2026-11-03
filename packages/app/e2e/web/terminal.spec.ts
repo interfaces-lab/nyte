@@ -83,7 +83,7 @@ test("Shift+Enter reaches a program that asked for the Kitty keyboard protocol",
 
   await page
     .getByRole("navigation", { name: "Workbench navigation" })
-    .getByRole("button", { name: "Terminal", exact: true })
+    .getByRole("button", { name: "New Terminal", exact: true })
     .click();
   const terminal = page.getByRole("tabpanel").getByRole("region", { name: "Terminal" });
   await terminal.getByRole("textbox", { name: "Terminal input" }).focus();

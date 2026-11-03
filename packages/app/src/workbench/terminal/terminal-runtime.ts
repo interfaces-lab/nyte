@@ -120,7 +120,7 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
   };
 
   const surface = await openTerminalSurface(engine, stage, {
-    cursor: shell,
+    cursor: shell ? "shell" : "none",
     newlineMode: !shell,
     reply: sendToRunning,
     title: (title) => terminalActions.title(id, title),
@@ -194,7 +194,6 @@ async function buildView(id: string): Promise<TerminalView | undefined> {
         (tab.state.kind === "running" || tab.state.kind === "starting")
       );
     },
-    running: () => running(getTerminal(id)),
     send,
     typed() {
       const bar = terminal.scrollbar();

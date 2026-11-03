@@ -70,6 +70,8 @@ export interface Cursor {
 
 export interface Frame {
   readonly full: boolean;
+  /** The program holds synchronized output, so this repeats the last complete frame. Draw again within a second: a hold that outlives it is released. */
+  readonly held: boolean;
   readonly rows: readonly Row[];
   readonly cursor: Cursor | null;
   readonly foreground: Rgb;

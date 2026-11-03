@@ -8,7 +8,6 @@ export interface InputHost {
   readonly textarea: HTMLTextAreaElement;
   readonly shell: boolean;
   takesInput(): boolean;
-  running(): boolean;
   send(bytes: Uint8Array): void;
   typed(): void;
   submitted(): void;
@@ -46,6 +45,7 @@ export function attachInput(host: InputHost): () => void {
   const textarea = host.textarea;
   let composing = false;
   let committed = "";
+  const reportedPresses = new Set<string>();
 
   const emit = (bytes: Uint8Array): void => {
     host.typed();
@@ -75,13 +75,14 @@ export function attachInput(host: InputHost): () => void {
 
     if (bytes.length === 0) return;
     event.preventDefault();
+    reportedPresses.add(event.code);
 
     if (event.key === "Enter" && !event.shiftKey && !event.repeat) host.submitted();
     emit(bytes);
   };
 
   const keyup = (event: KeyboardEvent): void => {
-    if (event.isComposing || !host.shell || !host.takesInput() || appChord(event, mac)) return;
+    if (!reportedPresses.delete(event.code) || event.isComposing || !host.takesInput()) return;
     const bytes = host.terminal.key(keyInput(event, "release", mac));
 
     if (bytes.length > 0) host.send(bytes);
@@ -164,12 +165,15 @@ export function attachInput(host: InputHost): () => void {
     event.preventDefault();
     event.stopPropagation();
 
-    if (host.running()) emit(host.terminal.paste(text));
+    if (host.takesInput()) emit(host.terminal.paste(text));
   };
 
   const focus = (): void => host.focused(true);
 
-  const blur = (): void => host.focused(false);
+  const blur = (): void => {
+    reportedPresses.clear();
+    host.focused(false);
+  };
 
   textarea.addEventListener("keydown", keydown);
   textarea.addEventListener("keyup", keyup);

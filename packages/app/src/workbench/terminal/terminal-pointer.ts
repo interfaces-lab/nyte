@@ -85,6 +85,9 @@ export function attachPointer(host: PointerHost): () => void {
   };
 
   const up = (event: MouseEvent): void => {
+    const held = dragging === "report" ? pressed : "left";
+
+    if ((BUTTONS[event.button] ?? null) !== held) return;
     page.removeEventListener("mousemove", move);
     page.removeEventListener("mouseup", up);
 

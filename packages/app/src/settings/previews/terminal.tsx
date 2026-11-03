@@ -18,7 +18,7 @@ export function TerminalPreview(): ReactElement {
   );
 }
 
-/** A display-only terminal drawn like the app's, showing a prompt for the configured shell. */
+/** A display-only terminal drawn like the app's, showing a prompt for the configured shell. It stays blank if the engine can't load, which a terminal tab reports. */
 function mountTerminalPreview(host: HTMLDivElement | null): (() => void) | undefined {
   if (host === null) return undefined;
   const unmounted = new AbortController();
@@ -26,7 +26,7 @@ function mountTerminalPreview(host: HTMLDivElement | null): (() => void) | undef
   void loadGhostty()
     .then((engine) =>
       openTerminalSurface(engine, host, {
-        cursor: true,
+        cursor: "always",
         newlineMode: false,
         reply: () => undefined,
         title: () => undefined,
@@ -55,7 +55,8 @@ function mountTerminalPreview(host: HTMLDivElement | null): (() => void) | undef
         stopShell();
         surface.dispose();
       });
-    });
+    })
+    .catch(() => undefined);
 
   return () => unmounted.abort();
 }

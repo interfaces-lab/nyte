@@ -332,7 +332,15 @@ export function createFrames(context: Context): Frames {
 
       check(native.ghostty_render_state_clean(state), "render state clean");
 
-      return { full: everything, rows, cursor: readCursor(), foreground, background, cursorColor };
+      return {
+        full: everything,
+        held: !live,
+        rows,
+        cursor: readCursor(),
+        foreground,
+        background,
+        cursorColor,
+      };
     },
     dispose: () => {
       native.ghostty_render_state_row_cells_free(cells);

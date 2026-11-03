@@ -6,6 +6,9 @@ import { createRenderer, measureCell } from "./terminal-renderer.ts";
 
 const BLINK_MS = 600;
 
+/** Past libghostty-vt's one-second hold limit, so the redraw lands after the hold is released. */
+const HELD_REDRAW_MS = 1_050;
+
 export interface TerminalSurface {
   readonly terminal: Terminal;
   readonly canvas: HTMLCanvasElement;
@@ -27,8 +30,8 @@ export interface TerminalSurface {
 }
 
 export interface SurfaceOptions {
-  /** Whether the terminal draws its cursor, as a shell does and command output doesn't. */
-  readonly cursor: boolean;
+  /** A shell draws its cursor hollow while unfocused, command output draws none, and a preview always draws it as focused. */
+  readonly cursor: "shell" | "none" | "always";
   readonly newlineMode: boolean;
   readonly reply: (bytes: Uint8Array) => void;
   readonly title: (title: string) => void;
@@ -56,7 +59,6 @@ export async function openTerminalSurface(
   canvas.style.left = "0";
   canvas.style.top = "0";
   canvas.style.display = "block";
-  element.append(canvas);
   const renderer = createRenderer(canvas);
   renderer.setFont(appearance.font, metrics);
   let shown = false;
@@ -65,6 +67,7 @@ export async function openTerminalSurface(
   let full = true;
   let blinkTimer: ReturnType<typeof setInterval> | undefined;
   let blinkOn = true;
+  let heldTimer: ReturnType<typeof setTimeout> | undefined;
 
   const cell = (): CellSize => ({ width: metrics.width / ratio, height: metrics.height / ratio });
 
@@ -85,6 +88,8 @@ export async function openTerminalSurface(
     newlineMode: options.newlineMode,
     effects: { reply: options.reply, title: options.title, colorScheme },
   });
+
+  element.append(canvas);
 
   const stopBlink = (): void => {
     clearInterval(blinkTimer);
@@ -107,21 +112,27 @@ export async function openTerminalSurface(
     const next = terminal.frame(full);
     full = false;
 
+    const active = focused || options.cursor === "always";
+
     const shownCursor =
-      !options.cursor || next.cursor === null || (focused && next.cursor.blinking && !blinkOn)
+      options.cursor === "none" ||
+      next.cursor === null ||
+      (active && next.cursor.blinking && !blinkOn)
         ? "hidden"
-        : focused
+        : active
           ? "focused"
           : "unfocused";
 
     renderer.paint(next, { cursor: shownCursor, selection: appearance.selection });
-    const blinks = shown && focused && options.cursor && next.cursor?.blinking === true;
+    const blinks = active && options.cursor !== "none" && next.cursor?.blinking === true;
 
     if (blinks !== (blinkTimer !== undefined)) {
       if (blinks) startBlink();
       else stopBlink();
     }
 
+    clearTimeout(heldTimer);
+    heldTimer = next.held ? setTimeout(() => draw(false), HELD_REDRAW_MS) : undefined;
     options.painted(next.cursor);
   };
 
@@ -178,16 +189,25 @@ export async function openTerminalSurface(
   resize.observe(element);
   const root = document.documentElement;
 
-  const restyle = new MutationObserver(() => {
+  let restyleFrame = 0;
+
+  const readAppearance = (): void => {
+    restyleFrame = 0;
     const next = terminalAppearance();
     const nextSignature = JSON.stringify(next);
 
     if (nextSignature === signature) return;
+    const schemeChanged = next.scheme !== appearance.scheme;
     appearance = next;
     signature = nextSignature;
     terminal.setPalette(next.palette);
-    terminal.colorSchemeChanged(next.scheme);
+
+    if (schemeChanged) terminal.colorSchemeChanged(next.scheme);
     remeasure();
+  };
+
+  const restyle = new MutationObserver(() => {
+    if (restyleFrame === 0) restyleFrame = requestAnimationFrame(readAppearance);
   });
 
   restyle.observe(root, {
@@ -236,6 +256,7 @@ export async function openTerminalSurface(
       focused = false;
       cancelAnimationFrame(frame);
       frame = 0;
+      clearTimeout(heldTimer);
       stopBlink();
       renderer.release();
     },
@@ -250,6 +271,8 @@ export async function openTerminalSurface(
     dispose() {
       cancelAnimationFrame(frame);
       cancelAnimationFrame(fitFrame);
+      cancelAnimationFrame(restyleFrame);
+      clearTimeout(heldTimer);
       stopBlink();
       resize.disconnect();
       restyle.disconnect();

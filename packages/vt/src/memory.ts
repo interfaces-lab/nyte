@@ -75,8 +75,9 @@ export function createMemory(native: Native): Memory {
           if (size <= capacity) return pointer;
           const next = Math.max(size, capacity * 2);
 
+          const grown = allocate(next);
           native.ghostty_wasm_free(pointer, capacity);
-          pointer = allocate(next);
+          pointer = grown;
           capacity = next;
 
           return pointer;
