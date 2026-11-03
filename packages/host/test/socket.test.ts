@@ -555,11 +555,21 @@ describe("the host's WebSocket", () => {
     cleanups.push(() => rm(home, { recursive: true, force: true }));
     const tcp = await serve(host);
 
-    const unix = await serve(host, join(home, "host.sock"));
+    const unix =
+      process.platform === "win32"
+        ? []
+        : [
+            {
+              route: "unix",
+              listener: await serve(host, join(home, "host.sock")),
+              headers: {},
+              extensions: "",
+            },
+          ];
 
     const routes = [
       { route: "loopback", listener: tcp, headers: {}, extensions: "" },
-      { route: "unix", listener: unix, headers: {}, extensions: "" },
+      ...unix,
       {
         route: "named",
         listener: tcp,
