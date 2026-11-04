@@ -230,6 +230,14 @@ export const RemoveSessionOutcomeType = Type.Union([
 
 export type RemoveSessionOutcome = Decoded<typeof RemoveSessionOutcomeType>;
 
+export const ForkOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("forked"), session: idSchema<"session">() }),
+  Type.Object({ kind: Type.Literal("busy"), run: idSchema<"run">() }),
+  Type.Object({ kind: Type.Literal("missing-source") }),
+]);
+
+export type ForkOutcome = Decoded<typeof ForkOutcomeType>;
+
 export const HeadInfoSchema: Schema<HeadInfo> = standard(withJson(HeadInfoType));
 
 export const SessionInfoSchema: Schema<SessionInfo> = standard(withJson(SessionInfoType));
@@ -262,3 +270,5 @@ export const UpdateOutcomeSchema: Schema<UpdateOutcome> = standard(UpdateOutcome
 
 export const RemoveSessionOutcomeSchema: Schema<RemoveSessionOutcome> =
   standard(RemoveSessionOutcomeType);
+
+export const ForkOutcomeSchema: Schema<ForkOutcome> = standard(ForkOutcomeType);

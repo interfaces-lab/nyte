@@ -32,6 +32,7 @@ import { stopRun } from "../engine/fence.ts";
 import { receiptHandle, sendReceipt, withdraw } from "../engine/receipts.ts";
 import { runHandle } from "../engine/runs.ts";
 import { discardSession, releaseStart, stopStart } from "../engine/start.ts";
+import { forkSession } from "../engine/fork.ts";
 import { completeSessionCommand, runCommand } from "../extend/registry.ts";
 import { configure } from "../extend/settings.ts";
 import { isolateWorkspace, releaseWorktree } from "../env/worktrees.ts";
@@ -81,6 +82,7 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
     },
     update: (patch) => update(kernel, id, patch),
     remove: () => remove(kernel, context, id),
+    fork: (input) => forkSession(kernel, context, id, input?.from),
     stop: () => stop(kernel, id),
     async command(name, text) {
       await kernel.plugins.runtime(id).ready;

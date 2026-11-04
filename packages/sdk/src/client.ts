@@ -179,6 +179,7 @@ function sessionHandle(bound: Bound, session: SessionId): Session {
     info: () => rows.call("session.info", { session }),
     update: (patch) => rows.call("session.update", { session, patch }),
     remove: () => rows.call("session.remove", { session }),
+    fork: (input) => rows.call("session.fork", { session, ...input }),
     stop: () => rows.call("session.stop", { session }),
     command: (name, text) => rows.call("session.command", { session, name, text }),
     completeCommand: (name, prefix) =>

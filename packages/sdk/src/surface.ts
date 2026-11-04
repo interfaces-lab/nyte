@@ -138,6 +138,7 @@ export type {
   FileStatus,
   FileVersion,
   ForgetOutcome,
+  ForkOutcome,
   FormatOutcome,
   WorktreeCleanup,
   GitCommitId,

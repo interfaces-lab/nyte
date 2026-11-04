@@ -119,8 +119,6 @@ export const TurnInfoType = Type.Object({
     }),
     failed: Type.Number(),
     stopped: Type.Number(),
-    added: Type.Number(),
-    removed: Type.Number(),
   }),
 });
 

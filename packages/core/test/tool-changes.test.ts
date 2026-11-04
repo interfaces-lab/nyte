@@ -1,5 +1,5 @@
 import { asId } from "@nyte-ai/schema";
-import type { CallId, SessionId, SnapshotId } from "@nyte-ai/schema";
+import type { CallId, RunId, SessionId, SnapshotId } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
 import { memoryStore } from "../src/store.ts";
 import type { SnapshotsApi, ToolDefinition } from "../src/index.ts";
@@ -48,6 +48,17 @@ function treeSnapshots(tree: Map<string, string>): SnapshotsApi {
         kind: "binary" as const,
       })),
   };
+}
+
+async function runFiles(
+  world: Pick<Awaited<ReturnType<typeof setup>>, "kernel" | "host">,
+  session: SessionId,
+  run: RunId,
+): Promise<readonly string[]> {
+  const { workspace } = (await requireSession(world.kernel.store, session)).record;
+  const changes = await world.host.workspace(workspace).changes({ kind: "run", run });
+
+  return changes.files.map((file) => file.path);
 }
 
 async function sharedFolder(subagent = false) {
@@ -253,7 +264,7 @@ describe("tool changes", () => {
     });
 
     const view = await session.view();
-    expect(view.turns.at(-1)?.summary).toMatchObject({ added: 2, removed: 2 });
+    expect(await runFiles(a, session.id, run)).toEqual(["a.ts", "b.ts"]);
     expect((await toolPart(session, "e2")).state).toMatchObject({
       changes: { added: 1, removed: 1, paths: ["b.ts"] },
     });
@@ -315,8 +326,10 @@ describe("tool changes", () => {
     });
     await call(kernel, { session: session.id, run, call: "e2", name: "echo", args: { text: "x" } });
 
-    expect((await session.view()).turns.at(-1)?.summary).toMatchObject({ added: 1, removed: 1 });
-    expect((await other.view()).turns.at(-1)?.summary).toMatchObject({ added: 1, removed: 1 });
+    expect(await runFiles({ kernel, host }, session.id, run)).toEqual(["a.ts"]);
+    expect(await runFiles({ kernel, host }, other.id, otherTurn.input.run.id)).toEqual([
+      "other-thread.ts",
+    ]);
     expect((await toolPart(session, "e2")).state).toMatchObject({
       changes: { added: 0, removed: 0, paths: [] },
     });
@@ -376,7 +389,7 @@ describe("tool changes", () => {
     expect((await toolPart(session, "e1")).state).toMatchObject({
       changes: { added: 1, removed: 1, paths: ["a.ts"] },
     });
-    expect((await session.view()).turns.at(-1)?.summary).toMatchObject({ added: 2, removed: 2 });
+    expect(await runFiles({ kernel, host }, session.id, run)).toEqual(["a.ts", "b.ts"]);
     turn.finish();
     await running;
   });

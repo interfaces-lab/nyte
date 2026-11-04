@@ -83,7 +83,7 @@ export function Transcript(props: TranscriptProps): JSX.Element {
     let top = 0;
     let current: Renderable | null = node;
 
-    while (current !== null && current !== box?.content) {
+    while (current !== null && current !== box) {
       top += current.getComputedLayout().top;
       current = current.parent;
     }

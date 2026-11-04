@@ -214,7 +214,11 @@ function durableEvent<Common extends TProperties>(common: Common) {
   ]);
 }
 
-export const DurableEventType = durableEvent({ head: nullable(idSchema<"head">()) });
+export const DurableEventType = durableEvent({
+  head: nullable(idSchema<"head">()),
+  /** When the event first happened, kept by an event a fork copies from another session's log; the store logs every other event at the time it writes it. */
+  at: Type.Optional(Type.Number()),
+});
 
 export type DurableEvent = Decoded<typeof DurableEventType>;
 

@@ -17,6 +17,7 @@ import type {
   RunId,
   SessionId,
   SnapshotId,
+  WorkspaceId,
 } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import {
@@ -40,6 +41,7 @@ import type {
 } from "../contract/records.ts";
 import { dev } from "../util/dev-log.ts";
 import { callRef, headRef, inboxRef, receiptRef, sessionRef } from "./refs.ts";
+import { sessionIndexRef } from "./session-index.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 export const MAIN: HeadName = asId<"head">("main");
@@ -182,6 +184,41 @@ export async function liveRuns(
   const runs = await Promise.all(refs.map((ref) => load(store, ref, decodeRunRecord)));
 
   return runs.flatMap((run) => (run === null ? [] : [run]));
+}
+
+/** The live runs of the sessions on `workspace`, found from the store's index of live runs, so only their sessions' records are read. */
+export async function liveRunsOn(
+  store: StoreConnection,
+  workspace: WorkspaceId,
+): Promise<readonly { readonly session: SessionRecord; readonly run: Found<RunRecord> }[]> {
+  const refs = (await store.sessions.pending({ kind: "run" })).flatMap((ref) => {
+    const owner = sessionIndexRef(ref.name);
+
+    return owner === null ? [] : [{ ref, session: owner.session }];
+  });
+
+  const owners = await Promise.all(
+    [...new Set(refs.map((entry) => entry.session))].map((id) => readSession(store, id)),
+  );
+
+  const on = new Map(
+    owners.flatMap((found) =>
+      found !== null && found.record.workspace === workspace
+        ? [[found.record.id, found.record]]
+        : [],
+    ),
+  );
+
+  const runs = await Promise.all(
+    refs.map(async (entry) => {
+      const session = on.get(entry.session);
+      const run = session === undefined ? null : await load(store, entry.ref, decodeRunRecord);
+
+      return session === undefined || run === null ? [] : [{ session, run }];
+    }),
+  );
+
+  return runs.flat();
 }
 
 /** The snapshot a session's changes count from: the first snapshot of its earliest run that took one, or null before any did. */

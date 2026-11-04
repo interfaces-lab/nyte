@@ -124,7 +124,9 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
         }
       }
 
-      if (turn.state.kind === "waiting" && openQuestions(view).length > 0) {
+      const on = turn.state.kind === "waiting" ? turn.state.on : null;
+
+      if (on?.kind === "part" && openQuestions(view).some((request) => request.part === on.part)) {
         await receipt.stop();
         await receipt.settled();
 

@@ -248,7 +248,7 @@ export async function publishSet(
     if (seq === undefined) continue;
     const events = logged.get(session) ?? [];
     logged.set(session, events);
-    events.push({ ...event, seq, at: outcome.at });
+    events.push({ at: outcome.at, ...event, seq });
   }
 
   for (const [session, events] of logged)

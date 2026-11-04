@@ -12,6 +12,7 @@ import {
   DecodedObjectViewSchema,
   DurableEventSchema,
   ExecutionCoverageSchema,
+  ForkOutcomeSchema,
   HeadInfoSchema,
   HostViewWireSchema,
   IntegrityReportSchema,
@@ -133,6 +134,7 @@ export const sessionCases = {
     { kind: "has-children", children: [session] },
     { kind: "has-children" },
   ),
+  ForkOutcomeSchema: sample(ForkOutcomeSchema, { kind: "forked", session }, { kind: "forked" }),
   ViewOptionsSchema: sample(ViewOptionsSchema, { tail: 50 }, { tail: "all" }),
   UserStatusSchema: sample(
     UserStatusSchema,

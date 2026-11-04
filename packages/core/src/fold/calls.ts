@@ -135,19 +135,11 @@ function summarise(
   summary: TurnInfo["summary"],
   tool: ToolClass,
   outcome: ToolOutcome,
-  changes: {
-    readonly added: number;
-    readonly removed: number;
-    readonly paths: readonly string[];
-  } | null,
+  changes: { readonly paths: readonly string[] } | null,
 ): TurnInfo["summary"] {
-  const added = summary.added + (changes?.added ?? 0);
-  const removed = summary.removed + (changes?.removed ?? 0);
+  if (outcome.kind === "stopped") return { ...summary, stopped: summary.stopped + 1 };
 
-  if (outcome.kind === "stopped")
-    return { ...summary, stopped: summary.stopped + 1, added, removed };
-
-  if (outcome.kind !== "ok") return { ...summary, failed: summary.failed + 1, added, removed };
+  if (outcome.kind !== "ok") return { ...summary, failed: summary.failed + 1 };
   const kind = tool.kind;
 
   const entry = summary.byClass[kind];
@@ -160,8 +152,6 @@ function summarise(
 
   return {
     ...summary,
-    added,
-    removed,
     byClass: { ...summary.byClass, [kind]: { count: entry.count + 1, paths } },
   };
 }

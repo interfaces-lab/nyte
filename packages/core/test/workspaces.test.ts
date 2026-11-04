@@ -1,5 +1,5 @@
 import { asId, asSeq, SdkError } from "@nyte-ai/schema";
-import type { Authority, CallId, Json, PatchSet, RunId, SessionId } from "@nyte-ai/schema";
+import type { Authority, CallId, Json, PatchSet, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { createInvocation } from "../src/agent/tool-runner.ts";
 import { createHost } from "../src/api/connection.ts";
@@ -16,9 +16,10 @@ import { LOCAL } from "../src/index.ts";
 import { envelope, hostPrincipalsRef, workspaceRef } from "../src/store.ts";
 import { attachSession } from "../src/api/attach.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
-import type { ConnectionContext, Durable, Page, Plugin } from "../src/index.ts";
+import type { ConnectionContext, Durable, Page, Plugin, ToolDefinition } from "../src/index.ts";
 import type { WorkspaceRecord } from "../src/store.ts";
-import { addWorkspace, collect, kernelOver, world } from "./fake-env.ts";
+import { addWorkspace, collect, createDisk, kernelOver, world } from "./fake-env.ts";
+import { call, echo, liveRun, toolPlugin } from "./tool-support.ts";
 import { main, until } from "../src/harness.ts";
 
 function connectionAs(kernel: Kernel, authority: readonly Authority[]) {
@@ -30,7 +31,43 @@ function connectionAs(kernel: Kernel, authority: readonly Authority[]) {
   });
 }
 
-const run: RunId = asId("r1");
+/** A world with a chat whose run's one call writes `files`, so that run's changes own their paths. */
+async function writingRun(before: Readonly<Record<string, string>> = {}) {
+  const disk = createDisk();
+
+  for (const [path, text] of Object.entries(before)) disk.put(`/work/project/${path}`, text);
+  const files = new Map<string, string>();
+
+  const write = {
+    ...echo,
+    name: "write",
+    class: () => ({ kind: "shell", command: "write" }),
+    execute: async () => {
+      for (const [path, text] of files) disk.put(`/work/project/${path}`, text);
+
+      return { content: [] };
+    },
+  } satisfies ToolDefinition<{ text: string }>;
+
+  const made = await world({ disk, plugins: [toolPlugin([write])] });
+  const { session } = await made.host.sessions.start({ workspace: made.workspace, content: "Hi." });
+  const run = await liveRun(made.kernel, session.id);
+
+  return {
+    ...made,
+    run,
+    write: async (written: Readonly<Record<string, string>>) => {
+      for (const [path, text] of Object.entries(written)) files.set(path, text);
+      await call(made.kernel, {
+        session: session.id,
+        run,
+        call: "w1",
+        name: "write",
+        args: { text: "" },
+      });
+    },
+  };
+}
 
 async function patches(source: AsyncIterable<PatchSet>) {
   const sets = await collect(source);
@@ -383,14 +420,12 @@ describe("workspaces", () => {
   });
 
   it("reports what a run changed from its snapshots, and patches batched and cached, holding stale entries while the revision moves", async () => {
-    const { kernel, host, disk, provider, workspace } = await world();
-    disk.put("/work/project/a.ts", "one\n");
-    disk.put("/work/project/b.ts", "two\n");
-    const snapshots = await kernel.environments.workspaceSnapshots(workspace);
-    assert(snapshots !== null);
-    await snapshots.before(run);
-    disk.put("/work/project/a.ts", "one\nmore\n");
-    disk.put("/work/project/b.ts", "three\n");
+    const { host, disk, provider, workspace, run, write } = await writingRun({
+      "a.ts": "one\n",
+      "b.ts": "two\n",
+    });
+
+    await write({ "a.ts": "one\nmore\n", "b.ts": "three\n" });
     const handle = host.workspace(workspace);
 
     expect(await handle.changes({ kind: "run", run })).toMatchObject({
@@ -431,13 +466,9 @@ describe("workspaces", () => {
   });
 
   it("reads at most 32 paths per provider call with at most 4 in flight", async () => {
-    const { kernel, host, disk, provider, workspace } = await world();
+    const { host, provider, workspace, run, write } = await writingRun();
     const paths = Array.from({ length: 150 }, (_value, index) => `f${index}.ts`);
-    const snapshots = await kernel.environments.workspaceSnapshots(workspace);
-    assert(snapshots !== null);
-    await snapshots.before(run);
-
-    for (const path of paths) disk.put(`/work/project/${path}`, `${path}\n`);
+    await write(Object.fromEntries(paths.map((path) => [path, `${path}\n`])));
     const { last } = await patches(host.workspace(workspace).patches({ kind: "run", run }, paths));
 
     expect(last.entries.size).toBe(150);
@@ -794,13 +825,9 @@ describe("activation (§37j–m)", () => {
 
 describe("patch reads", () => {
   it("yields a failed batch's paths as failed entries, the rest of the set intact, and reads them again later", async () => {
-    const { kernel, host, disk, provider, workspace } = await world();
+    const { host, provider, workspace, run, write } = await writingRun();
     const paths = Array.from({ length: 40 }, (_value, index) => `f${index}.ts`);
-    const snapshots = await kernel.environments.workspaceSnapshots(workspace);
-    assert(snapshots !== null);
-    await snapshots.before(run);
-
-    for (const path of paths) disk.put(`/work/project/${path}`, `${path}\n`);
+    await write(Object.fromEntries(paths.map((path) => [path, `${path}\n`])));
     provider.failPatches = (batch) => (batch.includes("f39.ts") ? "The diff timed out." : null);
     const { last } = await patches(host.workspace(workspace).patches({ kind: "run", run }, paths));
     const failed = [...last.entries.values()].filter((entry) => entry.kind === "failed");

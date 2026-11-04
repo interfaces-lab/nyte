@@ -23,6 +23,7 @@ import { RunEndSchema, RunEndType, stopOutcomeSchema } from "../../runs.ts";
 import {
   CommandCompletionsSchema,
   CommandOutcomeSchema,
+  ForkOutcomeSchema,
   RemoveSessionOutcomeSchema,
   SessionInfoSchema,
   UpdateOutcomeSchema,
@@ -90,6 +91,13 @@ export const SESSION_OPERATIONS = {
       }),
     }),
     output: UpdateOutcomeSchema,
+  },
+  "session.fork": {
+    ...PARTICIPANT,
+    summary: "Starts a new chat with a session's history up to a commit, by default its latest.",
+    kind: "command",
+    input: wireObject({ ...SESSION, from: Type.Optional(idSchema<"commit">()) }),
+    output: ForkOutcomeSchema,
   },
   "session.remove": {
     ...PARTICIPANT,

@@ -60,7 +60,7 @@ export function collectSessionEvents(
 
 export function loggedEvent(seq: number, at: number, body: unknown): SessionEvent {
   const result = SessionEventSchema["~standard"].validate(
-    typeof body === "object" && body !== null ? { ...body, seq, at } : body,
+    typeof body === "object" && body !== null ? { at, ...body, seq } : body,
   );
 
   if (result instanceof Promise || result.issues !== undefined)

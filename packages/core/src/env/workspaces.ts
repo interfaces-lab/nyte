@@ -4,7 +4,6 @@ import type {
   AddOutcome,
   ChangeSource,
   DiffOptions,
-  EnvironmentIdentity,
   FileStatus,
   ForgetOutcome,
   GitOutcome,
@@ -37,8 +36,8 @@ import { commit } from "../fold/commit.ts";
 import { endedRunRef, runRef, workspaceRef } from "../store/refs.ts";
 import {
   attempt,
-  listSessionRecords,
   liveRuns,
+  liveRunsOn,
   load,
   MAIN,
   put,
@@ -48,9 +47,16 @@ import {
 } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
-import { inspectWorkspaceAvailability, readWorkspace, workspaceRecords } from "./environment.ts";
+import {
+  byIdentity,
+  changed,
+  inspectWorkspaceAvailability,
+  readWorkspace,
+  sessionsOn,
+  workspaceRecords,
+} from "./environment.ts";
 import { mcpApi } from "./mcp.ts";
-import { ownedChanges, readAttributedPaths } from "./session-changes.ts";
+import { keepPaths, readAttributedPaths, readRunPaths } from "./session-changes.ts";
 import { decideTrust, readFolderTrust } from "./trust.ts";
 import type { FolderTrust } from "./trust.ts";
 import type { StoreConnection } from "../contract/store.ts";
@@ -341,11 +347,9 @@ export function workspaceHandle(
     job: (job) => jobHandle(kernel, job),
     async changes(source) {
       const found = await snapshots();
-      const range = await changeRange(kernel.store, id, source, found);
+      const range = await changeRange(kernel, id, source, found);
 
-      return source.kind === "session"
-        ? ownedChanges(kernel.store, found, source.session, range.to)
-        : found.diff(range.from, range.to);
+      return keepPaths(await found.diff(range.from, range.to), range.paths);
     },
     patches(source, paths, options) {
       return streamWorkspacePatches(kernel, { workspace: id, source, paths, options, snapshots });
@@ -384,7 +388,7 @@ async function workspaceInfo(
     projectSources: record.projectSources,
     addedBy: record.addedBy,
     sessions: sessions.length,
-    writers: await readWriters(kernel.store, sessions),
+    writers: await readWriters(kernel.store, id),
     isolation: record.isolation,
   };
 }
@@ -406,7 +410,7 @@ async function workspaceTrust(
  */
 function guardSwitches(kernel: Kernel, workspace: WorkspaceId, git: GitApi): GitApi {
   const switching = async (run: () => Promise<GitOutcome>): Promise<GitOutcome> => {
-    const runs = await readWriters(kernel.store, await sessionsOn(kernel.store, workspace));
+    const runs = await readWriters(kernel.store, workspace);
 
     return runs.length > 0 ? { kind: "busy", runs } : run();
   };
@@ -434,20 +438,9 @@ function guardSwitches(kernel: Kernel, workspace: WorkspaceId, git: GitApi): Git
 
 async function readWriters(
   store: StoreConnection,
-  sessions: readonly SessionId[],
-): Promise<readonly RunId[]> {
-  const runs = await Promise.all(sessions.map((session) => liveRuns(store, session)));
-
-  return runs.flat().map((run) => run.record.view.id);
-}
-
-export async function sessionsOn(
-  store: StoreConnection,
   workspace: WorkspaceId,
-): Promise<readonly SessionId[]> {
-  return (await listSessionRecords(store)).flatMap((record) =>
-    record.workspace === workspace ? [record.id] : [],
-  );
+): Promise<readonly RunId[]> {
+  return (await liveRunsOn(store, workspace)).map((entry) => entry.run.record.view.id);
 }
 
 export function settle(
@@ -473,7 +466,12 @@ async function* streamWorkspacePatches(
 ): AsyncGenerator<PatchSet> {
   const { source, options } = input;
   const snapshots = await input.snapshots();
-  const { from, to } = await changeRange(kernel.store, input.workspace, source, snapshots);
+  const {
+    from,
+    to,
+    paths: charged,
+  } = await changeRange(kernel, input.workspace, source, snapshots);
+
   let statuses: Promise<ReadonlyMap<string, FileStatus> | null> | null = null;
 
   const caches = kernel.workspaceState.patches;
@@ -492,12 +490,7 @@ async function* streamWorkspacePatches(
   }
 
   const held = previous === current ? null : (previous ?? null);
-  const attributed =
-    source.kind === "session" ? await readAttributedPaths(kernel.store, source.session) : null;
-
-  const paths = [...new Set(input.paths)].filter(
-    (path) => attributed === null || attributed.has(path),
-  );
+  const paths = [...new Set(input.paths)].filter((path) => charged.has(path));
   const unread = paths.filter((path) => !current.slots.has(path));
   const limit = limiter(PATCH_READS);
   const mine = new Map<string, PatchSlot>();
@@ -621,24 +614,37 @@ function limiter(size: number): <T>(work: () => Promise<T>) => Promise<T> {
     });
 }
 
+/** A source's snapshot range and the paths its own calls were charged, the only paths it reports. */
 async function changeRange(
-  store: StoreConnection,
+  kernel: Kernel,
   workspace: WorkspaceId,
   source: ChangeSource,
   snapshots: SnapshotsApi,
-): Promise<{ readonly from: SnapshotId; readonly to: SnapshotId }> {
+): Promise<{
+  readonly from: SnapshotId;
+  readonly to: SnapshotId;
+  readonly paths: ReadonlySet<string>;
+}> {
   switch (source.kind) {
     case "run": {
-      const range = await runSnapshots(store, workspace, source.run);
+      const range = await runSnapshots(kernel.store, workspace, source.run);
 
       return {
         from: range?.from ?? (await snapshots.before(source.run)),
         to: range?.to ?? (await snapshots.after(source.run)),
+        paths: range === null ? new Set() : await readRunPaths(kernel, range.session, source.run),
       };
     }
 
-    case "session":
-      return sessionSnapshots(store, source.session, snapshots);
+    case "session": {
+      const [range, paths] = await Promise.all([
+        sessionSnapshots(kernel.store, source.session, snapshots),
+        readAttributedPaths(kernel.store, source.session),
+      ]);
+
+      return { ...range, paths };
+    }
+
     default: {
       const _exhaustive: never = source;
 
@@ -691,20 +697,26 @@ async function sessionSnapshots(
 }
 
 /**
- * Where `run`'s changes start (its first snapshot) and, once it has ended,
- * where they stop (its last); `to` is null while the run is live, its end
- * being the workspace as it is now. Null when no record holds its first snapshot.
+ * The session that owns `run`, where its changes start (its first snapshot) and,
+ * once it has ended, where they stop (its last); `to` is null while the run is live,
+ * its end being the workspace as it is now. Null when no record holds its first snapshot.
  */
 async function runSnapshots(
   store: StoreConnection,
   workspace: WorkspaceId,
   run: RunId,
-): Promise<{ readonly from: SnapshotId; readonly to: SnapshotId | null } | null> {
+): Promise<{
+  readonly session: SessionId;
+  readonly from: SnapshotId;
+  readonly to: SnapshotId | null;
+} | null> {
   for (const session of await sessionsOn(store, workspace)) {
     const live = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
 
     if (live !== null)
-      return live.record.snapshot === null ? null : { from: live.record.snapshot, to: null };
+      return live.record.snapshot === null
+        ? null
+        : { session, from: live.record.snapshot, to: null };
 
     const ended = await load(
       store,
@@ -714,23 +726,13 @@ async function runSnapshots(
 
     if (ended !== null && ended.record.snapshot !== null)
       return {
+        session,
         from: ended.record.snapshot,
         to: ended.record.lastSnapshot ?? ended.record.snapshot,
       };
   }
 
   return null;
-}
-
-export async function byIdentity(
-  store: StoreConnection,
-  input: { readonly kind: string; readonly identity: EnvironmentIdentity },
-): Promise<WorkspaceRecord | null> {
-  return (
-    (await workspaceRecords(store)).find(
-      (record) => record.target.kind === input.kind && record.identity === input.identity,
-    ) ?? null
-  );
 }
 
 /**
@@ -747,10 +749,6 @@ export async function trustChanged(kernel: Kernel): Promise<void> {
   await Promise.allSettled(
     [...kernel.plugins.runtimes().keys()].map((session) => kernel.plugins.reload(session)),
   );
-}
-
-export function changed(kernel: Kernel, id: WorkspaceId): void {
-  for (const listener of kernel.workspaceState.listeners) listener(id);
 }
 
 function invalidateResources(kernel: Kernel, workspace: WorkspaceId): void {

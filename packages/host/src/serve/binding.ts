@@ -320,6 +320,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "session.info": ({ session: id }) => session(id).info(),
     "session.update": ({ session: id, patch }) => session(id).update(patch),
     "session.remove": ({ session: id }) => session(id).remove(),
+    "session.fork": ({ session: id, from }) => session(id).fork({ from }),
     "session.stop": ({ session: id }) => session(id).stop(),
     "session.command": ({ session: id, name, text }) => session(id).command(name, text),
     "session.completeCommand": ({ session: id, name, prefix }) =>

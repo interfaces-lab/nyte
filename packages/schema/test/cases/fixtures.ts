@@ -350,8 +350,6 @@ export const turnInfo: TurnInfo = {
     },
     failed: 0,
     stopped: 0,
-    added: 1,
-    removed: 0,
   },
 };
 

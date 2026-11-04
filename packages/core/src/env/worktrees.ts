@@ -10,8 +10,7 @@ import { workspaceRef } from "../store/refs.ts";
 import { attempt, listSessionRecords, liveRuns, put, STALE } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
-import { readWorkspace, workspaceRecords } from "./environment.ts";
-import { byIdentity, changed, sessionsOn } from "./workspaces.ts";
+import { byIdentity, changed, readWorkspace, sessionsOn, workspaceRecords } from "./environment.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

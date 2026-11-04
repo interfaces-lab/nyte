@@ -160,6 +160,7 @@ export const RELAY_OPERATIONS = [
   "session.info",
   "session.update",
   "session.remove",
+  "session.fork",
   "session.stop",
   "session.command",
   "session.completeCommand",

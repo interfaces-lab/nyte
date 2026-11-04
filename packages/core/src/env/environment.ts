@@ -1,5 +1,11 @@
 import { SdkError } from "@nyte-ai/schema";
-import type { Availability, Capability, SessionId, WorkspaceId } from "@nyte-ai/schema";
+import type {
+  Availability,
+  Capability,
+  EnvironmentIdentity,
+  SessionId,
+  WorkspaceId,
+} from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeWorkspaceRecord } from "../contract/records.ts";
 import type { WorkspaceRecord } from "../contract/records.ts";
@@ -21,7 +27,7 @@ import type {
 } from "../contract/workspace.ts";
 import { applyBatch } from "../engine/batches.ts";
 import { workspaceRef } from "../store/refs.ts";
-import { load, requireSession } from "../store/session.ts";
+import { listSessionRecords, load, requireSession } from "../store/session.ts";
 import { wrapBrowser } from "./browser.ts";
 import { resolveVariables } from "./variables.ts";
 import type { StoreConnection } from "../contract/store.ts";
@@ -289,6 +295,30 @@ export async function workspaceRecords(
   const found = await Promise.all(refs.map((ref) => load(store, ref, decodeWorkspaceRecord)));
 
   return found.flatMap((entry) => (entry === null ? [] : [entry.record]));
+}
+
+export async function byIdentity(
+  store: StoreConnection,
+  input: { readonly kind: string; readonly identity: EnvironmentIdentity },
+): Promise<WorkspaceRecord | null> {
+  return (
+    (await workspaceRecords(store)).find(
+      (record) => record.target.kind === input.kind && record.identity === input.identity,
+    ) ?? null
+  );
+}
+
+export async function sessionsOn(
+  store: StoreConnection,
+  workspace: WorkspaceId,
+): Promise<readonly SessionId[]> {
+  return (await listSessionRecords(store)).flatMap((record) =>
+    record.workspace === workspace ? [record.id] : [],
+  );
+}
+
+export function changed(kernel: Kernel, id: WorkspaceId): void {
+  for (const listener of kernel.workspaceState.listeners) listener(id);
 }
 
 function formatErrorMessage(error: unknown): string {

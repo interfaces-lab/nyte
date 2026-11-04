@@ -1,4 +1,4 @@
-import { asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq, catalogRowKey } from "@nyte-ai/schema";
 import type { SessionCatalogView } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { systemPromptPlugin } from "../src/builtins/system-prompt.ts";
@@ -6,7 +6,7 @@ import { toolSource } from "../src/extend/registry.ts";
 import { LOCAL, text } from "../src/index.ts";
 import type { Plugin, PluginApi } from "../src/index.ts";
 import { attachSession } from "../src/api/attach.ts";
-import { main, setup } from "../src/harness.ts";
+import { main, setup, until } from "../src/harness.ts";
 import { memoryStore } from "../src/store.ts";
 import { world } from "./fake-env.ts";
 import { ok, echo, opaque, volume, says, provider, loaded } from "./plugin-support.ts";
@@ -485,6 +485,35 @@ describe("plugin api", () => {
     expect(hold.state().catalogId).not.toBe(id);
     expect((await session.view()).catalog.commands).toEqual([]);
     hold.release();
+  });
+
+  it("publishes a chat's catalog to a client that attaches on a restarted host and keeps the generation", async () => {
+    const store = await memoryStore().open();
+    const plugins = [{ id: "greeter", contribute: { commands: [says("hello", "hi")] } }];
+    const first = await setup({ store, plugins });
+    const { session } = await first.host.sessions.start({ content: "Hi." });
+    const second = await setup({ store, plugins });
+    const generation = second.kernel.host.current().catalog;
+    const attached = attachSession(second.kernel, session.id, second.host.principal);
+
+    await attached.ready();
+    const read = attached.read(main, { tail: 50 }, null);
+    const rows = new Map(read.tables.catalog.upsert.map((row) => [catalogRowKey(row), row]));
+    let cursor = attached.cursor();
+
+    const stop = attached.subscribe(() => {
+      const change = attached.changesAfter(cursor);
+      cursor = attached.cursor();
+
+      for (const row of change.tables.catalog?.upsert ?? []) rows.set(catalogRowKey(row), row);
+    });
+
+    const hello = await until(() => rows.get("commands/hello"));
+
+    expect(hello.entry).toMatchObject({ name: "hello", owner: "greeter" });
+    expect(second.kernel.host.current().catalog).toBe(generation);
+    stop();
+    attached.release();
   });
 });
 

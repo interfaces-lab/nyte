@@ -238,6 +238,11 @@ export const operations = {
     { session, patch: { name: null, pinned: true, archived: false, workspace } },
     { session, patch: { pinned: "yes" } },
   ),
+  "session.fork input": operation(
+    OPERATIONS["session.fork"].input,
+    { session, from: commit },
+    { session, from: 1 },
+  ),
   "session.remove input": operation(OPERATIONS["session.remove"].input, sessionInput, {
     session: null,
   }),

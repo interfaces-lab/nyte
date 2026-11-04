@@ -160,8 +160,6 @@ const EMPTY_SUMMARY: TurnInfo["summary"] = {
   },
   failed: 0,
   stopped: 0,
-  added: 0,
-  removed: 0,
 };
 
 export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionView {

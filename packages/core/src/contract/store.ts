@@ -72,9 +72,9 @@ export interface SessionIndex {
   }>;
   /** Roots with live runs, queued input, unfinished calls or receipts, in ascending id order. */
   work(input: { readonly after?: SessionId; readonly limit: number }): Promise<readonly Ref[]>;
-  /** Unsettled receipt or call refs; omitted sessions selects every session. */
+  /** Live run, unsettled receipt or unsettled call refs; omitted sessions selects every session. */
   pending(input: {
-    readonly kind: "receipt" | "call";
+    readonly kind: "run" | "receipt" | "call";
     readonly sessions?: readonly SessionId[];
   }): Promise<readonly Ref[]>;
 }
