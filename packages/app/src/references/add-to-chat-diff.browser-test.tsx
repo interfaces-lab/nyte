@@ -111,7 +111,9 @@ export async function run(): Promise<string> {
               path: "src/alpha.ts",
               patch: PATCH,
               digest,
-              files: parsePatchFiles(PATCH, digest).flatMap((parsed) => parsed.files),
+              files: parsePatchFiles(PATCH, { cacheKeyPrefix: digest }).flatMap(
+                (parsed) => parsed.files,
+              ),
               stat: { kind: "text", added: 2, removed: 1 },
             },
           ]}

@@ -23,7 +23,7 @@ function buildItem(path: string, prefix: string): ChangesStackItem {
     path,
     patch,
     digest,
-    files: parsePatchFiles(patch, digest).flatMap((parsed) => parsed.files),
+    files: parsePatchFiles(patch, { cacheKeyPrefix: digest }).flatMap((parsed) => parsed.files),
     stat: { kind: "text", added: 16, removed: 0 },
   };
 }

@@ -186,6 +186,15 @@ export default {
     { from: "../canvas/dist/shell", to: "canvas" },
   ],
   mac: updateTest ? { ...mac, notarize: false } : mac,
+  // Hidden files sit below the 540 × 380 window, or Finder places them beside the app for anyone showing hidden files.
+  dmg: {
+    contents: [
+      { x: 130, y: 220, type: "file" },
+      { x: 410, y: 220, type: "link", path: "/Applications" },
+      { x: 130, y: 540, type: "position", path: ".background.tiff" },
+      { x: 410, y: 540, type: "position", path: ".VolumeIcon.icns" },
+    ],
+  },
   afterPack: async (context) => {
     await verifyBundledCli(context);
     await bundleHostAgent(context);
