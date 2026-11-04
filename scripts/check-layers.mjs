@@ -14,7 +14,7 @@ const root = resolve(import.meta.dirname, "..");
 
 const source = join(root, "packages/app/src");
 
-/** Lowest first. */
+/** Lowest first. docs/app-structure.md says what each folder owns. */
 const LAYERS = [
   ["contract"],
   ["lib", "data"],
@@ -129,5 +129,8 @@ api.close();
 for (const problem of problems.toSorted()) process.stdout.write(`${problem}\n`);
 
 process.stdout.write(`${files.length} files, ${problems.length} layer violations.\n`);
+
+if (problems.length > 0)
+  process.stdout.write("The layer rules and what each folder owns: docs/app-structure.md\n");
 
 process.exitCode = problems.length > 0 && !report ? 1 : 0;

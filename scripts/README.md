@@ -1,129 +1,148 @@
 # Release assembly
 
-`install-nyte.sh` (`pnpm install:nyte` from the root) copies `packages/tui/dist/nyte` to
-`~/.nyte/bin/nyte`. Builds leave the installed binary alone; packaging runs this installer.
-Put `~/.nyte/bin` first on your PATH so another installation does not shadow it.
+These scripts build, package and install the `nyte` binary and the desktop app.
 
-`package.sh` (`pnpm package:tui` from the root) builds and signs through `pnpm build` in `packages/tui`, then
-calls `assemble-release.sh` on `packages/tui/dist/nyte`. The assembly step only copies an existing executable,
-copies `packages/cli/docs`, writes `VERSION`, and creates the tarball and SHA-256
-file, then installs the built binary at `~/.nyte/bin/nyte`. CLI and TUI package versions must match.
-It never downloads or publishes.
+## Install a local build
+
+`install-nyte.sh` copies `packages/tui/dist/nyte` and `packages/tui/dist/nyte-tailnet` to
+`~/.nyte/bin`. To build the TUI and install it, run this from the root:
+
+```sh
+pnpm install:nyte
+```
+
+Other builds leave the installed binary alone. Packaging runs this installer. Put `~/.nyte/bin`
+first on your `PATH` so another installation doesn't shadow it.
+
+## Package the terminal client
+
+```sh
+pnpm package:tui
+```
+
+`package.sh` builds the binary through `pnpm build` in `packages/tui`, which ad-hoc signs it on
+macOS. Then it calls `assemble-release.sh` on `packages/tui/dist/nyte`. The assembly step copies
+the existing executable, `nyte-tailnet` and `packages/cli/docs`, writes `VERSION`, and creates
+`dist/nyte-v<version>-<target>.tar.gz` with a `.sha256` file beside it. It never downloads or
+publishes. `package.sh` then installs the built binary at `~/.nyte/bin/nyte`. The CLI and TUI
+package versions must match.
+
+`release-targets.mjs` lists the platforms Nyte ships. The `nyte` binary ships for `darwin-arm64`,
+`linux-x64` and `linux-arm64`. The desktop app ships for macOS and Linux x64. Releases don't
+include Windows, and a Windows desktop app already installed keeps the version it has.
+`pnpm package` builds only the target of the machine it runs on. `package.sh` asks
+`release-targets.mjs` for the binary's target, and the desktop build adds the machine's platform
+flags unless you pass one. No Intel build ships, so an Intel Mac or a shell under Rosetta stops
+with an error. The release workflow builds its matrices from the same list, each target on its own
+Blacksmith runner.
 
 ## Nightly releases
 
-**Nightly** runs hourly and builds `main` when it has moved since the latest release tag; run it by hand to build another commit. The workflow derives
-a version such as `0.0.25-nightly.20261023.123` from the patch after the latest stable tag,
-the UTC date and the run number. It publishes a GitHub prerelease and npm's `nightly` tag.
-Checked-in package versions stay unchanged, and stable installations keep following stable
-releases.
+The **Nightly** workflow runs hourly and builds `main` when it has moved since the latest `v*`
+tag, nightly or stable. Start it by hand to build `main` anyway, or the tip of another branch. It
+derives a version such as `0.0.25-nightly.20261023.123` from the patch after the latest stable
+tag, the UTC date and the run number. It builds Apple silicon macOS only, skips the quality checks
+and tests, and publishes a GitHub prerelease and npm's `nightly` tag. Checked-in package versions stay as they
+are, and stable installations keep following stable releases.
 
-In the desktop app, choose **Settings > Developer > Update channel > Nightly**.
-Nyte checks after startup and hourly, downloads updates in the background, and
-installs them when you quit. **Restart to Update** installs sooner. Choose **Stable**
-to return to stable releases. The setting applies to this installation.
+To follow nightlies in the desktop app, open **Settings > Developer**, turn on **Developer Mode**,
+and set **Update channel** to **Nightly**. On that channel, Nyte checks for updates 30 seconds
+after startup and then hourly, downloads them in the background and installs them when you quit.
+**Restart to Update** installs sooner. Choose **Stable** to return to stable releases. The setting
+applies to this installation only.
 
-You can also download a nightly installer from GitHub Releases, or run
-`pnpm dlx nyte-ai@nightly` for the terminal client. An installed terminal client switches
-with `nyte update nightly`, and returns with `nyte update stable`, which installs the
-newest stable release even when it is older. Afterwards it follows the channel it
-switched to. The desktop setting doesn't change the terminal client.
-
-The workflow runs on demand. To package a nightly locally, set
-`NYTE_RELEASE_VERSION` to a nightly version before running the packaging command.
-This sets the desktop package, bundled CLI and release archive versions together.
-
-## Delegate a Mac desktop build
-
-Run this from a Linux clone after committing and pushing the approved source:
+You can also download a nightly installer from GitHub Releases. To run a nightly terminal client
+once, run:
 
 ```sh
-export NYTE_CONNECT_ORIGIN=https://connect.example.com
-export NYTE_CLERK_PUBLISHABLE_KEY=pk_live_...
-export NYTE_CLERK_FRONTEND_API_HOST=accounts.example.com
-bash scripts/build-mac-release.sh nyte-release-mac /Users/build/nyte ./mac-release HEAD
+pnpm dlx nyte-ai@nightly
 ```
 
-`nyte-release-mac` is an SSH alias for a trusted Apple Silicon Mac. Its repository must
-have an `origin` that can fetch the approved commit. Both machines need the Node, pnpm
-and Bun versions in `mise.toml`; dependency installation may also require
-`CENTRAL_LICENSE_KEY`. Use an absolute remote repository path without spaces and a new
-local output directory. SSH must work non-interactively with a verified host key.
-The command does not forward SSH agents or signing credentials.
-
-On the Mac, create `~/.config/nyte/release.env` with mode `600`. Set the same three
-`NYTE_` account values, plus `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`,
-`APPLE_API_KEY_ID` and `APPLE_API_ISSUER`. `APPLE_API_KEY` is the absolute path to the
-Mac's private `.p8` file. `CSC_LINK` can reference a local signing certificate. Keep
-these files outside the repository. Set `PATH` there if the runtimes are not available
-to non-interactive SSH sessions. Install Apple's command-line tools on the Mac.
-
-The command builds the web app and canvas and runs their tests on Linux in a fresh
-worktree at the requested commit. It transfers only their output and a manifest. The
-Mac checks the commit, lockfile, public `VITE_` configuration and every file checksum
-before importing the assets. Dotenv build files and symlinks are rejected. It then
-compiles Electron and the native TUI, builds the DMG and ZIP, and signs and notarizes
-them. Signing, stapling, Gatekeeper and the bundled CLI version are checked before
-downloading the release files and their checksums.
-
-Nothing is published, tagged or installed locally. Run the desktop smoke checks before
-publishing; this packaging command does not replace the full release test suite. A
-failed Mac build keeps its temporary directory for inspection. Remove its worktree
-with `git -C /Users/build/nyte worktree remove --force <printed-directory>/source`
-and then remove that temporary directory when no build is running there.
-
-The same handoff can be used without SSH, from clean checkouts at the same commit:
+To switch an installed terminal client to nightlies, and back to stable, run:
 
 ```sh
-# Linux. The destination must not exist and must be outside the checkout.
+nyte update nightly
+nyte update stable
+```
+
+`nyte update stable` installs the newest stable release even when it is older than the installed
+nightly. Afterwards the client follows the channel it switched to. The desktop setting doesn't
+change the terminal client.
+
+To package a nightly locally, set `NYTE_RELEASE_VERSION` to a nightly version before you run the
+packaging command. It sets the desktop package, bundled CLI and release archive versions together.
+
+## Build desktop assets on another OS
+
+Build the browser assets once, then package them on each target OS. Use clean checkouts at the
+same commit and lockfile, with the same `VITE_` environment variables and no `.env` files in
+`packages/app` or `packages/canvas`. The packaging step refuses assets that don't match. The
+destination must not exist and must be outside the checkout.
+
+On Linux:
+
+```sh
 node packages/desktop/scripts/assets.mjs build /tmp/nyte-desktop-assets
-# Transfer that directory through a trusted channel, then on the target OS:
+```
+
+Copy that directory to the target OS through a trusted channel, then run:
+
+```sh
 node packages/desktop/scripts/build.mjs --assets /tmp/nyte-desktop-assets --package --publish never --mac --arm64
 ```
 
-The release workflow uses this handoff for every desktop target. Only browser assets
-are shared; native dependencies, Electron compilation, TUI binaries and caches stay
-on their target OS.
+The release workflow uses this handoff for every desktop target. Only the browser assets are
+shared. Native dependencies, Electron compilation, TUI binaries and caches stay on their target
+OS.
 
 ## SDK packages
 
-[Package distribution](../PACKAGES.md) declares public and private packages. Run
-`pnpm sdk:check`, `pnpm sdk:pack`, then `pnpm sdk:verify` before publishing the SDK.
-`sdk-packages.mjs build` builds one package's declarations with TypeScript and its
-JavaScript with Bun; Turborepo runs it as `build:package`. [RELEASING.md](../RELEASING.md)
-covers publishing.
+[Package distribution](../PACKAGES.md) declares the public and private packages. Before you
+publish the SDK, run:
+
+```sh
+pnpm sdk:check
+pnpm sdk:pack
+pnpm sdk:verify
+```
+
+`sdk-packages.mjs build` builds one package's declarations with TypeScript and its JavaScript
+with Bun. Turborepo runs it as `build:package`. [RELEASING.md](../RELEASING.md) covers
+publishing.
 
 ## Release versions
 
-`release.packages` in the root `package.json` lists the packages that share the release
-version. `scripts/release-version.mjs` resolves that version and writes it into each of them: a
-stable release commits it to `main` before it builds, and a prerelease or nightly writes it only
-at publish time. The workflow installs dependencies from the frozen lockfile. TUI and desktop
-bundle their core and built-in plugins from that checkout; they do not load a separately
-upgraded core at runtime.
+`release.packages` in the root `package.json` lists the packages that share the release version.
+`release-version.mjs` resolves that version and writes it into each of them. A stable release
+commits the version to `main` before it builds. A prerelease or nightly writes it only at publish
+time. The workflow installs dependencies from the frozen lockfile. The TUI and desktop app bundle
+their core and built-in plugins from that checkout. They never load a separately upgraded core at
+runtime.
 
-Pin the app release, not individual internal workspace packages. A plugin loaded from a user
-or project directory uses the running host's API. Update that plugin's source with the host
-when the plugin API changes; the unreleased API has no compatibility layer. An older app
-retains its bundled API, but cannot be assumed to run plugins written for a newer release.
+Pin the app release, not individual internal workspace packages. A plugin loaded from a user or
+project directory uses the running host's API. When the plugin API changes, update that plugin's
+source together with the host, because the API has no compatibility layer. An older app keeps its
+bundled API, and may not run plugins written for a newer release.
 
 ## Archive contents
 
-To inspect assembly with a harmless fixture, without compiling:
+To inspect the assembly with a harmless fixture, without compiling:
 
 ```sh
 fixture=$(mktemp -d)
 version=$(node -p "require('./packages/cli/package.json').version")
 printf '#!/bin/sh\nexit 0\n' > "$fixture/nyte"
+cp "$fixture/nyte" "$fixture/nyte-tailnet"
 sh scripts/assemble-release.sh "$fixture/nyte" "$fixture/release" darwin-arm64
 tar -tzf "$fixture/release/nyte-v$version-darwin-arm64.tar.gz"
 ```
 
-The archive name carries the current manifest version. Use the target you need.
-The archive layout is:
+The archive name carries the manifest version, or `NYTE_RELEASE_VERSION` when it is set. Use the
+target you need. The archive layout is:
 
 ```text
 nyte
+nyte-tailnet
 VERSION
 docs/
   README.md
@@ -133,14 +152,18 @@ docs/
     prompt-file.sh
 ```
 
-The npm `files` list includes the same `docs` source directly, so no prepack
-generation is needed. The npm launcher extracts the native archive in its versioned
-cache. `packages/docs/public/install` copies docs into
-`<install-directory>/../share/nyte/<version>/docs`.
-Older releases without docs still install through the existing binary path.
+The npm `files` list includes the same `docs` directory, so the package needs no prepack step.
+The npm launcher extracts the native archive in its versioned cache. `packages/docs/public/install`
+copies the docs into `<install-directory>/../share/nyte/<version>/docs`. Releases without docs
+still install the binary.
 
-Run the distribution tests with `pnpm --dir packages/cli test`. They use `npm pack`
-offline in a temporary directory to inspect npm's actual file selection, assemble a
-fixture native archive through the production script, verify relative links, and
-exercise the installer with a local download fixture. No production binary,
-provider request, release upload, or signing is involved.
+Run the distribution tests:
+
+```sh
+pnpm --dir packages/cli test
+```
+
+The tests run `npm pack` offline in a temporary directory to inspect npm's real file selection.
+They assemble a fixture native archive through the production script, check relative links, and
+run the installer against a local download fixture. They use no production binary, provider
+request, release upload or signing.

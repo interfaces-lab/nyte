@@ -186,11 +186,22 @@ const result = await build({
   target: "node",
   format: "esm",
   packages: "external",
+  jsx: { development: false },
   splitting: true,
   naming: { entry: "[dir]/[name].[ext]", chunk: "chunks/[name]-[hash].[ext]" },
 });
 
 if (!result.success) throw new AggregateError(result.logs, `Failed to build ${manifest.name}`);
+
+// React's production build has no jsxDEV, so a development transform crashes every renderer.
+const developmentJsx = result.outputs
+  .filter((output) => output.path.endsWith(".js"))
+  .filter((output) => readFileSync(output.path, "utf8").includes("jsxDEV"))
+  .map((output) => output.path);
+
+if (developmentJsx.length > 0) {
+  throw new Error(`${manifest.name} emitted development JSX: ${developmentJsx.join(", ")}`);
+}
 
 for (const file of globSync(["src/**/LICENSE"], { cwd })) {
   mkdirSync(dirname(join(dist, file)), { recursive: true });

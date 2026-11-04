@@ -8,17 +8,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-platform="$(uname -s)-$(uname -m)"
-case "$platform" in
-	Darwin-arm64) target=darwin-arm64 ;;
-	Darwin-x86_64) target=darwin-x64 ;;
-	Linux-x86_64) target=linux-x64 ;;
-	Linux-aarch64) target=linux-arm64 ;;
-	*)
-		echo "No packaging target for ${platform}." >&2
-		exit 1
-		;;
-esac
+target=$(node scripts/release-targets.mjs host)
 
 # Under Turbo, package depends on build, so packages/tui/dist/nyte is already current.
 if [ -z "${TURBO_HASH:-}" ]; then

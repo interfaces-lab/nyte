@@ -9,7 +9,7 @@ binary=$1
 output=$2
 target=$3
 case "$target" in
-	darwin-arm64 | darwin-x64 | linux-arm64 | linux-x64) ;;
+	darwin-arm64 | linux-arm64 | linux-x64) ;;
 	*) echo "Unsupported release target: ${target}" >&2; exit 1 ;;
 esac
 repo=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)

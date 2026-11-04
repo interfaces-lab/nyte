@@ -39,9 +39,6 @@ runs:
     - if: inputs.test-dependencies == 'true' && runner.os == 'macOS'
       shell: bash
       run: command -v rg || brew install ripgrep
-    - if: inputs.test-dependencies == 'true' && runner.os == 'Windows'
-      shell: bash
-      run: command -v rg || choco install ripgrep -y --no-progress
     - if: inputs.test-dependencies == 'true'
       shell: bash
       run: |

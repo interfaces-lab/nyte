@@ -74,7 +74,6 @@
     "packages/mobile": {
       "entry": ["plugins/*.cjs"],
       "ignoreBinaries": ["eas", "build"],
-      "ignoreDependencies": ["babel-plugin-react-compiler"],
     },
     "packages/tui": {
       "entry": ["src/codemode-worker.ts"],

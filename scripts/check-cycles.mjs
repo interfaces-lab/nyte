@@ -97,7 +97,6 @@ function listSources(workspace, nested) {
     .split("\n")
     .filter((path) => SOURCE.test(path) && !DECLARATION.test(path))
     .map((path) => join(workspace.directory, path))
-    .filter((path) => existsSync(path))
     .filter((path) => !nested.some((directory) => path.startsWith(`${directory}/`)));
 }
 
@@ -197,8 +196,14 @@ function resolveSpecifier(specifier, from, owner, byName) {
   return resolvePackage(workspace, rest === "" ? "." : `.${rest}`);
 }
 
-/** The specifiers of a file's imports that load their module when the file evaluates. */
+/**
+ * The specifiers of a file's imports that load their module when the file evaluates. A listed
+ * file can be missing: git lists a deleted tracked file, and a running Vite deletes its
+ * timestamped config copy after the listing. A missing file has no imports.
+ */
 function readRuntimeImports(file) {
+  if (!existsSync(file)) return [];
+
   using retained = api.createSourceFile(file, readFileSync(file, "utf8"), {
     scriptKind: file.endsWith("x") ? ScriptKind.TSX : ScriptKind.TS,
   });

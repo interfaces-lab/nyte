@@ -49,4 +49,5 @@ jobs:
       version: ${{ needs.version.outputs.version }}
       # Paused while the bash shell-integration tests fail on the Linux release runner.
       skip_verify: true
+      platforms: darwin
     secrets: inherit

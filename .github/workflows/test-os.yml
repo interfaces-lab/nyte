@@ -6,8 +6,8 @@ on:
       os:
         description: The runner OS
         type: choice
-        options: [linux, windows, macos]
-        default: windows
+        options: [linux, macos]
+        default: linux
       filter:
         description: Turbo filters, such as --filter=@nyte-ai/core
         type: string
@@ -19,7 +19,7 @@ permissions:
 jobs:
   test:
     name: test (${{ inputs.os }}, ${{ inputs.filter }})
-    runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || inputs.os == 'windows' && 'windows-latest' || 'macos-latest' }}
+    runs-on: ${{ inputs.os == 'linux' && 'ubuntu-latest' || 'macos-latest' }}
     timeout-minutes: 45
     env:
       CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}

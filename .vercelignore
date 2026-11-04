@@ -13,6 +13,7 @@ out-e2e/
 .tanstack/
 .wrangler/
 .vercel
+.pnpm-store/
 .cache/
 *.tsbuildinfo
 *.log
@@ -29,8 +30,11 @@ __pycache__/
 .dev.vars*
 !.dev.vars.example
 
-# Nyte's own per-workspace folders
-.nyte/
+# Nyte's per-workspace folders. The repo dogfoods its plugins, skills and MCP servers
+**/.nyte/*
+!/.nyte/plugins/
+!/.nyte/skills/
+!/.nyte/mcp.json
 .uji/
 
 # Anything personal or machine-specific lives in a .local folder
@@ -45,7 +49,7 @@ __pycache__/
 /.agents
 /.claude
 /.github
-/.pnpm-store
+/.nyte
 
 # Expo's native output; packages/mobile/.gitignore has the same
 /packages/mobile/.expo

@@ -340,6 +340,8 @@ export default defineConfig({
         "nyte-design/size-grid": "error",
         "nyte-design/no-raw-colors": "error",
         "nyte-design/no-raw-font-weight": "error",
+        "nyte-design/guarded-hover": "error",
+        "nyte-design/logical-properties": "error",
       },
     },
     {

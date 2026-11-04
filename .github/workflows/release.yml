@@ -16,6 +16,9 @@ on:
       skip_verify:
         type: boolean
         default: false
+      platforms:
+        type: string
+        default: all
   workflow_dispatch:
     inputs:
       bump:
@@ -35,6 +38,11 @@ on:
         description: Skip quality checks and tests for this release
         type: boolean
         default: false
+      platforms:
+        description: Build every platform, or Apple silicon macOS only
+        type: choice
+        options: [all, darwin]
+        default: all
 
 permissions:
   contents: read
@@ -56,10 +64,12 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       sha: ${{ steps.commit.outputs.sha }}
+      cli: ${{ steps.targets.outputs.cli }}
+      desktop: ${{ steps.targets.outputs.desktop }}
     steps:
       - id: app
         if: ${{ !contains(inputs.version, '-') }}
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -71,6 +81,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 26
+      - id: targets
+        name: Choose the release targets
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+        run: node scripts/release-targets.mjs matrix "${PLATFORMS:-all}" | tee -a "$GITHUB_OUTPUT"
       - id: resolve
         name: Resolve the release version
         env:
@@ -178,8 +193,9 @@ jobs:
   verify:
     needs: version
     if: ${{ !inputs.skip_verify }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 45
+    # Tests run on a GitHub-hosted runner, free for this public repository; builds stay on Blacksmith.
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
     env:
       NYTE_RELEASE_VERSION: ${{ needs.version.outputs.version }}
       VITE_NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
@@ -228,13 +244,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: blacksmith-6vcpu-macos-15
-            target: darwin-arm64
-          - runner: blacksmith-4vcpu-ubuntu-2404
-            target: linux-x64
-          - runner: blacksmith-4vcpu-ubuntu-2404-arm
-            target: linux-arm64
+        include: ${{ fromJSON(needs.version.outputs.cli) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
@@ -293,7 +303,7 @@ jobs:
           cat "$RUNNER_TEMP/notarization.json"
           node -e 'const { status } = require(process.argv[1]); if (status !== "Accepted") throw new Error(`Notarization ended ${status}.`);' "$RUNNER_TEMP/notarization.json"
       - run: sh scripts/assemble-release.sh packages/tui/dist/nyte dist ${{ matrix.target }}
-      - uses: actions/attest-build-provenance@v3
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/*.tar.gz
       - uses: actions/upload-artifact@v7
@@ -309,25 +319,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: blacksmith-6vcpu-macos-15
-            target: mac-arm64
-            args: --mac --arm64
-          - runner: blacksmith-4vcpu-ubuntu-2404
-            target: linux-x64
-            args: --linux
-          - runner: blacksmith-4vcpu-windows-2025
-            target: windows-x64
-            args: --win
+        include: ${{ fromJSON(needs.version.outputs.desktop) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
       NYTE_RELEASE_VERSION: ${{ needs.version.outputs.version }}
       NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
-      CSC_LINK: ${{ matrix.target == 'mac-arm64' && secrets.CSC_LINK || '' }}
-      CSC_KEY_PASSWORD: ${{ matrix.target == 'mac-arm64' && secrets.CSC_KEY_PASSWORD || '' }}
-      APPLE_API_KEY_ID: ${{ matrix.target == 'mac-arm64' && secrets.APPLE_API_KEY_ID || '' }}
-      APPLE_API_ISSUER: ${{ matrix.target == 'mac-arm64' && secrets.APPLE_API_ISSUER || '' }}
+      CSC_LINK: ${{ matrix.target == 'darwin-arm64' && secrets.CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ matrix.target == 'darwin-arm64' && secrets.CSC_KEY_PASSWORD || '' }}
+      APPLE_API_KEY_ID: ${{ matrix.target == 'darwin-arm64' && secrets.APPLE_API_KEY_ID || '' }}
+      APPLE_API_ISSUER: ${{ matrix.target == 'darwin-arm64' && secrets.APPLE_API_ISSUER || '' }}
       MAIN_VITE_NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
       MAIN_VITE_NYTE_CLERK_PUBLISHABLE_KEY: ${{ vars.NYTE_CLERK_PUBLISHABLE_KEY }}
       MAIN_VITE_NYTE_CLERK_FRONTEND_API_HOST: ${{ vars.NYTE_CLERK_FRONTEND_API_HOST }}
@@ -343,8 +344,7 @@ jobs:
           node-version: 26
           # See the tui job.
           cache: ${{ runner.os != 'macOS' && 'pnpm' || '' }}
-      - if: matrix.target != 'windows-x64'
-        uses: actions/setup-go@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: packages/tailnet/go.mod
           cache-dependency-path: packages/tailnet/go.sum
@@ -360,7 +360,7 @@ jobs:
             exit 1
           fi
       - name: Configure Apple notarization
-        if: matrix.target == 'mac-arm64'
+        if: matrix.target == 'darwin-arm64'
         shell: bash
         env:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
@@ -379,7 +379,7 @@ jobs:
           path: ${{ runner.temp }}/desktop-assets
       - name: Package desktop with portable assets
         shell: bash
-        run: node packages/desktop/scripts/build.mjs --assets "$RUNNER_TEMP/desktop-assets" --package --publish never ${{ matrix.args }}
+        run: node packages/desktop/scripts/build.mjs --assets "$RUNNER_TEMP/desktop-assets" --package --publish never
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.target }}
