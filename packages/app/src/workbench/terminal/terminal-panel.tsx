@@ -188,8 +188,7 @@ export function TerminalPanel({
   const restart = (current: TerminalTab): void => {
     setError(undefined);
     void terminalActions
-      .close(current.id)
-      .then(() => terminalActions.create({ id: current.id, workspacePath }))
+      .restart({ id: current.id, workspacePath })
       .then(undefined, (cause: unknown) => setError(errorMessage(cause)));
   };
 
