@@ -55,9 +55,7 @@ const skills = listSkills().flatMap((skill) => {
   ];
 });
 
-const count = `${String(changed.length)} ${scope.label} file${changed.length === 1 ? "" : "s"}`;
-
-if (scope.note !== undefined) process.stdout.write(`${scope.note}\n`);
+const count = `${String(changed.length)} ${changed.length === 1 ? "file" : "files"} ${scope.label}`;
 
 if (changed.length === 0) process.stdout.write("No changed files.\n");
 else if (agents.length + skills.length === 0)
@@ -69,23 +67,14 @@ function readScope(paths, ref) {
   if (paths.length > 0 && ref === undefined) return { label: "named", files: paths };
 
   if (ref !== undefined) {
-    return { label: "changed", files: [...new Set([...paths, ...listChanged(ref)])] };
+    return { label: `changed since ${ref}`, files: [...new Set([...paths, ...listChanged(ref)])] };
   }
 
   const staged = git("diff", "--cached", "--name-only");
 
   if (staged.length > 0) return { label: "staged", files: staged };
 
-  const files = [...new Set(listChanged("origin/main"))];
-
-  return {
-    label: "changed",
-    files,
-    note:
-      files.length === 0
-        ? undefined
-        : `Nothing is staged, so this reads every file changed since origin/main, other agents' work included. Stage your files and run it again to narrow it.`,
-  };
+  return { label: "changed since origin/main", files: [...new Set(listChanged("origin/main"))] };
 }
 
 function listChanged(ref) {

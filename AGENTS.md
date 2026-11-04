@@ -53,7 +53,7 @@
 
 - Branch names: at most three hyphenated words, no slashes or prefixes (`fix-scroll-state`).
 - Commits and PR titles: `type(scope): summary`. Types: feat, fix, docs, refactor, test, perf, build, ci, chore, revert. Scope is a package dir or area (`scripts`, `ci`), omitted for repo-wide changes. Breaking: `!` before the colon and a `BREAKING CHANGE:` footer.
-- Before committing, stage your files, then run `pnpm guidance` and read what it lists. It reads the staged files.
+- Before committing, stage your files, then run `pnpm guidance`.
 
 ## Verification
 
