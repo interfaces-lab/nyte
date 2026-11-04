@@ -18,6 +18,7 @@ import type {
   HeadName,
   Json,
   JsonSchema,
+  RunId,
   SessionId,
   TextFrame,
 } from "@nyte-ai/schema";
@@ -120,6 +121,23 @@ async function reconnect(listener: Listener, session: SessionId, store: SessionS
 
 function childState(rows: Iterable<BackgroundRow> | undefined, child: SessionId) {
   return Array.from(rows ?? []).find((row) => row.item.id === child)?.item.state;
+}
+
+async function endedRun(host: Composed, session: SessionId) {
+  const { execution } = await host.session(session).view();
+
+  return execution.kind === "idle" ? execution.lastRun?.id : undefined;
+}
+
+/** A child's report wakes its parent; until that run ends, a fresh read moves on past the store. */
+async function wokenRunEnds(host: Composed, session: SessionId, before: RunId | undefined) {
+  await expect
+    .poll(async () => {
+      const ended = await endedRun(host, session);
+
+      return ended !== undefined && ended !== before;
+    })
+    .toBe(true);
 }
 
 function childReaches(client: Client, child: SessionId, state: BackgroundItem["state"]) {
@@ -378,11 +396,16 @@ describe("the host's WebSocket", () => {
     const listener = await serve(host);
     const session = await startSession(host, fake);
     const watcher = await watch(listener, session);
-    fake.reply({ content: [{ type: "text", text: "Done." }] });
+    const greeted = await endedRun(host, session);
+    fake.reply(
+      { content: [{ type: "text", text: "Done." }] },
+      { content: [{ type: "text", text: "Noted." }] },
+    );
     const started = await host.sessions.start({ parent: session, content: "One." });
     const child = started.session.id;
     await started.receipt.settled();
     await childReaches(watcher, child, "done");
+    await wokenRunEnds(host, session, greeted);
     const store = await readAndDrop(listener, session);
 
     expect(childState(store.snapshot().rows.background.values(), child)).toBe("done");
