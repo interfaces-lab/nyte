@@ -61,23 +61,18 @@ jobs:
   version:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       sha: ${{ steps.commit.outputs.sha }}
       cli: ${{ steps.targets.outputs.cli }}
       desktop: ${{ steps.targets.outputs.desktop }}
     steps:
-      - id: app
-        if: ${{ !contains(inputs.version, '-') }}
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           filter: blob:none
-          token: ${{ steps.app.outputs.token || github.token }}
       - uses: actions/setup-node@v7
         with:
           node-version: 26
@@ -102,8 +97,6 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.resolve.outputs.version }}
           RELEASE_NOTES: ${{ inputs.release_notes }}
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          APP_SLUG: ${{ steps.app.outputs.app-slug }}
         run: |
           if [[ "$RELEASE_VERSION" == *-* ]]; then
             echo "sha=$GITHUB_SHA" | tee -a "$GITHUB_OUTPUT"
@@ -121,9 +114,8 @@ jobs:
           if [[ -z "$sha" ]]; then
             node scripts/release-version.mjs prepare "$RELEASE_VERSION"
             node scripts/release-version.mjs changelog "$RELEASE_VERSION"
-            user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
-            git config user.name "${APP_SLUG}[bot]"
-            git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit --all --message "$subject"
             if ! git push origin HEAD:main; then
               echo "Pushing $subject to main failed; git says why above. If main moved past $GITHUB_SHA, start the release again." >&2
