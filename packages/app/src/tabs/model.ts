@@ -7,7 +7,7 @@ import {
   reducePaneLayout,
   sameSelection,
 } from "../panes/pane-layout.ts";
-import type { PaneLayout, PaneSelection } from "../panes/pane-layout.ts";
+import type { PaneLayout, PaneSelection, PaneState } from "../panes/pane-layout.ts";
 
 export type Page = {
   readonly kind: "customize";
@@ -79,7 +79,9 @@ export type WindowAction =
   /** Moving a preview keeps it. */
   | { readonly kind: "reorder"; readonly tabIds: readonly string[]; readonly tabId: string }
   /** Closed tabs showing a chat in `gone`, known deleted or archived, don't reopen. */
-  | { readonly kind: "forget-closed"; readonly gone: ReadonlySet<SessionId> };
+  | { readonly kind: "forget-closed"; readonly gone: ReadonlySet<SessionId> }
+  /** Open tabs drop chats just archived or deleted: a split keeps its other pane, and any other tab showing one closes. */
+  | { readonly kind: "close-chats"; readonly sessionIds: ReadonlySet<SessionId> };
 
 const BLANK: PaneSelection = { kind: "blank" };
 
@@ -411,6 +413,39 @@ function forgetClosed(state: WindowState, gone: ReadonlySet<SessionId>): WindowS
   return closed.length === state.closed.length ? state : { ...state, closed };
 }
 
+/** A gone chat's tab isn't worth reopening, so it closes without joining `closed`. */
+function closeChats(
+  state: WindowState,
+  sessionIds: ReadonlySet<SessionId>,
+  createId: () => string,
+): WindowState {
+  const gone = (pane: PaneState): boolean =>
+    pane.selection.kind === "session" && sessionIds.has(pane.selection.sessionId);
+
+  const emptied = new Set(
+    state.tabs
+      .filter((tab) => tab.view.kind !== "page" && orderedPanes(tab.view.layout).every(gone))
+      .map((tab) => tab.id),
+  );
+
+  const collapsed = state.tabs.flatMap((tab): Tab[] => {
+    if (tab.view.kind === "page" || emptied.has(tab.id)) return [];
+    const pane = orderedPanes(tab.view.layout).find(gone);
+
+    if (pane === undefined) return [];
+    const layout = reducePaneLayout(tab.view.layout, { kind: "close", paneId: pane.id });
+
+    return [{ ...tab, view: { kind: "panes", layout } }];
+  });
+
+  return removeTabs(
+    collapsed.reduce((current, tab) => withTab(current, tab), state),
+    emptied,
+    state.closed,
+    createId,
+  );
+}
+
 /** Shows panes again: the chat tab used last, or a new chat. */
 function leavePage(state: WindowState, createId: () => string): WindowState {
   const tab = findChatTab(state);
@@ -500,6 +535,8 @@ export function reduce(
 
     case "forget-closed":
       return forgetClosed(state, action.gone);
+    case "close-chats":
+      return closeChats(state, action.sessionIds, createId);
 
     default: {
       const _exhaustive: never = action;

@@ -15,11 +15,7 @@ import {
   clientActionKeys,
   clientActions,
 } from "../contract/client-actions.ts";
-import {
-  hideFromPanes,
-  usePaneActions,
-  usePaneControllerSnapshot,
-} from "../panes/pane-context.tsx";
+import { usePaneActions, usePaneControllerSnapshot } from "../panes/pane-context.tsx";
 import { activePane } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
@@ -511,7 +507,7 @@ export function Sidebar(): ReactElement {
           }}
           onConfirm={() => {
             setArchivingAll(undefined);
-            sessionActions.archive(archivingAll.sessionIds, true, hideFromPanes);
+            sessionActions.archive(archivingAll.sessionIds, true);
           }}
         />
       )}

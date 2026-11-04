@@ -120,7 +120,7 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
               return;
             }
 
-            sessionActions.archive([session.id], !session.archived, hideFromPanes);
+            sessionActions.archive([session.id], !session.archived);
           },
           remove: (sessionId) => setConfirmation({ kind: "delete", sessionId }),
         }}
@@ -151,7 +151,7 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
           }}
           onConfirm={() => {
             closeConfirmation();
-            sessionActions.archive([confirmation.sessionId], true, hideFromPanes);
+            sessionActions.archive([confirmation.sessionId], true);
           }}
         />
       )}

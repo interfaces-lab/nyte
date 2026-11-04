@@ -303,6 +303,45 @@ test("a child opens as a preview after its parent, which it keeps", () => {
   expect(tabPlace(activeTab(behind))).toEqual(chat("child"));
 });
 
+test("a chat archived or deleted closes its tabs, and a split keeps its other chat", () => {
+  let state = run([
+    { kind: "open", place: chat("a"), target: "permanent" },
+    { kind: "open", place: chat("b"), target: "permanent" },
+  ]);
+
+  state = run([pane(state, { kind: "split", direction: "right" })], state);
+  state = run([pane(state, { kind: "select", selection: chat("c") })], state);
+
+  state = run(
+    [
+      { kind: "open", place: chat("d"), target: "preview" },
+      { kind: "activate-index", index: 0 },
+    ],
+    state,
+  );
+
+  const gone = run(
+    [
+      {
+        kind: "close-chats",
+        sessionIds: new Set(["a", "b", "d"].map((id) => asId<"session">(id))),
+      },
+    ],
+    state,
+  );
+
+  expect(places(gone)).toEqual([chat("c")]);
+  expect(tabLayout(activeTab(gone)).kind, "the split became one pane").toBe("single");
+  expect(gone.closed, "a gone chat's tab doesn't reopen").toEqual([]);
+
+  const elsewhere = run(
+    [{ kind: "close-chats", sessionIds: new Set([asId<"session">("other")]) }],
+    state,
+  );
+
+  expect(elsewhere).toBe(state);
+});
+
 test("previews don't outlast the window, and chats deleted or archived don't reopen", () => {
   const state = run([
     { kind: "open", place: chat("kept"), target: "permanent" },

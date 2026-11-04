@@ -203,7 +203,7 @@ export function SessionRowView({
 
   const onArchive = (): void => {
     if (!session.archived && sessionIsRunning(session, chatDirectory())) setConfirming("archive");
-    else sessionActions.archive([session.id], !session.archived, hideFromPanes);
+    else sessionActions.archive([session.id], !session.archived);
   };
 
   const onDelete = (): void => setConfirming("delete");
@@ -398,7 +398,7 @@ export function SessionRowView({
           onOpenChange={closeOnDismiss}
           onConfirm={() => {
             setConfirming(undefined);
-            sessionActions.archive([session.id], true, hideFromPanes);
+            sessionActions.archive([session.id], true);
           }}
         />
       )}

@@ -115,7 +115,7 @@ export class SessionActions {
     void this.#run(this.#add(input.sessionId, { kind: "pin", pinned: input.pinned }));
   }
 
-  archive(sessionIds: readonly SessionId[], archived: boolean, hide?: HideSession): void {
+  archive(sessionIds: readonly SessionId[], archived: boolean): void {
     for (const sessionId of new Set(sessionIds)) {
       const session = this.#find(sessionId);
 
@@ -124,7 +124,6 @@ export class SessionActions {
       const pending = this.#add(sessionId, { kind: "archive", archived });
       this.#archiveVersions.set(sessionId, pending);
       const closed = Promise.withResolvers<void>();
-      const restore = archived ? hide?.(sessionId) : undefined;
 
       const removeToastEntry = this.#toasts.add(archived ? "archived" : "restored", {
         undo: () => {
@@ -136,18 +135,9 @@ export class SessionActions {
 
           const inverse = this.#add(sessionId, { kind: "archive", archived: session.archived });
           this.#archiveVersions.set(sessionId, inverse);
-          const restoreUndo = session.archived ? hide?.(sessionId) : undefined;
-          restore?.();
-          void this.#run(inverse).then((saved) => {
-            if (this.#archiveVersions.get(sessionId) === inverse) {
+          void this.#run(inverse).then(() => {
+            if (this.#archiveVersions.get(sessionId) === inverse)
               this.#archiveVersions.delete(sessionId);
-
-              if (!saved && this.#find(sessionId)?.archived === archived) {
-                if (session.archived) restoreUndo?.();
-                else hide?.(sessionId);
-              }
-            }
-
             closed.resolve();
           });
         },
@@ -162,10 +152,7 @@ export class SessionActions {
       this.#archiveNotifications.set(sessionId, discard);
 
       const work = this.#run(pending).then((saved) => {
-        if (saved) return;
-        discard();
-
-        if (this.#archiveVersions.get(sessionId) === pending) restore?.();
+        if (!saved) discard();
       });
 
       void Promise.all([work, closed.promise]).then(() => {
