@@ -14,15 +14,14 @@ import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { composerSendPlan } from "./composer-send.ts";
-import { composerStyles } from "./composer.stylex.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
+import { ProjectMenu } from "../../projects/project-menu.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
 import {
   usePaneActions,
   usePaneControllerSnapshot,
   usePaneViewStateStore,
-  useToastAnchor,
 } from "../../panes/pane-context.tsx";
 import { activePane } from "../../panes/pane-layout.ts";
 import type { PaneId } from "../../panes/pane-layout.ts";
@@ -30,6 +29,7 @@ import type { BlankViewState, ChatDraft } from "../../panes/session-view-state.t
 import { useCatalog } from "../../data/catalog.ts";
 import { useHostState } from "../../data/host.ts";
 import { useMentionFiles } from "../../data/files.ts";
+import { useProjects } from "../../data/projects.ts";
 import { useWorkspaceCatalog } from "../../data/plugins.ts";
 import { modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 import { StartupReadsRelease } from "../../data/startup.ts";
@@ -81,7 +81,6 @@ export function BlankConversation(conversation: BlankConversationProps): ReactEl
 
 function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement {
   const { layout } = usePaneControllerSnapshot();
-  const toastAnchor = useToastAnchor(paneId, false);
   const workspace = useChatFolder();
   const catalog = useCatalog();
   const workspaceFiles = useMentionFiles(workspace, workspace !== undefined);
@@ -90,6 +89,11 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useBlankViewBinding(paneId);
   const { status } = viewState;
+
+  const project = useProjects().find(
+    (entry) => entry.id === viewState.project && entry.workspace === workspace?.id,
+  );
+
   const held = status.kind === "waiting" || status.kind === "starting";
   const [pickerOpen, setPickerOpen] = useState(false);
   const attachments = viewState.composer.attachments;
@@ -177,8 +181,21 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
           viewStore.cancelSend(viewState.id);
         }}
       >
-        <div {...props(sessionScreenStyles.blankColumn, toastAnchor && composerStyles.toastAnchor)}>
-          <WorkspaceContext active={activePane(layout).id === paneId} />
+        <div {...props(sessionScreenStyles.blankColumn)}>
+          <WorkspaceContext active={activePane(layout).id === paneId}>
+            <ProjectMenu
+              folder={workspace?.id}
+              value={viewState.project}
+              onChange={(project) => updateViewState((state) => ({ ...state, project }))}
+            />
+          </WorkspaceContext>
+          {project !== undefined && (
+            <div {...props(sessionScreenStyles.blankHint)}>
+              {project.lead === null
+                ? "Starts the project’s lead. It hands each change to a unit."
+                : "Starts a unit you work with here. The lead gets its reports."}
+            </div>
+          )}
           <ComposerFrame
             surface="new-chat"
             document={{

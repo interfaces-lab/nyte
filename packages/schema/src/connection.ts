@@ -7,6 +7,7 @@ import { idSchema } from "./ids.ts";
 import { withJson } from "./json.ts";
 import { UserContentType } from "./messages.ts";
 import type { Awaitable } from "./primitives.ts";
+import { ProjectInfoType } from "./projects.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
 import { SettingInfoType } from "./sessions.ts";
@@ -49,6 +50,8 @@ export const HostViewWireType = Type.Object({
   ),
   /** The workspace a session created without one runs in (Home), or null when the host has none. */
   defaultWorkspace: nullable(idSchema<"workspace">()),
+  /** Every project on the host, archived ones included, oldest first. */
+  projects: Type.Array(ProjectInfoType),
   authority: Type.Array(AuthorityType),
   principal: idSchema<"principal">(),
   tailnet: Type.Optional(TailnetStatusType),

@@ -83,6 +83,8 @@ export type {
   Transform,
   Workspace,
   Workspaces,
+  Project,
+  Projects,
 } from "@nyte-ai/core";
 
 export type {
@@ -287,6 +289,11 @@ export type {
   WorkspaceCommandOutcome,
   WorkspaceId,
   WorkspaceInfo,
+  ProjectId,
+  ProjectInfo,
+  ProjectInput,
+  ProjectPatch,
+  ProjectRole,
   WorkspaceInspection,
   WorkspaceTarget,
   WriteOutcome,

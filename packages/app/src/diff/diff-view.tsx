@@ -275,7 +275,9 @@ type RenderablePatch =
 
 function renderablePatch(patch: string): RenderablePatch {
   try {
-    const files = parsePatchFiles(patch, patchDigest(patch)).flatMap((parsed) => parsed.files);
+    const files = parsePatchFiles(patch, { cacheKeyPrefix: patchDigest(patch) }).flatMap(
+      (parsed) => parsed.files,
+    );
 
     return files.length > 0 ? { kind: "files", files } : { kind: "raw", text: patch };
   } catch {

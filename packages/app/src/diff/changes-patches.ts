@@ -72,9 +72,9 @@ function entryFrom(diff: HostPatch, earlier: PatchEntry | undefined, lineage: st
         kind: "ready",
         patch: diff.patch,
         digest: diff.digest,
-        files: parsePatchFiles(diff.patch, `${lineage}\u0000${diff.digest}`).flatMap((parsed) =>
-          parsed.files.map((file) => withStatus(file, diff.status)),
-        ),
+        files: parsePatchFiles(diff.patch, {
+          cacheKeyPrefix: `${lineage}\u0000${diff.digest}`,
+        }).flatMap((parsed) => parsed.files.map((file) => withStatus(file, diff.status))),
         added: diff.added,
         removed: diff.removed,
       };

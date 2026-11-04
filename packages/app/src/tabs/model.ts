@@ -9,8 +9,9 @@ import {
 } from "../panes/pane-layout.ts";
 import type { PaneLayout, PaneSelection } from "../panes/pane-layout.ts";
 
+/** A page has its own tab. `section` is Customize's section, or a project's id, or `new`. */
 export type Page = {
-  readonly kind: "customize";
+  readonly kind: "customize" | "project";
   readonly section: string | undefined;
   readonly sessionId: SessionId | undefined;
 };
@@ -90,7 +91,7 @@ const CLOSED_LIMIT = 25;
 const RECENT_LIMIT = 50;
 
 export function showsPage(place: Place): place is Page {
-  return place.kind === "customize";
+  return place.kind === "customize" || place.kind === "project";
 }
 
 export function activeTab(state: WindowState): Tab {

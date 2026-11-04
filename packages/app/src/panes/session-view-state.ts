@@ -1,3 +1,4 @@
+import type { ProjectId } from "@nyte-ai/schema";
 import type { ImageContent } from "@nyte-ai/schema/model";
 import type { ModelRef, SessionId, Thinking } from "@nyte-ai/sdk";
 import type { Static } from "typebox";
@@ -48,6 +49,8 @@ export interface DraftChoice {
 export interface BlankViewState {
   readonly composer: ComposerViewState;
   readonly choice: DraftChoice | undefined;
+  /** The project the chat starts in; absent for none. */
+  readonly project?: ProjectId;
 }
 
 export type DraftStatus =
@@ -210,13 +213,16 @@ export class SessionViewStateStore {
     return this.#window.drafts();
   }
 
-  startNewDraft(paneId: PaneId): void {
+  /** Shows a new chat in `paneId` that starts in `project`, parking the draft there when it has content. */
+  startNewDraft(paneId: PaneId, project?: ProjectId): void {
     const drafts = this.#window.pane(this.#tabId, paneId);
     const current = drafts.active;
+    const kept = !draftHasContent(current);
 
-    if (!draftHasContent(current)) return;
-    drafts.parked.set(current.id, current);
-    drafts.active = this.#window.createDraft();
+    if (kept && current.project === project) return;
+
+    if (!kept) drafts.parked.set(current.id, current);
+    drafts.active = { ...(kept ? current : this.#window.createDraft()), project };
     this.#window.emit();
   }
 

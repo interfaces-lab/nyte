@@ -33,8 +33,9 @@ minimumReleaseAge: 0
 ignoredOptionalDependencies:
   - "@napi-rs/canvas"
 patchedDependencies:
-  "@pierre/diffs@1.6.2": patches/@pierre__diffs@1.6.2.patch
+  "@pierre/diffs@1.6.4": patches/@pierre__diffs@1.6.4.patch
   "@pierre/trees@1.0.0-beta.6": patches/@pierre__trees@1.0.0-beta.6.patch
+  app-builder-lib@26.18.0: patches/app-builder-lib@26.18.0.patch
   react-native-view-shot@6.1.1: patches/react-native-view-shot@6.1.1.patch
 permissions:
   "@central-icons-react/round-filled-radius-2-stroke-1.5":

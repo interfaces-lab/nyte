@@ -49,8 +49,6 @@ export const toast = defineConsts({
   paddingBlock: "var(--nyte-toast-padding-block)",
   inset: "var(--nyte-toast-inset)",
   overhang: "var(--nyte-toast-overhang)",
-  /** The anchor name an app gives the element toasts stack above. */
-  anchor: "--nyte-toast-anchor",
 });
 
 export const clipboardPreview = defineConsts({

@@ -38,9 +38,10 @@ export const SessionInfoType = Type.Object({
   lastActivityAt: Type.Number(),
   mcp: Type.Optional(McpCeilingType),
   side: Type.Optional(Type.Literal(true)),
+  project: Type.Optional(idSchema<"project">()),
 });
 
-/** `side` marks a side chat of `parent`, which a person started beside it; absent for every other chat. */
+/** `side` marks a side chat of `parent`, which a person started beside it; absent for every other chat. `project` names the project the chat works in; absent for a chat in none. */
 export type SessionInfo = Decoded<typeof SessionInfoType>;
 
 export const SESSIONS_LIMIT = 50;

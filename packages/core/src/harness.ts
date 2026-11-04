@@ -169,6 +169,7 @@ export async function setup(
       settings: [],
       views: [],
       defaultWorkspace: workspace,
+      projects: [],
     }),
     turn: turns.driver,
     resolveConfiguration: options?.resolveConfiguration ?? (async () => configuration),

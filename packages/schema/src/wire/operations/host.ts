@@ -24,6 +24,7 @@ import {
   ProviderUsageType,
 } from "../../models.ts";
 import { PromptOverrideType } from "../../plugins.ts";
+import { ProjectInfoSchema, ProjectInputType, ProjectPatchType } from "../../projects.ts";
 import { pagedSchema, ParentFilterType } from "../../primitives.ts";
 import { SessionCatalogViewSchema, SessionInfoType, SessionsReadType } from "../../sessions.ts";
 import {
@@ -225,6 +226,20 @@ export const HOST_OPERATIONS = {
     input: wireObject({ id: Type.String(), value: JsonType }),
     output: SettingOutcomeSchema,
   },
+  "projects.create": {
+    ...PARTICIPANT,
+    summary: "Creates a project in a workspace, with the brief its lead chat follows.",
+    kind: "command",
+    input: wireObject({ input: ProjectInputType }),
+    output: ProjectInfoSchema,
+  },
+  "project.update": {
+    ...PARTICIPANT,
+    summary: "Edits a project's name, brief, goal, worker model or archived state.",
+    kind: "command",
+    input: wireObject({ project: idSchema<"project">(), patch: ProjectPatchType }),
+    output: ProjectInfoSchema,
+  },
   "workspaces.list": {
     ...PARTICIPANT,
     mcp: "read",
@@ -285,6 +300,7 @@ export const HOST_OPERATIONS = {
       isolation: Type.Optional(Type.Literal("worktree")),
       contextFiles: Type.Optional(Type.Literal(false)),
       side: Type.Optional(Type.Literal(true)),
+      project: Type.Optional(idSchema<"project">()),
       content: UserContentType,
     }),
     output: wireObject({
