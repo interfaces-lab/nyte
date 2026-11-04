@@ -1,7 +1,7 @@
 import { props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import type { ReactElement, ReactNode, RefObject } from "react";
+import type { ComponentProps, ReactElement, ReactNode, RefObject } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import {
   ContextMenu,
@@ -20,8 +20,10 @@ import { sessionTitle } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { ChatCardContent, ChatCardTrigger } from "../components/chat-card.tsx";
 import { ChatMenuItems } from "../components/chat-menu.tsx";
+import { TaskMark } from "../components/task-mark.tsx";
 import { useSessionRow } from "../data/session-rows.ts";
-import { useChatWindow } from "../window/index.ts";
+import { useChatMark, useChatWindow } from "../window/index.ts";
+import type { ChatMark } from "../window/index.ts";
 import {
   MOVE_SHORTCUTS,
   readMoveStep,
@@ -40,8 +42,10 @@ export interface WindowTabItem {
   /** The chats in the tab's panes, the focused pane's first. */
   readonly sessions: readonly SessionId[];
   readonly parent?: SessionId;
+  /** The focused pane's chat, whose mark the tab shows as the chat's sidebar row does. */
+  readonly chat: SessionId | undefined;
+  /** The icon of a tab whose focused pane shows no chat. */
   readonly glyph: ReactNode;
-  readonly unread: boolean;
   readonly preview: boolean;
   readonly split: WindowTabSplit | undefined;
 }
@@ -113,8 +117,25 @@ function useHeldKeys(): HeldKeys {
   return held;
 }
 
-function TabItem({
+type TabItemProps = Omit<ComponentProps<typeof TabView>, "mark">;
+
+function TabItem(item: TabItemProps): ReactElement {
+  const chat = item.tab.chat;
+
+  return chat === undefined ? (
+    <TabView {...item} mark={undefined} />
+  ) : (
+    <ChatTabItem {...item} chat={chat} />
+  );
+}
+
+function ChatTabItem(item: TabItemProps & { readonly chat: SessionId }): ReactElement {
+  return <TabView {...item} mark={useChatMark(item.chat)} />;
+}
+
+function TabView({
   tab,
+  mark,
   position,
   active,
   closable,
@@ -125,6 +146,7 @@ function TabItem({
   closeAndFocusSelected,
 }: {
   readonly tab: WindowTabItem;
+  readonly mark: ChatMark | undefined;
   readonly position: number;
   readonly active: boolean;
   readonly closable: boolean;
@@ -134,6 +156,7 @@ function TabItem({
   readonly strip: WindowTabStripProps;
   readonly closeAndFocusSelected: (tabId: string) => void;
 }): ReactElement {
+  const unread = mark?.unread === true;
   const digit = position < 9 ? String(position + 1) : undefined;
   const shortcut = (key: string): string => (strip.mac ? `⌘${key}` : `Ctrl+${key}`);
   const modifierHeld = strip.mac ? held.meta : held.ctrl;
@@ -183,7 +206,7 @@ function TabItem({
               <Tabs.Tab
                 variant="bare"
                 value={tab.id}
-                aria-label={`${tab.tooltip}${tab.unread ? ", unread" : ""}${tab.preview ? ", preview" : ""}`}
+                aria-label={`${tab.tooltip}${unread ? ", unread" : ""}${tab.preview ? ", preview" : ""}`}
                 aria-keyshortcuts={MOVE_SHORTCUTS}
                 onKeyDown={(event) => {
                   const step = readMoveStep(event);
@@ -206,8 +229,10 @@ function TabItem({
               />
             }
           >
-            <span {...props(stripStyles.glyph)}>{tab.glyph}</span>
-            <span {...props(stripStyles.label, tab.unread && stripStyles.labelUnread)}>
+            <span {...props(stripStyles.glyph)}>
+              {mark === undefined ? tab.glyph : <TaskMark state={mark.state} unread={unread} />}
+            </span>
+            <span {...props(stripStyles.label, unread && stripStyles.labelUnread)}>
               {tab.title}
             </span>
             {tab.split !== undefined && (

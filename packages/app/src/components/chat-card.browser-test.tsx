@@ -99,8 +99,8 @@ function Stage({ panes }: { readonly panes: PaneController }): ReactElement {
               tooltip: chat.name ?? "",
               sessions: [chat.id],
               preview: false,
+              chat: chat.id,
               glyph: undefined,
-              unread: false,
               split: undefined,
             },
           ]}
