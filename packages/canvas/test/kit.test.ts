@@ -18,7 +18,6 @@ import { readCanvasFixture } from "./read-canvas-fixture.ts";
 
 const fixtures = new URL("./fixtures/", import.meta.url);
 
-/** Every fixture as the tool takes it: a `.tsx` file alone, or a folder's main.tsx with its other files. */
 async function readFixtures() {
   const entries = await readdir(fixtures, { withFileTypes: true });
 

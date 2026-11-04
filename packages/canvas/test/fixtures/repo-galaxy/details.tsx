@@ -2,7 +2,6 @@ import { Table } from "nyte/canvas";
 import { GRAPH, HUBS, ROOT } from "./graph.ts";
 import type { Import, Star } from "./graph.ts";
 
-/** The focused star's importers and imports, each linking to its file at the line, or the most imported modules when nothing is focused. */
 export function Details({ star }: { readonly star: Star | undefined }) {
   if (star === undefined)
     return (

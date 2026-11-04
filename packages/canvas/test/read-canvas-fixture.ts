@@ -2,11 +2,6 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/**
- * Reads a canvas fixture as `canvas_render` takes it: a `.tsx` file alone,
- * or a folder's `main.tsx` as `source` and every other `.ts`/`.tsx` file
- * under the folder in `files`, keyed by its path from it (`lib/scale.ts`).
- */
 export async function readCanvasFixture(
   path: string | URL,
 ): Promise<{ readonly source: string; readonly files: Readonly<Record<string, string>> }> {

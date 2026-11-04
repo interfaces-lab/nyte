@@ -20,12 +20,10 @@ const HUES: readonly Tint[] = TINTS.slice(0, 8);
 
 const MAX_BOTTOM_TICKS = 8;
 
-/** Room between two tick labels on a horizontal axis. */
 const TICK_GAP = 16;
 
 const TICK_PADDING = 8;
 
-/** A category axis never takes more of a horizontal bar chart than this. */
 const LABEL_SHARE = 0.4;
 
 const styles = create({
@@ -100,11 +98,6 @@ const ReadoutContext = createContext<ReadoutContextValue>({
 const findTint = (layers: ReadoutContextValue["layers"], key: string): Tint =>
   layers.find((layer) => layer.key === key)?.tint ?? "blue";
 
-/**
- * Axis, grid and marker ink. Tick labels take secondary ink at the xs size in
- * the UI font with tabular figures, as the ui StackedBars do; grid lines stay
- * recessive.
- */
 const theme = {
   text: {
     fontFamily: type.fontSans,
@@ -129,50 +122,52 @@ function usePaint(): (tint: Tint) => string {
 
 const tintAt = (index: number): Tint => HUES[index % HUES.length] ?? "blue";
 
-let measuring: CanvasRenderingContext2D | null | undefined;
+type Measure = (label: string) => number;
 
-/** The widest of `labels` as the axes set them: the UI font at the xs size. */
-function labelWidth(labels: readonly string[]): number {
-  measuring ??= document.createElement("canvas").getContext("2d");
+function labelMeasure(): Measure {
   const style = getComputedStyle(document.documentElement);
   const base = Number.parseFloat(style.getPropertyValue("--nyte-font-size-base"));
   const size = ((Number.isFinite(base) ? base : 13) * 11) / 13;
+  const context = document.createElement("canvas").getContext("2d");
 
-  if (measuring === null) return Math.max(0, ...labels.map((label) => label.length * size * 0.6));
-  measuring.font = `${String(size)}px ${style.getPropertyValue("--nyte-font-family-sans")}`;
-  const context = measuring;
+  if (context === null) return (label) => label.length * size * 0.6;
+  context.font = `${String(size)}px ${style.getPropertyValue("--nyte-font-family-sans")}`;
 
-  return Math.max(0, ...labels.map((label) => context.measureText(label).width));
+  return (label) => context.measureText(label).width;
 }
 
-/** `label`, cut with an ellipsis until it fits `width`. */
-function fitLabel(label: string, width: number): string {
-  if (labelWidth([label]) <= width) return label;
+function widest(measure: Measure, labels: readonly string[]): number {
+  return Math.max(0, ...labels.map(measure));
+}
 
-  for (let length = label.length - 1; length > 1; length -= 1) {
-    const cut = `${label.slice(0, length).trimEnd()}…`;
+function fitLabel(measure: Measure, label: string, width: number): string {
+  if (measure(label) <= width) return label;
+  const cut = (length: number): string => `${label.slice(0, length).trimEnd()}…`;
+  let fits = 1;
+  let overflows = label.length;
 
-    if (labelWidth([cut]) <= width) return cut;
+  while (overflows - fits > 1) {
+    const middle = Math.floor((fits + overflows) / 2);
+
+    if (measure(cut(middle)) <= width) fits = middle;
+    else overflows = middle;
   }
 
-  return "…";
+  return fits > 1 ? cut(fits) : "…";
 }
 
-/** How many tick labels `widest` wide fit across `width`, at least two and at most `most`. */
 function tickRoom(width: number, widest: number, most: number): number {
   if (width <= 0) return most;
 
   return Math.max(2, Math.min(most, Math.floor(width / (widest + TICK_GAP))));
 }
 
-/** Every nth value from the first, n as small as lets the labels fit `width`. */
 function fitTicks<Value>(values: readonly Value[], width: number, widest: number): Value[] {
   const step = Math.ceil(values.length / tickRoom(width, widest, MAX_BOTTOM_TICKS));
 
   return values.filter((_, index) => index % step === 0);
 }
 
-/** Round values from `low` to `high` at a 1, 2 or 5 step, no more than `most` of them. */
 function valueTicks(low: number, high: number, most: number): number[] {
   if (high <= low) return [low];
   let step = 10 ** Math.floor(Math.log10((high - low) / most));
@@ -192,8 +187,11 @@ function valueTicks(low: number, high: number, most: number): number[] {
   );
 }
 
-/** The room a value axis needs for its widest label, rounding the extremes up as a nice scale does. */
-function valueAxisWidth(values: readonly number[], format: Format<number>): number {
+function valueAxisWidth(
+  measure: Measure,
+  values: readonly number[],
+  format: Format<number>,
+): number {
   const extremes = [Math.min(0, ...values), Math.max(0, ...values)];
 
   const rounded = extremes.map((value) => {
@@ -203,7 +201,7 @@ function valueAxisWidth(values: readonly number[], format: Format<number>): numb
     return Math.sign(value) * Math.ceil(Math.abs(value) / step) * step;
   });
 
-  return Math.ceil(labelWidth([...extremes, ...rounded].map(format))) + TICK_PADDING;
+  return Math.ceil(widest(measure, [...extremes, ...rounded].map(format))) + TICK_PADDING;
 }
 
 function Legend({ entries }: { readonly entries: readonly Keyed[] }): ReactElement {
@@ -370,9 +368,10 @@ export function LineChart({
   }));
 
   const xs = [...new Set(series.flatMap((serie) => serie.data.map((point) => point.x)))];
-  const margin = { ...MARGIN, left: Math.max(MARGIN.left, valueAxisWidth(ys, formatY)) };
+  const measure = labelMeasure();
+  const margin = { ...MARGIN, left: Math.max(MARGIN.left, valueAxisWidth(measure, ys, formatY)) };
   const plotWidth = width - margin.left - margin.right;
-  const widestX = labelWidth(xs.map(formatX));
+  const widestX = widest(measure, xs.map(formatX));
   const lowest = Math.min(...ys);
 
   return (
@@ -499,6 +498,7 @@ export function BarChart({
   const entries = layers.map((layer) => ({ id: layer.label, tint: layer.tint }));
   const horizontal = layout === "horizontal";
   const indices = data.map((datum) => String(datum[indexBy]));
+  const measure = labelMeasure();
 
   const totals = data.map((datum) =>
     mode === "stacked"
@@ -507,13 +507,13 @@ export function BarChart({
   );
 
   const labelRoom = Math.min(
-    Math.ceil(labelWidth(indices)) + TICK_PADDING,
+    Math.ceil(widest(measure, indices)) + TICK_PADDING,
     width <= 0 ? Number.POSITIVE_INFINITY : Math.floor(width * LABEL_SHARE),
   );
 
   const margin = horizontal
     ? { ...MARGIN, left: Math.max(MARGIN.left, labelRoom) }
-    : { ...MARGIN, left: Math.max(MARGIN.left, valueAxisWidth(totals, format)) };
+    : { ...MARGIN, left: Math.max(MARGIN.left, valueAxisWidth(measure, totals, format)) };
 
   const plotWidth = width - margin.left - margin.right;
 
@@ -521,7 +521,7 @@ export function BarChart({
     ? valueTicks(
         Math.min(0, ...totals),
         Math.max(0, ...totals),
-        tickRoom(plotWidth, labelWidth(totals.map(format)), 5),
+        tickRoom(plotWidth, widest(measure, totals.map(format)), 5),
       )
     : 4;
 
@@ -557,7 +557,8 @@ export function BarChart({
                 ? {
                     tickSize: 0,
                     tickPadding: TICK_PADDING,
-                    format: (value: unknown) => fitLabel(String(value), labelRoom - TICK_PADDING),
+                    format: (value: unknown) =>
+                      fitLabel(measure, String(value), labelRoom - TICK_PADDING),
                   }
                 : valueAxis
             }
@@ -567,7 +568,7 @@ export function BarChart({
                 : {
                     tickSize: 0,
                     tickPadding: TICK_PADDING,
-                    tickValues: fitTicks(indices, plotWidth, labelWidth(indices)),
+                    tickValues: fitTicks(indices, plotWidth, widest(measure, indices)),
                   }
             }
             markers={[

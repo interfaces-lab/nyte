@@ -46,7 +46,6 @@ const csp = [
   "form-action 'none'",
 ].join("; ");
 
-// Replacer functions: a plain replacement string would expand `$&` and `$'` inside the bundle.
 const inlined = html
   .replace(fontTag, "")
   .replace(
@@ -57,11 +56,6 @@ const inlined = html
   .replace(styleMatch[0], () => `<style>${css}</style>`)
   .replace(scriptMatch[0], () => `<script type="module">${script}</script>`);
 
-/**
- * Each library as one ES module with no imports, by its specifier: the inline
- * shell has no URL to import a shared chunk from, so it imports a library's
- * source from a blob its client hands it.
- */
 const libraries = {};
 
 for (const name of Object.keys(LIBRARY_EXPORTS)) {
@@ -90,7 +84,7 @@ await writeFile(
   join(dist, "shell-inline.d.ts"),
   'import type { CanvasLibrary } from "@nyte-ai/plugin/canvas/protocol";\nexport declare const shell: { readonly runtime: number; readonly html: string; readonly libraries: Readonly<Record<CanvasLibrary, string>> };\n',
 );
-/** Every file of the shell directory, base64 by its path from it, for a host that serves the shell itself at a URL of its own (a headless preview), as the chat's clients serve dist/shell. */
+
 const files = Object.fromEntries(
   await Promise.all(
     (await readdir(shell, { recursive: true, withFileTypes: true }))

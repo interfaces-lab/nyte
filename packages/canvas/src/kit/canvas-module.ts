@@ -1,6 +1,5 @@
 import { kit } from "./index.ts";
 
-/** The kit as the named exports a canvas imports from `nyte/canvas`, so fixtures typecheck against the real components. */
 export const {
   Stack,
   Grid,

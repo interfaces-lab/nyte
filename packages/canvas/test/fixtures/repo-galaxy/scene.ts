@@ -23,14 +23,12 @@ export type Palette = {
   readonly dark: boolean;
 };
 
-/** An orbit around the origin. */
 export type Orbit = { yaw: number; pitch: number; distance: number };
 
 export const HOME: Orbit = { yaw: 0.6, pitch: 0.5, distance: 29 };
 
 const FIELD_OF_VIEW = 38;
 
-/** What one frame draws: the layout's positions, each star's emphasis from 0 to 1, and the star under the pointer. */
 export type Frame = {
   readonly orbit: Orbit;
   readonly width: number;
@@ -43,10 +41,8 @@ export type Frame = {
   readonly focus: number | null;
 };
 
-/** A star on screen: its pixel position in the stage and its distance from the camera. */
 export type Projected = { readonly x: number; readonly y: number; readonly w: number };
 
-/** The galaxy's three.js scene, drawn into the stage's canvas. */
 export type Galaxy = {
   readonly detail: string;
   draw(frame: Frame): void;
@@ -97,7 +93,6 @@ void main() {
 
 const SPARKS = 2;
 
-/** A points cloud whose positions, tints and sizes the frame rewrites. */
 function createCloud(count: number, fragmentShader: string, additive: boolean) {
   const geometry = new BufferGeometry();
   const position = new BufferAttribute(new Float32Array(count * 3), 3);
@@ -132,7 +127,6 @@ function edgeColor(frame: Frame, edge: Import): readonly [number, number, number
   return [...rgb, (edge.typeOnly ? 0.07 : 0.2) * (focus === null ? 1 : 0.35) * shown];
 }
 
-/** Builds the scene, or throws when the browser has no WebGL2 for three.js. */
 export function createGalaxy(canvas: HTMLCanvasElement): Galaxy {
   const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setClearColor(0x000000, 0);

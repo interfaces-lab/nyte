@@ -1,7 +1,6 @@
 import { use } from "react";
 import { ports } from "./ports.ts";
 
-/** Runs one probe step, answering what it did or the name of the error it threw. */
 async function attempt(step: () => Promise<string>): Promise<string> {
   try {
     return await step();
@@ -10,7 +9,6 @@ async function attempt(step: () => Promise<string>): Promise<string> {
   }
 }
 
-/** Gathers ICE candidates against the test's STUN (UDP) and TURN (TCP) listeners, for up to 2.5 s. */
 async function gather(): Promise<string> {
   const connection = new RTCPeerConnection({
     iceServers: [
@@ -35,7 +33,6 @@ async function gather(): Promise<string> {
   return "gathered";
 }
 
-/** What a canvas can reach from the page it runs in. */
 const probe = (async () => ({
   secure: isSecureContext,
   stored: await attempt(async () => {

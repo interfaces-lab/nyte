@@ -36,7 +36,6 @@ import { SchemeContext } from "../kit/scheme.ts";
 
 type Failure = { readonly phase: "load" | "render"; readonly message: string };
 
-/** A canvas gets neither. */
 type ViewProps = {
   readonly state?: Json;
   readonly act?: (action: string, input?: Json) => Promise<Json>;
@@ -48,7 +47,6 @@ type State = {
   readonly scheme: "light" | "dark";
   readonly loaded: Loaded | null;
   readonly failure: Failure | null;
-  /** Undefined for a canvas. */
   readonly part: Json | undefined;
 };
 
@@ -79,18 +77,11 @@ const styles = create({
   },
 });
 
-/** Each library a canvas imported, and, in a shell with no base URL, the hand-off for the source its client sends. */
 const libraries = new Map<
   CanvasLibrary,
   { readonly module: Promise<unknown>; readonly receive: (source: string) => void }
 >();
 
-/**
- * Loads one of the libraries, each its own chunk beside the shell, so only a
- * canvas that imports `three` downloads it. A shell with no base URL (the
- * inline one in a WebView) asks its client for the module's source instead.
- * Every import of a library shares one module, so its classes stay one.
- */
 function library(specifier: string): Promise<unknown> {
   const name = readCanvasLibrary(specifier);
 
@@ -178,7 +169,6 @@ function post(message: unknown): void {
   window.parent.postMessage(message, "*");
 }
 
-/** Shows a failure and reports it, its message ending in the canvas file and line the stack points at. */
 function fail(cause: Failure, stack?: string): void {
   const where = stack === undefined ? undefined : locateCanvasStack(moduleCode, stack);
   const failure =
@@ -366,10 +356,6 @@ function parse(text: string): unknown {
   }
 }
 
-/**
- * Reports the root's height. It's observed by its border box, which counts a
- * sideways scrollbar that appears while the content box keeps its size.
- */
 function measure(): void {
   const height = Math.ceil(container.getBoundingClientRect().height);
 

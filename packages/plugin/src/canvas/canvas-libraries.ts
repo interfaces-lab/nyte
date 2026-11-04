@@ -1,9 +1,3 @@
-/**
- * The libraries a canvas may import, each pinned in packages/canvas and
- * served by the shell as its own chunk, with every name its module exports.
- * Written by `packages/canvas/scripts/library-exports.mjs`; a canvas test
- * checks it against the installed packages.
- */
 export const CANVAS_LIBRARIES = {
   three: {
     version: "0.186.1",

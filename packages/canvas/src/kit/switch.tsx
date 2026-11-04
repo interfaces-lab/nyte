@@ -16,7 +16,6 @@ const styles = create({
   },
 });
 
-/** An inline switch that shows its label beside the control; clicking either toggles it. */
 export function Switch({ label, ...rest }: ComponentProps<typeof SwitchControl>): ReactElement {
   return (
     <label {...props(styles.row)}>

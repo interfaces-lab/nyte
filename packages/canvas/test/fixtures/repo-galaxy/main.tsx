@@ -35,7 +35,6 @@ function percentile(values: readonly number[], share: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * share))] ?? 0;
 }
 
-/** Resolves the theme's chart hues and ink from probes the kit itself paints, through a 1px canvas. */
 function readPalette(root: HTMLElement, dark: boolean): Palette | null {
   const probe = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
 

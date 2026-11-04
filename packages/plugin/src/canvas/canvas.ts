@@ -109,13 +109,6 @@ const kitReference = Object.entries(KIT)
   .map(([name, signature]) => `- ${name} ${signature}`)
   .join("\n");
 
-/**
- * What the model reads about the tool and the kit; the signatures come from
- * `KIT`, so they cannot drift from what the compiler accepts.
- *
- * @category plugins
- * @since 0.1.0
- */
 export const CANVAS_DESCRIPTION = [
   `Render a React canvas inline in the chat. \`source\` is ${CANVAS_ENTRY}, a TSX module whose default export is a component; split a large canvas into \`files\` it imports by relative path. Every file counts toward one ${Math.round(CANVAS_SOURCE_LIMIT / 1024)} KB budget.`,
   `Imports: \`react\`, \`react-dom\` (${REACT_DOM_EXPORTS.map((name) => `\`${name}\``).join(" and ")} only), \`${KIT_SPECIFIER}\`, the canvas's own files, and these libraries, each loaded only by a canvas that imports it: ${Object.entries(
@@ -136,7 +129,6 @@ export const CANVAS_DESCRIPTION = [
   kitReference,
 ].join("\n");
 
-/** Returns the diagnostics as the model reads them: one per line, positioned in their file when the compiler knows where. */
 function describeErrors(errors: readonly CompileError[]): string {
   return errors
     .map((error) => {
@@ -151,7 +143,6 @@ function describeErrors(errors: readonly CompileError[]): string {
 
 const encoder = new TextEncoder();
 
-/** Compiles a tool call's canvas, or throws the diagnostics for the model to fix. */
 async function compile(
   args: { readonly source: string; readonly files?: Readonly<Record<string, string>> },
   invocation: ToolInvocation,
@@ -175,16 +166,13 @@ async function compile(
   return compiled;
 }
 
-/** What a session's last clean preview measured, by the digest of the module it compiled to. */
 type MeasuredPreview = {
   readonly digest: string;
   readonly heights: NonNullable<CanvasState["heights"]>;
 };
 
-/** Each session's last clean preview, so a render of the same module starts its frame at the measured heights. */
 type Previews = Map<SessionId, MeasuredPreview>;
 
-/** How many sessions' previews one plugin keeps; past it, the one previewed longest ago drops out. */
 const PREVIEWS_KEPT = 64;
 
 function rememberPreview(previews: Previews, session: SessionId, preview: MeasuredPreview): void {
@@ -197,13 +185,10 @@ function rememberPreview(previews: Previews, session: SessionId, preview: Measur
   if (oldest !== undefined) previews.delete(oldest);
 }
 
-/** A host's previewer, and the previews its sessions last ran. */
 type Measuring = { readonly preview: CanvasPreviewer; readonly previews: Previews };
 
-/** How long `canvas_render` waits to measure a module no preview measured, before saving it without heights. */
 const MEASURE_TIMEOUT_MS = 10_000;
 
-/** Returns the heights a clean preview measured, by frame width; none when it hit errors. */
 function previewHeights(report: CanvasPreviewReport): MeasuredPreview["heights"] {
   if (report.errors.length > 0) return [];
 
@@ -214,11 +199,6 @@ function previewHeights(report: CanvasPreviewReport): MeasuredPreview["heights"]
   });
 }
 
-/**
- * Returns the heights to save with a rendered module: the session's last clean
- * preview's when it compiled to the same module, else what measuring it now
- * finds, else none. Like a preview, measuring waits for the canvas to settle.
- */
 async function measureCanvas(
   measuring: Measuring | undefined,
   module: CanvasPreviewRequest["module"],
@@ -249,7 +229,6 @@ async function digestCode(code: string): Promise<string> {
 const PREVIEW_FIRST =
   "Before rendering, call `canvas_preview` with the same `source` and `files`: it shows you the canvas and its errors, console and height without the user seeing it. Fix what it shows, then render once.";
 
-/** Returns `canvas_render`; with a previewer, it tells the model to preview first and saves the module's measured heights. */
 function renderTool(measuring: Measuring | undefined): ToolDefinition<Infer<typeof parameters>> {
   return {
     name: CANVAS_RENDER_TOOL,
@@ -327,10 +306,8 @@ const previewParameters = standard(
   }),
 );
 
-/** How long a preview may take, from the call to its report. */
 const PREVIEW_TIMEOUT_MS = 45_000;
 
-/** Runs one preview, aborting the previewer's signal and answering unavailable past the timeout; it throws when the turn stops first. */
 async function previewWithin(
   preview: CanvasPreviewer,
   request: CanvasPreviewRequest,
@@ -416,17 +393,6 @@ function previewTool(measuring: Measuring): ToolDefinition<Infer<typeof previewP
   };
 }
 
-/**
- * Returns the canvas plugin: the `canvas` part and `canvas_render`, which
- * compiles in-process on any host, plus `canvas_preview` when the host
- * passes a previewer, in which case `canvas_render` tells the model to
- * preview first and saves the module's heights at the preview widths: the
- * session's last clean preview's when it compiled to the same module, or
- * measured as it renders.
- *
- * @category plugins
- * @since 0.1.0
- */
 export function canvasPlugin(preview?: CanvasPreviewer): Plugin {
   if (preview === undefined)
     return { id: "canvas", contribute: { parts: [canvas], tools: [renderTool(undefined)] } };
@@ -438,11 +404,4 @@ export function canvasPlugin(preview?: CanvasPreviewer): Plugin {
   };
 }
 
-/**
- * The canvas plugin without a previewer, as a host that cannot render one
- * loads it.
- *
- * @category plugins
- * @since 0.1.0
- */
 export default canvasPlugin();

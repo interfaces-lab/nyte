@@ -1,15 +1,3 @@
-/**
- * The canvas compiler, pure JavaScript so every host runs it the same. A
- * canvas is a small module graph: `main.tsx` and the files it imports by
- * relative path. Sucrase strips each file's types and compiles its JSX,
- * es-module-lexer checks its imports and exports, and a second sucrase pass
- * turns it into a function the module's linker calls on first `require`.
- * Only `react`, `react/jsx-runtime`, `react-dom`, `nyte/canvas`, the
- * libraries and the canvas's own files resolve, each to a fixed list of
- * names, and `main.tsx` must export a default component. Sucrase keeps
- * every line where it was, so the files comment on the module's first line
- * maps a runtime position back to its file and line.
- */
 import { init, parse } from "es-module-lexer/minimal";
 import type { ImportSpecifier } from "es-module-lexer/minimal";
 import { transform } from "sucrase";
@@ -28,24 +16,10 @@ import {
 } from "./canvas-protocol.ts";
 import type { CanvasFileSpan } from "./canvas-protocol.ts";
 
-/**
- * Returns what the compiler answers for one canvas: the ESM module to ship,
- * with the runtime it targets, or the diagnostics the model fixes.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type CompileOutcome =
   | { readonly kind: "compiled"; readonly code: string; readonly runtime: number }
   | { readonly kind: "failed"; readonly errors: readonly CompileError[] };
 
-/**
- * Returns one diagnostic, positioned in a source file when the compiler
- * knows where; `file` is null for one about the canvas as a whole.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type CompileError = {
   readonly file: string | null;
   readonly line: number | null;
@@ -53,16 +27,8 @@ export type CompileError = {
   readonly text: string;
 };
 
-/**
- * Returns a canvas's other files, keyed by their path from `main.tsx`'s
- * folder, such as `chart.tsx` or `lib/scale.ts`.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type CanvasFiles = Readonly<Record<string, string>>;
 
-/** The modules outside the canvas it may import, by specifier: the expression the linker reads each from, and the names it exports. */
 const EXTERNAL = new Map<string, { readonly value: string; readonly names: readonly string[] }>([
   ["react", { value: `globalThis.${CANVAS_GLOBAL}.react`, names: REACT_EXPORTS }],
   [
@@ -80,7 +46,6 @@ const EXTERNAL = new Map<string, { readonly value: string; readonly names: reado
   ),
 ]);
 
-/** The specifiers a runtime 1 shell cannot resolve; a canvas that imports none of them targets runtime 1, so a shell from before them still renders it. */
 const RUNTIME_2 = new Set(["react-dom", ...Object.keys(LIBRARY_EXPORTS)]);
 
 const IMPORTABLE = [...EXTERNAL.keys()]
@@ -92,14 +57,12 @@ const FILE_NAME = /^(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.tsx?$/u;
 
 const encoder = new TextEncoder();
 
-/** Sucrase's "message (line:column)" trailer. */
 const POSITION = /\((\d+):(\d+)\)\s*$/;
 
 function at(file: string | null, line: number | null, column: number | null, text: string) {
   return { file, line, column, text };
 }
 
-/** Returns a file's position for an output offset, in the source's lines: sucrase keeps the line breaks and only prepends its jsx-runtime import on the first line. */
 function locate(
   output: string,
   offset: number,
@@ -115,7 +78,6 @@ function locate(
 
 type Binding = { readonly imported: string; readonly local: string };
 
-/** Reads an import clause (`X`, `* as X`, `{ a, b as c }`, or `X, { … }`) into its bindings, or undefined when it is not one of those. */
 function bindings(clause: string): readonly Binding[] | undefined {
   const text = clause.trim();
 
@@ -146,7 +108,6 @@ function bindings(clause: string): readonly Binding[] | undefined {
   return found;
 }
 
-/** Returns the canvas file a relative specifier names from `importer`, trying `.tsx`, `.ts` and `index` after the literal path, or undefined when none is a file. */
 function resolveFile(
   importer: string,
   specifier: string,
@@ -187,7 +148,6 @@ type Unit = {
   }[];
 };
 
-/** Strips one file's types and JSX, then checks its imports: each must name an allowed module or a canvas file, by a literal specifier. */
 function checkFile(
   file: string,
   source: string,
@@ -257,12 +217,6 @@ function checkFile(
   return unit;
 }
 
-/**
- * Finds the identifiers `exports` and `require` in a file's code outside
- * strings, comments and property names. The second sucrase pass reads an
- * exported binding through `exports.name` and an import through `require`,
- * so a local of either name would capture the linker's.
- */
 function findLinkerNames(
   code: string,
 ): readonly { readonly name: string; readonly offset: number }[] {
@@ -372,7 +326,6 @@ function checkImport(
       fail(`"${specifier}" has no export named "${name}".`);
 }
 
-/** Turns a checked file into CommonJS over the linker's `require`, its relative specifiers rewritten to canvas file names; sucrase keeps the lines. */
 function link(unit: Unit): string {
   let code = unit.output;
 
@@ -382,11 +335,6 @@ function link(unit: Unit): string {
   return transform(code, { transforms: ["imports"], production: true, filePath: unit.file }).code;
 }
 
-/**
- * The relative specifiers a file imports at run time; type-only imports are stripped first.
- *
- * @category plugins
- */
 export async function localImports(file: string, source: string): Promise<readonly string[]> {
   await init();
   const output = transform(source, {
@@ -404,14 +352,6 @@ export async function localImports(file: string, source: string): Promise<readon
     );
 }
 
-/**
- * Compiles a canvas, `source` as `main.tsx` (or `options.entry`) plus the
- * `files` it imports, to the one module the shell imports. The caps default
- * to the contract's; a test narrows them.
- *
- * @category plugins
- * @since 0.1.0
- */
 export async function compileCanvas(
   source: string,
   files: CanvasFiles = {},
@@ -500,12 +440,6 @@ export async function compileCanvas(
   };
 }
 
-/**
- * Lays the files out as one ES module: the files comment and the external
- * modules the files import on line one, then each file's function with its code starting on
- * a line of its own, then the linker, which runs each file once on first
- * `require`, and the entry's default export.
- */
 function bundle(units: readonly Unit[], imported: ReadonlySet<string>, entry: string): string {
   const externals = [...EXTERNAL]
     .filter(([name]) => imported.has(name))

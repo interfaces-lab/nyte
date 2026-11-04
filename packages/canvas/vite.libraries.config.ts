@@ -1,11 +1,6 @@
 import { LIBRARY_EXPORTS } from "@nyte-ai/plugin/canvas/protocol";
 import { defineConfig } from "vite";
 
-/**
- * Builds each canvas library as its own ES module beside the shell, in
- * `dist/shell/libraries/<specifier>.js`, with the code two of them share in
- * `chunks/`. The shell imports one only when a canvas does.
- */
 export default defineConfig({
   build: {
     outDir: "dist/shell/libraries",

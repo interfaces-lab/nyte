@@ -1,47 +1,27 @@
-/**
- * The inline canvas contract every side shares, with no dependencies: the
- * runtime version, the import surfaces a canvas module may use, the size
- * caps, where a compiled module's source files sit in it, and the JSON-RPC
- * messages between a client and the runtime shell, in the MCP Apps shape
- * (`ui/*` methods as upstream defines them, `nyte/*` for the one extension).
- * Builders make a message; readers narrow `unknown` data from a `message`
- * event into a typed one or `undefined`.
- */
 import { CANVAS_LIBRARIES } from "./canvas-libraries.ts";
 
-/** The shell surface a compiled module was built against. Bump on any change to `KIT`, a kit component's props, the libraries or the global; a shell renders a canvas whose runtime is at most its own. Runtime 2 added `react-dom` and the libraries; the compiler stamps a canvas with 2 only when it imports one of them, so a runtime 1 shell still renders the rest. */
 export const CANVAS_RUNTIME = 2;
 
-/** The global the shell installs before importing a module: `{ runtime, react, jsxRuntime, reactDom, kit, library }`, where `library(specifier)` loads one of `LIBRARY_EXPORTS`' modules. */
 export const CANVAS_GLOBAL = "__nyteCanvas";
 
-/** The global a client may set before the shell's scripts run (iOS, through a WebView's document-start script) to a `hostContextChangedNotification` the shell applies before it first paints, so it starts in the client's scheme rather than waiting for `ui/initialize`. */
 export const CANVAS_STARTUP_CONTEXT = "__nyteCanvasContext";
 
-/** The import specifier for the kit. */
 export const KIT_SPECIFIER = "nyte/canvas";
 
-/** The entry module's file name: the tool's `source`, which its other files are imported from. */
 export const CANVAS_ENTRY = "main.tsx";
 
-/** Bytes of TSX the tool accepts, across every file of one canvas. */
 export const CANVAS_SOURCE_LIMIT = 65_536;
 
-/** Bytes of compiled module a part may hold. */
 export const CANVAS_CODE_LIMIT = 196_608;
 
-/** The frame's height range in CSS pixels; a taller canvas scrolls inside. */
 export const CANVAS_MIN_HEIGHT = 48;
 
 export const CANVAS_MAX_HEIGHT = 2000;
 
-/** The height hint range the tool accepts. */
 export const CANVAS_MIN_HEIGHT_HINT = 80;
 
-/** The frame height before a canvas reports its own, when the agent gave no hint. */
 export const CANVAS_DEFAULT_HEIGHT = 80;
 
-/** React 19's public surface a canvas may import, without `act`, `version` and the unstable or server-only names. */
 export const REACT_EXPORTS = [
   "Activity",
   "Children",
@@ -86,45 +66,34 @@ export const REACT_EXPORTS = [
 
 export const JSX_RUNTIME_EXPORTS = ["Fragment", "jsx", "jsxs"] as const;
 
-/** The two `react-dom` names a canvas may import; the shell owns the root, so nothing that mounts one. */
 export const REACT_DOM_EXPORTS = ["createPortal", "flushSync"] as const;
 
-/** Every name each library exports, by its import specifier. */
 export const LIBRARY_EXPORTS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
   Object.entries(CANVAS_LIBRARIES).map(([name, library]) => [name, library.exports.split(" ")]),
 );
 
-/** A library a canvas may import, by its import specifier. */
 export type CanvasLibrary = keyof typeof CANVAS_LIBRARIES;
 
 const CANVAS_LIBRARY_NAMES = Object.keys(CANVAS_LIBRARIES).filter((name): name is CanvasLibrary =>
   Object.hasOwn(CANVAS_LIBRARIES, name),
 );
 
-/** Returns the library a value names, or undefined when it names none. */
 export function readCanvasLibrary(value: unknown): CanvasLibrary | undefined {
   return CANVAS_LIBRARY_NAMES.find((name) => name === value);
 }
 
-/** Each library's pinned version, by its import specifier. */
 export const LIBRARY_VERSIONS: Readonly<Record<string, string>> = Object.fromEntries(
   Object.entries(CANVAS_LIBRARIES).map(([name, library]) => [name, library.version]),
 );
 
 const FILES_COMMENT = /^\/\*nyte-canvas-files:(\[[^\n]*?\])\*\//u;
 
-/**
- * A source file's place in a compiled module: its name, the module line its
- * first line sits on, and how many lines it has.
- */
 export type CanvasFileSpan = readonly [file: string, start: number, lines: number];
 
-/** Returns the comment a compiled module opens with, naming where each source file sits in it. */
 export function canvasFilesComment(spans: readonly CanvasFileSpan[]): string {
   return `/*nyte-canvas-files:${JSON.stringify(spans)}*/`;
 }
 
-/** Returns `file:line` for the first frame of a stack that runs in a compiled module, which the shell loads from a blob URL, or undefined when no frame lands in a source file (the linker's own lines, a module without the files comment). Sucrase keeps lines, not columns, so a stack's column belongs to the compiled code and is left out. */
 export function locateCanvasStack(code: string, stack: string): string | undefined {
   const comment = FILES_COMMENT.exec(code);
 
@@ -160,12 +129,6 @@ function parseSpans(text: string): readonly CanvasFileSpan[] {
   }
 }
 
-/**
- * The hues a series, a sparkline or a meter may name; charts without one take
- * the first eight in this order. Neighbours stay apart under protan and deutan
- * vision (OKLab ΔE ≥ 10 on the chart-series step), the first three stay apart
- * pairwise, and yellow, the one hue under 3:1 on white, comes late.
- */
 export const TINTS = [
   "blue",
   "pink",
@@ -179,11 +142,6 @@ export const TINTS = [
   "brown",
 ] as const;
 
-/**
- * The kit, name by name, each with the one-line signature the model reads.
- * `packages/canvas` exports exactly these names, in a test; the compiler
- * answers any other import of `nyte/canvas` with a positioned error.
- */
 export const KIT = {
   Stack:
     '{ direction?: "row" | "column" = "column", gap?: 0 | 1 | 2 | 3 | 4 | 6 = 2 (×4 px), align?: "start" | "center" | "end" | "stretch", justify?: "start" | "center" | "end" | "between", wrap?: boolean, children }: flex layout',
@@ -239,10 +197,8 @@ export const KIT = {
   useColorScheme: '(): "light" | "dark"',
 } as const;
 
-/** Every name `nyte/canvas` exports, in `KIT` order. */
 export const KIT_EXPORTS: readonly string[] = Object.keys(KIT);
 
-/** The custom properties a client may hand the shell; anything else is dropped. */
 export const CANVAS_VARIABLES = [
   "--nyte-custom-hue",
   "--nyte-custom-chroma-scale",
@@ -258,7 +214,6 @@ export const CANVAS_VARIABLES = [
 
 export const CANVAS_PROTOCOL_VERSION = "2026-01-26";
 
-/** What a client tells the shell about where it runs. */
 export type CanvasHostContext = {
   readonly theme: "light" | "dark";
   readonly styles: { readonly variables: Readonly<Record<string, string>> };
@@ -267,14 +222,12 @@ export type CanvasHostContext = {
   readonly deviceCapabilities: { readonly touch: boolean; readonly hover: boolean };
 };
 
-/** A compiled canvas, as the part holds it and the shell receives it. */
 export type CanvasModule = {
   readonly runtime: number;
   readonly code: string;
   readonly title: string;
 };
 
-/** Who answers `ui/initialize`: a client, or `nyte-preview`, the harness a previewer runs in place of one. */
 export type CanvasHostInfo = {
   readonly name: "nyte-desktop" | "nyte-web" | "nyte-ios" | "nyte-preview";
   readonly version: string;
@@ -282,16 +235,12 @@ export type CanvasHostInfo = {
 
 export type JsonRpcId = string | number;
 
-/** A message the shell sends its client. */
 export type ShellMessage =
   | { readonly kind: "initialize"; readonly id: JsonRpcId; readonly runtime: number }
   | { readonly kind: "initialized" }
   | { readonly kind: "size"; readonly height: number }
-  /** `url` is an http(s) URL, or a reference with no scheme that the client resolves in its workspace. */
   | { readonly kind: "open-link"; readonly id: JsonRpcId; readonly url: string }
-  /** Asked only by a shell with no base URL to load `libraries/<name>.js` from (the inline one in a WebView); the request's id is the name. */
   | { readonly kind: "library"; readonly name: CanvasLibrary }
-  /** Answered with `act-result`. */
   | {
       readonly kind: "act";
       readonly id: JsonRpcId;
@@ -305,7 +254,6 @@ export type ShellMessage =
       readonly stack: string | null;
     };
 
-/** A message a client sends the shell. */
 export type HostMessage =
   | {
       readonly kind: "initialize-result";
@@ -316,9 +264,7 @@ export type HostMessage =
   | { readonly kind: "render"; readonly module: CanvasModule }
   | { readonly kind: "context-changed"; readonly context: Partial<CanvasHostContext> }
   | { readonly kind: "open-link-result"; readonly id: JsonRpcId; readonly isError: boolean }
-  /** `source` is the library's self-contained ES module. */
   | { readonly kind: "library-result"; readonly name: CanvasLibrary; readonly source: string }
-  /** Sent after `render` and on each state change. */
   | { readonly kind: "part-state"; readonly state: Json }
   | { readonly kind: "act-result"; readonly id: JsonRpcId; readonly outcome: Json };
 
@@ -350,7 +296,6 @@ export type Json =
   | readonly Json[]
   | { readonly [key: string]: Json };
 
-/** Returns the `ui/initialize` request the shell opens with. */
 export function initializeRequest(id: JsonRpcId, runtime: number): Json {
   return {
     jsonrpc: "2.0",
@@ -376,7 +321,6 @@ export function openLinkRequest(id: JsonRpcId, url: string): Json {
   return { jsonrpc: "2.0", id, method: OPEN_LINK, params: { url } };
 }
 
-/** Returns the error notification the shell sends when a module fails to load or render. */
 export function errorNotification(error: {
   readonly phase: "load" | "render";
   readonly message: string;
@@ -397,7 +341,6 @@ export function errorNotification(error: {
   };
 }
 
-/** Returns the answer to the shell's `ui/initialize`. */
 export function initializeResult(
   id: JsonRpcId,
   hostInfo: CanvasHostInfo,
@@ -451,7 +394,6 @@ export function libraryResult(name: CanvasLibrary, source: string): Json {
   return { jsonrpc: "2.0", id: name, result: { source } };
 }
 
-/** Returns the message a shell posted, or undefined for anything that is not one. */
 export function readShellMessage(data: unknown): ShellMessage | undefined {
   const message = envelope(data);
 
@@ -517,7 +459,6 @@ export function readShellMessage(data: unknown): ShellMessage | undefined {
   return undefined;
 }
 
-/** Returns the message a client posted into the shell, or undefined for anything that is not one. */
 export function readHostMessage(data: unknown): HostMessage | undefined {
   const message = envelope(data);
 
@@ -589,22 +530,12 @@ export function readHostMessage(data: unknown): HostMessage | undefined {
   return undefined;
 }
 
-/** Returns the height a frame shows a canvas at, within the range. */
 export function clampCanvasHeight(height: number): number {
   return Math.min(CANVAS_MAX_HEIGHT, Math.max(CANVAS_MIN_HEIGHT, Math.round(height)));
 }
 
-/** A canvas's height in CSS pixels as a preview measured it at one frame width. */
 export type CanvasMeasuredHeight = { readonly width: number; readonly height: number };
 
-/**
- * Returns the height a frame `width` px wide starts a canvas at, before its
- * shell reports one: the taller of the measured heights at the nearest widths
- * either side, since a frame a few pixels short scrolls inside itself and
- * takes the reader's scroll; past either end, the nearest; without any, the
- * agent's hint, then the default. With no width yet, it skips the measured
- * heights.
- */
 export function canvasStartHeight(
   canvas: {
     readonly height: number | null;
@@ -624,7 +555,6 @@ export function canvasStartHeight(
   return height > 0 ? clampCanvasHeight(height) : fallback;
 }
 
-/** Returns the variables the shell may apply: allowlisted names, values stripped of the characters that could end a declaration. */
 export function sanitizeCanvasVariables(
   variables: Readonly<Record<string, string>>,
 ): Record<string, string> {
@@ -771,11 +701,6 @@ function stringEntries(value: Record<string, unknown>): Record<string, string> {
   );
 }
 
-/**
- * A link a canvas may ask its client to open: an http(s) URL, or a reference
- * with no scheme, such as `src/ci.ts:42`, which the client resolves in its
- * workspace or refuses. Every other scheme (`javascript:`, `file:`) is refused.
- */
 function linkHref(value: unknown): string | undefined {
   if (typeof value !== "string" || value === "") return undefined;
   const scheme = /^([a-z][a-z\d+-]*):/iu.exec(value)?.[1]?.toLowerCase();

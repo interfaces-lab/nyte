@@ -6,23 +6,14 @@ type Body = SimulationNodeDatum & { readonly id: number; readonly layer: number 
 
 type Spring = SimulationLinkDatum<Body> & { readonly strength: number };
 
-/** World units per d3-force unit. */
 const SCALE = 0.042;
 
-/** The galaxy's layout: one xyz triple per star in `position`, which `step` advances by one tick until the simulation cools. */
 export type Layout = {
   readonly position: Float32Array;
   step(): boolean;
   settle(): void;
 };
 
-/**
- * Lays the stars out with d3-force in the galaxy's plane: modules repel,
- * imports pull like springs (type-only and package imports barely), and each
- * layer gathers at its own point on a ring. A star's height above the plane
- * comes from its layer, so the disc reads in depth as the camera orbits.
- * d3-force seeds its own randomness, so every load forms the same galaxy.
- */
 export function createLayout(): Layout {
   const anchors = LAYERS.map((_, index) => {
     const ring = 120 + (index % 3) * 46;

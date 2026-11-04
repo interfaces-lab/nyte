@@ -1,12 +1,3 @@
-/**
- * The canvas preview, renderer-agnostic: what a host's previewer takes and
- * answers, and the one run every previewer shares. A previewer loads the
- * real shell as a page of its own (Electron offscreen, a headless
- * Chromium); `runCanvasPreview` then drives that page through a harness
- * script that answers the shell's protocol in place of a client, records
- * its size reports, errors and console, and captures it at the chat
- * column's width, then measures it at a phone's.
- */
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -18,61 +9,29 @@ import {
 } from "./canvas-protocol.ts";
 import type { CanvasHostContext, CanvasModule } from "./canvas-protocol.ts";
 
-/** The widths a preview measures at, in CSS pixels: the desktop chat column (its 840 px measure less the gutters) and a phone's. */
 export const CANVAS_PREVIEW_WIDTHS = { chat: 808, phone: 358 } as const;
 
-/** What the model reads each preview width as. */
 const WIDTH_NAMES = { chat: "the chat column", phone: "a phone" } as const;
 
-/** How long a preview waits for the canvas to settle at one width before it reports what it has. */
 const SETTLE_TIMEOUT_MS = 8000;
 
-/** How long the canvas's height must hold before the preview counts it settled. */
 const SETTLE_QUIET_MS = 400;
 
 const CONSOLE_KEPT = 40;
 
-/**
- * Returns what a previewer renders: the compiled module and the theme to
- * show it in.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type CanvasPreviewRequest = {
   readonly module: CanvasModule;
   readonly theme: "light" | "dark";
 };
 
-/**
- * Returns one error the shell reported while the preview ran, its message
- * ending in the canvas file and line when the stack named one.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type CanvasPreviewError = {
   readonly phase: "load" | "render";
   readonly message: string;
   readonly stack: string | null;
 };
 
-/**
- * Returns one console call the canvas made while the preview ran.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type CanvasPreviewLog = { readonly level: string; readonly text: string };
 
-/**
- * Returns what a preview saw: a PNG of the canvas at the chat column's
- * width, its height there and at a phone's (`CANVAS_PREVIEW_WIDTHS`), its
- * errors and its console.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type CanvasPreviewReport = {
   readonly png: Uint8Array;
   readonly heights: { readonly chat: number; readonly phone: number };
@@ -80,41 +39,15 @@ export type CanvasPreviewReport = {
   readonly console: readonly CanvasPreviewLog[];
 };
 
-/**
- * Returns a previewer's answer: the report, or why this host cannot render
- * a preview (no renderer installed, the renderer failed to start).
- *
- * @category plugins
- * @since 0.1.0
- */
 export type CanvasPreviewOutcome =
   | { readonly kind: "rendered"; readonly report: CanvasPreviewReport }
   | { readonly kind: "unavailable"; readonly reason: string };
 
-/**
- * Renders a compiled canvas off-screen in the real shell. A host passes one
- * to `canvasPlugin` to give the model `canvas_preview`, which gives each
- * preview 45 seconds. When `signal` aborts (past that, or the turn
- * stopped), the previewer tears its renderer down, so a canvas that hangs
- * its page holds up no later preview.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type CanvasPreviewer = (
   request: CanvasPreviewRequest,
   signal: AbortSignal,
 ) => Promise<CanvasPreviewOutcome>;
 
-/**
- * Returns the page a previewer loaded the shell in, top-level, for
- * `runCanvasPreview` to drive: `evaluate` runs an expression in the page
- * and resolves with its JSON-safe value (awaiting a promise), `resize` sets
- * the viewport in CSS pixels, `capture` takes a PNG of the viewport.
- *
- * @category plugins
- * @since 0.1.0
- */
 export type CanvasPreviewPage = {
   evaluate(expression: string): Promise<unknown>;
   resize(width: number, height: number): Promise<void>;
@@ -143,13 +76,11 @@ function hostContext(theme: "light" | "dark"): CanvasHostContext {
   };
 }
 
-/** The page globals the harness talks to the shell through, which a host without the DOM library still types. */
 type HarnessPage = {
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
   postMessage(message: unknown, targetOrigin: string): void;
 };
 
-/** What the harness answers the shell with, and how it decides the canvas has settled. */
 type HarnessSetup = {
   readonly initialize: ReturnType<typeof initializeResult>;
   readonly render: ReturnType<typeof renderNotification>;
@@ -158,17 +89,6 @@ type HarnessSetup = {
   readonly consoleKept: number;
 };
 
-/**
- * The harness, called with the page's global as `this`: it stands in for
- * the client, so it answers the shell's `ui/initialize` (already sent at
- * load, so answered unasked), posts the
- * module once the shell is initialized, and keeps the size reports, errors
- * and console calls under `__nytePreview`. It answers false until the
- * shell's script has run. A previewer runs its source in the page's main
- * world through its devtools channel, which the shell's CSP does not
- * govern, so it uses only its argument and the page's globals; the canvas
- * itself still runs under the CSP.
- */
 function installHarness(this: HarnessPage, setup: HarnessSetup): boolean {
   if ("__nytePreview" in globalThis) return true;
 
@@ -247,7 +167,6 @@ function installHarness(this: HarnessPage, setup: HarnessSetup): boolean {
   return true;
 }
 
-/** Returns the expression that installs the harness for `request` in a preview page. */
 function harness(request: CanvasPreviewRequest): string {
   const setup: HarnessSetup = {
     initialize: initializeResult(
@@ -273,15 +192,6 @@ async function settle(page: CanvasPreviewPage) {
   return answer;
 }
 
-/**
- * Runs a preview on a page that has loaded the shell: installs the harness
- * (retrying while the shell's script has not run yet), settles at the chat
- * column's width and captures it there, then settles again at a phone's
- * width for its height.
- *
- * @category plugins
- * @since 0.1.0
- */
 export async function runCanvasPreview(
   page: CanvasPreviewPage,
   request: CanvasPreviewRequest,
@@ -314,7 +224,6 @@ export async function runCanvasPreview(
   };
 }
 
-/** Returns the preview as the model reads it beside the screenshot: heights, errors, console. */
 export function describeCanvasPreview(report: CanvasPreviewReport): string {
   const heights = (["chat", "phone"] as const).map((width) => {
     const height = report.heights[width];
