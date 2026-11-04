@@ -258,7 +258,7 @@ test("the integrated browser journey", async ({ desktop }) => {
     await expect(still).toHaveCount(0);
   });
 
-  await test.step("a toast above the composer leaves the page showing", async () => {
+  await test.step("a toast over the page pauses it over its still until it is dismissed", async () => {
     await application.evaluate(({ BrowserWindow }, channel) => {
       for (const window of BrowserWindow.getAllWindows())
         window.webContents.send(channel, { kind: "status", message: "Saved" });
@@ -266,28 +266,25 @@ test("the integrated browser journey", async ({ desktop }) => {
     const notice = page.locator('[data-slot="toast"]').filter({ hasText: "Saved" });
     await expect(notice).toBeVisible();
     await notice.hover();
-    await page.evaluate(async () => {
-      for (let frame = 0; frame < 10; frame += 1)
-        await new Promise((done) => requestAnimationFrame(done));
-    });
-    expect(await pageShown(application, url)).toBe(true);
-    await expect(still).toHaveCount(0);
     await notice.evaluate((element) =>
       Promise.all(element.getAnimations().map((animation) => animation.finished)),
     );
     const toastBox = await notice.boundingBox();
-    const composerBox = await page.getByRole("form", { name: "Message" }).boundingBox();
+    const panelBox = await panel.boundingBox();
 
-    if (toastBox === null || composerBox === null)
-      throw new Error("The toast or composer is hidden");
+    if (toastBox === null || panelBox === null) throw new Error("The toast or browser is hidden");
     expect(
-      toastBox.x < composerBox.x + composerBox.width &&
-        composerBox.x < toastBox.x + toastBox.width &&
-        toastBox.y < composerBox.y + composerBox.height &&
-        composerBox.y < toastBox.y + toastBox.height,
-    ).toBe(false);
+      toastBox.x < panelBox.x + panelBox.width &&
+        panelBox.x < toastBox.x + toastBox.width &&
+        toastBox.y < panelBox.y + panelBox.height &&
+        panelBox.y < toastBox.y + toastBox.height,
+    ).toBe(true);
+    await expect.poll(() => pageShown(application, url)).toBe(false);
+    await expect(still).toHaveCount(1);
     await notice.getByRole("button", { name: "Dismiss notification" }).click();
     await expect(notice).toHaveCount(0);
+    await expect.poll(() => pageShown(application, url)).toBe(true);
+    await expect(still).toHaveCount(0);
   });
 
   await test.step.skip("pause and restore blocking for this host", async () => {
