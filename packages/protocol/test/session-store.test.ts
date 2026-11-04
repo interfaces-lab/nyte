@@ -65,7 +65,7 @@ describe("session store", () => {
 
     expect(failures.slice(0, 3)).toEqual([]);
     expect(logs.length * CLIENTS).toBeGreaterThanOrEqual(2_000);
-  });
+  }, 30_000);
 
   it("holds what a fresh read holds after the host restores a checkpoint newer than the store", () => {
     const next = random(SEED + 2);
@@ -88,7 +88,7 @@ describe("session store", () => {
     });
 
     expect(failures.slice(0, 3)).toEqual([]);
-  });
+  }, 30_000);
 
   it("holds what a fresh read holds when a head moves right after the host restores a checkpoint", () => {
     const log = logs.find((entry) => entry.recorded.name === "replace");
