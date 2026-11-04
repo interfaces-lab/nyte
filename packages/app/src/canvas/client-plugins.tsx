@@ -21,7 +21,6 @@ import { PartView } from "./part-view.tsx";
 
 let mounting: Promise<ClientPlugins> | undefined;
 
-/** Undefined while a mount is in progress. */
 let mounted: ClientPlugins | undefined;
 
 const listeners = new Set<() => void>();
@@ -44,7 +43,6 @@ function readMounted(): ClientPlugins | undefined {
   return mounted;
 }
 
-/** A mount replaced before it finished is disposed when it finishes. */
 function mount(session: () => SessionId | undefined): void {
   const started = connected().then((current) =>
     mountClientPlugins({
@@ -79,7 +77,6 @@ function mount(session: () => SessionId | undefined): void {
   });
 }
 
-/** Remounts when another connection replaces the installed one, so no plugin keeps a closed connection. */
 export function watchClientPlugins(
   session: () => SessionId | undefined,
   focusMoved: (listener: () => void) => () => void,

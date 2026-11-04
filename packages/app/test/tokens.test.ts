@@ -10,6 +10,7 @@ const contrastResults = Type.Array(
     role: Type.String(),
     surface: Type.String(),
     ratio: Type.Number(),
+    minimum: Type.Number(),
   }),
 );
 
@@ -33,6 +34,6 @@ test("readable roles and glyphs meet contrast in each scope", { timeout: 60_000 
     expect(
       row.ratio,
       `${row.mode} ${row.scope} ${row.role} on ${row.surface}`,
-    ).toBeGreaterThanOrEqual(row.role.startsWith("glyph") ? 3 : 4.5);
+    ).toBeGreaterThanOrEqual(row.minimum);
   }
 });

@@ -39,7 +39,8 @@ import { workbenchViewKey } from "../workbench/paths.ts";
 import { useVisibleCanvasTab, workbench } from "../workbench/store.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
-import { readCanvasTheme, subscribeCanvasTheme } from "./canvas-theme.ts";
+import { appearance } from "../theme/appearance-store.ts";
+import { canvasTheme } from "./canvas-theme.ts";
 import type { CanvasTheme } from "./canvas-theme.ts";
 import { openConversationLink } from "../chat/markdown/external-link.ts";
 import type { MentionFile } from "../data/files.ts";
@@ -202,12 +203,10 @@ interface CanvasError {
   readonly message: string;
 }
 
-/** Heights depend on the width a canvas lays out in, so a narrowed chat keeps its own. */
 function heightKey(digest: string, width: number): string {
   return `${digest}@${String(width)}`;
 }
 
-/** What drawing one canvas module takes: a part's current state, or one of its revisions. */
 export type DrawnCanvas = Pick<
   CanvasState,
   "runtime" | "code" | "title" | "height" | "heights" | "error"
@@ -218,13 +217,6 @@ export type ViewedPart = {
   act(action: string, input: Json): Promise<Json>;
 };
 
-/**
- * Draws one canvas at the height its shell reports, until then at the height
- * a preview measured at its width. `remembered` starts a remounted frame at
- * the height it last reported at this width, for the transcript's virtualized
- * rows; `standIn` takes the canvas's place at that height, so its runtime
- * isn't running.
- */
 export function CanvasFrame({
   state,
   report,
@@ -234,10 +226,8 @@ export function CanvasFrame({
   part,
 }: {
   readonly state: DrawnCanvas;
-  /** Records an error the shell hit on the part; absent for a revision that is no longer the part's module. */
   readonly report?: (message: string) => void;
   readonly remembered?: boolean;
-  /** Drawn over the frame's top corner. */
   readonly action?: ReactNode;
   readonly standIn?: ReactNode;
   readonly part?: ViewedPart;
@@ -298,10 +288,6 @@ export function CanvasFrame({
   );
 }
 
-/**
- * A canvas in the chat. While the workbench shows the same part, a stand-in
- * takes its place so only one copy runs.
- */
 function TranscriptCanvas({
   state,
   report,
@@ -373,7 +359,6 @@ function TranscriptCanvas({
   );
 }
 
-/** The sandboxed iframe running one canvas; unmounting it ends the canvas's runtime. */
 function CanvasShell({
   state,
   part,
@@ -388,7 +373,7 @@ function CanvasShell({
   readonly onError: (message: string) => void;
 }): ReactElement {
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const theme = useSyncExternalStore(subscribeCanvasTheme, readCanvasTheme, readCanvasTheme);
+  const shown = useSyncExternalStore(appearance.subscribe, appearance.get, appearance.get);
   const [initialized, setInitialized] = useState(false);
   const shell = useRef({ initialized: false, reported: new Set<string>() });
   const painted = useRef<EndSpan>(undefined);
@@ -423,7 +408,7 @@ function CanvasShell({
 
       for (const effect of canvasFrameEffects(message, {
         hostInfo: hostInfo(),
-        hostContext: hostContext(theme),
+        hostContext: hostContext(canvasTheme(shown)),
         module: { runtime, code, title },
         ...(partState === undefined ? {} : { part: partState }),
       })) {
@@ -467,7 +452,13 @@ function CanvasShell({
     window.addEventListener("message", receive);
 
     return () => window.removeEventListener("message", receive);
-  }, [theme, runtime, code, title, known, citable, opener, partState]);
+  }, [shown, runtime, code, title, known, citable, opener, partState]);
+
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- posts the theme to the running iframe shell, again when a hidden Activity shows it after a change
+  useLayoutEffect(() => {
+    if (shell.current.initialized)
+      post(frameRef.current, hostContextChangedNotification(canvasTheme(shown)));
+  }, [shown]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- posts changed code to the running iframe shell
   useLayoutEffect(() => {
@@ -488,13 +479,6 @@ function CanvasShell({
     return () => ended({ unmounted: true });
   });
 
-  useMountEffect(() =>
-    subscribeCanvasTheme(() => {
-      if (shell.current.initialized)
-        post(frameRef.current, hostContextChangedNotification(readCanvasTheme()));
-    }),
-  );
-
   return (
     <iframe
       ref={frameRef}
@@ -504,7 +488,7 @@ function CanvasShell({
       referrerPolicy="no-referrer"
       loading="lazy"
       {...props(styles.frame)}
-      style={{ colorScheme: initialized ? theme.theme : "light" }}
+      style={{ colorScheme: initialized && shown.dark ? "dark" : "light" }}
     />
   );
 }

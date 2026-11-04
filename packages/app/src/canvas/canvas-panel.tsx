@@ -64,10 +64,6 @@ const styles = create({
 
 const LATEST = "latest";
 
-/**
- * Workbench slots stay mounted while hidden, so the frames render only while `visible`;
- * unmounting them tears down each iframe and its canvas runtime.
- */
 export function CanvasPanel({
   sessionId,
   part,

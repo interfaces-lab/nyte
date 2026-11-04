@@ -9,11 +9,14 @@ const styles = create({
   glyphPrimary: { color: role.contentInteractivePrimary },
   glyphSecondary: { color: role.contentInteractiveSecondary },
   glyphTertiary: { color: role.contentInteractiveTertiary },
+  accent: { color: role.contentAccent },
+  borderControl: { color: role.borderControl },
   base: { backgroundColor: role.bgBase },
   muted: { backgroundColor: role.bgMuted },
   elevated: { backgroundColor: role.bgElevated },
   chromeSurface: { backgroundColor: role.bgChrome },
   button: { color: role.contentOnInteractiveStrong, backgroundColor: role.buttonFill },
+  onControl: { color: role.contentOnControl, backgroundColor: role.bgControlSelected },
 });
 
 export function run(): string {
@@ -41,8 +44,14 @@ export function run(): string {
     return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
   }
 
-  const results: { mode: string; scope: string; role: string; surface: string; ratio: number }[] =
-    [];
+  const results: {
+    mode: string;
+    scope: string;
+    role: string;
+    surface: string;
+    ratio: number;
+    minimum: number;
+  }[] = [];
 
   const scopes = [
     { name: "neutral", theme: [], hue: 250, chroma: 1 },
@@ -73,13 +82,15 @@ export function run(): string {
         ["elevated", styles.elevated],
         ["chrome", styles.chromeSurface],
       ] as const) {
-        for (const [name, foreground] of [
-          ["primary", styles.primary],
-          ["secondary", styles.secondary],
-          ["chrome", styles.chrome],
-          ["glyphPrimary", styles.glyphPrimary],
-          ["glyphSecondary", styles.glyphSecondary],
-          ["glyphTertiary", styles.glyphTertiary],
+        for (const [name, foreground, minimum] of [
+          ["primary", styles.primary, 4.5],
+          ["secondary", styles.secondary, 4.5],
+          ["chrome", styles.chrome, 4.5],
+          ["accent", styles.accent, 4.5],
+          ["glyphPrimary", styles.glyphPrimary, 3],
+          ["glyphSecondary", styles.glyphSecondary, 3],
+          ["glyphTertiary", styles.glyphTertiary, 3],
+          ["borderControl", styles.borderControl, 3],
         ] as const) {
           const sample = document.createElement("span");
           sample.className = props(background, foreground).className ?? "";
@@ -93,11 +104,27 @@ export function run(): string {
             role: name,
             surface,
             ratio: (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05),
+            minimum,
           });
           sample.remove();
         }
       }
 
+      const control = document.createElement("span");
+      control.className = props(styles.onControl).className ?? "";
+      host.append(control);
+      const computed = getComputedStyle(control);
+      const ink = luminance(computed.color);
+      const fill = luminance(computed.backgroundColor);
+      results.push({
+        mode,
+        scope,
+        role: "onControl",
+        surface: "controlSelected",
+        ratio: (Math.max(ink, fill) + 0.05) / (Math.min(ink, fill) + 0.05),
+        minimum: 3,
+      });
+      control.remove();
       host.remove();
     }
 
@@ -114,6 +141,7 @@ export function run(): string {
         role: "buttonLabel",
         surface: "buttonFill",
         ratio: (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05),
+        minimum: 4.5,
       });
       sample.remove();
     }

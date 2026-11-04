@@ -5,7 +5,6 @@ import type { PartId, SessionId } from "@nyte-ai/sdk";
 import { chatStore } from "../data/chat-store.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 
-/** Whether the agent is rewriting a canvas: a `canvas_render` call naming it has not settled in its chat. */
 export function useCanvasEditing(sessionId: SessionId, part: PartId): boolean {
   return useWatchSelect(
     chatStore(sessionId),

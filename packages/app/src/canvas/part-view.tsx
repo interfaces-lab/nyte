@@ -8,7 +8,6 @@ import { connection } from "../data/connection.ts";
 import { CanvasFrame } from "./canvas-frame.tsx";
 import { readCode } from "./canvas-panel.tsx";
 
-/** Nothing until the module loads; the raw part when the module or state can't be read. */
 export function PartView({
   sessionId,
   message,

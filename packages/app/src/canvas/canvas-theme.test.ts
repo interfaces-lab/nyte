@@ -13,6 +13,7 @@ const appearance: CanvasAppearance = {
   codeFontSize: 12,
   antialiased: true,
   reduceTransparency: false,
+  vibrancy: true,
 };
 
 describe("canvas theme", () => {

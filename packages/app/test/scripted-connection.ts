@@ -158,6 +158,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       },
       update: refuse,
       remove: refuse,
+      fork: refuse,
       stop: refuse,
       command: refuse,
       completeCommand: refuse,

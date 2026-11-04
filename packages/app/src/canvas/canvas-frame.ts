@@ -25,7 +25,6 @@ type CanvasFrameEffect =
   | { readonly kind: "act"; readonly id: JsonRpcId; readonly action: string; readonly input: Json }
   | { readonly kind: "error"; readonly phase: "load" | "render"; readonly message: string };
 
-/** Returns the frame's height: what the shell reported, else where the canvas starts at the frame's width. */
 export function canvasFrameHeight(
   canvas: Pick<CanvasState, "height" | "heights">,
   width: number | undefined,
@@ -34,14 +33,12 @@ export function canvasFrameHeight(
   return reported === undefined ? canvasStartHeight(canvas, width) : clampCanvasHeight(reported);
 }
 
-/** Answers a shell message; this shell is served beside its libraries, so a library request never comes. */
 export function canvasFrameEffects(
   message: ShellMessage,
   frame: {
     readonly hostInfo: CanvasHostInfo;
     readonly hostContext: CanvasHostContext;
     readonly module: CanvasModule;
-    /** Posted after the module; absent for a canvas. */
     readonly part?: Json;
   },
 ): readonly CanvasFrameEffect[] {
