@@ -18,7 +18,6 @@ import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import {
   hideFromPanes,
   usePaneControllerSnapshot,
-  useToastAnchor,
   usePaneViewStateStore,
 } from "../panes/pane-context.tsx";
 import { activePane } from "../panes/pane-layout.ts";
@@ -283,11 +282,6 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
   const cwd = useChatFolder()?.path;
   const { layout } = usePaneControllerSnapshot();
 
-  const toastAnchor = useToastAnchor(
-    paneId,
-    conversation.presentation === "full" && conversation.floatingMount !== null,
-  );
-
   const chat = useChat(sessionId);
   const catalog = useCatalog(sessionId);
   const [draftName, setDraftName] = useState<string | undefined>();
@@ -467,7 +461,6 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                 sessionId={sessionId}
                 active={activePane(layout).id === paneId}
                 floatingMount={conversation.floatingMount}
-                toastAnchor={toastAnchor}
                 backgroundWork={{
                   content: (
                     <>
@@ -523,6 +516,16 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                   }))
                 }
                 inputRef={attachComposer}
+                steer={
+                  subagentTray.kind === "detail"
+                    ? {
+                        session: subagentTray.sessionId,
+                        title:
+                          agents.find((agent) => agent.id === subagentTray.sessionId)?.title ??
+                          "this agent",
+                      }
+                    : undefined
+                }
               />
             )}
             {presentation === "side" && (

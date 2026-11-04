@@ -1,0 +1,27 @@
+diff --git a/out/options/macOptions.d.ts b/out/options/macOptions.d.ts
+index e93987d973399b17f3970c858abb49f5e4b193d6..c63ef7e300fe1b4d19304b1a800b984b163166bf 100644
+--- a/out/options/macOptions.d.ts
++++ b/out/options/macOptions.d.ts
+@@ -358,7 +358,7 @@ export interface DmgContent {
+      * The device-independent pixel offset from the top of the window to the **center** of the icon.
+      */
+     y: number;
+-    type?: "link" | "file" | "dir";
++    type?: "link" | "file" | "dir" | "position";
+     /**
+      * The name of the file within the DMG. Defaults to basename of `path`.
+      */
+diff --git a/scheme.json b/scheme.json
+index 81fc8c5cc33dee120e5dd13356b910edfc3bb8af..4767a2c323952db917677b163cac50855b554728 100644
+--- a/scheme.json
++++ b/scheme.json
+@@ -896,7 +896,8 @@
+           "enum": [
+             "dir",
+             "file",
+-            "link"
++            "link",
++            "position"
+           ],
+           "type": "string"
+         },

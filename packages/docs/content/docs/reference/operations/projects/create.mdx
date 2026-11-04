@@ -1,0 +1,228 @@
+---
+title: projects.create
+description: Creates a project in a workspace, with the brief its lead chat follows.
+---
+
+Creates a project in a registered workspace and returns it as stored. A project has one lead chat,
+which is the first top-level chat started in it, and its `brief` is that chat's system prompt.
+`until` is `{ "kind": "standing" }` for work that never ends, or a goal. `worker` names the model
+the lead starts units on; without it, units run on the lead's model. The new project reaches every
+client in the host view's `projects`.
+
+## When to call it
+
+From a "New Project" action, before starting the project's first chat with `sessions.start` and its
+`project` field.
+
+## Access
+
+Any principal with `participant` authority. Host scope.
+
+## Example
+
+Request body:
+
+```json
+{
+  "input": {
+    "name": "Bug Fix and Polish",
+    "brief": "Sol writes each fix in its own worktree. Read nyte-styles first.",
+    "until": { "kind": "standing" },
+    "workspace": "9dee0b6e-42c2-4ec2-be3a-cf6ff4dcacd2",
+    "worker": { "provider": "openai-codex", "id": "gpt-6.1-sol" }
+  }
+}
+```
+
+Response: the project, with `lead` null until its first chat starts.
+
+## Errors
+
+- `unknown` when the workspace isn't registered on the host.
+- `invalid` when the input doesn't match the schema, such as an empty name.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `host`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["input"],
+  "properties": {
+    "input": {
+      "type": "object",
+      "required": ["name", "brief", "until", "workspace"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "brief": {
+          "type": "string"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "standing"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "goal"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "goal"
+                },
+                "goal": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          ]
+        },
+        "workspace": {
+          "type": "string"
+        },
+        "worker": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["provider", "id"],
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "brief",
+    "until",
+    "workspace",
+    "lead",
+    "worker",
+    "archived",
+    "createdAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "brief": {
+      "type": "string"
+    },
+    "until": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "standing"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "goal"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "goal"
+            },
+            "goal": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "workspace": {
+      "type": "string"
+    },
+    "lead": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "worker": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["provider", "id"],
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "archived": {
+      "type": "boolean"
+    },
+    "createdAt": {
+      "type": "number"
+    }
+  }
+}
+```
+
+{/* generated:end */}

@@ -14,15 +14,14 @@ import { bindComposerFileDrop } from "../../references/composer-file-drop.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { composerSendPlan } from "./composer-send.ts";
-import { composerStyles } from "./composer.stylex.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
+import { ProjectMenu } from "../../projects/project-menu.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
 import {
   usePaneActions,
   usePaneControllerSnapshot,
   usePaneViewStateStore,
-  useToastAnchor,
 } from "../../panes/pane-context.tsx";
 import { activePane } from "../../panes/pane-layout.ts";
 import type { PaneId } from "../../panes/pane-layout.ts";
@@ -81,7 +80,6 @@ export function BlankConversation(conversation: BlankConversationProps): ReactEl
 
 function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement {
   const { layout } = usePaneControllerSnapshot();
-  const toastAnchor = useToastAnchor(paneId, false);
   const workspace = useChatFolder();
   const catalog = useCatalog();
   const workspaceFiles = useMentionFiles(workspace, workspace !== undefined);
@@ -177,8 +175,14 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
           viewStore.cancelSend(viewState.id);
         }}
       >
-        <div {...props(sessionScreenStyles.blankColumn, toastAnchor && composerStyles.toastAnchor)}>
-          <WorkspaceContext active={activePane(layout).id === paneId} />
+        <div {...props(sessionScreenStyles.blankColumn)}>
+          <WorkspaceContext active={activePane(layout).id === paneId}>
+            <ProjectMenu
+              folder={workspace?.id}
+              value={viewState.project}
+              onChange={(project) => updateViewState((state) => ({ ...state, project }))}
+            />
+          </WorkspaceContext>
           <ComposerFrame
             surface="new-chat"
             document={{

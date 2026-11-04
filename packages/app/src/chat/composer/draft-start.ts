@@ -5,6 +5,7 @@ import { errorMessage } from "../../contract/errors.ts";
 import type { PaneActions } from "../../panes/pane-context.tsx";
 import type { DraftStatus, SessionViewStateStore } from "../../panes/session-view-state.ts";
 import { readStartCatalog } from "../../data/catalog.ts";
+import { findProject } from "../../data/projects.ts";
 import { selectedWorkspaceId } from "../../data/workspaces.ts";
 import { connected } from "../../data/connection.ts";
 import { chatStore } from "../../data/chat-store.ts";
@@ -77,12 +78,14 @@ export async function startDraft(
     }
 
     const workspace = selectedWorkspaceId();
+    const project = draft?.project === undefined ? undefined : findProject(draft.project);
 
     await startComposerChat(
       connection,
       {
         id,
         ...(workspace !== undefined && { workspace }),
+        ...(project !== undefined && project.workspace === workspace && { project: project.id }),
         configuration: { model, thinking: draft?.choice?.thinking },
       },
       plan,

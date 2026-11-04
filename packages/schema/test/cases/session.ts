@@ -1,5 +1,7 @@
+import { asId } from "@nyte-ai/schema";
 import {
   AdvanceReportSchema,
+  ProjectInfoSchema,
   AgentInfoSchema,
   AuthoritySchema,
   CommandInfoSchema,
@@ -90,8 +92,21 @@ import {
   usage,
   events,
   durableEvent,
+  workspace,
 } from "./fixtures.ts";
 import type { Case } from "./fixtures.ts";
+
+const project = {
+  id: asId<"project">("p1"),
+  name: "Polish",
+  brief: "Fix small UI details.",
+  until: { kind: "standing" },
+  workspace,
+  lead: session,
+  worker: modelRef,
+  archived: false,
+  createdAt: 1,
+} as const;
 
 /** Sessions, views, heads, the host, connections, hooks, events and the ref store. */
 export const sessionCases = {
@@ -293,6 +308,10 @@ export const sessionCases = {
     { ok: false, issues: [{ ref: "heads/main", object: null, message: "Missing." }] },
     { ok: "no" },
   ),
+  ProjectInfoSchema: sample(ProjectInfoSchema, project, {
+    ...project,
+    until: { kind: "goal", goal: "" },
+  }),
   HostViewWireSchema: sample(
     HostViewWireSchema,
     {
@@ -306,6 +325,7 @@ export const sessionCases = {
       settings: [settingInfo],
       views: [{ kind: "acme/ping", plugin: "ping", runtime: 1, blob }],
       defaultWorkspace: null,
+      projects: [project],
       authority: ["participant", "owner"],
       principal,
     },

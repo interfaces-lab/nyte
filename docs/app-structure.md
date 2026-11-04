@@ -32,6 +32,7 @@
 | `customize/` | The Customize page for plugins, skills and MCP | `customize.tsx` |
 | `account/` | Sign-in, the account footer and the GitHub account | `account-footer.tsx` |
 | `panes/` | Split panes in a window tab, the workspace stage and opening a workspace | `session-screen.tsx`, `pane-context.tsx` |
+| `projects/` | A project's page and the page that creates one, its editor, moving a chat into a project and the new-chat project picker. The sidebar's Projects section is in `sidebar/`, the project list in `data/projects.ts` | `project-page.tsx` |
 | `tabs/` | Window tabs, places and routes, and page and overlay state | `window-tabs.ts`, `shell-state.ts` |
 | `window/` | Which chats are on screen, and whether each is read or unread | `index.ts`, the only import |
 | `commands/` | Window commands from menus and shortcuts | `window-commands.ts` |
