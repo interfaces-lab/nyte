@@ -1,5 +1,7 @@
 import { props } from "@stylexjs/stylex";
 import { createContext, use, useState } from "react";
+// oxlint-disable-next-line no-restricted-imports -- uncompiled Streamdown renders every block on each streamed update, so a settled block needs its own memo boundary
+import { memo } from "react";
 import type { ComponentProps, ReactElement } from "react";
 import { Block } from "streamdown";
 import type { BlockProps, ExtraProps } from "streamdown";
@@ -58,7 +60,7 @@ export function findStreamingTail(markdown: string, blocks: readonly string[]): 
   return blocks.findLastIndex((block, index) => index === 0 || !BLANK.test(block));
 }
 
-export function FadingBlock(block: BlockProps): ReactElement {
+export const FadingBlock = memo(function FadingBlock(block: BlockProps): ReactElement {
   const tail = use(StreamingTail) === block.index;
   const reducedMotion = use(ReducedMotion);
   const [fade] = useState(createFadeInChunks);
@@ -92,7 +94,7 @@ export function FadingBlock(block: BlockProps): ReactElement {
       )}
     </FadeEnd>
   );
-}
+});
 
 export function FadeSpan({
   node,
