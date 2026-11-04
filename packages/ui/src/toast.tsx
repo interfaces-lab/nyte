@@ -92,6 +92,7 @@ const styles = create({
     boxSizing: "border-box",
     width: "100%",
     height: { default: "var(--_height)", "[data-expanded]": "var(--toast-height)" },
+    interpolateSize: "numeric-only",
     pointerEvents: "auto",
     transformOrigin: "bottom",
     borderStyle: "none",
