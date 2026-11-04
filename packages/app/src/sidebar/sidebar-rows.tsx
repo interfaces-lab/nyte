@@ -33,7 +33,7 @@ import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { useNowMinute } from "../lib/use-now-minute.ts";
 import { chatStore, warmSession } from "../data/chat-store.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
-import { chatWindow, useChatWindow } from "../window/index.ts";
+import { chatWindow, useChatMark } from "../window/index.ts";
 import { sessionActions } from "../data/session-rows.ts";
 import { activePane } from "../panes/pane-layout.ts";
 import { shellActions } from "../tabs/shell-state.ts";
@@ -151,8 +151,7 @@ export function SessionRow({
 }): ReactElement {
   const chat = useChat(session.id);
   const shown = chat.kind === "ready" ? chat.chat : undefined;
-  const unread = useChatWindow((snapshot) => snapshot.unread.has(session.id));
-  const mark = shown?.mark ?? "done";
+  const mark = useChatMark(session.id);
 
   return (
     <SessionRowView
@@ -161,9 +160,9 @@ export function SessionRow({
       draggable={draggable}
       unreachable={unreachable}
       showUpdated={showUpdated}
-      mark={mark}
-      unread={unread}
-      ask={shown === undefined ? undefined : askLine(shown, mark)}
+      mark={mark.state}
+      unread={mark.unread}
+      ask={shown === undefined ? undefined : askLine(shown, mark.state)}
     />
   );
 }

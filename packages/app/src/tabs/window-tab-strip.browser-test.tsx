@@ -45,8 +45,8 @@ function tab(id: string, title: string, preview = false): WindowTabItem {
     title,
     tooltip: title,
     sessions: [],
+    chat: undefined,
     glyph: undefined,
-    unread: false,
     preview,
     split: undefined,
   };

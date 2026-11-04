@@ -1,8 +1,9 @@
 import type { RegisteredRouter } from "@tanstack/react-router";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
+import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
-import { chatDirectory, subscribeChats } from "../chats/index.ts";
+import { chatDirectory, subscribeChats, useChat } from "../chats/index.ts";
 import type { HostState } from "../contract/nyte.ts";
 import { keys, queryClient, queryDataReader } from "../data/query-client.ts";
 import { connection } from "../data/connection.ts";
@@ -175,6 +176,20 @@ export function useChatWindow<S>(
     select,
     isEqual,
   );
+}
+
+/** A chat's status as its sidebar row and its window tab both show it. */
+export interface ChatMark {
+  readonly state: TaskState;
+  readonly unread: boolean;
+}
+
+/** Reads a chat the host's lists don't carry on its own, so a mark never waits for another view to ask. */
+export function useChatMark(id: SessionId): ChatMark {
+  const chat = useChat(id);
+  const unread = useChatWindow((snapshot) => snapshot.unread.has(id));
+
+  return { state: chat.kind === "ready" ? chat.chat.mark : "done", unread };
 }
 
 export function followStage(router: RegisteredRouter): () => void {

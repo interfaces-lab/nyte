@@ -5,11 +5,9 @@ import type { SessionId } from "@nyte-ai/sdk";
 import { chatFolderPath, chatTitle, subscribeChats, useChats } from "../chats/index.ts";
 import type { ChatDirectory } from "../chats/index.ts";
 import { activateWorkspace } from "../sidebar/use-show-session.ts";
-import { TaskMark } from "../components/task-mark.tsx";
 import { nyte } from "../contract/nyte.ts";
 import { keys, queryClient } from "../data/query-client.ts";
 import { sessionRows, subscribeSessionRow } from "../data/session-rows.ts";
-import { useChatWindow } from "../window/index.ts";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 
 import { activeTab, showsPage, tabPlace, tabPlaces } from "./model.ts";
@@ -172,7 +170,6 @@ function placeTitle(place: Place, chats: ChatDirectory): string {
 
 export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] {
   const chats = useChats((directory) => directory);
-  const unread = useChatWindow((snapshot) => snapshot.unread);
 
   return state.tabs.map((tab) => {
     const places = tabPlaces(tab);
@@ -183,12 +180,8 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
       candidate.kind === "session" ? [candidate.sessionId] : [],
     );
 
-    const tabUnread = sessions.some((sessionId) => unread.has(sessionId));
-
     const glyph =
-      place.kind === "session" ? (
-        <TaskMark state={chat?.mark ?? "done"} unread={tabUnread} />
-      ) : (
+      place.kind === "session" ? undefined : (
         <Icon
           name={
             place.kind === "blank"
@@ -207,8 +200,8 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
       tooltip: places.map((candidate) => placeTitle(candidate, chats)).join(" | "),
       sessions,
       parent: chat?.parent ?? undefined,
+      chat: place.kind === "session" ? place.sessionId : undefined,
       glyph,
-      unread: tabUnread,
       preview: view.kind === "preview",
       split:
         view.kind === "panes" && view.layout.kind === "split" ? view.layout.direction : undefined,
