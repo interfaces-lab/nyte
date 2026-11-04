@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { once } from "node:events";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,8 +7,6 @@ import {
   asId,
   backgroundRowKey,
   compile,
-  isJson,
-  isJsonObject,
   SessionChangeType,
   SessionsChangeType,
   TextFrameType,
@@ -25,21 +22,29 @@ import type {
   TextFrame,
 } from "@nyte-ai/schema";
 import type { Listener } from "@nyte-ai/core";
-import type { ServedHost } from "@nyte-ai/core/server";
-import { memoryStore } from "@nyte-ai/core/store";
 import { completed, createServerHost, livePart, publishPatch, setup } from "@nyte-ai/core/testing";
-import { decodeError, decodeOutput, openDirectoryStore, openSessionStore } from "@nyte-ai/protocol";
+import { decodeOutput, openDirectoryStore, openSessionStore } from "@nyte-ai/protocol";
 import type { DirectoryStore, SessionStore } from "@nyte-ai/protocol";
 import { WebSocket } from "ws";
-import type { RawData } from "ws";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import { listen } from "../src/index.ts";
 import { sqliteStore } from "../src/sqlite.ts";
-import { fakeModels, open } from "./fixtures/fake-models.ts";
+import { fakeModels } from "./fixtures/fake-models.ts";
 import type { FakeModels } from "./fixtures/fake-models.ts";
 import { rawConnect } from "./fixtures/raw-socket.ts";
-
-const TOKEN = "a-token-of-at-least-16";
+import {
+  cleanups,
+  compose,
+  connect,
+  failureCode,
+  hello,
+  openSocket,
+  performs,
+  serve,
+  socketUrl,
+  target,
+  TOKEN,
+} from "./fixtures/socket-client.ts";
+import type { Client, Composed } from "./fixtures/socket-client.ts";
 
 const main: HeadName = asId("main");
 
@@ -51,158 +56,11 @@ const sessionsChanges = compile(withJson(SessionsChangeType));
 
 const textFrames = compile(withJson(TextFrameType));
 
-const cleanups: (() => Promise<void>)[] = [];
-
 afterEach(async () => {
   vi.useRealTimers();
 
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
-
-type Composed = Awaited<ReturnType<typeof open>>;
-
-type Client = Awaited<ReturnType<typeof connect>>;
-
-function hello(apiMinRevision = 1, actions: readonly string[] = [], name = "socket-test"): Json {
-  return {
-    c: "e",
-    type: "hello",
-    api_min_revision: apiMinRevision,
-    client: {
-      kind: "other",
-      name,
-      version: "1",
-      actions: actions.map((action) => ({ name: action, summary: `Does ${action}.`, input: {} })),
-    },
-  };
-}
-
-async function target(listener: Listener, actions: readonly string[] = ["open"]) {
-  const client = await connect(listener, hello(1, actions, "target"));
-  await client.call("events.subscribe", { scopes: [`client/${client.id}`] });
-
-  return client;
-}
-
-function performs(client: Client): readonly JsonSchema[] {
-  return client.frames.filter((frame) => frame.kind === "perform");
-}
-
-async function failureCode(pending: Promise<Json>): Promise<string | null> {
-  return pending.then(
-    () => null,
-    (error: Error) => ("code" in error && typeof error.code === "string" ? error.code : null),
-  );
-}
-
-async function compose(fake: FakeModels, options?: Parameters<typeof open>[1]): Promise<Composed> {
-  const host = await open(fake, options);
-  cleanups.push(() => host.close());
-
-  return host;
-}
-
-async function serve(host: ServedHost, path?: string): Promise<Listener> {
-  const listener = await listen(host, {
-    transport: path === undefined ? { kind: "http" } : { kind: "socket", path },
-    auth: { kind: "token", token: TOKEN },
-  });
-
-  cleanups.push(() => listener.close());
-
-  return listener;
-}
-
-function socketUrl(listener: Listener): string {
-  const address = listener.address ?? "";
-
-  return address.startsWith("http")
-    ? `${address.replace(/^http/, "ws")}/.nyte/ws`
-    : `ws+unix://${address}:/.nyte/ws`;
-}
-
-async function openSocket(listener: Listener, greeting: Json) {
-  const socket = new WebSocket(socketUrl(listener), {
-    headers: { Authorization: `Bearer ${TOKEN}` },
-  });
-
-  const frames: JsonSchema[] = [];
-  const wakes = new Set<() => void>();
-
-  const closed = new Promise<{ readonly code: number; readonly reason: string }>((done) => {
-    socket.once("close", (code, reason) => done({ code, reason: reason.toString() }));
-  });
-
-  socket.on("message", (data) => {
-    const value: unknown = JSON.parse(readText(data));
-
-    if (isJson(value) && isJsonObject(value)) frames.push(value);
-
-    for (const wake of wakes) wake();
-  });
-
-  cleanups.push(async () => {
-    socket.terminate();
-  });
-  await once(socket, "open");
-  socket.send(JSON.stringify(greeting));
-
-  const until = async (match: (frame: JsonSchema) => boolean): Promise<JsonSchema> => {
-    for (;;) {
-      const found = frames.find(match);
-
-      if (found !== undefined) return found;
-      await new Promise<void>((woken) => {
-        const wake = (): void => {
-          wakes.delete(wake);
-          woken();
-        };
-
-        wakes.add(wake);
-      });
-    }
-  };
-
-  return { socket, frames, until, closed };
-}
-
-async function connect(listener: Listener, greeting: Json = hello()) {
-  const opened = await openSocket(listener, greeting);
-  const until = opened.until;
-  let calls = 0;
-
-  const answered = (id: string): boolean =>
-    opened.frames.some(
-      (frame) => frame.id === id && (frame.type === "result" || frame.type === "error"),
-    );
-
-  const start = (op: string, input: Json) => {
-    calls += 1;
-    const id = String(calls);
-    opened.socket.send(JSON.stringify({ c: "e", type: "call", id, op, input }));
-
-    const settled = until(
-      (frame) => frame.id === id && (frame.type === "result" || frame.type === "error"),
-    ).then((answer) => {
-      if (answer.type === "error") throw decodeError(answer.error ?? null);
-
-      return answer.output ?? null;
-    });
-
-    settled.catch(() => undefined);
-
-    return { id, settled };
-  };
-
-  const call = (op: string, input: Json): Promise<Json> => start(op, input).settled;
-
-  const welcome = await until((frame) => frame.type === "welcome");
-
-  const id = welcome.client_id;
-  assert(typeof id === "string");
-
-  return { ...opened, start, call, answered, id };
-}
 
 function readWindow(client: Client, session: SessionId, resume?: SessionStore) {
   if (resume === undefined)
@@ -1029,11 +887,3 @@ describe("clients as principals", () => {
     await observer.until((frame) => frame.outcome === "failed");
   });
 });
-
-function readText(data: RawData): string {
-  if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
-
-  if (data instanceof ArrayBuffer) return Buffer.from(data).toString("utf8");
-
-  return data.toString("utf8");
-}
