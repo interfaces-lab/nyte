@@ -24,6 +24,9 @@ Each concept has one name. Code uses the term, and users see the UI word where i
 | blank | A pane with no session, `PaneSelection` with `kind: "blank"`. It holds one draft until sending starts a session. | New chat | new chat (in identifiers, where it names the action) |
 | panel | A workbench tool view, such as files, changes, terminal or browser. | | pane |
 | window tab / workbench tab | Always qualified. | Tab | bare `tab` |
+| layout | The tree of splits and panes in one window tab. See `Layout` in `panes/layout.ts`. | | row layout (for this), workspace |
+| split | A row (`right`) or column (`down`) of two or more layout children, each sized by a share or in pixels. | | group, stack, row, column |
+| pane tab | One thing a pane in the layout shows: a chat or a panel. Its `content.kind` names the module that owns it. | Tab | stack, editor group, bare `tab` |
 | composer | The input editor with its trays, chips and queue. | | input |
 | draft | Unsent composer content. | Draft | for core's fold index |
 | warm | Hold a session's live watch before it opens, so opening it reuses that watch. | | preload, prefetch, prime |
