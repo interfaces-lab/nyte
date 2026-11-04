@@ -11,7 +11,10 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
 import { useState, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
+import type { ProjectInfo } from "@nyte-ai/schema";
+import { useProjectDropTarget } from "../panes/session-dnd.tsx";
 import type { ChatDirectory } from "../chats/index.ts";
+import { useChildRows } from "../data/session-rows.ts";
 import { TaskMark } from "../components/task-mark.tsx";
 import { usePaneControllerSnapshot, usePaneViewStateStore } from "../panes/pane-context.tsx";
 import { activePane } from "../panes/pane-layout.ts";
@@ -26,6 +29,7 @@ import {
   deriveShelf,
   folderView,
   hasSessionFilters,
+  type ProjectGroup,
   sessionPage,
   type SessionViewGroup,
   type ShelfHold,
@@ -179,17 +183,33 @@ export function ListedRows({
 }): ReactElement {
   return (
     <>
-      {rows.map(({ place, session }) => (
-        <SessionRow
-          key={session.id}
-          session={session}
-          selected={session.id === context.activeSessionId}
-          draggable={place.workspace === context.openWorkspace}
-          unreachable={session.workspace !== null && context.unavailable.has(session.workspace)}
-          showUpdated={context.view.show.includes("updated")}
-        />
+      {rows.map((listed) => (
+        <ListedRow key={listed.session.id} listed={listed} context={context} />
       ))}
     </>
+  );
+}
+
+function ListedRow({
+  listed,
+  context,
+  subagents,
+}: {
+  readonly listed: ListedSession;
+  readonly context: ListContext;
+  readonly subagents?: number;
+}): ReactElement {
+  return (
+    <SessionRow
+      session={listed.session}
+      selected={listed.session.id === context.activeSessionId}
+      draggable={listed.place.workspace === context.openWorkspace}
+      unreachable={
+        listed.session.workspace !== null && context.unavailable.has(listed.session.workspace)
+      }
+      showUpdated={context.view.show.includes("updated")}
+      subagents={subagents}
+    />
   );
 }
 
@@ -411,6 +431,132 @@ export function PinnedSection({
       <ListedRows rows={rows} context={context} />
     </section>
   );
+}
+
+/**
+ * One row per project with its lead and units under it, the chats a person can open and talk to.
+ * Their subagents only count on their rows. A chat dragged onto the block joins the project.
+ * Chats in a project leave their folders for it, as pinned chats do.
+ */
+export function ProjectsSection({
+  groups,
+  context,
+  selected,
+  onOpen,
+  onNewChat,
+  onNewProject,
+}: {
+  readonly groups: readonly ProjectGroup<ListedSession>[];
+  readonly context: ListContext;
+  /** The project whose page the stage shows. */
+  readonly selected: string | undefined;
+  readonly onOpen: (project: ProjectInfo) => void;
+  readonly onNewChat: (project: ProjectInfo) => void;
+  readonly onNewProject: () => void;
+}): ReactElement {
+  return (
+    <section aria-label="Projects" {...props(styles.section)}>
+      <div {...props(styles.sectionHeader, styles.sectionTitle)}>
+        <span {...props(styles.sectionLabel)}>Projects</span>
+        <Button size="2xs" iconOnly icon="plus" aria-label="New Project" onClick={onNewProject} />
+      </div>
+      {groups.map((group) => (
+        <ProjectBlock
+          key={group.project.id}
+          group={group}
+          context={context}
+          selected={group.project.id === selected}
+          onOpen={() => onOpen(group.project)}
+          onNewChat={() => onNewChat(group.project)}
+        />
+      ))}
+    </section>
+  );
+}
+
+function ProjectBlock({
+  group,
+  context,
+  selected,
+  onOpen,
+  onNewChat,
+}: {
+  readonly group: ProjectGroup<ListedSession>;
+  readonly context: ListContext;
+  readonly selected: boolean;
+  readonly onOpen: () => void;
+  readonly onNewChat: () => void;
+}): ReactElement {
+  const { setNodeRef, active, isOver } = useProjectDropTarget(group.project.id);
+  const members = group.lead === undefined ? group.units : [group.lead, ...group.units];
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-sidebar-group=""
+      {...props(
+        styles.section,
+        styles.projectDrop,
+        active !== null && styles.projectDropReady,
+        isOver && styles.projectDropActive,
+      )}
+    >
+      <Row
+        revealActions
+        selected={selected}
+        xstyle={[styles.rowSurface, styles.workspaceRow, selected && styles.rowSelected]}
+      >
+        <Row.Primary
+          xstyle={styles.workspacePrimary}
+          data-sidebar-header=""
+          title={projectHint(group.project)}
+          aria-current={selected ? "page" : undefined}
+          onClick={onOpen}
+        >
+          <Row.Leading xstyle={styles.rowIcon}>
+            <Icon name="layers" size="sm" />
+          </Row.Leading>
+          <Row.Label>{group.project.name}</Row.Label>
+        </Row.Primary>
+        <Row.Actions placement="overlay">
+          <Button
+            size="sm"
+            iconOnly
+            icon="new-chat"
+            aria-label={
+              group.project.lead === null
+                ? `New Chat in ${group.project.name}`
+                : `Message Lead in ${group.project.name}`
+            }
+            onClick={onNewChat}
+          />
+        </Row.Actions>
+      </Row>
+      <div {...props(styles.sessionList)}>
+        {members.map((listed) => (
+          <ProjectMember key={listed.session.id} listed={listed} context={context} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function projectHint(project: ProjectInfo): string {
+  const until = project.until.kind === "goal" ? `Goal: ${project.until.goal}` : "Standing";
+
+  return project.lead === null ? `${until}. Open it to start its lead chat.` : until;
+}
+
+function ProjectMember({
+  listed,
+  context,
+}: {
+  readonly listed: ListedSession;
+  readonly context: ListContext;
+}): ReactElement {
+  const subagents = useChildRows(listed.session.id).length;
+
+  return <ListedRow listed={listed} context={context} subagents={subagents} />;
 }
 
 export function WorkspaceRow({

@@ -88,8 +88,13 @@ export function createClient(transport: Transport, context: ClientContext): Conn
       forget: (id) => rows.call("workspaces.forget", { id }),
       cleanWorktrees: () => rows.call("workspaces.cleanWorktrees", {}),
     },
+    projects: { create: (input) => rows.call("projects.create", { input }) },
     session: (id) => sessionHandle(bound, id),
     workspace: (id) => workspaceHandle(rows, id),
+    project: (id) => ({
+      id,
+      update: (patch) => rows.call("project.update", { project: id, patch }),
+    }),
     watch: () => {
       const opened = hostFrames;
       hostFrames = undefined;

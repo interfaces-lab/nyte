@@ -1,5 +1,7 @@
 import type { TaskState } from "@nyte-ai/plugin/client/presentation";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
+import { indexProjects } from "@nyte-ai/schema";
+import type { ProjectInfo } from "@nyte-ai/schema";
 import type { ChatDirectory } from "../chats/index.ts";
 import {
   STATUSES,
@@ -327,4 +329,48 @@ export function toggleOption<T extends string>(
   checked: boolean,
 ): readonly T[] {
   return all.filter((candidate) => (candidate === option ? checked : selected.includes(candidate)));
+}
+
+/** Root chats split by project: each project's lead and units, and the chats in none. */
+export interface ProjectPartition<T> {
+  readonly groups: readonly ProjectGroup<T>[];
+  readonly free: readonly T[];
+}
+
+export interface ProjectGroup<T> {
+  readonly project: ProjectInfo;
+  readonly lead: T | undefined;
+  readonly units: readonly T[];
+}
+
+/**
+ * One pass over a list of root chats: each project's lead and units, in the projects' order, and
+ * the chats in none, which stay in their folders. A chat in a project the list doesn't carry, such
+ * as an archived one, counts as in none.
+ */
+export function partitionByProject<T>(
+  projects: readonly ProjectInfo[],
+  items: readonly T[],
+  session: (item: T) => SessionInfo,
+): ProjectPartition<T> {
+  const known = indexProjects(projects);
+
+  const placed = Map.groupBy(items, (item) => {
+    const project = session(item).project;
+
+    return project !== undefined && known.has(project) ? project : null;
+  });
+
+  return {
+    groups: projects.map((project) => {
+      const members = placed.get(project.id) ?? [];
+
+      return {
+        project,
+        lead: members.find((item) => session(item).id === project.lead),
+        units: members.filter((item) => session(item).id !== project.lead),
+      };
+    }),
+    free: placed.get(null) ?? [],
+  };
 }

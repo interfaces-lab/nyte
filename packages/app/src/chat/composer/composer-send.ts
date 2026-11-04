@@ -12,6 +12,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
+import type { ProjectId } from "@nyte-ai/schema";
 import type { ImageContent } from "@nyte-ai/schema/model";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { admitDraft } from "../../canvas/client-plugins.tsx";
@@ -122,6 +123,8 @@ export async function sendComposerMessage(
 interface ComposerChat {
   readonly id: SessionId;
   readonly workspace?: WorkspaceId;
+  readonly project?: ProjectId;
+  readonly name?: string;
   readonly configuration?: ConfigurationPatch;
 }
 

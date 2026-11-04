@@ -139,6 +139,7 @@ const host: HostView = {
   settings: [],
   views: [],
   defaultWorkspace: null,
+  projects: [],
   authority: new Set(),
 };
 

@@ -113,8 +113,8 @@ export function Composer({
   fileDropRoot,
   backgroundWork,
   floatingMount = null,
-  toastAnchor = false,
   active = false,
+  steer,
 }: {
   sessionId: SessionId;
   status: RunStatus;
@@ -129,9 +129,10 @@ export function Composer({
     readonly onEscape: () => boolean;
   };
   floatingMount?: HTMLDivElement | null;
-  toastAnchor?: boolean;
   /** Whether this composer's pane is the active one, so the footer's menus take their shortcuts. */
   active?: boolean;
+  /** The thread a message goes to instead of this chat, while the agents tray previews it. */
+  steer?: { readonly session: SessionId; readonly title: string };
 }): ReactElement {
   useCommitCount("render:composer");
   const runningMessage = useSetting(preferences.runningMessage);
@@ -443,7 +444,7 @@ export function Composer({
     const submittingTab = windowTabs.paneTabId();
 
     const outcome = await deliverSubmission({
-      sessionId,
+      sessionId: steer?.session ?? sessionId,
       submission,
       attachments: sentAttachments,
       delivery,
@@ -477,8 +478,9 @@ export function Composer({
         return;
       case "sent":
         if (outcome.note !== undefined) setFeedback({ kind: "command", message: outcome.note });
-        sessionActions.restore(sessionId);
-        transcript.end();
+        sessionActions.restore(steer?.session ?? sessionId);
+
+        if (steer === undefined) transcript.end();
 
         return;
       default: {
@@ -670,9 +672,7 @@ export function Composer({
         {...props(composerStyles.region, floating && composerStyles.regionFloating)}
       >
         <div {...props(composerStyles.inputStack)}>
-          <div
-            {...props(composerStyles.preComposerOverlay, toastAnchor && composerStyles.toastAnchor)}
-          >
+          <div {...props(composerStyles.preComposerOverlay)}>
             <div {...props(composerStyles.preComposerStack)}>
               {feedback !== undefined && (
                 <div
@@ -811,7 +811,7 @@ export function Composer({
                     await questions.advance(document);
                   }
             }
-            placeholder={FOLLOW_UP_PLACEHOLDER}
+            placeholder={steer === undefined ? FOLLOW_UP_PLACEHOLDER : `Message ${steer.title}`}
             floating={floating}
             disabled={questions?.pending === true || questions?.settled === true || savingEdit}
             busy={liveRun !== undefined}

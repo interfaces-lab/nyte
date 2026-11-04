@@ -82,12 +82,9 @@ things the renderer coordinates, never DOM facts.
   worst from the overlay's insertion to the hide. Of that, the capture takes about 12 ms
   in main, the paint wait two frames and detection up to two frames. Overlays that dim the
   window (dialog and command backdrops) are DOM and dim the still themselves.
-- **Toasts.** The toast stack is anchored with CSS anchor positioning above the active
-  pane's composer and whatever is stacked on it, trays included (`toast.anchor` in the ui
-  schema, set where `useToastAnchor` says), end-aligned with the composer and no wider, so in the split layout a toast never reaches the workbench. With no
-  anchored composer on screen (workbench maximized, settings), the `anchor()` fallbacks put
-  it at the window's bottom-end inset, and `toast` stays in the overlay list so it pauses a
-  page there instead of hiding behind it.
+- **Toasts.** The shell mounts the toast stack at the window inset the toast position
+  setting picks, so it can land over the workbench; `toast` stays in the overlay list so it
+  pauses a page there instead of hiding behind it.
 - **No hit-testing.** VS Code counts an overlay only when it is topmost at the centre of
   its overlap with the page. Every slot we list is a top-layer portal, so nothing but
   another overlay paints above it; add hit-testing only for a reproduced false pause.
