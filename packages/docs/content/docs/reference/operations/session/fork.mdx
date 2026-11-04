@@ -1,0 +1,114 @@
+---
+title: session.fork
+description: Starts a new chat with a session's history up to a commit, by default its latest.
+---
+
+Starts a new chat in the same folder whose main head holds the session's history through `from`,
+by default the tip of its main head. The new chat has the source's name, prompt and context files,
+shares the stored objects of that history and grows on its own. The source doesn't change. It
+answers `busy` with the run while a run behind `from` hasn't ended, and `missing-source` when
+`from` isn't on the session's main head, the head has no commits yet, or the session was removed
+while the fork was written.
+
+## When to call it
+
+From a fork action on a reply, passing the last commit that reply settled, or on the chat itself,
+omitting `from`. Open the session it answers with.
+
+## Access
+
+Any principal with `participant` authority. Session scope.
+
+## Example
+
+Request body:
+
+```json
+{ "session": "0b7d2c4e-6f1a-4b3c-9e8d-7a6b5c4d3e2f", "from": "c9a1e4b2-3d5f-4a6c-8b7e-1f2d3c4b5a69" }
+```
+
+Response:
+
+```json
+{ "kind": "forked", "session": "5e8a2c4f-9b1d-4e3a-8c6f-2d4b6a8c0e1f" }
+```
+
+## Errors
+
+- `unknown` when no session has the id.
+- `stale` when the write lost to concurrent writes several times in a row.
+
+{/* generated:start */}
+
+## Declaration
+
+- Kind: `command`
+- Authority: `participant`
+- Scope: `session`
+- Capability: none
+- Recovery: none
+- Wait: no
+
+### Input schema
+
+```json
+{
+  "type": "object",
+  "required": ["session"],
+  "properties": {
+    "session": {
+      "type": "string"
+    },
+    "from": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### Output schema
+
+```json
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": ["kind", "session"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "forked"
+        },
+        "session": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "run"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "busy"
+        },
+        "run": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "missing-source"
+        }
+      }
+    }
+  ]
+}
+```
+
+{/* generated:end */}

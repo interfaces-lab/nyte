@@ -1504,7 +1504,7 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
           },
           "summary": {
             "type": "object",
-            "required": ["byClass", "failed", "stopped", "added", "removed"],
+            "required": ["byClass", "failed", "stopped"],
             "properties": {
               "byClass": {
                 "type": "object",
@@ -1606,12 +1606,6 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
                 "type": "number"
               },
               "stopped": {
-                "type": "number"
-              },
-              "added": {
-                "type": "number"
-              },
-              "removed": {
                 "type": "number"
               }
             }
