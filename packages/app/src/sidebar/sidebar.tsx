@@ -17,7 +17,7 @@ import {
   clientActionKeys,
   clientActions,
 } from "../contract/client-actions.ts";
-import { hideFromPanes, usePaneActions, usePaneLayout } from "../panes/pane-context.tsx";
+import { usePaneActions, usePaneLayout } from "../panes/pane-context.tsx";
 import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
