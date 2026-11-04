@@ -13,7 +13,7 @@ Desktop shows web pages as native `WebContentsView`s above the app's DOM.
 
 ## Driving it with Playwright (desktop project)
 
-Preconditions: `pnpm e2e:desktop` builds; read `.nyte/skills/integrated-browser/SKILL.md` first.
+Preconditions: `pnpm e2e:desktop` builds; read `.agents/skills/integrated-browser/SKILL.md` first.
 
 - Use `packages/desktop/e2e/browser.spec.ts`. It starts a local HTTP fixture, opens the
   workbench, focuses the `Address` combobox, navigates, and checks guest URL, title and loading

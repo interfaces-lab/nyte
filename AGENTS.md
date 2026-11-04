@@ -8,6 +8,7 @@
 - `node_modules` is the source of truth for library types.
 - Before changing a package, read `packages/<name>/AGENTS.md` if it exists. It isn't loaded for you.
 - AGENTS.md names symbols, concepts and commands, never file or folder paths: files move. `pnpm lint` rejects a path.
+- Put new guidance in the file that already owns the topic; create a skill only for a distinct topic.
 - Work in the current checkout. Create a branch, worktree or PR only when asked; then base it on `origin/main` and target `main`.
 - No `.changeset` files or per-package changelogs. Releases follow `RELEASING.md`.
 - Runtime dependencies point one way: `schema` → `ai` → `core` → `plugin`, `protocol` → `host` → `sdk`. Client code (`@nyte-ai/sdk/client`, the TUI's client entry, the app) never imports `@nyte-ai/host`.
@@ -15,18 +16,18 @@
 
 ## Code style
 
-- No `any` and no casts (`as T`, angle brackets). Use inference, narrowing, schema-derived types or `satisfies`. `as const` is fine.
-- Erasable syntax only: no enums, parameter properties or namespaces.
+- No `any` and no casts (`as T`, angle brackets). Use inference, narrowing, schema-derived types or `satisfies`. `as const` is fine. (lint: `typescript/no-explicit-any`, `typescript/consistent-type-assertions`)
+- Erasable syntax only: no enums, parameter properties or namespaces. (typecheck: `erasableSyntaxOnly`)
 - Top-level imports only. No dynamic, type-position `import()`, star or renamed imports, except to resolve a name collision.
 - `const`, early returns, no `else` after a return, dot notation, no destructuring.
-- Inline values and trivial helpers used once. Extract real operations and boundary handling.
-- No `<thing>Of` helpers (`keyOf`, `configurationOf`). Name the operation (`findModel`) or inline it.
+- Inline values and trivial helpers used once. Extract real operations and boundary handling. (lint, boolean helpers: `nyte-code/no-one-off-boolean-helpers`)
+- No `<thing>Of` helpers (`keyOf`, `configurationOf`). Name the operation (`findModel`) or inline it. (lint: `nyte-code/no-of-lookup-names`)
 - Validate unknown values once, at their boundary, and pass typed values inward.
 - Annotate types only on exports and where it clarifies.
 - Let errors propagate to the boundary that handles them instead of `try`/`catch`.
 - `map`, `filter` and `flatMap` with type-guard filters over loops that build arrays.
 - With several validation branches, the main function is the happy path and helpers sit below it.
-- Prefer deletion. Comment only non-obvious constraints.
+- Prefer deletion. Comment only non-obvious constraints. (lint: `nyte-code/declarative-comments`)
 
 ## Testing
 
@@ -52,6 +53,7 @@
 
 - Branch names: at most three hyphenated words, no slashes or prefixes (`fix-scroll-state`).
 - Commits and PR titles: `type(scope): summary`. Types: feat, fix, docs, refactor, test, perf, build, ci, chore, revert. Scope is a package dir or area (`scripts`, `ci`), omitted for repo-wide changes. Breaking: `!` before the colon and a `BREAKING CHANGE:` footer.
+- Before committing, run `pnpm guidance` and read what it lists.
 
 ## Verification
 

@@ -11,25 +11,24 @@ The terminal client runs one prompt headless or an interactive screen in a PTY.
 
 - Shell: `nyte -p "..."` or `nyte`.
 
-## Driving it with the TUI QA
+## Driving it with the TUI tests
 
-Preconditions: ripgrep 12+; run from the repo root.
-
-- Build: `pnpm --dir packages/tui build`.
-- Headless: `node packages/tui/qa/run.mjs --scenario headless`; inspect `report.json` and
-  `1-headless/cli.json` under the printed run directory.
-- Interactive: `node packages/tui/qa/run.mjs --scenario tui`; inspect `1-tui/evidence.json`
-  and `1-tui/provider.json`. Visible playback is `pnpm --dir packages/tui test:show --step`.
-- New coverage: a named `beat` in the matching scenario, using shortcuts from
-  `src/lib/constants.ts`. `qa/drive.ts` supplies screen waits, typing, quit and session helpers.
-- Quit and resume: the existing step sends `/quit`, requires the public two-line resume command
-  and exit 0, then reopens that session and checks transcript, model, level and provider history.
+- Interactive: `pnpm --dir packages/tui test` runs the app journeys in `packages/tui/test/app`,
+  each one test over `startTui()` (`packages/tui/test/harness/tui.ts`): the whole TUI on a
+  test renderer and an in-process host with `fakeModels`.
+- Headless and the compiled binary: `pnpm --dir packages/tui test:binary` builds the binary and
+  runs `packages/tui/qa/binary.smoke.ts`: `--help` and print mode through pipes, a provider
+  error, exit codes, trust, launch typeahead, `/quit` and `--session`.
+- New coverage: a test in the matching app test file, pressing keys by command name from
+  `packages/tui/src/lib/constants.ts`.
+- Quit and resume: `packages/tui/test/app/resume.test.ts` sends `/quit`, requires the resume
+  command and exit 0, then reopens that session and checks transcript, model, level and the
+  history the next request carries.
 
 ## Gotchas
 
-- QA drives the compiled binary; do not import the app controller.
-- An earlier failed step prevents later steps from running. Confirm the named quit/resume
-  step passed before claiming either behavior works.
+- App tests press keys by command name, never by escape sequence; do not set state directly.
+- A failed step ends its test. Confirm the named quit/resume test passed before claiming either
+  behavior works.
 - Emulated text screens do not prove colors, clipboard, image protocol, or physical scanout.
-- `--step` advances fixed inputs. It does not accept ad hoc keys for Nyte, and artifacts lack
-  the full input payloads needed for replay.
+- There is no visible playback or replay command.

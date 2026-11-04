@@ -6,14 +6,14 @@ description: >
   read the page, click, type, press, scroll, wait, read the console, screenshot, evaluate.
   Trigger on "open it in the browser", "check the page", "click through", "screenshot the
   page", "browser_open", "browser_snapshot". For changing the browser panel's code, read
-  .nyte/skills/integrated-browser/SKILL.md instead.
+  .agents/skills/integrated-browser/SKILL.md instead.
 ---
 
 # Workbench browser (agent use)
 
 Nyte's workbench browser embeds a **real Chromium page** (an Electron `WebContentsView`) in the
 desktop app. Agents drive it through the `browser_*` tools from `packages/plugin/src/browser-tools.ts`,
-backed by the `BrowserAgent` contract in `packages/desktop/src/main/browser-agent.ts`. This file
+backed by the `BrowserAgent` contract in `packages/desktop/src/shared/browser-agent.ts`. This file
 is the mental model and the working loop. The tool list in `browser-tools.ts` is the source of
 truth; read it if a tool here seems missing or renamed.
 

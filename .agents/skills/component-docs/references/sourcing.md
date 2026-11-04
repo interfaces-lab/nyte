@@ -42,5 +42,5 @@ the page.
 - Every name in every import exists in the package.
 - Every `<include>` path resolves.
 - Every union is complete.
-- `pnpm --dir packages/docs types:check` passes.
+- `pnpm --dir packages/docs typecheck` passes.
 - `pnpm format` is clean.

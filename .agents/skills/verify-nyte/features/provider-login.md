@@ -35,24 +35,24 @@ Fast loop, from the repository root. Each finishes in seconds:
 - Wire (`label` and `browser` cross HTTP): `pnpm --dir packages/protocol exec vitest run test/client.test.ts`.
 - TUI dialog frames: `cd packages/tui && bun test test/ui/dialogs/auth.test.tsx test/app/app.test.tsx`.
 - Desktop and web screen in real Electron:
-  `pnpm --dir packages/app exec vitest run src/chrome/models-settings-login.electron.test.ts`.
+  `pnpm --dir packages/app exec vitest run src/settings/models-settings-login.electron.test.ts`.
   It builds its own harness; no app build is needed. The harness bridge
-  (`src/chrome/fixtures/login-harness-bridge.ts`) scripts login steps with `step(...)`, records
+  (`src/settings/fixtures/login-harness-bridge.ts`) scripts login steps with `step(...)`, records
   `models.login` input, `login.answer` codes and `host.openExternal` calls, and switches between
   a local and remote host with `setEndpoint(url)`.
 
-Journey: build the TUI, then `node packages/tui/qa/run.mjs --scenario tui`. The beats
-"/accounts chooses the login used by the next request" and "login fields paste, select all,
-delete and accept a replacement key" drive `/login` and `/accounts` in the compiled binary.
-The fixture seeds "Primary" and "Secondary" through `models.login` with `label`
-(`qa/workspace.ts`).
+Journey: `cd packages/tui && bun test test/app/menus.test.ts test/app/app.test.tsx`. The tests
+"/accounts switches the login the next request uses, without asking the provider" and "API-key
+login supports paste, select all, delete and repaste without exposing its value" drive
+`/accounts` and `/login` through the whole TUI over an in-process host. The `/accounts` test
+seeds "Primary" and "Secondary" through `models.login` with `label`.
 
 Proof for a sign-in change: the action (click or keys), the visible step, the recorded
 `models.login` input or answered code, and the saved account label from `models.accounts`.
 
 ## Gotchas
 
-- No runner reaches a real provider. QA blocks network egress, so the OAuth flows are proven
+- No runner reaches a real provider. The TUI tests answer with `fakeModels`, so the OAuth flows are proven
   only by the ai tests with stubbed `fetch`. Say so when reporting.
 - The Electron harness replaces the host connection. It proves what the screen sends and shows,
   not that a real host saved the account; pair it with the core test.
@@ -60,5 +60,4 @@ Proof for a sign-in change: the action (click or keys), the visible step, the re
   `setEndpoint`; a remote-host claim needs that test named in the report.
 - The client decides `browser` from the endpoint hostname (`localhost`, `127.0.0.1`, `[::1]`
   mean the host). A tunnel that forwards a remote host to a local port reads as local.
-- In the TUI scenario an earlier failed beat stops the rest. A failure in a later beat such as
-  `/quit` does not exercise sign-in; check which beat failed before blaming a login change.
+- Each TUI journey is its own test. Name the test that failed before blaming a login change.

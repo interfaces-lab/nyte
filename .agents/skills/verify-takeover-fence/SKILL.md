@@ -1,6 +1,15 @@
 ---
 name: verify-takeover-fence
 description: "Check the takeover design with TLC and the real SQLite implementation with deterministic behavior tests when changing presence, execution claims, ref fences, or SQLite refs.set."
+paths:
+  - "packages/core/src/compose.ts"
+  - "packages/core/src/engine/presence.ts"
+  - "packages/core/src/drive/execution.ts"
+  - "packages/core/src/fold/commit.ts"
+  - "packages/core/src/store/log.ts"
+  - "packages/core/src/store/refs.ts"
+  - "packages/host/src/sqlite.ts"
+  - "packages/host/test/takeover-fence.test.ts"
 ---
 
 # Verify the takeover fence

@@ -7,6 +7,9 @@ description: >
   desktop renderer; when adding or changing a token, role, theme, or base.css rule; or when a style
   "doesn't apply", looks different in dark mode, or ignores an appearance setting. Not for the public
   site's visual direction.
+paths:
+  - "packages/*/src/**/*.{ts,tsx}"
+contains: "@stylexjs/stylex"
 ---
 
 # Nyte styles
@@ -52,40 +55,52 @@ rules always beat base.css; an app style passed through `xstyle` always beats th
 1. **Dark mode is built in.** Every colour role is a `light-dark()` pair, resolved by
    `color-scheme` that `applyDisplayMode` sets. Components read a role; they never write
    `light-dark()`, a hex, `rgb()`, or `oklch()` themselves. A new colour need is a new role in
-   `roles.stylex.ts` plus a handle in `vars.stylex.ts`.
+   `roles.stylex.ts` plus a handle in `vars.stylex.ts`. (lint: `nyte-design/no-raw-colors`,
+   `nyte-design/no-light-dark-outside-tokens`; test: `pnpm --dir packages/app exec vitest --run style-cascade`)
 2. **Appearance inputs reach every surface.** The desktop writes `--nyte-font-size-base`,
    `--nyte-font-size-code`, `--nyte-font-family-*`, `--nyte-font-smoothing`, `--nyte-custom-hue`,
    and toggles transparency, cursor, and focus-modality classes on `<html>`; the canvas receives the
    same names. Derive from these; never hard-code what they control. Materials blend with
    `--nyte-reduce-transparency`; nothing paints a page background, because the window's vibrancy
-   shows through.
+   shows through. (test: `pnpm --dir packages/app exec vitest --run style-cascade`)
 3. **Text uses a whole style.** Pair size, line height, and tracking through `text.*`, or the
    `type.font*` and `type.leading*` handles together. Line heights round up to whole pixels at every
    UI size. 13px text needs at least the 16px line box. `lineHeight: 1` or `0` is for glyph boxes
-   only. Weights come from `type.weight*`.
+   only. Weights come from `type.weight*`. (lint: `nyte-design/no-raw-font-weight`; test:
+   `pnpm --dir packages/app exec vitest --run style-cascade`; the size and line-height pairing is not enforced)
 4. **Spacing reads the scale.** Padding, margin, gap, and inset use `space.*` (Tailwind steps on a
    4px unit, `space.px` for a hairline). A structural measurement gets a name in a schema file.
    Controls take their height from the `control` scale; rows and menu items from `row`, which
-   keeps the touch target. An `Icon` takes a glyph step for `size`.
+   keeps the touch target. An `Icon` takes a glyph step for `size`. (lint:
+   `nyte-design/spacing-scale`, `nyte-design/size-grid`, `nyte-design/control-size`)
 5. **CSS owns what CSS can resolve.** Hover, focus-within, sibling state, container size, entry
    animation, and fallbacks are StyleX features; check the capability block in
    `packages/ui/AGENTS.md` before reaching for React state, effects, observers, or
-   `requestAnimationFrame`.
+   `requestAnimationFrame`. (partly, lint: `nyte-code/no-direct-effect`)
 6. **Relational state stays scoped.** Parent-driven styling uses `stylex.when.*` with a marker the
    component defines, so an outer container's hover or focus cannot light up an inner control.
-7. **Hover is an enhancement.** Guard it with `@media (hover: hover) and (pointer: fine)`; every
-   action stays reachable by keyboard and touch. Focus rings read `appearance.focusRing`, which a
-   host clears while focus arrives by pointer.
+   (not enforced)
+7. **Hover is an enhancement.** Guard it with `@media (hover: hover) and (pointer: fine)`
+   (`[media.hover]`); every action stays reachable by keyboard and touch. A style that names a
+   disabled state excludes it from its hover, as Button does: `":hover:not([data-disabled])"`.
+   Focus rings read `appearance.focusRing`, which a host clears while focus arrives by pointer.
+   (lint: `nyte-design/guarded-hover`; test: `pnpm --dir packages/app exec vitest --run style-cascade`)
 8. **A control can look compact and still be easy to hit.** Visual size and `target.min` are
-   separate; under a coarse pointer the tokens grow, so never branch on touch by hand.
+   separate; under a coarse pointer the tokens grow, so never branch on touch by hand. (lint:
+   `nyte-design/touch-in-tokens`, `nyte-design/control-size`; test:
+   `pnpm --dir packages/app exec vitest --run control-targets`)
 9. **Every wrapper has a job:** semantics, behavior or a ref, a formatting context, or spacing
-   outside the child's border. A wrapper that only moves styles onto one child goes.
+   outside the child's border. A wrapper that only moves styles onto one child goes. (not
+   enforced)
 10. **A caller places a component; the component owns its look.** `xstyle` on a `@nyte-ai/ui`
     component accepts only what its contract in `packages/ui/src/styles/contracts.ts` allows, usually
     margins, self-alignment, and width. Choose its look with its props (`size`, `variant`, `tone`).
     Style a wrapper you own for anything else, or add an option to the component when the design
-    calls for one. Widen a contract only for a repeated, legitimate need.
-11. **Logical properties.** `paddingInline`, `insetInlineEnd`, `marginBlockStart`.
+    calls for one. Widen a contract only for a repeated, legitimate need. (lint:
+    `nyte-restyle/no-restyle`)
+11. **Logical properties.** `paddingInline`, `insetInlineEnd`, `marginBlockStart`. Centring is
+    the exception: `left: "50%"` with a -50% translate is symmetric, while a logical anchor flips
+    without its translate. (lint: `nyte-design/logical-properties`)
 
 ## Adding or changing a token
 
@@ -101,6 +116,6 @@ rules always beat base.css; an app style passed through `xstyle` always beats th
 - `pnpm --dir packages/app exec vitest --run test/style-cascade.electron.test.ts` proves layer order,
   dark-mode pairs, and appearance reachability in Chromium.
 - `pnpm lint` runs the `nyte-design` rules: spacing scale, size grid, raw colours, raw weights,
-  `light-dark()` outside tokens, control sizes, touch sizes; `nyte-restyle/no-restyle` explains a
+  `light-dark()` outside tokens, control sizes, touch sizes, guarded hover, logical properties; `nyte-restyle/no-restyle` explains a
   rejected `xstyle` property. Docs runs `@shadcn/lint` for its Tailwind classes.
 - For anything a user sees, load `verify-nyte` and look at it in light and dark.

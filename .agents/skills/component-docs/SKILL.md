@@ -7,6 +7,9 @@ description: >
   design system docs, styled components, tokens, theming, and any request to document a
   component or check that a page is still true.
   Not for marketing pages under src/routes, or code changes in packages/ui that leave the public exports unchanged.
+paths:
+  - "packages/docs/content/design/**"
+  - "packages/ui/package.json"
 ---
 
 # Cloud component docs
