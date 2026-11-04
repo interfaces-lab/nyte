@@ -1,4 +1,3 @@
-import type { McpOwner } from "../mcp-server/grants.ts";
 import { Buffer } from "node:buffer";
 import {
   API_MIN_REVISION,
@@ -16,12 +15,10 @@ import {
 } from "@nyte-ai/schema";
 import type {
   Activation,
-  Authority,
   CallFrame,
   ClientId,
   HelloFrame,
   Json,
-  PrincipalId,
   SdkErrorWire,
   Seq,
   SessionChange,
@@ -30,8 +27,7 @@ import type {
   TailnetStatus,
   WelcomeFrame,
 } from "@nyte-ai/schema";
-import type { Connection } from "@nyte-ai/core";
-import type { ServerHost, SessionAttachment, StreamingPart } from "@nyte-ai/core/server";
+import type { SessionAttachment, StreamingPart } from "@nyte-ai/core/server";
 import {
   answersOnce,
   asSdkError,
@@ -40,25 +36,12 @@ import {
   namesOperation,
 } from "@nyte-ai/protocol";
 import type { RawData, WebSocket } from "ws";
-import type { TailnetControl } from "../tailnet.ts";
+import type { SocketPeer } from "../listen-fetch.ts";
 import { bindConnection } from "./binding.ts";
 import { sharedClients } from "./clients.ts";
 import type { HostEvent, PerformEvent } from "./clients.ts";
 import { callBinding, UPLOADS } from "./handler.ts";
 import { sharedListeners } from "./listeners.ts";
-
-export type SocketPeer = {
-  readonly connection: Connection;
-  readonly principal: PrincipalId;
-  readonly authority: ReadonlySet<Authority>;
-  readonly local: boolean;
-  readonly server: ServerHost;
-  readonly tailnet?: TailnetControl;
-  readonly mcpServer?: McpOwner;
-  readonly execution?: { pause(): void; resume(): void };
-  readonly signal: AbortSignal;
-  leave(): void;
-};
 
 export type TextEntry =
   | {

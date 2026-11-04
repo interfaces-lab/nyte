@@ -5,6 +5,7 @@ import {
   chatPane,
   chatRow,
   chatTab,
+  composer,
   menuShortcut,
   messages,
   openChat,
@@ -332,7 +333,7 @@ test("the sidebar journey", async ({ desktop }) => {
     await closeMenus(page);
   });
 
-  await test.step("arrow keys move focus without opening a chat, and fold and unfold", async () => {
+  await test.step("arrow keys move focus without opening a chat, Enter opens it in the composer, and arrows fold and unfold", async () => {
     await workspace.click();
     await expect(workspace).toHaveAttribute("aria-expanded", "true");
     const tabs = page.getByRole("tablist", { name: "Tabs" });
@@ -347,6 +348,8 @@ test("the sidebar journey", async ({ desktop }) => {
     expect(await selected.textContent()).toBe(before);
     await page.keyboard.press("Enter");
     await expect(chatTab(page, name ?? "")).toHaveAttribute("aria-selected", "true");
+    await expect(composer(page)).toBeFocused();
+    await chatRow(page, name ?? "").focus();
     await page.keyboard.press("ArrowLeft");
     await expect(workspace).toBeFocused();
     await page.keyboard.press("ArrowLeft");

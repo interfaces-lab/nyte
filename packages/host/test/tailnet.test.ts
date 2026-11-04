@@ -52,7 +52,8 @@ if (BEHAVIOR !== "silent")
 
 if (BEHAVIOR === "garbage") say({ state: "sideways" });
 
-if (BEHAVIOR === "stuck" || BEHAVIOR === "ready") say({ state: "starting", https: "pending" });
+if (BEHAVIOR === "stuck" || BEHAVIOR === "ready")
+  say({ state: "starting", https: "pending", detail: "Connecting to the coordination server." });
 
 if (BEHAVIOR === "ready")
   say({ state: "running", dnsName: value("--hostname") + ".example.ts.net", https: "available" });
@@ -410,8 +411,8 @@ describe.skipIf(process.platform === "win32")("the embedded tailnet node", () =>
     const waitingSocket = await localSocket(waiting, stuck.home);
     await enable(waitingSocket);
     await until(
-      () => runs(stuck.home),
-      (found) => found.length === 1,
+      () => status(waitingSocket),
+      (answer) => statusCheck.Check(answer.body) && answer.body.detail !== undefined,
     );
     vi.advanceTimersByTime(119_000);
 

@@ -69,7 +69,12 @@ test("the composer journey", async ({ desktop }) => {
     await field.pressSequentially("/");
     await expect(field).toHaveAttribute("aria-expanded", "true");
     const skills = page.getByRole("listbox", { name: "Commands and skills" });
-    await expect(skills.getByRole("option")).toHaveCount(1);
+    await expect(skills.getByRole("option")).toHaveText([
+      /^rename/u,
+      /^websearch-key/u,
+      /^compact/u,
+      /^sidechat/u,
+    ]);
     await expect(
       skills.getByRole("option", { name: "compact Summarize the chat to free up context" }),
     ).toBeVisible();
