@@ -523,6 +523,16 @@ function ConversationScreen(conversation: SessionConversationProps): ReactElemen
                   }))
                 }
                 inputRef={attachComposer}
+                steer={
+                  subagentTray.kind === "detail"
+                    ? {
+                        session: subagentTray.sessionId,
+                        title:
+                          agents.find((agent) => agent.id === subagentTray.sessionId)?.title ??
+                          "this agent",
+                      }
+                    : undefined
+                }
               />
             )}
             {presentation === "side" && (
