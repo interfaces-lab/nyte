@@ -17,6 +17,7 @@ import { composerSendPlan } from "./composer-send.ts";
 import { composerStyles } from "./composer.stylex.ts";
 import { startDraft } from "./draft-start.ts";
 import { ModelPicker } from "./model-picker.tsx";
+import { ProjectMenu } from "../../projects/project-menu.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
 import {
   usePaneActions,
@@ -178,7 +179,13 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
         }}
       >
         <div {...props(sessionScreenStyles.blankColumn, toastAnchor && composerStyles.toastAnchor)}>
-          <WorkspaceContext active={activePane(layout).id === paneId} />
+          <WorkspaceContext active={activePane(layout).id === paneId}>
+            <ProjectMenu
+              folder={workspace?.id}
+              value={viewState.project}
+              onChange={(project) => updateViewState((state) => ({ ...state, project }))}
+            />
+          </WorkspaceContext>
           <ComposerFrame
             surface="new-chat"
             document={{

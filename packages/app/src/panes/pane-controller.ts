@@ -1,3 +1,4 @@
+import type { ProjectId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import {
   activePane,
@@ -178,10 +179,10 @@ export class PaneController {
     return this.dispatch({ kind: "select", selection: { kind: "blank" } });
   }
 
-  newChat(): PaneLayout {
+  newChat(project?: ProjectId): PaneLayout {
     const before = this.#snapshot.layout;
     const paneId = activePane(before).id;
-    this.#viewState.startNewDraft(paneId);
+    this.#viewState.startNewDraft(paneId, project);
     const layout = this.selectBlank();
 
     if (layout === before) this.#requestFocus(paneId);

@@ -324,6 +324,7 @@ export function kernelOver(
       settings: [],
       views: [],
       defaultWorkspace: null,
+      projects: [],
     }),
     turn: {
       run: (input) =>
