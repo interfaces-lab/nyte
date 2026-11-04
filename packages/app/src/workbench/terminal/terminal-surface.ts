@@ -7,53 +7,36 @@ import { createRenderer, measureCell } from "./terminal-renderer.ts";
 
 const BLINK_MS = 600;
 
-/** Past libghostty-vt's one-second hold limit, so the redraw lands after the hold is released. */
 const HELD_REDRAW_MS = 1_050;
 
 export interface TerminalSurface {
   readonly terminal: Terminal;
   readonly canvas: HTMLCanvasElement;
-  /** One cell in CSS pixels. */
   cell(): CellSize;
-  /** Paints on the next frame; `full` repaints every row. */
   draw(full: boolean): void;
-  /**
-   * Sizes the canvas and the grid to `element`, once it's laid out, and paints at once: resizing
-   * clears the opaque canvas to black, which a paint on the next frame would show for a frame on
-   * every frame of an animated resize.
-   */
   fit(): void;
-  /** Starts drawing into `element`. */
   show(): void;
-  /** Stops drawing and frees the canvas's backing store. */
   hide(): void;
-  /** Whether the cursor draws as focused, and blinks. */
   focus(focused: boolean): void;
-  /** Shows the cursor and restarts its blink, as typing does. */
   restartBlink(): void;
-  /** Underlines `link`, or nothing, from the next paint. */
   showLink(link: TerminalLink | null): void;
-  /** The row on screen at viewport row `y`. */
   row(y: number): Row | undefined;
   dispose(): void;
 }
 
 export interface SurfaceOptions {
-  /** A shell draws its cursor hollow while unfocused, command output draws none, and a preview always draws it as focused. */
   readonly cursor: "shell" | "none" | "always";
   readonly newlineMode: boolean;
   readonly reply: (bytes: Uint8Array) => void;
   readonly title: (title: string) => void;
-  /** After each paint, with the frame's cursor. */
   readonly painted: (cursor: Cursor | null) => void;
-  /** After the grid changes size. */
   readonly resized: () => void;
 }
 
-/**
- * A libghostty-vt terminal drawn on a canvas in `element`, in the app's theme, code font and
- * cursor preferences, and kept current as they change. Nothing draws until `show`.
- */
+type Repaint = "none" | "changed" | "full";
+
+type Restyle = "none" | "appearance" | "metrics";
+
 export async function openTerminalSurface(
   engine: Engine,
   element: HTMLElement,
@@ -72,8 +55,9 @@ export async function openTerminalSurface(
   renderer.setFont(appearance.font, metrics);
   let shown = false;
   let focused = false;
-  let frame = 0;
-  let full = true;
+  let tick = 0;
+  let repaint: Repaint = "full";
+  let restyle: Restyle = "none";
   let blinkTimer: ReturnType<typeof setInterval> | undefined;
   let blinkOn = true;
   let link: TerminalLink | null = null;
@@ -115,12 +99,60 @@ export async function openTerminalSurface(
     }, BLINK_MS);
   };
 
-  const paint = (): void => {
-    frame = 0;
+  const applyRestyle = (): void => {
+    if (restyle === "none") return;
+    const forced = restyle === "metrics";
+    restyle = "none";
+    const next = terminalAppearance();
+    const nextSignature = JSON.stringify(next);
+    const changed = nextSignature !== signature;
 
-    if (!shown) return;
-    const next = terminal.frame(full);
-    full = false;
+    if (!changed && !forced) return;
+
+    if (changed) {
+      if (next.scheme !== appearance.scheme) terminal.colorSchemeChanged(next.scheme);
+      appearance = next;
+      signature = nextSignature;
+      terminal.setPalette(next.palette);
+    }
+
+    ratio = window.devicePixelRatio;
+    metrics = measureCell(appearance.font, ratio);
+    renderer.setFont(appearance.font, metrics);
+    repaint = "full";
+  };
+
+  const applyLayout = (): void => {
+    if (!element.isConnected || element.clientWidth === 0 || element.clientHeight === 0) return;
+    const box = element.getBoundingClientRect();
+    const width = Math.floor(box.width * ratio);
+    const height = Math.floor(box.height * ratio);
+
+    if (canvas.width !== width || canvas.height !== height) {
+      renderer.resize(width, height);
+      repaint = "full";
+    }
+
+    const cols = Math.min(1000, Math.max(2, Math.floor(width / metrics.width)));
+    const rows = Math.min(1000, Math.max(1, Math.floor(height / metrics.height)));
+    const size = cell();
+
+    if (
+      cols === terminal.cols &&
+      rows === terminal.rows &&
+      size.width === sizedCell.width &&
+      size.height === sizedCell.height
+    )
+      return;
+    sizedCell = size;
+    terminal.resize(cols, rows, size);
+    repaint = "full";
+    options.resized();
+  };
+
+  const paint = (): void => {
+    const next = terminal.frame(repaint === "full");
+    repaint = "none";
 
     const active = focused || options.cursor === "always";
 
@@ -146,84 +178,38 @@ export async function openTerminalSurface(
     options.painted(next.cursor);
   };
 
-  const draw = (repaint: boolean): void => {
-    full = full || repaint;
+  const render = (): void => {
+    cancelAnimationFrame(tick);
+    tick = 0;
+    applyRestyle();
 
-    if (shown && frame === 0) frame = requestAnimationFrame(paint);
+    if (!shown) return;
+    applyLayout();
+
+    if (repaint !== "none") paint();
   };
 
-  const fit = (): void => {
-    if (!element.isConnected || element.clientWidth === 0 || element.clientHeight === 0) return;
-    const box = element.getBoundingClientRect();
-    const width = Math.floor(box.width * ratio);
-    const height = Math.floor(box.height * ratio);
-    const resized = canvas.width !== width || canvas.height !== height;
-
-    if (resized) renderer.resize(width, height);
-
-    const cols = Math.min(1000, Math.max(2, Math.floor(width / metrics.width)));
-    const rows = Math.min(1000, Math.max(1, Math.floor(height / metrics.height)));
-    const size = cell();
-
-    const regridded =
-      cols !== terminal.cols ||
-      rows !== terminal.rows ||
-      size.width !== sizedCell.width ||
-      size.height !== sizedCell.height;
-
-    if (regridded) {
-      sizedCell = size;
-      terminal.resize(cols, rows, size);
-      options.resized();
-    }
-
-    if (!resized && !regridded) return;
-    full = true;
-    cancelAnimationFrame(frame);
-    paint();
+  const schedule = (): void => {
+    if (tick === 0) tick = requestAnimationFrame(render);
   };
 
-  let fitFrame = 0;
+  const draw = (full: boolean): void => {
+    repaint = full || repaint === "full" ? "full" : "changed";
 
-  const scheduleFit = (): void => {
-    cancelAnimationFrame(fitFrame);
-    fitFrame = requestAnimationFrame(fit);
+    if (shown) schedule();
   };
 
-  const remeasure = (): void => {
-    ratio = window.devicePixelRatio;
-    metrics = measureCell(appearance.font, ratio);
-    renderer.setFont(appearance.font, metrics);
-    scheduleFit();
-    draw(true);
+  const requestRestyle = (next: Exclude<Restyle, "none">): void => {
+    restyle = restyle === "metrics" ? "metrics" : next;
+    schedule();
   };
 
-  const resize = new ResizeObserver(scheduleFit);
+  const resize = new ResizeObserver(render);
   resize.observe(element);
-  const root = document.documentElement;
 
-  let restyleFrame = 0;
+  const restyleObserver = new MutationObserver(() => requestRestyle("appearance"));
 
-  const readAppearance = (): void => {
-    restyleFrame = 0;
-    const next = terminalAppearance();
-    const nextSignature = JSON.stringify(next);
-
-    if (nextSignature === signature) return;
-    const schemeChanged = next.scheme !== appearance.scheme;
-    appearance = next;
-    signature = nextSignature;
-    terminal.setPalette(next.palette);
-
-    if (schemeChanged) terminal.colorSchemeChanged(next.scheme);
-    remeasure();
-  };
-
-  const restyle = new MutationObserver(() => {
-    if (restyleFrame === 0) restyleFrame = requestAnimationFrame(readAppearance);
-  });
-
-  restyle.observe(root, {
+  restyleObserver.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["style", "class", "data-display-mode"],
   });
@@ -233,10 +219,12 @@ export async function openTerminalSurface(
     resolution.removeEventListener("change", resolutionChanged);
     resolution = window.matchMedia(`(resolution: ${String(window.devicePixelRatio)}dppx)`);
     resolution.addEventListener("change", resolutionChanged);
-    remeasure();
+    requestRestyle("metrics");
   };
 
   resolution.addEventListener("change", resolutionChanged);
+
+  const fontsLoaded = (): void => requestRestyle("metrics");
 
   const restyleCursor = (): void => {
     terminal.setCursor(cursor());
@@ -251,24 +239,23 @@ export async function openTerminalSurface(
     draw(true);
   });
 
-  document.fonts.addEventListener("loadingdone", remeasure);
+  document.fonts.addEventListener("loadingdone", fontsLoaded);
 
   return {
     terminal,
     canvas,
     cell,
     draw,
-    fit,
+    fit: render,
     show() {
       shown = true;
-      fit();
-      draw(true);
+      render();
     },
     hide() {
       shown = false;
       focused = false;
-      cancelAnimationFrame(frame);
-      frame = 0;
+      cancelAnimationFrame(tick);
+      tick = 0;
       clearTimeout(heldTimer);
       stopBlink();
       renderer.release();
@@ -288,18 +275,16 @@ export async function openTerminalSurface(
       draw(false);
     },
     dispose() {
-      cancelAnimationFrame(frame);
-      cancelAnimationFrame(fitFrame);
-      cancelAnimationFrame(restyleFrame);
+      cancelAnimationFrame(tick);
       clearTimeout(heldTimer);
       stopBlink();
       resize.disconnect();
-      restyle.disconnect();
+      restyleObserver.disconnect();
       resolution.removeEventListener("change", resolutionChanged);
       stopCursorStyle();
       stopCursorBlink();
       stopScrollback();
-      document.fonts.removeEventListener("loadingdone", remeasure);
+      document.fonts.removeEventListener("loadingdone", fontsLoaded);
       shown = false;
       terminal.dispose();
       canvas.remove();
