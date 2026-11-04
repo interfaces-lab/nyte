@@ -508,9 +508,11 @@ describe("plugin api", () => {
       for (const row of change.tables.catalog?.upsert ?? []) rows.set(catalogRowKey(row), row);
     });
 
-    const hello = await until(() => rows.get("commands/hello"));
+    const latest = await until(() => [...rows.values()].at(-1));
 
-    expect(hello.entry).toMatchObject({ name: "hello", owner: "greeter" });
+    expect((await second.host.catalogs.read(latest.id)).commands).toEqual([
+      expect.objectContaining({ name: "hello", owner: "greeter" }),
+    ]);
     expect(second.kernel.host.current().catalog).toBe(generation);
     stop();
     attached.release();
