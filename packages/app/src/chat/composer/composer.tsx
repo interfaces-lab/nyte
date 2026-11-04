@@ -791,6 +791,7 @@ export function Composer({
               }
 
               if (document.text !== latestViewState.current.draft) {
+                recalled.current = undefined;
                 setFeedback((current) => (current?.kind === "error" ? current : undefined));
               }
 

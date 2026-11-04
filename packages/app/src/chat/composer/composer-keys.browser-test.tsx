@@ -176,6 +176,26 @@ async function recallPrompts(editor: HTMLElement): Promise<void> {
     throw new Error(`recall read the history before ${recallReads || "nothing"}`);
 }
 
+/** Editing a recalled prompt ends the walk, so stepping newer keeps the edit. */
+async function editRecalledPrompt(editor: HTMLElement): Promise<void> {
+  press(editor, "ArrowUp", { ctrlKey: true, altKey: true });
+  await until(
+    () => (editor.innerText === PROMPTS[2] ? true : null),
+    `the composer to read "${PROMPTS[2]}"`,
+  );
+  document.execCommand("insertText", false, " Edited.");
+  const edited = `${PROMPTS[2]} Edited.`;
+  await until(() => (editor.innerText === edited ? true : null), "the edited prompt");
+  press(editor, "ArrowDown", { ctrlKey: true, altKey: true });
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+
+  if (editor.innerText !== edited)
+    throw new Error(`stepping newer replaced the edited prompt with "${editor.innerText}"`);
+  document.execCommand("selectAll");
+  document.execCommand("insertText", false, DRAFT);
+  await until(() => (editor.innerText === DRAFT ? true : null), "the draft to come back");
+}
+
 /** Text typed while an earlier-prompts read is in flight outlives the read. */
 async function typeWhileRecalling(editor: HTMLElement): Promise<void> {
   const gate = Promise.withResolvers<void>();
@@ -298,6 +318,7 @@ export async function run(): Promise<string> {
 
     await until(() => stage.querySelector("[aria-label='Messages'] [data-row-key]"), "the chat");
     await recallPrompts(editor);
+    await editRecalledPrompt(editor);
     await typeWhileRecalling(editor);
     await openModelPicker(editor);
     await pasteFromNowhere(editor);
