@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { tabPanes, PRIMARY } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
@@ -183,7 +183,7 @@ export async function run(): Promise<string> {
     );
 
   render(
-    <TranscriptProvider paneId="primary" sessionId={SESSION}>
+    <TranscriptProvider paneId={PRIMARY} sessionId={SESSION}>
       <TranscriptContent
         rows={rows}
         ready
@@ -355,7 +355,7 @@ export async function run(): Promise<string> {
 
     const renderFollowing = (entries: readonly SizedRow[], growingKey?: string): void =>
       render(
-        <TranscriptProvider key="following" paneId="primary" sessionId={FOLLOW_SESSION}>
+        <TranscriptProvider key="following" paneId={PRIMARY} sessionId={FOLLOW_SESSION}>
           <TranscriptContent
             rows={entries}
             ready
@@ -508,7 +508,7 @@ export async function run(): Promise<string> {
 
     const renderReflow = (entries: readonly RowLayout[]): void =>
       render(
-        <TranscriptProvider key="reflow" paneId="primary" sessionId={REFLOW_SESSION}>
+        <TranscriptProvider key="reflow" paneId={PRIMARY} sessionId={REFLOW_SESSION}>
           <TranscriptContent
             rows={entries}
             ready

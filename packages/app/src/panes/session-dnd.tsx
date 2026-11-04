@@ -28,10 +28,12 @@ import type { ProjectId } from "@nyte-ai/schema";
 import { joinProject } from "../projects/join.ts";
 import { sessionId as sessionIdSchema } from "../data/schemas.ts";
 import { role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
-import { usePaneActions, usePaneControllerSnapshot } from "./pane-context.tsx";
-import { orderedPanes } from "./pane-layout.ts";
+import { usePaneActions, usePaneLayout } from "./pane-context.tsx";
+import type { Layout, PaneId } from "./layout.ts";
+import type { PaneContent } from "./pane-kinds.ts";
+import { chatPanes } from "./pane-layout.ts";
 import { occludes } from "../components/overlay-occlusion.ts";
-import type { DropPlacement, PaneId, PaneLayout } from "./pane-layout.ts";
+import type { DropPlacement } from "./pane-layout.ts";
 import { placementInRect, SESSION_DRAG_ACTIVATION_DISTANCE } from "./session-dnd-geometry.ts";
 import type { SessionDragPoint } from "./session-dnd-geometry.ts";
 
@@ -52,7 +54,7 @@ export interface SessionDropTarget {
 
 const sessionDropDataSchema = Type.Object({
   kind: Type.Literal("session-pane"),
-  paneId: Type.Enum(["primary", "secondary"]),
+  paneId: Type.String({ minLength: 1 }),
   placement: Type.Enum(DROP_PLACEMENTS),
 });
 
@@ -120,7 +122,7 @@ function matchingDropContainer(
   return containers.find((container) => container.id === targetId);
 }
 
-function collisionDetector(layout: PaneLayout): CollisionDetection {
+function collisionDetector(layout: Layout<PaneContent>): CollisionDetection {
   return ({ active, collisionRect, droppableContainers, droppableRects, pointerCoordinates }) => {
     const dragged = parseSessionDragData(active.data.current);
 
@@ -143,9 +145,11 @@ function collisionDetector(layout: PaneLayout): CollisionDetection {
     if (project !== undefined)
       return [{ id: project.id, data: { droppableContainer: project, value: 0 } }];
 
-    for (const pane of orderedPanes(layout)) {
+    const panes = chatPanes(layout);
+
+    for (const pane of panes) {
       const paneContainer = matchingDropContainer(droppableContainers, {
-        paneId: pane.id,
+        paneId: pane.pane,
         placement: "center",
       });
 
@@ -166,10 +170,10 @@ function collisionDetector(layout: PaneLayout): CollisionDetection {
         return [];
       }
 
-      const placement = placementInRect(rect, point, layout.kind === "split");
+      const placement = placementInRect(rect, point, panes.length > 1);
 
       if (placement === undefined) return [];
-      const target = { paneId: pane.id, placement } satisfies SessionDropTarget;
+      const target = { paneId: pane.pane, placement } satisfies SessionDropTarget;
       const container = matchingDropContainer(droppableContainers, target);
 
       return container === undefined
@@ -185,7 +189,9 @@ function dropTargetFromEvent(event: DragEndEvent): SessionDropTarget | undefined
   if (event.over === null) return undefined;
   const data = parseSessionDropData(event.over.data.current);
 
-  return data === undefined ? undefined : { paneId: data.paneId, placement: data.placement };
+  return data === undefined
+    ? undefined
+    : { paneId: asId<"pane">(data.paneId), placement: data.placement };
 }
 
 function SessionDragSurface({ children }: { readonly children: ReactNode }): ReactElement {
@@ -212,7 +218,7 @@ function SessionDragSurface({ children }: { readonly children: ReactNode }): Rea
 }
 
 export function SessionDndProvider({ children }: { readonly children: ReactNode }): ReactElement {
-  const { layout } = usePaneControllerSnapshot();
+  const layout = usePaneLayout((current) => current);
   const panes = usePaneActions();
   const detectCollision = collisionDetector(layout);
 
@@ -297,5 +303,7 @@ export function useSessionDropTarget(): SessionDropTarget | undefined {
   if (dragged === undefined || over === null) return undefined;
   const target = parseSessionDropData(over.data.current);
 
-  return target === undefined ? undefined : { paneId: target.paneId, placement: target.placement };
+  return target === undefined
+    ? undefined
+    : { paneId: asId<"pane">(target.paneId), placement: target.placement };
 }

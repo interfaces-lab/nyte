@@ -16,9 +16,9 @@ import {
   hideFromPanes,
   useCanSplitPane,
   usePaneActions,
-  usePaneControllerSnapshot,
+  usePaneLayout,
 } from "../panes/pane-context.tsx";
-import { activePane } from "../panes/pane-layout.ts";
+import { activeSelection, chatPanes, sameSelection } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { chatDirectory, chatTitle, useChat } from "../chats/index.ts";
 import { useHostState } from "../data/host.ts";
@@ -111,7 +111,7 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
           openBeside: (sessionId) => {
             shellActions.showWorkspace();
             const controller = windowTabs.controller();
-            controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
+            controller.drop(sessionId, controller.getSnapshot().focus[0], "right");
           },
           archive: (session) => {
             if (!session.archived && sessionIsRunning(session, chatDirectory())) {
@@ -161,7 +161,6 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
 
 export function Titlebar(): ReactElement {
   const host = useHostState();
-  const { layout } = usePaneControllerSnapshot();
   const panes = usePaneActions();
   const canSplit = useCanSplitPane();
   const sidebarControl = useSidebar();
@@ -169,7 +168,8 @@ export function Titlebar(): ReactElement {
   const page = useStagePage();
   const mac = nyte.platform === "darwin";
   const capabilities = clientCapabilities(nyte.host);
-  const selection = activePane(layout).selection;
+  const selection = usePaneLayout(activeSelection, sameSelection);
+  const onePane = usePaneLayout((layout) => chatPanes(layout).length === 1);
   const workspacePath = host.data.workspace?.path;
   const workbenchView = useWorkbenchView(workspacePath);
   const viewKey = workbenchView.key;
@@ -235,33 +235,31 @@ export function Titlebar(): ReactElement {
               )}
             </span>
           )}
-          {(workspaceVisible || strip) &&
-            layout.kind === "single" &&
-            !(workbenchOpen && maximized) && (
-              <span {...props(titlebarStyles.actionTrack)}>
-                <Menu>
-                  <MenuTrigger render={<Button iconOnly icon="more" aria-label="Chat actions" />} />
-                  <MenuContent align="end">
-                    <MenuItem
-                      icon="split-down"
-                      meta={clientActionShortcut(clientActions.splitDown, mac)}
-                      disabled={!canSplit || !workspaceVisible}
-                      onClick={() => panes.split("down")}
-                    >
-                      {clientActions.splitDown.label}
-                    </MenuItem>
-                    <MenuItem
-                      icon="split-right"
-                      meta={clientActionShortcut(clientActions.splitRight, mac)}
-                      disabled={!canSplit || !workspaceVisible}
-                      onClick={() => panes.split("right")}
-                    >
-                      {clientActions.splitRight.label}
-                    </MenuItem>
-                  </MenuContent>
-                </Menu>
-              </span>
-            )}
+          {(workspaceVisible || strip) && onePane && !(workbenchOpen && maximized) && (
+            <span {...props(titlebarStyles.actionTrack)}>
+              <Menu>
+                <MenuTrigger render={<Button iconOnly icon="more" aria-label="Chat actions" />} />
+                <MenuContent align="end">
+                  <MenuItem
+                    icon="split-down"
+                    meta={clientActionShortcut(clientActions.splitDown, mac)}
+                    disabled={!canSplit || !workspaceVisible}
+                    onClick={() => panes.split("down")}
+                  >
+                    {clientActions.splitDown.label}
+                  </MenuItem>
+                  <MenuItem
+                    icon="split-right"
+                    meta={clientActionShortcut(clientActions.splitRight, mac)}
+                    disabled={!canSplit || !workspaceVisible}
+                    onClick={() => panes.split("right")}
+                  >
+                    {clientActions.splitRight.label}
+                  </MenuItem>
+                </MenuContent>
+              </Menu>
+            </span>
+          )}
         </span>
         {workspaceVisible && (
           <div

@@ -17,8 +17,8 @@ import {
   clientActionKeys,
   clientActions,
 } from "../contract/client-actions.ts";
-import { usePaneActions, usePaneControllerSnapshot } from "../panes/pane-context.tsx";
-import { activePane } from "../panes/pane-layout.ts";
+import { hideFromPanes, usePaneActions, usePaneLayout } from "../panes/pane-context.tsx";
+import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { nyte } from "../contract/nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useForgetWorkspace, useWorkspaces, type RailWorkspace } from "../data/workspaces.ts";
@@ -120,7 +120,6 @@ export function Sidebar(): ReactElement {
   const workspaceSessions = useWorkspaceSessions();
   const server = useServerState();
   const forgetWorkspace = useForgetWorkspace();
-  const { layout } = usePaneControllerSnapshot();
   const chats = useChats((directory) => directory);
   const unread = useChatWindow((snapshot) => snapshot.unread);
   const now = useNowMinute();
@@ -150,7 +149,7 @@ export function Sidebar(): ReactElement {
     server.data?.kind === "unavailable" ? server.data.problem.message : undefined;
 
   const flat = view.grouping === "none" || view.grouping === "inbox";
-  const selection = activePane(layout).selection;
+  const selection = usePaneLayout(activeSelection, sameSelection);
   const paneSessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const activeSessionId = page === undefined ? paneSessionId : undefined;
   const mac = nyte.platform === "darwin";

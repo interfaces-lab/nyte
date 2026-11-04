@@ -252,7 +252,7 @@ async function type(editor: HTMLElement, text: string): Promise<void> {
 }
 
 function readScroll(sessionId: SessionId): ScrollViewState | undefined {
-  return panes.viewState.readSession(sessionId).scroll.primary;
+  return panes.viewState.readSession(sessionId).scroll[panes.getSnapshot().focus[0]];
 }
 
 const failures: string[] = [];

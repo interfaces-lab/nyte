@@ -1,13 +1,17 @@
 import type { SessionId } from "@nyte-ai/sdk";
+import { createLayout, reduceLayout } from "../panes/layout.ts";
+import type { Layout } from "../panes/layout.ts";
+import { paneRules } from "../panes/pane-kinds.ts";
+import type { PaneContent } from "../panes/pane-kinds.ts";
 import {
-  activePane,
   activeSelection,
-  createSinglePane,
-  orderedPanes,
-  reducePaneLayout,
+  chatContent,
+  chatPanes,
+  findSessionTab,
   sameSelection,
+  showChat,
 } from "../panes/pane-layout.ts";
-import type { PaneLayout, PaneSelection, PaneState } from "../panes/pane-layout.ts";
+import type { PaneSelection } from "../panes/pane-layout.ts";
 
 /** A page has its own tab. `section` is Customize's section, or a project's id, or `new`. */
 export type Page = {
@@ -18,12 +22,11 @@ export type Page = {
 
 export type Place = PaneSelection | Page;
 
-type SinglePane = Extract<PaneLayout, { readonly kind: "single" }>;
-
+/** A preview's layout is one pane showing one chat. */
 export type View =
   | { readonly kind: "page"; readonly page: Page }
-  | { readonly kind: "panes"; readonly layout: PaneLayout }
-  | { readonly kind: "preview"; readonly layout: SinglePane };
+  | { readonly kind: "panes"; readonly layout: Layout<PaneContent> }
+  | { readonly kind: "preview"; readonly layout: Layout<PaneContent> };
 
 /** A tab shows one place: a chat, a new chat, or a page. Opening a place that has a tab switches to it. */
 export interface Tab {
@@ -65,7 +68,7 @@ export type WindowAction =
       readonly target: OpenIntent | "here";
     }
   /** A tab's panes changed; a background tab's change lands too, as when its draft starts a chat. */
-  | { readonly kind: "layout"; readonly tabId: string; readonly layout: PaneLayout }
+  | { readonly kind: "layout"; readonly tabId: string; readonly layout: Layout<PaneContent> }
   | { readonly kind: "page-section"; readonly section: string }
   | { readonly kind: "leave-page" }
   | { readonly kind: "new-tab" }
@@ -86,7 +89,8 @@ export type WindowAction =
 
 const BLANK: PaneSelection = { kind: "blank" };
 
-const BLANK_LAYOUT = createSinglePane();
+/** What a page tab hands a pane reader: one new chat, never shown or stored. */
+const PAGE_LAYOUT = createLayout(chatContent(BLANK), { newId: () => "page" });
 
 const CLOSED_LIMIT = 25;
 
@@ -117,29 +121,34 @@ export function findChatTab(state: WindowState): Tab | undefined {
   return state.tabs.find((tab) => tab.id === id);
 }
 
-export function tabLayout(tab: Tab): PaneLayout {
-  return tab.view.kind === "page" ? BLANK_LAYOUT : tab.view.layout;
+export function tabLayout(tab: Tab): Layout<PaneContent> {
+  return tab.view.kind === "page" ? PAGE_LAYOUT : tab.view.layout;
 }
 
-/** The focused pane's place first, then the other pane's. */
+/** The focused pane's place first, then the other panes' in reading order. */
 export function tabPlaces(tab: Tab): readonly Place[] {
   if (tab.view.kind === "page") return [tab.view.page];
-  const focused = activePane(tab.view.layout).id;
+  const focused = tab.view.layout.focus[0];
 
-  return orderedPanes(tab.view.layout)
-    .toSorted((left, right) => Number(right.id === focused) - Number(left.id === focused))
+  return chatPanes(tab.view.layout)
+    .toSorted((left, right) => Number(right.pane === focused) - Number(left.pane === focused))
     .map((pane) => pane.selection);
 }
 
-function placeView(place: Place): View {
-  return showsPage(place)
-    ? { kind: "page", page: place }
-    : { kind: "panes", layout: createSinglePane("primary", place) };
+function chatLayout(place: PaneSelection, createId: () => string): Layout<PaneContent> {
+  return createLayout(chatContent(place), { newId: createId });
 }
 
-export function initialWindow(id: string): WindowState {
+function placeView(place: Place, createId: () => string): View {
+  return showsPage(place)
+    ? { kind: "page", page: place }
+    : { kind: "panes", layout: chatLayout(place, createId) };
+}
+
+/** `createId` names the new chat's pane and tab. */
+export function initialWindow(id: string, createId: () => string): WindowState {
   return {
-    tabs: [{ id, view: placeView(BLANK) }],
+    tabs: [{ id, view: placeView(BLANK, createId) }],
     activeTabId: id,
     recent: [],
     closed: [],
@@ -186,23 +195,25 @@ function afterActive(state: WindowState): number {
   return state.tabs.findIndex((tab) => tab.id === state.activeTabId) + 1;
 }
 
+/** One pane showing one tab, a chat: the shape of a preview and of a tab with nothing split. */
+function showsOneChat(layout: Layout<PaneContent>): boolean {
+  return layout.root.kind === "pane" && layout.root.tabs.length === 1;
+}
+
 /** A tab showing nothing but a blank pane: the next place opened from it uses it, and it isn't worth reopening. */
 function showsOnlyBlank(tab: Tab): boolean {
   return (
     tab.view.kind !== "page" &&
-    tab.view.layout.kind === "single" &&
-    tab.view.layout.selection.kind === "blank"
+    showsOneChat(tab.view.layout) &&
+    activeSelection(tab.view.layout).kind === "blank"
   );
 }
 
-/** A session can sit in either pane of a split; a page is one per window. */
+/** A session can sit in any pane of a tab; a page is one per window. */
 function showing(tab: Tab, place: Place): boolean {
   if (tab.view.kind === "page") return showsPage(place) && tab.view.page.kind === place.kind;
 
-  return (
-    place.kind === "session" &&
-    orderedPanes(tab.view.layout).some((pane) => sameSelection(pane.selection, place))
-  );
+  return place.kind === "session" && findSessionTab(tab.view.layout, place.sessionId) !== undefined;
 }
 
 /** Brings the place forward inside the tab already showing it. */
@@ -214,14 +225,11 @@ function reveal(tab: Tab, place: Place): Tab {
     return { ...tab, view: { kind: "page", page } };
   }
 
-  if (showsPage(place)) return tab;
+  if (place.kind !== "session") return tab;
+  const shown = findSessionTab(tab.view.layout, place.sessionId);
 
-  const pane = orderedPanes(tab.view.layout).find((candidate) =>
-    sameSelection(candidate.selection, place),
-  );
-
-  if (pane === undefined) return tab;
-  const layout = reducePaneLayout(tab.view.layout, { kind: "focus", paneId: pane.id });
+  if (shown === undefined) return tab;
+  const layout = reduceLayout(tab.view.layout, { kind: "activate", tab: shown.tab }, paneRules);
 
   return layout === tab.view.layout ? tab : { ...tab, view: { kind: "panes", layout } };
 }
@@ -236,10 +244,18 @@ function openInChatTab(
   if (tab === undefined) {
     const id = createId();
 
-    return activate(insertTab(state, { id, view: placeView(place) }, state.tabs.length), id);
+    return activate(
+      insertTab(state, { id, view: placeView(place, createId) }, state.tabs.length),
+      id,
+    );
   }
 
-  const layout = reducePaneLayout(tabLayout(tab), { kind: "select", selection: place });
+  const rules = { ...paneRules, newId: createId };
+
+  const layout = showChat(tabLayout(tab), place).reduce(
+    (current, action) => reduceLayout(current, action, rules),
+    tabLayout(tab),
+  );
 
   return activate(withTab(state, { ...tab, view: { kind: "panes", layout } }), tab.id);
 }
@@ -253,7 +269,10 @@ function openBlank(state: WindowState, createId: () => string): WindowState {
   if (waiting !== undefined) return activate(state, waiting.id);
   const id = createId();
 
-  return activate(insertTab(state, { id, view: placeView(BLANK) }, state.tabs.length), id);
+  return activate(
+    insertTab(state, { id, view: placeView(BLANK, createId) }, state.tabs.length),
+    id,
+  );
 }
 
 function open(
@@ -283,7 +302,7 @@ function open(
     const active = activeTab(state);
 
     return showsOnlyBlank(active)
-      ? withTab(state, { ...active, view: placeView(place) })
+      ? withTab(state, { ...active, view: placeView(place, createId) })
       : openTab(state, place, true, createId);
   }
 
@@ -298,7 +317,7 @@ function openTab(
   shown: boolean,
   createId: () => string,
 ): WindowState {
-  const tab: Tab = { id: createId(), view: placeView(place) };
+  const tab: Tab = { id: createId(), view: placeView(place, createId) };
   const opened = insertTab(state, tab, afterActive(state));
 
   return shown ? activate(opened, tab.id) : opened;
@@ -316,7 +335,7 @@ function openPreview(
 
   const tab: Tab = {
     id: slot?.id ?? createId(),
-    view: { kind: "preview", layout: { kind: "single", paneId: "primary", selection: place } },
+    view: { kind: "preview", layout: chatLayout(place, createId) },
   };
 
   const placed =
@@ -385,21 +404,21 @@ function removeTabs(
       activeTabId: next,
       recent: remaining.recent.filter((id) => id !== next),
     };
-  const fresh: Tab = { id: createId(), view: placeView(BLANK) };
+  const fresh: Tab = { id: createId(), view: placeView(BLANK, createId) };
 
   return { ...remaining, tabs: [fresh], activeTabId: fresh.id };
 }
 
 /** A preview stays one while its pane shows the same chat; splitting it or showing another chat keeps it. */
-function reduceLayout(state: WindowState, tabId: string, layout: PaneLayout): WindowState {
+function changeLayout(state: WindowState, tabId: string, layout: Layout<PaneContent>): WindowState {
   const tab = state.tabs.find((candidate) => candidate.id === tabId);
 
   if (tab === undefined || tab.view.kind === "page") return state;
 
   if (
     tab.view.kind === "preview" &&
-    layout.kind === "single" &&
-    sameSelection(layout.selection, tab.view.layout.selection)
+    showsOneChat(layout) &&
+    sameSelection(activeSelection(layout), activeSelection(tab.view.layout))
   )
     return withTab(state, { ...tab, view: { kind: "preview", layout } });
 
@@ -420,21 +439,31 @@ function closeChats(
   sessionIds: ReadonlySet<SessionId>,
   createId: () => string,
 ): WindowState {
-  const gone = (pane: PaneState): boolean =>
-    pane.selection.kind === "session" && sessionIds.has(pane.selection.sessionId);
+  const goneChats = (layout: Layout<PaneContent>) =>
+    chatPanes(layout).filter(
+      (chat) => chat.selection.kind === "session" && sessionIds.has(chat.selection.sessionId),
+    );
 
   const emptied = new Set(
     state.tabs
-      .filter((tab) => tab.view.kind !== "page" && orderedPanes(tab.view.layout).every(gone))
+      .filter((tab) => {
+        if (tab.view.kind === "page") return false;
+        const gone = goneChats(tab.view.layout).length;
+
+        return gone > 0 && gone === chatPanes(tab.view.layout).length;
+      })
       .map((tab) => tab.id),
   );
 
   const collapsed = state.tabs.flatMap((tab): Tab[] => {
     if (tab.view.kind === "page" || emptied.has(tab.id)) return [];
-    const pane = orderedPanes(tab.view.layout).find(gone);
+    const gone = goneChats(tab.view.layout);
 
-    if (pane === undefined) return [];
-    const layout = reducePaneLayout(tab.view.layout, { kind: "close", paneId: pane.id });
+    if (gone.length === 0) return [];
+    const layout = gone.reduce(
+      (current, chat) => reduceLayout(current, { kind: "close", tab: chat.tab }, paneRules),
+      tab.view.layout,
+    );
 
     return [{ ...tab, view: { kind: "panes", layout } }];
   });
@@ -463,7 +492,7 @@ export function reduce(
     case "open":
       return open(state, action.place, action.target, createId);
     case "layout":
-      return reduceLayout(state, action.tabId, action.layout);
+      return changeLayout(state, action.tabId, action.layout);
     case "page-section": {
       const tab = activeTab(state);
 

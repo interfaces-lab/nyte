@@ -18,12 +18,6 @@
   initial-value: 0px;
 }
 
-@property --nyte-pane-split-ratio {
-  syntax: "<number>";
-  inherits: false;
-  initial-value: 0.5;
-}
-
 @layer base {
   html,
   body,

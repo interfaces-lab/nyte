@@ -1,6 +1,7 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import type { ChatDirectory } from "../chats/index.ts";
-import { orderedPanes } from "../panes/pane-layout.ts";
+import { tabShown } from "../panes/layout.ts";
+import { chatPanes } from "../panes/pane-layout.ts";
 import { activeTab } from "../tabs/model.ts";
 import type { WindowState } from "../tabs/model.ts";
 import type { TrayView } from "./tray.ts";
@@ -49,8 +50,12 @@ function place(view: WindowView): Omit<Exposure, "unread"> {
 
   if (view.settings || tab.view.kind === "page") return { shown: NONE, looking: NONE };
 
-  const panes = orderedPanes(tab.view.layout).flatMap((pane) =>
-    pane.selection.kind === "session" ? [pane.selection.sessionId] : [],
+  const layout = tab.view.layout;
+
+  const panes = chatPanes(layout).flatMap((pane) =>
+    pane.selection.kind === "session" && tabShown(layout, pane.tab)
+      ? [pane.selection.sessionId]
+      : [],
   );
 
   const detail = (parent: SessionId): SessionId | undefined => {

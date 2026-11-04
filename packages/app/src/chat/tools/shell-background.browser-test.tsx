@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { tabPanes, PRIMARY } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -182,7 +182,7 @@ function Stage({
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delay={0} closeDelay={0} timeout={0}>
         <PaneControllerProvider controller={panes}>
-          <TranscriptProvider paneId="primary" sessionId={SESSION}>
+          <TranscriptProvider paneId={PRIMARY} sessionId={SESSION}>
             <div style={{ padding: 16 }}>
               <ShellStep density={density} />
             </div>

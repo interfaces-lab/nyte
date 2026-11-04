@@ -20,11 +20,11 @@ import { ProjectMenu } from "../../projects/project-menu.tsx";
 import { WorkspaceContext } from "../../panes/workspace-context.tsx";
 import {
   usePaneActions,
-  usePaneControllerSnapshot,
+  usePaneFocused,
+  useSplitPanes,
   usePaneViewStateStore,
 } from "../../panes/pane-context.tsx";
-import { activePane } from "../../panes/pane-layout.ts";
-import type { PaneId } from "../../panes/pane-layout.ts";
+import type { PaneId } from "../../panes/layout.ts";
 import type { BlankViewState, ChatDraft } from "../../panes/session-view-state.ts";
 import { useCatalog } from "../../data/catalog.ts";
 import { useHostState } from "../../data/host.ts";
@@ -80,7 +80,8 @@ export function BlankConversation(conversation: BlankConversationProps): ReactEl
 }
 
 function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement {
-  const { layout } = usePaneControllerSnapshot();
+  const split = useSplitPanes();
+  const focused = usePaneFocused(paneId);
   const workspace = useChatFolder();
   const catalog = useCatalog();
   const workspaceFiles = useMentionFiles(workspace, workspace !== undefined);
@@ -171,7 +172,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   return (
     <div {...props(sessionScreenStyles.screen)}>
       <StartupReadsRelease />
-      {layout.kind === "split" && <PaneHeader paneId={paneId} title="New chat" />}
+      {split && <PaneHeader paneId={paneId} title="New chat" />}
       <div
         ref={bindFileDrop}
         {...props(sessionScreenStyles.blank)}
@@ -182,7 +183,7 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
         }}
       >
         <div {...props(sessionScreenStyles.blankColumn)}>
-          <WorkspaceContext active={activePane(layout).id === paneId}>
+          <WorkspaceContext active={focused}>
             <ProjectMenu
               folder={workspace?.id}
               value={viewState.project}

@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { tabPanes, PRIMARY } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { Activity } from "react";
 import { flushSync } from "react-dom";
@@ -171,7 +171,7 @@ function mount(session: SessionId) {
     flushSync(() =>
       root.render(
         <PaneControllerProvider controller={panes}>
-          <TranscriptProvider paneId="primary" sessionId={session}>
+          <TranscriptProvider paneId={PRIMARY} sessionId={session}>
             <Activity mode={mode}>
               <LiveTurn state="planning" />
             </Activity>

@@ -1,126 +1,27 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { sessionId } from "../data/schemas.ts";
-
-export type PaneId = "primary" | "secondary";
-
-export type SplitDirection = "right" | "down";
+import { activeTab, focusedPane, layoutPanes, MAX_PANES } from "./layout.ts";
+import type { Layout, LayoutAction, Pane, PaneId, PaneTabId } from "./layout.ts";
+import type { PaneContent } from "./pane-kinds.ts";
 
 export type DropPlacement = "center" | "top" | "bottom" | "left" | "right";
-
-type EdgeDropPlacement = Exclude<DropPlacement, "center">;
 
 export type PaneSelection =
   | { readonly kind: "blank" }
   | { readonly kind: "session"; readonly sessionId: SessionId };
 
-export interface PaneState {
-  readonly id: PaneId;
+/** The chat a pane shows: its active tab, when that tab is a chat. */
+export interface ChatPane {
+  readonly pane: PaneId;
+  readonly tab: PaneTabId;
   readonly selection: PaneSelection;
 }
 
-type SplitLayout = {
-  readonly kind: "split";
-  readonly direction: SplitDirection;
-  readonly ratio: number;
-  readonly leading: PaneId;
-  readonly primary: PaneSelection;
-  readonly secondary: PaneSelection;
-  readonly activePaneId: PaneId;
-};
+/** No pane is drawn or resized smaller than this along either axis. */
+export const MIN_PANE_SIZE = 320;
 
-export type PaneLayout =
-  | { readonly kind: "single"; readonly paneId: PaneId; readonly selection: PaneSelection }
-  | SplitLayout;
-
-export type PaneLayoutAction =
-  | { readonly kind: "select"; readonly selection: PaneSelection }
-  | { readonly kind: "select-in-pane"; readonly paneId: PaneId; readonly selection: PaneSelection }
-  | { readonly kind: "split"; readonly direction: SplitDirection }
-  | { readonly kind: "close"; readonly paneId: PaneId }
-  | { readonly kind: "focus"; readonly paneId: PaneId }
-  | { readonly kind: "resize"; readonly ratio: number }
-  | {
-      readonly kind: "drop-session";
-      readonly sessionId: SessionId;
-      readonly targetPaneId: PaneId;
-      readonly placement: DropPlacement;
-    }
-  | { readonly kind: "remove-session"; readonly sessionId: SessionId };
-
-const BLANK_SELECTION: PaneSelection = { kind: "blank" };
-
-const DEFAULT_SPLIT_RATIO = 0.5;
-
-const MIN_SPLIT_RATIO = 0.2;
-
-const MAX_SPLIT_RATIO = 0.8;
-
-const MIN_PANE_WIDTH = 320;
-
-export function canSplitPane(layout: PaneLayout, windowWidth: number): boolean {
-  return layout.kind === "single" && windowWidth >= 2 * MIN_PANE_WIDTH;
-}
-
-export function createSinglePane(
-  paneId: PaneId = "primary",
-  selection: PaneSelection = BLANK_SELECTION,
-): PaneLayout {
-  return { kind: "single", paneId, selection };
-}
-
-export function paneSelection(layout: PaneLayout, paneId: PaneId): PaneSelection | undefined {
-  if (layout.kind === "single") return layout.paneId === paneId ? layout.selection : undefined;
-
-  return paneId === "primary" ? layout.primary : layout.secondary;
-}
-
-export function activePane(layout: PaneLayout): PaneState {
-  if (layout.kind === "single") return { id: layout.paneId, selection: layout.selection };
-  const id = layout.activePaneId;
-
-  return { id, selection: id === "primary" ? layout.primary : layout.secondary };
-}
-
-export function orderedPanes(layout: PaneLayout): readonly PaneState[] {
-  if (layout.kind === "single") return [{ id: layout.paneId, selection: layout.selection }];
-
-  const panes: readonly PaneState[] = [
-    { id: "primary", selection: layout.primary },
-    { id: "secondary", selection: layout.secondary },
-  ];
-
-  return layout.leading === "primary" ? panes : panes.toReversed();
-}
-
-export function paneForSession(layout: PaneLayout, sessionId: SessionId): PaneId | undefined {
-  return orderedPanes(layout).find(
-    (pane) => pane.selection.kind === "session" && pane.selection.sessionId === sessionId,
-  )?.id;
-}
-
-export function activeSelection(layout: PaneLayout): PaneSelection {
-  return activePane(layout).selection;
-}
-
-export function clampSplitRatio(ratio: number): number {
-  if (!Number.isFinite(ratio)) return DEFAULT_SPLIT_RATIO;
-
-  return Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, ratio));
-}
-
-export function clampSplitRatioForSize(ratio: number, size: number): number {
-  const clamped = clampSplitRatio(ratio);
-
-  if (!Number.isFinite(size) || size < 2 * MIN_PANE_WIDTH) return clamped;
-  const floor = MIN_PANE_WIDTH / size;
-
-  return Math.min(1 - floor, Math.max(floor, clamped));
-}
-
-function otherPaneId(paneId: PaneId): PaneId {
-  return paneId === "primary" ? "secondary" : "primary";
-}
+const BLANK: PaneSelection = { kind: "blank" };
 
 export function sameSelection(left: PaneSelection, right: PaneSelection): boolean {
   if (left.kind !== right.kind) return false;
@@ -130,236 +31,81 @@ export function sameSelection(left: PaneSelection, right: PaneSelection): boolea
   return left.sessionId === right.sessionId;
 }
 
-function withPaneSelection(
-  layout: SplitLayout,
-  paneId: PaneId,
-  selection: PaneSelection,
-): SplitLayout {
-  const current = paneId === "primary" ? layout.primary : layout.secondary;
-
-  if (sameSelection(current, selection)) return layout;
-
-  return paneId === "primary"
-    ? { ...layout, primary: selection }
-    : { ...layout, secondary: selection };
+export function chatContent(selection: PaneSelection): PaneContent<"chat"> {
+  return { kind: "chat", fields: { selection } };
 }
 
-function withActivePane(layout: SplitLayout, paneId: PaneId): SplitLayout {
-  return layout.activePaneId === paneId ? layout : { ...layout, activePaneId: paneId };
+export function shownChat(pane: Pane<PaneContent>): ChatPane | undefined {
+  const tab = activeTab(pane);
+
+  return tab.content.kind === "chat"
+    ? { pane: pane.id, tab: tab.id, selection: tab.content.fields.selection }
+    : undefined;
 }
 
-function selectInActivePane(layout: PaneLayout, selection: PaneSelection): PaneLayout {
-  if (selection.kind === "session") {
-    const visible = paneForSession(layout, selection.sessionId);
-
-    if (visible !== undefined) return focusPane(layout, visible);
-  }
-
-  return selectInPane(layout, activePane(layout).id, selection);
+/** The chat each pane shows, in reading order. */
+export function chatPanes(layout: Layout<PaneContent>): readonly ChatPane[] {
+  return layoutPanes(layout.root).flatMap((pane) => shownChat(pane) ?? []);
 }
 
-function selectInPane(layout: PaneLayout, paneId: PaneId, selection: PaneSelection): PaneLayout {
-  if (paneSelection(layout, paneId) === undefined) return layout;
-
-  if (selection.kind === "session") {
-    const visible = paneForSession(layout, selection.sessionId);
-
-    if (visible !== undefined && visible !== paneId) return focusPane(layout, visible);
-  }
-
-  if (layout.kind === "single") {
-    return sameSelection(layout.selection, selection) ? layout : { ...layout, selection };
-  }
-
-  return withActivePane(withPaneSelection(layout, paneId, selection), paneId);
+export function focusedChat(layout: Layout<PaneContent>): ChatPane | undefined {
+  return shownChat(focusedPane(layout));
 }
 
-function splitPane(layout: PaneLayout, direction: SplitDirection): PaneLayout {
-  if (layout.kind === "split") return layout;
-
-  return {
-    kind: "split",
-    direction,
-    ratio: DEFAULT_SPLIT_RATIO,
-    leading: layout.paneId,
-    primary: layout.paneId === "primary" ? layout.selection : BLANK_SELECTION,
-    secondary: layout.paneId === "secondary" ? layout.selection : BLANK_SELECTION,
-    activePaneId: otherPaneId(layout.paneId),
-  };
+/** What the focused pane shows; a pane showing something other than a chat counts as a new chat. */
+export function activeSelection(layout: Layout<PaneContent>): PaneSelection {
+  return focusedChat(layout)?.selection ?? BLANK;
 }
 
-function closePane(layout: PaneLayout, paneId: PaneId): PaneLayout {
-  if (layout.kind === "single") {
-    if (layout.paneId !== paneId || layout.selection.kind === "blank") return layout;
-
-    return { ...layout, selection: BLANK_SELECTION };
-  }
-
-  const survivor = otherPaneId(paneId);
-
-  return {
-    kind: "single",
-    paneId: survivor,
-    selection: survivor === "primary" ? layout.primary : layout.secondary,
-  };
-}
-
-function focusPane(layout: PaneLayout, paneId: PaneId): PaneLayout {
-  return layout.kind === "single" ? layout : withActivePane(layout, paneId);
-}
-
-function resizePane(layout: PaneLayout, ratio: number): PaneLayout {
-  if (layout.kind === "single") return layout;
-  const nextRatio = clampSplitRatio(ratio);
-
-  return layout.ratio === nextRatio ? layout : { ...layout, ratio: nextRatio };
-}
-
-function dropInCenter(layout: PaneLayout, sessionId: SessionId, targetPaneId: PaneId): PaneLayout {
-  const target = paneSelection(layout, targetPaneId);
-
-  if (target === undefined) return layout;
-
-  if (target.kind === "session" && target.sessionId === sessionId) return layout;
-  const source = paneForSession(layout, sessionId);
-
-  if (layout.kind === "split" && source !== undefined) {
-    return withActivePane(
-      { ...layout, primary: layout.secondary, secondary: layout.primary },
-      targetPaneId,
+/** The chat tab showing `id`, active in its pane or not. */
+export function findSessionTab(
+  layout: Layout<PaneContent>,
+  id: SessionId,
+): { readonly pane: PaneId; readonly tab: PaneTabId } | undefined {
+  return layoutPanes(layout.root)
+    .flatMap((pane) =>
+      pane.tabs.map((tab) => ({ pane: pane.id, tab: tab.id, content: tab.content })),
+    )
+    .find(
+      (entry) =>
+        entry.content.kind === "chat" &&
+        entry.content.fields.selection.kind === "session" &&
+        entry.content.fields.selection.sessionId === id,
     );
-  }
-
-  return selectInPane(layout, targetPaneId, { kind: "session", sessionId });
 }
 
-const EDGE_GEOMETRY = {
-  left: { direction: "right", draggedLeads: true },
-  right: { direction: "right", draggedLeads: false },
-  top: { direction: "down", draggedLeads: true },
-  bottom: { direction: "down", draggedLeads: false },
-} satisfies Record<
-  EdgeDropPlacement,
-  { readonly direction: SplitDirection; readonly draggedLeads: boolean }
->;
-
-function dropOnEdge(
-  layout: PaneLayout,
-  sessionId: SessionId,
-  targetPaneId: PaneId,
-  placement: EdgeDropPlacement,
-): PaneLayout {
-  const target = paneSelection(layout, targetPaneId);
-
-  if (target === undefined) return layout;
-
-  if (target.kind === "session" && target.sessionId === sessionId) return layout;
-  const { direction, draggedLeads } = EDGE_GEOMETRY[placement];
-
-  if (layout.kind === "single") {
-    const draggedPaneId = otherPaneId(targetPaneId);
-    const dragged: PaneSelection = { kind: "session", sessionId };
-
-    return {
-      kind: "split",
-      direction,
-      ratio: DEFAULT_SPLIT_RATIO,
-      leading: draggedLeads ? draggedPaneId : targetPaneId,
-      primary: targetPaneId === "primary" ? layout.selection : dragged,
-      secondary: targetPaneId === "secondary" ? layout.selection : dragged,
-      activePaneId: draggedPaneId,
-    };
-  }
-
-  const source = paneForSession(layout, sessionId);
-  const draggedPaneId = source ?? otherPaneId(targetPaneId);
-  const leading = draggedLeads ? draggedPaneId : targetPaneId;
-
-  if (source !== undefined && layout.direction === direction && layout.leading === leading) {
-    return withActivePane(layout, draggedPaneId);
-  }
-
-  const next =
-    source === undefined
-      ? withPaneSelection(layout, draggedPaneId, { kind: "session", sessionId })
-      : layout;
-
-  return { ...next, direction, leading, activePaneId: draggedPaneId };
+export function paneForSession(layout: Layout<PaneContent>, id: SessionId): PaneId | undefined {
+  return findSessionTab(layout, id)?.pane;
 }
 
-function dropSession(
-  layout: PaneLayout,
-  sessionId: SessionId,
-  targetPaneId: PaneId,
-  placement: DropPlacement,
-): PaneLayout {
-  return placement === "center"
-    ? dropInCenter(layout, sessionId, targetPaneId)
-    : dropOnEdge(layout, sessionId, targetPaneId, placement);
+/** Shows `selection` in the focused pane; a chat already open in another pane gets the focus instead. */
+export function showChat(
+  layout: Layout<PaneContent>,
+  selection: PaneSelection,
+): readonly LayoutAction<PaneContent>[] {
+  return sameSelection(activeSelection(layout), selection)
+    ? []
+    : [
+        {
+          kind: "open",
+          content: chatContent(selection),
+          place: { kind: "focused" },
+          activate: true,
+        },
+      ];
 }
 
-function removeSession(layout: PaneLayout, sessionId: SessionId): PaneLayout {
-  const paneId = paneForSession(layout, sessionId);
-
-  if (paneId === undefined) return layout;
-
-  return selectInPane(layout, paneId, BLANK_SELECTION);
-}
-
-export function reducePaneLayout(layout: PaneLayout, action: PaneLayoutAction): PaneLayout {
-  switch (action.kind) {
-    case "select":
-      return selectInActivePane(layout, action.selection);
-    case "select-in-pane":
-      return selectInPane(layout, action.paneId, action.selection);
-    case "split":
-      return splitPane(layout, action.direction);
-    case "close":
-      return closePane(layout, action.paneId);
-    case "focus":
-      return focusPane(layout, action.paneId);
-    case "resize":
-      return resizePane(layout, action.ratio);
-    case "drop-session":
-      return dropSession(layout, action.sessionId, action.targetPaneId, action.placement);
-    case "remove-session":
-      return removeSession(layout, action.sessionId);
-    default: {
-      const _exhaustive: never = action;
-
-      return _exhaustive;
-    }
-  }
+/** Room for one more chat pane at its minimum width. */
+export function canSplitPane(layout: Layout<PaneContent>, windowWidth: number): boolean {
+  return (
+    layoutPanes(layout.root).length < MAX_PANES &&
+    (chatPanes(layout).length + 1) * MIN_PANE_SIZE <= windowWidth
+  );
 }
 
 const strict = { additionalProperties: false };
 
-const paneIdSchema = Type.Enum(["primary", "secondary"]);
-
-const directionSchema = Type.Enum(["right", "down"]);
-
-const ratioSchema = Type.Number({ minimum: MIN_SPLIT_RATIO, maximum: MAX_SPLIT_RATIO });
-
 export const paneSelectionSchema = Type.Union([
   Type.Object({ kind: Type.Literal("blank") }, strict),
   Type.Object({ kind: Type.Literal("session"), sessionId }, strict),
-]);
-
-export const paneLayoutSchema = Type.Union([
-  Type.Object(
-    { kind: Type.Literal("single"), paneId: paneIdSchema, selection: paneSelectionSchema },
-    strict,
-  ),
-  Type.Object(
-    {
-      kind: Type.Literal("split"),
-      direction: directionSchema,
-      ratio: ratioSchema,
-      leading: paneIdSchema,
-      primary: paneSelectionSchema,
-      secondary: paneSelectionSchema,
-      activePaneId: paneIdSchema,
-    },
-    strict,
-  ),
 ]);

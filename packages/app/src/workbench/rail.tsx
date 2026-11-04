@@ -14,8 +14,8 @@ import { formatTokens, formatUsd } from "../lib/format.ts";
 import { chatStore } from "../data/chat-store.ts";
 import { useWatchSelect } from "../data/watch-store.ts";
 import { useVcsChanges, useVcsSnapshot } from "../data/vcs.ts";
-import { usePaneControllerSnapshot } from "../panes/pane-context.tsx";
-import { activeSelection } from "../panes/pane-layout.ts";
+import { usePaneLayout } from "../panes/pane-context.tsx";
+import { activeSelection, sameSelection } from "../panes/pane-layout.ts";
 import { showsSettingsSection } from "../settings/index.ts";
 import { branchReadout, changesSummary, vcsRequestForScope } from "./changes/change-scopes.ts";
 import { ChangeStats } from "./changes/change-stats.tsx";
@@ -296,7 +296,7 @@ export function Rail({
   readonly workspaceName: string | undefined;
   readonly capabilities: ClientCapabilities;
 }): ReactElement {
-  const selection = activeSelection(usePaneControllerSnapshot().layout);
+  const selection = usePaneLayout(activeSelection, sameSelection);
   const sessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const terminals = useTerminalRuntime();
   const files = useFileTabs(viewKey);

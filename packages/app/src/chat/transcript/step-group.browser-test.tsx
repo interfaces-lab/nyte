@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { tabPanes, PRIMARY } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Activity } from "react";
@@ -662,7 +662,7 @@ export async function run() {
       flushSync(() =>
         root.render(
           <PaneControllerProvider controller={panes}>
-            <TranscriptProvider paneId="primary" sessionId={asId<"session">("step-group-test")}>
+            <TranscriptProvider paneId={PRIMARY} sessionId={asId<"session">("step-group-test")}>
               {node}
             </TranscriptProvider>
           </PaneControllerProvider>,

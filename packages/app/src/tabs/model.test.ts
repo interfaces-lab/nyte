@@ -1,8 +1,10 @@
 import { expect, test } from "vitest";
 import { asId } from "@nyte-ai/schema";
-import { reducePaneLayout } from "../panes/pane-layout.ts";
-import type { PaneLayoutAction, PaneSelection } from "../panes/pane-layout.ts";
-import { activeTab, initialWindow, reduce, tabLayout, tabPlace, withoutPreviews } from "./model.ts";
+import { chatContent, chatPanes } from "../panes/pane-layout.ts";
+import type { PaneSelection } from "../panes/pane-layout.ts";
+import { changePanes, focusFirst, showIn, splitRight } from "../../test/panes.ts";
+import type { PaneChange } from "../../test/panes.ts";
+import { activeTab, initialWindow, reduce, tabPlace, withoutPreviews } from "./model.ts";
 import type { Place, WindowAction, WindowState } from "./model.ts";
 
 let lastId = 1;
@@ -13,7 +15,7 @@ function createId(): string {
   return `t${String(lastId)}`;
 }
 
-function run(actions: readonly WindowAction[], state = initialWindow("t1")): WindowState {
+function run(actions: readonly WindowAction[], state = initialWindow("t1", createId)): WindowState {
   return actions.reduce((current, action) => reduce(current, action, createId), state);
 }
 
@@ -23,10 +25,8 @@ const customize: Place = { kind: "customize", section: undefined, sessionId: und
 
 const places = (state: WindowState): readonly Place[] => state.tabs.map((tab) => tabPlace(tab));
 
-function pane(state: WindowState, action: PaneLayoutAction): WindowAction {
-  const tab = activeTab(state);
-
-  return { kind: "layout", tabId: tab.id, layout: reducePaneLayout(tabLayout(tab), action) };
+function pane(state: WindowState, change: PaneChange): WindowAction {
+  return changePanes(state, change, createId);
 }
 
 test("a click opens a chat in its own tab, using a new chat tab it is opened from", () => {
@@ -45,9 +45,9 @@ test("opening a place that has a tab switches to it and focuses its pane", () =>
     { kind: "open", place: chat("b"), target: "permanent" },
   ]);
 
-  state = run([pane(state, { kind: "split", direction: "right" })], state);
-  state = run([pane(state, { kind: "select", selection: chat("c") })], state);
-  state = run([pane(state, { kind: "focus", paneId: "primary" })], state);
+  state = run([pane(state, splitRight)], state);
+  state = run([pane(state, showIn(chat("c")))], state);
+  state = run([pane(state, focusFirst)], state);
   state = run([{ kind: "activate-index", index: 0 }], state);
 
   const again = run([{ kind: "open", place: chat("c"), target: "permanent" }], state);
@@ -228,7 +228,7 @@ test("a preview lasts once it's kept, dragged, split or shows another chat, not 
       { kind: "activate-index", index: 0 },
       { kind: "activate-tab", tabId: preview },
       { kind: "cycle-tab", step: 1 },
-      pane(state, { kind: "focus", paneId: "primary" }),
+      pane(state, focusFirst),
     ],
     state,
   );
@@ -246,19 +246,17 @@ test("a preview lasts once it's kept, dragged, split or shows another chat, not 
     false,
   ]);
 
-  expect(previews(run([pane(state, { kind: "split", direction: "right" })], state))).toEqual([
-    false,
-    false,
-  ]);
+  expect(previews(run([pane(state, splitRight)], state))).toEqual([false, false]);
 
   const dropped = run(
     [
-      pane(state, {
-        kind: "drop-session",
-        sessionId: asId<"session">("b"),
-        targetPaneId: "primary",
-        placement: "center",
-      }),
+      pane(state, (layout) =>
+        chatPanes(layout).map((shown) => ({
+          kind: "set-content",
+          tab: shown.tab,
+          content: chatContent(chat("b")),
+        })),
+      ),
     ],
     state,
   );
@@ -309,8 +307,8 @@ test("a chat archived or deleted closes its tabs, and a split keeps its other ch
     { kind: "open", place: chat("b"), target: "permanent" },
   ]);
 
-  state = run([pane(state, { kind: "split", direction: "right" })], state);
-  state = run([pane(state, { kind: "select", selection: chat("c") })], state);
+  state = run([pane(state, splitRight)], state);
+  state = run([pane(state, showIn(chat("c")))], state);
 
   state = run(
     [
@@ -331,7 +329,11 @@ test("a chat archived or deleted closes its tabs, and a split keeps its other ch
   );
 
   expect(places(gone)).toEqual([chat("c")]);
-  expect(tabLayout(activeTab(gone)).kind, "the split became one pane").toBe("single");
+  const left = activeTab(gone).view;
+
+  expect(left.kind === "page" ? "page" : left.layout.root.kind, "the split became one pane").toBe(
+    "pane",
+  );
   expect(gone.closed, "a gone chat's tab doesn't reopen").toEqual([]);
 
   const elsewhere = run(

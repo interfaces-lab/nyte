@@ -1,9 +1,13 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import { createContext, use, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { PaneController, PaneControllerSnapshot } from "./pane-controller.ts";
-import { activePane, canSplitPane } from "./pane-layout.ts";
-import type { DropPlacement, PaneId, SplitDirection } from "./pane-layout.ts";
+import type { Layout, PaneId, SplitDirection } from "./layout.ts";
+import { useLayoutSelect } from "./layout-store.ts";
+import type { LayoutStore } from "./layout-store.ts";
+import type { PaneController } from "./pane-controller.ts";
+import type { PaneContent } from "./pane-kinds.ts";
+import { canSplitPane, chatPanes } from "./pane-layout.ts";
+import type { DropPlacement } from "./pane-layout.ts";
 import type { ComposerViewState, SessionViewStateStore } from "./session-view-state.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
@@ -32,17 +36,23 @@ export function hideFromPanes(sessionId: SessionId): () => boolean {
 }
 
 export function splitPanes(controller: PaneController, direction: SplitDirection): boolean {
-  if (!canSplitPane(controller.getSnapshot().layout, windowWidth())) return false;
+  if (!canSplitPane(controller.getSnapshot(), windowWidth())) return false;
   controller.split(direction);
 
   return true;
 }
 
+/** Focuses the next chat pane in reading order, wrapping to the first. */
 export function focusNextPane(controller: PaneController): boolean {
-  const layout = controller.getSnapshot().layout;
+  const layout = controller.getSnapshot();
+  const panes = chatPanes(layout);
 
-  if (layout.kind !== "split") return false;
-  controller.focus(activePane(layout).id === "primary" ? "secondary" : "primary");
+  if (panes.length < 2) return false;
+  const index = panes.findIndex((pane) => pane.pane === layout.focus[0]);
+  const next = panes[(index + 1) % panes.length];
+
+  if (next === undefined) return false;
+  controller.focus(next.pane);
 
   return true;
 }
@@ -55,10 +65,25 @@ function useController(): PaneController {
   return controller;
 }
 
-export function usePaneControllerSnapshot(): PaneControllerSnapshot {
-  const controller = useController();
+export function usePaneLayoutStore(): LayoutStore {
+  return useController().store;
+}
 
-  return useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+/** Re-renders only when `select` returns something new. */
+export function usePaneLayout<T>(
+  select: (layout: Layout<PaneContent>) => T,
+  equal?: (left: T, right: T) => boolean,
+): T {
+  return useLayoutSelect(usePaneLayoutStore(), select, equal);
+}
+
+export function usePaneFocused(pane: PaneId): boolean {
+  return usePaneLayout((layout) => layout.focus[0] === pane);
+}
+
+/** More than one chat pane, so each shows its own header. */
+export function useSplitPanes(): boolean {
+  return usePaneLayout((layout) => chatPanes(layout).length > 1);
 }
 
 function windowWidth(): number {
@@ -72,10 +97,9 @@ function subscribeWindowWidth(listener: () => void): () => void {
 }
 
 export function useCanSplitPane(): boolean {
-  const { layout } = usePaneControllerSnapshot();
   const width = useSyncExternalStore(subscribeWindowWidth, windowWidth, windowWidth);
 
-  return canSplitPane(layout, width);
+  return usePaneLayout((layout) => canSplitPane(layout, width));
 }
 
 export function usePaneViewStateStore(): SessionViewStateStore {
@@ -91,7 +115,6 @@ export interface PaneActions {
   close(paneId: PaneId): void;
   focus(paneId: PaneId): void;
   focusNext(): boolean;
-  resize(ratio: number): void;
   drop(sessionId: SessionId, targetPaneId: PaneId, placement: DropPlacement): void;
   removeSession(sessionId: SessionId): void;
 }
@@ -123,9 +146,6 @@ export function usePaneActions(): PaneActions {
     },
     focusNext() {
       return focusNextPane(controller);
-    },
-    resize(ratio) {
-      controller.resize(ratio);
     },
     drop(sessionId, targetPaneId, placement) {
       controller.drop(sessionId, targetPaneId, placement);

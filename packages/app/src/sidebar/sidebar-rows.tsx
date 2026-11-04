@@ -36,7 +36,6 @@ import { chatStore, warmSession } from "../data/chat-store.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { chatWindow, useChatMark } from "../window/index.ts";
 import { sessionActions } from "../data/session-rows.ts";
-import { activePane } from "../panes/pane-layout.ts";
 import { shellActions } from "../tabs/shell-state.ts";
 import { hideFromPanes } from "../panes/pane-context.tsx";
 import { sessionIsRunning } from "./sidebar-view.ts";
@@ -134,7 +133,7 @@ function showSession(sessionId: SessionId, target: OpenIntent | "beside"): void 
 
   shellActions.showWorkspace();
   const controller = windowTabs.controller();
-  controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
+  controller.drop(sessionId, controller.getSnapshot().focus[0], "right");
 }
 
 export function SessionRow({

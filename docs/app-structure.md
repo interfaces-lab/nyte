@@ -31,7 +31,7 @@
 | `environments/` | The groups of Settings › Server: sharing this Mac, its devices, the Nyte account and a remote host | `server-settings.tsx` |
 | `customize/` | The Customize page for plugins, skills and MCP | `customize.tsx` |
 | `account/` | Sign-in, the account footer and the GitHub account | `account-footer.tsx` |
-| `panes/` | Split panes in a window tab, the workspace stage and opening a workspace | `session-screen.tsx`, `pane-context.tsx` |
+| `panes/` | A window tab's layout of panes, the kinds of tab a pane shows and their views, the workspace stage and opening a workspace | `layout.ts`, `pane-kinds.ts`, `layout-view.tsx`, `pane-context.tsx` |
 | `projects/` | A project's page and the page that creates one, its editor, moving a chat into a project and the new-chat project picker. The sidebar's Projects section is in `sidebar/`, the project list in `data/projects.ts` | `project-page.tsx` |
 | `tabs/` | Window tabs, places and routes, and page and overlay state | `window-tabs.ts`, `shell-state.ts` |
 | `window/` | Which chats are on screen, and whether each is read or unread | `index.ts`, the only import |
@@ -54,6 +54,7 @@ Outside `src/`, `dev/` holds the account-footer test page, served at `/dev/accou
 - The Changes panel is `workbench/changes/changes-panel.tsx`, and its derivations are `workbench/changes/changes-model.ts`. The diff it draws is `diff/diff-view.tsx`.
 - The sidebar is `sidebar/sidebar.tsx`, the titlebar `shell/titlebar.tsx` and the routes `shell/routes.tsx`.
 - `shell/host-events.ts` handles host events. `commands/window-commands.ts` handles keyboard and menu commands.
+- A kind of pane tab keeps its rules and its view in its own folder, as the chat does in `chat/chat-pane-kind.ts` and `chat/chat-pane-view.tsx`. `panes/pane-kinds.ts` lists the rules, and `panes/pane-views.tsx` lists the views. The window saves each tab's layout through `tabs/stored-strip.ts`.
 - `chat/composer/drafts.ts` saves composer drafts. Per-pane view state is `panes/session-view-state.ts`.
 - A popup that may cover a browser page registers in `components/overlay-occlusion.ts`.
 

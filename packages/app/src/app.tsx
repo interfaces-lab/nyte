@@ -21,7 +21,7 @@ import { chatWindow, followStage } from "./window/index.ts";
 import { useHostEvents } from "./shell/host-events.ts";
 
 function focusedSession(): SessionId | undefined {
-  const selection = activeSelection(windowTabs.controller().getSnapshot().layout);
+  const selection = activeSelection(windowTabs.controller().getSnapshot());
 
   return selection.kind === "session" ? selection.sessionId : undefined;
 }

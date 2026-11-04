@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
 import { layer, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { conversation, pane } from "../theme/schema.stylex.ts";
+import { conversation } from "../theme/schema.stylex.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const sessionScreenStyles = create({
@@ -31,24 +31,28 @@ export const sessionScreenStyles = create({
   },
   /** Under the maximized workbench: skips their rendering and keeps their layout and scroll. */
   panesCovered: { contentVisibility: "hidden" },
-  splitRight: { flexDirection: "row" },
-  splitDown: { flexDirection: "column" },
+  /** Boxes in the layout are fractions of this container's size, so resizing it runs no script. */
+  layout: {
+    position: "relative",
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    overflow: "clip",
+    containerType: "size",
+  },
+  layoutTab: { position: "absolute", display: "flex", minWidth: 0, minHeight: 0, overflow: "clip" },
+  /** Under a zoomed pane: skips its rendering and keeps its layout and scroll. */
+  layoutTabHidden: { contentVisibility: "hidden" },
+  layoutTabZoomed: { zIndex: 1 },
   pane: {
     position: "relative",
     display: "flex",
     flexDirection: "column",
+    flex: 1,
     minWidth: 0,
     minHeight: 0,
     overflow: "clip",
   },
-  paneSingle: { flex: 1 },
-  paneLeading: (ratio: number) => ({
-    "--nyte-pane-split-ratio": String(ratio),
-    flexGrow: 0,
-    flexShrink: 0,
-    flexBasis: `calc((100% - ${pane.sashSize}) * var(--nyte-pane-split-ratio))`,
-  }),
-  paneTrailing: { flex: 1 },
   screen: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
   paneScreen: { position: "absolute", inset: 0 },
   embeddedScreen: {
@@ -115,10 +119,9 @@ export const sessionScreenStyles = create({
     color: role.contentSecondary,
   },
   sash: {
-    position: "relative",
+    position: "absolute",
     display: "grid",
     placeItems: "center",
-    flexShrink: 0,
     zIndex: 4,
     touchAction: "none",
     outlineStyle: { default: "none", ":focus-visible": "solid" },
@@ -126,20 +129,14 @@ export const sessionScreenStyles = create({
     outlineColor: appearance.focusRing,
     outlineOffset: -1,
   },
-  sashRight: { width: pane.sashSize, cursor: "col-resize" },
-  sashDown: { height: pane.sashSize, cursor: "row-resize" },
+  sashRight: { cursor: "col-resize" },
+  sashDown: { cursor: "row-resize" },
   sashLine: { backgroundColor: role.borderSecondaryTranslucent, pointerEvents: "none" },
   sashLineRight: { width: 1, height: "100%" },
   sashLineDown: { width: "100%", height: 1 },
-  dropPreviewLayer: {
-    position: "absolute",
-    inset: space.s0_5,
-    zIndex: layer.dragPreview,
-    overflow: "clip",
-    pointerEvents: "none",
-  },
   dropPreview: {
     position: "absolute",
+    zIndex: layer.dragPreview,
     borderRadius: radius.indicator,
     borderWidth: 2,
     borderStyle: "solid",

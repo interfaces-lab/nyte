@@ -25,7 +25,7 @@ import type { ReactElement, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 import { useMountEffect } from "@nyte-ai/ui/use-mount-effect";
 import { usePaneViewStateStore } from "../../panes/pane-context.tsx";
-import type { PaneId } from "../../panes/pane-layout.ts";
+import type { PaneId } from "../../panes/layout.ts";
 import type { ScrollViewState } from "../../panes/session-view-state.ts";
 import { messageScrollerStyles } from "./transcript.stylex.ts";
 import { initialMode, nextMode, NO_INPUT, steeringUp, touching } from "./transcript-mode.ts";

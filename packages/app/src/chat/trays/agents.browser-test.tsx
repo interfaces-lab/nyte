@@ -9,7 +9,7 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import type { HostState } from "../../contract/nyte.ts";
 import { PaneControllerProvider } from "../../panes/pane-context.tsx";
-import { activePane } from "../../panes/pane-layout.ts";
+import { activeSelection } from "../../panes/pane-layout.ts";
 import { windowTabs } from "../../tabs/window-tabs.ts";
 import { SessionDndProvider } from "../../panes/session-dnd.tsx";
 import { keys, queryClient } from "../../data/query-client.ts";
@@ -452,7 +452,7 @@ export async function run(): Promise<string> {
   await record(container, () => button(container, "Open Map the core").click(), "chat:core");
   button(container, "Open as full chat").click();
   await until(() => {
-    const selection = activePane(panes.getSnapshot().layout).selection;
+    const selection = activeSelection(panes.getSnapshot());
 
     return (
       selection.kind === "session" &&
@@ -466,7 +466,7 @@ export async function run(): Promise<string> {
   await until(() => transcript()?.textContent.includes("Map the app") === true, "the parent again");
   card("Map the app").click();
   await until(() => {
-    const selection = activePane(panes.getSnapshot().layout).selection;
+    const selection = activeSelection(panes.getSnapshot());
 
     return (
       selection.kind === "session" &&

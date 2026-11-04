@@ -219,7 +219,9 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
       glyph,
       preview: view.kind === "preview",
       split:
-        view.kind === "panes" && view.layout.kind === "split" ? view.layout.direction : undefined,
+        view.kind === "panes" && view.layout.root.kind === "split"
+          ? view.layout.root.direction
+          : undefined,
     };
   });
 }

@@ -1,4 +1,4 @@
-import { tabPanes } from "../../../test/panes.ts";
+import { tabPanes, PRIMARY } from "../../../test/panes.ts";
 import "../../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -187,12 +187,12 @@ async function checkSends(): Promise<string> {
 
   try {
     await send(container, "Parked before the host");
-    const parked = panes.viewState.readBlank("primary").id;
+    const parked = panes.viewState.readBlank(PRIMARY).id;
     await until(() => statusText(container)?.includes("Sends when Nyte connects"), "the hold");
     panes.newChat();
 
     await send(container, "Shown when the host arrives");
-    const shown = panes.viewState.readBlank("primary").id;
+    const shown = panes.viewState.readBlank(PRIMARY).id;
     await until(() => statusText(container)?.includes("Sends when Nyte connects"), "the hold");
     flushSync(() => root.unmount());
     root = mount(container);
@@ -212,7 +212,7 @@ async function checkSends(): Promise<string> {
       starts.toSorted().join() === [parked, shown].toSorted().join(),
       `each held draft starts once: ${starts.join()}`,
     );
-    const selection = activeSelection(panes.getSnapshot().layout);
+    const selection = activeSelection(panes.getSnapshot());
     expectRule(
       selection.kind === "session" && selection.sessionId === shown,
       `the chat opens in the pane that shows its draft: ${JSON.stringify(selection)}`,
@@ -223,7 +223,7 @@ async function checkSends(): Promise<string> {
     await painted();
     hostCatalog = catalog("missing");
     await send(container, "On a model the host no longer lists");
-    const refused = panes.viewState.readBlank("primary").id;
+    const refused = panes.viewState.readBlank(PRIMARY).id;
     await until(() => container.querySelector("[role='alert']"), "the refusal");
     flushSync(() => root.unmount());
     root = mount(container);
