@@ -52,7 +52,7 @@ const styles = create({
   nav: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { [media.hover]: role.bgHover },
+      ":hover:not(:disabled, [data-disabled])": { [media.hover]: role.bgHover },
     },
     flexShrink: 0,
     margin: 0,
@@ -60,7 +60,7 @@ const styles = create({
     borderRadius: row.radius,
     color: {
       default: role.contentChrome,
-      ":hover": { [media.hover]: role.contentPrimary },
+      ":hover:not(:disabled, [data-disabled])": { [media.hover]: role.contentPrimary },
       ":focus-visible": role.contentPrimary,
       ":disabled": role.contentDisabled,
       "[data-disabled]": role.contentDisabled,

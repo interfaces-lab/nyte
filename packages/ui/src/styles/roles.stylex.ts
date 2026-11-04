@@ -17,6 +17,9 @@ const lift = (role: string, alpha: number) =>
   `oklch(from var(--nyte-${role}) l c h / calc(alpha + ${alpha}))`;
 
 /** The OS "increase contrast" setting; the values follow Notion's high-contrast mode. */
+/** The scope's hue as ink, raised in dark to a lightness every hue reads at 4.5:1 on the dark surfaces. */
+const ink = "light-dark(var(--nyte-theme-100), oklch(from var(--nyte-theme-80) max(l, 0.68) c h))";
+
 const contrast = <Value extends string>(normal: Value, more: Value) => ({
   default: normal,
   "@media (prefers-contrast: more)": more,
@@ -39,7 +42,7 @@ export const roles = defineVars({
   "--nyte-content-interactive-secondary": contrast(step(100, 50), step(100, 40)),
   "--nyte-content-interactive-tertiary": contrast(step(80, 90), step(100, 40)),
   /** The scope's hue as ink: error and attention text, status dots, accent strokes. */
-  "--nyte-content-accent": contrast(step(80, 90), step(100, 40)),
+  "--nyte-content-accent": contrast(ink, step(100, 40)),
   "--nyte-content-on-interactive-strong": "var(--nyte-theme-0)",
   "--nyte-content-on-control": "var(--nyte-neutral-0)",
 
@@ -107,11 +110,12 @@ const hued = {
   "--nyte-content-interactive-primary": contrast(step(120, 50), step(120, 40)),
   "--nyte-content-interactive-secondary": contrast(step(110, 70), step(100, 60)),
   "--nyte-content-interactive-tertiary": contrast(step(100, 90), step(100, 60)),
-  "--nyte-content-accent": contrast(step(100, 90), step(100, 60)),
+  "--nyte-content-accent": contrast(ink, step(100, 60)),
   "--nyte-border-primary": step(30, 110),
   "--nyte-bg-scrim-translucent": glass(40, 130),
   "--nyte-bg-interactive-strong": "var(--nyte-theme-80)",
-  "--nyte-bg-control-selected": "var(--nyte-theme-80)",
+  /** Capped so a white glyph on a light hue (yellow, teal) keeps 3:1. */
+  "--nyte-bg-control-selected": "oklch(from var(--nyte-theme-80) min(l, 0.62) c h)",
   "--nyte-scrollbar-thumb": `color-mix(in srgb, ${step(50, 100)} 50%, transparent)`,
 };
 

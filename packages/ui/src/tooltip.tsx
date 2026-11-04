@@ -52,7 +52,9 @@ export function TooltipProvider({
 
 export const Tooltip = TooltipPrimitive.Root;
 
-export const TooltipTrigger = TooltipPrimitive.Trigger;
+export function TooltipTrigger(props: TooltipPrimitive.Trigger.Props): ReactElement {
+  return <TooltipPrimitive.Trigger {...props} title={undefined} />;
+}
 
 export function TooltipContent({
   side = "bottom",

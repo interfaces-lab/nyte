@@ -33,7 +33,7 @@ const styles = create({
     minWidth: 0,
     color: {
       default: role.contentInteractiveSecondary,
-      ":hover": { [media.hover]: role.contentInteractivePrimary },
+      ":hover:not([data-disabled])": { [media.hover]: role.contentInteractivePrimary },
     },
     userSelect: "none",
     transitionProperty: "color",

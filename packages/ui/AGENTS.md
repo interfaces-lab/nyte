@@ -1,7 +1,7 @@
 Load the nyte-styles skill before writing StyleX, tokens, or the base stylesheet.
 
 Font roles and faces, and which loading indicator to show (`Spinner` or `Loader`), follow the Fonts
-and Loading indicators sections of `packages/app/AGENTS.md`.
+and Loading indicators sections of the `@nyte-ai/app` AGENTS.md.
 
 # Typography
 
@@ -10,8 +10,6 @@ Use the shared typography metrics instead of copying solid line heights from des
 Inter text at 13px must use at least the compact 16px line height (`text.baseCompact`). A 13px solid line box can clip g, j, p, q, and y when the text or an ancestor truncates or hides overflow.
 
 Reserve line-height: 1 and leading-none for non-text glyphs, icons, or deliberately reviewed display marks. Do not compensate text with transforms, negative margins, or clip-padding hacks.
-
-TextShimmer inherits font metrics. Put typography overrides on its parent when they must supersede the component defaults.
 
 <!-- STYLEX-CAPS:START -->
 

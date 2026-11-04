@@ -205,7 +205,7 @@ const itemVariants = create({
   quiet: {
     color: {
       default: role.contentSecondary,
-      ":hover": { [media.hover]: role.contentPrimary },
+      ":hover:not([data-disabled])": { [media.hover]: role.contentPrimary },
       "[data-highlighted]": role.contentPrimary,
       "[data-disabled]": role.contentDisabled,
     },

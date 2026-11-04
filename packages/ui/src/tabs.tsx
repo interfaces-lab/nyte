@@ -163,6 +163,7 @@ const indicator = create({
   base: {
     position: "absolute",
     top: 0,
+    // oxlint-disable-next-line nyte-design/logical-properties -- Base UI measures --active-tab-left from the list's left edge in every direction
     left: 0,
     translate: "var(--active-tab-left) var(--active-tab-top)",
     width: "var(--active-tab-width)",

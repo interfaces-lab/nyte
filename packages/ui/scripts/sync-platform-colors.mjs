@@ -222,7 +222,7 @@ const numeric = (text, trail) => {
   return inner === undefined ? Number.parseFloat(text) : evaluate(inner[0], trail);
 };
 
-/** `oklch(from X calc(l * n) c h)` and `oklch(from X l c h / calc(alpha + n))`. */
+/** `oklch(from X calc(l * n) c h)`, `min(l, n)` or `max(l, n)` for l, and `oklch(from X l c h / calc(alpha + n))`. */
 const relativeOklch = (value, mode, trail) => {
   if (!value.startsWith("oklch(from ") || !value.endsWith(")")) return undefined;
   const words = [];
@@ -245,13 +245,13 @@ const relativeOklch = (value, mode, trail) => {
 
   if (words[0] !== "from" || words[3] !== "c" || words[4] !== "h") return undefined;
   const origin = toOklch(resolve(words[1], mode, trail));
-  const cap = words[2].match(/^min\(l, ([\d.]+)\)$/);
+  const bound = words[2].match(/^(min|max)\(l, ([\d.]+)\)$/);
 
   const lightness =
     words[2] === "l"
       ? origin.l
-      : cap
-        ? Math.min(origin.l, Number.parseFloat(cap[1]))
+      : bound
+        ? Math[bound[1]](origin.l, Number.parseFloat(bound[2]))
         : origin.l * Number.parseFloat(words[2].match(/\* ([\d.]+)/)[1]);
 
   const alpha =
