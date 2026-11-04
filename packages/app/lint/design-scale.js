@@ -349,8 +349,16 @@ const eachStyleValue = (node, visit, property, governs) => {
   }
 };
 
-/** Collect the import bindings, then read the style objects of each create call. */
-const eachCreatedStyle = (governs, visit) => {
+const styleBody = (node) => {
+  if (node.type !== "ArrowFunctionExpression") return node;
+
+  if (node.body.type !== "BlockStatement") return node.body;
+
+  return node.body.body.find((statement) => statement.type === "ReturnStatement")?.argument;
+};
+
+/** Collect the import bindings, then hand each create call's style bodies to `visit`. */
+const eachStyleBody = (visit) => {
   const bindings = createBindings();
 
   return {
@@ -361,12 +369,17 @@ const eachCreatedStyle = (governs, visit) => {
       if (!bindings.isCreateCall(node) || node.arguments[0]?.type !== "ObjectExpression") return;
 
       for (const style of node.arguments[0].properties) {
-        if (style.type !== "Property") continue;
-        eachStyleValue(style.value, visit, undefined, governs);
+        if (style.type === "Property") visit(styleBody(style.value));
       }
     },
   };
 };
+
+/** Read the style objects of each create call. */
+const eachCreatedStyle = (governs, visit) =>
+  eachStyleBody((style) => {
+    if (style) eachStyleValue(style, visit, undefined, governs);
+  });
 
 /** A length rule: every leaf that reads as px, against its governing property. */
 const styleValueRule = (description, report) => ({
@@ -560,6 +573,245 @@ const noLightDarkOutsideTokens = {
   },
 };
 
+const HOVER_QUERY = "@media (hover: hover) and (pointer: fine)";
+
+/** `:hover` on the styled element; `:is(th:hover *)` and `when.ancestor` hover something else. */
+const SELF_HOVER = /^:hover(?![-\w])/;
+
+const DISABLED_STATES = [":disabled", "[data-disabled]", '[aria-disabled="true"]'];
+
+/** `[media.hover]` from the schema, or the query it stands for. */
+const guardsHover = (member) => {
+  if (!member.computed) return keyName(member.key, false) === HOVER_QUERY;
+
+  return (
+    member.key.type === "MemberExpression" &&
+    !member.key.computed &&
+    member.key.object.type === "Identifier" &&
+    member.key.object.name === "media" &&
+    member.key.property.type === "Identifier" &&
+    member.key.property.name === "hover"
+  );
+};
+
+/** A `null` leaf sets nothing, so it needs no guard. */
+const everyLeafGuarded = (node) => {
+  if (node.type === "Literal" && node.value === null) return true;
+
+  if (node.type !== "ObjectExpression") return false;
+
+  return node.properties.every(
+    (member) =>
+      member.type === "Property" && (guardsHover(member) || everyLeafGuarded(member.value)),
+  );
+};
+
+/** Every member below a style, with its object, whether the hover query encloses it, and its key. */
+const eachStyleMember = (node, visit, guarded = false) => {
+  if (node?.type !== "ObjectExpression") return;
+
+  for (const member of node.properties) {
+    if (member.type !== "Property") continue;
+    visit(member, node, guarded, keyName(member.key, member.computed));
+    eachStyleMember(styleBody(member.value), visit, guarded || guardsHover(member));
+  }
+};
+
+/** A pseudo-element has to end the selector, so the exclusion goes before it. */
+const withExclusion = (key, states) => {
+  if (states.length === 0) return key;
+  const exclusion = `:not(${states.join(", ")})`;
+  const pseudoElement = key.indexOf("::");
+
+  return pseudoElement < 0
+    ? `${key}${exclusion}`
+    : `${key.slice(0, pseudoElement)}${exclusion}${key.slice(pseudoElement)}`;
+};
+
+const hoverProblem = (unguarded, missing) => {
+  const touch = "applies under a touch pointer, where a tap leaves it stuck";
+
+  const disabled =
+    `still matches while the control is disabled, and StyleX compiles a guarded hover to a ` +
+    `doubled class (.x.x:hover) that outranks the style's ${missing.join(" and ")} rule`;
+
+  if (missing.length === 0) return touch;
+
+  return unguarded ? `${touch}, and ${disabled}` : disabled;
+};
+
+/**
+ * Hover is an enhancement for a fine pointer, and it must not light up a
+ * control that refuses the press. A style that names a disabled state is a
+ * control that can be disabled, so its own `:hover` keys have to exclude each
+ * state it names; a style that names none is left to judgement.
+ */
+const guardedHover = {
+  meta: {
+    docs: { description: "Guard StyleX :hover with media.hover and skip disabled controls." },
+  },
+  create(context) {
+    return eachStyleBody((style) => {
+      const keys = [];
+      eachStyleMember(style, (_member, _object, _guarded, key) => {
+        if (key !== null) keys.push(key);
+      });
+      const states = DISABLED_STATES.filter((state) => keys.some((key) => key.includes(state)));
+
+      eachStyleMember(style, (member, _object, guarded, key) => {
+        if (key === null || !SELF_HOVER.test(key)) return;
+        const unguarded = !guarded && !everyLeafGuarded(member.value);
+        const exclusions = [...key.matchAll(/:not\(([^)]*)\)/g)].map((match) => match[1]);
+        const missing = states.filter((state) => !exclusions.some((not) => not.includes(state)));
+
+        if (!unguarded && missing.length === 0) return;
+        context.report({
+          node: member,
+          message:
+            `"${key}" ${hoverProblem(unguarded, missing)}. Write "${withExclusion(key, missing)}": ` +
+            `{ [media.hover]: … } with media from ${SCHEMA_MODULE}` +
+            (missing.length === 0 ? "." : `, as Button writes ":hover:not([data-disabled])".`),
+        });
+      });
+    });
+  },
+};
+
+const PHYSICAL_KEYS = new Map([
+  ["marginLeft", "marginInlineStart"],
+  ["marginRight", "marginInlineEnd"],
+  ["paddingLeft", "paddingInlineStart"],
+  ["paddingRight", "paddingInlineEnd"],
+  ["borderLeft", "borderInlineStart"],
+  ["borderRight", "borderInlineEnd"],
+  ["borderLeftWidth", "borderInlineStartWidth"],
+  ["borderLeftStyle", "borderInlineStartStyle"],
+  ["borderLeftColor", "borderInlineStartColor"],
+  ["borderRightWidth", "borderInlineEndWidth"],
+  ["borderRightStyle", "borderInlineEndStyle"],
+  ["borderRightColor", "borderInlineEndColor"],
+  ["left", "insetInlineStart"],
+  ["right", "insetInlineEnd"],
+  ["borderTopLeftRadius", "borderStartStartRadius"],
+  ["borderTopRightRadius", "borderStartEndRadius"],
+  ["borderBottomLeftRadius", "borderEndStartRadius"],
+  ["borderBottomRightRadius", "borderEndEndRadius"],
+]);
+
+const PHYSICAL_VALUES = new Map([
+  [
+    "textAlign",
+    new Map([
+      ["left", "start"],
+      ["right", "end"],
+    ]),
+  ],
+  [
+    "float",
+    new Map([
+      ["left", "inline-start"],
+      ["right", "inline-end"],
+    ]),
+  ],
+  [
+    "clear",
+    new Map([
+      ["left", "inline-start"],
+      ["right", "inline-end"],
+    ]),
+  ],
+]);
+
+const INLINE_ANCHORS = new Set(["insetInlineStart", "insetInlineEnd"]);
+
+/** Every string a value can resolve to, through its conditions. */
+const leafStrings = (node) => {
+  if (node.type !== "ObjectExpression") return styleText(node);
+
+  return node.properties.flatMap((member) =>
+    member.type === "Property" ? leafStrings(member.value) : [],
+  );
+};
+
+const siblingText = (object, name) => {
+  const sibling = object.properties.find(
+    (member) => member.type === "Property" && keyName(member.key, member.computed) === name,
+  );
+
+  return sibling === undefined ? "" : styleText(sibling.value).join("");
+};
+
+const shifts = (length) => length !== undefined && !/^[-+]?0(?:\.0+)?[a-z%]*$/i.test(length);
+
+/** A sibling `translate` or translating `transform` that moves the element along x. */
+const translatesInline = (object) =>
+  shifts(siblingText(object, "translate").trim().split(/\s+/)[0] || undefined) ||
+  shifts(/\btranslate(?:X|3d)?\(\s*([^,)\s]+)/i.exec(siblingText(object, "transform"))?.[1]);
+
+/** A 50% anchor that a translate pulls back by half the element's own width. */
+const centres = (member, object) =>
+  Value.Check(stringLiteral, member.value) &&
+  member.value.value === "50%" &&
+  translatesInline(object);
+
+/**
+ * A physical side does not mirror in a right-to-left layout. Centring is the
+ * exception: `left: 50%` with a translate is the same in both directions,
+ * while a logical anchor flips and leaves its translate behind.
+ */
+const logicalProperties = {
+  meta: { docs: { description: "Write StyleX sides with logical properties and values." } },
+  create(context) {
+    return eachStyleBody((style) =>
+      eachStyleMember(style, (member, object, _guarded, key) => {
+        if (key === null) return;
+        const logical = PHYSICAL_KEYS.get(key);
+
+        if (logical !== undefined) {
+          if (key === "left" && centres(member, object)) return;
+          context.report({
+            node: member,
+            message:
+              `"${key}" is a physical side, so it stays put in a right-to-left layout. Use ` +
+              `${logical}. ` +
+              (key === "left"
+                ? `To centre, keep left: "50%" beside a translate of -50%, which is symmetric. `
+                : "") +
+              `If this side is physical by design, disable the rule on this line and say why.`,
+          });
+
+          return;
+        }
+
+        if (INLINE_ANCHORS.has(key) && centres(member, object)) {
+          context.report({
+            node: member,
+            message:
+              `"${key}: 50%" flips to the other side in a right-to-left layout, but its ` +
+              `translate does not, so the element lands a full width off centre. Centre with ` +
+              `left: "50%" and the same translate, which is symmetric.`,
+          });
+
+          return;
+        }
+
+        const values = PHYSICAL_VALUES.get(key);
+
+        if (values === undefined) return;
+        const physical = leafStrings(member.value).find((text) => values.has(text));
+
+        if (physical === undefined) return;
+        context.report({
+          node: member,
+          message:
+            `"${key}: ${physical}" is a physical side, so it stays put in a right-to-left ` +
+            `layout. Use ${key}: "${values.get(physical)}".`,
+        });
+      }),
+    );
+  },
+};
+
 export default {
   meta: { name: "nyte-design" },
   rules: {
@@ -570,5 +822,7 @@ export default {
     "no-light-dark-outside-tokens": noLightDarkOutsideTokens,
     "control-size": controlSize,
     "touch-in-tokens": touchInTokens,
+    "guarded-hover": guardedHover,
+    "logical-properties": logicalProperties,
   },
 };

@@ -37,6 +37,8 @@ const pluginOnlyConfig = {
     "nyte-design/size-grid": "error",
     "nyte-design/no-raw-font-weight": "error",
     "nyte-design/no-light-dark-outside-tokens": "error",
+    "nyte-design/guarded-hover": "error",
+    "nyte-design/logical-properties": "error",
   },
 };
 
@@ -94,10 +96,16 @@ afterAll(() => {
   rmSync(configDirectory, { recursive: true, force: true });
 });
 
+const DISABLEABLE_HOVER = '      ":hover": { [media.hover]: ink },';
+
+const HOVER_DEFAULT = '{ ":hover": { default: ink,';
+
+const PARTLY_EXCLUDED_HOVER = '":hover:not([data-disabled])": { [media.hover]: ink }, ":disabled"';
+
 const message = (needle: string): string =>
   violations.find((entry) => entry.line === findLine(needle))?.message ?? "";
 
-test("reports every raw spacing length, off-grid size, raw weight, and light-dark()", () => {
+test("reports every raw spacing length, off-grid size, raw weight, light-dark(), unguarded hover, and physical side", () => {
   expect(new Set(violations.map((entry) => entry.line))).toEqual(
     new Set([
       findLine("onScale:"),
@@ -117,6 +125,15 @@ test("reports every raw spacing length, off-grid size, raw weight, and light-dar
       findLine("lightDarkTemplate:"),
       findLine("bare: {"),
       findLine("return { paddingInline: 3"),
+      findLine("unguardedHover:"),
+      findLine(HOVER_DEFAULT),
+      findLine(DISABLEABLE_HOVER),
+      findLine(PARTLY_EXCLUDED_HOVER),
+      findLine("physicalPadding:"),
+      findLine("right: 0"),
+      findLine("physicalAlign:"),
+      findLine("leftWithoutTranslate:"),
+      findLine("logicalCentred:"),
     ]),
   );
 });
@@ -169,4 +186,30 @@ test("reports light-dark() in a style value, under a condition or a template", (
   expect(rulesOn("lightDark:")).toEqual(["nyte-design(no-light-dark-outside-tokens)"]);
   expect(rulesOn("lightDarkTemplate:")).toEqual(["nyte-design(no-light-dark-outside-tokens)"]);
   expect(message("lightDark:")).toContain("packages/ui/src/styles/roles.stylex.ts");
+});
+
+test("sends each hover to media.hover and past every disabled state its style names", () => {
+  for (const [needle, fix] of [
+    ["unguardedHover:", '":hover": { [media.hover]: … }'],
+    [HOVER_DEFAULT, '":hover": { [media.hover]: … }'],
+    [DISABLEABLE_HOVER, '":hover:not(:disabled, [data-disabled])": { [media.hover]: … }'],
+    [PARTLY_EXCLUDED_HOVER, '":hover:not([data-disabled]):not(:disabled)"'],
+  ] as const) {
+    const reported = violations.filter((entry) => entry.line === findLine(needle));
+    expect(reported.map((entry) => entry.rule)).toEqual(["nyte-design(guarded-hover)"]);
+    expect(reported[0]?.message).toContain(fix);
+  }
+});
+
+test("names the logical side and leaves symmetric left: 50% centring alone", () => {
+  for (const [needle, fix] of [
+    ["physicalPadding:", "Use paddingInlineStart."],
+    ["right: 0", "Use insetInlineEnd."],
+    ["physicalAlign:", 'Use textAlign: "end".'],
+    ["leftWithoutTranslate:", "Use insetInlineStart."],
+    ["logicalCentred:", 'Centre with left: "50%"'],
+  ] as const) {
+    expect(rulesOn(needle)).toEqual(["nyte-design(logical-properties)"]);
+    expect(message(needle)).toContain(fix);
+  }
 });
