@@ -11,7 +11,13 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
-import { defaultUrlTransform, Streamdown, useIsCodeFenceIncomplete } from "streamdown";
+import remend from "remend";
+import {
+  defaultUrlTransform,
+  parseMarkdownIntoBlocks,
+  Streamdown,
+  useIsCodeFenceIncomplete,
+} from "streamdown";
 import type { Components, ExtraProps, StreamdownProps, UrlTransform } from "streamdown";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./external-link.ts";
@@ -58,6 +64,10 @@ function nodeText(node: ReactNode): string {
 const AGENT_LINK = "agent:";
 
 const InsideLink = createContext(false);
+
+const NO_FILES: readonly MentionFile[] = [];
+
+const CitableFiles = createContext(NO_FILES);
 
 export function useCitableFiles(enabled: boolean) {
   return useQuery({
@@ -134,10 +144,10 @@ function MarkdownCode({
   const insideLink = use(InsideLink);
   const referenceOpener = useReferenceOpener();
   const opener = insideLink ? undefined : referenceOpener;
-  const files = useCitableFiles(opener !== undefined);
+  const files = use(CitableFiles);
 
   const text = nodeText(elementProps.children);
-  const reference = opener === undefined ? undefined : inlineCodeReference(text, files.data ?? []);
+  const reference = opener === undefined ? undefined : inlineCodeReference(text, files);
 
   const open = reference === undefined ? undefined : opener?.(reference);
 
@@ -189,7 +199,7 @@ function MarkdownLink({
   ...elementProps
 }: ComponentProps<"a"> & ExtraProps): ReactElement {
   const opener = useReferenceOpener();
-  const files = useCitableFiles(opener !== undefined && href !== undefined);
+  const files = use(CitableFiles);
 
   if (href?.startsWith(AGENT_LINK) === true) {
     const agent = href.slice(AGENT_LINK.length);
@@ -202,7 +212,7 @@ function MarkdownLink({
   }
 
   const reference =
-    opener === undefined || href === undefined ? undefined : linkReference(href, files.data ?? []);
+    opener === undefined || href === undefined ? undefined : linkReference(href, files);
 
   const open = reference === undefined ? undefined : opener?.(reference);
 
@@ -373,6 +383,26 @@ const urlTransform: UrlTransform = (url, key, node) =>
 
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
+/**
+ * Completes unfinished syntax in the last block only, where the split keeps an unclosed fence, list
+ * or math block, instead of Streamdown's pass over the whole answer on every update. The tail comes
+ * from the source because marked rewrites trailing whitespace in a block's text, and remend reads
+ * it. The split drops `\r` before measuring blocks, so the source drops it too.
+ */
+function splitMarkdown(markdown: string): string[] {
+  const source = markdown.includes("\r") ? markdown.replaceAll(/\r\n?/gu, "\n") : markdown;
+  const blocks = parseMarkdownIntoBlocks(source);
+
+  if (blocks.length === 0) return blocks;
+
+  const settled = blocks.slice(0, -1);
+
+  return [
+    ...settled,
+    remend(source.slice(settled.reduce((length, block) => length + block.length, 0))),
+  ];
+}
+
 function subscribeReducedMotion(onChange: () => void): () => void {
   reducedMotionQuery.addEventListener("change", onChange);
 
@@ -392,20 +422,29 @@ export function Prose({
     () => true,
   );
 
+  const files = useCitableFiles(useReferenceOpener() !== undefined);
+  const blocks = splitMarkdown(markdown);
+
   return (
     <div {...props(proseStyles.root)}>
       <ReducedMotion value={reducedMotion}>
-        <StreamingTail value={streaming ? findStreamingTail(markdown) : -1}>
-          <Streamdown
-            isAnimating={streaming}
-            BlockComponent={FadingBlock}
-            components={markdownComponents}
-            rehypePlugins={rehypePlugins}
-            urlTransform={urlTransform}
-            skipHtml
-          >
-            {markdown}
-          </Streamdown>
+        <StreamingTail value={streaming ? findStreamingTail(markdown, blocks) : -1}>
+          <CitableFiles value={files.data ?? NO_FILES}>
+            <Streamdown
+              isAnimating={streaming}
+              parseIncompleteMarkdown={false}
+              parseMarkdownIntoBlocksFn={(source) =>
+                source === markdown ? blocks : splitMarkdown(source)
+              }
+              BlockComponent={FadingBlock}
+              components={markdownComponents}
+              rehypePlugins={rehypePlugins}
+              urlTransform={urlTransform}
+              skipHtml
+            >
+              {markdown}
+            </Streamdown>
+          </CitableFiles>
         </StreamingTail>
       </ReducedMotion>
     </div>
