@@ -54,7 +54,6 @@ To start the documentation site, run `pnpm --dir packages/docs dev`. Agents leav
 | [ui](packages/ui/README.md) | Shared UI components and design tokens |
 | [bench](packages/bench/README.md) | Test fixtures: scripted models, cassettes, scenarios and a host simulation |
 | [docs](packages/docs/README.md) | Documentation website and design system reference |
-| [lab](packages/lab/README.md) | Experiments and prototypes |
 | [examples](packages/examples) | Small programs built on the SDK |
 
 Read the affected package's README for details. Before you edit, read the root `AGENTS.md` and every `AGENTS.md` above the files you change. `pnpm guidance` lists those files and the skills that apply to your change.
