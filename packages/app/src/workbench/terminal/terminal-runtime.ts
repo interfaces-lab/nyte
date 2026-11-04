@@ -43,13 +43,8 @@ const encoder = new TextEncoder();
 
 const KEPT_MARKS = 200;
 
-/** Command output mirrors into its textarea for screen readers at most this often. */
 const MIRROR_MS = 250;
 
-/**
- * A drag changes the grid on every frame. The shell hears the size once it holds this long, so a
- * running program redraws once instead of once per column.
- */
 const RESIZE_SETTLE_MS = 100;
 
 function notifySelection(id: string): void {
@@ -329,10 +324,6 @@ function createTextarea(shell: boolean): HTMLTextAreaElement {
   return textarea;
 }
 
-/**
- * Draws the terminal's scrollbar along `element`'s padding edge, flush with the panel. A press on
- * it is default-prevented so selection and a program's mouse tracking never see it.
- */
 function mountScrollbar(surface: TerminalSurface, element: HTMLElement) {
   const terminal = surface.terminal;
   const bar = document.createElement("div");

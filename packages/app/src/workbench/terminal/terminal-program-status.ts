@@ -1,14 +1,7 @@
-/**
- * One terminal's Program Status records (OSC 7501,
- * https://www.superlogical.com/rex/docs/build/program-status). Idle records are dropped: a tab
- * shows nothing for them.
- */
 export interface ProgramRecord {
   readonly id: string;
   readonly state: "working" | "blocked" | "done" | "error";
-  /** What a blocked program waits for. */
   readonly kind: "permission" | "question" | "auth" | undefined;
-  /** 0 to 100 while working or blocked; undefined when indeterminate. */
   readonly progress: number | undefined;
   readonly title: string | undefined;
   readonly msg: string | undefined;
@@ -24,7 +17,6 @@ const QUERY_REPLY =
 
 const MAX_RECORDS = 256;
 
-/** The spec's 4096-byte cap on a whole sequence, less `ESC ]` and `ESC \`. */
 const MAX_BODY_BYTES = 4092;
 
 const VALUE_LIMITS = new Map([
@@ -40,11 +32,6 @@ const encoder = new TextEncoder();
 
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
-/**
- * `report` applies one OSC body and returns what to write back to the program. `expire` runs when
- * the process exits or a shell prompt begins, so only finished work stays; `acknowledge` when the
- * user comes back to the terminal, so finished work counts as seen.
- */
 export function createProgramRecords() {
   let records = new Map<string, ProgramRecord>();
   let snapshot: readonly ProgramRecord[] = [];
@@ -105,7 +92,6 @@ function finished(record: ProgramRecord): boolean {
   return record.state === "done" || record.state === "error";
 }
 
-/** A report that breaks a limit or carries undecodable text is discarded whole; a malformed pair is skipped. */
 function parseReport(payload: string): Report | undefined {
   const values = new Map<string, string>();
 
@@ -169,7 +155,6 @@ function parseReport(payload: string): Report | undefined {
   };
 }
 
-/** Base64 UTF-8 without control characters, with invisible formatting removed for display outside the grid. */
 function decodeText(value: string, limit: number): string | undefined {
   if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}(?:==)?|[A-Za-z0-9+/]{3}=?)?$/u.test(value))
     return undefined;

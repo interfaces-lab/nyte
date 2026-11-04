@@ -68,7 +68,6 @@ export interface TerminalOutput {
   reset(): void;
   write(data: Uint8Array): void;
   update(tab: TerminalTab): void;
-  /** Whether the terminal is on screen, so its own notifications would only repeat it. */
   visible(): boolean;
   dispose(): void;
 }

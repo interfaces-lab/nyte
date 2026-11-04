@@ -1,12 +1,10 @@
 export interface OscNotice {
-  /** Undefined when the program gave none, as OSC 9 never does. */
   readonly title: string | undefined;
   readonly body: string;
 }
 
 const NOTIFY = "777;notify;";
 
-/** The notification in an OSC body: OSC 9 (`9 ; message`) or OSC 777 (`777 ; notify ; title ; body`). */
 export function readNotice(sequence: string): OscNotice | undefined {
   if (sequence.startsWith("9;")) {
     const body = sequence.slice(2).trim();

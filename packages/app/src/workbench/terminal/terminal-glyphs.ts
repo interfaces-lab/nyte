@@ -354,7 +354,6 @@ function drawPowerline(context: CanvasRenderingContext2D, code: number, box: Box
   return true;
 }
 
-/** U+E0B4–E0B7: a half ellipse spanning the cell, solid or outlined, bulging right or left. */
 function drawPowerlineRound(context: CanvasRenderingContext2D, code: number, box: Box): boolean {
   const solid = code === 0xe0b4 || code === 0xe0b6;
   const bulgesRight = code === 0xe0b4 || code === 0xe0b5;
@@ -387,7 +386,6 @@ function drawPowerlineRound(context: CanvasRenderingContext2D, code: number, box
 
 type Point = readonly [x: number, y: number];
 
-/** Each slanted separator's triangle and its hypotenuse, as fractions of the cell: U+E0B8, E0BA, E0BC, E0BE draw the triangle and the code after each draws the line. */
 const SLANTS: readonly { readonly corners: readonly Point[]; readonly line: readonly Point[] }[] = [
   {
     corners: [
