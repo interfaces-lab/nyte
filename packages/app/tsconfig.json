@@ -11,5 +11,5 @@
     "types": ["vite/client", "node"],
     "customConditions": ["nyte-source", "browser"]
   },
-  "include": ["src", "test", "lint", "dev"]
+  "include": ["src", "test", "lint", "dev", "bench"]
 }

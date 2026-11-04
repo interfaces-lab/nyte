@@ -34,6 +34,7 @@ export async function testRenderer(
     captures,
     mouse = false,
     motion = "reduce",
+    timeout = 40_000,
   }: {
     pointer?: "fine" | "coarse";
     forcePseudoClasses?: readonly string[];
@@ -42,6 +43,7 @@ export async function testRenderer(
     captures?: string;
     mouse?: boolean;
     motion?: "reduce" | "no-preference";
+    timeout?: number;
   } = {},
 ): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "nyte-renderer-test-"));
@@ -194,7 +196,7 @@ app.whenReady().then(async () => {
       ],
       {
         env,
-        timeout: studio ? 0 : 40_000,
+        timeout: studio ? 0 : timeout,
         killSignal: "SIGKILL",
       },
     );
