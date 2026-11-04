@@ -1,5 +1,64 @@
 # Changelog
 
+## v0.0.27 — 2026-11-04
+
+### The host runs on its own
+
+- The desktop app now runs Nyte's host as a login agent. Quitting the app leaves chats and agents running, and reopening it reconnects to the same host.
+- A menu bar item shows whether the host is running, along with the app and host versions. It also offers Check for Updates, Settings and a menu-bar-only mode.
+- `nyte` in a terminal attaches to the same host instead of starting a private one. Quitting the TUI no longer stops its agent's turns or background jobs.
+
+### Faster, lighter connections
+
+- Clients attach to a chat and resume it over one WebSocket. Instead of whole views, they read only the rows that changed since they last looked.
+- Measured on a copy of a real 5 GB store, over a 50 ms link: opening chats, sending, reconnecting and switching 20 chats takes 6.5 s instead of 7.4 s, and moves 2.4 MB instead of 4.4 MB. Reconnecting takes 139 ms instead of 416 ms.
+- A client catches up within about half a second of the host coming back.
+- Opening a chat that isn't in memory answers sooner, because the checkpoint is written after the answer.
+- A chat's commands, skills and tools show right after a host restart, and chats with the same plugins share one stored copy.
+
+### Remote access and outside agents
+
+- Built-in Tailscale: the host joins your tailnet itself, without the Tailscale app, and knows who each caller is. Access is owner only or anyone on the tailnet.
+- Outside agents such as Claude Code and Codex can connect over MCP at `/mcp` with OAuth. You grant them read-only access or a permission ceiling.
+- `nyte api call` and `nyte events` call any host operation and print its events.
+- The docs are served over MCP, so an agent can read them.
+- `nyte skill setup` installs a Nyte skill and a session hook for Claude Code and Codex.
+- The TUI reports the open chat's state to your terminal (OSC 7501), so terminals such as Rex can show it.
+
+### Chats and the app
+
+- Fork a chat from any reply. The fork starts in the same folder with the history up to that reply, and the original chat doesn't change.
+- Side chats beside a chat.
+- A question or failure in a chat you aren't looking at shows one alert per chat.
+- Answers that arrive after a question stopped waiting are attached to the chat as answers. The TUI no longer marks such a chat as waiting.
+- The terminal runs on Ghostty's libghostty-vt, with faster drawing, clickable links and macOS editing keys.
+- Each chat opens in its own tab, and tabs and drafts are kept per window.
+- A two-finger swipe toggles the sidebar.
+- Source control settings, with worktree clean-up and a branch prefix.
+- `nyte doctor`, `nyte triage` and `npx nyte-ai init`.
+- Agents pause while the Mac sleeps, and cut-off responses continue.
+
+### Fixes
+
+- A client that resumed after the host restored a checkpoint could miss earlier messages.
+- Background status that changed while a client was away now shows after it reconnects.
+- Turning sharing on and off at the same moment could leave sharing on.
+- Pending checkpoints are written when the host closes, and none after.
+- A terminal whose loader failed tries again on the next start and says why.
+- Adding a Tailscale host no longer tells you to fetch a token from Pair.
+
+### For SDK users
+
+- **API revision 12.** Clients below revision 12 are refused at the handshake.
+- **`session.fork`.** Starts a new chat with a session's history up to a commit.
+- **Turn line counts removed.** Turn info no longer carries `added` and `removed`.
+- **Watch APIs removed.** The whole-view watch APIs (`head.watch`, `sessions.watch`, `part.watch` and `session.watch()`) are gone. Use `openHost` with its head and directory stores, and `headView`.
+- **Catalogs.** A chat's catalog arrives as an id; read its content with `catalogs.read`.
+
+### Known issues
+
+- This release ships for Apple silicon macOS only. The Windows desktop app can't reach its host until the host listens on a named pipe.
+
 ## v0.0.24 — 2026-10-22
 
 - [`1ee7807`](https://github.com/interfaces-lab/nyte/commit/1ee78070bab0a7b8ee262e1a1a2b0265cdacc1c1) Thanks [@Itsnotaka](https://github.com/Itsnotaka)! - The chat stays at its newest message while a reply streams, and stays put while you read: a clicked toggle, an open message editor or a text selection no longer jumps away when rows above them resize. The Files Changed footer keeps one height, Review opens the Changes tab, and Escape cancels a message edit.
