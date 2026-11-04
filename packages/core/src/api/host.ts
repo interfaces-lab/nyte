@@ -81,6 +81,7 @@ export function watchHost(
             settings: fields.settings,
             views: fields.views,
             defaultWorkspace: fields.defaultWorkspace,
+            projects: fields.projects,
             authority: input.authority,
             tailnet: input.authority.has("owner") ? fields.tailnet : undefined,
           },

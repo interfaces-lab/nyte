@@ -64,6 +64,7 @@ async function controlled(attach: () => Promise<typeof env>) {
       settings: [],
       views: [],
       defaultWorkspace: workspace,
+      projects: [],
     }),
     turn: script().driver,
     resolveConfiguration: async () => configuration,

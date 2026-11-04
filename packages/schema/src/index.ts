@@ -43,6 +43,8 @@ export * from "./plugins.ts";
 
 export * from "./primitives.ts";
 
+export * from "./projects.ts";
+
 export * from "./runs.ts";
 
 export * from "./schema.ts";

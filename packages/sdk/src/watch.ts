@@ -96,6 +96,7 @@ function hostView(wire: HostViewWire, link: HostView["link"], operations: string
     settings: wire.settings,
     views: wire.views,
     defaultWorkspace: wire.defaultWorkspace,
+    projects: wire.projects,
     authority: new Set(wire.authority),
   };
 }

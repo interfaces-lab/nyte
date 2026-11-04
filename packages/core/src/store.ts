@@ -2,6 +2,7 @@ export {
   STORED_RECORD_TYPES,
   decodeCallRecord,
   decodeCatalogRecord,
+  decodeProjectRecord,
   decodeCommitRecord,
   decodeHostIdentity,
   decodeInboxRecord,

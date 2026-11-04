@@ -19,6 +19,7 @@ import { createConnection, createHost } from "./api/connection.ts";
 import { createHostState } from "./api/host.ts";
 import { createServerHost } from "./api/server.ts";
 import { rerunAction } from "./api/part.ts";
+import { publishProjects } from "./api/projects.ts";
 import { activationSession, sessionHandle } from "./api/session.ts";
 import { environmentPlugin } from "./builtins/environment.ts";
 import { interruptionsPlugin } from "./builtins/interruptions.ts";
@@ -221,6 +222,7 @@ export async function composeServer(
   try {
     if (options.seed !== undefined) await applySeed(kernel, options.seed);
     kernel.host.update({ settings: await settingInfos(kernel, null) });
+    await publishProjects(kernel);
 
     if (options.loadPluginDirectory !== undefined) await watchHome(kernel);
     await publishViews(kernel);
@@ -369,6 +371,7 @@ async function composeKernel(
       settings: [],
       views: [],
       defaultWorkspace: null,
+      projects: [],
     }),
     execution: options.execution,
     models: options.models,

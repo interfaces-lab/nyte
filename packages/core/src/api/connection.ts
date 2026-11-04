@@ -20,6 +20,7 @@ import { advance, cover, repair } from "../drive/execution.ts";
 import { pause, resume } from "../drive/pause.ts";
 import { createPrincipals, gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
+import { createProjects, projectHandle } from "./projects.ts";
 import { loadPlugins } from "../extend/plugin-folders.ts";
 import { createSettingsApi } from "../extend/settings.ts";
 import {
@@ -145,7 +146,9 @@ export function createConnection(
       read: (input) => sessions.read(input),
     },
     workspaces: gated("workspaces", createWorkspaces(kernel, context), authority),
+    projects: gated("projects", createProjects(kernel), authority),
     session: (id) => sessionHandle(kernel, context, id),
+    project: (id) => gated("project", projectHandle(kernel, id), authority),
     workspace,
     watch: () =>
       track(watchHost(kernel, { principal: context.principal, authority: context.authority })),

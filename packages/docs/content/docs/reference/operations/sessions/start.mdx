@@ -17,6 +17,10 @@ covers each input.
 `id` names the chat, its first message and its receipt. Mint it when the draft is created and send
 it with every retry: the same id with the same input returns the same start.
 
+`project` starts the chat in a project. A child starts in its parent's project without it, and a
+side chat in none. The first top-level chat in a project with no lead becomes its lead, in the same
+commit. A project that is archived, or works in another folder, is refused as `invalid`.
+
 ## Access
 
 Any principal with `participant` authority. Host scope: the session doesn't exist yet. The
@@ -228,6 +232,9 @@ Response:
     "side": {
       "type": "boolean",
       "const": true
+    },
+    "project": {
+      "type": "string"
     },
     "content": {
       "anyOf": [
