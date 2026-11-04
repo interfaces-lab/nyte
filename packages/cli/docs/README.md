@@ -1,15 +1,44 @@
 # Nyte guide
 
-This guide and its source examples ship with the Nyte release you installed.
-The npm package records its version in `package.json`; a native archive records
-it in `VERSION` beside the executable.
+This guide and its examples ship with the Nyte release you installed. Keep the guide that matches
+the `nyte` version you use.
 
-- [Source examples](examples/README.md)
+## Get started
 
-For npm installs, this guide is inside `nyte-ai/docs`. For native installs it is
-at `<install-directory>/../share/nyte/<version>/docs/README.md`. The default is
-`~/.local/share/nyte/<version>/docs/README.md`. An unpacked archive has `docs`
-beside `nyte`. Keep the docs for the executable version you use.
+Sign in to a model provider, then start a session in the folder you want the agent to work in:
 
-Nyte's workspace libraries are private. These examples use the installed `nyte`
-command and do not require unpublished packages.
+```sh
+nyte login
+nyte
+```
+
+To run one prompt and print the answer:
+
+```sh
+nyte -p "Summarize this project's README"
+```
+
+To check the install:
+
+```sh
+nyte doctor
+```
+
+`nyte triage` starts an agent on the problems `nyte doctor` finds. Run `nyte --help` to list every
+command.
+
+## Examples
+
+The [examples](examples/README.md) are shell scripts that run `nyte` on a prompt. They use only the
+installed `nyte` command, so they need no other packages.
+
+## Where to find this guide
+
+| Install | Guide location |
+| --- | --- |
+| npm | `nyte-ai/docs/README.md` inside the npm package |
+| Install script | `<install-directory>/../share/nyte/<version>/docs/README.md`, by default `~/.local/share/nyte/<version>/docs/README.md` |
+| Unpacked archive | `docs/README.md` beside the `nyte` executable |
+
+The npm package records its version in `package.json`. A native archive records it in `VERSION`
+beside the executable.

@@ -1,17 +1,20 @@
-# Source examples
+# Examples
 
-Run these from the workspace you want Nyte to inspect, after login. Put `nyte` on `PATH`. Each script starts one prompt run and
-returns Nyte's exit status. Neither script changes your shell settings.
+Shell scripts that run one `nyte` prompt and return its exit status. Copy and adapt them as you
+like. They don't change your shell settings.
 
-- [ask.sh](ask.sh) passes prompt arguments without shell evaluation.
-- [prompt-file.sh](prompt-file.sh) reads a prompt from a UTF-8 text file through stdin.
+| Script | What it does |
+| --- | --- |
+| [ask.sh](ask.sh) | Passes its arguments to `nyte` as the prompt, without shell evaluation |
+| [prompt-file.sh](prompt-file.sh) | Reads the prompt from a UTF-8 text file through stdin |
 
-Replace `/path/to/docs` with this guide's installed directory:
+## Run them
+
+Put `nyte` on your `PATH` and sign in with `nyte login`. Then run the scripts from the folder you
+want Nyte to inspect. Replace `/path/to/docs` with the directory that holds this guide. The
+[guide](../README.md) lists where each install puts it.
 
 ```sh
 sh /path/to/docs/examples/ask.sh "Summarize this project's README"
 sh /path/to/docs/examples/prompt-file.sh ./prompt.txt
 ```
-
-These are ordinary shell source files you can copy and adapt. See the
-[front door](../README.md) for locations.

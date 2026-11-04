@@ -1,35 +1,69 @@
 # E2E
 
-Playwright tests for the web app, configured in `playwright.config.ts`. The desktop suite lives in `packages/desktop/e2e`.
+Playwright tests for the web app, configured in `playwright.config.ts`. The desktop suite is in [`packages/desktop/e2e`](../../desktop/e2e/README.md).
 
-`server/start.ts` serves the built app and an in-memory SDK on `127.0.0.1:5181`. Its provider answers `Echo: <message>` without a network, and `Start an agent.` starts one subagent, `Map the core`. The specs cover pairing links, reloads, wrong tokens, a first chat, and one workspace journey that reads, saves, blames, searches, and mentions a seeded Git workspace. `web/scenario-u.spec.ts` starts its own host over a SQLite file and runs scenario U from the keyboard through a host restart; set `NYTE_SCENARIO_U_OUT` to save each run's waterfall, and `NYTE_SCENARIO_U_MEASURE=1` to record without the budget gate. Run it with `--workers 1` when repeating it. `web/scenario-d.spec.ts` does the same for scenario D over a temp git repo, with the CI MCP server and, in a second test, through `gh` without it; set `NYTE_WATERFALL_DIR` to save its waterfall and hop table.
+## Run it
 
-## Prerequisites
+Install Chromium once:
 
 ```sh
 pnpm --dir packages/app exec playwright install chromium
-pnpm --dir packages/canvas build        # the app build inlines the canvas shell
+```
+
+Then build and run every spec:
+
+```sh
+pnpm e2e
+```
+
+`pnpm e2e` builds the canvas shell and the app first. The app build inlines the canvas shell, so build both before running specs by hand:
+
+```sh
+pnpm --dir packages/canvas build
 pnpm --dir packages/app build
-```
-
-## Run
-
-```sh
-pnpm e2e                               # builds the canvas shell and the app first
-```
-
-One spec, against an existing build:
-
-```sh
 pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts e2e/web/pairing.spec.ts --reporter=list
 ```
 
-`NYTE_E2E_TOKEN` overrides the web server's token. `NYTE_E2E_PORT` overrides its port, so two runs on one machine can each start their own server. Outside CI an already running server on that port is reused. Results land in `test-results/` and `playwright-report/`; pass `--output` and `--reporter=list` to keep a concurrent run's artifacts apart.
+Results land in `e2e/test-results/` and `e2e/playwright-report/`. CI's `e2e-web` job builds the canvas shell and the app and runs every spec. In CI a failed test retries twice and records a trace on the first retry.
 
-CI's `e2e-web` job builds the canvas shell and the app and runs only `web/workspace.spec.ts`. The other web specs run locally until they pass again.
+### Clear account sign-in
 
-The web build must not carry account sign-in. With `VITE_NYTE_CLERK_PUBLISHABLE_KEY` set, for example from `.env.local`, `/` opens the account screen instead of the connect form and the pairing specs fail. Clear it for the build:
+The web build under test must not carry account sign-in. With `VITE_NYTE_CLERK_PUBLISHABLE_KEY` set, for example from `.env.local`, `/` opens the account screen instead of the connect form and the pairing specs fail. Clear it for the build, and use a free port so Playwright doesn't reuse a server already running on 5181:
 
 ```sh
 VITE_NYTE_CLERK_PUBLISHABLE_KEY= NYTE_E2E_PORT=5287 pnpm --dir packages/app e2e
 ```
+
+## How it works
+
+`server/start.ts` serves the built app and a host on `127.0.0.1:5181`. The host keeps its store in memory and works in a temporary Git workspace with one commit. It seeds 22 archived chats. Its provider answers `Echo: <message>` without a network. The message `Start an agent.` starts one subagent, `Map the core`. Outside CI, Playwright reuses a server already running on that port.
+
+The specs in `web/` cover:
+
+- Pairing links, reloads and wrong tokens.
+- Startup from a saved connection, including one whose host is unreachable.
+- A first chat, and a child chat opening in the pane.
+- The Inbox's Archived shelf.
+- A terminal on the host's Home folder.
+- A workspace journey that reads, edits, blames, searches and mentions files in the seeded workspace.
+
+The scenario specs run in their own `timed` project with one worker, after the other specs:
+
+- `web/scenario-u.spec.ts` runs scenario U, the prompt `find me a random restaurant nearby` answered through a places MCP server. It starts its own host over a SQLite file and drives the app from the keyboard through a host restart.
+- `web/scenario-d.spec.ts` runs scenario D, the prompt `why did CI fail on my PR, fix it`, over a temp Git repo with the CI MCP server. A second test runs it through `gh` without that server.
+
+The prompts and their fixtures come from `@nyte-ai/bench`.
+
+## Environment variables
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `NYTE_E2E_PORT` | `5181` | Port for the web server, so two runs on one machine can each start their own |
+| `NYTE_E2E_TOKEN` | built-in test token | Token the web server accepts |
+| `NYTE_SCENARIO_U_OUT` | unset | Folder for each scenario U run's waterfall |
+| `NYTE_SCENARIO_U_MEASURE` | unset | Set to `1` to record scenario U without the budget gate |
+| `NYTE_WATERFALL_DIR` | unset | Folder for scenario D's waterfall and hop table |
+
+To keep a concurrent run's artifacts apart, pass `--output` and `--reporter=list` along with a different `NYTE_E2E_PORT`.
+
+Read [AGENTS.md](AGENTS.md) before writing or changing a spec.

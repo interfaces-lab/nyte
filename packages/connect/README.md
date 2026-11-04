@@ -1,73 +1,107 @@
 # @nyte-ai/connect
 
-The contract for Nyte Connect, Nyte's account-based remote access. A host is a running Nyte that serves sessions: the desktop app, or the `nyte` CLI on a machine without a screen. Its operator links it to a Nyte account and turns sharing on. Any phone or browser signed in to the same account then lists the host, enrolls itself, and connects, with no approval step on the host. Users need no Tailscale, no shared network, no open port, and no Cloudflare account of their own. The operator (Nyte) runs one broker Worker, with a relay Durable Object per linked host, and one Clerk instance for everyone. The broker is served at `https://nyte-connect.daniel-fu90.workers.dev`; no DNS zone or custom domain is involved.
+The wire contract for Nyte Connect, Nyte's account-based remote access. The broker, the host and the phone and browser clients all import it.
 
-This package holds the wire contract. The broker lives in `packages/connect-broker`; its README and `wrangler.jsonc` are authoritative for binding names and broker internals. Nothing in this repository creates, deploys, or configures a live resource. Every step below is manual. The user steps are in the [remote access guide](../docs/content/docs/remote-access.mdx).
+A host is a running Nyte that serves sessions: the desktop app, or the `nyte` CLI on a machine without a screen. Its operator links it to a Nyte account and turns sharing on. Any phone or browser signed in to the same account then lists the host, enrolls itself and connects, with no approval step on the host. Users need no Tailscale, no shared network, no open port and no Cloudflare account of their own. Nyte runs one broker Worker, with a relay Durable Object per linked host, and one Clerk instance for everyone. The broker is served at `https://nyte-connect.daniel-fu90.workers.dev`, with no DNS zone or custom domain.
+
+The broker lives in [`@nyte-ai/connect-broker`](../connect-broker/README.md). Its README and `wrangler.jsonc` own the binding names and broker internals. The user steps are in the [remote access guide](../docs/content/docs/remote-access.mdx). Nothing in this repository creates, deploys or configures a live resource, so every operator step below is manual.
+
+## Entry points
 
 | Entry | For | Contents |
 | --- | --- | --- |
-| `@nyte-ai/connect` | broker, host, phone | TypeBox schemas, routes, lifetimes, `relayAddress`, the phone's broker client. Node-free; validated with `Value`, never `Compile`. |
-| `@nyte-ai/connect/signing` | broker, host | Ed25519 compact JWS through `jose`. The phone never imports it. |
-| `@nyte-ai/connect/relay` | broker, host | Relay frames, limits, close codes, the public path allowlist, and refusal envelopes. Node-free. The phone never imports it. |
+| `@nyte-ai/connect` | broker, host, phone, browser | TypeBox schemas, routes, lifetimes, `relayAddress` and the broker client. Node-free. Validate with `Value`, never `Compile`. |
+| `@nyte-ai/connect/signing` | broker, host | Ed25519 compact JWS through `jose`. Phones never import it. |
+| `@nyte-ai/connect/relay` | broker, host | Relay frames, limits, close codes, the public path allowlist and refusal envelopes. Node-free. Phones never import it. |
 | `@nyte-ai/connect/enrollment` | web app, phone | A device secret and its digest, waiting for the host's lease to accept it, and the device's own release with its bearer. |
-| `@nyte-ai/connect/account-config` | web app, phone | Parses the public Clerk key and Connect origin; a build without both offers address-and-token connections only. |
-| `@nyte-ai/connect/host` | desktop, `nyte` CLI | The Node side of a host: link, lease, and enrollment lifecycle, its private store, the broker client, the relay socket, and the enrollment routes. No Electron; the embedding supplies the account session and the listener. |
+| `@nyte-ai/connect/account-config` | web app, phone | Parses the public Clerk key and Connect origin. A build without both offers only address-and-token connections. |
+| `@nyte-ai/connect/host` | desktop, `nyte` CLI | The Node side of a host: the link, lease and enrollment lifecycle, its private store, the broker client, the relay socket and the enrollment routes. It has no Electron code. The embedding app supplies the account session and the listener. |
+| `@nyte-ai/connect/private-file` | desktop | `writePrivateFile`, which writes a mode 0600 file through an fsynced temporary file. |
 
-## How it fits together
+## How it works
 
-1. **Link.** The host generates an Ed25519 machine key and keeps it in its Connect store, a mode 0600 file. It links in one of two ways. The desktop gets a Clerk session JWT from its sign-in window, sealed with Electron `safeStorage`, and sends it with a proof signed by the machine key. `nyte account login` holds no Clerk session. It opens a link transaction signed by the key, with a short code the broker stores only as a hash. The owner opens the broker's `/link` page on the hosted web app, signs in, enters the code, compares the key fingerprint, and approves. The host polls and completes the link with another signed proof. Either way the broker creates the environment and returns its id, and every later call is signed with the machine key.
-2. **Relay.** While serving, the host opens a WebSocket to `/v1/environments/<id>/relay`. Its first frame is a proof for that exact request; the relay verifies it, spends its `jti`, and only then forwards anything. One socket serves an environment at a time: a newer one replaces the older, which stops instead of fighting back. The framing, limits, and close codes are in `src/relay.ts`.
-3. **Lease.** While serving, the host also asks for a broker-signed lease every 20 seconds. A lease lives 60 seconds and lists the device ids allowed in. Without a current lease, every account device is refused and its streams are closed. A lease is bound to the request that asked for it and ordered by a policy counter, so neither a replay nor a late answer can restore a revoked device.
-4. **Enroll.** The phone generates a 256-bit token with the native CSPRNG (`getRandomBytesAsync`) and sends only its SHA-256 digest to the broker under its Clerk session. The broker checks that the session's owner owns the environment, reserves the device, sends a signed enrollment to the host over the relay itself, and checks the host's signed receipt before it activates the device. The host signs that receipt itself while sharing is on; nobody approves the device there. No public route reaches the host's enrollment.
-5. **Use.** The phone calls `relayAddress(origin, environmentId)`, which is `<origin>/r/<id>`, through the protocol's transport with that bearer token. The broker forwards only `POST /<operation>` for a row of the protocol's declarations table, `GET /.nyte/identity` and `GET /.nyte/describe`, and the phone's own release at `/_nyte/connect/device`. An operation needs a token whose digest belongs to an active device of that environment; the two discovery routes need no token, as the host answers them unauthenticated. The host checks the digest and its current lease again.
+1. Link. The host generates an Ed25519 machine key and keeps it in its Connect store, a mode 0600 file. It links in one of two ways.
+   - The desktop gets a Clerk session JWT from its sign-in window and sends it once, with a proof signed by the machine key. It doesn't keep the JWT.
+   - `nyte account` holds no Clerk session. It opens a link transaction signed by the key and prints a short code, which the broker stores only as a hash. The owner opens the `/link` page on the hosted web app, signs in, enters the code, compares the key fingerprint and approves. The host polls and completes the link with another signed proof.
 
-### Codes, QR codes, and host identity
+   Either way, the broker creates the environment and returns its id. The host signs every later call with the machine key.
+2. Relay. While serving, the host opens a WebSocket to `/v1/environments/<id>/relay`. Its first frame is a proof for that exact request. The relay verifies the proof and spends its `jti` before it forwards anything. One socket serves an environment at a time. A newer socket replaces the older one, which stops instead of reconnecting. `src/relay.ts` defines the framing, limits and close codes.
+3. Lease. While serving, the host also asks for a broker-signed lease every 20 seconds. A lease lives 60 seconds and lists the device ids allowed in. Without a current lease, the host refuses every account device and closes its streams. Each lease is bound to the request that asked for it and ordered by a policy counter, so neither a replay nor a late answer can restore a revoked device.
+4. Enroll. The phone generates a 256-bit token with the native CSPRNG and sends only its SHA-256 digest to the broker under its Clerk session. The broker checks that the session's owner owns the environment, reserves the device, sends a signed enrollment to the host over the relay and checks the host's signed receipt before it activates the device. The host signs that receipt itself while sharing is on, so nobody approves the device there. No public route reaches the host's enrollment.
+5. Use. The phone calls `relayAddress(origin, environmentId)`, which returns `<origin>/r/<id>`, and uses it through the protocol's transport with its bearer token. The broker forwards only these requests:
+   - `POST /<operation>` for each row of the protocol's declarations table except the `local` ones
+   - `POST /.nyte/streams`, `POST /.nyte/streams/cancel` and `POST /.nyte/ws/ticket`
+   - `GET /.nyte/identity` and `GET /.nyte/describe`
+   - `GET /.nyte/ws?ticket=<ticket>`, the WebSocket a ticket opens
+   - `DELETE /_nyte/connect/device`, the phone's own release
 
-- **Host linking code.** The eight characters `nyte account login` prints. The account owner enters it on the `/link` page to approve linking that host. It expires after five minutes and gives no device access.
-- **Connection QR code.** The desktop's manual setup shows `nyte://connect?url=…&token=…`. The token is a bearer for that direct listener, and anyone holding it connects without an account. Connect is not involved.
-- **Signed host identity.** Every host listener answers `GET /.nyte/identity?nonce=` with its `hostId`, an Ed25519 public key, and a signature over the nonce, under the key in `~/.nyte/identity.key`; `GET /.nyte/describe` names the host. Clients pin it per route and refuse a different key at the same address until the user pairs again. It is not the Connect machine key.
+   The `POST` routes need a token whose digest belongs to an active device of that environment. The release accepts a reserved or active device. The discovery routes and the WebSocket need no token, because the host answers discovery unauthenticated and the ticket authenticates the socket. The host checks the digest and its current lease again. `PUBLIC_RELAY_BEARER` in `src/relay.ts` holds these rules.
 
-### What it protects, and what it does not
+### Codes, QR codes and host identity
+
+- The host linking code is the eight characters `nyte account` prints. The account owner enters it on the `/link` page to approve linking that host. It expires after five minutes and gives no device access.
+- The connection QR code is the `nyte://connect?url=…&token=…` link the desktop's manual setup shows. The token is a bearer for that direct listener, and anyone holding it connects without an account. Connect is not involved.
+- Every host listener answers `GET /.nyte/identity?nonce=` with its signed host identity: its `hostId`, an Ed25519 public key and a signature over the nonce, under the key in `~/.nyte/identity.key`. `GET /.nyte/describe` names the host. Clients pin the identity per route and refuse a different key at the same address until the user pairs again. This key is not the Connect machine key.
+
+## Security model
 
 - The broker holds the Clerk keys. Hosts and phones hold none of its secrets.
-- **The relay sees everything.** Cloudflare terminates TLS, and the broker Worker reads every relayed request and response: device bearer tokens, prompts, file contents, and answers, all in plain text. There is no end-to-end encryption. Anyone who controls the broker, its Cloudflare account, or Cloudflare can read and replay that traffic and impersonate an enrolled phone until its token is revoked.
-- The broker hashes a phone's bearer token to decide whether to forward a request. It must never store or log the token or any relayed body. Enrollment itself sends only a digest. A compromised broker can still enroll its own digest on any linked host. The desktop lists account devices and can revoke them. `nyte account status` lists a headless host's devices, and `nyte account unlink` refuses them all.
-- Device tokens are bearer tokens: a copied token works until it is revoked. This is not DPoP, and sessions are not bound to a device key.
-- Browser device tokens belong only in `sessionStorage`, never localStorage, cookies, URLs, or logs. They end client-side when the tab closes. A tab-close counts as releasing and forgetting the credential client-side. Release explicitly with the device bearer when switching hosts, and revoke on sign-out. Closing a tab sends nothing, because the same unload fires on reload: it does not revoke the device or invalidate a stolen copy, which works until the owner revokes it. Browser session restoration can also restore sessionStorage; do not promise server-enforced tab lifetimes.
-- Any XSS on `app.nyte.sh` can steal browser tokens and use them outside the browser. `app.nyte.sh` must ship a strict CSP, without unsafe inline scripts or eval, with narrowly scoped script and connection sources for Clerk and the broker. CORS is not token protection and does not stop a non-browser caller. The broker reads browser relayed traffic just as it reads phone traffic.
-- Revocation takes effect within one lease lifetime (60 seconds) even when the relay misbehaves, because the host refuses any device its unexpired lease does not list. Closing the relay socket also ends every open stream at once.
-- Ending a device comes in two strengths. **Revoke** (an owner removing a device from the desktop or the phone, or a phone signing out) also tombstones and revokes the Clerk session that enrolled it, so that session cannot enroll again silently. **Release** (a phone dropping its own credential after a cancelled connect, a failed check, or a switch to another host) ends only that device. Only the host can call the broker's release route, with its machine key, and only for the device whose own token asked it to; it never clears a tombstone.
+- The relay sees everything. Cloudflare terminates TLS, and the broker Worker reads every relayed request and response in plain text, including device bearer tokens, prompts, file contents and answers. There is no end-to-end encryption. Anyone who controls the broker, its Cloudflare account or Cloudflare can read and replay that traffic and impersonate an enrolled phone until its token is revoked.
+- The broker hashes a phone's bearer token to decide whether to forward a request. It must never store or log the token or any relayed body. Enrollment sends only a digest.
+- A compromised broker can still enroll its own digest on any linked host. The desktop lists account devices and can revoke them. `nyte account status` lists a headless host's devices, and `nyte account unlink` refuses them all.
+- Device tokens are bearer tokens. A copied token works until it is revoked. Nyte doesn't use DPoP, and sessions aren't bound to a device key.
+- Revocation takes effect within one lease lifetime, 60 seconds, even when the relay misbehaves, because the host refuses any device its unexpired lease doesn't list. Closing the relay socket also ends every open stream at once.
+
+Ending a device comes in two strengths:
+
+- Revoke also tombstones and revokes the Clerk session that enrolled the device, so that session can't enroll again silently. An owner removing a device from the desktop or the phone revokes it, and so does a phone signing out.
+- Release ends only that device. A phone releases its own credential after a cancelled connect, a failed check or a switch to another host. Only the host can call the broker's release route, with its machine key, and only for the device whose own token asked for it. A release never clears a tombstone.
+
+### Browser clients
+
+- Keep browser device tokens only in `sessionStorage`, never in localStorage, cookies, URLs or logs.
+- Closing the tab ends the token client-side and counts as releasing and forgetting it there. Closing a tab sends nothing to the broker, because the same unload fires on reload. It doesn't revoke the device or invalidate a stolen copy, which works until the owner revokes it.
+- Release explicitly with the device bearer when you switch hosts, and revoke on sign-out.
+- Browser session restore can also restore `sessionStorage`, so don't promise server-enforced tab lifetimes.
+- Any XSS on `app.nyte.sh` can steal browser tokens and use them outside the browser. `app.nyte.sh` must ship a strict CSP with no unsafe inline scripts or eval, and with narrowly scoped script and connection sources for Clerk and the broker.
+- CORS doesn't protect tokens and doesn't stop a non-browser caller. The broker reads browser traffic the same way it reads phone traffic.
 
 ## Clerk
 
 Use a Clerk instance dedicated to Nyte. The broker treats that instance as the only issuer.
 
-1. **Native API.** Turn it on under **Native applications**.
-2. **Session token audience.** Under **Sessions → Customize session token**, add this claim and save:
+1. Turn on the Native API under **Native applications**.
+2. Under **Sessions → Customize session token**, add this claim and save:
 
    ```json
    { "aud": "https://nyte-connect.daniel-fu90.workers.dev" }
    ```
 
-   The value must equal `CONNECT_ORIGIN` exactly. Desktop and phone both send standard session tokens; JWT templates are not used, because they carry no `sid`.
-3. **Allowed origins.** Add the desktop renderer's packaged origin, `nyte-desktop://account` (`nyte-desktop-test://account` for update-test builds), and the renderer's dev origin. Add `https://app.nyte.sh` to the Clerk dashboard's **Allowed origins**, plus `http://localhost:5179` and `http://127.0.0.1:5179` for web development. Allow the web sign-in redirect URLs too. Under **Native applications → Allowlist for mobile SSO redirect**, add `https://nyte.sh/desktop/signed-in`: the desktop sends the browser there after OAuth, and that page opens the `nyte-desktop://account/` deep link. List all of these origins in the Worker's `CLERK_AUTHORIZED_PARTIES`: desktop and browser session tokens carry their page origin as `azp`, and the broker refuses a present `azp` it does not list.
-4. **Webhook.** Add an endpoint at `<CONNECT_ORIGIN>/v1/clerk/webhook` subscribed to `user.updated` and `user.deleted`. Store its signing secret as the Worker secret `CLERK_WEBHOOK_SIGNING_SECRET`. A deleted user loses every environment; a banned or locked user's environments stop receiving leases.
-5. **Keys for the Worker.** Copy the instance's PEM public key (**API keys → Show JWT public key**) into `CLERK_JWT_KEY`, its Frontend API URL into `CLERK_ISSUER`, and its Secret Key into `CLERK_SECRET_KEY`. The broker uses the Secret Key for the Backend API only: to revoke the Clerk session of a revoked device, to look up the owner when a host links, and to reconcile owners' standing from the cron.
+   The value must equal `CONNECT_ORIGIN` exactly. Desktop and phone both send standard session tokens. Don't use JWT templates, because they carry no `sid`.
+3. Add these origins to **Allowed origins**, and allow their sign-in redirect URLs:
+   - the desktop renderer's packaged origin, `nyte-desktop://account`, and `nyte-desktop-test://account` for update-test builds
+   - the desktop renderer's dev origin, `http://127.0.0.1:5174`
+   - `https://app.nyte.sh`
+   - `http://localhost:5179` and `http://127.0.0.1:5179` for web development
+4. Under **Native applications → Allowlist for mobile SSO redirect**, add `https://nyte.sh/desktop/signed-in`. The desktop sends the browser there after OAuth, and that page opens the `nyte-desktop://account/` deep link.
+5. List every origin from step 3 in the Worker's `CLERK_AUTHORIZED_PARTIES`. Desktop and browser session tokens carry their page origin as `azp`, and the broker refuses an `azp` it doesn't list.
+6. Add a webhook endpoint at `<CONNECT_ORIGIN>/v1/clerk/webhook`, subscribed to `user.updated` and `user.deleted`. Store its signing secret as the Worker secret `CLERK_WEBHOOK_SIGNING_SECRET`. A deleted user loses every environment. A banned or locked user's environments stop receiving leases.
+7. Copy the instance's PEM public key from **API keys → Show JWT public key** into `CLERK_JWT_KEY`, its Frontend API URL into `CLERK_ISSUER`, and its Secret Key into `CLERK_SECRET_KEY`. The broker uses the Secret Key only for Backend API calls. It revokes the Clerk session of a revoked device, looks up the owner when a host links, and reconciles owners' standing from the cron.
 
-The webhook is the fast path for a banned, locked, or deleted user; the five-minute cron asks Clerk about every owner holding an active environment and bounds it when a webhook is lost. No lease or relayed request waits on Clerk, so a Clerk outage stops nothing already linked; linking a host answers 503 until Clerk answers. A user Clerk reports as unknown is disabled, not deleted; only the webhook deletes. Session tokens need no `email` claim.
+The webhook is the fast path for a banned, locked or deleted user. Every five minutes the cron asks Clerk about every owner who holds an active environment, which catches a lost webhook. No lease or relayed request waits on Clerk, so a Clerk outage stops nothing already linked. Linking a host answers 503 until Clerk answers. The broker disables a user Clerk reports as unknown but doesn't delete it. Only the webhook deletes. Session tokens need no `email` claim.
 
-Every Clerk-authenticated broker route accepts a token only if:
+Every Clerk-authenticated broker route accepts a token only if all of these hold:
 
-- its signature verifies against `CLERK_JWT_KEY`, and it has not expired;
-- `iss` equals `CLERK_ISSUER` exactly;
-- `aud` equals `CONNECT_ORIGIN`, or is an array containing it. A missing `aud` is refused, because `@clerk/backend` skips the check when the claim is absent;
-- `sid` is present and `sts` is not `pending`;
-- it carries no `act` claim, so a dashboard impersonation cannot link a host or enroll a device;
-- `azp`, when present, is in `CLERK_AUTHORIZED_PARTIES`. Native clients may omit `azp`, so a missing one is accepted. That is why the broker does not pass `authorizedParties` to `verifyToken`, which would refuse it.
+- Its signature verifies against `CLERK_JWT_KEY`, and it hasn't expired.
+- `iss` equals `CLERK_ISSUER` exactly.
+- `aud` equals `CONNECT_ORIGIN`, or is an array that contains it. The broker refuses a missing `aud`, because `@clerk/backend` skips the check when the claim is absent.
+- `sid` is present, and `sts`, when present, is `active`.
+- It carries no `act` claim, so a dashboard impersonation can't link a host or enroll a device.
+- `azp`, when present, is in `CLERK_AUTHORIZED_PARTIES`. Native clients may omit `azp`, so the broker accepts a missing one. For that reason the broker doesn't pass `authorizedParties` to `verifyToken`, which would refuse it.
 
-## Browser client contract
+## Browser client
 
-`createBrokerClient` and `relayAddress` from `@nyte-ai/connect` use browser APIs and no Node APIs. The broker client sends `credentials: "omit"`; it gets a fresh standard Clerk session token through `sessionToken` on each call. Use the hosted broker's canonical HTTPS origin, not the page origin.
+`createBrokerClient` and `relayAddress` from `@nyte-ai/connect` use browser APIs and no Node APIs. The broker client sends `credentials: "omit"` and gets a fresh standard Clerk session token through `sessionToken` on each call. Point `origin` at the hosted broker's canonical HTTPS origin, not the page origin.
 
 ```ts
 import { base64Url, createBrokerClient, DEVICE_TOKEN_BYTES, relayAddress } from "@nyte-ai/connect";
@@ -81,97 +115,93 @@ const enrolled = await broker.enroll({ environmentId, request: { clientId, clien
 const baseUrl = relayAddress(connectOrigin, enrolled.environmentId);
 ```
 
-Keep the token, client id, and enrolled ids only in the tab's sessionStorage, so each tab has a separate client id. `ClientId` allows 16–64 base64url characters; `Name` allows 1–64 characters. Phones and browsers are clients only. They have no workspace and cannot edit files locally, become environments, act as relay targets, or pair with each other. A browser connects only to a linked host environment through that host's relay. Enrollment has no platform or device-kind field: `EnrollRequest`, `EnrollResponse`, `EnrollmentClaims`, and device records already support browsers unchanged. `DEVICE_TOKEN_BYTES` is 32. The token must contain 256 bits of CSPRNG output encoded as unpadded base64url, 43 characters matching `DeviceToken`. `digest` is SHA-256 of the UTF-8 **token string**, not the original random bytes, encoded as 43-character unpadded base64url matching `Base64Url32`. `base64Url` supplies the encoding without Node dependencies. `role` is optional and absent means `controller`. The host decides whether to honor `owner`.
+Keep the token, client id and enrolled ids only in the tab's `sessionStorage`, so each tab has its own client id.
 
-Use the relay address as the transport's `url` and `Authorization: Bearer <token>` in its headers; its fetch-based SSE sends that header, which native `EventSource` cannot. Send no cookies and set `credentials: "omit"` on relay fetches. The relay passes `X-Nyte-Host`, `X-Nyte-Credential`, `X-Nyte-Version` and `X-Nyte-Mime` back and exposes them to allowed origins. Refusals are the host's wire error, so the transport rethrows them as `SdkError`. Allow up to `ENROLLMENT_READINESS_SECONDS` for the host's lease to catch up without re-enrolling.
+| Field | Format |
+| --- | --- |
+| token | 256 bits of CSPRNG output, `DEVICE_TOKEN_BYTES` (32) bytes, encoded as 43 characters of unpadded base64url matching `DeviceToken`. |
+| `digest` | SHA-256 of the UTF-8 token string, not of the original random bytes, encoded as 43 characters of unpadded base64url matching `Base64Url32`. `base64Url` encodes without Node. |
+| `clientId` | 16 to 64 base64url characters, matching `ClientId`. |
+| `clientName` | 1 to 64 characters, matching `Name`. |
+| `role` | Optional. Absent means `controller`. The host decides whether to honor `owner`. |
 
-For a weak release, send `DELETE` to `${baseUrl}${DESKTOP_ROUTES.device}` with the device bearer and forget the token client-side. For a strong revoke on sign-out, call `broker.revokeDevice({ environmentId, deviceId })`; that also revokes the enrolling Clerk session. `broker.removeEnvironment({ environmentId })` removes the host from the account. Results use `EnvironmentList`, `EnvironmentSummary`, and `EnrollResponse`; broker failures are `BrokerError.failure`, typed as `BrokerFailure`. `BrokerClient` and `BrokerClientOptions` are the exported client types.
+Enrollment has no platform or device-kind field. `EnrollRequest`, `EnrollResponse`, `EnrollmentClaims` and device records work for browsers as they are.
 
-The Worker allows exactly `https://app.nyte.sh`, `http://localhost:5179`, and `http://127.0.0.1:5179` in both its browser allowlist and Clerk authorized parties. The two dev origins are deliberately in production config so local web development can use the hosted relay, like desktop development already does. This trusts pages served at those exact local origins, including other software that binds those ports. They still need valid Clerk JWTs or enrolled bearer tokens. Operators who do not need hosted-relay development can remove both origins from both vars; for a separate development broker, put them in that broker's `.dev.vars`. A local HTTP broker URL is not accepted by the shared client.
+Phones and browsers are clients only. They have no workspace and can't edit files locally, become environments, act as relay targets or pair with each other. A browser connects only to a linked host environment, through that host's relay.
 
-CORS is limited to listing environments, owner environment removal, enrollment, owner device revocation, public `/r/:id/<operation>` POST including SSE, `/r/:id/.nyte/*` GET, and public bearer self-release. No wildcard origin or cookie credentials are allowed. Host linking, leases, sockets, broker machine-key releases, webhook, and key publication have no CORS. Signed machine-key requests on shared deletion routes have no CORS either. Native requests without Origin keep their existing behavior. The relay strips Origin and every browser header except `authorization`, `content-type`, `accept`, and `x-nyte-input`; it does not relax the host's origin, host, lease, or token checks on local listeners.
+Use the relay address as the transport's `url` and send `Authorization: Bearer <token>` in its headers. The transport's fetch-based SSE sends that header, which native `EventSource` can't. Send no cookies and set `credentials: "omit"` on relay fetches. The relay passes `Content-Type`, `Cache-Control`, `X-Nyte-Host`, `X-Nyte-Credential`, `X-Nyte-Version`, `X-Nyte-Mime` and `X-Nyte-Channel` back and exposes them to allowed origins. Refusals are the host's wire error, so the transport rethrows them as `SdkError`. Allow up to `ENROLLMENT_READINESS_SECONDS` for the host's lease to catch up before you re-enroll.
 
-## Cloudflare
+To end a device:
 
-- **Worker.** One Worker on its `workers.dev` subdomain. `CONNECT_ORIGIN` is that origin exactly, `https://nyte-connect.daniel-fu90.workers.dev`. It runs on the Workers Free plan; nothing here needs a paid plan.
-- **Relay.** A SQLite-backed Durable Object class, one object per environment, holding that host's socket with the WebSocket Hibernation API. The Free plan allows only SQLite-backed classes. Idle sockets cost no duration; pings are answered by `setWebSocketAutoResponse` without waking the object.
-- **D1.** One database bound as `DB`, with the migrations in `packages/connect-broker/migrations`.
-- **Cron.** The Worker's schedule closes the relays of revoked environments, expires stale reservations, retries pending Clerk session revocations, and purges spent proof ids.
+- For a weak release, send `DELETE` to `${baseUrl}${DESKTOP_ROUTES.device}` with the device bearer, then forget the token client-side.
+- For a strong revoke on sign-out, call `broker.revokeDevice({ environmentId, deviceId })`. It also revokes the enrolling Clerk session.
+- To remove the host from the account, call `broker.removeEnvironment({ environmentId })`.
 
-No zone, DNS record, tunnel, or Cloudflare API token is involved.
+Results use `EnvironmentList`, `EnvironmentSummary` and `EnrollResponse`. Broker failures are `BrokerError`, with `failure` typed as `BrokerFailure`. `BrokerClient` is the exported client type.
+
+The Worker allows exactly `https://app.nyte.sh`, `http://localhost:5179` and `http://127.0.0.1:5179`, both as browser origins and as Clerk authorized parties. The shared client refuses a local HTTP broker URL. The broker README lists the routes that allow CORS and how to remove the dev origins, under [Browser access](../connect-broker/README.md#browser-access).
 
 ## Configuration
 
-### Public, in builds
+### Public build values
 
 | Where | Name | Value |
 | --- | --- | --- |
 | Desktop main | `MAIN_VITE_NYTE_CONNECT_ORIGIN` | `https://nyte-connect.daniel-fu90.workers.dev` |
 | Desktop main | `MAIN_VITE_NYTE_CLERK_PUBLISHABLE_KEY` | `pk_live_…` |
-| Desktop main | `MAIN_VITE_NYTE_CLERK_FRONTEND_API_HOST` | `clerk.example.com` (no scheme) |
+| Desktop main | `MAIN_VITE_NYTE_CLERK_FRONTEND_API_HOST` | `clerk.example.com`, with no scheme |
 | Web app, `packages/app` | `VITE_NYTE_CLERK_PUBLISHABLE_KEY` | `pk_live_…` |
 | Web app, `packages/app` | `VITE_NYTE_CONNECT_ORIGIN` | `https://nyte-connect.daniel-fu90.workers.dev` |
 | CLI, `packages/tui` | `NYTE_CONNECT_ORIGIN` | `https://nyte-connect.daniel-fu90.workers.dev` |
 | iOS | `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_live_…` |
 | iOS | `EXPO_PUBLIC_NYTE_CONNECT_ORIGIN` | `https://nyte-connect.daniel-fu90.workers.dev` |
 
-All of these are public by design. A build missing any of them shows account remote access as unavailable; there is no built-in fallback. The connect origin must be a canonical `https://` origin; the broker client refuses anything else before it asks Clerk for a token.
+All of these values are public. A build missing any of them shows account remote access as unavailable, with no built-in fallback. The connect origin must be a canonical `https://` origin. The broker client refuses anything else before it asks Clerk for a token.
 
-The CLI reads `NYTE_CONNECT_ORIGIN` at build time, and a value in the running process's environment overrides it. Without either, `nyte account` refuses. The release workflow fails the CLI build when the repository variable is unset.
+The CLI reads `NYTE_CONNECT_ORIGIN` at build time, and a value in the running process's environment overrides it. Without either, `nyte account` refuses.
 
-The iOS app needs a new native build for Clerk: `@clerk/expo` raises the deployment target to iOS 17 and brings `expo-auth-session` and `expo-web-browser`.
+The iOS app signs in through `@clerk/expo`, which needs iOS 17 and brings `expo-auth-session` and `expo-web-browser`.
 
 ### Worker
 
-`packages/connect-broker/wrangler.jsonc` is authoritative. It needs:
+The broker README lists the Worker's vars, secrets and bindings, and how to generate and rotate `BROKER_SIGNING_KEYS`. See [Configuration](../connect-broker/README.md#configuration).
 
-| Kind | Name | Notes |
-| --- | --- | --- |
-| var | `CONNECT_ORIGIN` | The Worker's `workers.dev` origin and the Clerk `aud` claim. |
-| var | `CONNECT_WEB_ORIGINS` | Comma-separated exact canonical browser origins. HTTPS, or HTTP loopback for development. Empty disables browser access. |
-| var | `CLERK_ISSUER` | The Frontend API URL, compared exactly to `iss`. |
-| var | `CLERK_AUTHORIZED_PARTIES` | Comma-separated `azp` values accepted when present: at least `nyte-desktop://account`. Without it, desktop links are refused. |
-| secret | `CLERK_JWT_KEY` | PEM public key, for networkless verification. |
-| secret | `CLERK_SECRET_KEY` | The instance's Secret Key, for the Backend API calls above. |
-| secret | `CLERK_WEBHOOK_SIGNING_SECRET` | `whsec_…` from the webhook endpoint. |
-| secret | `BROKER_SIGNING_KEYS` | Ed25519 private JWKs, each with a `kid`; format in the Worker README. |
-| binding | `DB` | D1. |
-| binding | the relay | The SQLite-backed Durable Object namespace. |
-
-Set secrets with `wrangler secret put <NAME>`. Never commit a value, and never put one in a `vars` block.
-
-A broker signing key can be generated locally:
-
-```sh
-node -e 'const { generateKeyPairSync, randomUUID } = require("node:crypto"); const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" }); console.log(JSON.stringify([{ ...jwk, kid: randomUUID() }]))'
-```
-
-`BROKER_SIGNING_KEYS` is a JSON array; the first key signs and every key is published. Hosts pin the published key set (`/.well-known/jwks.json`) at link time and refetch it only when a token names an unknown `kid`. To rotate, publish the new key beside the old one, switch signing to it, and remove the old key once no unexpired token uses it, which takes at most a minute.
-
-## Deploying by hand
+## Deploy
 
 1. Create the Clerk instance and configure it as in [Clerk](#clerk).
-2. `wrangler d1 create nyte-connect`, then put the printed id in `wrangler.jsonc`.
-3. `wrangler d1 migrations apply nyte-connect --remote`.
-4. Replace every placeholder var in `wrangler.jsonc`.
-5. Set each secret with `wrangler secret put`.
-6. `wrangler deploy` from `packages/connect-broker`.
-7. Point the Clerk webhook at the deployed `/v1/clerk/webhook` and send a test event.
-8. Build the desktop, the CLI, the web app, and the iOS app with the public values above.
-9. Link a host, enroll a phone, revoke the phone from the desktop, and confirm its streams close within a minute.
+2. Deploy the broker as its [Operator setup](../connect-broker/README.md#operator-setup) describes.
+3. Point the Clerk webhook at the deployed `/v1/clerk/webhook` and send a test event.
+4. Build the desktop, the CLI, the web app and the iOS app with the public values above.
+5. Link a host, enroll a phone, revoke the phone from the desktop, and confirm its streams close within a minute.
 
-A broker runs at the origin above. This repository doesn't record which commit it runs, so check that a deployment includes a route before relying on it.
+The repository doesn't record which commit the hosted broker runs. Check that a deployment includes a route before you rely on it.
 
 ## Lifetimes
 
 | Value | Seconds | Meaning |
 | --- | --- | --- |
-| `PROOF_LIFETIME_SECONDS` | 60 | Window for a host request proof; its `jti` is spent once. |
+| `PROOF_LIFETIME_SECONDS` | 60 | Window for a host request proof. Its `jti` is spent once. |
 | `LEASE_LIFETIME_SECONDS` | 60 | Longest any device stays authorized without a fresh lease. |
 | `HEARTBEAT_INTERVAL_SECONDS` | 20 | How often a serving host asks for a lease. |
-| `ENROLLMENT_LIFETIME_SECONDS` | 60 | Window for a broker enrollment; the host spends its `jti` durably. |
+| `ENROLLMENT_LIFETIME_SECONDS` | 60 | Window for a broker enrollment. The host spends its `jti` durably. |
 | `ENROLLMENT_READINESS_SECONDS` | 10 | How long a phone may retry a fresh token while the lease catches up. A refusal after that means revoked. |
 | `ONLINE_WINDOW_SECONDS` | 90 | A host without a heartbeat for this long lists as offline, even with its relay socket open. |
 | `LINK_TRANSACTION_LIFETIME_SECONDS` | 300 | How long a host linking code waits for approval. |
 
-The relay's own limits live in `src/relay.ts`: 5 seconds to authenticate a socket, 32 channels per socket, 32 KiB per frame chunk, a 256 KiB credit window per channel and direction, 8 MiB per request body, and a ping every 20 seconds.
+`src/relay.ts` sets the relay's limits:
+
+| Limit | Value |
+| --- | --- |
+| Time to authenticate a socket | 5 seconds |
+| Channels per socket | 32 |
+| Frame chunk | 32 KiB |
+| Credit window per channel and direction | 256 KiB |
+| Request body | 8 MiB |
+| Ping interval | 20 seconds |
+
+## Development
+
+```sh
+pnpm --dir packages/connect test
+pnpm --dir packages/connect typecheck
+```

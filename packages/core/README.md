@@ -1,16 +1,48 @@
 # @nyte-ai/core
 
-Core owns durable session state and execution. `composeHost` (`@nyte-ai/core/server`) builds a host from a `Store`, the `@nyte-ai/ai` models, core plugins and a default workspace; [host](../host/README.md)'s `openHost`, which the sdk's Node `sdk.open` is, calls it with what a machine supplies. Clients do not import core: they use `@nyte-ai/sdk`, whose types are core's and schema's.
+Core owns durable session state and execution. You use it directly only to build a host. Clients use `@nyte-ai/sdk`, whose types come from core and `@nyte-ai/schema`.
 
-The package has four entries: [src/index.ts](src/index.ts) (`.`), the client and plugin contract; [src/store.ts](src/store.ts) (`./store`), the store-backend SPI host's stores implement; [src/server.ts](src/server.ts) (`./server`), composition and the `ServerHost` port a listener serves a composed host through; and [src/testing.ts](src/testing.ts) (`./testing`), the kernel under a composed host, the steps the tests of other packages drive by hand and the scripted-turn harness ([src/harness.ts](src/harness.ts)) core's own tests share, outside the SDK contract.
+## Quick start
 
-A store is two primitives: immutable content-addressed objects, written before any publish, and refs, the only mutable state, published as one all-or-nothing `refs.set` batch. `memoryStore` (`./store`) is the in-process one; sqlite, postgres and Durable Object storage live in host. A head's `watch()` folds the session into one `SessionView` per change, and the sdk folds the wire's deltas with the same code, so no client derives what the view carries.
+`composeHost` builds a host from a `Store`, a `Models` from `@nyte-ai/ai`, core plugins and a default workspace:
+
+```ts
+import { createModels } from "@nyte-ai/ai/models";
+import { InMemoryCredentialStore } from "@nyte-ai/ai/auth/credential-store";
+import { composeHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
+import { chatOnlyProvider } from "@nyte-ai/host/providers";
+
+const host = await composeHost({
+  store: memoryStore(),
+  models: createModels({ credentials: new InMemoryCredentialStore() }),
+  plugins: [{ id: "chat-only", environment: chatOnlyProvider() }],
+  workspace: { kind: "chat-only", locator: null },
+  home: null,
+  description: { name: "my-host", platform: "node", version: "0.1.0" },
+});
+```
+
+On a machine, `openHost` in [`@nyte-ai/host`](../host/README.md) calls `composeHost` with that machine's store, models and workspace. The sdk's Node `sdk.open` is `openHost`.
+
+## Entry points
+
+| Entry | What it holds |
+| --- | --- |
+| `@nyte-ai/core` | The client and plugin contract, and the `Store` interface that store backends implement |
+| `@nyte-ai/core/store` | `memoryStore`, and the record decoders, ref names and migrations that store backends share |
+| `@nyte-ai/core/server` | `composeHost`, and the `ServerHost` interface that a listener serves a composed host through |
+| `@nyte-ai/core/testing` | The kernel under a composed host, the steps other packages' tests drive by hand, and the scripted-turn helpers core's tests share. It is outside the SDK contract. |
+
+## How it works
+
+A store holds two kinds of data. Objects are immutable and content-addressed, and core writes them before any publish. Refs are the only mutable state, and core publishes them in one all-or-nothing `refs.set` batch. `memoryStore` keeps both in process. The SQLite, PostgreSQL and Durable Object stores live in `@nyte-ai/host`.
+
+Core folds a session's log into its current state. `Head.view()` answers one `SessionView` from that fold. Clients in another process read rows and apply change events instead, as the [host protocol](../../docs/host-protocol/README.md) describes.
 
 Core imports no `node:*` module, so the sdk's browser and React Native entry can load it.
 
-## Verification
-
-From the repository root:
+## Development
 
 ```sh
 pnpm --dir packages/core test

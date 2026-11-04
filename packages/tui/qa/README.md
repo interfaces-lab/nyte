@@ -1,26 +1,52 @@
 # Binary smoke
 
+Tests for what only the compiled `nyte` binary shows. Everything a test can see in process lives in
+`test/`.
+
+## Run it
+
+Build `dist/nyte` and run the smoke:
+
 ```sh
-pnpm --dir packages/tui test:binary                     # builds dist/nyte, then runs the smoke
-NYTE_BINARY=/path/to/nyte bun test ./qa/binary.smoke.ts # an existing build
+pnpm --dir packages/tui test:binary
 ```
 
-Everything a test can see in process lives in `test/`. This smoke covers only what the compiled
-binary shows: that `--help` and print mode work through pipes, that a provider error exits 1 and
-SIGTERM exits 143 with a `cancelled` result, that the TUI asks to trust a folder with project
-files and loads its plugin once trusted, that keys typed at launch reach the composer, that a
-fresh HOME paints the recorded model and takes Enter before its host opens, that `/quit` and
-SIGTERM print the resume command that `--session` reopens, and that a closed terminal, SIGHUP,
-and SIGTERM after the terminal closed each end the TUI within 2 s.
+Run it against an existing build from `packages/tui`:
+
+```sh
+cd packages/tui
+NYTE_BINARY=/path/to/nyte bun test ./qa/binary.smoke.ts
+```
+
+## What it covers
+
+- `--help` and print mode work through pipes.
+- A provider error exits 1, and SIGTERM during a run exits 143 with a `cancelled` result.
+- The TUI asks to trust a folder with project files, and loads its plugin once trusted.
+- Keys typed at launch reach the composer.
+- A fresh `HOME` paints the recorded model and takes Enter before its host opens.
+- `/quit` and SIGTERM print the resume command, and `--session` reopens that session.
+- A closed terminal, SIGHUP, and SIGTERM after the terminal closed each end the TUI within 2 s.
+- `nyte host` serves clients that attach with `--host-url` from an empty `HOME`, and an attached
+  TUI shows it reconnecting when the host stops.
+
+## How it works
 
 `qa/service.ts` serves an Anthropic Messages endpoint and a model catalog over `fakeModels` from
-`@nyte-ai/bench`, and stores a key login for it in an isolated HOME. The binary opens that HOME's
-store itself and calls the endpoint, so no real provider or network is involved, and every
-request the binary causes is visible to the test. `freshHome` stores nothing.
+`@nyte-ai/bench`, and stores a key login for it in an isolated `HOME`. The binary opens that
+home's store and calls the endpoint itself. No real provider or network is involved, and the test
+sees every request the binary makes. `freshHome` returns an isolated home with nothing stored.
 
-`qa/harness/` holds the scripts the multi-process store harness in
-`packages/desktop/e2e/stores` runs with Bun: `tui-driver.ts` drives a TUI in a PTY over stdin,
-`seed.ts` stores a key login for the harness's scripted model, and `observe.ts` and `write.ts`
-measure how soon one process sees another's commit. `qa/pty.ts` runs the binary in a Bun PTY and parses its
-output with OpenTUI's `EmbeddedTerminalRenderable`, which also encodes keys for the modes the
-binary negotiated.
+`qa/pty.ts` runs the binary in a Bun PTY and parses its output with OpenTUI's
+`EmbeddedTerminalRenderable`, which also encodes keys for the modes the binary negotiated.
+
+`qa/harness/` holds the scripts that the desktop's multi-process store suite in
+`packages/desktop/e2e/stores` runs with Bun:
+
+| Script | What it does |
+| --- | --- |
+| `tui-driver.ts` | Drives a TUI in a PTY over stdin |
+| `seed.ts` | Stores a key login for the suite's scripted model |
+| `observe.ts`, `write.ts` | Measure how soon one process sees another's commit |
+
+Read [the TUI's AGENTS.md](../AGENTS.md) before changing these tests.
