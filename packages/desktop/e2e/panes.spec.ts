@@ -229,6 +229,7 @@ test("the panes journey", async ({ desktop }) => {
 
   await test.step("the sidebar's handle resizes it and clamps to its range", async () => {
     const handle = page.getByRole("separator", { name: "Resize sidebar" });
+    await expect(page.locator('[data-slot="preview-card-content"]')).toHaveCount(0);
     const before = await box(sidebar(page));
     const start = await center(handle);
 
