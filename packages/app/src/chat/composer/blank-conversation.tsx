@@ -31,6 +31,7 @@ import type { BlankViewState, ChatDraft } from "../../panes/session-view-state.t
 import { useCatalog } from "../../data/catalog.ts";
 import { useHostState } from "../../data/host.ts";
 import { useMentionFiles } from "../../data/files.ts";
+import { useProjects } from "../../data/projects.ts";
 import { useWorkspaceCatalog } from "../../data/plugins.ts";
 import { modelRefFor, selectedModelOption } from "./model-picker-state.ts";
 import { StartupReadsRelease } from "../../data/startup.ts";
@@ -91,6 +92,11 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
   const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useBlankViewBinding(paneId);
   const { status } = viewState;
+
+  const project = useProjects().find(
+    (entry) => entry.id === viewState.project && entry.workspace === workspace?.id,
+  );
+
   const held = status.kind === "waiting" || status.kind === "starting";
   const [pickerOpen, setPickerOpen] = useState(false);
   const attachments = viewState.composer.attachments;
@@ -186,6 +192,13 @@ function BlankScreen({ paneId, inputRef }: BlankConversationProps): ReactElement
               onChange={(project) => updateViewState((state) => ({ ...state, project }))}
             />
           </WorkspaceContext>
+          {project !== undefined && (
+            <div {...props(sessionScreenStyles.blankHint)}>
+              {project.lead === null
+                ? "Starts the project’s lead. It hands each change to a unit."
+                : "Starts a unit you work with here. The lead gets its reports."}
+            </div>
+          )}
           <ComposerFrame
             surface="new-chat"
             document={{

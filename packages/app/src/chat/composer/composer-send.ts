@@ -124,6 +124,7 @@ interface ComposerChat {
   readonly id: SessionId;
   readonly workspace?: WorkspaceId;
   readonly project?: ProjectId;
+  readonly name?: string;
   readonly configuration?: ConfigurationPatch;
 }
 

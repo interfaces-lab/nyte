@@ -199,6 +199,12 @@ export function Sidebar(): ReactElement {
   };
 
   const newProjectChat = async (project: ProjectInfo): Promise<void> => {
+    if (project.lead !== null) {
+      windowTabs.openChat(project.lead, "permanent");
+
+      return;
+    }
+
     const folder = workspaces.data?.find((workspace) => workspace.id === project.workspace);
 
     if (folder === undefined || !(await activateWorkspace(folder.path))) return;

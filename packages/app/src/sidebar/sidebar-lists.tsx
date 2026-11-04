@@ -502,7 +502,11 @@ function ProjectBlock({
             size="sm"
             iconOnly
             icon="new-chat"
-            aria-label={`New Chat in ${group.project.name}`}
+            aria-label={
+              group.project.lead === null
+                ? `New Chat in ${group.project.name}`
+                : `Message Lead in ${group.project.name}`
+            }
             onClick={onNewChat}
           />
         </Row.Actions>
