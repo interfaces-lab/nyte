@@ -1,4 +1,6 @@
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
+import type { ProjectInfo } from "@nyte-ai/schema";
+import { useProjects } from "../data/projects.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -37,6 +39,7 @@ import { WorkspaceControls } from "./sidebar-filter.tsx";
 import {
   ChatsList,
   FolderList,
+  ProjectsSection,
   ListedRows,
   PinnedSection,
   useDrafts,
@@ -53,6 +56,7 @@ import {
   folderView,
   sessionOrder,
   sessionsForNavigation,
+  partitionByProject,
   sessionsForView,
   deriveShelf,
   type ShelfHold,
@@ -136,6 +140,8 @@ export function Sidebar(): ReactElement {
   const [collectionExpanded, setCollectionExpanded] = useState(true);
   const [cloudCollapsed, setCloudCollapsed] = useState(false);
   const view = useSetting(preferences.sidebarView);
+  const projectsOn = useSetting(preferences.projects);
+  const projects = useProjects();
   const folded = useSetting(preferences.sidebarFolded);
   const [hold, setHold] = useState<ShelfHold | undefined>();
   const [listedWhenBlank, setListedWhenBlank] = useState<ReadonlySet<SessionId>>();
@@ -192,6 +198,13 @@ export function Sidebar(): ReactElement {
     void router.navigate({ to: "/settings/$section", params: { section }, replace });
   };
 
+  const newProjectChat = async (project: ProjectInfo): Promise<void> => {
+    const folder = workspaces.data?.find((workspace) => workspace.id === project.workspace);
+
+    if (folder === undefined || !(await activateWorkspace(folder.path))) return;
+    windowTabs.newChat(project.id);
+  };
+
   const newWorkspaceChat = async (place: SessionPlace): Promise<void> => {
     if (!(await activateWorkspace(place.path))) return;
     setExpanded(place.workspace, true);
@@ -221,6 +234,34 @@ export function Sidebar(): ReactElement {
 
   const order = sessionOrder(view.sort, chats);
 
+  const rooted = (workspaceSessions.data ?? [])
+    .flatMap((workspaceGroup) => {
+      const place: SessionPlace = {
+        workspace: workspaceGroup.workspacePath === null ? null : workspaceGroup.workspace,
+        path: workspaceGroup.workspacePath,
+      };
+
+      return workspaceGroup.sessions
+        .filter((session) => session.parent === null && !session.archived)
+        .map((session) => ({ place, session }));
+    })
+    .toSorted((left, right) => order(left.session, right.session));
+
+  const split = partitionByProject(projectsOn ? projects : [], rooted, (row) => row.session);
+
+  const inProject: ReadonlySet<SessionId> = new Set(
+    split.groups.flatMap((group) =>
+      [...(group.lead === undefined ? [] : [group.lead]), ...group.units].map(
+        (row) => row.session.id,
+      ),
+    ),
+  );
+
+  const outsideProjects = (
+    sessions: readonly SessionInfo[] | undefined,
+  ): readonly SessionInfo[] | undefined =>
+    inProject.size === 0 ? sessions : sessions?.filter((session) => !inProject.has(session.id));
+
   const listed: readonly ListedSession[] | undefined = workspaceSessions.data
     ?.flatMap((workspaceGroup) => {
       if (workspaceGroup.workspacePath === null && !homeVisible) return [];
@@ -230,7 +271,14 @@ export function Sidebar(): ReactElement {
         path: workspaceGroup.workspacePath,
       };
 
-      return sessionsForView(workspaceGroup.sessions, view, "local", now, chats, unread)
+      return sessionsForView(
+        outsideProjects(workspaceGroup.sessions) ?? [],
+        view,
+        "local",
+        now,
+        chats,
+        unread,
+      )
         .flatMap((group) => group.sessions)
         .map((session) => ({ place, session }));
     })
@@ -284,7 +332,7 @@ export function Sidebar(): ReactElement {
     const sessions =
       workspaceSessions.data === undefined
         ? undefined
-        : localSessions(workspaceSessions.data, place.workspace);
+        : outsideProjects(localSessions(workspaceSessions.data, place.workspace));
 
     const name = entry.kind === "home" ? "Home" : entry.name;
     const expanded = !folded.includes(place.workspace);
@@ -415,6 +463,16 @@ export function Sidebar(): ReactElement {
         </div>
 
         <div data-nyte-scrollport onKeyDown={moveSidebarFocus} {...props(styles.scroll)}>
+          {projectsOn && (
+            <ProjectsSection
+              groups={split.groups}
+              context={context}
+              selected={page?.kind === "project" ? page.section : undefined}
+              onOpen={(project) => shellActions.openProject(project.id)}
+              onNewChat={(project) => void newProjectChat(project)}
+              onNewProject={() => shellActions.openProject("new")}
+            />
+          )}
           {pinned.length > 0 && <PinnedSection rows={pinned} context={context} />}
           <section aria-label={flat ? "Chats" : "Workspaces"} {...props(styles.section)}>
             <Collapsible.Root

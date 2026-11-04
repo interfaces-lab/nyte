@@ -86,6 +86,7 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
     "settings",
     "views",
     "defaultWorkspace",
+    "projects",
     "authority",
     "principal"
   ],
@@ -307,6 +308,102 @@ Only the [errors every operation can raise](/docs/reference/operations#errors).
           "type": "null"
         }
       ]
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "brief",
+          "until",
+          "workspace",
+          "lead",
+          "worker",
+          "archived",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "brief": {
+            "type": "string"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "standing"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "goal"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "goal"
+                  },
+                  "goal": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          },
+          "lead": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "worker": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["provider", "id"],
+                "properties": {
+                  "provider": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "number"
+          }
+        }
+      }
     },
     "authority": {
       "type": "array",

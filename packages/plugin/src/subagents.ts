@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import { asId, standard } from "@nyte-ai/schema";
 import type {
+  Configuration,
   ConfigurationPatch,
   Infer,
   Message,
@@ -24,17 +25,21 @@ const SCHEDULED: Readonly<Record<Schedule["kind"], string>> = {
 
 const selectionParameters = {
   agent: Type.Optional(
-    Type.String({ description: "A registered agent to run as; the default agent otherwise." }),
+    Type.String({
+      description:
+        "A registered agent to run as. Without it, a chat that runs as an agent starts subagents of its own agent, model and thinking level; any other chat, of the default agent.",
+    }),
   ),
   model: Type.Optional(
     Type.String({
       description:
-        "A model from /model, as provider/id or its id alone; a fast variant is its own id. The default model otherwise.",
+        "A model from /model, as provider/id or its id alone; a fast variant is its own id. The inherited or default model otherwise.",
     }),
   ),
   thinking: Type.Optional(
     Type.Enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"], {
-      description: "A thinking level the model accepts; its default otherwise.",
+      description:
+        "A thinking level the model accepts; the inherited level or the model's default otherwise.",
     }),
   ),
 };
@@ -319,17 +324,32 @@ export default {
   },
 } satisfies Plugin;
 
+/**
+ * A chat that runs as a registered agent starts subagents of its own type: its agent, and its
+ * model and thinking level unless the call names a model. Any other chat's subagents run on what
+ * the call names and the defaults.
+ */
 async function childConfiguration(
   invocation: ToolInvocation,
-  { agent, model, thinking }: Pick<Infer<typeof taskParameters>, "agent" | "model" | "thinking">,
+  args: Pick<Infer<typeof taskParameters>, "agent" | "model" | "thinking">,
 ): Promise<ConfigurationPatch | undefined> {
-  if (agent === undefined && model === undefined && thinking === undefined) return undefined;
+  const parent = args.agent === undefined ? await agentConfiguration(invocation) : null;
+  const named = args.model === undefined ? undefined : await findModel(invocation, args.model);
 
-  return {
-    agent,
-    model: model === undefined ? undefined : await findModel(invocation, model),
-    thinking,
+  const patch = {
+    agent: args.agent ?? parent?.agent,
+    model: named ?? parent?.model,
+    thinking: args.thinking ?? (named === undefined ? parent?.thinking : undefined),
   };
+
+  return Object.values(patch).every((value) => value === undefined) ? undefined : patch;
+}
+
+async function agentConfiguration(invocation: ToolInvocation): Promise<Configuration | null> {
+  const effective = (await invocation.session.head(invocation.head).view({ tail: 0 })).configuration
+    .effective;
+
+  return effective === null || effective.agent === null ? null : effective;
 }
 
 async function findModel(invocation: ToolInvocation, name: string): Promise<ModelRef> {
@@ -382,11 +402,20 @@ function reply(content: string): ToolResult<unknown> {
   return { content: [{ kind: "text", text: content }] };
 }
 
+/**
+ * A session this one may follow: its own subagent, or, for a top-level chat in a project, any
+ * other chat in that project, such as one the user moved in.
+ */
 async function requireChildSession(invocation: ToolInvocation, id: string): Promise<Session> {
   const child = invocation.sdk.session(asId<"session">(id));
+  const [theirs, own] = await Promise.all([child.info(), invocation.session.info()]);
 
-  if ((await child.info()).parent !== invocation.session.id)
-    throw new Error(`Session ${id} is not a subagent of this session.`);
+  const reachable =
+    theirs.parent === own.id ||
+    (own.parent === null && own.project !== undefined && theirs.project === own.project);
+
+  if (!reachable || theirs.id === own.id)
+    throw new Error(`Session ${id} is not a subagent of this session or a chat in its project.`);
 
   return child;
 }

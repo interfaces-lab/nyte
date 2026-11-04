@@ -272,6 +272,8 @@ export const sidebarStyles = create({
     userSelect: "none",
     WebkitUserDrag: "none",
   },
+  /** A stack orchestrator's worker threads, set in under it by one icon slot. */
+  workerList: { paddingInlineStart: `calc(${sidebar.iconSlot} + ${sidebar.rowGap})` },
   sessionList: {
     display: { default: "flex", "[hidden]": "none" },
     flexDirection: "column",

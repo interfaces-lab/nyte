@@ -5,6 +5,7 @@ import type {
   JobId,
   PartId,
   PrincipalId,
+  ProjectId,
   ReceiptId,
   RunId,
   SessionId,
@@ -84,6 +85,12 @@ export function callRef(id: SessionId, call: CallId): string {
 
 export function workspaceRef(id: WorkspaceId): string {
   return `workspaces/${id}`;
+}
+
+export const PROJECTS = "projects/";
+
+export function projectRef(id: ProjectId): string {
+  return `${PROJECTS}${id}`;
 }
 
 export async function trustRef(target: WorkspaceTarget): Promise<string> {
