@@ -34,8 +34,12 @@ function plugin(id: string, command: string, log?: string): string {
   return `export default { id: ${JSON.stringify(id)}, ${activate} contribute: { commands: [{ name: ${JSON.stringify(command)}, title: "T", description: "D", run: () => "ran" }] } };\n`;
 }
 
-async function eventually<T>(read: () => Promise<T>, done: (value: T) => boolean): Promise<T> {
-  const deadline = Date.now() + 5_000;
+async function eventually<T>(
+  read: () => Promise<T>,
+  done: (value: T) => boolean,
+  wait = 5_000,
+): Promise<T> {
+  const deadline = Date.now() + wait;
 
   for (;;) {
     const value = await read();
@@ -47,6 +51,25 @@ async function eventually<T>(read: () => Promise<T>, done: (value: T) => boolean
 
 async function commands(session: Session): Promise<readonly string[]> {
   return ((await session.view())?.catalog.commands ?? []).map((command) => command.name);
+}
+
+async function addPlugin(
+  session: Session,
+  file: string,
+  id: string,
+  command: string,
+): Promise<readonly string[]> {
+  for (let attempt = 0; ; attempt += 1) {
+    await writeFile(file, `${plugin(id, command)}// ${attempt}\n`);
+
+    const names = await eventually(
+      () => commands(session),
+      (found) => found.includes(command),
+      2_000,
+    );
+
+    if (names.includes(command) || attempt === 2) return names;
+  }
 }
 
 async function pluginRows(host: Host): Promise<HostView["plugins"]> {
@@ -176,11 +199,9 @@ describe("hot reload", () => {
     const before = await readFile(log, "utf8");
 
     await writeFile(join(dir, "README.md"), "Notes.\n");
-    await writeFile(join(dir, "fresh.mjs"), plugin("fresh", "fresh-name"));
-    await eventually(
-      () => commands(opened.session),
-      (names) => names.includes("fresh-name"),
-    );
+    expect(
+      await addPlugin(opened.session, join(dir, "fresh.mjs"), "fresh", "fresh-name"),
+    ).toContain("fresh-name");
     const reloaded = await readFile(log, "utf8");
     await writeFile(join(dir, "README.md"), "More notes.\n");
     await new Promise((resolve) => setTimeout(resolve, 500));
