@@ -50,34 +50,28 @@ interface RowContext {
 /**
  * Pages the steps above in by itself once the reader can see this row, so the button shows only
  * for a page that failed or brought nothing. A page also comes back empty when the view moved while
- * it loaded, so an empty page is tried once more first.
+ * it loaded, so an empty page is tried once more first. The button brings the spinner back, and
+ * the spinner pages under the same rule.
  */
 function EarlierSteps(): ReactElement {
   const loadEarlier = useTranscriptScope()?.loadEarlier;
   const [stuck, setStuck] = useState(loadEarlier === undefined);
 
-  const load = (): Promise<number> => {
-    if (loadEarlier === undefined) return Promise.resolve(0);
-    setStuck(false);
-
-    return loadEarlier().then(
-      (loaded) => loaded,
-      () => -1,
-    );
-  };
-
-  const watch = (marker: HTMLDivElement): (() => void) => {
+  const watch = (marker: HTMLSpanElement): (() => void) => {
     let empty = 0;
 
     const observer = new IntersectionObserver((entries) => {
       if (!entries.some((entry) => entry.isIntersecting)) return;
       observer.unobserve(marker);
-      void load().then((loaded) => {
-        empty = loaded === 0 ? empty + 1 : 0;
+      void (loadEarlier?.() ?? Promise.resolve(0)).then(
+        (loaded) => {
+          empty = loaded === 0 ? empty + 1 : 0;
 
-        if (loaded > 0 || (loaded === 0 && empty < 2)) observer.observe(marker);
-        else setStuck(true);
-      });
+          if (loaded > 0 || (loaded === 0 && empty < 2)) observer.observe(marker);
+          else setStuck(true);
+        },
+        () => setStuck(true),
+      );
     });
 
     observer.observe(marker);
@@ -86,26 +80,20 @@ function EarlierSteps(): ReactElement {
   };
 
   return (
-    <div ref={watch}>
-      <StatusMarker role="status">
-        {stuck ? (
-          <Button
-            variant="text"
-            disabled={loadEarlier === undefined}
-            onClick={() => void load().then((loaded) => setStuck(loaded <= 0))}
-          >
-            Show Earlier Steps
-          </Button>
-        ) : (
-          <>
-            <MarkerIcon>
-              <Loader />
-            </MarkerIcon>
-            <MarkerContent>Loading Earlier Steps</MarkerContent>
-          </>
-        )}
-      </StatusMarker>
-    </div>
+    <StatusMarker role="status">
+      {stuck ? (
+        <Button variant="text" disabled={loadEarlier === undefined} onClick={() => setStuck(false)}>
+          Show Earlier Steps
+        </Button>
+      ) : (
+        <>
+          <MarkerIcon>
+            <Loader />
+          </MarkerIcon>
+          <MarkerContent ref={watch}>Loading Earlier Steps</MarkerContent>
+        </>
+      )}
+    </StatusMarker>
   );
 }
 
