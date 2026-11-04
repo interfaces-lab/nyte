@@ -16,7 +16,6 @@ export interface CellMetrics {
 export interface Scene {
   readonly cursor: "focused" | "unfocused" | "hidden";
   readonly selection: Rgb;
-  /** The link under the pointer while the open-link modifier is held, drawn underlined. */
   readonly link: TerminalLink | null;
 }
 
@@ -26,7 +25,6 @@ export interface Renderer {
   resize(width: number, height: number): void;
   release(): void;
   paint(frame: Frame, scene: Scene): void;
-  /** The row last painted at viewport row `y`. */
   row(y: number): Row | undefined;
 }
 
@@ -75,7 +73,6 @@ function css(color: Rgb): string {
   return "#" + color.toString(16).padStart(6, "0");
 }
 
-/** Device pixels on each side of the atlas edge. 1024 holds a few thousand glyphs at 2x. */
 const ATLAS_SIZE = 1024;
 
 interface Slot {
@@ -86,7 +83,6 @@ interface Slot {
 
 const UNDERLINE_CODES = { none: 0, single: 1, double: 2, curly: 3, dotted: 4, dashed: 5 } as const;
 
-/** A hash of everything a row draws, so a row that only moved can be recognised by value. */
 function signature(row: Row): number {
   let hash = 2166136261;
 
@@ -116,11 +112,6 @@ function signature(row: Row): number {
   return Math.imul(hash ^ (row.selection?.[1] ?? -1), 16777619);
 }
 
-/**
- * How many rows the content moved up (negative: down) between two screens, found from a row whose
- * signature appears once in `previous` and confirmed by at least half the rows lining up; 0 when
- * nothing moved or the screens don't line up.
- */
 function findShift(previous: readonly number[], next: readonly number[]): number {
   const counts = new Map<number, number>();
   previous.forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
@@ -138,19 +129,10 @@ function findShift(previous: readonly number[], next: readonly number[]): number
   return aligned * 2 >= next.length ? shift : 0;
 }
 
-/** Frames between atlas resets, so output in more colours than it holds draws direct instead of thrashing. */
 const ATLAS_RESET_FRAMES = 120;
 
-/** Glyphs added to the atlas per frame; past it they draw directly, so a screen of new glyphs costs one direct paint, not two. */
 const ATLAS_ADDS_PER_FRAME = 256;
 
-/**
- * Each glyph in a colour and style, rasterized once and copied with `drawImage`, which costs far
- * less than shaping it again with `fillText` every frame. When the atlas fills it starts over, at
- * most once every `ATLAS_RESET_FRAMES`; until then, and past `ATLAS_ADDS_PER_FRAME` in a frame,
- * glyphs that miss draw directly. `startFrame` sizes a released atlas again and returns true when
- * that reset its context's fill and font.
- */
 function createAtlas() {
   const canvas = document.createElement("canvas");
   canvas.width = 0;

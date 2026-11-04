@@ -7,21 +7,14 @@ export interface CellPoint {
 
 export interface TerminalLink {
   readonly url: string;
-  /** First and last viewport cell of the link, inclusive. They differ in row when the terminal soft-wrapped it. */
   readonly start: CellPoint;
   readonly end: CellPoint;
 }
 
 const WEB_URL = /https?:\/\/[^\s<>"'`]+/gu;
 
-/** Stands in for a cell that can't be part of a detected URL: a wide character, its tail or a cluster. */
 const NOT_URL = " ";
 
-/**
- * The web link under viewport cell `at`: an OSC 8 hyperlink from `hyperlink`, else a plain
- * `http(s)://` URL in the text of the line `at` sits on, joined across the rows the terminal
- * soft-wrapped. Only web links count, which is all the host opens.
- */
 export function findLink(
   at: CellPoint,
   rowAt: (row: number) => Row | undefined,
@@ -63,7 +56,6 @@ export function findLink(
   );
 }
 
-/** Every cell of the line `row` belongs to, one URL character each, across soft-wrapped rows. */
 function lineCells(row: number, rowAt: (row: number) => Row | undefined) {
   let top = row;
 
@@ -99,14 +91,12 @@ function linkEdge(
   return edge;
 }
 
-/** `value` as a URL when it's one the host opens, http or https. */
 function webUrl(value: string): URL | null {
   const url = URL.parse(value);
 
   return url?.protocol === "https:" || url?.protocol === "http:" ? url : null;
 }
 
-/** Drops punctuation that ends the sentence around a URL, and a closing bracket it never opened. */
 function trimUrl(url: string): string {
   const trimmed = url.replace(/[.,;:!?'"]+$/u, "");
   const opened = trimmed.split("(").length - 1;

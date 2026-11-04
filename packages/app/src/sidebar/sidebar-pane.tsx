@@ -205,13 +205,27 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
     setResizing(false);
   };
 
-  const cancelResize = (event: PointerEvent<HTMLDivElement>): void => {
+  const abandonResize = (): void => {
     const resize = resizeRef.current;
 
-    if (resize === undefined || resize.pointerId !== event.pointerId) return;
+    if (resize === undefined) return;
     resizeRef.current = undefined;
     applySidebarWidth(resize.startWidth);
     setResizing(false);
+  };
+
+  const cancelResize = (event: PointerEvent<HTMLDivElement>): void => {
+    if (resizeRef.current?.pointerId !== event.pointerId) return;
+    abandonResize();
+  };
+
+  const attachHandle = (element: HTMLDivElement | null): (() => void) => {
+    const detach = attachSidebarWidth(element);
+
+    return () => {
+      detach?.();
+      abandonResize();
+    };
   };
 
   const resizeWithKeyboard = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -266,7 +280,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
       </motion.div>
       {docked && (
         <div
-          ref={attachSidebarWidth}
+          ref={attachHandle}
           role="separator"
           tabIndex={0}
           aria-label="Resize sidebar"
@@ -284,6 +298,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
           onPointerMove={moveResize}
           onPointerUp={endResize}
           onPointerCancel={cancelResize}
+          onLostPointerCapture={cancelResize}
         />
       )}
     </div>

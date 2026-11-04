@@ -269,18 +269,20 @@ function SideChatBody({
     );
   }
 
-  return <FirstQuestion parent={parent} error={shown.error} />;
+  return <FirstQuestion parent={parent} error={shown.error} question={shown.question} />;
 }
 
 /** A side chat not yet started: its first question starts it. */
 function FirstQuestion({
   parent,
   error,
+  question,
 }: {
   readonly parent: SessionId;
   readonly error: string | null;
+  readonly question: string;
 }): ReactElement {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(question);
 
   const submit = (): void => {
     if (draft.trim() !== "") void startSideChat(parent, draft.trim());

@@ -214,7 +214,11 @@ async function planArchive(archive: string) {
     if (
       !/^[a-zA-Z0-9._/-]+$/u.test(name) ||
       name.split("/").some((part) => part === ".." || part === "." || part === "") ||
-      (name !== "nyte" && name !== "VERSION" && name !== "docs" && !name.startsWith("docs/")) ||
+      (name !== "nyte" &&
+        name !== "nyte-tailnet" &&
+        name !== "VERSION" &&
+        name !== "docs" &&
+        !name.startsWith("docs/")) ||
       (type !== "-" && type !== "d") ||
       (type === "d" && name !== "docs" && !name.startsWith("docs/")) ||
       seen.has(name)
@@ -327,7 +331,7 @@ async function stageDocs(source: string, binaryPath: string, version: string) {
   }
 }
 
-/** Downloads, verifies and installs a release over the running binary. The new binary is staged in a private directory on the binary's filesystem and swapped in by one atomic rename once its docs are complete, leaving older versioned docs alone; a cleanup failure afterwards never turns that swap into a failed result. */
+/** Downloads, verifies and installs a release over the running binary. The host runs the `nyte-tailnet` sidecar from beside the binary, so a release's sidecar is swapped in first. The new binary is staged in a private directory on the binary's filesystem and swapped in by one atomic rename once its docs are complete, leaving older versioned docs alone; a cleanup failure afterwards never turns that swap into a failed result. */
 export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOutcome> {
   const report = options.report ?? (() => undefined);
   const fetchFn = options.fetchFn ?? globalThis.fetch;
@@ -428,6 +432,14 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
     await chmod(staged, 0o755);
 
     if (plan.docs) await stageDocs(join(extracted, "docs"), installed, target.version);
+
+    if (plan.files.includes("nyte-tailnet")) {
+      const tailnet = join(adjacent, "nyte-tailnet");
+      await copyFile(join(extracted, "nyte-tailnet"), tailnet);
+      await chmod(tailnet, 0o755);
+      await rename(tailnet, join(installDir, "nyte-tailnet"));
+    }
+
     await rename(staged, installed);
 
     return { kind: "updated", from: VERSION, to: target.version, path: binaryPath };

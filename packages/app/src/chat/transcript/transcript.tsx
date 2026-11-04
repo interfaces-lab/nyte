@@ -321,13 +321,16 @@ export function TranscriptContent({
     )
       return;
     historyLoading.current = true;
-    void loadEarlier()
-      .finally(() => {
+    void loadEarlier().then(
+      (loaded) => {
         historyLoading.current = false;
-      })
-      .then((loaded) => {
+
         if (loaded > 0) requestAnimationFrame(() => loadHistory(instance));
-      });
+      },
+      () => {
+        historyLoading.current = false;
+      },
+    );
   };
 
   const present = (instance: TranscriptVirtualizer): void => {

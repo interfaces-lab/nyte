@@ -559,10 +559,10 @@ export function TextFileEditor({
     });
   };
 
-  const autosave = useRef({ enabled: autoSave, save });
-  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest autosave settings for the buffer timer, which runs outside render
+  const latestSave = useRef(save);
+  // oxlint-disable-next-line nyte-code/no-direct-effect -- latest save for the autosave timer, which runs outside render
   useLayoutEffect(() => {
-    autosave.current = { enabled: autoSave, save };
+    latestSave.current = save;
   });
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- buffer subscription that mirrors drafts into the file store
@@ -590,14 +590,13 @@ export function TextFileEditor({
       }
 
       if (
+        autoSave &&
         current.contents !== current.savedContents &&
         (current.status.kind === "idle" || current.status.kind === "saved")
       ) {
         timer = window.setTimeout(() => {
           timer = undefined;
-          const pending = autosave.current;
-
-          if (pending.enabled) void pending.save();
+          void latestSave.current();
         }, 1000);
       }
     };
@@ -610,7 +609,7 @@ export function TextFileEditor({
 
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [buffer, file.path, viewKey]);
+  }, [autoSave, buffer, file.path, viewKey]);
 
   // oxlint-disable-next-line nyte-code/no-direct-effect -- hands the disk document to the buffer to detect outside edits
   useLayoutEffect(() => {

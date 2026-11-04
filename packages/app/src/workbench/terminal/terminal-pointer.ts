@@ -11,7 +11,6 @@ export interface PointerHost {
   selecting(): void;
   settled(): void;
   scrolled(): void;
-  /** Whether the event holds the key that turns links on: Command on macOS, Control elsewhere. */
   linkModifier(event: MouseEvent | KeyboardEvent): boolean;
   link(at: CellPoint): TerminalLink | null;
   showLink(link: TerminalLink | null): void;

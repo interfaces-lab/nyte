@@ -276,6 +276,40 @@ describe("shell terminals", () => {
     assert.equal(storage.has(`nyte.terminal.${id}`), false);
   });
 
+  test("restarting an exited shell twice in a row starts one new shell and stops the old one once", async () => {
+    next = fakeJob("exits");
+    const old = next;
+    const id = tabId();
+    await terminalActions.create({ id, workspacePath: "/workspace" });
+    old.exit(0);
+    await vi.waitFor(() => assert.equal(getTerminal(id)?.state.kind, "exited"));
+
+    let release = (): void => undefined;
+
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const stop = old.job.stop.bind(old.job);
+    old.job.stop = async () => {
+      await held;
+
+      return stop();
+    };
+
+    next = fakeJob("restarted");
+
+    const first = terminalActions.restart({ id, workspacePath: "/workspace" });
+    const second = terminalActions.restart({ id, workspacePath: "/workspace" });
+    release();
+    await Promise.all([first, second]);
+
+    expect(started).toHaveLength(2);
+    assert.equal(old.stopped, 1);
+    assert.equal(getTerminal(id)?.state.kind, "running");
+    await terminalActions.close(id);
+  });
+
   test("re-attach to a shell the host still runs after a reload, the host replaying its scrollback", async () => {
     const kept = fakeJob("kept");
     running.set("kept", kept.job);

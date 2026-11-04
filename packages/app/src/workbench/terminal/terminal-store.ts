@@ -68,7 +68,6 @@ export interface TerminalOutput {
   reset(): void;
   write(data: Uint8Array): void;
   update(tab: TerminalTab): void;
-  /** Whether the terminal is on screen, so its own notifications would only repeat it. */
   visible(): boolean;
   dispose(): void;
 }
@@ -730,6 +729,34 @@ export const terminalActions = {
     if (tab?.kind !== "job" || tab.stream.kind !== "failed") return;
     updateStream(id, { kind: "connecting" });
     followJob(tab);
+  },
+  async restart({
+    id,
+    workspacePath,
+  }: {
+    readonly id: WorkbenchTabId;
+    readonly workspacePath: string | null;
+  }): Promise<void> {
+    const tab = shellTab(id);
+
+    if (tab === undefined || tab.state.kind === "starting" || tab.state.kind === "running") return;
+    const feed = feeds.get(id);
+    feeds.delete(id);
+    updateShell(id, { kind: "starting" });
+
+    try {
+      await feed?.job.stop().catch(() => undefined);
+      await feed?.job.close();
+    } catch (cause: unknown) {
+      updateShell(id, { kind: "failed", message: errorMessage(cause) });
+
+      return;
+    }
+
+    if (shellTab(id)?.state.kind !== "starting") return;
+    remove(id);
+
+    return startShell(id, workspacePath, null, "");
   },
   async close(id: WorkbenchTabId): Promise<void> {
     const tab = getTerminal(id);

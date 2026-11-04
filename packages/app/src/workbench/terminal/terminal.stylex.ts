@@ -35,9 +35,7 @@ export const terminalStyles = create({
     caretColor: "transparent",
     outlineStyle: "none",
   },
-  /** The padded screen's content box, which the canvas fills and pointer positions measure from. */
   stage: { position: "relative", width: "100%", height: "100%" },
-  /** Off-screen until an IME composes, when it shows the preedit text at the cursor. */
   input: {
     position: "absolute",
     width: 1,

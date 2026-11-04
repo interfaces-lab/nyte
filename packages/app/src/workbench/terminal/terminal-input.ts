@@ -34,11 +34,6 @@ function keyInput(event: KeyboardEvent, action: KeyInput["action"], mac: boolean
   };
 }
 
-/**
- * Ghostty's macOS text-editing keys, sent as the legacy bytes shells bind by default: Command+Left
- * and Command+Right go to the line's start and end, Command+Backspace deletes back to its start,
- * and Option+Left and Option+Right move by word. Keyed by physical key and the exact modifier.
- */
 const MAC_EDITING = new Map([
   ["Meta+ArrowLeft", "\u0001"],
   ["Meta+ArrowRight", "\u0005"],

@@ -450,15 +450,15 @@ export function Composer({
       onLeave: () => {
         windowTabs.dispatch({ kind: "keep-tab", tabId: submittingTab });
         recalled.current = undefined;
-        updateViewState((current) => ({
-          ...current,
-          draft: "",
-          attachments: current.attachments.filter(
+        updateViewState((current) => {
+          const attachments = current.attachments.filter(
             (attachment) => !sentAttachments.includes(attachment),
-          ),
-          selectionStart: 0,
-          selectionEnd: 0,
-        }));
+          );
+
+          if (current.draft !== document.text) return { ...current, attachments };
+
+          return { ...current, draft: "", attachments, selectionStart: 0, selectionEnd: 0 };
+        });
         setAttachmentError(undefined);
         setFeedback(undefined);
       },
@@ -791,6 +791,7 @@ export function Composer({
               }
 
               if (document.text !== latestViewState.current.draft) {
+                recalled.current = undefined;
                 setFeedback((current) => (current?.kind === "error" ? current : undefined));
               }
 

@@ -2,13 +2,10 @@ import { readNotice } from "./terminal-notifications.ts";
 import type { OscNotice } from "./terminal-notifications.ts";
 import { createProgramRecords } from "./terminal-program-status.ts";
 
-/** The saved tail identifies the end of replay without keeping the whole scrollback. */
 const FINGERPRINT = 1024;
 
-/** Past this much replay without finding the saved tail, the rest counts as new. */
 const REPLAY_LIMIT = 2 * 1024 * 1024;
 
-/** Longer OSCs, such as a clipboard copy, are neither notices nor status reports; they're skipped unread. */
 const LONGEST = 4096;
 
 const ESC = "\u001b";
@@ -20,12 +17,6 @@ type End =
   | { readonly kind: "dropped"; readonly next: number }
   | { readonly kind: "open" };
 
-/**
- * Reads one PTY's output for notifications and program status. A reattached shell replays output
- * the window already showed (`history`): its status is restored, but it never notifies or answers
- * the program again. A job is read-only, so it only reports status. After a gap in the output,
- * whatever it reported is unknown, so the records reset.
- */
 export function createTerminalReader(
   source: { readonly kind: "shell"; readonly history: string } | { readonly kind: "job" },
 ) {
@@ -95,10 +86,6 @@ export function createTerminalReader(
   };
 }
 
-/**
- * The OSCs (ended by BEL or ST) and full resets (`ESC c`) in a chunk, in order. A sequence can
- * split across chunks, so pass back `carry` with the next one.
- */
 function scanSequences(carry: string, chunk: string) {
   const text = carry + chunk;
   const sequences: Sequence[] = [];
@@ -127,7 +114,6 @@ function scanSequences(carry: string, chunk: string) {
   return { carry: "", sequences };
 }
 
-/** An ESC other than ST's aborts the sequence and may start the next one. */
 function findEnd(text: string, from: number): End {
   const limit = Math.min(text.length, from + LONGEST);
 
