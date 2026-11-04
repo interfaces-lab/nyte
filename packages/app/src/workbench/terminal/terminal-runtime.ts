@@ -323,6 +323,8 @@ function createTextarea(shell: boolean): HTMLTextAreaElement {
 
   if (!shell) textarea.readOnly = true;
   textarea.className = props(terminalStyles.input).className ?? "";
+  textarea.style.left = "0";
+  textarea.style.top = "0";
 
   return textarea;
 }

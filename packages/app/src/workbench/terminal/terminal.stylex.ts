@@ -40,8 +40,6 @@ export const terminalStyles = create({
   /** Off-screen until an IME composes, when it shows the preedit text at the cursor. */
   input: {
     position: "absolute",
-    left: 0,
-    top: 0,
     width: 1,
     height: 1,
     padding: 0,
